@@ -7,7 +7,6 @@
 #   scripts\verify-listeners.ps1
 #   scripts\verify-listeners.ps1 -Linger 8
 param(
-  [string]$Beefweb = 'http://127.0.0.1:8880/api',
   [string]$FooJean = 'http://127.0.0.1:8881/api',
   # kMuteLingerSeconds in core/settings.h. A departure is only really a departure once this has run out.
   [int]$Linger = 8
@@ -34,7 +33,10 @@ function Check($what, $ok, $detail = '') {
   }
 }
 
-function Get-PlayerVolume { (Get-Json "$Beefweb/player").player.volume }
+function Get-PlayerVolume {
+  $player = (Get-Json "$FooJean/state").player
+  [pscustomobject]@{ value = $player.volume; isMuted = $player.muted }
+}
 function Get-Listeners { Get-Json "$FooJean/stream/listeners" }
 
 function New-Ticket($deviceId, $name) {
@@ -129,9 +131,9 @@ if ($mutes) {
   Write-Host "the hold"
   Check "the roster says the player was silenced" (Wait-For { (Get-Listeners).playerMuted -eq $true })
 
-  # foobar2000 has no mute flag: mute is the volume at -100 dB, which is why beefweb sees it at all.
+  # foobar2000 has no mute flag: mute is the volume at -100 dB, so the player's own state shows the hold.
   $during = Get-PlayerVolume
-  Check "beefweb reports the player muted" ($during.isMuted -eq $true) "volume is $($during.value)"
+  Check "the player reports itself muted" ($during.isMuted -eq $true) "volume is $($during.value)"
 }
 
 Write-Host ""
@@ -176,7 +178,7 @@ if ($mutes) {
   Check "the hold is taken" (Wait-For { (Get-Listeners).playerMuted -eq $true })
 
   # Anything that moves the fader is an unmute, because the mute is the fader.
-  Get-Json "$Beefweb/player?volume=$($before.value)" @{} 'POST' | Out-Null
+  Get-Json "$FooJean/volume" @{} 'POST' (@{ value = $before.value } | ConvertTo-Json -Compress) | Out-Null
   Check "the roster stops claiming the player" (Wait-For { (Get-Listeners).playerMuted -eq $false })
 
   Start-Sleep -Seconds 2

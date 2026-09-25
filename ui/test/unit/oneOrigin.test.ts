@@ -34,7 +34,7 @@ test("nothing under src/ names the second origin, the discovery record or client
 });
 
 const DEFAULT_TARGET = "http://localhost:8881";
-const PLAYER_VARIABLES = new Set(["FOO_JEAN_URL", "BEEFWEB_URL"]);
+const PLAYER_VARIABLES = new Set(["FOO_JEAN_URL"]);
 
 // `test/alias.ts` cannot resolve Vite's own CommonJS dependencies, so the config is loaded in a
 // plain node beside the suite. Vite's `loadEnv` reads `.env` files from the working directory,
@@ -78,19 +78,4 @@ test("FOO_JEAN_URL points the dev server's /api proxy at another player", () => 
 		devServerApiTarget({ FOO_JEAN_URL: "http://player.lan:8881" }),
 		"http://player.lan:8881",
 	);
-});
-
-test("BEEFWEB_URL no longer moves the dev server's /api proxy", () => {
-	assert.equal(
-		devServerApiTarget({ BEEFWEB_URL: "http://player.lan:8880" }),
-		DEFAULT_TARGET,
-	);
-});
-
-test("no script or config under ui/ reads BEEFWEB_URL", () => {
-	const code = filesUnder(UI, /\.(?:[cm]?[jt]sx?|json)$/).filter(
-		(file) => file !== fileURLToPath(import.meta.url),
-	);
-
-	assert.deepEqual(linesNaming(code, /BEEFWEB_URL/), []);
 });

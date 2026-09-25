@@ -448,8 +448,7 @@ TEST_CASE("a body that is not a JSON object is a 400 on every route that reads o
     CHECK(commands.count() == 0);
 }
 
-// beefweb's own spellings are the ones a client moving across would reach for first.
-TEST_CASE("a field the route does not publish is a 400, beefweb's own spellings included") {
+TEST_CASE("a field the route does not publish is a 400") {
     Commands commands;
     const TestServer server(servingSettings(), commanding(&commands));
 

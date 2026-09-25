@@ -40,7 +40,7 @@ const MSE_START_MS = 5000;
 const TIMELINE_POLL_MS = 10_000;
 
 // A stopped player and a broken stream look identical from the stream: headers arrive and then
-// nothing. Only beefweb can say which, and the two need different sentences.
+// nothing. Only the player's own state can say which, and the two need different sentences.
 export type ListenPhase =
 	| { kind: "off" }
 	| { kind: "connecting" }
@@ -135,7 +135,7 @@ export const listeningSnapshot = () => snapshot;
 export const listeningServerSnapshot = () => snapshot;
 
 // Fed by the poll; see ../../ARCHITECTURE.md, `["player"]`, for why the stall check below reads
-// this rather than asking beefweb itself.
+// this rather than asking `foo_jean` itself.
 export const notePlaybackState = (state: PlaybackState) => {
 	knownPlaybackState = state;
 };

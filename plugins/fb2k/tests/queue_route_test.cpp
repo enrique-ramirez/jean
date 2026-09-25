@@ -205,7 +205,7 @@ TEST_CASE(
 }
 
 // A field past these is one a client may start reading, and the queue read is bounded to what
-// Jean draws. A beefweb id or an absolute path creeping in is the likely one.
+// Jean draws. A positional playlist id or an absolute path creeping in is the likely one.
 TEST_CASE("every queue entry carries exactly its seven keys, whichever of them are null") {
     const TestServer server(
         servingSettings(),

@@ -1,5 +1,5 @@
 {
-  "capturedFrom": "foobar2000 2.25.3 / beefweb 0.11",
+  "capturedFrom": "foobar2000 2.25.3",
   "expressions": [
     "%tracknumber%",
     "%title%",

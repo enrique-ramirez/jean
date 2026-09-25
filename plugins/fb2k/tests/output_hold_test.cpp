@@ -44,7 +44,6 @@ struct FakePlayer {
     std::function<void(bool)> onSetMuted;
     std::function<void(bool)> watcher;
 
-    // Anything that moves the fader, which is what a client does through beefweb.
     void setLevel(float value) {
         level = value;
         muted = value <= kMuted;
@@ -203,8 +202,6 @@ TEST_CASE("somebody unmuting the player mid-listen keeps their sound") {
         const auto held = audience.join(phone(), "opus", Audience::Clock::now());
         REQUIRE(becomes(player.muted, true));
 
-        // At the player, or through beefweb: mute is the volume, so anything that moves the
-        // fader is this, and the player's own callback is how the hold hears about it.
         player.setLevel(-20.0F);
         hold.playerVolumeChanged(false);
 

@@ -14,7 +14,6 @@ import {
 	openNowPlaying,
 	openSidebar,
 	pressAndHold,
-	requestsTo,
 	sidebar,
 	statusBar,
 	test,
@@ -133,17 +132,6 @@ const componentRemovals = (player: FakePlayer) =>
 const emptiesTheQueue = (entry: { method: string; path: string }) =>
 	entry.method === "DELETE" && /^\/api\/queue(\/\d+)?(\?|$)/.test(entry.path);
 
-// beefweb's own queue surface: the four routes it publishes and the read that
-// carries the queue on a query. The long-lived update subscription is a path of
-// its own and is not one of these.
-const beefwebQueueRequests = (player: FakePlayer) =>
-	player.requests.filter(
-		(entry) =>
-			entry.path.startsWith("/api/playqueue") ||
-			(entry.path.startsWith("/api/query?") &&
-				entry.path.includes("playQueue=true")),
-	);
-
 const forgetRequests = (player: FakePlayer) => {
 	player.requests.length = 0;
 };
@@ -174,7 +162,7 @@ const rowQueuedAtThePlayer = (
 };
 
 // The same press on a library track with no playlist open: the player holds the
-// handle alone, and there is no position for beefweb to name it by.
+// handle alone, and there is no position to name it by.
 const trackQueuedAtThePlayer = (player: FakePlayer, ordinal: number) => {
 	const { track } = player.ordinalOrder()[ordinal];
 	player.queueInsert([{ playlistId: null, track }]);
@@ -1142,36 +1130,14 @@ const expectQueueTakesALibraryRow = async (
 	expect(queued.title).toBeTruthy();
 	await expect(trackRow(page, 2)).toContainText(queued.title);
 	await expect(queueRows(page)).toHaveCount(1);
-
-	// The fake honours no beefweb permission, so a queued track is not on its own
-	// proof that Jean stopped asking beefweb for the playlist to queue it through.
-	await expectSettlesAt(
-		player,
-		() => requestsTo(player, "/playlists/add").length,
-		0,
-	);
 };
 
-test.describe("a player whose beefweb permissions say nothing about queueing a library row", () => {
-	test.use({
-		playerState: {
-			permissions: {
-				changeOutput: true,
-			},
-		},
-	});
-
-	test("queues a library row all the same", async ({
-		page,
-		player,
-		isMobile,
-	}) => {
+test.describe("queueing a library row", () => {
+	test("queues it from the row menu", async ({ page, player, isMobile }) => {
 		await expectQueueTakesALibraryRow(page, player, isMobile);
 	});
 
 	// The menu and the drag are two surfaces and they are gated separately.
-	// Queueing a library row writes through the component rather than through
-	// beefweb, so what beefweb permits is not a reason for either one to refuse.
 	test("queues a library row dragged onto the queue", async ({
 		page,
 		player,
@@ -1194,11 +1160,11 @@ test.describe("a player whose beefweb permissions say nothing about queueing a l
 		await expect(queueRows(page)).toHaveCount(1);
 	});
 
-	test.describe("with the component's own playlist writes turned off too", () => {
+	test.describe("with the component's playlist writes turned off", () => {
 		test.use({ fooJean: { canWritePlaylists: false } });
 
-		// Neither setting has anything to say about a queue: the row is queued by
-		// its handle, and no playlist of anybody's is written to on the way.
+		// That setting has nothing to say about a queue: the row is queued by its
+		// handle, and no playlist of anybody's is written to on the way.
 		test("queues a library row all the same", async ({
 			page,
 			player,
@@ -1210,7 +1176,7 @@ test.describe("a player whose beefweb permissions say nothing about queueing a l
 });
 
 test.describe("the queue is the component's", () => {
-	test("draws the entries the component answers, in its order, and reads none of it from beefweb", async ({
+	test("draws the entries the component answers, in its order", async ({
 		page,
 		player,
 		isMobile,
@@ -1235,7 +1201,6 @@ test.describe("the queue is the component's", () => {
 			componentRequests(player, "GET", "/api/queue").length,
 			"the panel drew a queue it never read from the component",
 		).toBeGreaterThan(0);
-		await expectSettlesAt(player, () => beefwebQueueRequests(player).length, 0);
 	});
 
 	test("picks up a track queued at the player, with no reload", async ({
@@ -1252,7 +1217,7 @@ test.describe("the queue is the component's", () => {
 		await expect(queueRows(page).first()).toContainText(title);
 	});
 
-	test("queues a track with one request to the component, and none to beefweb", async ({
+	test("queues a track with one request to the component", async ({
 		page,
 		player,
 		isMobile,
@@ -1269,10 +1234,9 @@ test.describe("the queue is the component's", () => {
 			1,
 		);
 		expect(queuedAtThePlayer(player)).toHaveLength(1);
-		expect(beefwebQueueRequests(player)).toHaveLength(0);
 	});
 
-	test("moves an entry with one request to the component, and none to beefweb", async ({
+	test("moves an entry with one request to the component", async ({
 		page,
 		player,
 		isMobile,
@@ -1299,10 +1263,9 @@ test.describe("the queue is the component's", () => {
 			() => componentRequests(player, "POST", "/api/queue/move").length,
 			1,
 		);
-		expect(beefwebQueueRequests(player)).toHaveLength(0);
 	});
 
-	test("removes an entry with one request to the component, and none to beefweb", async ({
+	test("removes an entry with one request to the component", async ({
 		page,
 		player,
 		isMobile,
@@ -1325,10 +1288,9 @@ test.describe("the queue is the component's", () => {
 			.poll(() => queuedAtThePlayer(player), { timeout: 10_000 })
 			.toEqual([before[1]]);
 		await expectSettlesAt(player, () => componentRemovals(player).length, 1);
-		expect(beefwebQueueRequests(player)).toHaveLength(0);
 	});
 
-	test("clears the queue with one request to the component, and none to beefweb", async ({
+	test("clears the queue with one request to the component", async ({
 		page,
 		player,
 		isMobile,
@@ -1351,7 +1313,6 @@ test.describe("the queue is the component's", () => {
 		// The panel empties before the request goes out, so the count on its own
 		// would pass against a clear the player refused.
 		expect(queuedAtThePlayer(player)).toHaveLength(0);
-		expect(beefwebQueueRequests(player)).toHaveLength(0);
 	});
 
 	test("a move the component refuses leaves the panel on the player's own queue", async ({
@@ -1829,8 +1790,7 @@ test.describe("the cover on a queued row", () => {
 
 	// A file in a playlist that the media library has never seen:
 	// foobar2000 queues it and the component has no library path to name it by,
-	// so the row it was queued from stands in for one. That address is the
-	// component's own; beefweb cannot resolve a playlist named by GUID at all.
+	// so the row it was queued from stands in for one.
 	test.describe("for a track the media library does not carry", () => {
 		test.use({ mediaLibrarySize: 12 });
 

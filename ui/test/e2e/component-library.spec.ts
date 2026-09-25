@@ -20,16 +20,12 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// `foo_jean` answers the whole library as one binary snapshot. It is the only source there is:
-// beefweb's own library API must go unread whatever the component says.
+// `foo_jean` answers the whole library as one binary snapshot, and it is the only source there is.
 
 const exportsAsked = (player: FakePlayer) =>
 	requestsTo(player, "/api/library/export").filter(
 		(entry) => entry.method === "GET",
 	);
-
-const pagesAsked = (player: FakePlayer) =>
-	requestsTo(player, "/api/library/items");
 
 const deltasAsked = (player: FakePlayer) =>
 	requestsTo(player, "/api/library/changes");
@@ -54,12 +50,9 @@ const playsAsked = (player: FakePlayer) =>
 
 const playlistsMade = (player: FakePlayer) =>
 	player.requests.filter(
-		(entry) =>
-			entry.method === "POST" && entry.path.startsWith("/api/playlists/add"),
+		(entry) => entry.method === "POST" && entry.path === "/api/playlists",
 	);
 
-// beefweb renames by posting a title to the playlist itself, so the body is what
-// tells a rename apart from every other post under `/api/playlists/`.
 const playlistsRenamed = (player: FakePlayer) =>
 	player.requests.filter(
 		(entry) =>
@@ -68,18 +61,12 @@ const playlistsRenamed = (player: FakePlayer) =>
 			entry.body?.title !== undefined,
 	);
 
-// The two routes that can put a library row into somebody's playlist, counted
-// side by side so that a failure names which one took it. The component's fill by
-// playlist id is two segments past `/api/playlists/`, where `own/{role}` is three
-// and every beefweb add is four, so the shape belongs to that route alone.
-const addsSent = (player: FakePlayer) => ({
-	component: player.requests.filter(
+const addsSent = (player: FakePlayer) =>
+	player.requests.filter(
 		(entry) =>
 			entry.method === "POST" &&
 			/^\/api\/playlists\/[^/]+\/items$/.test(entry.path),
-	).length,
-	beefweb: requestsTo(player, "add-from-library").length,
-});
+	).length;
 
 const titlesIn = (player: FakePlayer, title: string) =>
 	player.playlists
@@ -129,15 +116,11 @@ const fileInto = async (
 test.describe("the library as one snapshot", () => {
 	test.use({ fooJean: {} });
 
-	test("every track arrives in one export and beefweb is never paged", async ({
-		page,
-		player,
-	}) => {
+	test("every track arrives in one export", async ({ page, player }) => {
 		await openAllMusic(page);
 
 		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "54");
 		await expectSettlesAt(player, () => exportsAsked(player).length, 1);
-		expect(pagesAsked(player)).toHaveLength(0);
 	});
 
 	test("the export declares the columns the app reads", async ({
@@ -194,18 +177,14 @@ test.describe("a component that does not serve the library", () => {
 		fooJean: { canReadLibrary: false },
 	});
 
-	test("nothing stands in for it and beefweb is not asked", async ({
-		page,
-		player,
-	}) => {
+	test("nothing stands in for it", async ({ page, player }) => {
 		await page.goto("/#/all");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "All music" }),
 		).toBeVisible();
 
 		await expect(page.getByText("Nothing in your library yet.")).toBeVisible();
-		expect(exportsAsked(player)).toHaveLength(0);
-		await expectSettlesAt(player, () => pagesAsked(player), []);
+		await expectSettlesAt(player, () => exportsAsked(player).length, 0);
 	});
 });
 
@@ -352,7 +331,7 @@ test.describe("a library rebuilt while Jean was reading the one before it", () =
 test.describe("playing a set out of the library", () => {
 	test.use({ fooJean: {} });
 
-	test("asks the component for its scratch playlist by role, titled, and makes none through beefweb", async ({
+	test("asks the component for its scratch playlist by role, titled, and makes or renames none", async ({
 		page,
 		player,
 	}) => {
@@ -362,7 +341,7 @@ test.describe("playing a set out of the library", () => {
 
 		await expectSettlesAt(player, () => scratchFills(player).length, 1);
 		// The title rides the call that makes the playlist. Jean's four `#Jean…`
-		// readers key on it, and beefweb's playlist list is polled, so a playlist
+		// readers key on it, and the playlist list is read on a poll, so a playlist
 		// that exists under another name for one poll is a playlist that surfaced.
 		expect(scratchFills(player)[0].body?.title).toBe("#Jean [all music]");
 		expect(playlistsMade(player)).toHaveLength(0);
@@ -394,17 +373,14 @@ test.describe("playing a set out of the library", () => {
 
 test.describe("the order a library set plays in", () => {
 	// Synthesised rather than captured: these tracks sit in a different order by
-	// tag than by path, so the player's own add order is not the library's and a
-	// set that arrived through beefweb would land scrambled.
+	// tag than by path, so a set filled in path order rather than in the
+	// component's library order would land scrambled.
 	test.use({
 		fooJean: {},
 		mediaLibrarySize: 4000,
 	});
 
-	test("plays the row that was clicked, with nothing sent to re-order what the component filled", async ({
-		page,
-		player,
-	}) => {
+	test("plays the row that was clicked", async ({ page, player }) => {
 		await openAllMusic(page);
 
 		await trackRow(page, 12).dblclick();
@@ -413,11 +389,6 @@ test.describe("the order a library set plays in", () => {
 			.poll(() => playedFrom(player)?.id)
 			.toBe(scratchOf(player)?.guid);
 		await expect(trackRow(page, 12)).toContainText(trackPlayed(player)!);
-
-		// One component decides the order and does the filling. Jean re-deriving it
-		// is what plays a different track on a library with more than one root.
-		expect(requestsTo(player, "add-from-library")).toHaveLength(0);
-		expect(requestsTo(player, "items/sort")).toHaveLength(0);
 	});
 });
 
@@ -540,7 +511,7 @@ test.describe("a view whose fill was refused because the library moved", () => {
 test.describe("filing a library row into a playlist of your own", () => {
 	test.use({ fooJean: {} });
 
-	test("goes to the component by playlist id, and adds nothing through beefweb", async ({
+	test("goes to the component by playlist id", async ({
 		page,
 		player,
 		isMobile,
@@ -555,16 +526,12 @@ test.describe("filing a library row into a playlist of your own", () => {
 		);
 
 		// The row that was clicked rather than merely a row: a ref is an ordinal in
-		// the component's library order, and beefweb's own add resolves a path
-		// against a library it enumerates in another.
+		// the component's library order, which is not the order of the paths.
 		const after = titlesIn(player, FAVORITES);
 		expect(after).toHaveLength(before.length + 1);
 		await expect(trackRow(page, 2)).toContainText(after.at(-1) as string);
 
-		await expectSettlesAt(player, () => addsSent(player), {
-			component: 1,
-			beefweb: 0,
-		});
+		await expectSettlesAt(player, () => addsSent(player), 1);
 	});
 
 	test("the sidebar row lights up as a drop target, and the dropped row is filed there", async ({
@@ -593,10 +560,7 @@ test.describe("filing a library row into a playlist of your own", () => {
 		const after = titlesIn(player, FAVORITES);
 		await expect(trackRow(page, 2)).toContainText(after.at(-1) as string);
 
-		await expectSettlesAt(player, () => addsSent(player), {
-			component: 1,
-			beefweb: 0,
-		});
+		await expectSettlesAt(player, () => addsSent(player), 1);
 	});
 
 	test.describe("where the player owner has turned playlist writes off", () => {
@@ -624,10 +588,7 @@ test.describe("filing a library row into a playlist of your own", () => {
 			await expect(target).not.toHaveAttribute("data-drop-over");
 			await page.mouse.up();
 
-			await expectSettlesAt(player, () => addsSent(player), {
-				component: 0,
-				beefweb: 0,
-			});
+			await expectSettlesAt(player, () => addsSent(player), 0);
 			expect(titlesIn(player, FAVORITES)).toEqual(before);
 		});
 

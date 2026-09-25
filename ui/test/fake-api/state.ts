@@ -1,11 +1,13 @@
 import type {
-	ActiveItem,
-	Permissions,
 	PlaybackState,
 	PlaylistInfo,
 	Volume,
 } from "../../src/shared/api/types.ts";
-import { type FooJeanOptions, fooJeanState } from "./fooJean.ts";
+import {
+	type FooJeanOptions,
+	fooJeanState,
+	JEAN_MODE_BY_ORDER,
+} from "./fooJean.ts";
 import {
 	changedColumn,
 	type Dictionary,
@@ -32,8 +34,8 @@ const STREAM_MARKS = 6;
 export interface FakePlaylist {
 	id: string;
 	// foobar2000's own GUID, stable for the playlist's life: what every `foo_jean` route
-	// addresses it by, distinct from `id`, which is beefweb's own and stays for the routes
-	// still addressed that way.
+	// addresses it by. `id` is the fake's own short key, which specs and control
+	// routes name a playlist by.
 	guid: string;
 	title: string;
 	isCurrent: boolean;
@@ -79,16 +81,17 @@ export interface FakePlayerOption {
 	enumNames?: string[];
 }
 
+export interface FakeActiveItem {
+	duration: number;
+	index: number;
+	playlistId: string;
+	position: number;
+}
+
 export interface FakePlayerState {
-	activeItem: ActiveItem;
-	info: {
-		name: string;
-		title?: string;
-		version: string;
-		pluginVersion: string;
-	};
+	activeItem: FakeActiveItem;
+	info: { name: string; version: string };
 	options?: FakePlayerOption[];
-	permissions: Permissions;
 	playbackMode: number;
 	playbackState: PlaybackState;
 	volume: Volume;
@@ -108,26 +111,22 @@ export interface RecordedRequest {
 }
 
 const LIBRARY = capturedLibrary as { albums: CapturedAlbum[] };
-const CAPTURED_PLAYER = capturedPlayer as unknown as FakePlayerState;
+const CAPTURED_PLAYER = capturedPlayer as Omit<FakePlayerState, "activeItem">;
 
-const IDLE_ITEM = {
-	columns: [],
+// foobar2000's own playback-order option, every stock order declared.
+const playbackOrderOf = (value: number): FakePlayerOption => ({
+	id: "playbackOrder",
+	name: "Playback order",
+	type: "enum",
+	value,
+	enumNames: Object.keys(JEAN_MODE_BY_ORDER),
+});
+
+const IDLE_ITEM: FakeActiveItem = {
 	duration: -1,
 	index: -1,
 	playlistId: "",
-	playlistIndex: -1,
 	position: -1,
-};
-
-// What a manual skip pushes while the player opens the next file. See the
-// manual-skip trap in ../../src/shared/api/README.md.
-const GAP_ITEM = {
-	columns: [],
-	duration: 0,
-	index: -1,
-	playlistId: "",
-	playlistIndex: -1,
-	position: 0,
 };
 
 const tracksOf = (album: string) =>
@@ -322,9 +321,6 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 export const evaluate = (track: Track, expression: string) =>
 	track[expression] ?? "?";
 
-const columnsFor = (track: Track, expressions: string[]) =>
-	expressions.map((expression) => evaluate(track, expression));
-
 const pathKey = (value: unknown) => String(value).replace(/\\/g, "/");
 
 const trackKey = (track: Track) =>
@@ -439,13 +435,14 @@ export function createState({
 		playlists,
 		player: {
 			...structuredClone(CAPTURED_PLAYER),
+			options: [playbackOrderOf(CAPTURED_PLAYER.playbackMode)],
 			playbackState: "stopped",
 			activeItem: { ...IDLE_ITEM },
 			...player,
 		},
 		playQueue: [] as QueuedEntry[],
 		latency: 0,
-		skipGapMs: 0,
+		skipDelayMs: 0,
 		requests: [] as RecordedRequest[],
 		// Same bound as the component's; `fooJean.ts` puts these on the stream clock.
 		streamMarks: [] as StreamMark[],
@@ -576,10 +573,9 @@ export function createState({
 		];
 	};
 
-	// What the component's own store holds, which is not beefweb's `activeItem`:
-	// the playing file, where it sits and how long it is. `PlayerStateStore` in
-	// `plugins/fb2k/src/core/player_state.cpp` clears it on a stop and on
-	// nothing else.
+	// What the component's own store holds: the playing file, where it sits and
+	// how long it is. `PlayerStateStore` in `plugins/fb2k/src/core/player_state.cpp`
+	// clears it on a stop and on nothing else.
 	let playing: {
 		track: Track;
 		playlistId: string;
@@ -587,23 +583,15 @@ export function createState({
 		duration: number;
 	} | null = null;
 	let announced: Track | null = null;
-	// beefweb empties `activeItem` while the player opens the next file and the
-	// component leaves its own state standing: `on_playback_stop` in
-	// `plugins/fb2k/src/fb2k/playback_watch.cpp` returns early for the outgoing
-	// track of a change. See GAP_ITEM.
-	let gap = false;
 
 	const named = (track: Track | null) =>
 		track && announced ? { ...track, ...announced } : track;
 
-	// beefweb's answer for the playing track, empty across a manual skip.
 	const activeTrack = () => {
-		if (gap) return null;
 		const item = state.player.activeItem;
 		return playing?.track ?? byId(item.playlistId)?.items[item.index] ?? null;
 	};
 
-	// The component's, held across one.
 	const playingTrack = () => named(playing?.track ?? null);
 
 	// An edit to the playlist the player is playing from moves the playing row
@@ -664,11 +652,9 @@ export function createState({
 		playing = { track, playlistId: playlist.id, index, duration };
 		announced = null;
 		state.player.activeItem = {
-			columns: [],
 			duration,
 			index,
 			playlistId: playlist.id,
-			playlistIndex: state.playlists.indexOf(playlist),
 			position: 0,
 		};
 		state.player.playbackState = playbackState;
@@ -678,16 +664,9 @@ export function createState({
 		notify({ player: true, playlists: true, playQueue: dequeued });
 	};
 
-	// beefweb's gap alone: see the comment on `gap` above, and GAP_ITEM.
-	const withSkipGap = (play: () => void) => {
-		if (state.skipGapMs <= 0) return play();
-		gap = true;
-		state.player.activeItem = { ...GAP_ITEM };
-		notify({ player: true });
-		setTimeout(() => {
-			gap = false;
-			play();
-		}, state.skipGapMs);
+	const afterSkipDelay = (play: () => void) => {
+		if (state.skipDelayMs <= 0) return play();
+		setTimeout(play, state.skipDelayMs);
 	};
 
 	const step = (delta: number) => {
@@ -697,7 +676,7 @@ export function createState({
 			const from = queued.playlistId ? byId(queued.playlistId) : null;
 			const at = from?.items.indexOf(queued.track) ?? -1;
 			if (from && at >= 0) {
-				withSkipGap(() => setActive(from, at, "playing"));
+				afterSkipDelay(() => setActive(from, at, "playing"));
 				return;
 			}
 			// A queued track whose row has gone: the player skips it.
@@ -710,7 +689,7 @@ export function createState({
 		if (!playlist || item.index < 0) return;
 		const next = item.index + delta;
 		if (next < 0 || next >= playlist.items.length) return;
-		withSkipGap(() => setActive(playlist, next, "playing"));
+		afterSkipDelay(() => setActive(playlist, next, "playing"));
 	};
 
 	const feed = state.libraryFeed;
@@ -848,28 +827,23 @@ export function createState({
 		};
 	}
 
-	// beefweb addresses a queue entry as a playlist and a position, so an entry
-	// queued by handle is one it has no way to name: `-1`, the same answer it
-	// gives for a row that has gone.
-	const queuePayload = (expressions: string[] = []) =>
+	const queuePayload = () =>
 		state.playQueue.map((entry) => {
 			const playlist = entry.playlistId ? byId(entry.playlistId) : null;
 			return {
 				playlistId: entry.playlistId ?? "",
-				playlistIndex: playlist ? state.playlists.indexOf(playlist) : -1,
 				itemIndex: playlist ? playlist.items.indexOf(entry.track) : -1,
-				columns: columnsFor(entry.track, expressions),
 			};
 		});
 
 	return {
 		player: state.player,
 		latency: state.latency,
-		get skipGapMs() {
-			return state.skipGapMs;
+		get skipDelayMs() {
+			return state.skipDelayMs;
 		},
-		set skipGapMs(ms: number) {
-			state.skipGapMs = ms;
+		set skipDelayMs(ms: number) {
+			state.skipDelayMs = ms;
 		},
 		get playQueue() {
 			return queuePayload();
@@ -929,8 +903,6 @@ export function createState({
 		playingTrack,
 		editItems,
 
-		// What the component holds a handle on, for the routes that answer from
-		// it rather than from beefweb's `activeItem`.
 		get playingItem() {
 			return playing;
 		},
@@ -992,36 +964,12 @@ export function createState({
 		playlistById: byId,
 		playlistByGuid: byGuid,
 
-		playlistsPayload: () =>
-			state.playlists.map((entry, index) => ({
-				id: entry.id,
-				index,
-				isCurrent: entry.isCurrent,
-				itemCount: entry.items.length,
-				title: entry.title,
-				totalTime: 0,
-			})),
-
 		// Derived rather than set, so a fixture that starts with somebody already
 		// listening starts muted, exactly as reconnecting to a running install would.
 		get playerHeld(): boolean {
 			if (!this.fooJean.canMuteWhileStreaming || this.holdReleased)
 				return false;
 			return this.streamDevices.size + this.fooJean.otherListeners.length > 0;
-		},
-
-		playerPayload() {
-			const item = state.player.activeItem;
-			return {
-				...state.player,
-				volume: this.playerHeld
-					? { ...state.player.volume, isMuted: true, value: -100 }
-					: state.player.volume,
-				activeItem: {
-					...item,
-					columns: [],
-				},
-			};
 		},
 
 		artworkFor: coverOf,
@@ -1153,10 +1101,8 @@ export function createState({
 			return {
 				id,
 				index: state.playlists.length - 1,
-				isCurrent: false,
 				itemCount: 0,
 				title: playlist.title,
-				totalTime: 0,
 				structure: String(playlist.structure),
 				revision: String(playlist.revision),
 				role: null,
@@ -1193,17 +1139,13 @@ export function createState({
 			return true;
 		},
 
-		// Item changes push `player` and not `playlists`, as beefweb does: an add, a
-		// rename or a delete produces a `playlists` message; a copy or a remove of
-		// items does not.
 		copyItems(sourceId: string, targetId: string, indices: number[]) {
 			const source = byId(sourceId);
 			const target = byId(targetId);
 			if (!source || !target) return false;
 			if (target.isAuto) return true;
 			// Appended without a duplicate check and in the source's order rather than the
-			// caller's, because that is what the player does. `add-from-library` too, so it
-			// is a property of the player rather than of one endpoint.
+			// caller's, because that is what the player does.
 			const ordered = [...indices].sort((a, b) => a - b);
 			editItems(target, () => {
 				target.items.push(

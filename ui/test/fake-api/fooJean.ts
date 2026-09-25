@@ -113,7 +113,7 @@ export interface FooJeanOptions {
 	libraryRebuilds?: number;
 
 	maxAutoPlaylists?: number;
-	// beefweb ids the component reports as already being autoplaylists, whether it
+	// Playlist keys the component reports as already being autoplaylists, whether it
 	// made them or not. An autoplaylist created in foobar2000 itself looks like
 	// this and is not one Jean may update or delete.
 	autoPlaylists?: string[];
@@ -148,7 +148,7 @@ export interface FooJeanOptions {
 
 export interface FooJeanFake extends Required<FooJeanOptions> {
 	ownPlaylists: Partial<Record<OwnPlaylistRole, string>>;
-	// Beefweb ids a control has locked against edits mid-test, consulted beside `isAuto`.
+	// Playlist keys a control has locked against edits mid-test, consulted beside `isAuto`.
 	// `POST /__control/lockPlaylist` is the only way in or out of this set.
 	lockedPlaylists: Set<string>;
 	// Moves whenever a switch a control route flips actually changes, mirroring
@@ -1177,7 +1177,7 @@ const libraryStateOf = (state: FakeState) => {
 // foobar2000's stock playback-order names, matched against `enumNames` and translated to
 // Jean's own mode names the way `plugins/fb2k/src/core/playback_modes.cpp`'s `kModes` does.
 // An order this map does not carry is not offered, exactly as `jeanModeFor` refuses one.
-const JEAN_MODE_BY_ORDER: Record<string, PlaybackMode> = {
+export const JEAN_MODE_BY_ORDER: Record<string, PlaybackMode> = {
 	Default: "inOrder",
 	"Repeat (playlist)": "repeatAll",
 	"Repeat (track)": "repeatOne",
@@ -2283,9 +2283,8 @@ export async function handleAgent({
 	}
 
 	if (method === "GET" && path === "/api/playlists") {
-		// The same latency switch the beefweb fake honours. Held after the request
-		// is recorded and before the list is built, so a spec can hold a refetch
-		// open across a playlist mutation the tick has already moved past.
+		// `/__control/latency`, held after the request is recorded and before the list is built, so a
+		// spec can hold a refetch open across a playlist mutation the tick has already moved past.
 		if (state.latency > 0) await delay(state.latency);
 
 		const annotated = state.playlists.map((playlist, index) => ({
@@ -2682,9 +2681,8 @@ export async function handleAgent({
 
 	const ownFillMatch = /^\/api\/playlists\/own\/([^/]+)\/items$/.exec(path);
 	if (method === "POST" && ownFillMatch) {
-		// The same latency switch the beefweb fake honours. Held after the request
-		// is recorded and before the playlist is touched, so two racing fills are
-		// applied in the order they arrived, as `MainThreadQueue` applies them.
+		// `/__control/latency`, held after the request is recorded and before the playlist is touched, so
+		// two racing fills are applied in the order they arrived, as `MainThreadQueue` applies them.
 		if (state.latency > 0) await delay(state.latency);
 
 		const role = ownFillMatch[1];
@@ -2950,7 +2948,6 @@ export async function handleAgent({
 	}
 
 	if (method === "POST" && path === "/api/tags") {
-		// The same latency switch the beefweb fake honours.
 		if (state.latency > 0) await delay(state.latency);
 
 		const written = body as {

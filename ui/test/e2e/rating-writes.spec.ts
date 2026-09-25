@@ -244,7 +244,6 @@ test.describe("with foo_jean connected", () => {
 		expect(subsongOf(write)).toBe(0);
 		expect(write.body).toMatchObject({ fields: { rating: "4" } });
 
-		// Optimistic, since beefweb pushes nothing when a track's tags change.
 		await expect(page.locator('[role="row"][data-row="2"]')).toContainText(
 			"Deléctrico",
 		);
@@ -438,8 +437,6 @@ test.describe("rating from All music", () => {
 		const before = player.requests.length;
 		await star(page, 2, 4).click();
 
-		// One request, and it is the write: nothing is sent first to find out what
-		// to write to, here or to beefweb.
 		await expectSettlesAt(player, () => asksSince(player, before), [
 			"POST /api/tags",
 		]);

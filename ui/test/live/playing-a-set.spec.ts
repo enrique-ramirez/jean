@@ -21,21 +21,12 @@ const FOCUS_AWAY = "#live playing-a-set";
 
 const focused = async () => (await state()).player.currentPlaylistId;
 
-// The `install` fixture would ask for this declaration, but it reads a beefweb library route
-// that released beefweb 0.10 answers `404`, and nothing else here needs beefweb at all.
-const disposableRoot = () => {
-	const root = process.env.LIVE_LIBRARY_ROOT;
-	if (!root)
-		throw new Error("LIVE_LIBRARY_ROOT must name the disposable library root");
-	return root;
-};
-
 const firstPathOf = async (id: string) =>
 	(await rowsOf(id, 0, 1)).items[0].columns[0];
 
-test("playing a row leaves the player focused on that playlist", async () => {
-	const root = disposableRoot();
-
+test("playing a row leaves the player focused on that playlist", async ({
+	install: { root },
+}) => {
 	const holding = (await playlists()).find(
 		(entry) => entry.role === null && entry.itemCount >= 1,
 	);
@@ -68,7 +59,6 @@ test("playing a row leaves the player focused on that playlist", async () => {
 test("a set played from a library view leaves the player focused on that set", async ({
 	page,
 }) => {
-	const root = disposableRoot();
 	const elsewhere = (await playlists()).find(
 		(entry) => entry.role === null && entry.itemCount >= 1,
 	);
@@ -99,11 +89,6 @@ test("a set played from a library view leaves the player focused on that set", a
 	const scratch = (await playlists()).find((entry) => entry.role === "scratch");
 	expect(scratch).toBeDefined();
 	if (!scratch) return;
-
-	expect(
-		await firstPathOf(scratch.id),
-		`this player's library sits outside ${root}`,
-	).toContain(root);
 
 	expect(await focused()).toBe(scratch.id);
 	expect((await state()).player.playingLocation?.playlistId).toBe(scratch.id);

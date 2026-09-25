@@ -591,21 +591,12 @@ const watchWhatIsSaid = async (page: Page) => {
 test.describe("the details read", () => {
 	test.use(PUBLISHED);
 
-	test("fills the panel from foo_jean and asks beefweb nothing", async ({
-		page,
-		player,
-		isMobile,
-	}) => {
+	test("fills the panel from foo_jean", async ({ page, player, isMobile }) => {
 		await playRow(page, 0);
 		const panel = await openDetails(page, isMobile);
 
 		await expect(panel).toContainText("Discos Uno");
 		expect(playingReads(player).length).toBeGreaterThan(0);
-		await expectSettlesAt(
-			player,
-			() => requestsTo(player, "/api/query").length,
-			0,
-		);
 	});
 
 	test("an answer for another track is never drawn, and the track is read again when it plays again", async ({

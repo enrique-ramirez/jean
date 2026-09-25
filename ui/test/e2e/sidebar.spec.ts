@@ -73,9 +73,6 @@ const menuFor = async (page: Page, title: string, isMobile: boolean) => {
 	await expect(page.getByRole("menuitem", { name: "Rename" })).toBeVisible();
 };
 
-// beefweb's playlist-update stream.
-const SUBSCRIPTION = "/api/query/updates";
-
 const GUID_ROUTE =
 	/#\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -159,9 +156,7 @@ const openHome = async (page: Page) => {
 };
 
 test.describe("where the playlist list comes from", () => {
-	test("opens a playlist at a GUID rather than at beefweb's playlist id", async ({
-		page,
-	}) => {
+	test("opens a playlist at its GUID", async ({ page }) => {
 		await openHome(page);
 		await link(page, FAVORITES).click();
 
@@ -177,21 +172,6 @@ test.describe("where the playlist list comes from", () => {
 		await expect(
 			page.getByRole("heading", { level: 1, name: FAVORITES }),
 		).toBeVisible();
-	});
-
-	test("opens no playlist subscription on beefweb", async ({
-		page,
-		player,
-	}) => {
-		await openHome(page);
-
-		// While that stream is open it writes the same list the component's answer
-		// does, so a client holding both draws whichever spoke last.
-		await expectSettlesAt(
-			player,
-			() => requestsTo(player, SUBSCRIPTION).length,
-			0,
-		);
 	});
 
 	test("re-reads the list when the playlists revision moves, and not on the polls between", async ({

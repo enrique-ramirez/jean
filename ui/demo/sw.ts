@@ -11,9 +11,8 @@ import { answer } from "./responder.ts";
 
 declare const self: ServiceWorkerGlobalScope;
 
-// beefweb refuses a body over 1 MiB by hanging up. `Response.error()` is that
-// same event in a browser: a network error rather than a status.
-const MAX_BODY_BYTES = 1024 * 1024;
+// `foo_jean` answers a body over 256 KiB `413` before any route reads it.
+const MAX_BODY_BYTES = 256 * 1024;
 
 const REQUEST_LOG_LIMIT = 200;
 
@@ -151,7 +150,8 @@ async function serve(request: Request, url: URL): Promise<Response> {
 		method === "POST"
 			? await readBody(request)
 			: { refused: false, body: null };
-	if (refused) return Response.error();
+	if (refused)
+		return Response.json({ error: "request too large" }, { status: 413 });
 
 	// Only writes are journalled; reads rebuild from the state the writes made.
 	if (method === "POST") append({ method, path: url.href, body });

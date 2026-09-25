@@ -207,7 +207,7 @@ test.describe("the cover wheel", () => {
 		player.patchPlayer({ options: [{ id: "playbackOrder", value: 4 }] });
 		await trackRow(page, 0).dblclick();
 		await openNowPlaying(page);
-		await page.request.post("/__control/skipGap", { data: { ms: 700 } });
+		await page.request.post("/__control/skipDelay", { data: { ms: 700 } });
 
 		await across(page, 0.85, 0.25);
 
@@ -225,7 +225,7 @@ test.describe("the cover wheel", () => {
 		page,
 	}) => {
 		await playRow(page, 0);
-		await page.request.post("/__control/skipGap", { data: { ms: 700 } });
+		await page.request.post("/__control/skipDelay", { data: { ms: 700 } });
 
 		await across(page, 0.85, 0.25);
 
@@ -391,8 +391,7 @@ test.describe("the sleeves either side of the playing row", () => {
 
 	// A playlist of files the media library has never seen: the
 	// component has no library path to name either neighbour by, so it is asked
-	// for the picture at the row it sits on instead. The address is the
-	// component's own: beefweb cannot resolve a playlist named by GUID.
+	// for the picture at the row it sits on instead.
 	// Retagged so that each neighbour is a record of its own. A neighbour on the centre's record
 	// shares the centre's picture, and whether it is asked for at all then turns on which of the
 	// two arrives first.

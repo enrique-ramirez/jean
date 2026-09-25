@@ -288,8 +288,6 @@ export function QueuePanel({
 
 	const keys = useMemo(() => rowKeys(entries), [entries]);
 
-	// The playlist a row falls back to is named by the GUID `foo_jean` itself issues, which
-	// beefweb cannot resolve: `coverOf` never hands that address to beefweb.
 	const covers = useMemo(
 		() => entries.map((entry) => coverOf(origin, entry)),
 		[entries, origin],

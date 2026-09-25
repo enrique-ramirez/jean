@@ -50,7 +50,6 @@ export function handleControl({
 			playlists: state.playlists.map((entry) => ({
 				id: entry.id,
 				title: entry.title,
-				isCurrent: entry.isCurrent,
 				itemCount: entry.items.length,
 			})),
 			playQueue: state.queuePayload(),
@@ -115,8 +114,8 @@ export function handleControl({
 		return empty(response);
 	}
 
-	if (action === "skipGap") {
-		state.skipGapMs = Number(input?.ms) || 0;
+	if (action === "skipDelay") {
+		state.skipDelayMs = Number(input?.ms) || 0;
 		return empty(response);
 	}
 

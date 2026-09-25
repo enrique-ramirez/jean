@@ -21,28 +21,18 @@ interface Seen {
 
 const QUIET_MS = 3_000;
 
-// The live fixture's own guard reads beefweb's `/api/library/items`, which released beefweb 0.10
-// does not answer, so this spec carries the guard itself: one tag is written, to one track, and
-// that track's path has to sit under the root the caller declared disposable.
+// The one tag written goes to a track the media library holds, which the `install` fixture has
+// already found under the disposable root.
 test("a rating written at the player reaches the open playlist through the changes route", async ({
 	page,
 }) => {
-	const root = process.env.LIVE_LIBRARY_ROOT;
-	if (!root)
-		throw new Error("LIVE_LIBRARY_ROOT must name the disposable library root");
-
 	const playlist = await byTitle(TITLE);
 	const first = await rowsOf(playlist.id, 0, 1);
 	const path = first.items[0].columns[0];
-	if (!path.startsWith(root))
-		throw new Error(
-			`${path} sits outside ${root}, refusing to write a tag to it`,
-		);
-
 	const track = first.items[0].libraryPath;
 	if (!track)
 		throw new Error(
-			`the media library does not hold ${path}, so it has no address`,
+			`the media library does not hold ${path}, so it is not known to be disposable`,
 		);
 
 	await page.addInitScript(

@@ -1,11 +1,7 @@
 import type { Route } from "@playwright/test";
 import { tagKey } from "../../src/domain/track/fields.ts";
 import { en } from "../../src/shared/i18n/en.ts";
-import {
-	evaluate,
-	type RecordedRequest,
-	type Track,
-} from "../fake-api/state.ts";
+import { evaluate, type Track } from "../fake-api/state.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	coversByPosition,
@@ -22,6 +18,7 @@ import {
 	openLibrary,
 	openNowPlaying,
 	openSidebar,
+	playRequests,
 	requestsTo,
 	rowByTitle,
 	scratchOf,
@@ -48,21 +45,6 @@ const seekBar = (page: Page) =>
 
 const ticksTaken = (player: FakePlayer) =>
 	requestsTo(player, "/api/state").filter((one) => one.method === "GET").length;
-
-const SUBSCRIPTION = "/api/query/updates";
-
-// beefweb answers player state at two addresses and only one of them takes a
-// parameter: `player=true` on `/api/query` and on its subscription, and
-// `GET /api/player`, which asks by route alone. A POST under `/api/player` is a
-// transport command rather than a read of anything.
-const readsPlayerStateOffBeefweb = (one: RecordedRequest) => {
-	if (one.method !== "GET") return false;
-	const [route, query] = one.path.split("?");
-	return (
-		route.startsWith("/api/player") ||
-		new URLSearchParams(query).get("player") === "true"
-	);
-};
 
 const routeOf = (path: string) => path.split("?")[0];
 
@@ -377,7 +359,6 @@ test("shows what the player is actually doing on the next tick after several wer
 
 	player.fooJean.failState = 503;
 	const refusedFrom = ticksTaken(player);
-	const beefwebAtDrop = requestsTo(player, "/api/query").length;
 
 	// Driven at the desktop while the client is blind: a different track and a
 	// different transport state, so following one of the two cannot pass by luck.
@@ -394,14 +375,6 @@ test("shows what the player is actually doing on the next tick after several wer
 
 	await expect(playToggle(page, "Play")).toBeVisible();
 	await expect(seekBar(page)).toHaveAttribute("aria-valuemax", FIZZ);
-
-	// And the poll is what caught up: beefweb answered nothing between the outage
-	// and the status bar being right again.
-	await expectSettlesAt(
-		player,
-		() => requestsTo(player, "/api/query").length,
-		beefwebAtDrop,
-	);
 });
 
 test("the status bar and the playing row follow a track change made at the player", async ({
@@ -419,20 +392,6 @@ test("the status bar and the playing row follow a track change made at the playe
 	await expect(statusBar(page)).toContainText("Fizz");
 	await expect(statusBar(page)).toContainText("Babasónicos");
 	await expect(trackRow(page, 1)).toHaveAttribute("data-active", "true");
-});
-
-test("the status bar names the track with no columns from beefweb to name it from", async ({
-	page,
-	player,
-}) => {
-	await openLibrary(page);
-	await trackRow(page, 0).dblclick();
-	await expect(statusBar(page)).toContainText("Los Calientes");
-
-	player.playItem("p7", 1);
-
-	await expect(statusBar(page)).toContainText("Fizz");
-	await expect(statusBar(page)).toContainText("Babasónicos");
 });
 
 test("the status bar follows a song a station announces, with the track never changing", async ({
@@ -736,9 +695,9 @@ test("the equaliser follows the playing row through an edit above it, and ignore
 	);
 });
 
-// beefweb pushes no callback for a row pulled from under playback, so the client
-// only learns of it on the next poll; a caller's assertions have to outlast a tick
-// or they would pass against a screen that never heard about it.
+// The client learns of a row pulled from under playback only on the next poll, so
+// a caller's assertions have to outlast a tick or they would pass against a screen
+// that never heard about it.
 const pullPlayingRow = async (player: FakePlayer) => {
 	player.requests.length = 0;
 	expect(player.removeItems("p7", [PLAYING_ROW.row])).toBe(true);
@@ -1839,19 +1798,11 @@ test.describe("with a rating column drawn on every row", () => {
 	});
 });
 
-// beefweb's own address for playing a row, which the component's route replaced.
-const BEEFWEB_PLAY = /^\/api\/player\/play\/[^/]+\/\d+$/;
-
-const beefwebPlays = (player: FakePlayer) =>
-	player.requests
-		.filter((one) => one.method === "POST" && BEEFWEB_PLAY.test(one.path))
-		.map((one) => one.path);
-
 // Not the first row, so a request naming the wrong index plays a different song
 // rather than landing on the right one by luck.
 const PLAYED_ROW = { row: 2, title: "I Stay Away" };
 
-test("plays a double-clicked row through the component rather than through beefweb", async ({
+test("plays a double-clicked row through the component", async ({
 	page,
 	player,
 }) => {
@@ -1862,7 +1813,7 @@ test("plays a double-clicked row through the component rather than through beefw
 
 	await expect(statusBar(page)).toContainText(PLAYED_ROW.title);
 	await expect.poll(() => trackPlayed(player)).toBe(PLAYED_ROW.title);
-	await expectSettlesAt(player, () => beefwebPlays(player), []);
+	await expectSettlesAt(player, () => playRequests(player).length, 1);
 });
 
 test("the queue panel follows a track queued at the player", async ({
@@ -1885,33 +1836,6 @@ test("the queue panel follows a track queued at the player", async ({
 	const row = queuePanel(page).getByRole("listitem").first();
 	await expect(row).toContainText("Soy Rock");
 	await expect(row).toContainText("Babasónicos");
-});
-
-test("takes no player state off beefweb, and asks nobody for a track's columns", async ({
-	page,
-	player,
-}) => {
-	await openLibrary(page);
-	await trackRow(page, 0).dblclick();
-	await expect(statusBar(page)).toContainText("Los Calientes");
-	player.playItem("p7", 1);
-	await expect(statusBar(page)).toContainText("Fizz");
-
-	// Any read at all is a second source of player state whatever it asks for: a
-	// stall check wanting `playbackState` alone is one, and so is `GET /api/player`,
-	// which asks for nothing.
-	await expectSettlesAt(
-		player,
-		() =>
-			player.requests.filter(readsPlayerStateOffBeefweb).map((one) => one.path),
-		[],
-	);
-
-	expect(requestsTo(player, "trcolumns=").map((one) => one.path)).toEqual([]);
-
-	// The subscription is gone rather than narrowed, and takes the playlist list with it: nothing
-	// here reaches beefweb's stream at all.
-	expect(requestsTo(player, SUBSCRIPTION)).toEqual([]);
 });
 
 test("asks the component for state once an interval, and nobody asks for the route it replaced", async ({

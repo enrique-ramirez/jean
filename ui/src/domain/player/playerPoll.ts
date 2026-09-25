@@ -16,11 +16,7 @@ import {
 	fetchState,
 	type StateDocument,
 } from "@/shared/api/fooJean";
-import type {
-	ActiveItem,
-	PlayerSnapshot,
-	PlayerState,
-} from "@/shared/api/types";
+import type { PlayerSnapshot, PlayerState } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { rememberSnapshot } from "./audible";
 import { notePlaybackState } from "./listenerStore";
@@ -35,19 +31,6 @@ export const POLL_MS = 1000;
 // sprung back to the player's last reported level.
 export const VOLUME_SETTLE_MS = 2500;
 
-const EMPTY_ACTIVE_ITEM = {
-	columns: [],
-	index: -1,
-	path: null,
-	libraryPath: null,
-	album: null,
-	albumArtist: null,
-	playlistGuid: null,
-	playlistId: "",
-	playlistIndex: -1,
-	subsong: 0,
-} satisfies Omit<ActiveItem, "duration" | "position">;
-
 function mergePlayer(
 	previous: PlayerState | undefined,
 	doc: StateDocument["player"],
@@ -58,16 +41,9 @@ function mergePlayer(
 			name: capabilities?.playerName ?? previous?.info.name ?? "",
 			version: capabilities?.playerVersion ?? previous?.info.version ?? "",
 		},
-		permissions: {
-			changeOutput:
-				capabilities?.canChangeOutput ??
-				previous?.permissions.changeOutput ??
-				true,
-		},
-		jeanPlaybackMode: doc.playbackMode,
+		playbackMode: doc.playbackMode,
 		playbackState: doc.playback,
 		activeItem: {
-			...(previous?.activeItem ?? EMPTY_ACTIVE_ITEM),
 			columns: [doc.artist ?? "", doc.title ?? ""],
 			duration: doc.duration,
 			index: doc.playingLocation?.index ?? -1,

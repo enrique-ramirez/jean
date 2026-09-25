@@ -6,7 +6,6 @@
 #   scripts\verify-library.ps1 -Full
 #   $env:JEAN_LIBRARY_EXPORT = 'D:\path\export.jlib'; scripts\verify-library.ps1
 param(
-  [string]$Beefweb = 'http://127.0.0.1:8880/api',
   [string]$FooJean = 'http://127.0.0.1:8881/api',
   [switch]$Full,
   [string]$LibraryExport = $env:JEAN_LIBRARY_EXPORT
@@ -400,7 +399,7 @@ Invoke-Check -Name "GET /library/export captures the export to JEAN_LIBRARY_EXPO
 }
 
 # fb2k::sortStringCompare is StrCmpLogicalW (ARCHITECTURE.md, "foobar2000 does not compare paths
-# byte by byte"). Calling it directly, rather than sorting a playlist through beefweb, is what
+# byte by byte"). Calling it directly, rather than sorting a playlist at the player, is what
 # lets this script stay read-only. The export's spine carries neither subsong nor the canonical
 # path, so this reproduces the primary comparison alone; Get-NaturalOrderComparisonCounts below
 # is where a pair it calls equal is counted as a tie rather than a mismatch for that reason.

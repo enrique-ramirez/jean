@@ -20,8 +20,8 @@ export const CUSTOM_FILE = "custom.json";
 
 const listeners = subscribers();
 
-// Resolved against the document: beefweb serves Jean under a subpath, where a root-relative path
-// belongs to whatever is at the root instead.
+// Resolved against the document rather than the root: `site/CLAUDE.md` has why a root-relative
+// path would be wrong for the demo.
 const fileIn = (name: string) =>
 	new URL(`${LOCALES_FOLDER}/${name}`, document.baseURI).href;
 

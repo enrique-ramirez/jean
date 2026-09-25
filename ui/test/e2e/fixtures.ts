@@ -352,11 +352,11 @@ export const expectTheScreenIsStillOpen = async (page: Page) => {
 	await expect(nowPlayingScreen(page)).toBeVisible();
 };
 
-// foobar2000's own GUID for a playlist beefweb calls by its id, which is what
+// foobar2000's own GUID for a playlist the fake keys as `key`, which is what
 // every `foo_jean` route, and the route hash, names a playlist by.
-export const guidOfPlaylist = (player: FakePlayer, beefwebId: string) => {
-	const found = player.playlists.find((entry) => entry.id === beefwebId);
-	if (!found) throw new Error(`no playlist ${beefwebId}`);
+export const guidOfPlaylist = (player: FakePlayer, key: string) => {
+	const found = player.playlists.find((entry) => entry.id === key);
+	if (!found) throw new Error(`no playlist ${key}`);
 	return found.guid;
 };
 
@@ -542,8 +542,7 @@ export const coversFromTheComponent = (player: FakePlayer) =>
 		);
 
 // The component's fallback address for a row it has no library path for, as
-// `playlist GUID/row`. Four path segments are what tell it from beefweb's own
-// positional address, which has three and cannot resolve a GUID at all.
+// `playlist GUID/row`.
 const COMPONENT_POSITIONAL_COVER =
 	/^\/api\/artwork\/playlists\/([^/?]+)\/(\d+)$/;
 

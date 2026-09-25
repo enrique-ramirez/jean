@@ -2412,8 +2412,8 @@ TEST_CASE("deleting a playlist takes it out of the list the player answers with"
 }
 
 // The route that has already taken a player down. foobar2000 keeps a queued entry whose whole
-// playlist is deleted rather than dropping it, and beefweb's own reader is what crashes on the
-// infinite position it leaves behind: ARCHITECTURE.md, *Facts about the player*. So there is
+// playlist is deleted rather than dropping it, and reading the infinite position it leaves
+// behind as an index crashes the player: ARCHITECTURE.md, *Facts about the player*. So there is
 // nothing here for a client or for this component to clear first. That the player itself
 // survives one is the live check's half rather than this one's.
 TEST_CASE("deleting a playlist asks the play queue nothing, before or after") {
@@ -2643,8 +2643,8 @@ TEST_CASE("a copy answers where the rows landed and the generation the target is
     CHECK(generation != before);
 }
 
-// See ARCHITECTURE.md, *Facts about the player*, on why beefweb's own API needs that read and
-// this one does not.
+// See ARCHITECTURE.md, *Facts about the player*, on why the answer to a copy makes that read
+// unnecessary.
 TEST_CASE("a copy asks the player once, with no item count read before or after it") {
     RowsLog log;
     const TestServer server(servingSettings(), rowEditingPlayer(&log));
@@ -3794,9 +3794,8 @@ TEST_CASE("the scratch playlist is emptied before a fill and every other target 
 
 // Both fill schemas publish `additionalProperties: false`, and `replace` is the field that costs:
 // a fill empties the playlist or appends to it according to the target, so a client sending it
-// would be told nothing while the component appended. `items` is what beefweb's own
-// add-from-library names its rows, and it is here because the rule is every field the contract
-// does not declare rather than `replace` in particular.
+// would be told nothing while the component appended. `items` is here because the rule is
+// every field the contract does not declare rather than `replace` in particular.
 TEST_CASE("a field neither fill schema declares is refused, and nothing is inserted") {
     Library library;
     buildLibrary(library);

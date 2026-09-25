@@ -17,7 +17,6 @@ struct PositionMark {
 };
 
 struct PlayingLocation {
-    // The playlist's own GUID, never a beefweb id.
     std::string playlistId;
     uint32_t index = 0;
 };

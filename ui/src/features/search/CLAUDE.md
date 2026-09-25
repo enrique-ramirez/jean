@@ -16,9 +16,7 @@ The library-wide search control. How its results become playable is in `src/doma
 | Track | nowhere; it plays where you stand | yes |
 | Nothing (Enter) | the results page | yes |
 
-**A track pick promotes the draft as a consequence rather than as a rule.** beefweb plays from playlists and nothing else, so hearing one result means materialising all of them -- and once a set exists under the query's name, the search *is* real. That is also why it does not navigate: the set exists, so the status bar's "playing from" line and the sidebar row already say where the sound came from, and moving the user on top of that buys nothing.
-
-**Do not reach for the play queue to avoid materialising.** `src/shared/api/README.md` has why there is no cheap "play next" there; faking one here means removing and re-appending the user's queue tail, a side effect on their data to save a playlist write.
+**A track pick promotes the draft as a consequence rather than as a rule.** foobar2000 plays from playlists and nothing else, so hearing one result means materialising all of them -- and once a set exists under the query's name, the search *is* real. That is also why it does not navigate: the set exists, so the status bar's "playing from" line and the sidebar row already say where the sound came from, and moving the user on top of that buys nothing.
 
 **Escape backs out one rung per press and never reaches the search**: the panel, then the edit, then the caret. Ending a search is the clear button's job alone. The rungs are indistinguishable on screen -- an unedited draft looks exactly like a reverted one -- so an Escape that cleared would destroy a search on what felt like the first press.
 

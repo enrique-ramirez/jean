@@ -3,14 +3,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import type { PlaylistInfo } from "../../src/shared/api/types.ts";
+import type { components } from "../../src/shared/api/fooJeanSchema.d.ts";
+import { JEAN_MODE_BY_ORDER } from "./fooJean.ts";
 import type { FakePlayerState } from "./state.ts";
 
-// beefweb's own shape for `GET /playlists/{id}/items/{offset}:{count}`, read directly from a real
-// player rather than through Jean, which no longer calls this route.
-interface PlaylistItemsResponse {
-	items: { columns: string[] }[];
-}
+type Schema = components["schemas"];
 
 interface CapturedTrack {
 	index: number;
@@ -79,7 +76,7 @@ const args = new Map(
 	process.argv.slice(2).map((arg, index, all) => [arg, all[index + 1]]),
 );
 const base =
-	args.get("--url") ?? process.env.CAPTURE_URL ?? "http://localhost:8880";
+	args.get("--url") ?? process.env.CAPTURE_URL ?? "http://localhost:8881";
 
 const out = args.has("--out") ? resolve(args.get("--out") as string) : null;
 
@@ -129,12 +126,26 @@ const get = async (path: string) => {
 	return response;
 };
 
-const columns = encodeURIComponent(EXPRESSIONS.join(","));
+const getJson = async <T>(path: string) =>
+	(await (await get(path)).json()) as T;
+
+const rowsOf = async (
+	playlist: Schema["PlaylistAnnotation"],
+	columns: string[],
+) => {
+	const declared = columns
+		.map((column) => `columns=${encodeURIComponent(column)}`)
+		.join("&");
+	const page = await getJson<Schema["PlaylistPage"]>(
+		`/api/playlists/${playlist.id}/items?offset=0&count=${playlist.itemCount}&${declared}`,
+	);
+	return page.items;
+};
 
 async function findLibrary() {
-	const { playlists } = (await (await get("/api/playlists")).json()) as {
-		playlists: PlaylistInfo[];
-	};
+	const { playlists } = await getJson<{
+		playlists: Schema["PlaylistAnnotation"][];
+	}>("/api/playlists");
 	// The biggest playlist is the library on any install that has one.
 	const library = [...playlists].sort((a, b) => b.itemCount - a.itemCount)[0];
 	if (!library) throw new Error("no playlists on this player");
@@ -145,18 +156,12 @@ const dir = out ?? HERE;
 
 async function main() {
 	const library = await findLibrary();
-	const info = (await (await get("/api/player")).json()) as {
-		player: FakePlayerState;
-	};
+	const capabilities =
+		await getJson<Schema["Capabilities"]>("/api/capabilities");
+	const playerName = `${capabilities.playerName} ${capabilities.playerVersion}`;
 	console.log(
-		`capturing from ${info.player.info.title} ${info.player.info.version}, playlist ${library.title} (${library.itemCount})`,
+		`capturing from ${playerName}, playlist ${library.title} (${library.itemCount})`,
 	);
-
-	const { playlistItems } = (await (
-		await get(
-			`/api/playlists/${library.id}/items/0:${library.itemCount}?columns=${columns}`,
-		)
-	).json()) as { playlistItems: PlaylistItemsResponse };
 
 	const toTrack = (
 		item: { columns: string[] },
@@ -168,17 +173,12 @@ async function main() {
 		),
 	});
 
-	const all = playlistItems.items.map(toTrack);
+	const all = (await rowsOf(library, EXPRESSIONS)).map(toTrack);
 
 	const wanted = await albumsToCapture();
 	const lyrics = new Map<number, string>();
 	if (wanted.some((album) => album.lyrics)) {
-		const { playlistItems: withLyrics } = (await (
-			await get(
-				`/api/playlists/${library.id}/items/0:${library.itemCount}?columns=${encodeURIComponent(LYRIC)}`,
-			)
-		).json()) as { playlistItems: PlaylistItemsResponse };
-		withLyrics.items.forEach((item, index) => {
+		(await rowsOf(library, [LYRIC])).forEach((item, index) => {
 			const text = item.columns[0];
 			if (text && text !== "?") lyrics.set(index, text);
 		});
@@ -239,15 +239,30 @@ async function main() {
 
 	await writeFile(
 		join(dir, "library.json"),
-		`${JSON.stringify({ capturedFrom: `${info.player.info.title} ${info.player.info.version} / beefweb ${info.player.info.pluginVersion}`, expressions: EXPRESSIONS, albums }, null, 2)}\n`,
+		`${JSON.stringify({ capturedFrom: playerName, expressions: EXPRESSIONS, albums }, null, 2)}\n`,
 	);
 
 	if (!listed) {
-		const { player } = (await (
-			await get(
-				`/api/query?player=true&trcolumns=${encodeURIComponent("%artist%,%title%")}`,
-			)
-		).json()) as { player: FakePlayerState };
+		const { player: playing } = await getJson<Schema["State"]>("/api/state");
+		const orders = Object.entries(JEAN_MODE_BY_ORDER);
+		const player: Omit<FakePlayerState, "activeItem" | "options"> = {
+			info: {
+				name: capabilities.playerName,
+				version: capabilities.playerVersion,
+			},
+			playbackMode: Math.max(
+				orders.findIndex(([, mode]) => mode === playing.playbackMode),
+				0,
+			),
+			playbackState: playing.playback,
+			volume: {
+				isMuted: playing.muted,
+				max: capabilities.volumeMax,
+				min: capabilities.volumeMin,
+				type: capabilities.volumeUnit,
+				value: playing.volume,
+			},
+		};
 		await writeFile(
 			join(dir, "player.json"),
 			`${JSON.stringify(player, null, 2)}\n`,
@@ -261,7 +276,7 @@ async function main() {
 
 async function captureArtwork(playlistId: string, index: number, slug: string) {
 	const response = await fetch(
-		new URL(`/api/artwork/${playlistId}/${index}`, base),
+		new URL(`/api/artwork/playlists/${playlistId}/${index}`, base),
 	);
 	if (!response.ok) return null;
 	const name = `${slug}.jpg`;

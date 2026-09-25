@@ -81,7 +81,7 @@ Every Jean setting lives in `localStorage`, on the device that set it.
 
 `src/domain/track/playlistStore.ts` loads the library and publishes a `PlaylistSnapshot`: `columns`, one dictionary and one id array per field, plus `paths` and `subsongs` parallel to them on either source and derived `heat` and `patina` as `Float32Array`. A view is a set of **refs**, `Int32Array | number[]`, where a ref is a playlist index on one source and an ordinal in the snapshot on the other. `project()` binds a set of refs to those columns as a `TrackRows`, which is what every list, header and index takes; `refAt()` is the one place that knows a null ref list means "everything, in order".
 
-It is a flat array rather than a tree for three reasons. beefweb answers ranges, not nodes. A ref into a flat array is an integer, so a filtered view is a typed array and a selection is a set of integers. And every screen in Jean is a filter over the same list, whether a shelf, a genre or a search, so a tree would be rebuilt per view and thrown away.
+It is a flat array rather than a tree for three reasons. The player answers ranges and columns, not nodes. A ref into a flat array is an integer, so a filtered view is a typed array and a selection is a set of integers. And every screen in Jean is a filter over the same list, whether a shelf, a genre or a search, so a tree would be rebuilt per view and thrown away.
 
 Chunking is a playlist read's problem: it is almost all round trip, so the first chunk is small enough to paint from and the rest are large and concurrent. The library does not arrive that way. `foo_jean` answers it as one columnar snapshot, dictionary-encoded per column, with a per-column delta behind it, so the schedule is one request and then patches rather than a queue of reads.
 
@@ -107,7 +107,7 @@ A playlist held already gets the same treatment once loaded: a `revision` move a
 
 ## Capability detection
 
-The player evaluates title-formatting expressions and answers them positionally, which makes the reachable surface far wider than beefweb's own schema. Jean declares a column set once, as name-and-expression pairs, and `fieldTable()` in `src/shared/api/fieldTable.ts` derives both the list sent to the player and the index each name landed at. Written out separately, the day somebody inserts an expression in the middle is the day a row reports its genre as its artist.
+The player evaluates title-formatting expressions and answers them positionally, which makes the reachable surface far wider than any fixed schema. Jean declares a column set once, as name-and-expression pairs, and `fieldTable()` in `src/shared/api/fieldTable.ts` derives both the list sent to the player and the index each name landed at. Written out separately, the day somebody inserts an expression in the middle is the day a row reports its genre as its artist.
 
 The sentinel the player answers with and what `$meta()` cannot do are in [src/shared/api/README.md](src/shared/api/README.md), *Capability detection*. What the architecture adds is where the answer lives: `readValue` maps both an absent and an empty field to `null` so rows draw correctly either way, while `resolvesAnywhere` asks a column whether any of its values resolved.
 
@@ -215,5 +215,5 @@ Two consequences before adding a route: anything reaching for a socket, a file o
 The code says what exists. These are load-bearing gaps anything built on Jean has to account for.
 
 - **No Web Worker and no IndexedDB persistence**, so a cold start re-fetches and re-indexes. Both are requirements for a very large library, not things already done.
-- **No folder tree.** The library browses as one flat list. `/library/items/by-path` is documented in `src/shared/api/README.md` for when that changes.
+- **No folder tree.** The library browses as one flat list.
 - **Nothing Jean holds survives a reload**, artwork included. Covers persist in the browser's own HTTP cache, which is the component's to control through `Cache-Control` and `ETag`; Jean stores none of it.

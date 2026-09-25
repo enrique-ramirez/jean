@@ -342,8 +342,8 @@ test.describe("a search outlives the tab it was typed in", () => {
 // The scratch playlist's title is not Jean's to trust. foo_jean finds its own
 // playlist by the marker it put there rather than by a name, so the name can be
 // changed at the player and the role still resolves; and a fill's new title
-// reaches a client a message after the playback that moved into it, because
-// beefweb may send a `player` section without a `playlists` one. The view Jean
+// reaches a client after the playback that moved into it, because the playlist
+// list is read again only once a poll of the state shows it moved. The view Jean
 // filled is the answer that survives both, and the two readers of that title
 // each have a surface of their own.
 test.describe("a scratch playlist under a name that is not the view it holds", () => {
@@ -791,32 +791,8 @@ test.describe("saving results as a playlist", () => {
 	});
 });
 
-// The two writes beefweb would have had to permit to play a set: making the
-// scratch playlist, and filling it. Both are the component's now, so neither
-// should ever be sent.
-const beefwebPlaylistWrites = (player: FakePlayer) =>
-	player.requests.filter(
-		(entry) =>
-			entry.method === "POST" &&
-			(entry.path.startsWith("/api/playlists/add") ||
-				entry.path.includes("add-from-library")),
-	);
-
-test.describe("a beefweb permission that says nothing about playing a search result", () => {
-	test.use({
-		playerState: {
-			permissions: {
-				changeOutput: true,
-			},
-		},
-	});
-
-	// The scratch playlist is the component's own plumbing, so beefweb's
-	// permission governs none of it. The fake honours no beefweb permission
-	// either, so a result that plays is not on its own proof that Jean stopped
-	// asking beefweb for the playlist to play it from: what the traffic says it
-	// asked for is.
-	test("a result plays, and nothing beefweb could refuse is sent", async ({
+test.describe("playing a search result", () => {
+	test("a result plays from the component's scratch playlist", async ({
 		page,
 		player,
 	}) => {
@@ -841,12 +817,8 @@ test.describe("a beefweb permission that says nothing about playing a search res
 		expect(playedFrom(player)!.index).toBe(2);
 
 		await expectSettlesAt(player, () => scratchFills(player).length, 1);
-		expect(beefwebPlaylistWrites(player)).toHaveLength(0);
 	});
 
-	// Nothing here asks beefweb whether a search may be kept: the playlist is the
-	// component's to write, so beefweb's permission is not a reason and the button
-	// carries none. Hidden today, which is the gate this is here to keep out.
 	test("Save as playlist is drawn and enabled, with no reason to give", async ({
 		page,
 	}) => {
@@ -872,26 +844,6 @@ test.describe("where the player owner has turned playlist writes off", () => {
 			viewHeader(page).getByRole("button", { name: "Play", exact: true }),
 		).toBeVisible();
 		await expect(saveAsPlaylist(page)).toHaveCount(0);
-	});
-});
-
-test.describe("a player that reports no permissions at all", () => {
-	// Absent is not denied: an older beefweb, or the moment before the first
-	// snapshot lands, answers with no permissions object and every reader in the
-	// app treats that as allowed.
-	test("results keep Shuffle and Save as playlist", async ({
-		page,
-		player,
-	}) => {
-		delete (player.player as { permissions?: unknown }).permissions;
-
-		await search(page, QUERY.text);
-
-		const header = viewHeader(page);
-		await expect(header.getByRole("button", { name: "Shuffle" })).toBeVisible();
-		await expect(
-			header.getByRole("button", { name: "Save as playlist" }),
-		).toBeVisible();
 	});
 });
 

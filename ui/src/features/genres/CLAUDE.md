@@ -2,7 +2,7 @@
 
 The index of every genre in the library, and the dialog that turns one into an autoplaylist. How a single genre's *view* works, meaning the matcher, the route and the query, is in `src/domain/library/CLAUDE.md`.
 
-**A genre can never be a search.** beefweb's search index covers title, artist and album and **not genre**, so a genre is a filter over rows Jean already holds rather than something the player can be asked for.
+**A genre is a filter over rows Jean already holds**, since `foo_jean` hands over the whole library, rather than something the player is asked for.
 
 **A chip's scope changes when you press it.** A genre chip in a view header is a percentage *of that view* and opens every track in the library with that tag; the destination's own eyebrow says `Genre` first, which is what keeps the jump legible on arrival. The "all genres" chip is drawn **only on the all-music view**, the one view whose genre count and the index behind it are the same set.
 

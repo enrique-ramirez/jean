@@ -1,13 +1,19 @@
-// Reaching foo_jean from node, beside the browser Jean is driven in. Every value comes from the
+import type {
+	PlaybackMode,
+	PlaybackState,
+} from "../../src/shared/api/types.ts";
+
+export type { PlaybackMode };
+
+// Reaching foo_jean from node, beside the browser Jean is driven in. The origin comes from the
 // environment so nothing here names a machine.
 
-const required = (name: string) => {
-	const value = process.env[name];
-	if (!value) throw new Error(`${name} must be set`);
-	return value;
+export const COMPONENT = () => {
+	const live = process.env.LIVE;
+	if (!live)
+		throw new Error("LIVE must name the origin foo_jean serves Jean from.");
+	return new URL(live).origin;
 };
-
-export const COMPONENT = () => required("LIVE_COMPONENT");
 
 export const component = async <T>(
 	path: string,
@@ -70,7 +76,12 @@ export const writeRating = (
 	});
 
 export const capabilities = () =>
-	component<{ canWritePlaylists: boolean }>("/api/capabilities");
+	component<{
+		canWrite: boolean;
+		canWritePlaylists: boolean;
+		allowedFields: string[];
+		playbackModes: PlaybackMode[];
+	}>("/api/capabilities");
 
 export const copyToNewPlaylist = (
 	title: string,
@@ -90,11 +101,28 @@ export const playRow = (id: string, index: number) =>
 		method: "POST",
 	});
 
+export const send = (path: string, body?: unknown) =>
+	component<void>(path, {
+		method: "POST",
+		...(body === undefined ? {} : { body: JSON.stringify(body) }),
+	});
+
+export interface PlayerState {
+	playback: PlaybackState;
+	path: string;
+	subsong: number;
+	libraryPath: string | null;
+	position: { seconds: number; ageSeconds: number };
+	volume: number;
+	muted: boolean;
+	playbackMode: PlaybackMode;
+	title: string | null;
+	artist: string | null;
+	playingLocation: { playlistId: string; index: number } | null;
+	currentPlaylistId: string | null;
+}
+
 export const state = () =>
-	component<{
-		player: {
-			playback: string;
-			playingLocation: { playlistId: string; index: number } | null;
-			currentPlaylistId: string | null;
-		};
-	}>("/api/state");
+	component<{ player: PlayerState; library: { ready: boolean } }>("/api/state");
+
+export const player = async () => (await state()).player;

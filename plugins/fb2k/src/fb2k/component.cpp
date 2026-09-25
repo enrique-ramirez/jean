@@ -33,8 +33,8 @@
 // and treat the component as permanently out of date.
 DECLARE_COMPONENT_VERSION(
     jean::kComponentName, jean::kVersion,
-    "Exposes over HTTP the things beefweb does not: tag writing, autoplaylists, "
-    "and audio streaming.\n"
+    "Serves Jean and its HTTP API: playback, playlists, the play queue, the media "
+    "library, cover art, tag writing, autoplaylists and audio streaming.\n"
     "https://github.com/enrique-ramirez/foo_jean");
 
 VALIDATE_COMPONENT_FILENAME("foo_jean.dll");

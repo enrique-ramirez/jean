@@ -9,12 +9,14 @@
 # The tree is two media library roots and a folder outside both. 'one' and 'two' hold a different recording at the same
 # library-relative path, so that address names a track under each and a client has to retry positionally. 'loose' sits
 # outside the library, so what is in it has no library-relative address at all and only the positional form reaches it.
+# The playlist also holds an internet radio stream, a row with no file behind it at all.
 #
 #   scripts\test-fixtures.ps1 -Corpus D:\path\corpus
 param(
   [string]$Corpus = $env:FOO_JEAN_CORPUS_DIR,
   [string]$Dest,
-  [string]$Beefweb = 'http://127.0.0.1:8880/api',
+  [string]$FooJean = 'http://127.0.0.1:8881/api',
+  [string]$StreamUrl = 'http://ice1.somafm.com/groovesalad-128-mp3',
   [string]$PlaylistTitle = '#foo_jean test',
   [string]$Foobar2000Dir = $env:FOOBAR2000_DIR
 )
@@ -58,10 +60,21 @@ $layout = @(
 $missing = @($layout.Source | Sort-Object -Unique | Where-Object { -not (Test-Path -LiteralPath (Join-Path $Corpus $_)) })
 if ($missing.Count -gt 0) { throw "The corpus at $Corpus is missing $($missing -join ', ')" }
 
-# beefweb answers 'application/json' with no charset parameter, and PowerShell 5.1 then falls back to ISO-8859-1,
+# foo_jean answers 'application/json' with no charset parameter, and PowerShell 5.1 then falls back to ISO-8859-1,
 # turning any accented filename into mojibake that no longer names a file on disk. Decode the raw bytes as UTF-8 by hand.
 function Get-Json($uri) {
   $resp = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 30
+  [System.Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray()) | ConvertFrom-Json
+}
+
+function Send-Json($uri, $method, $body) {
+  $call = @{ Uri = $uri; Method = $method; UseBasicParsing = $true; TimeoutSec = 30 }
+  if ($null -ne $body) {
+    $call.Body = [System.Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Compress -Depth 5))
+    $call.ContentType = 'application/json'
+  }
+  $resp = Invoke-WebRequest @call
+  if ($resp.RawContentStream.Length -eq 0) { return $null }
   [System.Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray()) | ConvertFrom-Json
 }
 
@@ -78,23 +91,50 @@ foreach ($fixture in $layout) {
 }
 
 # Rebuilt from scratch each run, so running this twice does not leave two playlists of the same name with half the fixtures in each.
-$existing = @((Get-Json "$Beefweb/playlists").playlists | Where-Object { $_.title -eq $PlaylistTitle })
+$existing = @((Get-Json "$FooJean/playlists").playlists | Where-Object { $_.title -eq $PlaylistTitle })
 foreach ($old in $existing) {
-  # POST .../playlists/remove/{id}, not DELETE .../playlists/{id}: beefweb answers 405 for the latter.
-  Invoke-RestMethod -Uri "$Beefweb/playlists/remove/$($old.id)" -Method Post -TimeoutSec 20 | Out-Null
+  Send-Json "$FooJean/playlists/$($old.id)" 'Delete' $null | Out-Null
   Write-Output "removed previous playlist $($old.id)"
 }
 
-# setCurrent, because /add below adds to the current playlist.
-$body = @{ title = $PlaylistTitle; index = -1; setCurrent = $true } | ConvertTo-Json
-$playlist = Invoke-RestMethod -Uri "$Beefweb/playlists/add" -Method Post -Body $body -ContentType 'application/json' -TimeoutSec 20
+# foobar2000's /add fills the active playlist, and playing a row is what makes a playlist active, so the new one is created
+# holding a single seed row to play: the first library track, or failing that the first row of any playlist that has one.
+$library = (Get-Json "$FooJean/state").library
+$create = @{ title = $PlaylistTitle }
+if ($library.ready -and $library.trackCount -gt 0) {
+  $create.structure = $library.structure
+  $create.runs = @(, @(0, 1))
+} else {
+  $donor = @((Get-Json "$FooJean/playlists").playlists | Where-Object { $_.itemCount -gt 0 }) | Select-Object -First 1
+  if (-not $donor) { throw "Nothing to seed the playlist from: the media library is empty and so is every playlist." }
+  $create.source = $donor.id
+  $create.runs = @(, @(0, 1))
+}
+$playlist = Send-Json "$FooJean/playlists" 'Post' $create
 Write-Output "created playlist $($playlist.id) '$($playlist.title)'"
 
-# Not POST /api/playlists/{id}/items/add: beefweb refuses paths outside its own music-directory allowlist.
+$player = (Get-Json "$FooJean/state").player
+Send-Json "$FooJean/volume" 'Post' @{ muted = $true } | Out-Null
+try {
+  Send-Json "$FooJean/playlists/$($playlist.id)/items/0/play" 'Post' $null | Out-Null
+  Start-Sleep -Seconds 1
+  Send-Json "$FooJean/playback/stop" 'Post' $null | Out-Null
+}
+finally {
+  Send-Json "$FooJean/volume" 'Post' @{ value = $player.volume } | Out-Null
+}
+
+# foobar2000's own command line rather than POST /api/playlists/{id}/items, which adds media library tracks and nothing else.
 Invoke-PlayerCommand -Foobar2000Dir $Foobar2000Dir -Arguments @('/add', $Dest) `
   -TaskName 'foo_jean_addfiles' -SettleSeconds 8
+Invoke-PlayerCommand -Foobar2000Dir $Foobar2000Dir -Arguments @('/add', $StreamUrl) `
+  -TaskName 'foo_jean_addstream' -SettleSeconds 5
 
-$made = @((Get-Json "$Beefweb/playlists").playlists | Where-Object { $_.title -eq $PlaylistTitle })
+# The seed row is row 0: /add appends.
+$page = Get-Json "$FooJean/playlists/$($playlist.id)/items?offset=0&count=0&columns=%25path%25"
+Send-Json "$FooJean/playlists/$($playlist.id)/items/remove" 'Post' @{ structure = $page.structure; runs = @(, @(0, 1)) } | Out-Null
+
+$made = @((Get-Json "$FooJean/playlists").playlists | Where-Object { $_.id -eq $playlist.id })
 Write-Output "playlist $($made[0].id) now holds $($made[0].itemCount) items"
 
 Write-Output ""

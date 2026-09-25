@@ -5,7 +5,8 @@ import {
 	statusBar,
 	trackRow,
 } from "../e2e/fixtures.ts";
-import { api, expect, type Install, reset, test } from "./fixtures.ts";
+import { component, player } from "./component.ts";
+import { expect, type Install, reset, test } from "./fixtures.ts";
 
 // One player, which cannot be reset between tests the way the fake is, so these run in order and
 // each one puts back whatever it started.
@@ -104,19 +105,12 @@ test("double-clicking a row plays that track on the player", async ({
 	// The path, not the index: playing a set writes it to the scratch playlist first, so the
 	// player's own index addresses a different list from the one on screen. This is the join the
 	// fake cannot check, because there it supplies both sides.
-	await expect
-		.poll(async () => {
-			const { player } = await api<{
-				player: { activeItem: { columns: string[] } };
-			}>(install.origin, "/player?columns=%25path%25");
-			return player.activeItem.columns[0];
-		})
-		.toBe(track.path);
+	await expect.poll(async () => (await player()).path).toBe(track.path);
 
 	// Nothing above put this on screen: it arrives on the update stream from a real player.
 	await expect(statusBar(page)).toContainText(track.title);
 
-	await reset(install.origin);
+	await reset();
 });
 
 test("add to queue reaches the player's own play queue", async ({
@@ -130,14 +124,14 @@ test("add to queue reaches the player's own play queue", async ({
 
 	await expect
 		.poll(async () => {
-			const { playQueue } = await api<{
-				playQueue: { columns: string[] }[];
-			}>(install.origin, "/query?playQueue=true&qcolumns=%25path%25");
-			return playQueue.map((entry) => entry.columns[0]);
+			const { entries } = await component<{
+				entries: { libraryPath: string | null }[];
+			}>("/api/queue");
+			return entries.map((entry) => entry.libraryPath);
 		})
-		.toContain(track.path);
+		.toContain(track.libraryPath);
 
-	await reset(install.origin);
+	await reset();
 });
 
 test("stars are read-only where nothing can write a tag", async ({
@@ -145,8 +139,8 @@ test("stars are read-only where nothing can write a tag", async ({
 	install,
 }) => {
 	test.skip(
-		install.hasFooJean,
-		"the component is installed, so the stars are controls rather than a readout",
+		install.canWriteRatings,
+		"this install permits rating writes, so the stars are controls rather than a readout",
 	);
 	const rated = install.tracks.findIndex((track) => track.rating !== "?");
 	test.skip(rated < 0, "no track in this library carries a rating tag");
@@ -166,37 +160,16 @@ test("stars are read-only where nothing can write a tag", async ({
 	).toHaveCount(0);
 });
 
-test("settings reports what the discovery actually found on this player", async ({
-	page,
-	install,
-}) => {
+test("settings reports the component connected", async ({ page }) => {
 	await page.goto("#/all");
 	await openSettings(page);
 	const panel = page.getByRole("region", { name: "foo_jean" });
 	await expect(panel).toBeVisible();
-
-	if (install.hasFooJean) {
-		await expect(panel).toContainText("Connected");
-	} else {
-		await expect(panel).toContainText("Not connected");
-	}
+	await expect(panel).toContainText("Connected");
 });
 
-test("toggling shuffle reaches the player, whichever option set it exposes", async ({
-	page,
-	install,
-}) => {
-	// foobar2000 carries the order as a `playbackOrder` option and DeaDBeeF as `shuffle` plus
-	// `repeat`, answering 400 for that id. Reading falls back to the deprecated `playbackMode`
-	// on its own, so a write aimed at the wrong one leaves the button looking right and does
-	// nothing -- which is invisible against a fake modelled on either player alone.
-	const mode = async () => {
-		const { player } = await api<{ player: { playbackMode: number } }>(
-			install.origin,
-			"/player",
-		);
-		return player.playbackMode;
-	};
+test("toggling shuffle reaches the player", async ({ page }) => {
+	const mode = async () => (await player()).playbackMode;
 	const before = await mode();
 
 	await page.goto("#/all");

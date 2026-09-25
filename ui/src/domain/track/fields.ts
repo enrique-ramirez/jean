@@ -267,9 +267,10 @@ export function creditedArtists(artist: string | null | undefined): {
 }
 
 /**
- * What a cover *is*, as against where beefweb will hand it over. Its artwork address names a position
- * in a playlist, so it stops meaning the same picture the moment anything edits that playlist -- and
- * the same sleeve has a different address in every view that draws it. Identity fixes both.
+ * What a cover *is*, as against where `foo_jean` will hand it over. Its artwork address names a track,
+ * or a position in a playlist that stops meaning the same picture the moment anything edits it, so
+ * the same sleeve has a different address on every track of a record and in every view that draws
+ * it. Identity fixes both.
  *
  * Album artist first, matching how albums are grouped everywhere else, or a compilation fragments
  * into one cover per track artist. Null-separated so `A` + `B C` cannot collide with `A B` + `C`.

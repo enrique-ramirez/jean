@@ -445,7 +445,7 @@ test.describe("a stream that goes quiet", () => {
 		await startListening(page);
 
 		// No error to catch: the element never fires `playing` and `currentTime`
-		// never moves, so the watchdog asks beefweb which of the two it is.
+		// never moves, so the watchdog asks `foo_jean` which of the two it is.
 		await expect
 			.poll(async () => (await picker(page).textContent()) ?? "", {
 				timeout: 25_000,

@@ -1,16 +1,16 @@
 # foo_jean
 
-A foobar2000 component that exposes over HTTP the things [beefweb](https://github.com/hyperblast/beefweb) does not: writing metadata tags, creating autoplaylists, reading the whole media library in one piece, and streaming what the player is playing. It runs *alongside* beefweb rather than replacing it, on its own port. Its first client is [Jean](https://github.com/enrique-ramirez/jean), though nothing here assumes it.
+A foobar2000 component that serves [Jean](https://github.com/enrique-ramirez/jean)'s page and the whole HTTP API behind it, on a port of its own: playback and the player's state, playlists and the play queue, the media library in one piece, cover art, tag writing, autoplaylists, and a live stream of what the player is playing. Jean is its first client, though nothing in the API assumes it.
 
 ## What it does
 
 **Writes metadata tags.** Your request arrives over HTTP and *foobar2000* performs the write, through `metadb_io_v2::update_info_async`, so the player's own database is current the instant the write returns. Anything writing tags from outside the player leaves that database stale until a rescan, so the rating your client just set does not come back when it asks. Ratings are the first caller, but nothing here is rating-shaped: it writes fields.
 
-**Creates autoplaylists.** foobar2000 has a Media Library and beefweb cannot see it; an autoplaylist is a live library query that then shows up in beefweb's `/api/playlists` like any other playlist. This creates, updates, previews and deletes them, and annotates the playlist list with the one thing beefweb cannot say: which playlists are autoplaylists, and which of those are this component's.
+**Creates autoplaylists.** An autoplaylist is a live query over foobar2000's Media Library that then shows up in `GET /api/playlists` like any other playlist. This creates, updates, previews and deletes them, and the playlist list says which playlists are autoplaylists, and which of those are this component's.
 
 **Serves the media library.** The whole of it, in one binary response, in whichever title-formatting columns the request asks for. The component keeps a snapshot of the library it walked, watches foobar2000's own change notifications to keep it current, and hands a client a small patch for what moved rather than the library again. A client that holds everything answers its own searches, counts and shelves without asking anybody.
 
-**Streams the player's output.** A live mirror of what foobar2000 is playing, in Ogg Opus or in AAC-LC for Safari. The capture is post-DSP and pre-volume, so silencing the player leaves the stream at full level: choosing a device moves the sound to it rather than doubling it. `GET /api/stream/listeners` says who else has it, and anybody can ask for the speakers back alongside them. It lives here because beefweb's static file server answers a `Range` request with the whole file and a `200`, so nothing built on top of beefweb can seek or stream.
+**Streams the player's output.** A live mirror of what foobar2000 is playing, in Ogg Opus or in AAC-LC for Safari. The capture is post-DSP and pre-volume, so silencing the player leaves the stream at full level: choosing a device moves the sound to it rather than doubling it. `GET /api/stream/listeners` says who else has it, and anybody can ask for the speakers back alongside them.
 
 ## Building
 
@@ -80,7 +80,7 @@ Every key is optional. An absent key keeps its default; a present but malformed 
 | key | meaning |
 |---|---|
 | `port` | Default 8881. If the port is taken the component refuses to start and says so in the log and on the preferences page; it never quietly picks another, because a client can only find it at a port it can predict. |
-| `bindAddress` | Every local interface by default, the same as beefweb. Set it to `127.0.0.1` for a deployment that only ever answers its own machine. |
+| `bindAddress` | Every local interface by default. Set it to `127.0.0.1` for a deployment that only ever answers its own machine. |
 | `allowedOrigins` | Empty reflects no origin, so only a page served by the component itself, same-origin, can read a response. List origins to grant them the same access, matched whole and case-insensitively. |
 | `allowedHosts` | The `Host` allowlist, beside what the component already admits on its own: an IPv4 or bracketed IPv6 literal, `localhost`, a name with no dot, and a name ending `.lan`, `.local` or `.home.arpa`. Matched case-insensitively, with the port and one trailing dot stripped. A request whose `Host` matches none of these is `403`, so a public name needs listing here. A reverse proxy on another machine must pass the client's own `Host` through unchanged for this check to see it; Caddy's `reverse_proxy` does that by default. |
 | `allowedFields` | The write allowlist. Nothing outside it is ever written, and clients read it from `/api/capabilities` rather than being configured twice. Empty switches writing off. |
@@ -142,9 +142,9 @@ Covered: admission, CORS and preflight, every way a hand-edited `config.json` ca
 
 **Nothing here covers `src/fb2k/`.** That half needs the SDK and compiles for the first time on the build machine.
 
-Three end-to-end checks run against a real player. `scripts/verify-tag-write.ps1` writes a rating to every track in the test fixture playlist and reads it back **through beefweb**, which is the point rather than a formality: the failure this design exists to avoid is a write the player performed but its own database did not learn about. `scripts/verify-stream.ps1` checks the stream with playback going: two listeners reading one encoder, a ticket, both formats well formed, the clock advancing, and a skipped track leaving a mark. `scripts/verify-listeners.ps1` checks the roster and the mute hold: who is listening, the player silenced for them, and the level put back afterwards.
+Three end-to-end checks run against a real player. `scripts/verify-tag-write.ps1` writes a rating to every track in the test fixture playlist and reads it back **from the player**, through each row's `%rating%` column, which is the point rather than a formality: the failure this design exists to avoid is a write the player performed but its own database did not learn about. `scripts/verify-stream.ps1` checks the stream with playback going: two listeners reading one encoder, a ticket, both formats well formed, the clock advancing, and a skipped track leaving a mark. `scripts/verify-listeners.ps1` checks the roster and the mute hold: who is listening, the player silenced for them, and the level put back afterwards.
 
-`scripts/test-fixtures.ps1` builds the corpus those run against, out of files kept for the purpose rather than anybody's music. `-Corpus`, or `FOO_JEAN_CORPUS_DIR`, is the folder holding them, and the script refuses to run without it. It copies them into a tree of its own beside the player and adds the copies to a playlist of their own. **Tag writes are only ever pointed at that tree**, never at a real library.
+`scripts/test-fixtures.ps1` builds the corpus those run against, out of files kept for the purpose rather than anybody's music. `-Corpus`, or `FOO_JEAN_CORPUS_DIR`, is the folder holding them, and the script refuses to run without it. It copies them into a tree of its own beside the player and adds the copies to a playlist of their own, with an internet radio stream beside them. **Tag writes are only ever pointed at that tree**, never at a real library.
 
 The tree is two media library roots and a folder outside both, so one run reaches every address form. The roots hold a different recording at one library-relative path, which is the address the component refuses as ambiguous; nothing under the third folder has a library-relative address at all. Among the copies are one MP3, one FLAC and one M4A, a filename that is not ASCII, and a FLAC whose subsongs foobar2000 numbers from 1. **Registering the two roots as media library folders is by hand.** The script prints them at the end and changes nothing in the player's configuration.
 

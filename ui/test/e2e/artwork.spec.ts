@@ -111,10 +111,9 @@ test.describe("artwork loading", () => {
 	});
 });
 
-// beefweb addresses artwork per row -- a playlist by index, the library by path
-// -- so a record's tracks are one URL each for one picture and the browser has
-// no way to know. There is no thumbnail endpoint: the full image comes back
-// whatever size it is drawn at.
+// `foo_jean` addresses artwork per track, by its library path, so a record's tracks are one URL
+// each for one picture and the browser has no way to know. There is no thumbnail endpoint: the full
+// image comes back whatever size it is drawn at.
 test.describe("one cover per album, not per track", () => {
 	test.use({ settings: { "jean.layout": "compact" } });
 
@@ -289,10 +288,9 @@ test.describe("what a cover looks like before it arrives", () => {
 	});
 });
 
-// A library cover comes from the component rather than from beefweb, addressed by the track's
-// library-relative path. The route authenticates, so nothing can point an `<img>` straight at it, and
-// keeping the bytes between visits is the browser's own cache answering `no-cache` against a strong
-// validator.
+// A library cover comes from the component, addressed by the track's library-relative path. The
+// route authenticates, so nothing can point an `<img>` straight at it, and keeping the bytes
+// between visits is the browser's own cache answering a long `max-age` against a strong validator.
 test.describe("a cover from the library", () => {
 	const artworkAnswers = (page: Page) => {
 		const answered: { path: string; status: number }[] = [];

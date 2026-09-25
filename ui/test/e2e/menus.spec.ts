@@ -383,19 +383,10 @@ test.describe("an install that will not let Jean change playlists", () => {
 	});
 });
 
-test.describe("a player whose beefweb permissions say nothing about filing a track", () => {
-	test.use({
-		playerState: {
-			permissions: {
-				changeOutput: true,
-			},
-		},
-	});
-
-	// beefweb's own permission is not what gates an edit. Filing a row goes to
-	// foo_jean, so the item carries no reason: the only setting that can refuse
-	// it is the player owner's, held by the component, and this install has not
-	// set it.
+test.describe("an install whose component allows playlist edits", () => {
+	// Filing a row goes to foo_jean, so the item carries no reason: the only
+	// setting that can refuse it is the player owner's, held by the component,
+	// and this install has not set it.
 	test("the row menu still offers somewhere to file a track", async ({
 		page,
 		isMobile,

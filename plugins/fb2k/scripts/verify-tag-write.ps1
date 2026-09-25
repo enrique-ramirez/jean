@@ -1,15 +1,15 @@
-# Writes a rating to every track in the test playlist through foo_jean, then reads it back through beefweb.
+# Writes a rating to every file in the test playlist through foo_jean, then reads each one back from the player.
 # Run on the player.
 #
-# Reading back through beefweb is the assertion: the failure this component exists to avoid is a write the player
-# performed but its own database did not learn about, and only a read through that database can tell the two apart.
+# The read-back is the assertion: the failure this component exists to avoid is a write the player performed but its own
+# database did not learn about, and a playlist row's %rating% column is evaluated against that database, so it is the read
+# that tells the two apart. The stream row in the playlist has no file to write and is left out.
 #
 # Each row is addressed the way a client addresses it, so that what this script exercises is what ships.
 #
 #   scripts\verify-tag-write.ps1              set every fixture to 3
 #   scripts\verify-tag-write.ps1 -Rating 5    put them back
 param(
-  [string]$Beefweb = 'http://127.0.0.1:8880/api',
   [string]$FooJean = 'http://127.0.0.1:8881/api',
   [string]$PlaylistTitle = '#foo_jean test',
   [string]$Rating = '3',
@@ -19,40 +19,32 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# Both servers answer 'application/json' with no charset parameter, and PowerShell 5.1 then falls back to ISO-8859-1,
+# foo_jean answers 'application/json' with no charset parameter, and PowerShell 5.1 then falls back to ISO-8859-1,
 # turning every accented path into mojibake that no longer names a file. Decode the raw bytes as UTF-8 by hand.
 function Get-Json($uri, $headers = @{}) {
   $resp = Invoke-WebRequest -Uri $uri -Headers $headers -UseBasicParsing -TimeoutSec 30
   [System.Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray()) | ConvertFrom-Json
 }
 
-$playlist = (Get-Json "$Beefweb/playlists").playlists | Where-Object { $_.title -eq $PlaylistTitle }
-if (-not $playlist) { throw "No playlist titled '$PlaylistTitle'. Run scripts\test-fixtures.ps1 first." }
-if ($playlist.itemCount -gt $MaxItems) {
-  throw "Playlist '$PlaylistTitle' holds $($playlist.itemCount) items, which is more than -MaxItems ($MaxItems). Refusing: this script writes tags."
-}
-
 $matching = @((Get-Json "$FooJean/playlists").playlists | Where-Object { $_.title -eq $PlaylistTitle })
+if ($matching.Count -eq 0) { throw "No playlist titled '$PlaylistTitle'. Run scripts\test-fixtures.ps1 first." }
 if ($matching.Count -ne 1) {
   throw "foo_jean reports $($matching.Count) playlists titled '$PlaylistTitle'; the write needs exactly one to address rows in."
 }
 $fooJeanPlaylist = $matching[0]
-
-function Get-Fixtures {
-  $uri = "$Beefweb/playlists/$($playlist.id)/items/0:$MaxItems`?columns=%path%,%rating%,%codec%"
-  (Get-Json $uri).playlistItems.items | ForEach-Object {
-    [pscustomobject]@{ Path = $_.columns[0]; Rating = $_.columns[1]; Codec = $_.columns[2] }
-  }
+if ($fooJeanPlaylist.itemCount -gt $MaxItems) {
+  throw "Playlist '$PlaylistTitle' holds $($fooJeanPlaylist.itemCount) items, which is more than -MaxItems ($MaxItems). Refusing: this script writes tags."
 }
 
-function Get-Targets {
-  $columns = ('%path%', '%codec%' | ForEach-Object { 'columns=' + [System.Uri]::EscapeDataString($_) }) -join '&'
+function Get-Rows {
+  $columns = ('%path%', '%codec%', '%rating%' | ForEach-Object { 'columns=' + [System.Uri]::EscapeDataString($_) }) -join '&'
   $page = Get-Json "$FooJean/playlists/$($fooJeanPlaylist.id)/items?offset=0&count=$MaxItems&$columns"
   $rows = @($page.items)
   for ($index = 0; $index -lt $rows.Count; $index++) {
     [pscustomobject]@{
       Path = $rows[$index].columns[0]
       Codec = $rows[$index].columns[1]
+      Rating = $rows[$index].columns[2]
       LibraryPath = $rows[$index].libraryPath
       Subsong = [int]$rows[$index].subsong
       Index = $index
@@ -60,6 +52,8 @@ function Get-Targets {
     }
   }
 }
+
+function Get-Fixtures { Get-Rows | Where-Object { $_.Path -notmatch '^https?://' } }
 
 function Get-Address($target) {
   if ($target.LibraryPath) {
@@ -70,11 +64,10 @@ function Get-Address($target) {
   return @{ playlist = $fooJeanPlaylist.id; index = $target.Index; structure = $target.Structure }
 }
 
-$before = Get-Fixtures
-$targets = @(Get-Targets)
-Write-Output "Writing rating=$Rating to $($targets.Count) tracks in '$PlaylistTitle'"
+$before = @(Get-Fixtures)
+Write-Output "Writing rating=$Rating to $($before.Count) tracks in '$PlaylistTitle'"
 
-foreach ($target in $targets) {
+foreach ($target in $before) {
   $body = ((Get-Address $target) + @{ fields = @{ rating = $Rating } }) | ConvertTo-Json -Compress
   # UTF-8 bytes rather than a string: the default is ISO-8859-1 on the way out too, which would corrupt an accented address before foo_jean saw it.
   $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
@@ -93,13 +86,13 @@ foreach ($target in $targets) {
   if ($detail) { Write-Output "        reply $detail"; $detail = $null }
 }
 
-$after = Get-Fixtures
+$after = @(Get-Fixtures)
 
 Write-Output ""
-Write-Output "Read back through beefweb:"
+Write-Output "Read back from the player:"
 $failures = 0
 foreach ($track in $after) {
-  $was = ($before | Where-Object { $_.Path -eq $track.Path }).Rating
+  $was = ($before | Where-Object { $_.Index -eq $track.Index }).Rating
   $ok = $track.Rating -eq $Rating
   if (-not $ok) { $failures++ }
   $mark = if ($ok) { 'ok  ' } else { 'FAIL' }
@@ -108,4 +101,4 @@ foreach ($track in $after) {
 
 Write-Output ""
 if ($failures -gt 0) { throw "$failures of $($after.Count) tracks did not come back with rating=$Rating." }
-Write-Output "All $($after.Count) tracks report rating=$Rating through beefweb."
+Write-Output "All $($after.Count) tracks report rating=$Rating read back from the player."

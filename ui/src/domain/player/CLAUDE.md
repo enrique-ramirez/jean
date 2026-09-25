@@ -24,13 +24,13 @@ What the queue is, and everything the player does with it, is `../../shared/api/
 
 **A playlist delete asks the queue nothing**: a queued entry outlives the playlist it pointed into, and `plugins/fb2k/ARCHITECTURE.md`'s *Facts about the player* has what foobar2000 does with it and what reading one carelessly costs.
 
-**Queueing checks whether `foo_jean` can be reached, not what beefweb's `changePlaylists` permits.** Every queue mutation goes through the component rather than through beefweb, so one gate covers a library row, a playlist row, a move, a remove and a clear alike.
+**Queueing checks whether `foo_jean` can be reached and lets Jean control playback.** Every queue mutation goes through the component, so one gate covers a library row, a playlist row, a move, a remove and a clear alike.
 
 ## The volume fader
 
 **Linear in perceived loudness, not in decibels or in amplitude.** About +10 dB is twice as loud, so half the slider is half as loud and equal distances are equal *ratios* of loudness wherever they are taken from.
 
-**The floor is the player's and has to be mapped onto the end of the travel.** The curve approaches zero without reaching it, so the level the player calls silence lands somewhere above the bottom of the fader unless it is normalised there. foobar2000 and DeaDBeeF report different floors, and without the normalisation the thumb on one of them stops short of the end and a drag to the bottom springs back up. A player reporting `min === max` has no travel to describe and reads as empty.
+**The floor is the player's and has to be mapped onto the end of the travel.** The curve approaches zero without reaching it, so the level the player calls silence, -100 dB on foobar2000, lands above the bottom of the fader unless it is normalised there: the thumb stops short of the end and a drag to the bottom springs back up. A player reporting `min === max` has no travel to describe and reads as empty.
 
 ## Listening on this device
 
@@ -147,7 +147,7 @@ Three facts this rests on, all properties of the component rather than of one ne
 
 ## The gap a skip leaves
 
-**That gap is beefweb's, and `foo_jean`'s own state never had it.** `on_playback_stop` in `plugins/fb2k/src/fb2k/playback_watch.cpp` returns early for the outgoing track of a change, so the identity the poll answers, title, path, artwork, stands until the next track's `on_playback_new_track` replaces it, with nothing empty in between. `../../shared/api/README.md` has beefweb's own version of the trap, real for a client reading `activeItem` from beefweb directly; nothing in `ui/src` does.
+**There is none.** The poll goes on naming the outgoing track until the next one replaces it; `../../shared/api/README.md`, *What Jean does about state*, has why.
 
 ## Which way a skip went
 

@@ -100,7 +100,7 @@ The focus ring is **on the field, never on the input**: the input is chromeless 
 
 **Every cover is fetched and handed to the `<img>` as a blob, never addressed directly, even though `foo_jean` takes no credential to read one.** `Artwork` still reads it through `holdArtwork`, `artworkHandles.ts`'s reference-counted registry: switching to a direct `src` changes how the browser caches and lazily loads a cover, and is a piece of work of its own.
 
-**A cover is identified by the picture it is, never by the address it came from.** beefweb addresses artwork by *position in a playlist*, and Jean rewrites its own scratch playlist on every search and every artist played, so the address alone is not a safe key. `Artwork` takes an `identity` prop for this; `coverIdentity()` in `domain/track/fields.ts` is the one place that says what a cover is.
+**A cover is identified by the picture it is, never by the address it came from.** `foo_jean`'s fallback address for a cover is a *position in a playlist*, and Jean rewrites its own scratch playlist on every search and every artist played, so the address alone is not a safe key. `Artwork` takes an `identity` prop for this; `coverIdentity()` in `domain/track/fields.ts` is the one place that says what a cover is.
 
 **`src` carries three states, not two.** `undefined` means the address has not resolved yet and leaves the row `waiting`; `null` means there is definitely no cover and commits straight to `failed`, with no fetch attempted. A caller resolving something asynchronously MUST hold `undefined` until it can say `null` for certain, or a row that is only still loading draws the failure glyph instead of the loading one.
 

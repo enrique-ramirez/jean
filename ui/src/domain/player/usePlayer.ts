@@ -53,10 +53,6 @@ import { audibleAt, positionAt } from "./position";
 
 export const PLAYLISTS_KEY = ["playlists"];
 
-// PlaylistAnnotation-shaped placeholders: neither field is answered by the component and nothing
-// under `src/` reads either any more, but `PlaylistInfo` is a wider contract than this bundle owns.
-const NOT_TRACKED = { isCurrent: false, totalTime: 0 };
-
 // A generation is always a non-empty run of digits, so an empty string is a value the component
 // can never answer and is safe to hold until the create response replaces it.
 const UNKNOWN_GENERATION = "";
@@ -72,7 +68,6 @@ export const playlistInfoOf = (
 	revision: annotation.revision,
 	role: annotation.role,
 	isAutoPlaylist: annotation.isAutoPlaylist,
-	...NOT_TRACKED,
 });
 
 export function usePlayer() {
@@ -298,7 +293,6 @@ export function usePlaylistActions() {
 				index: playlists.length,
 				role: null,
 				isAutoPlaylist: false,
-				...NOT_TRACKED,
 			},
 		],
 		(playlists, { id }, created) =>
@@ -480,7 +474,7 @@ export function usePlaybackOrder() {
 	const capabilities =
 		discovery.state.kind === "ready" ? discovery.state.capabilities : null;
 
-	const mode = player?.jeanPlaybackMode ?? null;
+	const mode = player?.playbackMode ?? null;
 
 	const offeredModes = capabilities?.playbackModes ?? [];
 	const shuffleMode = useMemo(
@@ -501,7 +495,7 @@ export function usePlaybackOrder() {
 			const origin = requireFooJean(discovery.origin);
 			await setPlaybackOrder(origin, next);
 		},
-		(_player, next: PlaybackMode) => ({ jeanPlaybackMode: next }),
+		(_player, next: PlaybackMode) => ({ playbackMode: next }),
 	);
 
 	const { mutate } = mutation;

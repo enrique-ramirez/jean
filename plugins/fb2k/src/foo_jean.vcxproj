@@ -15,9 +15,8 @@
   4. OutDir is set explicitly, because the build drives this .vcxproj directly and
      $(SolutionDir) is then undefined.
 
-  x64 only. beefweb ships x64 and the top level of a .fb2k-component zip is where
-  legacy x86 is looked for, so an x86 build would need somewhere to go before it
-  needed building.
+  x64 only. scripts/package.ps1 has where an x86 build would need to go in the
+  archive, and why the top level is not it.
 -->
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">

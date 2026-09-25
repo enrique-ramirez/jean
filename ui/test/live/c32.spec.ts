@@ -22,8 +22,6 @@ const sidebarRow = (page: Page, title: string) =>
 const menuItem = (page: Page, name: string | RegExp) =>
 	page.getByRole("menuitem", { name });
 
-// Jean is served under a path here, so the route hash is relative: `/#/all` would reach beefweb's
-// own web UI at the origin root instead.
 const openAllMusic = async (page: Page) => {
 	await page.goto("#/all");
 	await expect(

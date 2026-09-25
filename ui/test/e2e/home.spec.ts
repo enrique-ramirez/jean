@@ -280,18 +280,8 @@ test.describe("a front door on a player that offers no shuffle", () => {
 	});
 });
 
-test.describe("a front door where a beefweb permission says nothing about playing a library set", () => {
-	test.use({
-		playerState: {
-			permissions: {
-				changeOutput: true,
-			},
-		},
-	});
-
-	// Both buttons fill the component's own scratch playlist, so beefweb's
-	// permission has nothing to say about either of them.
-	test("Play and Shuffle are both still offered", async ({ page }) => {
+test.describe("a front door with the component answering", () => {
+	test("Play and Shuffle are both offered", async ({ page }) => {
 		await page.goto("/");
 		const head = viewHeader(page);
 		await expect(

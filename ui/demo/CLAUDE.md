@@ -24,7 +24,7 @@ Captured off a real player by the same tool that captures the test fixture. `alb
 
 ## The clock is the one thing added to the player
 
-The fake never ticks, because beefweb pushes on change and never on a timer, and a suite depending on a tick would test something the player does not do. A demo where the track never ends is a demo of one row, so `clock.ts` wraps the state and fires **at the end of a track only**, the way a player does. It also writes the true position back before anything reads it, since the fake holds whatever position it was last told about and a pause that skipped that would report the track back at its start.
+The fake never ticks, because `foo_jean` reports a position as a mark and its age rather than as a moving number, and a suite depending on a tick would test something the player does not do. A demo where the track never ends is a demo of one row, so `clock.ts` wraps the state and fires **at the end of a track only**, the way a player does. It also writes the true position back before anything reads it, since the fake holds whatever position it was last told about and a pause that skipped that would report the track back at its start.
 
 It wraps rather than living in `fake-api/`: the tests want none of it.
 

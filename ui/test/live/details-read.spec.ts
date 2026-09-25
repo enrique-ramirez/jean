@@ -6,13 +6,23 @@ import {
 	trackRow,
 } from "../e2e/fixtures.ts";
 import { expectPanelOpen, panelTab } from "../e2e/nowPlaying.ts";
-import { COMPONENT, component, playRow, removePlaylist } from "./component.ts";
 import {
-	api,
+	COMPONENT,
+	component,
+	type PlaybackMode,
+	player,
+	playlists,
+	playRow,
+	removePlaylist,
+	rowsOf,
+	send,
+	state,
+} from "./component.ts";
+import {
 	expect,
+	type Install,
 	type Locator,
 	type Page,
-	post,
 	reset,
 	test,
 } from "./fixtures.ts";
@@ -26,13 +36,10 @@ import {
 // Plays nothing unless the player is already muted, since the library and the room are the
 // owner's.
 
-const STREAM =
-	process.env.LIVE_STREAM ?? "http://ice1.somafm.com/groovesalad-128-mp3";
-// beefweb adds a local file only from its own music directories, which are the library's, so a
-// file the library has never indexed is reached by URL instead.
-const REMOTE_FILE =
-	process.env.LIVE_REMOTE_FILE ??
-	"https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+// `foo_jean` adds only media library tracks to a playlist, so the stream and the file the library
+// does not hold are copied from the playlist `plugins/fb2k/scripts/test-fixtures.ps1` builds with
+// foobar2000's own `/add`.
+const FIXTURES = "#foo_jean test";
 const PROBE = "#Jean 016 probe";
 
 // An announcement lands when the station's song ends, and a station plays whole songs.
@@ -42,19 +49,6 @@ const LYRIC_LOOKS_END_MS = 20_000;
 const SAMPLES = 9;
 
 const NOTHING_PLAYING = "Nothing playing.";
-
-interface Playing {
-	playback: string;
-	path: string | null;
-	subsong: number;
-	title: string | null;
-	artist: string | null;
-	libraryPath: string | null;
-	muted: boolean;
-}
-
-const playing = () =>
-	component<{ player: Playing; library: { ready: boolean } }>("/api/state");
 
 interface Read {
 	status: number;
@@ -112,8 +106,7 @@ const timesNothingPlayingWasSaid = (page: Page) =>
 				.nothingPlaying.times,
 	);
 
-// Jean is served under a path here, so the route hash is relative: `/#/all` would reach beefweb's
-// own web UI at the origin root instead. Opening every track also has Jean load the media library.
+// Opening every track also has Jean load the media library.
 const openAllMusic = async (page: Page) => {
 	await page.goto("#/all");
 	await expect(
@@ -141,9 +134,21 @@ const openDetails = async (page: Page, reads: Read[], path: string) => {
 	return panel;
 };
 
+const setMode = async (mode: PlaybackMode) => {
+	await send("/api/playback/mode", { mode });
+	await expect.poll(async () => (await player()).playbackMode).toBe(mode);
+};
+
+// The fixture's file outside the library may end before the panel has read it.
+const holdOnOneTrack = async () => {
+	const before = (await player()).playbackMode;
+	await setMode("repeatOne");
+	return before;
+};
+
 const untilPlaying = (path: string) =>
 	expect
-		.poll(async () => (await playing()).player.path, { timeout: 30_000 })
+		.poll(async () => (await player()).path, { timeout: 30_000 })
 		.toBe(path);
 
 const lastGoodRead = (reads: Read[], path: string | null) =>
@@ -173,33 +178,24 @@ const LONG_ENOUGH_S = 240;
 // Two library tracks for the panel and the skip, and one with no lyric tag by whoever has the
 // largest share of their tracks already tagged: the likeliest for foo_openlyrics to find a lyric
 // for and save while it plays.
-const pickTracks = async (origin: string) => {
-	const columns = [
-		"%path%",
-		"%artist%",
-		"%length_seconds%",
-		"$len($meta(unsynced lyrics))",
-	];
-	const { libraryItems } = await api<{
-		libraryItems: { items: { columns: string[] }[] };
-	}>(origin, `/library/items?columns=${encodeURIComponent(columns.join(","))}`);
-	const long = libraryItems.items
-		.map(({ columns: [path, artist, seconds, lyric] }) => ({
-			path,
-			artist,
-			isBare: !(Number(lyric) > 0),
-			isLong: Number(seconds) >= LONG_ENOUGH_S,
+const pickTracks = ({ tracks }: Install) => {
+	const long = tracks
+		.map((track, ordinal) => ({
+			ordinal,
+			artist: track.artist,
+			isBare: !(Number(track.lyricLength) > 0),
+			isLong: Number(track.seconds) >= LONG_ENOUGH_S,
 		}))
 		.filter((track) => track.isLong);
 
-	const byArtist = new Map<string, { tagged: number; bare: string[] }>();
+	const byArtist = new Map<string, { tagged: number; bare: number[] }>();
 	for (const track of long) {
 		const entry = byArtist.get(track.artist) ?? { tagged: 0, bare: [] };
-		if (track.isBare) entry.bare.push(track.path);
+		if (track.isBare) entry.bare.push(track.ordinal);
 		else entry.tagged += 1;
 		byArtist.set(track.artist, entry);
 	}
-	const share = (entry: { tagged: number; bare: string[] }) =>
+	const share = (entry: { tagged: number; bare: number[] }) =>
 		entry.tagged / (entry.tagged + entry.bare.length);
 	const best = [...byArtist.values()]
 		.filter((entry) => entry.bare.length > 0 && entry.tagged >= 10)
@@ -210,55 +206,77 @@ const pickTracks = async (origin: string) => {
 		throw new Error(
 			`the library holds fewer than two tracks of ${LONG_ENOUGH_S} s`,
 		);
-	return {
-		library: [first.path, second.path],
-		lyric: best?.bare[0] ?? first.path,
-	};
+	return [first.ordinal, second.ordinal, best?.bare[0] ?? first.ordinal];
+};
+
+const isUrl = (path: string) => /^[a-z][a-z0-9+.-]*:\/\//i.test(path);
+
+// The fixture playlist's first stream and its first local file the media library does not hold, by
+// row.
+const findFixtureRows = async () => {
+	const fixtures = (await playlists()).find(
+		(entry) => entry.title === FIXTURES,
+	);
+	const missing = (what: string) =>
+		new Error(
+			`no playlist titled ${FIXTURES} holding ${what}: run plugins/fb2k/scripts/test-fixtures.ps1 on this player first`,
+		);
+	if (!fixtures) throw missing("anything");
+	const { items } = await rowsOf(fixtures.id, 0, fixtures.itemCount);
+	const rows = items.map((item, row) => ({
+		row,
+		path: item.columns[0],
+		inLibrary: item.libraryPath !== null,
+	}));
+	const stream = rows.find((one) => isUrl(one.path));
+	const offLibrary = rows.find((one) => !one.inLibrary && !isUrl(one.path));
+	if (!stream) throw missing("a stream");
+	if (!offLibrary) throw missing("a file outside the media library");
+	return { source: fixtures.id, stream, offLibrary };
 };
 
 test.describe.configure({ mode: "serial" });
 
 let probe = "";
-const ROW = { library: 0, lyric: 2, stream: 3, remote: 4 };
+const ROW = { library: 0, lyric: 2, stream: 3, offLibrary: 4 };
 let libraryTrack = "";
 let lyricTrack = "";
+let stream = "";
+let offLibrary = "";
 
 test.beforeAll(async ({ install }) => {
-	const { player } = await playing();
-	if (!player.muted)
+	if (!(await player()).muted)
 		throw new Error("Mute the player first: these specs play real audio.");
 
-	const stale = (
-		await component<{ playlists: { id: string; title: string }[] }>(
-			"/api/playlists",
-		)
-	).playlists.filter((entry) => entry.title === PROBE);
+	const stale = (await playlists()).filter((entry) => entry.title === PROBE);
 	for (const entry of stale) await removePlaylist(entry.id);
 
-	const picked = await pickTracks(install.origin);
-	libraryTrack = picked.library[0];
-	lyricTrack = picked.lyric;
-	const created = await component<{ id: string }>("/api/playlists", {
-		method: "POST",
-		body: JSON.stringify({ title: PROBE }),
-	});
-	probe = created.id;
+	const fixtures = await findFixtureRows();
+	stream = fixtures.stream.path;
+	offLibrary = fixtures.offLibrary.path;
 
-	// The component adds library rows only, so the URLs go in through beefweb. Adding is safe
-	// there; deleting a playlist through beefweb is not, which is why it is removed below
-	// through the component.
-	const { playlists } = await api<{
-		playlists: { id: string; title: string }[];
-	}>(install.origin, "/playlists");
-	const beefwebId = playlists.find((entry) => entry.title === PROBE)?.id;
-	if (!beefwebId) throw new Error(`beefweb does not list ${PROBE}`);
-	await post(install.origin, `/playlists/${beefwebId}/items/add`, {
-		items: [libraryTrack, picked.library[1], lyricTrack, STREAM, REMOTE_FILE],
-	});
+	const ordinals = pickTracks(install);
+	libraryTrack = install.tracks[ordinals[0]].path;
+	lyricTrack = install.tracks[ordinals[2]].path;
+	probe = (
+		await component<{ id: string }>("/api/playlists", {
+			method: "POST",
+			body: JSON.stringify({
+				title: PROBE,
+				structure: install.structure,
+				ordinals,
+			}),
+		})
+	).id;
+	for (const { row } of [fixtures.stream, fixtures.offLibrary])
+		await send(`/api/playlists/${probe}/items/copy`, {
+			source: fixtures.source,
+			runs: [[row, 1]],
+		});
 });
 
-test.afterAll(async ({ install }) => {
-	await reset(install.origin);
+test.afterAll(async () => {
+	await reset();
 	if (probe) await removePlaylist(probe);
 });
 
@@ -269,13 +287,13 @@ test("the details panel fills for a track the media library holds", async ({
 	await openAllMusic(page);
 	await playRow(probe, ROW.library);
 	await untilPlaying(libraryTrack);
-	const { player } = await playing();
-	expect(player.libraryPath).not.toBeNull();
+	const playing = await player();
+	expect(playing.libraryPath).not.toBeNull();
 
 	const panel = await openDetails(page, reads, libraryTrack);
 	await expect(detailRows(panel).first()).toBeVisible();
 	await expect(panel).not.toContainText(NOTHING_PLAYING);
-	expect(lastGoodRead(reads, player.path)).toBeDefined();
+	expect(lastGoodRead(reads, playing.path)).toBeDefined();
 	console.log(
 		`[016] library track: ${await detailRows(panel).count()} rows, reads ${JSON.stringify(reads.map((read) => read.status))}`,
 	);
@@ -294,8 +312,8 @@ test("the details panel holds its rows across a manual Next and never says nothi
 
 	await watchForNothingPlaying(page);
 	await statusBar(page).getByRole("button", { name: "Next track" }).click();
-	await expect.poll(async () => (await playing()).player.path).not.toBe(before);
-	const after = (await playing()).player.path;
+	await expect.poll(async () => (await player()).path).not.toBe(before);
+	const after = (await player()).path;
 
 	await expect.poll(() => lastGoodRead(reads, after)).toBeDefined();
 	await expect(detailRows(panel).first()).toBeVisible();
@@ -310,17 +328,22 @@ test("the details panel fills for a track the media library does not hold", asyn
 }) => {
 	const reads = watchReads(page);
 	await openAllMusic(page);
-	await playRow(probe, ROW.remote);
-	await untilPlaying(REMOTE_FILE);
-	expect((await playing()).player.libraryPath).toBeNull();
+	const mode = await holdOnOneTrack();
+	try {
+		await playRow(probe, ROW.offLibrary);
+		await untilPlaying(offLibrary);
+		expect((await player()).libraryPath).toBeNull();
 
-	const panel = await openDetails(page, reads, REMOTE_FILE);
-	await expect(detailRows(panel).first()).toBeVisible();
-	await expect(panel).not.toContainText(NOTHING_PLAYING);
-	expect(lastGoodRead(reads, REMOTE_FILE)).toBeDefined();
-	console.log(
-		`[016] off-library file: format ${await rowValue(panel, "Format").textContent()}, bitrate ${await rowValue(panel, "Bitrate").textContent()}`,
-	);
+		const panel = await openDetails(page, reads, offLibrary);
+		await expect(detailRows(panel).first()).toBeVisible();
+		await expect(panel).not.toContainText(NOTHING_PLAYING);
+		expect(lastGoodRead(reads, offLibrary)).toBeDefined();
+		console.log(
+			`[016] off-library file: format ${await rowValue(panel, "Format").textContent()}, bitrate ${await rowValue(panel, "Bitrate").textContent()}`,
+		);
+	} finally {
+		await setMode(mode);
+	}
 });
 
 test("on a station the details panel names the announced song, and follows the next announcement", async ({
@@ -330,15 +353,15 @@ test("on a station the details panel names the announced song, and follows the n
 	const reads = watchReads(page);
 	await openAllMusic(page);
 	await playRow(probe, ROW.stream);
-	await untilPlaying(STREAM);
+	await untilPlaying(stream);
 	await expect
-		.poll(async () => (await playing()).player.artist, { timeout: 30_000 })
+		.poll(async () => (await player()).artist, { timeout: 30_000 })
 		.toBeTruthy();
-	const first = (await playing()).player;
+	const first = await player();
 
 	// `%album artist%` falls back to `%artist%` in foobar2000, so this row is the announced
 	// artist, drawn, where the station's stored tags carry none.
-	const panel = await openDetails(page, reads, STREAM);
+	const panel = await openDetails(page, reads, stream);
 	await expect(rowValue(panel, "Album artist")).toHaveText(
 		first.artist as string,
 	);
@@ -351,14 +374,14 @@ test("on a station the details panel names the announced song, and follows the n
 	await expect
 		.poll(
 			async () => {
-				const now = (await playing()).player;
+				const now = await player();
 				return now.title !== first.title || now.artist !== first.artist;
 			},
 			{ timeout: ANNOUNCEMENT_WAIT_MS, intervals: [5_000] },
 		)
 		.toBe(true);
-	const next = (await playing()).player;
-	expect(next.path).toBe(STREAM);
+	const next = await player();
+	expect(next.path).toBe(stream);
 
 	await expect
 		.poll(() => reads.slice(readsBefore).some((read) => read.status === 200))
@@ -373,33 +396,30 @@ test("on a station the details panel names the announced song, and follows the n
 
 test("foobar2000 stays up when a stream is stopped, and when one is skipped", async ({
 	page,
-	install,
 }) => {
 	// The crash needs a client to have loaded the media library since startup.
 	await openAllMusic(page);
 	await expect
-		.poll(async () => (await playing()).library.ready, { timeout: 60_000 })
+		.poll(async () => (await state()).library.ready, { timeout: 60_000 })
 		.toBe(true);
 
 	await playRow(probe, ROW.stream);
-	await untilPlaying(STREAM);
-	await post(install.origin, "/player/stop");
+	await untilPlaying(stream);
+	await send("/api/playback/stop");
 	await expect
-		.poll(async () => (await playing()).player.playback, { timeout: 15_000 })
+		.poll(async () => (await player()).playback, { timeout: 15_000 })
 		.toBe("stopped");
-	await expect(api(install.origin, "/player")).resolves.toBeDefined();
+	await expect(state()).resolves.toBeDefined();
 
 	await playRow(probe, ROW.stream);
-	await untilPlaying(STREAM);
+	await untilPlaying(stream);
 	await openNowPlaying(page);
 	await statusBar(page).getByRole("button", { name: "Next track" }).click();
 	await expect
-		.poll(async () => (await playing()).player.path, { timeout: 30_000 })
-		.not.toBe(STREAM);
-	await expect(api(install.origin, "/player")).resolves.toBeDefined();
-	console.log(
-		`[016] after skipping the stream: ${(await playing()).player.path}`,
-	);
+		.poll(async () => (await player()).path, { timeout: 30_000 })
+		.not.toBe(stream);
+	await expect(state()).resolves.toBeDefined();
+	console.log(`[016] after skipping the stream: ${(await player()).path}`);
 });
 
 test("a lyric saved while the track plays is caught by the recheck, and Jean writes no tag", async ({
@@ -411,15 +431,15 @@ test("a lyric saved while the track plays is caught by the recheck, and Jean wri
 	await openAllMusic(page);
 	await playRow(probe, ROW.lyric);
 	await untilPlaying(lyricTrack);
-	const { player } = await playing();
+	const playing = await player();
 
 	const panel = await openDetails(page, reads, lyricTrack);
 	await expect(detailRows(panel).first()).toBeVisible();
-	const first = lastGoodRead(reads, player.path);
+	const first = lastGoodRead(reads, playing.path);
 	const lyricAtStart = first?.columns?.[0];
 	test.skip(
 		lyricAtStart !== "?" && lyricAtStart !== "",
-		`${player.path} already carries a lyric, so there is nothing for the recheck to catch`,
+		`${playing.path} already carries a lyric, so there is nothing for the recheck to catch`,
 	);
 
 	await page.waitForTimeout(LYRIC_LOOKS_END_MS + 3_000);
@@ -434,7 +454,7 @@ test("a lyric saved while the track plays is caught by the recheck, and Jean wri
 	expect(writes).toEqual([]);
 	test.skip(
 		!caught,
-		`foo_openlyrics saved no lyric to ${player.path} within the four looks`,
+		`foo_openlyrics saved no lyric to ${playing.path} within the four looks`,
 	);
 
 	await panelTab(panel, "Lyrics").click();
@@ -447,7 +467,7 @@ test("the playing-track read, timed beside the library read of the same track", 
 	await openAllMusic(page);
 	await playRow(probe, ROW.library);
 	await untilPlaying(libraryTrack);
-	const { player } = await playing();
+	const playing = await player();
 	const columns = columnsQuery(NOW_PLAYING_EXPRESSIONS);
 
 	const samples: number[] = [];
@@ -457,7 +477,7 @@ test("the playing-track read, timed beside the library read of the same track", 
 		samples.push(seconds);
 	}
 	const library = await timed(
-		`/api/track/library?track=${encodeURIComponent(player.libraryPath as string)}&subsong=${player.subsong}&${columns}`,
+		`/api/track/library?track=${encodeURIComponent(playing.libraryPath as string)}&subsong=${playing.subsong}&${columns}`,
 	);
 	expect(library.status).toBe(200);
 

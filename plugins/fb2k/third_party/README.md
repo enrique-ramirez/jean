@@ -17,7 +17,7 @@ All four are **unmodified**, and that is checked against upstream rather than as
 
 ## Four things about `httplib.h` that are load-bearing
 
-**Its default socket options are wrong for this component on Windows.** `default_socket_options` sets `SO_REUSEPORT` where that exists and falls back to `SO_REUSEADDR`; Windows has no `SO_REUSEPORT`, so it takes the fallback. On Windows a second `SO_REUSEADDR` bind to a port an `SO_REUSEADDR` socket is already listening on **succeeds**, and the two sockets then split traffic with no error anywhere. Since `foo_jean` runs alongside `foo_beefweb`, which sets that option too, that is the exact collision the component must be able to detect. `src/core/http_server.cpp` replaces the options with `SO_EXCLUSIVEADDRUSE`; `tests/listener_test.cpp` is the guard.
+**Its default socket options are wrong for this component on Windows.** `default_socket_options` sets `SO_REUSEPORT` where that exists and falls back to `SO_REUSEADDR`; Windows has no `SO_REUSEPORT`, so it takes the fallback. On Windows a second `SO_REUSEADDR` bind to a port an `SO_REUSEADDR` socket is already listening on **succeeds**, and the two sockets then split traffic with no error anywhere. Another process on the same port that sets `SO_REUSEADDR` too is therefore the exact collision the component must be able to detect. `src/core/http_server.cpp` replaces the options with `SO_EXCLUSIVEADDRUSE`; `tests/listener_test.cpp` is the guard.
 
 **`set_payload_max_length` only bounds a request to a route that reads a body.** Routing happens before the body is read, so a POST to a path with no handler is answered `404` with the limit never consulted, whatever the body's size. Once `POST /api/tags` existed the limit became testable and holds: the handler is never reached and the answer is `413`. Worth remembering for the next route, because a limit that looks configured is not the same as a limit that fires.
 
@@ -39,7 +39,7 @@ The foobar2000 SDK has nothing either. There is no zlib, no bundled codec and no
 
 ## Why cpp-httplib and not Boost.Beast
 
-Boost.Beast is what beefweb uses, and beefweb builds Boost from source through a CMake `ExternalProject`. This component builds with MSBuild, because that is what the foobar2000 SDK ships and it is the reason the toolchain works at all. One header costs no build system. Reconsider if thread-per-connection ever becomes the constraint; it will show up first in streaming.
+Boost.Beast needs Boost, and Boost built from source wants CMake or its own build system. This component builds with MSBuild, because that is what the foobar2000 SDK ships and it is the reason the toolchain works at all. One header costs no build system. Reconsider if thread-per-connection ever becomes the constraint; it will show up first in streaming.
 
 ## Why doctest and not Catch2 or GoogleTest
 

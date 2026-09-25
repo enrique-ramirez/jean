@@ -38,11 +38,8 @@ export interface ActiveItem {
 	// by the track, so an album played through costs one request.
 	album: string | null;
 	albumArtist: string | null;
-	// foobar2000's own playlist GUID, matching `PlaylistAnnotation.id`. Not beefweb's id, which stays
-	// on `playlistId`.
+	// foobar2000's own playlist GUID, matching `PlaylistAnnotation.id`.
 	playlistGuid: string | null;
-	playlistId: string;
-	playlistIndex: number;
 	position: number;
 	subsong: number;
 }
@@ -52,15 +49,10 @@ export interface PlayerInfo {
 	version: string;
 }
 
-export interface Permissions {
-	changeOutput: boolean;
-}
-
 export interface PlayerState {
 	activeItem: ActiveItem;
 	info: PlayerInfo;
-	permissions: Permissions;
-	jeanPlaybackMode: PlaybackMode | null;
+	playbackMode: PlaybackMode | null;
 	playbackState: PlaybackState;
 	volume: Volume;
 }
@@ -68,12 +60,10 @@ export interface PlayerState {
 export interface PlaylistInfo {
 	id: string;
 	index: number;
-	isCurrent: boolean;
 	// Goes stale the moment anything edits the playlist and no update event corrects it. Re-read it
 	// before doing arithmetic with it.
 	itemCount: number;
 	title: string;
-	totalTime: number;
 	// A string of decimal digits, never a number: `shared/api/README.md` has why.
 	structure: string;
 	revision: string;
@@ -84,29 +74,6 @@ export interface PlaylistInfo {
 }
 
 export type TrackColumns = string[];
-
-export interface LibraryInfo {
-	supported: boolean;
-	enabled: boolean;
-	itemCount: number;
-}
-
-export interface LibraryItem {
-	// Relative to the library folders and forward-slashed on every platform. See `libraryPathMatcher`.
-	path: string;
-	subsong: number;
-	columns: TrackColumns;
-}
-
-// Omitting both `items` and `query` means the whole library, and is the only way to send a large one:
-// naming every track exceeds the 1 MiB body beefweb accepts.
-export interface AddFromLibraryBody {
-	items?: { path: string; subsong: number }[];
-	query?: string;
-	index?: number;
-	replace?: boolean;
-	play?: boolean;
-}
 
 export interface PlayerSnapshot {
 	player: PlayerState;

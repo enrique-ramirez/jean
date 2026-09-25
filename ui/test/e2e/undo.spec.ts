@@ -30,8 +30,8 @@ const titlesIn = (player: FakePlayer, id: string) =>
 
 // A string of decimal digits on the wire, never the fake's own internal number: the requests below
 // compare against exactly what the client sent.
-const structureOf = (player: FakePlayer, beefwebId: string) =>
-	String(player.playlists.find((entry) => entry.id === beefwebId)!.structure);
+const structureOf = (player: FakePlayer, key: string) =>
+	String(player.playlists.find((entry) => entry.id === key)!.structure);
 
 const postsTo = (player: FakePlayer, pattern: string) =>
 	requestsTo(player, pattern).filter((entry) => entry.method === "POST");
@@ -118,9 +118,9 @@ const copyStatuses = (page: Page) => {
 	return answered;
 };
 
-const lockPlaylistAtThePlayer = async (page: Page, beefwebId: string) => {
+const lockPlaylistAtThePlayer = async (page: Page, key: string) => {
 	const answered = await page.request.post("/__control/lockPlaylist", {
-		data: { id: beefwebId, locked: true },
+		data: { id: key, locked: true },
 	});
 	expect(
 		answered.ok(),

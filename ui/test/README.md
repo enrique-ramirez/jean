@@ -51,7 +51,7 @@ Two consequences before adding a route. **Anything reaching for a socket, a file
 
 ### The fixture is captured, not invented
 
-`library.json` and `player.json` came off a real player via `node test/fake-api/capture.ts --url http://<player-host>:8880`, so the fake replays bytes foobar2000 actually produced. Five albums, 54 tracks, chosen for the branches the UI has:
+`library.json` and `player.json` came off a real player via `node test/fake-api/capture.ts --url http://<player-host>:8881`, the origin `foo_jean` serves from, so the fake replays bytes foobar2000 actually produced. Five albums, 54 tracks, chosen for the branches the UI has:
 
 | | why it is in there |
 |---|---|
@@ -63,13 +63,13 @@ Two consequences before adding a route. **Anything reaching for a socket, a file
 
 Tracks are stored as objects keyed by title-formatting expression, not as the positional arrays the API returns: the fake has to answer whatever column set is asked of it, and **an expression the fixture does not carry resolves to `?`**, exactly as an unsupported field does on a real player. Dropping `%lastfm_play_count%` from a fixture is how you test an install with no playback-statistics component.
 
-**`DEFAULT_PLAYLISTS()` builds six**, and the shape is deliberate. `p1 p7 p2 p5` are ordinary playlists whose ids are neither contiguous nor in index order, which is what a real install looks like; `p7` is current, and is where `openLibrary` goes. `p8` is `#Jean Library`, a playlist carrying Jean's own prefix, which nothing reads as the library and everything keeps out of the sidebar. `p9` is `Recently Added` with `isAuto` set: a visible autoplaylist with an ordinary name, so "the player fills this one itself" is covered. foobar2000 locks an autoplaylist against having rows added, so `p9` answers a copy or a fill `409`, carrying no positions, rather than the `200` an ordinary playlist answers.
+**`DEFAULT_PLAYLISTS()` builds six**, and the shape is deliberate. `p1 p7 p2 p5` are ordinary playlists. Those are the fake's own keys, which specs and control routes name a playlist by, and they are neither contiguous nor in index order so nothing can read a position off one; every `foo_jean` route addresses a playlist by its `guid`. `p7` is current, and is where `openLibrary` goes. `p8` is `#Jean Library`, a playlist carrying Jean's own prefix, which nothing reads as the library and everything keeps out of the sidebar. `p9` is `Recently Added` with `isAuto` set: a visible autoplaylist with an ordinary name, so "the player fills this one itself" is covered. foobar2000 locks an autoplaylist against having rows added, so `p9` answers a copy or a fill `409`, carrying no positions, rather than the `200` an ordinary playlist answers.
 
 **Every playlist the fake mints, here and in `addPlaylist`, seeds its structure generation and its content revision at `GENERATION_SEED`, `9204739866101318656n`, and steps them by one on every edit.** That is `plugins/fb2k/tests/playlist_route_test.cpp`'s own `kThroughADouble`, the double every value within five hundred of it rounds to. It sits in `[2^62, 2^63)`, where a double's ULP is 1024, so a thousand consecutive generations collapse to one and a client that parses either counter as a number fails on the first edit. A smaller seed would be easier to read and would also agree with that client by coincidence, since a double stays exact at that scale. Held as `bigint`, since a `number` this size cannot step by one without rounding four consecutive values onto the last.
 
 The cover art is real and downscaled by `capture.ts`, which shells out to macOS `sips` and says so when it cannot. Nothing but the fake reads `artwork/`.
 
-**The same tool captures the demo's library, and the two must not be confused.** `capture.ts --albums demo/albums.ts --out demo` writes into `demo/`; see `demo/CLAUDE.md`. Nothing in `demo/` is read by a test and nothing here is read by the demo. A demo capture leaves `player.json` alone; a named album the tool cannot find is skipped and logged either way. `--url` falls back to `CAPTURE_URL` and then to localhost.
+**The same tool captures the demo's library, and the two must not be confused.** `capture.ts --albums demo/albums.ts --out demo` writes into `demo/`; see `demo/CLAUDE.md`. Nothing in `demo/` is read by a test and nothing here is read by the demo. A demo capture leaves `player.json` alone; a named album the tool cannot find is skipped and logged either way. `--url` falls back to `CAPTURE_URL` and then to `http://localhost:8881`.
 
 ### The media library
 
@@ -142,7 +142,7 @@ The routes model the declaration the contract describes rather than answering fr
 
 A fake kinder than the player it stands in for makes the suite agree with itself and disagree with reality.
 
-- **A request body over 1 MiB is refused by hanging up**, not answered with a status. `demo/sw.ts` destroys the socket at the same threshold. That cap is beefweb's alone; `agentServer.ts` has none.
+- **A request body over 256 KiB is answered `413` in the demo and nowhere else.** `demo/sw.ts` refuses it before any route runs, as `foo_jean` does; `agentServer.ts` has no cap, so no spec sees one.
 - **`POST /api/library/refresh` has no route.** A rate limiter is one of the things a kinder fake would get wrong, and nothing in Jean asks for a refresh yet.
 - **A queue entry with no position is skipped rather than played.** A real player plays one. The fake's own playback is addressed by a playlist and a row and has nowhere to play a bare handle from, so nothing asserting what reaches the head may lean on it.
 - **The unreachable state destroys the connection rather than answering 500.** A refused socket and an error response are different events in the browser.
@@ -162,16 +162,6 @@ These are not on purpose and are not fixed. `contract/` found them. `POST` and `
 
 Reproducing them takes more than pointing `CONTRACT_URL` at `pnpm fake`, since the defaults still hide two of the three: `maxAutoPlaylists` is `0`, so the create refuses and the update and the delete are skipped rather than driven, and `canStream` is `true`.
 
-### Measuring against a real player
-
-`test/measure-library.ts` times the media library endpoints against a real player and a real library, since the questions it answers are about server-side cost and the fake has none:
-
-```sh
-PLAYER=<player-host>:8880 node test/measure-library.ts
-```
-
-It compares the library read against the playlist read, sweeps range sizes to separate per-call cost from per-item cost, and tries the chunking strategies. **Record the constraint an answer establishes, never the number**, and put it in a `CLAUDE.md` or in `../src/shared/api/README.md`.
-
 ## Against a real player
 
 `test/live/` is a second, much smaller suite that drives a player actually running foobar2000, and it replaces the fake suite rather than joining it: setting `LIVE` swaps the projects in `playwright.config.ts` for a single serial one, so `pnpm test` is untouched.
@@ -180,13 +170,15 @@ It compares the library read against the playlist read, sweeps range sizes to se
 LIVE=http://<player-host>:8881 LIVE_LIBRARY_ROOT='C:\Music' pnpm test:live
 ```
 
-`LIVE` is the url `foo_jean` serves Jean from, and the api origin is taken from it: the two are the same origin, so no separate one needs naming.
+`LIVE` is the origin `foo_jean` serves from. Jean loads from its root and calls the API on the same origin, so nothing else needs naming.
 
-**It exists for rule 11 below.** These are the comparisons where that matters: the join between the `%path%` the player reports playing and the row Jean drew, a cover that has to decode rather than merely have a `src`, an update that arrives on a real SSE stream, `fold()` against tags read off real files, and the `foo_jean` discovery chain against a real component rather than a second node server.
+**It exists for rule 11 below.** These are the comparisons where that matters: the join between the `%path%` the player reports playing and the row Jean drew, a cover that has to decode rather than merely have a `src`, `fold()` against tags read off real files, and `foo_jean` itself rather than the fake standing in for it.
 
 **Nothing here may assume what is in the library.** Counts, titles, which row carries a rating and whether any artist is accented are all read off the player first and asserted against; a spec that cannot be satisfied skips itself and says why. That is why the suite is short: an assertion that survives an unknown library has to be about a relationship rather than a value.
 
-**`LIVE_LIBRARY_ROOT` is required and has no default.** These specs play tracks, write the play queue and can write rating tags, so the worker fixture reads the whole library first and refuses to start if one track sits outside the named folder. The check runs before any page is opened, so a wrong answer costs nothing.
+**`LIVE_LIBRARY_ROOT` is required and has no default.** These specs play tracks, write the play queue and can write rating tags, so the `install` fixture, which every spec gets, reads the whole library through `GET /api/library/export` first and refuses to start if one track sits outside the named folder. The check runs before any page is opened, so a wrong answer costs nothing.
+
+`details-read.spec.ts` also needs a playlist titled `#foo_jean test`, which `plugins/fb2k/scripts/test-fixtures.ps1` builds: library rows, a file the media library does not hold, and a stream URL.
 
 ## Writing a spec
 
@@ -220,7 +212,7 @@ test('does the thing', async ({ page, player }) => {
   await expect.poll(() => requestsTo(player, '/items/2/play').map((r) => r.path))
     .toHaveLength(1)
 
-  // and what came back, via SSE
+  // and what the next poll drew
   await expect(page.locator('footer')).toContainText('Deléctrico')
 })
 ```
@@ -240,7 +232,7 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 | `withoutPlaylists` | empties the playlist list entirely: the player a fresh install would find |
 | `retagged` | patches tag values onto captured tracks, keyed by title: `{ Nutshell: { '%artist%': 'Alice in Chains feat. X' } }`. Everything else about the track stays captured, and the patch reaches the media library as well as the playlists |
 | `embeddedArt` | gives a track a cover of its own, keyed by title: `{ 'No Excuses': 'deja-entendu.jpg' }` names a file in `fake-api/artwork/`. That track's own address answers it and the rest of the album answers the album's, which is what a file carrying the wrong sleeve looks like to `GET /api/artwork` |
-| `playlistsFromRow` | seeds a playlist from that row on and drops the ones before it, keyed by beefweb id: `{ p1: 1 }` is a view that begins partway into an album |
+| `playlistsFromRow` | seeds a playlist from that row on and drops the ones before it, keyed by the fake's own playlist key: `{ p1: 1 }` is a view that begins partway into an album |
 | `playerState` | seeds the player: what is playing, the volume, the playback mode |
 | `settings` | merged over a default seed, so a spec names only what it cares about |
 | `firstRun` | drops the settings seed entirely, which is what makes the first-run affordances appear |
@@ -253,9 +245,9 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 - **`POST /__control/latency`** holds writes for N milliseconds, and `GET /api/playlists` and the six playlist writes on `foo_jean`'s side besides, since a slow join is what `useAutoPlaylists.ts` has to be caught catching up with and an optimistic playlist edit is indistinguishable from a fast one without it. On localhost every request settles before the next pointer event, so a control coalescing forty moves into three looks identical to one sending forty. `useCoalescedWrite` is untestable without it.
 - **`POST /__control/writePlaylists { canWrite }`** flips `foo_jean`'s `canWritePlaylists` mid-test, the one way a spec can put a refusal in front of a control still drawn: the component answers its capabilities once, at discovery, so an install with the setting off from the start draws no playlist-editing control at all.
 - **`POST /__control/controlPlayback { canControl }`** flips `canControlPlayback` mid-test the same way: while it is off, every playback command, seek, playback mode, volume, playing a row, every queue write and both scratch routes answer the component's own `403`, and reading the queue and the state still answers. Either flip moves `GET /api/state`'s `configGeneration`, but only when the value actually changes.
-- **`POST /__control/skipGap`** spends N milliseconds reporting an empty `activeItem` on a skip, the way beefweb does while the player opens the next file; the real player's own state carries no such gap. Off by default, since the gap makes `next` asynchronous and no other spec should have to wait one out.
+- **`POST /__control/skipDelay`** holds a skip for N milliseconds before the next track starts, the time foobar2000 takes to open the next file, while `GET /api/state` goes on naming the outgoing track. Off by default, since the delay makes `next` asynchronous and no other spec should have to wait one out.
 - **`GET /__control/state`** returns the player, the playlists, the queue and the request log in one read, for a spec driving the fake from outside the fixture. **`POST /__control/state { failState: n }`** switches `GET /api/state`'s refusal on mid-test and `{ failState: null }` turns it back off, the one thing `failWrites` cannot do: a spec cuts the poll off, drives the player through the routes above while it is blind, then lets it back and reads the next tick.
-- **`POST /__control/lockPlaylist { id, locked }`** locks a beefweb id against having rows added, or releases it, the way some other component locking a playlist would: the copy and the fill routes both consult it beside `isAuto`, and both answer `409` for as long as it holds.
+- **`POST /__control/lockPlaylist { id, locked }`** locks a playlist, by the fake's own key, against having rows added, or releases it, the way some other component locking a playlist would: the copy and the fill routes both consult it beside `isAuto`, and both answer `409` for as long as it holds.
 - **`POST /__control/failPlaylistWrites { status }`** refuses every playlist mutation with that status, the same pattern `failState` uses for `GET /api/state`: a write that failed at the player rather than one it refused. Leaving `status` out turns the refusal back off.
 
 ### Rules

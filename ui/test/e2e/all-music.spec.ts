@@ -6,7 +6,6 @@ import {
 	expectSettlesAt,
 	openSidebar,
 	playedFrom,
-	requestsTo,
 	scratchFills,
 	scratchOf,
 	searchFor,
@@ -18,10 +17,9 @@ import {
 } from "./fixtures.ts";
 
 test.describe("playing from all music", () => {
-	// Big enough that the set cannot be named track by track: as explicit
-	// {path, subsong} it outgrows the 1 MiB body beefweb hangs up over, and as
-	// ordinals it outgrows the component's own 256 KiB. The synthesised tracks
-	// also sit in a different order by tag than by path -- see `browseOrder` in
+	// Big enough that the set cannot be named track by track: as ordinals it
+	// outgrows the component's own 256 KiB. The synthesised tracks
+	// also sit in a different order by tag than by path -- see `ordinalOrder` in
 	// the fake.
 	test.use({ mediaLibrarySize: 30441 });
 
@@ -46,7 +44,6 @@ test.describe("playing from all music", () => {
 		);
 
 		expect(scratchFills(player)).toHaveLength(1);
-		expect(requestsTo(player, "add-from-library")).toHaveLength(0);
 	});
 
 	test("the row you click is the row that plays", async ({ page, player }) => {
@@ -197,36 +194,8 @@ test.describe("where the music is coming from", () => {
 	});
 });
 
-test.describe("a player that reports no permissions at all", () => {
-	// Absent is not denied: an older beefweb, or the moment before the first
-	// snapshot lands, answers with no permissions object and every reader in the
-	// app treats that as allowed.
-	test("all music keeps its Shuffle button", async ({ page, player }) => {
-		delete (player.player as { permissions?: unknown }).permissions;
-
-		await page.goto("/#/all");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "All music" }),
-		).toBeVisible();
-
-		await expect(
-			viewHeader(page).getByRole("button", { name: "Shuffle" }),
-		).toBeVisible();
-	});
-});
-
-test.describe("a beefweb permission that says nothing about playing a library set", () => {
-	test.use({
-		playerState: {
-			permissions: {
-				changeOutput: true,
-			},
-		},
-	});
-
-	// The scratch playlist these two fill is the component's own, so beefweb's
-	// permission has nothing to say about playing a library set.
-	test("all music keeps Play and Shuffle", async ({ page }) => {
+test.describe("a component that is answering", () => {
+	test("all music offers Play and Shuffle", async ({ page }) => {
 		await page.goto("/#/all");
 		await expect(
 			page.getByRole("heading", { level: 1, name: "All music" }),
@@ -246,9 +215,8 @@ test.describe("a component that is not answering", () => {
 	test.use({ fooJean: { reachable: false } });
 
 	// The other half of the same question. Play and Shuffle wait on the
-	// component being reachable rather than on beefweb, so with nothing
-	// answering there is nothing to fill a playlist from and no set to play. A
-	// build that dropped the gate instead of moving it draws both here.
+	// component being reachable, so with nothing answering there is nothing to
+	// fill a playlist from and no set to play.
 	test("all music offers neither Play nor Shuffle", async ({ page }) => {
 		await page.goto("/#/all");
 		await expect(

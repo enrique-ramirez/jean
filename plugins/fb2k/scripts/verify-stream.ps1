@@ -6,7 +6,6 @@
 #   scripts\verify-stream.ps1
 #   scripts\verify-stream.ps1 -Seconds 8 -SkipTrack
 param(
-  [string]$Beefweb = 'http://127.0.0.1:8880/api',
   [string]$FooJean = 'http://127.0.0.1:8881/api',
   [int]$Seconds = 6,
   # Skips a track partway through, so a timeline mark is created while a listener is attached. Off by default: it changes what the player is doing.
@@ -90,7 +89,7 @@ function Test-Adts($bytes) {
 }
 
 Write-Host "player"
-$state = (Get-Json "$Beefweb/player").player.playbackState
+$state = (Get-Json "$FooJean/state").player.playback
 Check "foobar2000 is playing" ($state -eq 'playing') "state is '$state'; start playback and run this again"
 if ($state -ne 'playing') { exit 1 }
 
@@ -135,10 +134,10 @@ if ($SkipTrack -or $Seek) {
   $beforeSkip = (Get-Json "$FooJean/stream/timeline").streamTime
 
   if ($Seek) {
-    Invoke-WebRequest -Uri "$Beefweb/player" -Method POST -UseBasicParsing -TimeoutSec 10 `
-      -ContentType 'application/json' -Body "{`"position`": $SeekTo}" | Out-Null
+    Invoke-WebRequest -Uri "$FooJean/playback/seek" -Method POST -UseBasicParsing -TimeoutSec 10 `
+      -ContentType 'application/json' -Body "{`"seconds`": $SeekTo}" | Out-Null
   } else {
-    Invoke-WebRequest -Uri "$Beefweb/player/next" -Method POST -ContentType 'application/json' -UseBasicParsing -TimeoutSec 10 | Out-Null
+    Invoke-WebRequest -Uri "$FooJean/playback/next" -Method POST -ContentType 'application/json' -UseBasicParsing -TimeoutSec 10 | Out-Null
   }
 }
 
@@ -179,12 +178,12 @@ if ($SkipTrack -or $Seek) {
   }
 }
 
-# A client joining our answers to beefweb's has nothing to join on unless both name the file the same way.
-$nowPlaying = (Get-Json "$Beefweb/player?columns=%path%").player.activeItem.columns[0]
+# A client joins the timeline to GET /api/state on the path, which works only while both name the file the same way.
+$nowPlaying = (Get-Json "$FooJean/state").player.path
 if ($timeline.marks.Count -ge 1 -and $nowPlaying) {
   $mine = $timeline.marks[-1].path
-  Check "the timeline path matches beefweb's" ($mine -eq $nowPlaying) `
-    "timeline says '$mine', beefweb says '$nowPlaying'"
+  Check "the timeline path matches the player's" ($mine -eq $nowPlaying) `
+    "timeline says '$mine', state says '$nowPlaying'"
 }
 
 Write-Host ""

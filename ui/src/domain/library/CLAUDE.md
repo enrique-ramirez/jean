@@ -8,7 +8,7 @@ Where "the library" comes from, what plays a set of tracks, and why search resul
 
 **The accent on a sidebar icon means "this is playing" and nothing else.** Never tint it by selection.
 
-**Never mark a row as playing from `isScratchPlaylist && isCurrent`.** `isCurrent` outlives playback and never asks what the scratch is holding. A user's own playlist is the exception and keeps `isCurrent`, which is maintained by the player and means the same thing on every install.
+**A row is marked playing by comparing its id to `activeItem.playlistGuid`**, resolved through `useResolvedPlaylistId`, the same test for the scratch and for a user's own playlist. Nothing in `PlaylistInfo` says whether a playlist is playing.
 
 ## Two sources, one seam
 
@@ -29,7 +29,7 @@ Shapes and costs for every route are in [../../shared/api/README.md](../../share
 
 ### Rules that are not obvious
 
-- **Search filters client-side, always**, and an add is then addressed by explicit path and subsong. Mixing the two filters is the trap `../../shared/api/README.md` names.
+- **Search filters client-side, always**, and the set it finds is filled by library ordinal, against the `structure` the snapshot was read at.
 - **Row order is the snapshot's own**, which `contract/openapi.yaml` defines and bounds. A ref is an ordinal in it, and `positionOf` bisects on a set of refs ascending. **Never re-sort by a tag instead:** that is exact-string lexicographic, which splits an album whose artist is spelled two ways, the drift `sameTagValue()` exists to absorb but cannot fix once the order is wrong. A badly-foldered library gets more, smaller album groups; that is a degradation, not a requirement.
 - **`%path%` and `%subsong%` come off the poll's own document, for identity rather than display.** They are matched against a library row by suffix, for the reason `../../shared/api/README.md`, *Paths*, gives.
 
@@ -74,15 +74,15 @@ So handle the split by design:
 
 Searching is a client-side filter over the in-memory index: **no request, no playlist created, nothing written to the player.** Do not render it as a playlist in the sidebar, because that invites the expectation that it persists.
 
-**Playing is the exception, and it has to be.** beefweb plays from playlists and knows nothing else, so playing a result in place leaves the player carrying on from *there*: the next track is the library's next track, and with shuffle on a random one out of everything. So the results materialise into a real playlist at the moment someone asks to hear them, and playback happens inside it.
+**Playing is the exception, and it has to be.** foobar2000 plays from playlists and knows nothing else, so playing a result in place leaves the player carrying on from *there*: the next track is the library's next track, and with shuffle on a random one out of everything. So the results materialise into a real playlist at the moment someone asks to hear them, and playback happens inside it.
 
 - **One playlist, reused, not one per search.** Its title carries the kind and the label of whatever it holds, so the thing is self-describing wherever it surfaces, including foobar's own sidebar. Reusing it avoids id churn and means never deleting something currently playing.
 - **Resolved by its role, never by title.** A stored id is tried first and *checked against the role before it is trusted*, falling back to whichever playlist in the list carries it. `foo_jean` marks the scratch itself, so a rename, an adoption or a delete-and-recreate at the player is still found.
-- **Hidden from Jean, visible in foobar.** There is no hidden-playlist concept and beefweb cannot fake one, so it is filtered out of the sidebar, the palette, the library and the routing fallback, the last because playing a set makes it the *current* playlist, and landing there on next open would show those results stripped of the search that made them. **Reordering still has to count the hidden row**: the player orders the real list, so a drop position among visible rows has to be translated through whichever playlist occupies it.
+- **Hidden from Jean, visible in foobar.** foobar2000 has no hidden-playlist concept, so it is filtered out of the sidebar, the palette, the library and the routing fallback, the last because playing a set makes it the *current* playlist, and landing there on next open would show those results stripped of the search that made them. **Reordering still has to count the hidden row**: the player orders the real list, so a drop position among visible rows has to be translated through whichever playlist occupies it.
 - **Lazy.** Nothing is written while typing or refining, and a second play of the same set reuses what is there.
 - **The playlist is how a search survives a reload and reaches another device.** The query is in the title and every client can see the player's playlists, so reading it costs nothing and does not touch the library.
-- **Dismissing the search empties it, unless the player is on it.** The guard is gated on `playbackState`, not `isCurrent`, which stays pointing at the last playlist played from long after playback stopped and would leave the scratch protected forever. **A GUID `useResolvedPlaylistId` has not yet resolved reads as still playing**: the guard cannot yet tell the scratch isn't the one on screen, so it leaves it alone until it can.
-- **Playing a library set asks whether `foo_jean` can be reached, not what beefweb's `changePlaylists` permits.** The scratch playlist fills through the component's own route rather than beefweb's. A playlist route is unaffected either way: its rows are already in a playlist.
+- **Dismissing the search empties it, unless the player is on it.** The guard reads `playbackState` directly rather than trusting the resolved playlist id alone, since a resolved id says nothing about whether the player has actually stopped. **A GUID `useResolvedPlaylistId` has not yet resolved reads as still playing**: the guard cannot yet tell the scratch isn't the one on screen, so it leaves it alone until it can.
+- **Playing a library set asks whether `foo_jean` can be reached and lets Jean control playback, never whether it lets Jean write playlists.** The scratch playlist is the component's own and fills through its own route. A playlist route is unaffected either way: its rows are already in a playlist.
 - **The scratch playlist's own title can lag the fill landing on it.** `foo_jean` retitles the playlist for the view being asked for before it knows whether that fill will be accepted, so a refused fill can leave the live title naming a view the playlist does not hold, and a poll landing in between sees exactly that. `useScratchPlaylist.ts` keeps `landedTitle`, the title of the last fill this client watched land, and every reader of what the scratch holds trusts it over the playlist's own title. A device that filled nothing itself has no `landedTitle` of its own and reads the live title instead, which is the only account another device's fill leaves behind.
 
 Emptying a playing playlist leaves the track playing but detached, which is harmless only because a play always follows immediately.

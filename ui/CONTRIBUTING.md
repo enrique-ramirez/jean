@@ -2,7 +2,7 @@
 
 How to write code in this repo. To *use* Jean, read the [README](../README.md).
 
-Four other documents, and they do not overlap: [ARCHITECTURE.md](./ARCHITECTURE.md) is how the pieces fit and why the boundaries sit where they do; [src/shared/api/README.md](src/shared/api/README.md) is what beefweb and `foo_jean` return; [test/README.md](./test/README.md) is the suite and the fake player; [CLAUDE.md](../CLAUDE.md) is what a coding agent cannot infer from the code, with one beside each part of the app for what is local to it.
+Four other documents, and they do not overlap: [ARCHITECTURE.md](./ARCHITECTURE.md) is how the pieces fit and why the boundaries sit where they do; [src/shared/api/README.md](src/shared/api/README.md) is what `foo_jean` returns; [test/README.md](./test/README.md) is the suite and the fake player; [CLAUDE.md](../CLAUDE.md) is what a coding agent cannot infer from the code, with one beside each part of the app for what is local to it.
 
 ## 1. The development loop
 
@@ -18,6 +18,8 @@ Point it at a player with `FOO_JEAN_URL`, in the environment or in `.env.local` 
 ```sh
 FOO_JEAN_URL=http://<player-host>:8881 pnpm dev
 ```
+
+A player behind HTTPS works too, `FOO_JEAN_URL=https://<player-host>`. Node trusts only its own bundled certificate authorities unless told otherwise, so `pnpm dev` starts it with `--use-system-ca`, and a certificate the operating system trusts, a private CA included, is accepted by the proxy as well.
 
 The dev server binds on the LAN (`host: true`), so a phone can load it and hit the same proxy. The port is `strictPort`, so it is predictable: a phone typing the address or a bookmark does not go looking for whichever port happened to be free.
 
@@ -56,7 +58,7 @@ pnpm sync-kit       # refresh .claude/ from the ai-engineering kit
 
 ```
 src/
-  shared/     knows nothing about Jean. api/ (beefweb client + wire types), ui/,
+  shared/     knows nothing about Jean. api/ (`foo_jean` client + wire types), ui/,
               lib/, hooks/, keyboard/, styles/
   domain/     what Jean is about, as data and behaviour with no route of its own
     track/    rows, refs, the source seam, the virtualised list machinery
@@ -108,7 +110,7 @@ The standard is one thing: control complexity so a person can read the result. C
 
 ## 7. Comments
 
-Write a comment when the code is correct **because of something outside this repository**, and name that thing: what beefweb, foobar2000, DeaDBeeF, `foo_jean`, a browser or a library actually does. Every other claim a reader can check by reading; that one they cannot.
+Write a comment when the code is correct **because of something outside this repository**, and name that thing: what foobar2000, `foo_jean`, a browser or a library actually does. Every other claim a reader can check by reading; that one they cannot.
 
 Everything else that seems to want a sentence is a name you have not found yet, a function you have not extracted, or a fact that belongs in a document.
 
@@ -122,7 +124,7 @@ Everything else that seems to want a sentence is a name you have not found yet, 
 | they get it right | verdict |
 |---|---|
 | from the code | it was never needed |
-| only because they happen to know beefweb, or how Safari handles it | the fact is real; it belongs in the docs |
+| only because they happen to know foobar2000, or how Safari handles it | the fact is real; it belongs in the docs |
 | they cannot get it at all | write the comment |
 
 `src/` should be near zero. An exception is allowed, and should be rare enough that meeting one is a surprise. `.claude/agents/comment-reaper.md` runs that test with an agent that has not seen the file.
@@ -133,7 +135,7 @@ Everything else that seems to want a sentence is a name you have not found yet, 
 
 Documentation states the current design and nothing else. No history: what something used to be, why it changed, or what was rejected belongs in git rather than in a file. The one exception is a trap a reader would actively revert into. Write that as an imperative rule, not as a story. No personal detail either: no names, machines, hostnames, addresses or real library paths, in prose, comments or test data. Use placeholders. Public repository URLs are fine.
 
-**No measurements.** A measured number ties Jean to one library on one machine and then ships to everyone. Record the constraint a measurement established, such as "beefweb hangs up on a body over 1 MiB" or "there is no way to ask for a thumbnail", and never the measurement itself.
+**No measurements.** A measured number ties Jean to one library on one machine and then ships to everyone. Record the constraint a measurement established, such as "under *Playback follows cursor* foobar2000 advances through the focused playlist, not the playing one" or "there is no way to ask for a thumbnail", and never the measurement itself.
 
 Never hard-wrap prose. One paragraph is one line, however long; editors wrap.
 

@@ -136,8 +136,6 @@ const held = (over: Partial<PlayerState> = {}): PlayerState => ({
 		index: 3,
 		path: "/music/Other/Album/03 Three.flac",
 		playlistGuid: "8c4b4a3e-6f1e-4d2a-9d55-5f6d5b0a1c22",
-		playlistId: "p7",
-		playlistIndex: 1,
 		position: 99,
 		subsong: 2,
 	},
@@ -145,10 +143,7 @@ const held = (over: Partial<PlayerState> = {}): PlayerState => ({
 		name: "another player",
 		version: "0.0",
 	},
-	permissions: {
-		changeOutput: true,
-	},
-	jeanPlaybackMode: "repeatOne",
+	playbackMode: "repeatOne",
 	playbackState: "stopped",
 	volume: { type: "linear", min: 0, max: 100, value: 80, isMuted: true },
 	...over,
@@ -410,9 +405,6 @@ test("a tick draws the player's name, the fader's range and what the install per
 		value: -6,
 		isMuted: false,
 	});
-	assert.deepEqual(player?.permissions, {
-		changeOutput: false,
-	});
 	assert.equal(player?.info.name, "foobar2000");
 	assert.equal(player?.info.version, "2.24.5");
 });
@@ -442,7 +434,7 @@ test("a tick overwrites everything its document speaks for, whoever put the prev
 	const player = playerIn(poll.client);
 
 	assert.equal(player?.playbackState, "playing");
-	assert.equal(player?.jeanPlaybackMode, "shuffleTracks");
+	assert.equal(player?.playbackMode, "shuffleTracks");
 	assert.deepEqual(player?.activeItem.columns, [NAME.artist, NAME.title]);
 	assert.equal(player?.activeItem.path, DISC_IMAGE);
 	assert.equal(player?.activeItem.subsong, DISC_SUBSONG);
@@ -457,12 +449,9 @@ test("a tick overwrites everything its document speaks for, whoever put the prev
 		value: -6,
 		isMuted: false,
 	});
-	assert.deepEqual(player?.permissions, {
-		changeOutput: false,
-	});
 });
 
-test("a tick writes what its document carries and leaves the rest of the snapshot standing", async (t) => {
+test("a tick writes a name its document leaves empty, rather than holding the last one", async (t) => {
 	const poll = harness(t, () => document200("playing"), CAPABILITIES);
 	await poll.settle();
 	putInKey(poll.client, held());
@@ -474,11 +463,8 @@ test("a tick writes what its document carries and leaves the rest of the snapsho
 
 	const player = playerIn(poll.client);
 
-	// The document carries `title` and `artist` on every tick, even when both are `null`, so the name
-	// is written rather than held: `playlistId` is the field this test is really about, since nothing
-	// in `mergePlayer` sets it from the document at all.
+	// The document carries `title` and `artist` on every tick, even when both are `null`.
 	assert.deepEqual(player?.activeItem.columns, ["", ""]);
-	assert.equal(player?.activeItem.playlistId, "p7");
 
 	assert.equal(player?.playbackState, "paused");
 	assert.equal(player?.activeItem.position, 30);
@@ -520,8 +506,7 @@ test("a tick reporting no place drops the place, rather than leaving the last on
 
 test("a tick before capabilities have landed reports the level with no range to draw it in", async (t) => {
 	// `GET /api/capabilities` is read once and the poll may tick first. A guessed range
-	// puts the thumb in the wrong place along the fader's whole length, and a guessed
-	// permission greys out a control this install may well allow.
+	// puts the thumb in the wrong place along the fader's whole length.
 	const poll = harness(t, () => document200("playing", TAG, { volume: -6 }));
 	await poll.settle();
 	await poll.ticks(1);
@@ -530,7 +515,4 @@ test("a tick before capabilities have landed reports the level with no range to 
 
 	assert.equal(player?.volume.value, -6);
 	assert.equal(volumePercent(player?.volume), 0);
-	assert.deepEqual(player?.permissions, {
-		changeOutput: true,
-	});
 });

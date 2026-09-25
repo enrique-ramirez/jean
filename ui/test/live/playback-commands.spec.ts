@@ -1,9 +1,15 @@
-import { COMPONENT, component, removePlaylist } from "./component.ts";
-import { api, expect, post, test } from "./fixtures.ts";
+import {
+	COMPONENT,
+	component,
+	type PlaybackMode,
+	player,
+	removePlaylist,
+	send,
+} from "./component.ts";
+import { expect, test } from "./fixtures.ts";
 
-// Every playback command sent to `foo_jean` on a real foobar2000, and read back off beefweb,
-// which reports the same player as a third party, so the expected value is never the component's
-// own answer. Beefweb also sets up and puts back what the commands move, for the same reason.
+// Every playback command sent to `foo_jean` on a real foobar2000, each read back from
+// `GET /api/state` rather than from the command's own answer.
 //
 // Plays nothing unless the player is already muted. Every level and mute check runs stopped.
 
@@ -16,54 +22,20 @@ const TIMED_PREFLIGHTS = 5;
 const SEEK_TO_S = 30;
 const SEEK_BY_S = -10;
 
-// foobar2000's own names for its playback orders, which beefweb lists in the order this install
-// numbers them. The component keeps its own copy of this table; this one is the reader's.
-const FOOBAR_ORDER = {
-	inOrder: "Default",
-	repeatAll: "Repeat (playlist)",
-	repeatOne: "Repeat (track)",
-	random: "Random",
-	shuffleTracks: "Shuffle (tracks)",
-	shuffleAlbums: "Shuffle (albums)",
-	shuffleFolders: "Shuffle (folders)",
-} as const;
-type Mode = keyof typeof FOOBAR_ORDER;
-const MODES = Object.keys(FOOBAR_ORDER) as Mode[];
+const MODES: readonly PlaybackMode[] = [
+	"inOrder",
+	"repeatAll",
+	"repeatOne",
+	"random",
+	"shuffleTracks",
+	"shuffleAlbums",
+	"shuffleFolders",
+];
 
-const origin = () => {
-	const live = process.env.LIVE;
-	if (!live) throw new Error("LIVE must name the url the app is served at.");
-	return new URL(live).origin;
+const setMode = async (mode: PlaybackMode) => {
+	await send("/api/playback/mode", { mode });
+	await expect.poll(async () => (await player()).playbackMode).toBe(mode);
 };
-
-interface BeefwebPlayer {
-	playbackState: "playing" | "paused" | "stopped";
-	playbackMode: number;
-	playbackModes: string[];
-	activeItem: { playlistId: string; index: number; position: number };
-	volume: { value: number; isMuted: boolean; min: number; max: number };
-}
-
-const beefweb = () =>
-	api<{ player: BeefwebPlayer }>(origin(), "/player").then(
-		(answer) => answer.player,
-	);
-
-const setOrderAtBeefweb = async (name: string) => {
-	const { playbackModes } = await beefweb();
-	await post(origin(), "/player", {
-		options: [{ id: "playbackOrder", value: playbackModes.indexOf(name) }],
-	});
-	await expect
-		.poll(async () => (await beefweb()).playbackMode)
-		.toBe(playbackModes.indexOf(name));
-};
-
-const command = (path: string, body?: unknown) =>
-	component<void>(path, {
-		method: "POST",
-		...(body === undefined ? {} : { body: JSON.stringify(body) }),
-	});
 
 const sendRaw = (path: string, body?: unknown) =>
 	fetch(`${COMPONENT()}${path}`, {
@@ -87,24 +59,22 @@ const median = (values: number[]) => {
 const ms = (value: number) => `${value.toFixed(1)} ms`;
 
 const requireMuted = async () => {
-	if (!(await beefweb()).volume.isMuted)
+	if (!(await player()).muted)
 		throw new Error("Mute the player first: this test plays real audio.");
 };
 
 const requireStopped = async () => {
-	await command("/api/playback/stop");
-	await expect
-		.poll(async () => (await beefweb()).playbackState)
-		.toBe("stopped");
+	await send("/api/playback/stop");
+	await expect.poll(async () => (await player()).playback).toBe("stopped");
 };
 
-const untilLevel = (value: number, isMuted: boolean) =>
+const untilLevel = (value: number, muted: boolean) =>
 	expect
 		.poll(async () => {
-			const { volume } = await beefweb();
-			return { value: volume.value, isMuted: volume.isMuted };
+			const now = await player();
+			return { value: now.volume, muted: now.muted };
 		})
-		.toEqual({ value, isMuted });
+		.toEqual({ value, muted });
 
 // A real listener, held open and drained the way a browser would, so the component counts it
 // and its output hold acts on it. The stream answers while the player is stopped.
@@ -131,33 +101,32 @@ const listen = async () => {
 		stopping.abort();
 		await draining;
 		await expect.poll(async () => (await listeners()).connections).toBe(0);
-		await command("/api/stream/leave", { deviceId });
+		await send("/api/stream/leave", { deviceId });
 	};
 };
 
 test.describe.configure({ mode: "serial" });
 
 let probe = "";
-let probeAtBeefweb = "";
 let ownerLevel: number | null = null;
-let ownerOrder: number | null = null;
+let ownerMode: PlaybackMode | null = null;
 
-test.beforeAll(async () => {
+test.beforeAll(async ({ install }) => {
 	test.setTimeout(120_000);
-	const player = await beefweb();
-	if (player.playbackState !== "stopped" || !player.volume.isMuted)
+	const before = await player();
+	if (before.playback !== "stopped" || !before.muted)
 		throw new Error(
 			"Stop and mute the player first: these tests play real audio.",
 		);
-	ownerOrder = player.playbackMode;
+	ownerMode = before.playbackMode;
 
 	// A stopped player makes no sound, so unmuting it is the one way to read the level the owner
 	// muted from.
-	await post(origin(), "/player", { isMuted: false });
-	await expect.poll(async () => (await beefweb()).volume.isMuted).toBe(false);
-	ownerLevel = (await beefweb()).volume.value;
-	await post(origin(), "/player", { isMuted: true });
-	await expect.poll(async () => (await beefweb()).volume.isMuted).toBe(true);
+	await send("/api/volume", { muted: false });
+	await expect.poll(async () => (await player()).muted).toBe(false);
+	ownerLevel = (await player()).volume;
+	await send("/api/volume", { muted: true });
+	await expect.poll(async () => (await player()).muted).toBe(true);
 
 	const stale = (
 		await component<{ playlists: { id: string; title: string }[] }>(
@@ -166,118 +135,86 @@ test.beforeAll(async () => {
 	).playlists.filter((entry) => entry.title === PROBE);
 	for (const entry of stale) await removePlaylist(entry.id);
 
-	const { libraryItems } = await api<{
-		libraryItems: { items: { columns: string[] }[] };
-	}>(
-		origin(),
-		`/library/items?columns=${encodeURIComponent("%path%,%length_seconds%")}`,
-	);
-	const long = libraryItems.items
-		.filter(({ columns: [, seconds] }) => Number(seconds) >= LONG_ENOUGH_S)
+	const ordinals = install.tracks
+		.map((track, ordinal) => ({ ordinal, seconds: Number(track.seconds) }))
+		.filter((track) => track.seconds >= LONG_ENOUGH_S)
 		.slice(0, PROBE_ROWS)
-		.map(({ columns: [path] }) => path);
-	if (long.length < PROBE_ROWS)
+		.map((track) => track.ordinal);
+	if (ordinals.length < PROBE_ROWS)
 		throw new Error(
 			`the library holds fewer than ${PROBE_ROWS} tracks of ${LONG_ENOUGH_S} s`,
 		);
 
-	probe = (
-		await component<{ id: string }>("/api/playlists", {
+	const created = await component<{ id: string; itemCount: number }>(
+		"/api/playlists",
+		{
 			method: "POST",
-			body: JSON.stringify({ title: PROBE }),
-		})
-	).id;
-	// The component adds library rows by ordinal only, so the paths go in through beefweb.
-	// Deleting through beefweb is not safe, which is why the probe goes out through the component.
-	const { playlists } = await api<{
-		playlists: { id: string; title: string; itemCount: number }[];
-	}>(origin(), "/playlists");
-	const found = playlists.find((entry) => entry.title === PROBE);
-	if (!found) throw new Error(`beefweb does not list ${PROBE}`);
-	probeAtBeefweb = found.id;
-	await post(origin(), `/playlists/${probeAtBeefweb}/items/add`, {
-		items: long,
-	});
-	await expect
-		.poll(async () => {
-			const { playlists: now } = await api<{
-				playlists: { id: string; itemCount: number }[];
-			}>(origin(), "/playlists");
-			return now.find((entry) => entry.id === probeAtBeefweb)?.itemCount;
-		})
-		.toBe(PROBE_ROWS);
+			body: JSON.stringify({
+				title: PROBE,
+				structure: install.structure,
+				ordinals,
+			}),
+		},
+	);
+	probe = created.id;
+	expect(created.itemCount).toBe(PROBE_ROWS);
 });
 
 test.afterAll(async () => {
-	await post(origin(), "/player/stop");
-	await expect
-		.poll(async () => (await beefweb()).playbackState)
-		.toBe("stopped");
+	await send("/api/playback/stop");
+	await expect.poll(async () => (await player()).playback).toBe("stopped");
 	if (probe) await removePlaylist(probe);
-	if (ownerOrder !== null)
-		await post(origin(), "/player", {
-			options: [{ id: "playbackOrder", value: ownerOrder }],
-		});
-	if (ownerLevel !== null)
-		await post(origin(), "/player", { volume: ownerLevel });
-	const after = await beefweb();
+	if (ownerMode !== null) await setMode(ownerMode);
+	if (ownerLevel !== null) await send("/api/volume", { value: ownerLevel });
+	const after = await player();
 	console.log(
-		`[017] put back: ${after.playbackState}, ${after.volume.value} dB, muted ${after.volume.isMuted}, playbackMode ${after.playbackMode} (${after.playbackModes[after.playbackMode]})`,
+		`[017] put back: ${after.playback}, ${after.volume} dB, muted ${after.muted}, playbackMode ${after.playbackMode}`,
 	);
 });
 
 test("play, play-pause both ways, next, previous, an absolute and a relative seek and stop each land on the player", async () => {
 	await requireMuted();
-	await setOrderAtBeefweb(FOOBAR_ORDER.inOrder);
+	await setMode("inOrder");
 	const at = async () => {
-		const { playbackState, activeItem } = await beefweb();
-		return {
-			playbackState,
-			playlistId: activeItem.playlistId,
-			index: activeItem.index,
-		};
+		const { playback, playingLocation } = await player();
+		return { playback, playingLocation };
 	};
 	const playingRow = (index: number) =>
-		expect
-			.poll(at, { timeout: 30_000 })
-			.toEqual({ playbackState: "playing", playlistId: probeAtBeefweb, index });
+		expect.poll(at, { timeout: 30_000 }).toEqual({
+			playback: "playing",
+			playingLocation: { playlistId: probe, index },
+		});
 
-	await command(`/api/playlists/${probe}/items/0/play`);
+	await send(`/api/playlists/${probe}/items/0/play`);
 	await playingRow(0);
 
-	await command("/api/playback/play-pause");
-	await expect.poll(async () => (await beefweb()).playbackState).toBe("paused");
-	await command("/api/playback/play-pause");
-	await expect
-		.poll(async () => (await beefweb()).playbackState)
-		.toBe("playing");
+	await send("/api/playback/play-pause");
+	await expect.poll(async () => (await player()).playback).toBe("paused");
+	await send("/api/playback/play-pause");
+	await expect.poll(async () => (await player()).playback).toBe("playing");
 
-	await command("/api/playback/next");
+	await send("/api/playback/next");
 	await playingRow(1);
-	await command("/api/playback/previous");
+	await send("/api/playback/previous");
 	await playingRow(0);
 
-	await command("/api/playback/play-pause");
-	await expect.poll(async () => (await beefweb()).playbackState).toBe("paused");
-	await command("/api/playback/seek", { seconds: SEEK_TO_S });
+	await send("/api/playback/play-pause");
+	await expect.poll(async () => (await player()).playback).toBe("paused");
+	await send("/api/playback/seek", { seconds: SEEK_TO_S });
 	await expect
-		.poll(async () => Math.round((await beefweb()).activeItem.position))
+		.poll(async () => Math.round((await player()).position.seconds))
 		.toBe(SEEK_TO_S);
-	await command("/api/playback/seek", { relativeSeconds: SEEK_BY_S });
+	await send("/api/playback/seek", { relativeSeconds: SEEK_BY_S });
 	await expect
-		.poll(async () => Math.round((await beefweb()).activeItem.position))
+		.poll(async () => Math.round((await player()).position.seconds))
 		.toBe(SEEK_TO_S + SEEK_BY_S);
 
-	await command("/api/playback/stop");
-	await expect
-		.poll(async () => (await beefweb()).playbackState)
-		.toBe("stopped");
+	await send("/api/playback/stop");
+	await expect.poll(async () => (await player()).playback).toBe("stopped");
 
 	// From a stop, whether play-pause starts anything is foobar2000's call, so it is recorded.
-	await command("/api/playback/play-pause");
-	await expect
-		.poll(async () => (await beefweb()).playbackState)
-		.not.toBe("paused");
+	await send("/api/playback/play-pause");
+	await expect.poll(async () => (await player()).playback).not.toBe("paused");
 	const fromStop = await at();
 	console.log(`[017] play-pause from a stop: ${JSON.stringify(fromStop)}`);
 	await requireStopped();
@@ -285,10 +222,10 @@ test("play, play-pause both ways, next, previous, an absolute and a relative see
 
 test("a held skip key is twenty nexts in a row, every one taken with a 204 and none told to retry, and the player still answers after", async () => {
 	await requireMuted();
-	await setOrderAtBeefweb(FOOBAR_ORDER.repeatAll);
-	await command(`/api/playlists/${probe}/items/0/play`);
+	await setMode("repeatAll");
+	await send(`/api/playlists/${probe}/items/0/play`);
 	await expect
-		.poll(async () => (await beefweb()).playbackState, { timeout: 30_000 })
+		.poll(async () => (await player()).playback, { timeout: 30_000 })
 		.toBe("playing");
 
 	const answers: { status: number; retryAfter: string | null }[] = [];
@@ -308,30 +245,26 @@ test("a held skip key is twenty nexts in a row, every one taken with a 204 and n
 	);
 	expect(answers.filter((answer) => answer.retryAfter !== null)).toEqual([]);
 	await expect
-		.poll(async () => (await beefweb()).playbackState, { timeout: 30_000 })
+		.poll(async () => (await player()).playback, { timeout: 30_000 })
 		.toBe("playing");
 	const status = await fetch(`${COMPONENT()}/api/status`);
 	expect(status.status).toBe(200);
 	await status.text();
 
 	console.log(
-		`[017] held skip: ${HELD_SKIPS} nexts in ${ms(took)}, landed on row ${(await beefweb()).activeItem.index} (${HELD_SKIPS % PROBE_ROWS} if every one counted, from row 0 of ${PROBE_ROWS} on repeat)`,
+		`[017] held skip: ${HELD_SKIPS} nexts in ${ms(took)}, landed on row ${(await player()).playingLocation?.index} (${HELD_SKIPS % PROBE_ROWS} if every one counted, from row 0 of ${PROBE_ROWS} on repeat)`,
 	);
 	await requireStopped();
 });
 
-test("each of the seven playback modes set by name lands on the ordinal beefweb gives that order", async () => {
-	const { playbackModes } = await beefweb();
-	await setOrderAtBeefweb(FOOBAR_ORDER[MODES[MODES.length - 1]]);
+test("each of the seven playback modes set by name reads back as that mode", async () => {
+	await setMode(MODES[MODES.length - 1]);
 
 	for (const mode of MODES) {
-		await command("/api/playback/mode", { mode });
+		await send("/api/playback/mode", { mode });
 		await expect
-			.poll(async () => (await beefweb()).playbackMode, { message: mode })
-			.toBe(playbackModes.indexOf(FOOBAR_ORDER[mode]));
-		console.log(
-			`[017] mode ${mode}: beefweb reads ${(await beefweb()).playbackMode} (${FOOBAR_ORDER[mode]})`,
-		);
+			.poll(async () => (await player()).playbackMode, { message: mode })
+			.toBe(mode);
 	}
 });
 
@@ -339,32 +272,30 @@ test("a level set, a step up, a step down, a mute and an unmute each land on the
 	await requireStopped();
 	const written = -30;
 
-	await command("/api/volume", { value: written });
+	await send("/api/volume", { value: written });
 	await untilLevel(written, false);
 
-	await command("/api/volume", { step: "up" });
+	await send("/api/volume", { step: "up" });
 	await expect
-		.poll(async () => (await beefweb()).volume.value)
+		.poll(async () => (await player()).volume)
 		.toBeGreaterThan(written);
-	const up = (await beefweb()).volume.value;
+	const up = (await player()).volume;
 
-	await command("/api/volume", { step: "down" });
-	await expect
-		.poll(async () => (await beefweb()).volume.value)
-		.toBeLessThan(up);
-	const down = (await beefweb()).volume.value;
+	await send("/api/volume", { step: "down" });
+	await expect.poll(async () => (await player()).volume).toBeLessThan(up);
+	const down = (await player()).volume;
 
-	await command("/api/volume", { muted: true });
-	await expect.poll(async () => (await beefweb()).volume.isMuted).toBe(true);
+	await send("/api/volume", { muted: true });
+	await expect.poll(async () => (await player()).muted).toBe(true);
 
-	await command("/api/volume", { muted: false });
+	await send("/api/volume", { muted: false });
 	await untilLevel(down, false);
 
 	console.log(
-		`[017] level: set ${written} dB, stepped up to ${up}, down to ${down}, muted, unmuted back to ${(await beefweb()).volume.value}`,
+		`[017] level: set ${written} dB, stepped up to ${up}, down to ${down}, muted, unmuted back to ${(await player()).volume}`,
 	);
-	await command("/api/volume", { muted: true });
-	await expect.poll(async () => (await beefweb()).volume.isMuted).toBe(true);
+	await send("/api/volume", { muted: true });
+	await expect.poll(async () => (await player()).muted).toBe(true);
 });
 
 test("one command's round trip, with its preflight timed apart", async () => {
@@ -387,7 +318,7 @@ test("one command's round trip, with its preflight timed apart", async () => {
 		const response = await fetch(`${COMPONENT()}/api/volume`, {
 			method: "OPTIONS",
 			headers: {
-				Origin: origin(),
+				Origin: COMPONENT(),
 				"Access-Control-Request-Method": "POST",
 				"Access-Control-Request-Headers": "authorization, content-type",
 			},
@@ -395,7 +326,9 @@ test("one command's round trip, with its preflight timed apart", async () => {
 		await response.text();
 		preflights.push(performance.now() - from);
 		expect(response.ok).toBe(true);
-		expect(response.headers.get("Access-Control-Allow-Origin")).toBe(origin());
+		expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+			COMPONENT(),
+		);
 	}
 
 	console.log(
@@ -410,15 +343,15 @@ test("with a listener attached, a level written through the component lands, the
 	await requireStopped();
 	expect((await listeners()).connections).toBe(0);
 
-	await command("/api/volume", { value: level });
+	await send("/api/volume", { value: level });
 	await untilLevel(level, false);
 
 	const leave = await listen();
 	try {
-		await expect.poll(async () => (await beefweb()).volume.isMuted).toBe(true);
+		await expect.poll(async () => (await player()).muted).toBe(true);
 		await expect.poll(async () => (await listeners()).playerMuted).toBe(true);
 
-		await command("/api/volume", { value: written });
+		await send("/api/volume", { value: written });
 		await untilLevel(written, false);
 		await expect.poll(async () => (await listeners()).playerMuted).toBe(false);
 	} finally {
@@ -427,9 +360,9 @@ test("with a listener attached, a level written through the component lands, the
 
 	await untilLevel(written, false);
 	console.log(
-		`[017] hold: listener muted the player from ${level} dB, write of ${written} landed and cleared playerMuted, after leaving ${(await beefweb()).volume.value} dB muted ${(await beefweb()).volume.isMuted}`,
+		`[017] hold: listener muted the player from ${level} dB, write of ${written} landed and cleared playerMuted, after leaving ${(await player()).volume} dB muted ${(await player()).muted}`,
 	);
-	await command("/api/volume", { value: level });
+	await send("/api/volume", { value: level });
 	await untilLevel(level, false);
 });
 
@@ -438,18 +371,18 @@ test("with a listener attached, a hand mute after a level write is undone to the
 	const level = ownerLevel as number;
 	const written = level > -50 ? level - 10 : level + 10;
 	await requireStopped();
-	await command("/api/volume", { value: level });
+	await send("/api/volume", { value: level });
 	await untilLevel(level, false);
 
 	const leave = await listen();
 	try {
 		await expect.poll(async () => (await listeners()).playerMuted).toBe(true);
-		await command("/api/volume", { value: written });
+		await send("/api/volume", { value: written });
 		await untilLevel(written, false);
 		await expect.poll(async () => (await listeners()).playerMuted).toBe(false);
 
-		await command("/api/volume", { muted: true });
-		await expect.poll(async () => (await beefweb()).volume.isMuted).toBe(true);
+		await send("/api/volume", { muted: true });
+		await expect.poll(async () => (await player()).muted).toBe(true);
 		expect((await listeners()).playerMuted).toBe(false);
 	} finally {
 		await leave();
@@ -459,6 +392,6 @@ test("with a listener attached, a hand mute after a level write is undone to the
 	// back through foobar2000's mute toggle, which restores the written level instead.
 	await untilLevel(level, false);
 	console.log(
-		`[017] hold: hand mute at ${written} dB mid-listen came back as ${(await beefweb()).volume.value} dB after leaving`,
+		`[017] hold: hand mute at ${written} dB mid-listen came back as ${(await player()).volume} dB after leaving`,
 	);
 });

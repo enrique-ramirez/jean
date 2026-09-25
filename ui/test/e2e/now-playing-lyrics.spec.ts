@@ -188,11 +188,6 @@ test.describe("reading the lyric tag", () => {
 		await expect(panel).toContainText("Searched for, and found");
 		expect(await looksAt(page)).toEqual([2, 5, 10]);
 		expect(recheckColumnCounts(player)).toEqual([1, 1, 1]);
-		expect(
-			player.requests.filter(
-				(entry) => entry.path.split("?")[0] === "/api/query",
-			),
-		).toEqual([]);
 	});
 
 	test("a lyric that never arrives is looked for four times and then left alone", async ({

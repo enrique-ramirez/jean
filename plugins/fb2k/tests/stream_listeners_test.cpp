@@ -248,8 +248,6 @@ TEST_CASE("the roster says whether the player was silenced for these listeners")
     live.open(ticketFor(server, R"({"deviceId":"phone-1"})"));
     CHECK(rosterOf(server, 1)["playerMuted"] == true);
 
-    // A fader at the bottom looks the same either way through beefweb, so this is what
-    // tells a client which sentence to put next to it.
     holding = false;
     CHECK(roster(server)["playerMuted"] == false);
 }

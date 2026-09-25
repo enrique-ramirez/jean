@@ -2,7 +2,7 @@
 
 The `foo_jean` client, the wire types, and the one discovery both optional-component seams are fed from. Knows nothing about Jean.
 
-**[README.md](README.md) is the reference, and the traps live there rather than here.** Read its *Traps that cost time* section before writing anything that talks to beefweb, and its `foo_jean` half before touching discovery or the stream. [ARCHITECTURE.md](../../../ARCHITECTURE.md) has why discovery sits in this folder and what the two seams downstream of it guarantee.
+**[README.md](README.md) is the reference, and the traps live there rather than here.** Read it before writing anything that talks to `foo_jean`, and its *Capability detection* section before reading a field the player may not resolve. [ARCHITECTURE.md](../../../ARCHITECTURE.md) has why discovery sits in this folder and what the two seams downstream of it guarantee.
 
 **`discoverFooJean()` belongs here and not beside either consumer.** Tag writing is in `domain/track` and listening is in `domain/player`, tiers that may not import each other, and each running its own probe would send two capabilities calls to answer one question. `FooJeanState` describes the *component*, not either seam.
 
@@ -16,4 +16,4 @@ The `foo_jean` client, the wire types, and the one discovery both optional-compo
 
 **`foo_jean`'s types are generated from `contract/openapi.yaml`**, which is the contract: `pnpm types:api` writes `fooJeanSchema.d.ts` and it is committed, with no codegen step in `pnpm build`. `contract/README.md` is how the committed copy is kept honest.
 
-**`types.ts` is hand-written and is the contract for beefweb.** Deliberately not generated: beefweb's own OpenAPI document describes 0.10, and the parts Jean leans on hardest, the media library API and fields that are *absent* rather than empty, are either newer than it or not expressible in it. The fake player is checked against these same types, which is the point: a response shape drifting from what the app expects is the bug the suite exists to catch.
+**`types.ts` is hand-written, and is the shape the rest of the app reads the player through**: the playing track, a playlist, a track's address, once what the component answered has been mapped into them. The fake player is checked against the generated types and these same ones, which is the point: a response shape drifting from what the app expects is the bug the suite exists to catch.

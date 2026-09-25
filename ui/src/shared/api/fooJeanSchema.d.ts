@@ -57,7 +57,7 @@ export interface paths {
         put?: never;
         /**
          * Write metadata to one track.
-         * @description The player performs the write, through `metadb_io_v2`, so foobar2000's own database is current when this returns and a client re-reading the value through beefweb sees the new one.
+         * @description The player performs the write, through `metadb_io_v2`, so foobar2000's own database is current when this returns and the next read of the value, through this API or any other, sees the new one.
          *
          *     The track is named by exactly one of three addresses, and never by a filesystem path. The library form is `track` with `subsong`, the library-relative key `GET /artwork?track=` takes, resolved against the media library snapshot. The ordinal form is `ordinal` with `structure`, a position in that snapshot, which names one track where a relative path can name two. The playlist form is `playlist`, `index` and `structure`, one row of a playlist by position. Sending none of them, sending two, or sending a field of any with the wrong type is a `400`, the rule `POST /playlists/{id}/items` applies to `runs`, `bitset` and `ordinals`.
          *
@@ -180,7 +180,7 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -256,7 +256,7 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -298,7 +298,7 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -328,7 +328,7 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -366,7 +366,7 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -468,7 +468,7 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -960,7 +960,7 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -1094,7 +1094,7 @@ export interface paths {
         };
         /**
          * What is audible, in the stream's own clock.
-         * @description The player's reported position is not what a listener is hearing: the stream runs a second or two behind it, so a progress bar or lyrics driven from beefweb's `GET /player` run ahead of the audio. This route is how a client corrects that.
+         * @description The player's reported position is not what a listener is hearing: the stream runs a second or two behind it, so a progress bar or lyrics driven from `GET /state`'s `player.position` run ahead of the audio. This route is how a client corrects that.
          *
          *     `audio.currentTime` counts rendered audio: it advances only as sound leaves the speaker. The only unknown is the stream time of the first sample the element played, and it is recoverable:
          *
@@ -1335,9 +1335,9 @@ export interface components {
                 /** @description Stream time at which this track's audio began. */
                 at: number;
                 /**
-                 * @description A plain absolute local path, the same form beefweb reports for `%path%` and `GET /state`'s `player.path` carries, so a client can join the three on equality. No route here is addressed by it.
+                 * @description A plain absolute local path, the form foobar2000 evaluates `%path%` to and `GET /state`'s `player.path` carries, so a client can join the two on equality. No route here is addressed by it.
                  *
-                 *     Not the form the player stores: on a portable install foobar2000's canonical path is `file-relative://..\Music\x.mp3` for the file beefweb calls `C:\Music\x.mp3`. This route resolves it.
+                 *     Not the form the player stores: on a portable install foobar2000's canonical path for `C:\Music\x.mp3` is `file-relative://..\Music\x.mp3`. This route resolves it.
                  */
                 path: string;
                 subsong: number;
@@ -1381,7 +1381,7 @@ export interface components {
             /** @description `maxConcurrentStreams` from `config.json`. */
             maxConnections: number;
             /**
-             * @description Whether the player is silent *because somebody is listening*, as opposed to muted by hand. foobar2000 has no mute flag — mute is the volume at -100 dB — so a client reading beefweb sees a fader at the bottom either way, and this is what tells it which sentence to put next to it.
+             * @description Whether the player is silent *because somebody is listening*, as opposed to muted by hand. foobar2000 has no mute flag, only a volume at -100 dB, so a client reading the volume alone sees a fader at the bottom either way, and this is what tells it which sentence to put next to it.
              *
              *     False the moment anybody unmutes the player from either end: the hold never argues, and stays released until nobody is listening.
              */
@@ -1524,7 +1524,7 @@ export interface components {
             /**
              * @description What this component stored when it created the playlist, or `null` for every playlist it did not create, including autoplaylists made in the player. This is how a client tells a folder it manages from an autoplaylist that was already there.
              *
-             *     It is kept as a foobar2000 playlist property, the same mechanism beefweb uses for its ids, so it travels with the playlist through renames and restarts and is removed with the playlist.
+             *     It is kept as a foobar2000 playlist property, so it travels with the playlist through renames and restarts and is removed with the playlist.
              */
             managed: components["schemas"]["ManagedAutoPlaylist"] | null;
         };
@@ -1988,7 +1988,7 @@ export interface components {
         };
         QueuePlaylistRowsRequest: {
             /**
-             * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+             * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
              * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
              */
             playlistId: string;
@@ -2962,7 +2962,7 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -3008,7 +3008,7 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -3113,7 +3113,7 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -3158,7 +3158,7 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -3198,7 +3198,7 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -3259,7 +3259,7 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -3298,7 +3298,7 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -3352,7 +3352,7 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -3503,7 +3503,7 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;
@@ -4387,7 +4387,7 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces. Not beefweb's id.
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
                  * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                  */
                 id: string;

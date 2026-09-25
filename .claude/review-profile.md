@@ -54,7 +54,7 @@ The `useExhaustiveDependencies` suppressions are all one shape, a dependency tha
 | `README.md` | what Jean is and how to use it. A pitch, not a specification |
 | `ui/CONTRIBUTING.md` | how to write code here |
 | `ui/ARCHITECTURE.md` | how the pieces fit, where state lives, why the boundaries sit there |
-| `ui/src/shared/api/README.md` | what beefweb and `foo_jean` return, and the gotchas a reader could not infer |
+| `ui/src/shared/api/README.md` | what `foo_jean` returns, and the gotchas a reader could not infer |
 | `ui/test/README.md` | the suite and the fake player |
 | `CLAUDE.md` | the root one is project-wide; one beside a module is local to it |
 

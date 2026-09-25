@@ -21,7 +21,7 @@ struct StreamMark {
 
 // What is audible, expressed in the stream's own clock.
 //
-// A listener cannot get this from the player: beefweb reports where playback is now, and
+// A listener cannot get this from the player: the player reports where playback is now, and
 // the stream a browser is rendering is a second or two behind that. The client turns
 // `audio.currentTime` into a track position through these marks.
 class Timeline {

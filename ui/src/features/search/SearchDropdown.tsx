@@ -59,8 +59,7 @@ const joined = (...parts: (string | null | false)[]) =>
  * The kinds differ by what leads the row and by what the second line answers, and by nothing else.
  *
  * Every cover is asked for by identity as well as by address: the album a query names and a track on
- * it are two rows in one panel pointing at one sleeve, and beefweb addresses that sleeve differently
- * for each of them.
+ * it are two rows in one panel pointing at one sleeve.
  */
 function faceOf(
 	suggestion: Suggestion,

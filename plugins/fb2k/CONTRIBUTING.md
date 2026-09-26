@@ -75,7 +75,7 @@ A short list on purpose. Each of these is unreachable from the suite by nature r
 
 | | how it is actually verified |
 |---|---|
-| Everything in `src/fb2k/` | compiled on the build machine. `scripts/verify-tag-write.ps1`, `verify-stream.ps1` and `verify-listeners.ps1` drive three of its paths against a real player |
+| Everything in `src/fb2k/` | compiled on the build machine. `scripts/verify-tag-write.ps1`, `verify-stream.ps1`, `verify-listeners.ps1` and `verify-library.ps1` drive four of its paths against a real player |
 | A `setsockopt` failure, and the refusal to listen that follows | neither can be induced from a test. The code path is compiled on both platforms and has never run |
 | `MainThreadQueue::close()`, and abandoning work at shutdown | measured on the player: quitting with requests in flight, which without it waits out a timeout per call. The log says how many it gave up |
 | The AAC encoder | Windows-only and unreachable from the suite at all. `verify-stream.ps1` drives it |

@@ -117,7 +117,7 @@ json queuedTrackOf(const QueuedTrack& track) {
 }
 
 json playerFields(const PlayerState& player, std::chrono::steady_clock::time_point now,
-                  uint64_t queueRevision, uint64_t playlistsRevision) {
+                  PlayerRevisions revisions) {
     return json{{"playback", playbackName(player.playback)},
                 {"path", player.path},
                 {"subsong", player.subsong},
@@ -134,8 +134,9 @@ json playerFields(const PlayerState& player, std::chrono::steady_clock::time_poi
                 {"playingLocation", playingLocationOf(player.playingLocation)},
                 {"currentPlaylistId",
                  player.currentPlaylistId ? json(*player.currentPlaylistId) : json(nullptr)},
-                {"queueRevision", queueRevision},
-                {"playlistsRevision", playlistsRevision}};
+                {"queueRevision", revisions.queue},
+                {"playlistsRevision", revisions.playlists},
+                {"timelineRevision", revisions.timeline}};
 }
 
 // The player's own listing order, kept: a sorted one would tell a client the modes came off a
@@ -1141,10 +1142,10 @@ std::string libraryDocument(const Library::State& state) {
 }
 
 std::string stateDocument(const Library::State& state, const PlayerState& player,
-                          std::chrono::steady_clock::time_point now, uint64_t queueRevision,
-                          uint64_t playlistsRevision, std::optional<uint64_t> configGeneration) {
+                          std::chrono::steady_clock::time_point now, PlayerRevisions revisions,
+                          std::optional<uint64_t> configGeneration) {
     auto body = json{{"library", libraryFields(state)},
-                     {"player", playerFields(player, now, queueRevision, playlistsRevision)}};
+                     {"player", playerFields(player, now, revisions)}};
     if (configGeneration)
         body["configGeneration"] = *configGeneration;
     return body.dump();

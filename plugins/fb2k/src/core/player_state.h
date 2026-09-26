@@ -99,6 +99,7 @@ public:
         uint64_t version = 0;
         uint64_t queueRevision = 0;
         uint64_t playlistsRevision = 0;
+        uint64_t timelineRevision = 0;
         PlayerState state;
     };
 
@@ -125,16 +126,21 @@ public:
 
     void playlistsChanged(std::vector<PlaylistMark> playlists);
 
+    // Encoder thread.
+    void timelineMarked();
+
     PlayerStateStore(const PlayerStateStore&) = delete;
     PlayerStateStore& operator=(const PlayerStateStore&) = delete;
 
 private:
     void applyLocked(PlayerState next);
+    void bumpRevision(uint64_t& revision);
 
     mutable std::mutex mutex_;
     uint64_t version_ = 0;
     uint64_t queueRevision_ = 0;
     uint64_t playlistsRevision_ = 0;
+    uint64_t timelineRevision_ = 0;
     PlayerState state_;
     std::vector<QueueEntry> queue_;
     std::vector<PlaylistMark> playlists_;

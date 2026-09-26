@@ -360,9 +360,15 @@ MovePlaylistRequest parseMovePlaylist(const std::string& body);
 
 std::string libraryDocument(const Library::State& state);
 
+struct PlayerRevisions {
+    uint64_t queue = 0;
+    uint64_t playlists = 0;
+    uint64_t timeline = 0;
+};
+
 std::string stateDocument(const Library::State& state, const PlayerState& player,
-                          std::chrono::steady_clock::time_point now, uint64_t queueRevision = 0,
-                          uint64_t playlistsRevision = 0,
+                          std::chrono::steady_clock::time_point now,
+                          PlayerRevisions revisions = {},
                           std::optional<uint64_t> configGeneration = std::nullopt);
 
 std::string libraryRefusedDocument(const LibraryRequest& request);

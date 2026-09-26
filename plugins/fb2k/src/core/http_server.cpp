@@ -117,6 +117,10 @@ constexpr char kArtworkTooLarge[] = "that artwork is larger than this component 
 
 constexpr char kFetchingArtworkTooFast[] = "too many artwork requests";
 
+constexpr char kPlaylistChangesComplaint[] = "playlist-changes";
+constexpr char kLibraryRebuildsComplaint[] = "library-rebuilds";
+constexpr char kArtworkReadsComplaint[] = "artwork-reads";
+
 // The snapshot and the deltas. Opaque bytes with a magic number of their own, so nothing on
 // the way to the client sniffs, transcodes or reformats them; contract/openapi.yaml is the
 // only description of what is inside.
@@ -630,7 +634,7 @@ struct HttpServer::Impl {
     mutable std::mutex reservedNameLock;
     mutable std::set<std::string> loggedReservedNames;
 
-    std::atomic<bool> complainedAboutRate{false};
+    OncePerBurst complaints;
 
     bool originAllowed(const std::string& origin) const {
         if (origin.empty())
@@ -799,11 +803,11 @@ struct HttpServer::Impl {
 
     bool changingTooFast() {
         if (playlistChanges.allow(std::chrono::steady_clock::now())) {
-            complainedAboutRate = false;
+            complaints.allowed(kPlaylistChangesComplaint);
             return false;
         }
 
-        if (!complainedAboutRate.exchange(true)) {
+        if (complaints.refused(kPlaylistChangesComplaint)) {
             logError(
                 "refusing playlist changes: they are arriving faster than this component "
                 "will make them, which usually means a client is looping");
@@ -983,8 +987,16 @@ struct HttpServer::Impl {
 
     // Shared with POST /library/refresh, because a build is a build however it was asked for.
     bool rebuildingTooFast(httplib::Response& res) {
-        if (libraryRebuilds.allow(std::chrono::steady_clock::now()))
+        if (libraryRebuilds.allow(std::chrono::steady_clock::now())) {
+            complaints.allowed(kLibraryRebuildsComplaint);
             return false;
+        }
+
+        if (complaints.refused(kLibraryRebuildsComplaint)) {
+            logError(
+                "refusing library rebuilds: they are arriving faster than this component "
+                "will build them, which usually means a client is looping");
+        }
 
         res.set_header("Retry-After", std::to_string(kRefreshRefill.count()));
         respond(res, 429, errorDocument(kRefreshingTooFast));
@@ -1013,8 +1025,16 @@ struct HttpServer::Impl {
     }
 
     bool pollingTooFast(httplib::Response& res, const std::string& client) {
-        if (statePolls.allow(client, std::chrono::steady_clock::now()))
+        if (statePolls.allow(client, std::chrono::steady_clock::now())) {
+            complaints.allowed(client);
             return false;
+        }
+
+        if (complaints.refused(client)) {
+            logError("refusing state polls from " + client +
+                     ": they are arriving faster than this component will answer them, "
+                     "which usually means a client is looping");
+        }
 
         res.set_header("Retry-After", "1");
         respond(res, 429, errorDocument(kPollingTooFast));
@@ -1037,10 +1057,12 @@ struct HttpServer::Impl {
                 playerState ? playerState->read() : PlayerStateStore::Published{};
             sendIfChanged(req, res, generationsOf(state, published.version, generation),
                           "application/json", [&state, &published, generation] {
-                              return stateDocument(state, published.state,
-                                                   std::chrono::steady_clock::now(),
-                                                   published.queueRevision,
-                                                   published.playlistsRevision, generation);
+                              return stateDocument(
+                                  state, published.state, std::chrono::steady_clock::now(),
+                                  PlayerRevisions{published.queueRevision,
+                                                  published.playlistsRevision,
+                                                  published.timelineRevision},
+                                  generation);
                           });
         });
 
@@ -1209,8 +1231,16 @@ struct HttpServer::Impl {
     }
 
     bool fetchingArtworkTooFast(httplib::Response& res) {
-        if (artworkReads.allow(std::chrono::steady_clock::now()))
+        if (artworkReads.allow(std::chrono::steady_clock::now())) {
+            complaints.allowed(kArtworkReadsComplaint);
             return false;
+        }
+
+        if (complaints.refused(kArtworkReadsComplaint)) {
+            logError(
+                "refusing artwork reads: they are arriving faster than this component "
+                "will answer them, which usually means a client is looping");
+        }
 
         res.set_header("Retry-After", "1");
         respond(res, 429, errorDocument(kFetchingArtworkTooFast));

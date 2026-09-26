@@ -47,13 +47,14 @@ constexpr double kPcmBufferSeconds = 3.0;
 
 // Built regardless of streamingEnabled, which a reload flips with no restart: http_server.cpp
 // answers 503 while it is off rather than this never having a source to open.
-std::unique_ptr<Streamer> makeStreamer(const Settings& settings) {
+std::unique_ptr<Streamer> makeStreamer(const Settings& settings, PlayerStateStore& playerState) {
     if (settings.maxConcurrentStreams == 0) {
         logInfo("maxConcurrentStreams is 0 in " + configPath() + "; streaming is switched off");
         return nullptr;
     }
 
-    return std::make_unique<Streamer>(settings.opusBitrate, settings.aacBitrate, kPcmBufferSeconds);
+    return std::make_unique<Streamer>(settings.opusBitrate, settings.aacBitrate,
+                                      kPcmBufferSeconds, playerState);
 }
 
 void explainPortCollision() {
@@ -144,7 +145,7 @@ class Plugin {
 public:
     Plugin()
         : settings_(loadSettings()),
-          streamer_(makeStreamer(settings_)),
+          streamer_(makeStreamer(settings_, playerState_)),
           audience_(settings_.maxConcurrentStreams, std::chrono::seconds(kMuteLingerSeconds)),
           holdsOutput_(shouldHoldOutput(settings_, streamer_.get())),
           outputHold_(audience_, playerMuteVia(mainThread_), holdsOutput_),
@@ -193,6 +194,7 @@ private:
     const Settings settings_;
     MainThreadQueue mainThread_;
 
+    PlayerStateStore playerState_;
     std::unique_ptr<Streamer> streamer_;
     Audience audience_;
     const bool holdsOutput_;
@@ -200,7 +202,6 @@ private:
     std::unique_ptr<PlayerVolumeWatch> volumeWatch_;
     Library library_;
     LibraryFeed libraryFeed_;
-    PlayerStateStore playerState_;
     PlaylistVersions playlistVersions_;
     NowPlayingArtwork nowPlayingArtwork_;
     PlaybackWatch playbackWatch_;

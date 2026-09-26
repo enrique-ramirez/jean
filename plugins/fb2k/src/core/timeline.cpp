@@ -5,7 +5,8 @@
 
 namespace jean {
 
-Timeline::Timeline(size_t keep) : keep_(std::max<size_t>(keep, 1)) {}
+Timeline::Timeline(size_t keep, std::function<void()> marked)
+    : keep_(std::max<size_t>(keep, 1)), marked_(std::move(marked)) {}
 
 void Timeline::setStreamTime(double seconds) {
     const std::lock_guard<std::mutex> held(mutex_);
@@ -13,11 +14,16 @@ void Timeline::setStreamTime(double seconds) {
 }
 
 void Timeline::mark(StreamMark mark) {
-    const std::lock_guard<std::mutex> held(mutex_);
+    {
+        const std::lock_guard<std::mutex> held(mutex_);
 
-    marks_.push_back(std::move(mark));
-    while (marks_.size() > keep_)
-        marks_.pop_front();
+        marks_.push_back(std::move(mark));
+        while (marks_.size() > keep_)
+            marks_.pop_front();
+    }
+
+    if (marked_)
+        marked_();
 }
 
 double Timeline::streamTime() const {

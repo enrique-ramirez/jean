@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/player_state.h"
 #include "core/stream.h"
 
 #include <memory>
@@ -10,8 +11,10 @@ namespace jean {
 
 class Streamer {
 public:
-    // Main thread only; registering the capture callback requires it.
-    Streamer(int opusBitrate, int aacBitrate, double bufferSeconds);
+    // Main thread only; registering the capture callback requires it. playerState must outlive
+    // this: the encoder thread calls timelineMarked() on it for every mark laid, until stop()
+    // joins that thread.
+    Streamer(int opusBitrate, int aacBitrate, double bufferSeconds, PlayerStateStore& playerState);
     ~Streamer();
 
     StreamOpener opener() const;

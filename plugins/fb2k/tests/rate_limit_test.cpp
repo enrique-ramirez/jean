@@ -177,3 +177,60 @@ TEST_CASE("connection threads asking for one address spend one bucket between th
 
     CHECK(allowed.load() == kPollBurst);
 }
+
+TEST_CASE("the first refusal of a burst is worth a line, and the rest of the burst is not") {
+    OncePerBurst complaints;
+
+    CHECK(complaints.refused(kPhone));
+    CHECK_FALSE(complaints.refused(kPhone));
+    CHECK_FALSE(complaints.refused(kPhone));
+    CHECK_FALSE(complaints.refused(kPhone));
+}
+
+TEST_CASE("a request allowed in between makes the next refusal the first of a new burst") {
+    OncePerBurst complaints;
+
+    CHECK(complaints.refused(kPhone));
+    CHECK_FALSE(complaints.refused(kPhone));
+
+    complaints.allowed(kPhone);
+
+    CHECK(complaints.refused(kPhone));
+    CHECK_FALSE(complaints.refused(kPhone));
+}
+
+TEST_CASE("one address's burst neither re-arms nor uses up another's") {
+    OncePerBurst complaints;
+
+    CHECK(complaints.refused(kPhone));
+
+    complaints.allowed(kLaptop);
+    CHECK_FALSE(complaints.refused(kPhone));
+
+    CHECK(complaints.refused(kLaptop));
+    CHECK_FALSE(complaints.refused(kLaptop));
+
+    complaints.allowed(kPhone);
+    CHECK_FALSE(complaints.refused(kLaptop));
+    CHECK(complaints.refused(kPhone));
+}
+
+TEST_CASE("connection threads refused together for one address write one line between them") {
+    OncePerBurst complaints;
+
+    std::atomic<int> reported{0};
+    std::vector<std::thread> threads;
+
+    threads.reserve(8);
+    for (int worker = 0; worker < 8; worker++)
+        threads.emplace_back([&complaints, &reported] {
+            for (int i = 0; i < 100; i++)
+                if (complaints.refused(kPhone))
+                    reported++;
+        });
+
+    for (auto& thread : threads)
+        thread.join();
+
+    CHECK(reported.load() == 1);
+}

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <deque>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -26,7 +27,7 @@ struct StreamMark {
 // `audio.currentTime` into a track position through these marks.
 class Timeline {
 public:
-    explicit Timeline(size_t keep);
+    explicit Timeline(size_t keep, std::function<void()> marked = {});
 
     // Encoder thread.
     void setStreamTime(double seconds);
@@ -45,6 +46,7 @@ private:
     std::deque<StreamMark> marks_;
     const size_t keep_;
     double streamTime_ = 0;
+    const std::function<void()> marked_;
 };
 
 }  // namespace jean

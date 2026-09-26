@@ -6,6 +6,7 @@
 
 #include "core/artwork.h"
 #include "core/http_server.h"
+#include "support/log_capture.h"
 #include "support/spec.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
@@ -362,6 +363,28 @@ TEST_CASE("a client looping on artwork stops reaching the player") {
     CHECK(retryAfter == "1");
     CHECK(refusal == "too many artwork requests");
     CHECK(static_cast<int>(log.asked.size()) == kAttempts - refused);
+}
+
+// The budget is deep because a screenful of covers is the ordinary case, so a refusal here is a
+// client stuck in a loop. It refills a cover every fiftieth of a second, which a loop this long
+// crosses several times, so the expectation is counted from the answers rather than fixed at one.
+TEST_CASE("a burst of refused artwork reads writes one error line, and an allowed read starts a new burst") {
+    ArtLog log{kJpeg};
+    const TestServer server(servingSettings(), showing(&log));
+    auto client = server.client();
+    clearLog();
+
+    constexpr int kAttempts = 600;
+    std::vector<int> statuses;
+
+    for (int attempt = 0; attempt < kAttempts; ++attempt) {
+        const auto response = client.Get(kAddress);
+        statuses.push_back(response ? response->status : 0);
+    }
+
+    const auto refused = std::count(statuses.begin(), statuses.end(), 429);
+    REQUIRE(static_cast<size_t>(refused) > refusalBursts(statuses));
+    CHECK(errorLinesContaining("refusing artwork reads") == refusalBursts(statuses));
 }
 
 // cpp-httplib's own compression list is somebody else's (third_party/README.md), so it is

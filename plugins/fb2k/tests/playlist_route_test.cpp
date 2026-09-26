@@ -3257,6 +3257,31 @@ TEST_CASE("a client stuck in a loop is slowed down rather than obeyed") {
     CHECK(server.client().Get("/api/playlists")->status == 200);
 }
 
+TEST_CASE("a client looping on playlist writes is logged once per burst, in the words it always was") {
+    PlayerLog log;
+    const TestServer server(servingSettings(), recordingPlayer(&log));
+    clearLog();
+
+    std::vector<int> statuses;
+    std::generate_n(std::back_inserter(statuses), 60, [&server] {
+        const auto reply = post(server, "/api/autoplaylists", kCreate);
+        return reply ? reply->status : 0;
+    });
+
+    const auto refused = std::count(statuses.begin(), statuses.end(), 429);
+    REQUIRE(static_cast<size_t>(refused) > refusalBursts(statuses));
+
+    const std::string complaint =
+        "refusing playlist changes: they are arriving faster than this component will make them, "
+        "which usually means a client is looping";
+
+    const auto lines = loggedLines();
+    CHECK(errorLinesContaining("") == refusalBursts(statuses));
+    CHECK(std::all_of(lines.begin(), lines.end(), [&complaint](const std::string& line) {
+        return line.rfind("[error] ", 0) != 0 || line == "[error] " + complaint;
+    }));
+}
+
 // One budget covers every playlist write, as contract/openapi.yaml says, so a client looping any
 // one of them is refused. The create is the one that spent nothing: a loop on it made playlists
 // as fast as foobar2000 would take them.

@@ -70,16 +70,17 @@ struct Streamer::State {
     AacEncoder aac;
     Format ogg;
     Format adts;
-    Timeline timeline{kTimelineMarks};
+    Timeline timeline;
     std::thread thread;
     std::atomic<bool> stopping{false};
 
-    State(int opusBitrate, int aacBitrate, double bufferSeconds)
+    State(int opusBitrate, int aacBitrate, double bufferSeconds, PlayerStateStore& playerState)
         : pcm(bufferSeconds),
           opus(kOutputChannels, opusBitrate),
           aac(kOutputChannels, OpusStream::kSampleRate, aacBitrate),
           ogg("opus", "audio/ogg", opusBitrate),
-          adts("aac", "audio/aac", aacBitrate) {
+          adts("aac", "audio/aac", aacBitrate),
+          timeline(kTimelineMarks, [&playerState] { playerState.timelineMarked(); }) {
         ogg.preamble = opus.headers();
 
         if (opus.ok())
@@ -336,8 +337,9 @@ void runEncoder(const std::shared_ptr<Streamer::State>& state) {
 
 }  // namespace
 
-Streamer::Streamer(int opusBitrate, int aacBitrate, double bufferSeconds)
-    : state_(std::make_shared<State>(opusBitrate, aacBitrate, bufferSeconds)) {
+Streamer::Streamer(int opusBitrate, int aacBitrate, double bufferSeconds,
+                   PlayerStateStore& playerState)
+    : state_(std::make_shared<State>(opusBitrate, aacBitrate, bufferSeconds, playerState)) {
     if (!state_->opus.ok())
         logError("Opus streaming is unavailable: " + state_->opus.error());
 

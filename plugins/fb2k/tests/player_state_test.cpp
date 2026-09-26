@@ -718,6 +718,80 @@ TEST_CASE("the queue revision stays where it is while everything else about the 
     CHECK(store.read().queueRevision == before.queueRevision);
 }
 
+TEST_CASE("a mark moves the version and the timeline revision, and neither the queue's nor the playlists'") {
+    const PlaylistVersions versions;
+    PlayerStateStore store;
+    store.publish(playing());
+    store.queueChanged(twoQueued());
+    store.playlistsChanged(twoPlaylists(versions));
+    const auto before = store.read();
+
+    store.timelineMarked();
+
+    CHECK(store.read().version > before.version);
+    CHECK(store.read().timelineRevision > before.timelineRevision);
+    CHECK(store.read().queueRevision == before.queueRevision);
+    CHECK(store.read().playlistsRevision == before.playlistsRevision);
+    CHECK(store.read().state == before.state);
+}
+
+TEST_CASE("every mark moves the timeline revision, however soon after the last") {
+    PlayerStateStore store;
+    store.publish(playing());
+
+    store.timelineMarked();
+    const auto afterOne = store.read();
+
+    store.timelineMarked();
+
+    CHECK(store.read().timelineRevision > afterOne.timelineRevision);
+    CHECK(store.read().version > afterOne.version);
+}
+
+TEST_CASE("the timeline revision stays where it is while everything else about the player moves") {
+    PlaylistVersions versions;
+    PlayerStateStore store;
+    store.publish(playingFrom(kPlayingRow));
+    store.queueChanged(twoQueued());
+    store.playlistsChanged(twoPlaylists(versions));
+    store.timelineMarked();
+    const auto before = store.read();
+
+    SUBCASE("a whole state is published") {
+        PlayerState paused = playingFrom(kPlayingRow);
+        paused.playback = PlaybackState::paused;
+        store.publish(paused);
+    }
+    SUBCASE("another track starts") {
+        store.started(anotherTrack(), kMarkedAt + minutes(1));
+    }
+    SUBCASE("the player pauses") {
+        store.paused(kMarkedAt + kRanOnFor);
+    }
+    SUBCASE("somebody seeks") {
+        store.seeked(90.0, kMarkedAt + kRanOnFor);
+    }
+    SUBCASE("the volume moves") {
+        store.volumeChanged(-12.0, true);
+    }
+    SUBCASE("the playing row moves") {
+        store.playingLocationChanged(PlayingLocation{kPlayingPlaylist, kPlayingRow + 1});
+    }
+    SUBCASE("the queue changes") {
+        store.queueChanged({});
+    }
+    SUBCASE("the playlists change") {
+        versions.rowsChanged(kAlbumsPlaylist, RowsChanged::added);
+        store.playlistsChanged(twoPlaylists(versions));
+    }
+    SUBCASE("the player stops") {
+        store.stopped();
+    }
+
+    CHECK(store.read().version > before.version);
+    CHECK(store.read().timelineRevision == before.timelineRevision);
+}
+
 // Every way the list a client holds goes stale. A client re-reads GET /api/playlists when this
 // number moves and nothing else tells it to, so a trigger missed here leaves the sidebar, the
 // pickers and the playlist view wrong until something unrelated moves.

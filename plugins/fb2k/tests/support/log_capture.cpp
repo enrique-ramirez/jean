@@ -47,6 +47,28 @@ void clearLog() {
     g_lines.clear();
 }
 
+size_t errorLinesContaining(const std::string& fragment) {
+    const auto lines = loggedLines();
+    return static_cast<size_t>(
+        std::count_if(lines.begin(), lines.end(), [&fragment](const std::string& line) {
+            return line.rfind("[error] ", 0) == 0 && line.find(fragment) != std::string::npos;
+        }));
+}
+
+size_t refusalBursts(const std::vector<int>& statuses) {
+    constexpr int kRefused = 429;
+
+    size_t bursts = 0;
+    int previous = 0;
+    for (const int status : statuses) {
+        if (status == kRefused && previous != kRefused)
+            bursts++;
+        previous = status;
+    }
+
+    return bursts;
+}
+
 }  // namespace testing
 
 }  // namespace jean

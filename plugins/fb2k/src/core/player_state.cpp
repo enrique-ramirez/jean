@@ -37,7 +37,7 @@ void PlayerStateStore::publish(PlayerState state) {
 
 PlayerStateStore::Published PlayerStateStore::read() const {
     const std::lock_guard<std::mutex> held(mutex_);
-    return {version_, queueRevision_, playlistsRevision_, state_};
+    return {version_, queueRevision_, playlistsRevision_, timelineRevision_, state_};
 }
 
 void PlayerStateStore::started(PlayingTrack track, steady_clock::time_point now) {
@@ -179,8 +179,7 @@ void PlayerStateStore::queueChanged(std::vector<QueueEntry> entries) {
         return;
 
     queue_ = std::move(entries);
-    ++version_;
-    ++queueRevision_;
+    bumpRevision(queueRevision_);
 }
 
 void PlayerStateStore::playlistsChanged(std::vector<PlaylistMark> playlists) {
@@ -190,8 +189,12 @@ void PlayerStateStore::playlistsChanged(std::vector<PlaylistMark> playlists) {
         return;
 
     playlists_ = std::move(playlists);
-    ++version_;
-    ++playlistsRevision_;
+    bumpRevision(playlistsRevision_);
+}
+
+void PlayerStateStore::timelineMarked() {
+    const std::lock_guard<std::mutex> held(mutex_);
+    bumpRevision(timelineRevision_);
 }
 
 void PlayerStateStore::applyLocked(PlayerState next) {
@@ -200,6 +203,11 @@ void PlayerStateStore::applyLocked(PlayerState next) {
 
     state_ = std::move(next);
     ++version_;
+}
+
+void PlayerStateStore::bumpRevision(uint64_t& revision) {
+    ++version_;
+    ++revision;
 }
 
 }  // namespace jean

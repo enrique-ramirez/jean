@@ -32,25 +32,29 @@ bool PerClientRateLimiter::allow(const std::string& client,
                                  std::chrono::steady_clock::time_point now) {
     const std::lock_guard<std::mutex> held(mutex_);
 
-    const auto found =
-        std::find_if(entries_.begin(), entries_.end(),
-                     [&client](const Entry& entry) { return entry.client == client; });
+    auto& entry = entries_.entryFor(client, now, [this] {
+        return std::make_unique<RateLimiter>(burst_, perToken_);
+    });
+    return entry.payload->allow(now);
+}
 
-    if (found != entries_.end()) {
-        found->lastSeen = now;
-        return found->limiter->allow(now);
-    }
+bool OncePerBurst::refused(const std::string& key) {
+    const std::lock_guard<std::mutex> held(mutex_);
 
-    if (entries_.size() >= kMaxTrackedClients) {
-        const auto oldest = std::min_element(
-            entries_.begin(), entries_.end(),
-            [](const Entry& a, const Entry& b) { return a.lastSeen < b.lastSeen; });
-        *oldest = Entry{client, now, std::make_unique<RateLimiter>(burst_, perToken_)};
-        return oldest->limiter->allow(now);
-    }
+    const auto now = std::chrono::steady_clock::now();
+    auto& entry = entries_.entryFor(key, now, [] { return false; });
+    if (entry.payload)
+        return false;
 
-    entries_.push_back(Entry{client, now, std::make_unique<RateLimiter>(burst_, perToken_)});
-    return entries_.back().limiter->allow(now);
+    entry.payload = true;
+    return true;
+}
+
+void OncePerBurst::allowed(const std::string& key) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    const auto now = std::chrono::steady_clock::now();
+    entries_.entryFor(key, now, [] { return false; }).payload = false;
 }
 
 }  // namespace jean

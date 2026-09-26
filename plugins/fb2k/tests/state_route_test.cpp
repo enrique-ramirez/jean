@@ -9,7 +9,9 @@
 #include "core/library.h"
 #include "core/player_state.h"
 #include "core/text.h"
+#include "core/timeline.h"
 #include "support/keys.h"
+#include "support/log_capture.h"
 #include "support/spec.h"
 #include "support/test_server.h"
 #include "support/wire.h"
@@ -218,6 +220,49 @@ httplib::Client overIpv6(const TestServer& server) {
     client.set_connection_timeout(2, 0);
     client.set_read_timeout(5, 0);
     return client;
+}
+
+// What fb2k/streamer.cpp wires together: the encoder's timeline announcing each mark to the store
+// the poll reads, and GET /api/stream/timeline answered from that same timeline.
+struct Encoder {
+    explicit Encoder(PlayerStateStore* store)
+        : timeline(kTimelineMarks, [store] { store->timelineMarked(); }) {}
+
+    Player publishing() {
+        Player player;
+        player.readTimeline = [this] {
+            return streamTimelineDocument(timeline.streamTime(), timeline.marks());
+        };
+        return player;
+    }
+
+    static constexpr size_t kTimelineMarks = 8;
+    Timeline timeline;
+};
+
+StreamMark seekMark() {
+    StreamMark mark;
+    mark.at = 31.5;
+    mark.path = R"(X:\music\one.flac)";
+    mark.position = 90;
+    return mark;
+}
+
+int pollStatus(httplib::Client& client) {
+    const auto response = client.Get("/api/state");
+    return response ? response->status : 0;
+}
+
+void pollUntilRefused(httplib::Client& client, std::vector<int>& statuses) {
+    for (int attempt = 0; attempt < kPollBurst + kPollsPastTheBudget; attempt++) {
+        statuses.push_back(pollStatus(client));
+        if (statuses.back() == 429)
+            return;
+    }
+}
+
+size_t refusals(const std::vector<int>& statuses) {
+    return static_cast<size_t>(std::count(statuses.begin(), statuses.end(), 429));
 }
 
 bool isDelaySeconds(const std::string& value) {
@@ -954,6 +999,81 @@ TEST_CASE("a conditional poll is a 200 when the queue changed, and a 304 when it
     CHECK(unchanged->get_header_value("ETag") == queuedTag);
 }
 
+TEST_CASE("a mark turns a conditional poll into a 200, and the timeline read after it holds the mark") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    store.publish(playing());
+    store.queueChanged(oneQueued());
+    store.playlistsChanged(oneListed());
+    Encoder encoder(&store);
+    const TestServer server = serving(&library, encoder.publishing(), &store);
+
+    const auto first = get(server, "/api/state");
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+    const auto before = json::parse(first->body)["player"];
+    REQUIRE(before.contains("timelineRevision"));
+
+    const auto tag = first->get_header_value("ETag");
+    REQUIRE_FALSE(tag.empty());
+
+    encoder.timeline.mark(seekMark());
+
+    const auto marked = getHolding(server, "/api/state", tag);
+    REQUIRE(marked);
+    REQUIRE(marked->status == 200);
+    CHECK(marked->get_header_value("ETag") != tag);
+
+    const auto after = json::parse(marked->body)["player"];
+    REQUIRE(after.contains("timelineRevision"));
+    CHECK(after["timelineRevision"].get<uint64_t>() > before["timelineRevision"].get<uint64_t>());
+    CHECK(after["queueRevision"] == before["queueRevision"]);
+    CHECK(after["playlistsRevision"] == before["playlistsRevision"]);
+
+    const auto timeline = get(server, "/api/stream/timeline");
+    REQUIRE(timeline);
+    REQUIRE(timeline->status == 200);
+    const auto marks = json::parse(timeline->body)["marks"];
+    REQUIRE_FALSE(marks.empty());
+    CHECK(marks.back()["path"] == seekMark().path);
+    CHECK(marks.back()["position"] == doctest::Approx(seekMark().position));
+
+    const auto unchanged = getHolding(server, "/api/state", marked->get_header_value("ETag"));
+    REQUIRE(unchanged);
+    CHECK(unchanged->status == 304);
+}
+
+TEST_CASE("with streaming switched off the timeline revision is 0, and nothing the player does moves it") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    store.publish(playing());
+    Settings settings = servingSettings();
+    settings.maxConcurrentStreams = 0;
+    const TestServer server(settings, Player{}, &library, countingMint(), &store);
+
+    const auto untouched = playerSection(server);
+    REQUIRE(untouched.contains("timelineRevision"));
+    CHECK(untouched["timelineRevision"] == 0);
+
+    store.started(PlayingTrack{R"(X:\music\two.flac)", 0, std::nullopt, 180},
+                  std::chrono::steady_clock::now());
+    CHECK(playerSection(server)["timelineRevision"] == 0);
+
+    store.seeked(90, std::chrono::steady_clock::now());
+    CHECK(playerSection(server)["timelineRevision"] == 0);
+
+    store.queueChanged(oneQueued());
+    CHECK(playerSection(server)["timelineRevision"] == 0);
+
+    store.playlistsChanged(oneListed());
+    CHECK(playerSection(server)["timelineRevision"] == 0);
+
+    store.stopped();
+    CHECK(playerSection(server)["timelineRevision"] == 0);
+}
+
 TEST_CASE("the poll's playlists revision moves with the playlists and not with the player") {
     Library library;
     fill(library);
@@ -981,10 +1101,10 @@ TEST_CASE("the poll's playlists revision moves with the playlists and not with t
 // The two counters that may stay numbers, and the line that decides it. A playlist's own
 // structure generation and content revision are seeded so that neither repeats across a restart
 // of this component, which puts them past 2^53, where a JSON number stops being exact, so those
-// two travel as strings of decimal digits. These two are inside 2^53 and exact, and the cases
+// two travel as strings of decimal digits. These three are inside 2^53 and exact, and the cases
 // above compare them for order. The mistake this catches is converting every counter together on
 // the grounds that counters should look alike: it would take the ordering away for nothing.
-TEST_CASE("the poll's two revisions are numbers, where a playlist's own counters are not") {
+TEST_CASE("the poll's three revisions are numbers, where a playlist's own counters are not") {
     Library library;
     fill(library);
     PlayerStateStore store;
@@ -994,15 +1114,18 @@ TEST_CASE("the poll's two revisions are numbers, where a playlist's own counters
     const auto player = playerSection(server);
     REQUIRE(player.contains("queueRevision"));
     REQUIRE(player.contains("playlistsRevision"));
+    REQUIRE(player.contains("timelineRevision"));
 
     INFO("queueRevision: ", player["queueRevision"].dump(),
-         ", playlistsRevision: ", player["playlistsRevision"].dump());
+         ", playlistsRevision: ", player["playlistsRevision"].dump(),
+         ", timelineRevision: ", player["timelineRevision"].dump());
 
     CHECK(player["queueRevision"].is_number_unsigned());
     CHECK(player["playlistsRevision"].is_number_unsigned());
+    CHECK(player["timelineRevision"].is_number_unsigned());
 }
 
-TEST_CASE("the player section names the playlists revision once and carries nothing else new") {
+TEST_CASE("the player section names each revision once and carries nothing else new") {
     Library library;
     fill(library);
     PlayerStateStore store;
@@ -1015,7 +1138,7 @@ TEST_CASE("the player section names the playlists revision once and carries noth
         "position",          "duration",          "volume",            "muted",
         "playbackMode",      "title",             "artist",            "album",
         "albumArtist",       "playingLocation",   "currentPlaylistId",
-        "queueRevision",     "playlistsRevision"};
+        "queueRevision",     "playlistsRevision", "timelineRevision"};
 
     CHECK(keysOf(playerSection(server)) == published);
 }
@@ -1609,6 +1732,27 @@ TEST_CASE("a client varying the set it declares stops reaching the player too") 
     CHECK(log.calls == kAttempts - refused);
 }
 
+// Refused rebuilds are a client looping on the most expensive thing the player does, and nobody
+// reading the player's console would otherwise know. One line, because the loop is many a second.
+TEST_CASE("a burst of refused library rebuilds writes one error line") {
+    BuildLog log;
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library, building(&log));
+    clearLog();
+
+    constexpr int kAttempts = 8;
+    std::vector<int> statuses;
+
+    for (int attempt = 0; attempt < kAttempts; ++attempt) {
+        const auto response = refresh(server);
+        statuses.push_back(response ? response->status : 0);
+    }
+
+    REQUIRE(refusals(statuses) > refusalBursts(statuses));
+    CHECK(errorLinesContaining("refusing library rebuilds") == refusalBursts(statuses));
+}
+
 // The poll is the one route a client asks for on a timer, so a client bug turns into a request per
 // millisecond. Rule 5 of CONTRIBUTING.md, *Tests*: answering 429 and not building the document are
 // different promises, and the second is what keeps a looping client off the rest of the component.
@@ -1711,6 +1855,57 @@ TEST_CASE("a client on another address polls on while one is being refused") {
     const auto stillRefused = looping.Get("/api/state");
     REQUIRE(stillRefused);
     CHECK(stillRefused->status == 429);
+}
+
+// A client looping on the poll is invisible to the user who owns the player, since the browser
+// shows nothing and the 429 is answered before anything reaches foobar2000. The line is how they
+// find out, and the address in it is how they find which device.
+TEST_CASE("a burst of refused polls writes one error line naming the address it came from") {
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library);
+    clearLog();
+
+    auto looping = server.client();
+    std::vector<int> statuses;
+    for (int attempt = 0; attempt < kPollBurst + kPollsPastTheBudget; attempt++)
+        statuses.push_back(pollStatus(looping));
+
+    REQUIRE(refusals(statuses) > refusalBursts(statuses));
+    CHECK(errorLinesContaining(TestServer::kClientHost) == refusalBursts(statuses));
+}
+
+TEST_CASE("an allowed poll starts a new burst for its own address and no other") {
+    Library library;
+    fill(library);
+    const TestServer server = servingBothStacks(&library);
+    REQUIRE(server.status().listening);
+    clearLog();
+
+    auto phone = server.client();
+    auto laptop = overIpv6(server);
+    std::vector<int> fromPhone;
+    std::vector<int> fromLaptop;
+
+    INFO("the laptop is ::1, reached through a dual-stack bind");
+    fromLaptop.push_back(pollStatus(laptop));
+    REQUIRE(fromLaptop.back() == 200);
+
+    pollUntilRefused(phone, fromPhone);
+    REQUIRE(fromPhone.back() == 429);
+
+    fromLaptop.push_back(pollStatus(laptop));
+    fromPhone.push_back(pollStatus(phone));
+    CHECK(fromLaptop.back() == 200);
+    CHECK(fromPhone.back() == 429);
+
+    pollUntilRefused(laptop, fromLaptop);
+    REQUIRE(fromLaptop.back() == 429);
+    fromPhone.push_back(pollStatus(phone));
+    CHECK(fromPhone.back() == 429);
+
+    CHECK(errorLinesContaining("127.0.0.1") == refusalBursts(fromPhone));
+    CHECK(errorLinesContaining("::1") == refusalBursts(fromLaptop));
 }
 
 // cpp-httplib gives one pooled thread the whole life of a socket, keep-alive loop included, so a

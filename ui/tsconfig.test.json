@@ -28,6 +28,7 @@
 		"src/shared/api/fieldTable.ts",
 		"src/shared/lib/dragGeometry.ts",
 		"src/shared/lib/sequence.ts",
+		"src/shared/lib/sleep.ts",
 		"src/shared/lib/text.ts",
 		"src/shared/keyboard/keymap.ts",
 		"src/globals.d.ts",

@@ -1,3 +1,4 @@
+import { sleep } from "@/shared/lib/sleep";
 import { fetchState, withTimeout } from "./fooJean";
 import { decodeJlib, type JlibDelta, type JlibSnapshot } from "./jlib";
 
@@ -42,19 +43,6 @@ const failure = (
 	reason: LibraryFailureReason,
 	detail = "",
 ): LibraryFailure => ({ ok: false, reason, detail });
-
-const sleep = (ms: number, signal?: AbortSignal) =>
-	new Promise<void>((resolve, reject) => {
-		const stop = () => {
-			clearTimeout(timer);
-			reject(new DOMException("Aborted", "AbortError"));
-		};
-		const timer = setTimeout(() => {
-			signal?.removeEventListener("abort", stop);
-			resolve();
-		}, ms);
-		signal?.addEventListener("abort", stop, { once: true });
-	});
 
 const detailOf = async (response: Response) => {
 	const body = (await response.json().catch(() => null)) as {

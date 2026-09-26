@@ -79,6 +79,7 @@ Which of these resolve varies by install, by component and by how the library wa
 - **A mode travels by name, never by ordinal.** `POST /api/playback/mode` takes one of the seven `PlaybackMode` names off `GET /api/capabilities`'s `playbackModes`; a name this install does not offer answers `409` rather than being guessed at. The player's own ordinal means whatever this install's enum says it means, and its order and wording both vary.
 - **Playback order applies to the active playlist, and playing a row sets it.** Shuffle draws only from the playlist the playing row belongs to, and foobar2000 has no selection to shuffle within, so confining playback to a set of tracks means getting those tracks into a playlist. That is what the scratch playlist is for.
 - **`playback.ts` also holds `takeSkipAsked`**, the record of which way a skip was asked for. foobar2000 never says which direction a track change moved, and the cover wheel needs the direction before the player has answered anything.
+- **A skip's `POST` answers as soon as the command is queued onto foobar2000's main thread, not once the track there has actually changed.** A read sent the instant it resolves still names the old one, which is why `usePlayer.ts`'s `useSkip` waits before polling.
 
 ## What Jean does about the library
 

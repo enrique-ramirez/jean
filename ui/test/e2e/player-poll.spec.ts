@@ -419,6 +419,69 @@ test("a skip redraws the track without waiting for the next tick", async ({
 	await expect(controls).toContainText("Fizz");
 });
 
+const SKIP_LANDS_AFTER_MS = 150;
+const SHOWN_WITHIN_MS = 700;
+
+// foo_jean answers a skip before foobar2000 has changed track, so a read sent
+// the moment the command returns names the old one; pressed just after a tick,
+// the next tick is a whole interval away.
+test("a skip the player applies a moment after answering reaches the screen well inside a tick of the press", async ({
+	page,
+	player,
+	isMobile,
+}) => {
+	await openLibrary(page);
+	await trackRow(page, 0).dblclick();
+	await expect(statusBar(page)).toContainText("Los Calientes");
+	await expect.poll(() => ticksTaken(player)).toBeGreaterThanOrEqual(2);
+	player.skipDelayMs = SKIP_LANDS_AFTER_MS;
+
+	const controls = await globalControls(page, isMobile);
+	await expect(controls).not.toContainText("Fizz");
+	const next = controls.getByRole("button", { name: /^Next track\b/ });
+	await expect(next).toBeEnabled();
+
+	await page.evaluate(
+		([root, button, title]) => {
+			const clock = window as unknown as {
+				pressedAt?: number;
+				shownAfter?: number;
+			};
+			new MutationObserver((_, observer) => {
+				if (clock.pressedAt === undefined || !root.textContent?.includes(title))
+					return;
+				clock.shownAfter = performance.now() - clock.pressedAt;
+				observer.disconnect();
+			}).observe(root, { subtree: true, childList: true, characterData: true });
+			const send = window.fetch;
+			window.fetch = (input, init) => {
+				const sent = send(input, init);
+				if (
+					clock.pressedAt === undefined &&
+					String(input).includes("/api/state")
+				) {
+					clock.pressedAt = performance.now();
+					(button as HTMLElement).click();
+				}
+				return sent;
+			};
+		},
+		[
+			await controls.elementHandle(),
+			await next.elementHandle(),
+			"Fizz",
+		] as const,
+	);
+
+	await expect(controls).toContainText("Fizz");
+	const shownAfter = await page.evaluate(
+		() => (window as unknown as { shownAfter?: number }).shownAfter,
+	);
+	expect(shownAfter, "ms from the press to the new title").toBeLessThan(
+		SHOWN_WITHIN_MS,
+	);
+});
+
 test("the status bar follows a song a station announces, with the track never changing", async ({
 	page,
 	player,

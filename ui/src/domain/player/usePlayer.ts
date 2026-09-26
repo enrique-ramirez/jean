@@ -45,6 +45,7 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Phrase } from "@/shared/i18n/en";
 import { translate } from "@/shared/i18n/locale";
 import { clamp } from "@/shared/lib/math";
+import { sleep } from "@/shared/lib/sleep";
 import { pushToast } from "@/shared/ui/toastStore";
 import { useAudibleSnapshot } from "./audible";
 import { type FollowRevision, followRevision } from "./followRevision";
@@ -269,11 +270,15 @@ const useCommand = (
 	});
 };
 
+// `shared/api/README.md`, *What Jean does about playback*, has why.
+const SKIP_APPLY_DELAY_MS = 250;
+
 const useSkip = (command: (origin: string) => Promise<void>) => {
 	const queryClient = useQueryClient();
 	const { discovery } = useFooJean();
 	return useCommand(discovery, async (origin) => {
 		await command(origin);
+		await sleep(SKIP_APPLY_DELAY_MS);
 		await pollPlayerNow(queryClient, origin);
 	});
 };

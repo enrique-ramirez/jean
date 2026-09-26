@@ -72,6 +72,8 @@ const POLL_MS = 1000;
 const MARK_FOLLOW_UP_MS = 250;
 const MARK_DELAY_MS = 100;
 const MARK_IN_HAND_MS = 2 * MARK_FOLLOW_UP_MS;
+const SKIP_READ_AFTER_MS = 250;
+const SKIP_MARK_DELAY_MS = SKIP_READ_AFTER_MS + MARK_FOLLOW_UP_MS / 2;
 const SEEK_MARK_DELAY_MS = 1500;
 // Long enough to catch a read on a timer of up to ten seconds.
 const QUIET_STRETCH_MS = 11_000;
@@ -731,6 +733,14 @@ test.describe("what is audible, not what the player is doing", () => {
 			const transport = await globalControls(page, isMobile);
 			const sent = watchRequests(page);
 
+			// Pressed just after a tick, so the skip's own read is the one that
+			// names the new track, and its mark lands between that read and the next.
+			player.fooJean.markDelayMs = SKIP_MARK_DELAY_MS;
+			await page.waitForRequest(
+				(request) =>
+					new URL(request.url()).pathname === "/api/state" &&
+					"if-none-match" in request.headers(),
+			);
 			await transport
 				.getByRole("button", { name: "Next track", exact: true })
 				.click();
@@ -770,6 +780,7 @@ test.describe("what is audible, not what the player is doing", () => {
 			const transport = await globalControls(page, isMobile);
 			const sent = watchRequests(page);
 
+			player.fooJean.markDelayMs = SKIP_MARK_DELAY_MS;
 			await transport
 				.getByRole("button", { name: "Next track", exact: true })
 				.click();

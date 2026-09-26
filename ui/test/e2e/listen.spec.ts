@@ -517,6 +517,41 @@ test.describe("a stream that ends", () => {
 			1, 1,
 		]);
 	});
+
+	const SLOW_TICKET_MS = 2500;
+	const SHORT_STREAM_SECONDS = 1;
+
+	test("after a reconnect whose ticket is slow, the readout is still where the player is", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "the readout is desktop-only");
+		let tickets = 0;
+		await page.route(
+			(url) => url.pathname === "/api/stream/ticket",
+			async (route) => {
+				tickets += 1;
+				if (tickets === 2) {
+					player.fooJean.streamBehaviour = "ok";
+					await new Promise((settle) => setTimeout(settle, SLOW_TICKET_MS));
+				}
+				await route.continue();
+			},
+		);
+		await page.goto("/#/home");
+		const startedAt = Date.now();
+		player.playItem("p7", HEARD.index);
+
+		await startListening(page);
+		await expect
+			.poll(() => currentTime(page), { timeout: 30_000, intervals: TICK })
+			.toBeGreaterThan(SHORT_STREAM_SECONDS + 1);
+
+		const shown = await elapsedSeconds(page);
+		expect(shown).not.toBeNull();
+		expect((Date.now() - startedAt) / 1000 - (shown ?? 0)).toBeLessThan(3);
+	});
 });
 
 test.describe("a stream that goes quiet", () => {

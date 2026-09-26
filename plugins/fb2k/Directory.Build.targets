@@ -1,7 +1,9 @@
 <!--
-  Puts WTL on the include path for every project built from this tree, including
-  the SDK's own, without editing anything under sdk/ — which matters because
-  sdk/ is fetched rather than committed and gets deleted to re-fetch.
+  Puts WTL on the include path and the C++ runtime on static linkage for every
+  project built from this tree, including the SDK's own, without editing anything
+  under sdk/ — which matters because sdk/ is fetched rather than committed and
+  gets deleted to re-fetch. Why the runtime is static is in ARCHITECTURE.md,
+  *Facts about the player*.
 
   MSBuild imports this automatically: it walks up from each .vcxproj looking for
   the nearest Directory.Build.targets, and every SDK project sits under this
@@ -17,6 +19,11 @@
   error to land on. Appending to $(IncludePath) leaves everything else exactly
   as the toolchain computed it.
 
+  The conditions below match StartsWith('Debug') rather than =='Debug'
+  because the SDK's pfc project builds as `Debug FB2K` / `Release FB2K`
+  rather than plain `Debug` / `Release`; an exact match would silently
+  leave pfc out of the debug runtime.
+
   Note for anyone editing this comment: an XML comment may not contain two
   consecutive hyphens. Prose punctuation costs a build here.
 -->
@@ -24,4 +31,12 @@
   <PropertyGroup>
     <IncludePath>$(IncludePath);$(MSBuildThisFileDirectory)sdk\wtl\Include</IncludePath>
   </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile Condition="$(Configuration.StartsWith('Debug'))">
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+    </ClCompile>
+    <ClCompile Condition="!$(Configuration.StartsWith('Debug'))">
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
 </Project>

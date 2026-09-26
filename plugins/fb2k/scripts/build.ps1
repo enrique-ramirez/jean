@@ -47,4 +47,17 @@ if ($errors) { "--- errors ---"; $errors | Select-Object -First 15 }
 else { $output | Select-Object -Last 10 }
 
 if ($failed) { throw "Build failed (exit $LASTEXITCODE)." }
+
+if ((Split-Path -Leaf $proj) -eq 'foo_jean.vcxproj') {
+  $dll = Join-Path $root "bin\$Platform\$Configuration\foo_jean.dll"
+  $dumpCmd = "`"$vcvars`" >nul && dumpbin /nologo /dependents `"$dll`""
+  $dumpOutput = cmd /c $dumpCmd 2>&1
+  if ($LASTEXITCODE -ne 0) { throw "dumpbin failed on $dll (exit $LASTEXITCODE)." }
+  $forbidden = $dumpOutput | Select-String -Pattern '^\s*(MSVCP140|VCRUNTIME140|ucrtbase|api-ms-win-crt-)' -CaseSensitive:$false
+  if ($forbidden) {
+    $names = ($forbidden | ForEach-Object { $_.ToString().Trim() }) -join ', '
+    throw "foo_jean.dll imports a runtime DLL it must link statically instead: $names"
+  }
+}
+
 Write-Output "Build succeeded."

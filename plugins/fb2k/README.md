@@ -150,7 +150,7 @@ The tree is two media library roots and a folder outside both, so one run reache
 
 ## Releasing
 
-`.github/workflows/release.yml` builds `ui/`, compiles it into `foo_jean.dll` and packages `foo_jean.fb2k-component` on `windows-latest`. Every push to `main` uploads that file as a workflow artifact. Pushing a tag matching `v*` also publishes it to a GitHub Release of that tag, once `scripts/release-tag.sh` has confirmed the tag is `v` followed by `kVersion` in `src/core/version.h`; a tag that does not match fails the workflow before anything is built.
+`.github/workflows/release.yml` builds `ui/`, compiles it into `foo_jean.dll` and packages `foo_jean.fb2k-component` on `windows-2022`. Every push to `main` uploads that file as a workflow artifact. Pushing a tag matching `v*` also publishes it to a GitHub Release of that tag, once `scripts/release-tag.sh` has confirmed the tag is `v` followed by `kVersion` in `src/core/version.h`; a tag that does not match fails the workflow before anything is built.
 
 ## Layout
 

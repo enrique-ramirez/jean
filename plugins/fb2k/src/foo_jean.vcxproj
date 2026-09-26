@@ -10,8 +10,8 @@
      "$(Configuration)". Encoded as SetConfiguration metadata on the pfc
      ProjectReference below, which is why building this .vcxproj directly works.
   2. /d2notypeopt is mandatory on anything touching SDK classes.
-  3. WTL reaches the compiler through Directory.Build.targets at the repo root,
-     never through /p:UseEnv=true.
+  3. WTL and the static runtime (RuntimeLibrary) reach the compiler through
+     Directory.Build.targets at the repo root, never through /p:UseEnv=true.
   4. OutDir is set explicitly, because the build drives this .vcxproj directly and
      $(SolutionDir) is then undefined.
 
@@ -122,14 +122,12 @@
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
-      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <PreprocessorDefinitions>_DEBUG;_WINDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
 
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
     <ClCompile>
-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <PreprocessorDefinitions>NDEBUG;_WINDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <!-- Trap 2. Do not remove, and do not overwrite AdditionalOptions wholesale. -->
       <AdditionalOptions>/d2notypeopt %(AdditionalOptions)</AdditionalOptions>

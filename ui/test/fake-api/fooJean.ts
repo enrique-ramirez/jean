@@ -131,6 +131,7 @@ export interface FooJeanOptions {
 	playableFormats?: string[];
 	streamBehaviour?: "ok" | "short" | "quiet";
 	streamPrime?: number;
+	markDelayMs?: number;
 	failTickets?: number | null;
 	ticketError?: string;
 	expireTickets?: boolean;
@@ -187,6 +188,7 @@ const DEFAULTS: FooJeanFake = {
 	playableFormats: ["opus", "aac"],
 	streamBehaviour: "ok",
 	streamPrime: 15,
+	markDelayMs: 0,
 	failTickets: null,
 	ticketError: "",
 	expireTickets: false,
@@ -1273,6 +1275,7 @@ const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
 				: null,
 		queueRevision: state.queueRevision,
 		playlistsRevision: state.playlistsRevision,
+		timelineRevision: state.timelineRevision,
 	};
 };
 

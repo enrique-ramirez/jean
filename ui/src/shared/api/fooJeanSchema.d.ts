@@ -1512,7 +1512,7 @@ export interface components {
              *
              *     **A string of decimal digits, and never a JSON number.** This is a 64-bit counter, seeded so that no value it has ever published comes back after a restart, which puts it far above 2^53. A JSON number is an IEEE 754 double and exact only to 2^53, so a parser that reads this as a number rounds four consecutive generations to a single value and a client comparing two of them cannot see the edit between them. Compare these for equality and send them back as they arrived. Nothing here is ordered, counted or added to, so a string costs a client nothing.
              *
-             *     The other counters on this API are inside 2^53 and stay numbers: `GET /state`'s `playlistsRevision` and `queueRevision`, the media library's own `structure` and `revision`, and the library `structure` a fill or a create resolves its ordinals against. Only a playlist's own two are spelled this way.
+             *     The other counters on this API are inside 2^53 and stay numbers: `GET /state`'s `playlistsRevision`, `queueRevision` and `timelineRevision`, the media library's own `structure` and `revision`, and the library `structure` a fill or a create resolves its ordinals against. Only a playlist's own two are spelled this way.
              */
             structure: string;
             /**
@@ -1859,6 +1859,8 @@ export interface components {
             queueRevision: number;
             /** @description Moves when a playlist is created, removed, moved in the list or retitled, and when any playlist's `structure` or `revision` moves. A client re-reads `GET /playlists` when the one it holds has moved, and not otherwise. */
             playlistsRevision: number;
+            /** @description Moves when the encoder lays a mark on the timeline `GET /stream/timeline` answers, for a track starting or a seek. Never moves for anything else this section reports. `0`, and never moving, where `maxConcurrentStreams` is `0` in `config.json`. */
+            timelineRevision: number;
         };
         /**
          * @description Where playback was at the moment this component last looked, and how long ago that

@@ -561,16 +561,22 @@ export function createState({
 		return true;
 	};
 
+	let timelineRevision = 0;
+
 	const mark = (track: Track, position: number) => {
-		state.streamMarks = [
-			...state.streamMarks.slice(1 - STREAM_MARKS),
-			{
-				atMs: Date.now(),
-				path: String(evaluate(track, "%path%") ?? ""),
-				subsong: 0,
-				position,
-			},
-		];
+		const path = String(evaluate(track, "%path%") ?? "");
+		const lay = (announce: boolean) => {
+			state.streamMarks = [
+				...state.streamMarks.slice(1 - STREAM_MARKS),
+				{ atMs: Date.now(), path, subsong: 0, position },
+			];
+			if (fake.canStream && fake.streamFormats.length > 0) {
+				timelineRevision += 1;
+				if (announce) playerVersion += 1;
+			}
+		};
+		if (fake.markDelayMs > 0) setTimeout(() => lay(true), fake.markDelayMs);
+		else lay(false);
 	};
 
 	// What the component's own store holds: the playing file, where it sits and
@@ -865,6 +871,9 @@ export function createState({
 		},
 		get playlistsRevision() {
 			return playlistsRevision;
+		},
+		get timelineRevision() {
+			return timelineRevision;
 		},
 		queuedEntries,
 		fooJean: fake,

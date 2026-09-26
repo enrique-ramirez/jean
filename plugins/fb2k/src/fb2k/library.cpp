@@ -347,11 +347,19 @@ private:
     }
 
     void build(const std::vector<std::string>& columns) {
+        library_.reportBuild({BuildPhase::listing, 0, 0});
+
+        if (!walkAndInstall(columns))
+            library_.endBuild();
+    }
+
+    bool walkAndInstall(const std::vector<std::string>& columns) {
         const WalkPtr walk = walkPlayer(columns);
         if (!walk || stopping_)
-            return;
+            return false;
 
         const size_t count = walk->items.get_count();
+        library_.reportBuild({BuildPhase::ordering, 0, count});
 
         std::vector<TrackOrder> tracks(count);
         std::vector<std::string> paths(count);
@@ -371,7 +379,7 @@ private:
         }
 
         if (stopping_)
-            return;
+            return false;
 
         const std::vector<size_t> order = ordinalOrder(tracks, [&sortKeys](size_t a, size_t b) {
             return fb2k::sortStringCompare(sortKeys[a], sortKeys[b]);
@@ -399,10 +407,11 @@ private:
 
         scripts_ = walk->scripts;
 
+        library_.reportBuild({BuildPhase::formatting, 0, count});
         LibraryBuilder builder(columns, count);
         evaluate(*ordered, builder);
         if (stopping_)
-            return;
+            return false;
 
         library_.replace(builder.finish());
         ordered->structure = library_.state().structure;
@@ -411,6 +420,7 @@ private:
 
         logInfo("built a library snapshot of " + std::to_string(count) + " track(s) and " +
                 std::to_string(columns.size()) + " client column(s)");
+        return true;
     }
 
     void evaluate(const Ordered& ordered, LibraryBuilder& builder) {
@@ -442,6 +452,9 @@ private:
 
                     worker.sink->row(ordinal, worker.values);
                 });
+
+            library_.reportBuild(
+                {BuildPhase::formatting, std::min(base + kQuerySlice, count), count});
         }
     }
 

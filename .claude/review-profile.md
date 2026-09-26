@@ -66,14 +66,14 @@ The `useExhaustiveDependencies` suppressions are all one shape, a dependency tha
 
 Run from the repository root. Each delegates into `ui/`, so a path argument is relative to `ui/`.
 
-| | |
-|---|---|
-| lint | `pnpm lint` |
-| types | `pnpm typecheck` |
-| unit tests | `pnpm test:unit` |
-| one end to end spec | `pnpm test:e2e test/e2e/queue.spec.ts` |
+| | command | cost |
+|---|---|---|
+| lint | `pnpm lint` | under 1s |
+| types | `pnpm typecheck` | under 1s, incremental |
+| unit tests | `pnpm test:unit` | about 1s |
+| one end to end spec | `pnpm test:e2e test/e2e/queue.spec.ts` | 10s to a minute, more while it is red, since Playwright retries each failure |
 
-`pnpm lint`, `pnpm typecheck` and `pnpm test:unit` are seconds and may be run freely; the unit suite has no per-file form and does not need one. `pnpm test:e2e` without a path is desktop and mobile across the whole suite: never run that.
+`pnpm lint`, `pnpm typecheck` and `pnpm test:unit` may be run freely; the unit suite has no per-file form and does not need one. `pnpm test:e2e` without a path is desktop and mobile across the whole suite, six to nine minutes: never run that. A path that matches no spec file is not an error, and the run reports success on the specs it did find, so check the count.
 
 ### What cannot be verified here
 
@@ -114,13 +114,16 @@ This boundary pays twice. A decision moved into `core/` becomes coverable by a s
 
 Run from the repository root. `scripts/test.sh` finds its own tree, so the path below works from anywhere.
 
-| | |
-|---|---|
-| one test file | `plugins/fb2k/scripts/test.sh '-sf=*cors_test.cpp'` |
-| one case | `plugins/fb2k/scripts/test.sh '-tc=*bearer*'` |
-| threaded code | `plugins/fb2k/scripts/test.sh --sanitize=thread` |
+| | command | cost |
+|---|---|---|
+| the whole suite | `plugins/fb2k/scripts/test.sh` | about 2s with nothing changed, 4s after editing a file, 17s from clean |
+| one test file | `plugins/fb2k/scripts/test.sh '-sf=*cors_test.cpp'` | the same |
+| one case | `plugins/fb2k/scripts/test.sh '-tc=*bearer*'` | the same |
+| threaded code | `plugins/fb2k/scripts/test.sh --sanitize=thread` | 15s from clean, then incremental in its own directories |
 
-A full run loads the machine and floods the context. Never run one during a review.
+The build is incremental and the filters narrow only what runs, never what compiles. Run the whole suite rather than a filtered one: it costs the same and covers everything. Filter only to read less output.
+
+Two runs at once share `plugins/fb2k/bin/`, so two agents never run the suite at the same time.
 
 ### What cannot be verified here
 

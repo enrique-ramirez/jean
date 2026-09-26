@@ -4,7 +4,7 @@ The default. Use this for anything a stranger reads: a README, a contributing gu
 
 ## The shape
 
-Short sentences carrying one idea each. Plain words where a plain word means the same thing: *use* over *leverage*, *make* over *facilitate*, *first* over *initial*, *so* over *accordingly*, *group* over *cohort*.
+Short sentences carrying one idea each. Plain words where a plain word means the same thing: *use* over *leverage*, *make* over *facilitate*, *first* over *initial*, *so* over *accordingly*, *group* over *cohort*, *a test that can't fail* over *a vacuous test*.
 
 Vary the length. A long sentence, then a short one. That alternation is most of what separates human prose from generated prose, and it survives any subject matter.
 

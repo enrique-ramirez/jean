@@ -5,6 +5,10 @@
 #   scripts/test.sh '-sf=*cors_test.cpp'   one file
 #   scripts/test.sh '-tc=*ticket*'         test cases whose name matches
 #
+# The build is incremental, so a run costs what changed rather than the whole tree. -sf and -tc
+# filter what runs, never what compiles, and the whole suite runs in seconds once built: filter
+# to read less output, not to save time.
+#
 #   scripts/test.sh --sanitize=address     AddressSanitizer and UndefinedBehaviorSanitizer
 #   scripts/test.sh --sanitize=thread      ThreadSanitizer, which is what covers the rings and the hold
 #   scripts/test.sh --sanitize=leaks       the ordinary build under macOS's leaks
@@ -116,14 +120,21 @@ build_zlib_archive_if_missing() {
   ar rcs "$deflate/libz.a" "$deflate"/*.o
 }
 
+# Only what changed since the last run is compiled, in parallel; scripts/lib/tests.mk has how.
 build_tests() {
   # -Wno-unused-function because doctest's SUBCASE machinery generates some.
-  # shellcheck disable=SC2086
-  "$CXX" -g -O0 -Wall -Wextra -Wno-unused-function $instrument \
-    "${compile_flags[@]}" \
-    "$root"/tests/*.cpp "$root"/tests/support/*.cpp "$root"/src/core/*.cpp \
-    "$codec/libcodec.a" "$deflate/libz.a" \
-    -o "$out/foo_jean_tests"
+  local cxxflags="-g -O0 -Wall -Wextra -Wno-unused-function $instrument ${compile_flags[*]}"
+  local flags="$out/obj/flags"
+
+  mkdir -p "$out/obj"
+  if [ ! -f "$flags" ] || [ "$(cat "$flags")" != "$CXX $cxxflags" ]; then
+    printf '%s' "$CXX $cxxflags" >"$flags"
+  fi
+
+  make -s -j "$(getconf _NPROCESSORS_ONLN)" -f "$root/scripts/lib/tests.mk" \
+    ROOT="$root" OUT="$out" CXX="$CXX" CXXFLAGS="$cxxflags" LDFLAGS="-g $instrument" \
+    SOURCES="$(echo "$root"/tests/*.cpp "$root"/tests/support/*.cpp "$root"/src/core/*.cpp)" \
+    LIBS="$codec/libcodec.a $deflate/libz.a" FLAGS="$flags"
 }
 
 # macOS's own tool, not LeakSanitizer: LSan has no implementation on this platform and an ASan binary

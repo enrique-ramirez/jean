@@ -12,7 +12,7 @@ openapi: 3.1.0
 
 info:
   title: foo_jean
-  version: 0.3.0
+  version: 0.4.0
   summary: The media library, playlists, the queue, tag writing and a live stream of the player's output, for foobar2000, over HTTP.
   description: |
     A foobar2000 component exposing over HTTP what a client cannot otherwise reach: writing metadata tags, the whole media library in one piece, every playlist and autoplaylist addressed by foobar2000's own GUID, the play queue, cover art, what the player is doing, and a live encode of its output.
@@ -224,7 +224,7 @@ paths:
                 default:
                   value:
                     name: foo_jean
-                    version: 0.3.0
+                    version: 0.4.0
                     apiVersion: 1
 
   /capabilities:
@@ -1664,6 +1664,7 @@ paths:
                       revision: 903
                       trackCount: 30441
                       columns: ["%title%", "%album artist%", "%play_count%"]
+                      build: null
                     player:
                       playback: playing
                       path: 'C:\Music\Fictional Artist\Imaginary Album\01 Track.flac'
@@ -1690,7 +1691,7 @@ paths:
                   value:
                     configGeneration: 0
                     library:
-                      { ready: false, structure: 0, revision: 0, trackCount: 0, columns: [] }
+                      { ready: false, structure: 0, revision: 0, trackCount: 0, columns: [], build: null }
                     player:
                       playback: stopped
                       path: ""
@@ -2026,6 +2027,16 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Library" }
+              examples:
+                building:
+                  summary: A newly declared column set, partway through formatting. The ready snapshot's own generations and columns still stand until the build replaces them.
+                  value:
+                    ready: true
+                    structure: 41
+                    revision: 903
+                    trackCount: 30441
+                    columns: ["%title%", "%album artist%", "%play_count%"]
+                    build: { phase: formatting, formatted: 16384, total: 30441 }
         "304": { $ref: "#/components/responses/NotModified" }
         "400": { $ref: "#/components/responses/LibraryRefused" }
         "413": { $ref: "#/components/responses/LibraryTooLarge" }
@@ -3200,7 +3211,7 @@ components:
         version:
           type: string
           description: The component's own version. Informational; branch on apiVersion instead.
-          examples: ["0.3.0"]
+          examples: ["0.4.0"]
         apiVersion:
           type: integer
           description: The shape of this API. A client MUST refuse a number it does not understand.
@@ -3275,7 +3286,7 @@ components:
         canReadLibrary:
           type: boolean
           description: |
-            Whether this install serves the media library. False on a component that loaded without the feature and on any version predating it, and every route under `/library` then answers `503`, as does `GET /artwork`, which addresses a cover through the snapshot. `GET /state` answers `200` regardless, with `library.ready` false. A client MUST hide the library rather than offer it and fail.
+            Whether this install serves the media library. False on a component that loaded without the feature and on any version predating it, and every route under `/library` then answers `503`, as does `GET /artwork`, which addresses a cover through the snapshot. `GET /state` answers `200` regardless, with `library.ready` false. A client MUST say why the library is unavailable, and MUST NOT hide it or present it as empty.
 
             True says the routes are there, not that a snapshot is built yet. `GET /state` reports `library.ready` for that.
         playerName:
@@ -4138,7 +4149,7 @@ components:
         What rides under `library` in `GET /state`'s `200`, and what `GET /library/export` and `POST /library/refresh` hand back on a `202`. Small on purpose: it is polled.
       type: object
       additionalProperties: false
-      required: [ready, structure, revision, trackCount, columns]
+      required: [ready, structure, revision, trackCount, columns, build]
       properties:
         ready:
           type: boolean
@@ -4166,6 +4177,35 @@ components:
 
             This is what a client compares against between a `202` from `GET /library/export` and its next attempt. The comparison is by membership: same members, in any order, is the same declaration.
           examples: [["%title%", "%album artist%", "%play_count%"]]
+        build:
+          description: |
+            Progress on a snapshot the component is building right now, or `null` while none is. This covers every build: the first walk, one started by a newly declared column set, and a rebuild asked for through `POST /library/refresh`.
+          oneOf:
+            - { $ref: "#/components/schemas/LibraryBuild" }
+            - type: "null"
+
+    LibraryBuild:
+      description: |
+        How far the running build has gotten.
+      type: object
+      additionalProperties: false
+      required: [phase, formatted, total]
+      properties:
+        phase:
+          type: string
+          enum: [listing, ordering, formatting]
+          description: |
+            `listing` walks the player for its tracks. `ordering` sorts them into the snapshot's own order, in memory, with no count of its own. `formatting` runs the declared columns through title-formatting, in slices of 8,192 tracks.
+        formatted:
+          type: integer
+          description: |
+            Tracks formatted so far. Moves once a slice of 8,192 tracks finishes, rather than continuously, so a library of one slice or fewer goes from nothing formatted to done.
+          examples: [16384]
+        total:
+          type: integer
+          description: |
+            Tracks in the build. `0` during `listing`, since the count is not yet known; set once `ordering` starts.
+          examples: [30441]
 
     PlayingLocation:
       description: |

@@ -1203,7 +1203,7 @@ export interface components {
             name: "foo_jean";
             /**
              * @description The component's own version. Informational; branch on apiVersion instead.
-             * @example 0.3.0
+             * @example 0.4.0
              */
             version: string;
             /**
@@ -1262,7 +1262,7 @@ export interface components {
              */
             canMuteWhileStreaming: boolean;
             /**
-             * @description Whether this install serves the media library. False on a component that loaded without the feature and on any version predating it, and every route under `/library` then answers `503`, as does `GET /artwork`, which addresses a cover through the snapshot. `GET /state` answers `200` regardless, with `library.ready` false. A client MUST hide the library rather than offer it and fail.
+             * @description Whether this install serves the media library. False on a component that loaded without the feature and on any version predating it, and every route under `/library` then answers `503`, as does `GET /artwork`, which addresses a cover through the snapshot. `GET /state` answers `200` regardless, with `library.ready` false. A client MUST say why the library is unavailable, and MUST NOT hide it or present it as empty.
              *
              *     True says the routes are there, not that a snapshot is built yet. `GET /state` reports `library.ready` for that.
              */
@@ -1868,6 +1868,26 @@ export interface components {
              *     ]
              */
             columns: string[];
+            /** @description Progress on a snapshot the component is building right now, or `null` while none is. This covers every build: the first walk, one started by a newly declared column set, and a rebuild asked for through `POST /library/refresh`. */
+            build: components["schemas"]["LibraryBuild"] | null;
+        };
+        /** @description How far the running build has gotten. */
+        LibraryBuild: {
+            /**
+             * @description `listing` walks the player for its tracks. `ordering` sorts them into the snapshot's own order, in memory, with no count of its own. `formatting` runs the declared columns through title-formatting, in slices of 8,192 tracks.
+             * @enum {string}
+             */
+            phase: "listing" | "ordering" | "formatting";
+            /**
+             * @description Tracks formatted so far. Moves once a slice of 8,192 tracks finishes, rather than continuously, so a library of one slice or fewer goes from nothing formatted to done.
+             * @example 16384
+             */
+            formatted: number;
+            /**
+             * @description Tracks in the build. `0` during `listing`, since the count is not yet known; set once `ordering` starts.
+             * @example 30441
+             */
+            total: number;
         };
         /** @description Where the playing track sits: the playlist's GUID and the item's position within it. */
         PlayingLocation: {

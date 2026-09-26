@@ -1218,6 +1218,7 @@ const libraryStateOf = (state: FakeState) => {
 		revision,
 		trackCount: ready ? state.libraryTracks.length : 0,
 		columns,
+		build: null,
 	};
 };
 

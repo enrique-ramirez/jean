@@ -765,7 +765,7 @@ TEST_CASE("the statuses contract/openapi.yaml documents are the ones we answer w
 
 TEST_CASE("the versions contract/openapi.yaml states are the versions we report") {
     INFO(kUpdateSpec);
-    CHECK(std::string(kVersion) == "0.3.0");
+    CHECK(std::string(kVersion) == "0.4.0");
     CHECK(kApiVersion == 1);
 }
 

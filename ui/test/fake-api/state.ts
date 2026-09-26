@@ -451,6 +451,7 @@ export function createState({
 			revision: 0,
 			columns: [] as string[],
 			building: null as string[] | null,
+			buildTicks: 0,
 			structureFrom: 0,
 			dictionaries: new Map<string, Dictionary>(),
 			history: [] as {
@@ -759,6 +760,11 @@ export function createState({
 			},
 		};
 	};
+
+	function startLibraryBuild(columns: string[]) {
+		feed.building = [...columns];
+		feed.buildTicks = 0;
+	}
 
 	function finishLibraryBuild() {
 		if (!feed.building) return;
@@ -1200,6 +1206,7 @@ export function createState({
 			});
 		},
 
+		startLibraryBuild,
 		finishLibraryBuild,
 
 		countPlay,

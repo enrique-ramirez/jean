@@ -112,6 +112,10 @@ export interface FooJeanOptions {
 	libraryBusy?: number;
 	libraryRebuilds?: number;
 
+	librarySlice?: number;
+
+	failLibraryExport?: { status: 413 | 500 | 503; times: number } | null;
+
 	maxAutoPlaylists?: number;
 	// Playlist keys the component reports as already being autoplaylists, whether it
 	// made them or not. An autoplaylist created in foobar2000 itself looks like
@@ -233,6 +237,8 @@ const DEFAULTS: FooJeanFake = {
 	libraryBuilds: 0,
 	libraryBusy: 0,
 	libraryRebuilds: 0,
+	librarySlice: Infinity,
+	failLibraryExport: null,
 	maxAutoPlaylists: 0,
 	autoPlaylists: [],
 	libraryEnabled: true,
@@ -1209,7 +1215,29 @@ function insertTracks(
 	return tracks.map((_, at) => start + at);
 }
 
-const libraryStateOf = (state: FakeState) => {
+// `librarySlice` mirrors `kQuerySlice` in `fb2k/library.cpp`.
+const libraryBuildOf = (
+	state: FakeState,
+	fake: FooJeanFake,
+): components["schemas"]["LibraryBuild"] | null => {
+	const feed = state.libraryFeed;
+	if (!feed.building) return null;
+
+	const total = state.libraryTracks.length;
+	const totalSlices = Math.max(1, Math.ceil(total / fake.librarySlice));
+	const formattingSteps = totalSlices - 1;
+	const stepIndex = Math.min(feed.buildTicks, 1 + formattingSteps);
+
+	if (stepIndex === 0) return { phase: "listing", formatted: 0, total: 0 };
+	if (stepIndex === 1) return { phase: "ordering", formatted: 0, total };
+	return {
+		phase: "formatting",
+		formatted: (stepIndex - 1) * fake.librarySlice,
+		total,
+	};
+};
+
+const libraryStateOf = (state: FakeState, fake: FooJeanFake) => {
 	const { structure, revision, columns } = state.libraryFeed;
 	const ready = hasLibrarySnapshot(state);
 	return {
@@ -1218,7 +1246,7 @@ const libraryStateOf = (state: FakeState) => {
 		revision,
 		trackCount: ready ? state.libraryTracks.length : 0,
 		columns,
-		build: null,
+		build: libraryBuildOf(state, fake),
 	};
 };
 
@@ -1373,17 +1401,37 @@ const refuseColumns = (asked: string[]) => {
 	return null;
 };
 
+// 413 and 503 are `kLibraryTooLarge` and `kNoLibrary` in
+// `plugins/fb2k/src/core/http_server.cpp`, verbatim. 500 stands for a failure
+// this route has no fixed wording for. `errorDocument` there writes only
+// `error`, with no `detail` field.
+const LIBRARY_EXPORT_FAILURE: Record<413 | 500 | 503, { error: string }> = {
+	413: {
+		error: "the library snapshot is larger than this component sends",
+	},
+	500: { error: "the library export failed" },
+	503: { error: "the media library is not available" },
+};
+
 const tagOf = (state: FakeState, coding: string, since?: string) =>
 	`"s${state.libraryFeed.structure}-r${state.libraryFeed.revision}${
 		since === undefined ? "" : `-f${since}`
 	}-${coding}"`;
 
+// `tagName` in `plugins/fb2k/src/core/http_server.cpp` folds `phase`,
+// `formatted` and `total` for this route alone, rather than a step counter, so
+// a build that has stopped moving stops moving the tag too.
+const buildTagOf = (build: components["schemas"]["LibraryBuild"] | null) =>
+	build ? `${build.phase}:${build.formatted}/${build.total}` : "x";
+
 // `GET /api/state`'s own validator, distinct from the two binary routes'
 // `tagOf`: it folds the player's version and the config generation too, so a
 // poll that only drove the player, or only flipped a switch, still sees the
 // tag move.
-const stateTagOf = (state: FakeState, coding: string) =>
-	`"s${state.libraryFeed.structure}-r${state.libraryFeed.revision}-p${state.playerVersion}-g${state.fooJean.configGeneration}-${coding}"`;
+const stateTagOf = (state: FakeState, fake: FooJeanFake, coding: string) =>
+	`"s${state.libraryFeed.structure}-r${state.libraryFeed.revision}-b${buildTagOf(
+		libraryBuildOf(state, fake),
+	)}-p${state.playerVersion}-g${state.fooJean.configGeneration}-${coding}"`;
 
 const sendBlob = async (
 	response: Responder,
@@ -1669,13 +1717,15 @@ async function handleState({
 
 	if (fake.libraryRebuilds > 0 && state.libraryFeed.columns.length > 0) {
 		fake.libraryRebuilds -= 1;
-		state.libraryFeed.building = [...state.libraryFeed.columns];
+		state.startLibraryBuild(state.libraryFeed.columns);
 	}
 	if (state.libraryFeed.building) {
-		if (fake.libraryBuilds > 0) fake.libraryBuilds -= 1;
-		else if (fake.libraryReady) state.finishLibraryBuild();
+		if (fake.libraryBuilds > 0) {
+			fake.libraryBuilds -= 1;
+			state.libraryFeed.buildTicks += 1;
+		} else if (fake.libraryReady) state.finishLibraryBuild();
 	}
-	const tag = stateTagOf(state, "identity");
+	const tag = stateTagOf(state, fake, "identity");
 	response.setHeader("Vary", "Origin, Accept-Encoding");
 	response.setHeader("Cache-Control", ASK_EVERY_TIME);
 	response.setHeader("ETag", tag);
@@ -1686,7 +1736,7 @@ async function handleState({
 	}
 	return json(response, {
 		configGeneration: fake.configGeneration,
-		library: libraryStateOf(state),
+		library: libraryStateOf(state, fake),
 		player: playerSectionOf(state, fake),
 	});
 }
@@ -1818,6 +1868,12 @@ async function handleLibrary({
 		const refused = refuseColumns(asked);
 		if (refused) return json(response, refused, 400);
 
+		if (fake.failLibraryExport && fake.failLibraryExport.times > 0) {
+			const { status } = fake.failLibraryExport;
+			fake.failLibraryExport.times -= 1;
+			return json(response, LIBRARY_EXPORT_FAILURE[status], status);
+		}
+
 		if (fake.libraryBusy > 0) {
 			fake.libraryBusy -= 1;
 			response.setHeader("Retry-After", "1");
@@ -1825,9 +1881,12 @@ async function handleLibrary({
 		}
 
 		if (!sameMembers(state.libraryFeed.columns, asked)) {
-			state.libraryFeed.building = asked;
+			const alreadyBuildingAsked =
+				state.libraryFeed.building !== null &&
+				sameMembers(state.libraryFeed.building, asked);
+			if (!alreadyBuildingAsked) state.startLibraryBuild(asked);
 			if (fake.libraryBuilds > 0 || !fake.libraryReady)
-				return json(response, libraryStateOf(state), 202);
+				return json(response, libraryStateOf(state, fake), 202);
 			state.finishLibraryBuild();
 		}
 

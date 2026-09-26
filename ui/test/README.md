@@ -106,7 +106,7 @@ An export taken off a real player is far too large to commit, so the test that r
 JEAN_LIBRARY_EXPORT=/path/to/export.jlib pnpm test:unit
 ```
 
-The routes model the declaration the contract describes rather than answering from nothing. Nothing is built until an export names a column set, so a fresh fake reports `ready: false` and both generations at zero. Five options drive the paths a client has to survive:
+The routes model the declaration the contract describes rather than answering from nothing. Nothing is built until an export names a column set, so a fresh fake reports `ready: false` and both generations at zero. Seven options drive the paths a client has to survive:
 
 | | |
 |---|---|
@@ -115,6 +115,8 @@ The routes model the declaration the contract describes rather than answering fr
 | `libraryBuilds: n` | polls of `GET /api/state` answered before a declared set finishes building, so the export is a `202` first |
 | `libraryBusy: n` | exports answered `429` before the rate limiter lets one through |
 | `libraryRebuilds: n` | structure rebuilds, one performed at the next poll of `GET /api/state` each. This is the `409` and the re-export behind it |
+| `librarySlice: n` | slices `formatting` into steps of `n` tracks: while `libraryBuilds` still counts a build down, each `GET /api/state` walks `build` one step further, `listing` then `ordering` then a `formatted` at every slice boundary but the last, which is the build finishing rather than a report of its own. Unset takes the whole library, so a build of one slice or fewer never reports a `formatted` above `0` |
+| `failLibraryExport: { status, times }` | refuses that many `GET /api/library/export` requests with `status`, then answers normally |
 
 **`GET /api/track/library` answers one track's declared columns**, addressed the way a cover is, by library-relative path and subsong, or by an `ordinal` and the `structure` it was read at, the pair `POST /api/tags` takes. Both forms at once, neither, or half the pair is a `400`, a `structure` the library has moved past a `409`, and an ordinal past the end a `404`. It is the read a client goes back with when a write's own answer never arrived, so two options reach it and no other traffic: `failLibraryTrack` refuses it with a status, and `hangLibraryTrack` holds it open and never answers, not even late. `twoRootsHold` names a library-relative path that two media library roots both hold, and this route and the tag write both answer `409` for it rather than choosing one of the two tracks.
 

@@ -422,7 +422,7 @@ test("no read of the player's state, tagged or not, can be answered from the bro
 		);
 });
 
-test("a hidden tab stops asking, and asks again when it comes back", async (t) => {
+test("a hidden tab that is not listening stops asking, and asks again when it comes back", async (t) => {
 	const poll = harness(t, () => document200("playing"));
 	await poll.settle();
 	await poll.ticks(1);
@@ -759,6 +759,19 @@ test("while listening, a new track whose mark is already announced is not looked
 	);
 
 	assert.deepEqual(await listening.extraLooksAfterChange(), []);
+});
+
+// A locked phone is a hidden tab, and the lock screen's media session is fed
+// from this poll.
+test("a hidden tab that is listening goes on asking, and sees a track change nobody made here", async (t) => {
+	const listening = await listeningHarness(t);
+	listening.poll.hide();
+	await listening.poll.settle();
+
+	listening.show(showing('"t2"', { path: NEXT_TRACK }));
+	await listening.poll.ticks(1);
+
+	assert.equal(readTrack(playerIn(listening.poll.client))?.path, NEXT_TRACK);
 });
 
 test("once this device has stopped listening, a new track is not looked at again", async (t) => {

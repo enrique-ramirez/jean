@@ -206,7 +206,12 @@ export function startPlayerPoll(
 	};
 
 	const tick = async () => {
-		if (document.visibilityState !== "visible" || inFlight) return;
+		if (inFlight) return;
+		if (
+			document.visibilityState !== "visible" &&
+			!isListening(listeningSnapshot().phase)
+		)
+			return;
 
 		inFlight = true;
 		try {

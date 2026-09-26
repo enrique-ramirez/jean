@@ -47,6 +47,7 @@ import { translate } from "@/shared/i18n/locale";
 import { clamp } from "@/shared/lib/math";
 import { pushToast } from "@/shared/ui/toastStore";
 import { useAudibleSnapshot } from "./audible";
+import { type FollowRevision, followRevision } from "./followRevision";
 import { beginSeek } from "./listenerStore";
 import { PLAYER_KEY, pollPlayerNow, VOLUME_SETTLE_MS } from "./playerPoll";
 import { audibleAt, positionAt } from "./position";
@@ -95,23 +96,33 @@ export function usePlaylists() {
 const PLAYLISTS_REVISION_KEY = ["playlistsRevision"];
 const PLAYLISTS_SEEN_REVISION_KEY = ["playlistsSeenRevision"];
 
+const playlistsFollowers = new WeakMap<QueryClient, FollowRevision>();
+
+function playlistsFollower(client: QueryClient): FollowRevision {
+	let follower = playlistsFollowers.get(client);
+	if (!follower) {
+		follower = followRevision<PlaylistAnnotation[]>({
+			resource: "playlist list",
+			read: fetchPlaylistAnnotations,
+			apply: (annotations, revision) => {
+				client.setQueryData(PLAYLISTS_KEY, annotations.map(playlistInfoOf));
+				client.setQueryData(PLAYLISTS_REVISION_KEY, revision);
+			},
+		});
+		playlistsFollowers.set(client, follower);
+	}
+	return follower;
+}
+
 // `GET /playlists` carries no revision of its own, so the one from `GET /state`'s `player` is kept
 // beside the list to compare against: re-read only when it has moved, exactly as the queue does.
-// The seen revision is recorded before the refetch settles, so a reader comparing the two keys can
-// tell "the list has not been asked to catch up yet" from "it has been asked and has not yet".
-export async function recheckPlaylists(
+export function followPlaylists(
 	client: QueryClient,
 	origin: string,
 	revision: number,
-): Promise<void> {
+): void {
 	client.setQueryData(PLAYLISTS_SEEN_REVISION_KEY, revision);
-	if (client.getQueryData<number>(PLAYLISTS_REVISION_KEY) === revision) return;
-
-	const annotations = await fetchPlaylistAnnotations(origin);
-	if (!annotations) return;
-
-	client.setQueryData(PLAYLISTS_KEY, annotations.map(playlistInfoOf));
-	client.setQueryData(PLAYLISTS_REVISION_KEY, revision);
+	playlistsFollower(client).announce(origin, revision);
 }
 
 // Whether the list has caught up with the revision the poll last announced, a property of the list

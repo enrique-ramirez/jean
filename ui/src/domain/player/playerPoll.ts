@@ -19,13 +19,20 @@ import {
 import type { PlayerSnapshot, PlayerState } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { rememberSnapshot } from "./audible";
-import { notePlaybackState } from "./listenerStore";
-import { recheckQueue } from "./queue";
-import { recheckPlaylists } from "./usePlayer";
+import {
+	followTimeline,
+	isListening,
+	listeningSnapshot,
+	notePlaybackState,
+} from "./listenerStore";
+import { followQueue } from "./queue";
+import { followPlaylists } from "./usePlayer";
 
 export const PLAYER_KEY = ["player"];
 
 export const POLL_MS = 1000;
+
+export const MARK_FOLLOW_UP_MS = 250;
 
 // Above the poll interval, so a fader held through a tick is confirmed by the next one rather than
 // sprung back to the player's last reported level.
@@ -79,23 +86,56 @@ export function useExportHeldWhenLibraryUnbuilt(): number | null {
 	return data;
 }
 
+interface AnnouncedRevisions {
+	queueRevision: number;
+	playlistsRevision: number;
+	timelineRevision: number;
+}
+
+interface PollOutcome {
+	tag: string | null;
+	revisions: AnnouncedRevisions | null;
+}
+
+const pendingMarkFollowUps = new WeakMap<
+	QueryClient,
+	ReturnType<typeof setTimeout>
+>();
+
+function scheduleMarkFollowUp(client: QueryClient, origin: string) {
+	if (pendingMarkFollowUps.has(client)) return;
+	const timer = setTimeout(() => {
+		pendingMarkFollowUps.delete(client);
+		void pollPlayerNow(client, origin);
+	}, MARK_FOLLOW_UP_MS);
+	pendingMarkFollowUps.set(client, timer);
+}
+
 async function applyPoll(
 	client: QueryClient,
 	origin: string,
 	tag: string | null,
+	revisions: AnnouncedRevisions | null,
 	capabilities: FooJeanCapabilities | undefined,
 	onConfigGeneration?: (generation: number) => void,
-): Promise<string | null> {
+): Promise<PollOutcome> {
 	const exportHeldWhenAsked = playlistSnapshot(
 		componentLibraryKey(origin),
 	).structure;
 	const result = await fetchState(origin, tag);
-	if (!result.ok) return tag;
+	if (!result.ok) return { tag, revisions };
 
 	// Asked on every tick the player answers, not only on one that carries a change: a quiet player
 	// answers `304` forever, and a read lost under it has nothing else coming to carry its value.
 	void retryFailedPlaylistReads(origin);
-	if (result.kind === "unchanged") return tag;
+	if (result.kind === "unchanged") {
+		if (revisions) {
+			followQueue(client, origin, revisions.queueRevision);
+			followPlaylists(client, origin, revisions.playlistsRevision);
+			followTimeline(origin, revisions.timelineRevision);
+		}
+		return { tag, revisions };
+	}
 
 	onConfigGeneration?.(result.state.configGeneration);
 
@@ -105,7 +145,7 @@ async function applyPoll(
 		syncedAt: performance.now(),
 	};
 	client.setQueryData<PlayerSnapshot>(PLAYER_KEY, snapshot);
-	rememberSnapshot(snapshot);
+	const sawChangeOrSeek = rememberSnapshot(snapshot);
 	notePlaybackState(snapshot.player.playbackState);
 
 	// The mark a library address is checked against: `shared/api/README.md`, *What Jean does about
@@ -116,16 +156,33 @@ async function applyPoll(
 	);
 
 	void recheckComponentLibrary(origin, result.state.library);
-	void recheckQueue(client, origin, result.state.player.queueRevision);
-	void recheckPlaylists(client, origin, result.state.player.playlistsRevision);
-	return result.tag;
+	const nextRevisions: AnnouncedRevisions = {
+		queueRevision: result.state.player.queueRevision,
+		playlistsRevision: result.state.player.playlistsRevision,
+		timelineRevision: result.state.player.timelineRevision,
+	};
+	followQueue(client, origin, nextRevisions.queueRevision);
+	followPlaylists(client, origin, nextRevisions.playlistsRevision);
+	const timelineUnmoved = followTimeline(
+		origin,
+		nextRevisions.timelineRevision,
+	);
+
+	if (
+		sawChangeOrSeek &&
+		timelineUnmoved &&
+		isListening(listeningSnapshot().phase)
+	)
+		scheduleMarkFollowUp(client, origin);
+
+	return { tag: result.tag, revisions: nextRevisions };
 }
 
 export async function pollPlayerNow(
 	client: QueryClient,
 	origin: string,
 ): Promise<void> {
-	await applyPoll(client, origin, null, undefined);
+	await applyPoll(client, origin, null, null, undefined);
 }
 
 export function startPlayerPoll(
@@ -135,6 +192,7 @@ export function startPlayerPoll(
 	onConfigChange?: () => void,
 ): () => void {
 	let tag: string | null = null;
+	let revisions: AnnouncedRevisions | null = null;
 	let inFlight = false;
 	let lastGeneration: number | undefined;
 
@@ -152,13 +210,14 @@ export function startPlayerPoll(
 
 		inFlight = true;
 		try {
-			tag = await applyPoll(
+			({ tag, revisions } = await applyPoll(
 				client,
 				origin,
 				tag,
+				revisions,
 				readCapabilities(),
 				noticeGeneration,
-			);
+			));
 		} finally {
 			inFlight = false;
 		}
@@ -172,6 +231,11 @@ export function startPlayerPoll(
 	return () => {
 		clearInterval(timer);
 		document.removeEventListener("visibilitychange", onVisibilityChange);
+		const pending = pendingMarkFollowUps.get(client);
+		if (pending) {
+			clearTimeout(pending);
+			pendingMarkFollowUps.delete(client);
+		}
 	};
 }
 

@@ -6,6 +6,7 @@ import {
 	type PlaylistAnnotation,
 	type QueueRead,
 } from "@/shared/api/fooJean";
+import { type FollowRevision, followRevision } from "./followRevision";
 
 export const QUEUE_KEY = ["queue"];
 export const QUEUE_DROP_TARGET = "jean:queue";
@@ -79,14 +80,30 @@ export const queuedSeconds = (entries: QueueEntry[]) =>
 export const startsIn = (entry: QueueEntry, remaining: number) =>
 	remaining + entry.offset;
 
-export async function recheckQueue(
+const queueFollowers = new WeakMap<QueryClient, FollowRevision>();
+
+function queueFollower(client: QueryClient): FollowRevision {
+	let follower = queueFollowers.get(client);
+	if (!follower) {
+		// `held` is the only record of what has already been read, so `QUEUE_KEY` must not be
+		// garbage-collected out from under it: React Query otherwise drops the entry after five
+		// minutes with no observer, on a route with no queue button mounted, and an unmoved
+		// revision would then never be told to re-announce.
+		client.setQueryDefaults(QUEUE_KEY, { gcTime: Infinity });
+		follower = followRevision<QueueRead>({
+			resource: "queue",
+			read: fetchQueue,
+			apply: (read) => client.setQueryData(QUEUE_KEY, read),
+		});
+		queueFollowers.set(client, follower);
+	}
+	return follower;
+}
+
+export function followQueue(
 	client: QueryClient,
 	origin: string,
 	revision: number,
-): Promise<void> {
-	const cached = client.getQueryData<QueueRead>(QUEUE_KEY);
-	if (cached?.revision === revision) return;
-
-	const read = await fetchQueue(origin);
-	if (read) client.setQueryData(QUEUE_KEY, read);
+): void {
+	queueFollower(client).announce(origin, revision);
 }

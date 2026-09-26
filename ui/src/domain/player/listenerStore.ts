@@ -3,12 +3,14 @@ import {
 	issueStreamTicket,
 	leaveStream,
 	type StreamMark,
+	type StreamTimeline,
 	streamUrl,
 } from "@/shared/api/fooJean";
 import type { PlaybackState } from "@/shared/api/types";
 import { translate } from "@/shared/i18n/locale";
 import { subscribers } from "@/shared/lib/store";
 import { deviceId, deviceIdentity } from "./device";
+import { type FollowRevision, followRevision } from "./followRevision";
 import {
 	amplitudeOf,
 	anchorOf,
@@ -37,7 +39,6 @@ const STALLS_ALLOWED = 3;
 const STALL_WINDOW_MS = 30_000;
 const AFTER_FLUSH_MS = 3000;
 const MSE_START_MS = 5000;
-const TIMELINE_POLL_MS = 10_000;
 
 // A stopped player and a broken stream look identical from the stream: headers arrive and then
 // nothing. Only the player's own state can say which, and the two need different sentences.
@@ -79,7 +80,6 @@ const dead = new Set<string>();
 let attempt = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let watchdogTimer: ReturnType<typeof setInterval> | null = null;
-let timelineTimer: ReturnType<typeof setInterval> | null = null;
 
 let anchor: number | null = null;
 let timelineStreamTime: number | null = null;
@@ -142,6 +142,37 @@ export const notePlaybackState = (state: PlaybackState) => {
 
 export const isListening = (at: ListenPhase) =>
 	at.kind !== "off" && at.kind !== "failed";
+
+let lastTimelineRevision: number | null = null;
+
+interface TimelineRead {
+	timeline: StreamTimeline;
+	mine: number;
+}
+
+const timelineFollower: FollowRevision = followRevision<TimelineRead>({
+	resource: "timeline",
+	read: async (origin) => {
+		const mine = generation;
+		const timeline = await fetchStreamTimeline(origin);
+		return timeline ? { timeline, mine } : null;
+	},
+	apply: ({ timeline, mine }) => {
+		if (mine !== generation || !element) return;
+		marks = timeline.marks;
+		timelineStreamTime = timeline.streamTime;
+		timelineAt = performance.now();
+		deriveAnchor();
+	},
+	active: () => isListening(phase),
+});
+
+export function followTimeline(origin: string, revision: number): boolean {
+	const unmoved = lastTimelineRevision === revision;
+	lastTimelineRevision = revision;
+	timelineFollower.announce(origin, revision);
+	return unmoved;
+}
 
 function ensureElement() {
 	if (element) return element;
@@ -375,8 +406,11 @@ async function open(next: string) {
 	audio.src = sourceFor(audio, target.origin, issued.ticket.ticket, next);
 	audio.volume = amplitudeOf(volumeDb);
 
+	timelineFollower.forget();
+	if (lastTimelineRevision !== null)
+		timelineFollower.announce(target.origin, lastTimelineRevision);
+
 	startWatchdog();
-	void reloadMarks();
 
 	try {
 		await audio.play();
@@ -435,7 +469,6 @@ function startWatchdog() {
 
 	if (watchdogTimer) return;
 	watchdogTimer = setInterval(watch, WATCHDOG_MS);
-	timelineTimer = setInterval(() => void refreshTimeline(), TIMELINE_POLL_MS);
 }
 
 function watch() {
@@ -484,21 +517,6 @@ function deriveAnchor() {
 	const atConnect = timelineStreamTime - (timelineAt - connectAt) / 1000;
 	anchor = anchorOf(atConnect, origin);
 }
-
-async function reloadMarks() {
-	if (!target || !element || !isListening(phase)) return;
-
-	const mine = generation;
-	const timeline = await fetchStreamTimeline(target.origin);
-	if (!timeline || mine !== generation || !element) return;
-
-	marks = timeline.marks;
-	timelineStreamTime = timeline.streamTime;
-	timelineAt = performance.now();
-	deriveAnchor();
-}
-
-export const refreshTimeline = () => void reloadMarks();
 
 export function listeningPosition(
 	path: string | null | undefined,
@@ -583,10 +601,8 @@ function stopStream() {
 	generation += 1;
 	if (reconnectTimer) clearTimeout(reconnectTimer);
 	if (watchdogTimer) clearInterval(watchdogTimer);
-	if (timelineTimer) clearInterval(timelineTimer);
 	reconnectTimer = null;
 	watchdogTimer = null;
-	timelineTimer = null;
 	forgetStreamClock();
 
 	releaseStream();

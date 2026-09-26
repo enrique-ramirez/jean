@@ -7,7 +7,6 @@ import {
 	beginSeek,
 	listeningServerSnapshot,
 	listeningSnapshot,
-	refreshTimeline,
 	subscribeListening,
 } from "./listenerStore";
 import { positionAt } from "./position";
@@ -29,21 +28,21 @@ const looksLikeSeek = (last: PlayerSnapshot, next: PlayerSnapshot) =>
 
 // Keyed by track rather than appended blindly: an update arrives for every volume nudge, and
 // appending those would evict the track still being heard.
-export function rememberSnapshot(next: PlayerSnapshot) {
-	if (!pathOf(next)) return;
+export function rememberSnapshot(next: PlayerSnapshot): boolean {
+	if (!pathOf(next)) return false;
 
 	const last = history[history.length - 1];
 	if (last && samePlayerPath(pathOf(last), pathOf(next))) {
 		history = [...history.slice(0, -1), next];
 		if (looksLikeSeek(last, next)) {
 			beginSeek(positionOf(next));
-			refreshTimeline();
+			return true;
 		}
-		return;
+		return false;
 	}
 
 	history = [...history.slice(1 - DEPTH), next];
-	refreshTimeline();
+	return true;
 }
 
 export function useAudibleSnapshot(live: PlayerSnapshot | null | undefined) {

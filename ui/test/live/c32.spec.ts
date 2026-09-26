@@ -7,12 +7,10 @@ import {
 	viewHeader,
 } from "../e2e/fixtures.ts";
 import { capabilities, playlists } from "./component.ts";
-import { expect, type Page, test } from "./fixtures.ts";
+import { expect, type Page, searchTerm, test } from "./fixtures.ts";
 
 // Criterion 32 on a real player, with `writePlaylists` off in the component's own config.json and
 // the player restarted, so the capabilities Jean reads at discovery already say no.
-
-const QUERY = process.env.LIVE_QUERY ?? "80Kidz";
 
 const sidebarRow = (page: Page, title: string) =>
 	sidebar(page)
@@ -176,9 +174,10 @@ test("a track cannot be dropped onto a playlist and has nowhere to be filed", as
 
 test("search results keep Play and draw no Save as playlist", async ({
 	page,
+	install,
 }) => {
 	await openAllMusic(page);
-	await searchFor(page, QUERY);
+	await searchFor(page, searchTerm(install));
 
 	await expect(
 		viewHeader(page).getByRole("button", { name: "Play", exact: true }),

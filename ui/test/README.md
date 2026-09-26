@@ -168,19 +168,36 @@ Reproducing them takes more than pointing `CONTRACT_URL` at `pnpm fake`, since t
 
 `test/live/` is a second, much smaller suite that drives a player actually running foobar2000, and it replaces the fake suite rather than joining it: setting `LIVE` swaps the projects in `playwright.config.ts` for a single serial one, so `pnpm test` is untouched.
 
+**Neither Node nor the Chromium Playwright drives can reach the LAN from a Mac.** macOS grants local network access per application, and grants it to `curl` and `ssh` but not to either of those, which fail a LAN address with `EHOSTUNREACH`. The route is an SSH forward from the Mac to the player's own loopback, never to the player's LAN address:
+
 ```sh
-LIVE=http://<player-host>:8881 LIVE_LIBRARY_ROOT='C:\Music' pnpm test:live
+ssh -L <port>:127.0.0.1:<port> <player-host>
+LIVE=http://localhost:<port>/ LIVE_LIBRARY_ROOT=<root> pnpm test:live
 ```
 
+Forward to `127.0.0.1` rather than `localhost`: `foo_jean` listens on IPv4, and `localhost` on Windows resolves to `::1` first. What lands on the player is `localhost:<port>` arriving on its own loopback, which its source-address and `Host` rules admit.
+
 `LIVE` is the origin `foo_jean` serves from. Jean loads from its root and calls the API on the same origin, so nothing else needs naming.
+
+**Two invocations, not one.** The first runs every spec with the component's switches on. The second turns `writePlaylists` and `changeOutput` off in the component's own `config.json`, the player owner's file, which the suite never writes, and runs only the two specs each switch governs:
+
+```sh
+LIVE=http://localhost:<port>/ LIVE_LIBRARY_ROOT=<root> pnpm test:live c32.spec.ts outputs.spec.ts
+```
+
+Each spec's other half skips itself and says why: a spec asserting that a write is refused has nothing to assert while its switch is on, and one asserting that a write lands has nothing to assert while it is off.
+
+**The player starts stopped and muted, and a spec that plays anything refuses to start otherwise.**
 
 **It exists for rule 11 below.** These are the comparisons where that matters: the join between the `%path%` the player reports playing and the row Jean drew, a cover that has to decode rather than merely have a `src`, `fold()` against tags read off real files, and `foo_jean` itself rather than the fake standing in for it.
 
 **Nothing here may assume what is in the library.** Counts, titles, which row carries a rating and whether any artist is accented are all read off the player first and asserted against; a spec that cannot be satisfied skips itself and says why. That is why the suite is short: an assertion that survives an unknown library has to be about a relationship rather than a value.
 
-**`LIVE_LIBRARY_ROOT` is required and has no default.** These specs play tracks, write the play queue and can write rating tags, so the `install` fixture, which every spec gets, reads the whole library through `GET /api/library/export` first and refuses to start if one track sits outside the named folder. The check runs before any page is opened, so a wrong answer costs nothing.
+**`LIVE_LIBRARY_ROOT` is required and has no default, and it names a folder on a throwaway install holding nothing but disposable copies.** These specs play tracks, write the play queue and can write rating tags, so the `install` fixture, which every spec gets, reads the whole library through `GET /api/library/export` first and refuses to start if one track sits outside the named folder. The check runs before any page is opened, so a wrong answer costs nothing. Every tag write the suite makes goes through the one helper that refuses a target outside the root before sending anything, which makes the root the only place a write can land. Whether that root is disposable is the runner's to know: the code has no way to tell a throwaway install from any other.
 
-`details-read.spec.ts` also needs a playlist titled `#foo_jean test`, which `plugins/fb2k/scripts/test-fixtures.ps1` builds: library rows, a file the media library does not hold, and a stream URL.
+`details-read.spec.ts` also needs a playlist titled `#foo_jean test`, which `plugins/fb2k/scripts/test-fixtures.ps1` builds: library rows, a file the media library does not hold, and a stream URL. `c26.spec.ts` writes its rating to a row of the same playlist and puts back whatever rating that row held, whether the run passed or failed.
+
+**A run that ends with a playlist added or removed, or any track's rating moved from where it started, fails.** Playback state and the output device stay each spec's own to put back.
 
 ## Writing a spec
 

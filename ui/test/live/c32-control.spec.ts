@@ -6,12 +6,10 @@ import {
 	viewHeader,
 } from "../e2e/fixtures.ts";
 import { capabilities, playlists } from "./component.ts";
-import { expect, type Page, test } from "./fixtures.ts";
+import { expect, type Page, searchTerm, test } from "./fixtures.ts";
 
 // The control for c32.spec.ts, run with `writePlaylists` back on: every selector that answered zero
 // there has to answer something here, or the zeros said nothing about the setting.
-
-const QUERY = process.env.LIVE_QUERY ?? "80Kidz";
 
 const openAllMusic = async (page: Page) => {
 	await page.goto("#/all");
@@ -25,6 +23,7 @@ test.describe.configure({ mode: "serial" });
 
 test("the same controls are all drawn once the setting is back on", async ({
 	page,
+	install,
 }) => {
 	const answer = await capabilities();
 	console.log(`[control] canWritePlaylists: ${answer.canWritePlaylists}`);
@@ -58,7 +57,7 @@ test("the same controls are all drawn once the setting is back on", async ({
 	console.log(`[control] Add to playlist in a track's menu: drawn`);
 	await page.keyboard.press("Escape");
 
-	await searchFor(page, QUERY);
+	await searchFor(page, searchTerm(install));
 	const saveAs = viewHeader(page).getByRole("button", {
 		name: /Save as playlist/,
 	});

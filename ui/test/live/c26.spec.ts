@@ -5,7 +5,7 @@ import { expect, type Page, test } from "./fixtures.ts";
 // On a real player: a rating written outside Jean reaches the open playlist through the changes
 // route, inside one poll, and costs no whole-playlist refetch.
 
-const TITLE = process.env.LIVE_PLAYLIST ?? "#T10 a";
+const TITLE = "#foo_jean test";
 
 // Either control, as `player-poll.spec.ts` does it: `Stars` is an `img` and `StarsInput` a `group`.
 const ratingOf = (page: Page, row: number) =>
@@ -82,7 +82,7 @@ test("a rating written at the player reaches the open playlist through the chang
 
 	const mark = seen.length;
 	const startedAt = Date.now();
-	await writeRating({ track }, "4");
+	await writeRating({ track, path }, "4");
 
 	await expect(ratingOf(page, 0)).toHaveAccessibleName("4 of 5 stars");
 	const shownAfterMs = Date.now() - startedAt;
@@ -112,6 +112,6 @@ test("a rating written at the player reaches the open playlist through the chang
 	expect(changes.length).toBeGreaterThan(0);
 	expect(refetches).toEqual([]);
 
-	await writeRating({ track }, "");
+	await writeRating({ track, path }, "");
 	await expect(ratingOf(page, 0)).toHaveAccessibleName("Unrated");
 });

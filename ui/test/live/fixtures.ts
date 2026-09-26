@@ -1,9 +1,15 @@
 import { test as base, expect } from "@playwright/test";
 import { TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import { fetchLibrary } from "../../src/shared/api/fooJeanLibrary.ts";
-import { COMPONENT, capabilities, component, send } from "./component.ts";
+import {
+	COMPONENT,
+	capabilities,
+	component,
+	send,
+	underRoot,
+} from "./component.ts";
 
-//   LIVE=http://<player-host>:<port>/ LIVE_LIBRARY_ROOT='D:\SomeFolder' pnpm test:live
+//   LIVE=http://<player-host>:<port>/ LIVE_LIBRARY_ROOT=<root> pnpm test:live
 
 const COLUMNS = {
 	path: "%path%",
@@ -26,6 +32,17 @@ export interface Install {
 	tracks: LiveTrack[];
 	canWriteRatings: boolean;
 }
+
+// A library may hold files with no tags at all, so a search term comes from the first artist the
+// player actually resolved rather than one only a particular library carries.
+export const searchTerm = (install: Install) => {
+	const found = install.tracks.find((track) => track.artist !== "?");
+	if (!found)
+		throw new Error(
+			"every track in this library is untagged, so there is no artist to search for",
+		);
+	return found.artist;
+};
 
 const LIBRARY_BUILD_MS = 5 * 60_000;
 const LIBRARY_BUILDS = 2;
@@ -62,7 +79,7 @@ const readInstall = async (): Promise<Install> => {
 		libraryPath: directory.at(row) + filename.at(row),
 	}));
 
-	const strays = tracks.filter((track) => !track.path.startsWith(root));
+	const strays = tracks.filter((track) => !underRoot(track.path, root));
 	if (strays.length)
 		throw new Error(
 			`${strays.length} of ${tracks.length} tracks sit outside ${root}, refusing to drive this player. First: ${strays[0]?.path}`,

@@ -85,14 +85,26 @@ export const rowsOf = (id: string, offset: number, count: number) =>
 		`/api/playlists/${id}/items?offset=${offset}&count=${count}&columns=${encodeURIComponent("%path%")}`,
 	);
 
-export const writeRating = (
-	address: { track: string; subsong?: number },
+// No separator or case normalisation: either would let a path that merely contains the root
+// elsewhere, such as a backup copy, count as inside it.
+export const underRoot = (path: string, root: string): boolean =>
+	path.startsWith(root);
+
+export const writeRating = async (
+	target: { track: string; subsong?: number; path: string },
 	rating: string,
-) =>
-	component("/api/tags", {
+) => {
+	const root = process.env.LIVE_LIBRARY_ROOT;
+	if (!root || !underRoot(target.path, root))
+		throw new Error(
+			`refusing to write ${target.path}: not under LIVE_LIBRARY_ROOT (${root ?? "unset"})`,
+		);
+	const { track, subsong } = target;
+	return component("/api/tags", {
 		method: "POST",
-		body: JSON.stringify({ ...address, fields: { rating } }),
+		body: JSON.stringify({ track, subsong, fields: { rating } }),
 	});
+};
 
 export const capabilities = () =>
 	component<{

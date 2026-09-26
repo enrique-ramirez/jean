@@ -164,18 +164,40 @@
 	position: static;
 }
 
+.group {
+	display: flex;
+	align-items: stretch;
+	margin-inline-end: 6px;
+	border-radius: var(--radius-pill);
+	background: color-mix(in oklab, var(--text) 4%, transparent);
+}
+
+.group .button {
+	border-radius: var(--radius-pill) 0 0 var(--radius-pill);
+}
+
+.group .button:hover:not([aria-disabled="true"]) {
+	background: color-mix(in oklab, var(--text) 8%, transparent);
+	color: var(--text);
+}
+
 .caret {
 	display: grid;
 	place-items: center;
-	padding: 4px;
+	height: 100%;
+	padding: 0 3px 0 1px;
 	border: 0;
-	border-radius: var(--radius-pill);
-	background: none;
+	border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+	background: color-mix(in oklab, var(--text) 8%, transparent);
 	color: var(--muted);
+	transition:
+		background 0.12s var(--ease),
+		color 0.12s var(--ease);
 }
 
-.caret:hover {
-	background: var(--surface-sunken);
+.caret:hover,
+.caret[aria-expanded="true"] {
+	background: color-mix(in oklab, var(--text) 14%, transparent);
 	color: var(--text);
 }
 

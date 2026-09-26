@@ -267,13 +267,24 @@ export function Volume({
 }) {
 	return (
 		<div className={styles.volume}>
-			<VolumeButton
-				volume={volume}
-				label={label}
-				onPress={onToggleMute}
-				disabled={disabled}
-			/>
-			{outputs ? <OutputCaret {...outputs} /> : null}
+			{outputs ? (
+				<div className={styles.group}>
+					<VolumeButton
+						volume={volume}
+						label={label}
+						onPress={onToggleMute}
+						disabled={disabled}
+					/>
+					<OutputCaret {...outputs} />
+				</div>
+			) : (
+				<VolumeButton
+					volume={volume}
+					label={label}
+					onPress={onToggleMute}
+					disabled={disabled}
+				/>
+			)}
 			<VolumeSlider
 				volume={volume}
 				onChange={onChange}

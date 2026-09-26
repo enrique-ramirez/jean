@@ -9,6 +9,7 @@ import {
 	componentLibraryKey,
 	playlistSnapshot,
 	recheckComponentLibrary,
+	retryFailedLibraryRead,
 	retryFailedPlaylistReads,
 } from "@/domain/track/playlistStore";
 import {
@@ -129,6 +130,7 @@ async function applyPoll(
 	// Asked on every tick the player answers, not only on one that carries a change: a quiet player
 	// answers `304` forever, and a read lost under it has nothing else coming to carry its value.
 	void retryFailedPlaylistReads(origin);
+	void retryFailedLibraryRead(origin);
 	if (result.kind === "unchanged") {
 		if (revisions) {
 			followQueue(client, origin, revisions.queueRevision);

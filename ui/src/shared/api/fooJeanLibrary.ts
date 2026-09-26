@@ -1,6 +1,9 @@
 import { sleep } from "@/shared/lib/sleep";
 import { fetchState, withTimeout } from "./fooJean";
+import type { components } from "./fooJeanSchema";
 import { decodeJlib, type JlibDelta, type JlibSnapshot } from "./jlib";
+
+type LibraryBuild = components["schemas"]["LibraryBuild"];
 
 export type LibraryFailureReason =
 	| "unavailable"
@@ -32,7 +35,7 @@ const CHANGES_TIMEOUT_MS = 30_000;
 const POLL_MIN_MS = 500;
 const POLL_MAX_MS = 5_000;
 
-const BUILD_DEADLINE_MS = 5 * 60_000;
+const BUILD_STALL_MS = 60_000;
 
 // foo_jean refills one rebuild every thirty seconds, so this is what a 429 with no `Retry-After`
 // is worth waiting.
@@ -69,6 +72,16 @@ const exportUrl = (origin: string, columns: readonly string[]) => {
 const sameColumns = (held: readonly string[], asked: readonly string[]) => {
 	const built = new Set(held);
 	return built.size === asked.length && asked.every((one) => built.has(one));
+};
+
+const sameBuild = (held: LibraryBuild | null, polled: LibraryBuild | null) => {
+	if (held === polled) return true;
+	if (!held || !polled) return false;
+	return (
+		held.phase === polled.phase &&
+		held.formatted === polled.formatted &&
+		held.total === polled.total
+	);
 };
 
 type Attempt =
@@ -157,7 +170,7 @@ async function attemptExport(
 	};
 }
 
-const TRANSIENT: ReadonlySet<LibraryFailureReason> = new Set([
+export const TRANSIENT: ReadonlySet<LibraryFailureReason> = new Set([
 	"unreachable",
 	"timeout",
 	"failed",
@@ -197,11 +210,15 @@ export async function fetchLibrary(
 	origin: string,
 	columns: readonly string[],
 	signal?: AbortSignal,
+	onProgress?: (build: LibraryBuild) => void,
 ): Promise<LibraryResult> {
-	const deadline = Date.now() + BUILD_DEADLINE_MS;
 	let pollMs = POLL_MIN_MS;
+	let lastBuild: LibraryBuild | null = null;
+	let stalledSince = Date.now();
 
-	while (Date.now() < deadline) {
+	const stalled = () => Date.now() - stalledSince >= BUILD_STALL_MS;
+
+	while (!stalled()) {
 		const attempt = await attemptExport(origin, columns, signal);
 		if (attempt.kind === "done") return attempt.result;
 
@@ -210,15 +227,22 @@ export async function fetchLibrary(
 			continue;
 		}
 
-		while (Date.now() < deadline) {
+		while (!stalled()) {
 			await sleep(pollMs, signal);
 			pollMs = Math.min(pollMs * 2, POLL_MAX_MS);
 
 			const polled = await fetchState(origin, null, signal);
 			if (!polled.ok && !TRANSIENT.has(polled.reason)) return polled;
+			if (!polled.ok || polled.kind !== "state") continue;
+
+			const build = polled.state.library.build;
+			if (!sameBuild(lastBuild, build)) {
+				lastBuild = build;
+				stalledSince = Date.now();
+				if (build) onProgress?.(build);
+			}
+
 			if (
-				polled.ok &&
-				polled.kind === "state" &&
 				polled.state.library.ready &&
 				sameColumns(polled.state.library.columns, columns)
 			)

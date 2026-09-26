@@ -11,11 +11,11 @@ import {
 	fetchLibraryChanges,
 	type LibraryFailure,
 	type LibraryFailureReason,
+	TRANSIENT,
 } from "@/shared/api/fooJeanLibrary";
 import { type JlibDelta, patchColumn } from "@/shared/api/jlib";
 import type { TrackColumns } from "@/shared/api/types";
 import type { Phrase } from "@/shared/i18n/en";
-import { translate } from "@/shared/i18n/locale";
 import { type Subscribers, subscribers } from "@/shared/lib/store";
 import { recordFieldAvailability } from "./fieldAvailability";
 import { EMPTY_COLUMNS, TRACK_EXPRESSIONS } from "./fields";
@@ -37,6 +37,7 @@ export interface PlaylistSnapshot {
 	total: number;
 	isLoading: boolean;
 	error: Error | null;
+	failure: LibraryFailure | null;
 	heat: Float32Array;
 	patina: Float32Array;
 	playedCount: number;
@@ -88,6 +89,7 @@ interface Entry {
 	missedLibrary: LibraryGeneration | null;
 	missedPlaylist: PlaylistGeneration | null;
 	unreadPlaylist: { playlistId: string; generation: PlaylistGeneration } | null;
+	libraryRetry: { failures: number; failedAt: number } | null;
 }
 
 const FIRST_CHUNK = 2500;
@@ -111,10 +113,14 @@ export const EMPTY_PLAYLIST: PlaylistSnapshot = Object.freeze({
 	total: 0,
 	isLoading: false,
 	error: null,
+	failure: null,
 	heat: new Float32Array(0),
 	patina: new Float32Array(0),
 	playedCount: 0,
 });
+
+const LIBRARY_RETRY_MIN_MS = 5_000;
+const LIBRARY_RETRY_MAX_MS = 60_000;
 
 export const componentLibraryKey = (origin: string) => `component:${origin}`;
 
@@ -169,6 +175,7 @@ function entryFor(key: string): Entry {
 		missedLibrary: null,
 		missedPlaylist: null,
 		unreadPlaylist: null,
+		libraryRetry: null,
 	};
 	entries.set(key, entry);
 	return entry;
@@ -312,7 +319,7 @@ async function load(entry: Entry, origin: string, playlistId: string) {
 	}
 }
 
-const READ_FAILED = {
+export const READ_FAILED = {
 	unavailable: "library.readUnavailable",
 	"too-large": "library.readTooLarge",
 	refused: "library.readRefused",
@@ -321,14 +328,14 @@ const READ_FAILED = {
 	failed: "library.readFailed",
 } as const satisfies Record<LibraryFailureReason, Phrase>;
 
-const readError = (failure: LibraryFailure) => {
-	const message = translate(READ_FAILED[failure.reason]);
-	return new Error(
-		failure.detail
-			? translate("library.readDetail", { message, detail: failure.detail })
-			: message,
-	);
-};
+function recordLibraryFailure(entry: Entry, failure: LibraryFailure) {
+	entry.isStarted = false;
+	entry.libraryRetry = {
+		failures: (entry.libraryRetry?.failures ?? 0) + 1,
+		failedAt: Date.now(),
+	};
+	emit(entry, { isLoading: false, failure, error: null });
+}
 
 async function loadSnapshot(entry: Entry, origin: string) {
 	try {
@@ -336,12 +343,10 @@ async function loadSnapshot(entry: Entry, origin: string) {
 			origin,
 			TRACK_EXPRESSIONS,
 			(entry.controller as AbortController).signal,
+			(build) => emit(entry, { loaded: build.formatted, total: build.total }),
 		);
 
-		if (!result.ok) {
-			entry.isStarted = false;
-			return emit(entry, { isLoading: false, error: readError(result) });
-		}
+		if (!result.ok) return recordLibraryFailure(entry, result);
 
 		const { library } = result;
 		const { columns, paths, subsongs } = librarySnapshotOf(
@@ -355,6 +360,7 @@ async function loadSnapshot(entry: Entry, origin: string) {
 			revision: library.revision,
 			isChecking: false,
 		};
+		entry.libraryRetry = null;
 
 		recordFieldAvailability(columns);
 		emit(entry, {
@@ -366,20 +372,17 @@ async function loadSnapshot(entry: Entry, origin: string) {
 			total: columns.trackCount,
 			isLoading: false,
 			error: null,
+			failure: null,
 			...deriveIntensity(columns),
 		});
 
 		await recheckMissed(entry, origin);
 	} catch (error) {
 		if (error instanceof Error && error.name === "AbortError") return;
-		entry.isStarted = false;
-		emit(entry, {
-			isLoading: false,
-			error: readError({
-				ok: false,
-				reason: "failed",
-				detail: error instanceof Error ? error.message : "",
-			}),
+		recordLibraryFailure(entry, {
+			ok: false,
+			reason: "failed",
+			detail: error instanceof Error ? error.message : "",
 		});
 	}
 }
@@ -388,7 +391,14 @@ function exportAgain(entry: Entry, origin: string) {
 	entry.controller?.abort();
 	entry.controller = new AbortController();
 	entry.feed = null;
-	emit(entry, { isLoading: true, error: null });
+	entry.isStarted = true;
+	emit(entry, {
+		isLoading: true,
+		error: null,
+		failure: null,
+		loaded: 0,
+		total: 0,
+	});
 	return loadSnapshot(entry, origin);
 }
 
@@ -578,6 +588,35 @@ async function fetchChangesOrNull(
 	} catch {
 		return null;
 	}
+}
+
+export async function retryFailedLibraryRead(origin: string) {
+	const entry = entries.get(componentLibraryKey(origin));
+	if (!entry) return;
+
+	const { failure } = entry.snapshot;
+	if (!failure || !TRANSIENT.has(failure.reason)) return;
+	const retry = entry.libraryRetry;
+	if (!retry) return;
+
+	const wait = Math.min(
+		LIBRARY_RETRY_MIN_MS * 2 ** (retry.failures - 1),
+		LIBRARY_RETRY_MAX_MS,
+	);
+	if (Date.now() - retry.failedAt < wait) return;
+
+	await exportAgain(entry, origin);
+}
+
+export function tryLibraryAgain(origin: string) {
+	const entry = entries.get(componentLibraryKey(origin));
+	if (!entry) return;
+
+	const { failure } = entry.snapshot;
+	if (!failure || !TRANSIENT.has(failure.reason)) return;
+
+	entry.libraryRetry = null;
+	return exportAgain(entry, origin);
 }
 
 export async function retryFailedPlaylistReads(origin: string) {

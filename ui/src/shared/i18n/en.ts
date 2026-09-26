@@ -244,8 +244,7 @@ export const en = {
 	"library.readFailed": "foo_jean could not answer for the library.",
 	"library.readRefused":
 		"foo_jean would not accept the columns Jean asked for.",
-	"library.readTimedOut":
-		"foo_jean is still building the library. Give it a moment and try again.",
+	"library.readTimedOut": "foo_jean stopped making progress on the library.",
 	"library.readTooLarge":
 		"This library is larger than foo_jean will send in one piece.",
 	"library.readUnavailable": "foo_jean is not serving the media library.",

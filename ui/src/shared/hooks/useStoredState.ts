@@ -25,6 +25,16 @@ const held = <T>(key: string, fallback: T | (() => T)): T => {
 export const readStoredState = <T>(key: string, fallback: T | (() => T)): T =>
 	held(key, fallback);
 
+export function writeStoredState<T>(key: string, value: T): void {
+	values.set(key, value);
+	try {
+		localStorage.setItem(key, JSON.stringify(value));
+	} catch {
+		// Private mode, quota: the setting just does not persist.
+	}
+	listeners.notify();
+}
+
 export function useStoredState<T>(
 	key: string,
 	fallback: T | (() => T),
@@ -46,13 +56,7 @@ export function useStoredState<T>(
 					? (next as (current: T) => T)(held(key, initial.current))
 					: next;
 
-			values.set(key, resolved);
-			try {
-				localStorage.setItem(key, JSON.stringify(resolved));
-			} catch {
-				// Private mode, quota: the setting just does not persist.
-			}
-			listeners.notify();
+			writeStoredState(key, resolved);
 		},
 		[key],
 	);

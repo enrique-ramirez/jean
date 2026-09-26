@@ -1,8 +1,10 @@
+import type { Request } from "@playwright/test";
 import {
 	dragTo,
 	expect,
 	expectSettlesAt,
 	type FakePlayer,
+	globalControls,
 	type Locator,
 	nowPlayingScreen,
 	openNowPlaying,
@@ -10,6 +12,7 @@ import {
 	requestsTo,
 	statusBar,
 	test,
+	untilQuiet,
 } from "./fixtures.ts";
 
 // Playwright cannot hear anything, so nothing here asserts on sound -- only on
@@ -64,6 +67,57 @@ const thePlayer = (page: Page) =>
 // One per device the sound reaches, and the same bars a playing row carries in a
 // track list.
 const marks = (within: Locator) => within.locator("[data-paused]");
+
+const POLL_MS = 1000;
+const MARK_FOLLOW_UP_MS = 250;
+const MARK_DELAY_MS = 100;
+const MARK_IN_HAND_MS = 2 * MARK_FOLLOW_UP_MS;
+const SEEK_MARK_DELAY_MS = 1500;
+// Long enough to catch a read on a timer of up to ten seconds.
+const QUIET_STRETCH_MS = 11_000;
+
+type Sent = {
+	path: string;
+	conditional: boolean;
+	request: Request;
+};
+
+const watchRequests = (page: Page) => {
+	const sent: Sent[] = [];
+	page.on("request", (request) => {
+		sent.push({
+			path: new URL(request.url()).pathname,
+			conditional: "if-none-match" in request.headers(),
+			request,
+		});
+	});
+	return sent;
+};
+
+const sentAt = (entry: Sent) => entry.request.timing().startTime;
+
+const timelineReads = (sent: Sent[]) =>
+	sent.filter((entry) => entry.path === "/api/stream/timeline");
+
+const lookedAtNow = (sent: Sent[]) =>
+	sent.filter((entry) => entry.path === "/api/state" && !entry.conditional);
+
+const polling = (sent: Sent[]) =>
+	sent.some((entry) => entry.path === "/api/state" && entry.conditional);
+
+const marksIn = async (entry: Sent) => {
+	const response = await entry.request.response();
+	const body = (await response?.json().catch(() => null)) as {
+		marks?: { path: string; position: number }[];
+	} | null;
+	return body?.marks ?? [];
+};
+
+const playingPath = (player: FakePlayer) => {
+	const item = player.player.activeItem;
+	const track = player.playlistById(item.playlistId)?.items[item.index];
+	return String(track?.["%path%"] ?? "");
+};
 
 test.describe("where the picker sits", () => {
 	test.use({ fooJean: {} });
@@ -431,6 +485,38 @@ test.describe("a stream that ends", () => {
 
 		expect(player.peakStreams).toBeLessThanOrEqual(1);
 	});
+
+	// Nothing moves the timeline's revision between connections, so a read that
+	// waited for it to move would leave every reconnect without an anchor.
+	test("reads the timeline once for every connection it opens", async ({
+		page,
+		player,
+	}) => {
+		const sent = watchRequests(page);
+		await page.goto("/");
+		await startListening(page);
+
+		const connects = () =>
+			sent.filter(
+				(entry) =>
+					entry.path === "/api/stream/ticket" &&
+					entry.request.method() === "POST",
+			);
+		await expect
+			.poll(() => connects().length, { timeout: 20_000 })
+			.toBeGreaterThan(2);
+
+		const [first, second, third] = connects();
+		const readsBetween = (from: Sent, to: Sent) =>
+			timelineReads(sent).filter(
+				(read) =>
+					sent.indexOf(read) > sent.indexOf(from) &&
+					sent.indexOf(read) < sent.indexOf(to),
+			).length;
+		expect([readsBetween(first, second), readsBetween(second, third)]).toEqual([
+			1, 1,
+		]);
+	});
 });
 
 test.describe("a stream that goes quiet", () => {
@@ -565,6 +651,168 @@ test.describe("what is audible, not what the player is doing", () => {
 		await expect(
 			statusBar(page).getByRole("button", { name: "Play", exact: true }),
 		).toBeVisible();
+	});
+
+	test.describe("the marks, which land after the change they mark", () => {
+		// No lag here, so a mark is heard as soon as it is read and the hold
+		// releases on the read rather than on the buffer.
+		test.use({ fooJean: { markDelayMs: MARK_DELAY_MS } });
+
+		const aTickLater = async (player: FakePlayer) => {
+			const polled = requestsTo(player, "/api/state").length;
+			await expect
+				.poll(() => requestsTo(player, "/api/state").length)
+				.toBeGreaterThan(polled + 1);
+		};
+
+		// Starting playback lays marks of its own, and they are a change: the
+		// cases below start from a player whose marks are in and seen.
+		const listeningTo = async (page: Page, player: FakePlayer, at = 0) => {
+			await page.goto("/#/home");
+			const marked = player.timelineRevision;
+			player.playItem("p7", HEARD.index);
+			if (at > 0) player.patchPlayer({ position: at });
+			await expect(statusBar(page)).toContainText(HEARD.title);
+			await expect
+				.poll(() => player.timelineRevision)
+				.toBe(marked + (at > 0 ? 2 : 1));
+			await aTickLater(player);
+			await startListening(page);
+			await expect
+				.poll(() => currentTime(page), { timeout: 60_000, intervals: TICK })
+				.toBeGreaterThan(0);
+			await page.keyboard.press("Escape");
+		};
+
+		test("a skip has its mark read before its audio arrives, off one more look at the player a moment later", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			const all = watchRequests(page);
+			await listeningTo(page, player);
+			await expect.poll(() => polling(all)).toBe(true);
+			const heard = playingPath(player);
+			const transport = await globalControls(page, isMobile);
+			const sent = watchRequests(page);
+
+			await transport
+				.getByRole("button", { name: "Next track", exact: true })
+				.click();
+			await expect.poll(() => playingPath(player)).not.toBe(heard);
+			const next = playingPath(player);
+			await expect.poll(() => lookedAtNow(sent).length).toBeGreaterThan(0);
+			const [named] = lookedAtNow(sent);
+
+			const markReadAfter = async () => {
+				for (const read of timelineReads(sent))
+					if ((await marksIn(read)).some((mark) => mark.path === next))
+						return sentAt(read) - sentAt(named);
+				return null;
+			};
+			await expect.poll(markReadAfter, { timeout: 15_000 }).not.toBeNull();
+			expect(await markReadAfter()).toBeLessThan(MARK_IN_HAND_MS);
+
+			await expectSettlesAt(player, () => lookedAtNow(sent).length, 2);
+			const [, followUp] = lookedAtNow(sent);
+			expect(sentAt(followUp) - sentAt(named)).toBeGreaterThanOrEqual(
+				MARK_FOLLOW_UP_MS,
+			);
+			expect(sentAt(followUp) - sentAt(named)).toBeLessThan(POLL_MS);
+		});
+
+		test("with nobody listening here, a skip is looked at once and no more", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			const all = watchRequests(page);
+			await page.goto("/#/home");
+			player.playItem("p7", HEARD.index);
+			await expect(statusBar(page)).toContainText(HEARD.title);
+			await expect.poll(() => polling(all)).toBe(true);
+			const heard = playingPath(player);
+			const transport = await globalControls(page, isMobile);
+			const sent = watchRequests(page);
+
+			await transport
+				.getByRole("button", { name: "Next track", exact: true })
+				.click();
+			await expect.poll(() => playingPath(player)).not.toBe(heard);
+
+			await expectSettlesAt(player, () => lookedAtNow(sent).length, 1);
+		});
+
+		test("a seek holds the readout until its own mark is read, and asks for no timeline before that mark exists", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			test.skip(isMobile, "the readout is desktop-only");
+			const SEEK_TO = 200;
+			await listeningTo(page, player, 20);
+			const sent = watchRequests(page);
+
+			player.fooJean.markDelayMs = SEEK_MARK_DELAY_MS;
+			player.patchPlayer({ position: SEEK_TO });
+
+			await expect
+				.poll(() => elapsedSeconds(page), { intervals: TICK })
+				.toBe(SEEK_TO);
+			await expect
+				.poll(() => elapsedSeconds(page), { timeout: 6_000, intervals: TICK })
+				.toBeGreaterThan(SEEK_TO + 1);
+
+			await untilQuiet(player);
+			const carriesTheSeek = await Promise.all(
+				timelineReads(sent).map(async (read) =>
+					(await marksIn(read)).some((mark) => mark.position === SEEK_TO),
+				),
+			);
+			expect(carriesTheSeek.length).toBeGreaterThan(0);
+			expect(carriesTheSeek).not.toContain(false);
+		});
+
+		test("reads no timeline while nothing changes, however long it plays", async ({
+			page,
+			player,
+		}) => {
+			const sent = watchRequests(page);
+			await listeningTo(page, player);
+			await expect.poll(() => timelineReads(sent).length).toBeGreaterThan(0);
+			const reads = timelineReads(sent).length;
+			const connections = ticketRequests(player).length;
+
+			await page.waitForTimeout(QUIET_STRETCH_MS);
+
+			expect({
+				timelineReads: timelineReads(sent).length - reads,
+				connectionsOpened: ticketRequests(player).length - connections,
+			}).toEqual({ timelineReads: 0, connectionsOpened: 0 });
+		});
+
+		test("with nobody listening here, reads no timeline however the marks move", async ({
+			page,
+			player,
+		}) => {
+			await page.goto("/#/home");
+			player.playItem("p7", HEARD.index);
+			await expect(statusBar(page)).toContainText(HEARD.title);
+
+			const moved = player.timelineRevision;
+			player.next();
+			player.patchPlayer({ position: 60 });
+			await expect
+				.poll(() => player.timelineRevision)
+				.toBeGreaterThanOrEqual(moved + 2);
+			await aTickLater(player);
+
+			await expectSettlesAt(
+				player,
+				() => requestsTo(player, "/api/stream/timeline").length,
+				0,
+			);
+		});
 	});
 });
 

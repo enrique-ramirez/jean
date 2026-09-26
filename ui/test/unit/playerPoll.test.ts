@@ -4,7 +4,14 @@ import test, { mock, type TestContext } from "node:test";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 
 import {
+	configureListening,
+	connect,
+	disconnect,
+} from "../../src/domain/player/listenerStore.ts";
+import * as playerPoll from "../../src/domain/player/playerPoll.ts";
+import {
 	POLL_MS,
+	pollPlayerNow,
 	startPlayerPoll,
 	VOLUME_SETTLE_MS,
 } from "../../src/domain/player/playerPoll.ts";
@@ -83,11 +90,14 @@ const never = () => new Promise<Response>(() => {});
 interface Call {
 	url: string;
 	ifNoneMatch: string | null;
+	at: number;
 }
 
-type Answer = (ifNoneMatch: string | null) => Promise<Response>;
+type Answer = (ifNoneMatch: string | null, url: string) => Promise<Response>;
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+const STEP_MS = 10;
 
 const playerIn = (client: QueryClient) =>
 	client.getQueryData<PlayerSnapshot>(PLAYER_KEY)?.player ?? null;
@@ -170,8 +180,8 @@ const harness = (
 
 	globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
 		const ifNoneMatch = new Headers(init?.headers).get("If-None-Match");
-		calls.push({ url: String(input), ifNoneMatch });
-		return answer(ifNoneMatch);
+		calls.push({ url: String(input), ifNoneMatch, at: Date.now() });
+		return answer(ifNoneMatch, String(input));
 	}) as typeof fetch;
 
 	const watchers = new Set<() => void>();
@@ -194,12 +204,15 @@ const harness = (
 		removeEventListener: (type: string, watcher: () => void) => {
 			if (type === "visibilitychange") watchers.delete(watcher);
 		},
+		body: { appendChild: (child: unknown) => child },
 	} as unknown as Document;
 
 	const client = new QueryClient();
 	const stop = startPlayerPoll(client, ORIGIN, capabilities);
+	const teardowns: (() => void)[] = [];
 
 	t.after(() => {
+		for (const teardown of teardowns) teardown();
 		stop();
 		client.clear();
 		mock.timers.reset();
@@ -214,6 +227,7 @@ const harness = (
 	return {
 		client,
 		calls,
+		atTeardown: (teardown: () => void) => teardowns.push(teardown),
 		answers: (next: Answer) => {
 			answer = next;
 		},
@@ -226,7 +240,15 @@ const harness = (
 				await settle();
 			}
 		},
+		advance: async (ms: number) => {
+			for (let passed = 0; passed < ms; passed += STEP_MS) {
+				mock.timers.tick(STEP_MS);
+				await settle();
+			}
+		},
 		stateCalls: () => calls.filter((call) => call.url.endsWith(STATE_PATH)),
+		callsTo: (path: string) =>
+			calls.filter((call) => new URL(call.url).pathname === path).length,
 	};
 };
 
@@ -529,4 +551,207 @@ test("a tick before capabilities have landed reports the level with no range to 
 
 	assert.equal(player?.volume.value, -6);
 	assert.equal(volumePercent(player?.volume), 0);
+});
+
+test("a 304 tick hands the last announced revisions on again, so a failed queue or playlist read is retried", async (t) => {
+	const REVISIONS = { queueRevision: 7301, playlistsRevision: 7302 };
+	let reachable = false;
+	const poll = harness(t, (ifNoneMatch, url) => {
+		const path = new URL(url).pathname;
+		if (path === STATE_PATH)
+			return ifNoneMatch === TAG
+				? unchanged()
+				: document200("playing", TAG, REVISIONS);
+		if (!reachable) return Promise.resolve(new Response(null, { status: 500 }));
+		if (path === "/api/queue")
+			return Promise.resolve(
+				Response.json({ revision: REVISIONS.queueRevision, entries: [] }),
+			);
+		return Promise.resolve(Response.json({ playlists: [] }));
+	});
+	await poll.settle();
+
+	assert.equal(poll.callsTo("/api/queue"), 1);
+	assert.equal(poll.callsTo("/api/playlists"), 1);
+
+	reachable = true;
+	await poll.ticks(1);
+
+	assert.equal(poll.stateCalls().at(-1)?.ifNoneMatch, TAG);
+	assert.equal(poll.callsTo("/api/queue"), 2);
+	assert.equal(poll.callsTo("/api/playlists"), 2);
+
+	await poll.ticks(2);
+
+	assert.equal(
+		poll.callsTo("/api/queue"),
+		2,
+		"a read that landed was repeated",
+	);
+	assert.equal(
+		poll.callsTo("/api/playlists"),
+		2,
+		"a read that landed was repeated",
+	);
+});
+
+const { MARK_FOLLOW_UP_MS } = playerPoll as { MARK_FOLLOW_UP_MS?: number };
+
+const TRACK = "Artist/Album/01 One.flac";
+const NEXT_TRACK = "Artist/Album/02 Two.flac";
+const TRACK_AFTER = "Artist/Album/03 Three.flac";
+const HEARD_REVISION = 5;
+
+class SilentAudio {
+	preload = "";
+	autoplay = false;
+	volume = 1;
+	muted = false;
+	src = "";
+	currentTime = 0;
+	paused = true;
+	error = null;
+	buffered = { length: 0, start: () => 0, end: () => 0 };
+	addEventListener() {}
+	removeEventListener() {}
+	removeAttribute() {}
+	load() {}
+	pause() {}
+	play() {
+		return Promise.resolve();
+	}
+}
+
+interface Shown {
+	tag: string;
+	player: Partial<PlayerSection>;
+}
+
+const showing = (tag: string, player: Partial<PlayerSection>): Shown => ({
+	tag,
+	player: {
+		path: TRACK,
+		queueRevision: 1,
+		playlistsRevision: 1,
+		timelineRevision: HEARD_REVISION,
+		...player,
+	},
+});
+
+const listeningHarness = async (t: TestContext) => {
+	let shown = showing('"t1"', {});
+	const poll = harness(t, (ifNoneMatch, url) => {
+		const path = new URL(url).pathname;
+		if (path === STATE_PATH)
+			return ifNoneMatch === shown.tag
+				? unchanged()
+				: document200("playing", shown.tag, shown.player);
+		if (path === "/api/stream/ticket")
+			return Promise.resolve(Response.json({ ticket: "a-ticket" }));
+		if (path === "/api/stream/timeline")
+			return Promise.resolve(Response.json({ streamTime: 60, marks: [] }));
+		if (path === "/api/queue")
+			return Promise.resolve(Response.json({ revision: 1, entries: [] }));
+		if (path === "/api/playlists")
+			return Promise.resolve(Response.json({ playlists: [] }));
+		return Promise.resolve(new Response(null, { status: 204 }));
+	});
+	await poll.settle();
+	await poll.ticks(1);
+
+	const realAudio = globalThis.Audio;
+	globalThis.Audio = SilentAudio as unknown as typeof Audio;
+	configureListening({ origin: ORIGIN, formats: ["opus"] });
+	connect();
+	poll.atTeardown(() => {
+		disconnect();
+		configureListening(null);
+		globalThis.Audio = realAudio;
+	});
+	await poll.settle();
+	await poll.ticks(1);
+
+	const lookedAtNow = () =>
+		poll.stateCalls().filter((call) => call.ifNoneMatch === null);
+
+	return {
+		poll,
+		show: (next: Shown) => {
+			shown = next;
+		},
+		extraLooksAfterChange: async (whileWaiting?: () => Promise<void>) => {
+			const before = lookedAtNow().length;
+			const changedAt = Date.now();
+			await poll.ticks(1);
+			await whileWaiting?.();
+			await poll.advance(changedAt + 2 * POLL_MS - STEP_MS - Date.now());
+			return lookedAtNow()
+				.slice(before)
+				.map((call) => call.at - changedAt - POLL_MS);
+		},
+	};
+};
+
+test("while listening, a new track with no new mark yet is looked at once more, a moment later", async (t) => {
+	const listening = await listeningHarness(t);
+
+	listening.show(showing('"t2"', { path: NEXT_TRACK }));
+
+	assert.deepEqual(await listening.extraLooksAfterChange(), [
+		MARK_FOLLOW_UP_MS,
+	]);
+});
+
+test("while listening, a seek with no new mark yet is looked at once more, a moment later", async (t) => {
+	const listening = await listeningHarness(t);
+
+	listening.show(
+		showing('"t2"', { position: { seconds: 150, ageSeconds: 0 } }),
+	);
+
+	assert.deepEqual(await listening.extraLooksAfterChange(), [
+		MARK_FOLLOW_UP_MS,
+	]);
+});
+
+test("while listening, a new track whose mark is already announced is not looked at again", async (t) => {
+	const listening = await listeningHarness(t);
+
+	listening.show(
+		showing('"t2"', {
+			path: NEXT_TRACK,
+			timelineRevision: HEARD_REVISION + 1,
+		}),
+	);
+
+	assert.deepEqual(await listening.extraLooksAfterChange(), []);
+});
+
+test("once this device has stopped listening, a new track is not looked at again", async (t) => {
+	// Stopped rather than never started: the timeline it read while listening
+	// can outlive the connection, and then only the listening check is left.
+	const stopped = await listeningHarness(t);
+	disconnect();
+
+	stopped.show(showing('"t2"', { path: NEXT_TRACK }));
+
+	assert.deepEqual(await stopped.extraLooksAfterChange(), []);
+});
+
+test("a second change seen while a look is pending adds no second look", async (t) => {
+	// A skip's own read of `/state` is the common second sighting: it lands
+	// inside the window of the tick that saw the change first.
+	const SECOND_SIGHTING_MS = 100;
+	const listening = await listeningHarness(t);
+
+	listening.show(showing('"t2"', { path: NEXT_TRACK }));
+
+	const looks = await listening.extraLooksAfterChange(async () => {
+		await listening.poll.advance(SECOND_SIGHTING_MS);
+		listening.show(showing('"t3"', { path: TRACK_AFTER }));
+		await pollPlayerNow(listening.poll.client, ORIGIN);
+		await listening.poll.settle();
+	});
+
+	assert.deepEqual(looks, [SECOND_SIGHTING_MS, MARK_FOLLOW_UP_MS]);
 });

@@ -142,6 +142,7 @@ export async function fetchState(
 			(inner) =>
 				fetch(`${origin}/api/state`, {
 					headers: tag ? { "If-None-Match": tag } : undefined,
+					cache: "no-store",
 					signal: inner,
 				}),
 			signal,

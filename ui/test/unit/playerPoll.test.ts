@@ -90,6 +90,7 @@ const never = () => new Promise<Response>(() => {});
 interface Call {
 	url: string;
 	ifNoneMatch: string | null;
+	cache: RequestCache | undefined;
 	at: number;
 }
 
@@ -180,7 +181,12 @@ const harness = (
 
 	globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
 		const ifNoneMatch = new Headers(init?.headers).get("If-None-Match");
-		calls.push({ url: String(input), ifNoneMatch, at: Date.now() });
+		calls.push({
+			url: String(input),
+			ifNoneMatch,
+			cache: init?.cache,
+			at: Date.now(),
+		});
 		return answer(ifNoneMatch, String(input));
 	}) as typeof fetch;
 
@@ -386,6 +392,34 @@ test("the poll holds the validator between ticks, and a 304 leaves the cache alo
 	const asked = poll.stateCalls();
 	assert.equal(asked.at(-1)?.ifNoneMatch, TAG);
 	assert.equal(playbackIn(poll.client), "playing");
+});
+
+test("no read of the player's state, tagged or not, can be answered from the browser's own cache", async (t) => {
+	const poll = harness(t, () => document200("playing"));
+	await poll.settle();
+	await poll.ticks(1);
+	await pollPlayerNow(poll.client, ORIGIN);
+	await poll.settle();
+
+	const asked = poll.stateCalls();
+	assert.ok(
+		asked.some((call) => call.ifNoneMatch === null),
+		"no untagged read went out",
+	);
+	assert.ok(
+		asked.some((call) => call.ifNoneMatch === TAG),
+		"no tagged read went out",
+	);
+	// A read carrying `If-None-Match` already forces a bypass of the browser's
+	// own cache, under the Fetch standard's rule for conditional headers, so a
+	// tagged read needs no `cache: "no-store"` of its own to get the same guarantee.
+	for (const call of asked)
+		assert.ok(
+			call.ifNoneMatch !== null ||
+				call.cache === "no-store" ||
+				call.cache === "reload",
+			`an untagged read left the browser free to answer from its cache (cache: ${call.cache})`,
+		);
 });
 
 test("a hidden tab stops asking, and asks again when it comes back", async (t) => {

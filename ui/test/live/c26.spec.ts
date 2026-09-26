@@ -1,11 +1,15 @@
 import { trackRow } from "../e2e/fixtures.ts";
-import { byTitle, rowsOf, writeRating } from "./component.ts";
+import {
+	FIXTURES,
+	type FixtureRow,
+	fixtureRows,
+	rowsOf,
+	writeRating,
+} from "./component.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 // On a real player: a rating written outside Jean reaches the open playlist through the changes
 // route, inside one poll, and costs no whole-playlist refetch.
-
-const TITLE = "#foo_jean test";
 
 // Either control, as `player-poll.spec.ts` does it: `Stars` is an `img` and `StarsInput` a `group`.
 const ratingOf = (page: Page, row: number) =>
@@ -21,19 +25,33 @@ interface Seen {
 
 const QUIET_MS = 3_000;
 
-// The one tag written goes to a track the media library holds, which the `install` fixture has
-// already found under the disposable root.
+const hasLibraryPath = (
+	row: FixtureRow,
+): row is FixtureRow & { libraryPath: string } => row.libraryPath !== null;
+
+const uniquelyAddressed = (rows: FixtureRow[]) => {
+	const inLibrary = rows.filter(hasLibraryPath);
+	const counts = new Map<string, number>();
+	for (const row of inLibrary)
+		counts.set(row.libraryPath, (counts.get(row.libraryPath) ?? 0) + 1);
+	const found = inLibrary.find((row) => counts.get(row.libraryPath) === 1);
+	if (!found)
+		throw new Error(
+			`no row in ${FIXTURES} names a media library track by an address nothing else in the playlist shares`,
+		);
+	return found;
+};
+
 test("a rating written at the player reaches the open playlist through the changes route", async ({
 	page,
 }) => {
-	const playlist = await byTitle(TITLE);
-	const first = await rowsOf(playlist.id, 0, 1);
-	const path = first.items[0].columns[0];
-	const track = first.items[0].libraryPath;
-	if (!track)
-		throw new Error(
-			`the media library does not hold ${path}, so it is not known to be disposable`,
-		);
+	const { playlist, rows } = await fixtureRows();
+	const { row, path, libraryPath } = uniquelyAddressed(rows);
+
+	// foobar2000 answers `?` for a field with no value, which for a rating means unrated.
+	const held = (await rowsOf(playlist.id, row, 1, ["%rating%"])).items[0]
+		.columns[0];
+	const notedRating = held === "?" ? "" : held;
 
 	await page.addInitScript(
 		(values: Record<string, unknown>) => {
@@ -58,60 +76,68 @@ test("a rating written at the player reaches the open playlist through the chang
 		}
 	});
 
-	await page.goto(`#/${playlist.id}`);
-	await expect(
-		page.getByRole("heading", { level: 1, name: TITLE }),
-	).toBeVisible();
-	await expect(page.getByRole("grid")).toHaveAttribute(
-		"aria-rowcount",
-		String(playlist.itemCount),
-	);
-	await expect(ratingOf(page, 0)).toHaveAccessibleName("Unrated");
+	try {
+		await writeRating({ track: libraryPath, path }, "");
 
-	const pageReads = () =>
-		seen.filter((one) => one.url.includes(`${rowsRoute}?`));
+		await page.goto(`#/${playlist.id}`);
+		await expect(
+			page.getByRole("heading", { level: 1, name: FIXTURES }),
+		).toBeVisible();
+		await expect(page.getByRole("grid")).toHaveAttribute(
+			"aria-rowcount",
+			String(playlist.itemCount),
+		);
+		await expect(ratingOf(page, row)).toHaveAccessibleName("Unrated");
 
-	// The first load pages through the playlist, so the "no refetch" count below only means
-	// something once that paging has stopped.
-	await expect
-		.poll(() => Date.now() - (pageReads().at(-1)?.at ?? 0), {
-			timeout: 60_000,
-			intervals: [500],
-		})
-		.toBeGreaterThan(QUIET_MS);
+		const pageReads = () =>
+			seen.filter((one) => one.url.includes(`${rowsRoute}?`));
 
-	const mark = seen.length;
-	const startedAt = Date.now();
-	await writeRating({ track, path }, "4");
+		// The first load pages through the playlist, so the "no refetch" count below only means
+		// something once that paging has stopped.
+		await expect
+			.poll(() => Date.now() - (pageReads().at(-1)?.at ?? 0), {
+				timeout: 60_000,
+				intervals: [500],
+			})
+			.toBeGreaterThan(QUIET_MS);
 
-	await expect(ratingOf(page, 0)).toHaveAccessibleName("4 of 5 stars");
-	const shownAfterMs = Date.now() - startedAt;
+		const mark = seen.length;
+		const startedAt = Date.now();
+		await writeRating({ track: libraryPath, path }, "4");
 
-	// A couple of further polls, so a refetch arriving late is still counted.
-	await page.waitForTimeout(QUIET_MS);
+		const rated = (await rowsOf(playlist.id, row, 1, ["%rating%"])).items[0]
+			.columns[0];
+		expect(rated).toBe("4");
 
-	const after = seen.slice(mark);
-	const changes = after.filter((one) =>
-		one.url.includes(`${rowsRoute}/changes?`),
-	);
-	const refetches = after.filter((one) => one.url.includes(`${rowsRoute}?`));
+		await expect(ratingOf(page, row)).toHaveAccessibleName("4 of 5 stars");
+		const shownAfterMs = Date.now() - startedAt;
 
-	console.log(
-		`[c26] playlist ${playlist.id} "${TITLE}", ${playlist.itemCount} rows`,
-	);
-	console.log(`[c26] rated track: ${path}`);
-	console.log(`[c26] the new value is on screen after ${shownAfterMs} ms`);
-	console.log(`[c26] changes requests after the write: ${changes.length}`);
-	for (const one of changes) console.log(`[c26]   ${one.method} ${one.url}`);
-	for (const body of changed) console.log(`[c26]   body ${body}`);
-	console.log(
-		`[c26] whole-playlist refetches after the write: ${refetches.length}`,
-	);
-	for (const one of refetches) console.log(`[c26]   ${one.method} ${one.url}`);
+		// A couple of further polls, so a refetch arriving late is still counted.
+		await page.waitForTimeout(QUIET_MS);
 
-	expect(changes.length).toBeGreaterThan(0);
-	expect(refetches).toEqual([]);
+		const after = seen.slice(mark);
+		const changes = after.filter((one) =>
+			one.url.includes(`${rowsRoute}/changes?`),
+		);
+		const refetches = after.filter((one) => one.url.includes(`${rowsRoute}?`));
 
-	await writeRating({ track, path }, "");
-	await expect(ratingOf(page, 0)).toHaveAccessibleName("Unrated");
+		console.log(
+			`[c26] playlist ${playlist.id} "${FIXTURES}", ${playlist.itemCount} rows`,
+		);
+		console.log(`[c26] rated track: ${path}`);
+		console.log(`[c26] the new value is on screen after ${shownAfterMs} ms`);
+		console.log(`[c26] changes requests after the write: ${changes.length}`);
+		for (const one of changes) console.log(`[c26]   ${one.method} ${one.url}`);
+		for (const body of changed) console.log(`[c26]   body ${body}`);
+		console.log(
+			`[c26] whole-playlist refetches after the write: ${refetches.length}`,
+		);
+		for (const one of refetches)
+			console.log(`[c26]   ${one.method} ${one.url}`);
+
+		expect(changes.length).toBeGreaterThan(0);
+		expect(refetches).toEqual([]);
+	} finally {
+		await writeRating({ track: libraryPath, path }, notedRating);
+	}
 });

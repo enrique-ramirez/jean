@@ -69,21 +69,47 @@ export const playlists = () =>
 		(answer) => answer.playlists,
 	);
 
-export const byTitle = async (title: string) => {
-	const found = (await playlists()).find((entry) => entry.title === title);
-	if (!found) throw new Error(`no playlist titled ${title}`);
-	return found;
-};
-
-export const rowsOf = (id: string, offset: number, count: number) =>
+export const rowsOf = (
+	id: string,
+	offset: number,
+	count: number,
+	columns: readonly string[] = ["%path%"],
+) =>
 	component<{
 		items: { columns: string[]; libraryPath: string | null }[];
 		totalCount: number;
 		structure: string;
 		revision: string;
 	}>(
-		`/api/playlists/${id}/items?offset=${offset}&count=${count}&columns=${encodeURIComponent("%path%")}`,
+		// foo_jean takes several columns repeated, never comma-separated, since a title-formatting
+		// expression may itself contain a comma.
+		`/api/playlists/${id}/items?offset=${offset}&count=${count}&${columns
+			.map((column) => `columns=${encodeURIComponent(column)}`)
+			.join("&")}`,
 	);
+
+export const FIXTURES = "#foo_jean test";
+
+export interface FixtureRow {
+	row: number;
+	path: string;
+	libraryPath: string | null;
+}
+
+export const fixtureRows = async () => {
+	const found = (await playlists()).find((entry) => entry.title === FIXTURES);
+	if (!found)
+		throw new Error(
+			`no playlist titled ${FIXTURES} holding anything: run plugins/fb2k/scripts/test-fixtures.ps1 on this player first`,
+		);
+	const { items } = await rowsOf(found.id, 0, found.itemCount);
+	const rows: FixtureRow[] = items.map((item, row) => ({
+		row,
+		path: item.columns[0],
+		libraryPath: item.libraryPath,
+	}));
+	return { playlist: found, rows };
+};
 
 // No separator or case normalisation: either would let a path that merely contains the root
 // elsewhere, such as a backup copy, count as inside it.

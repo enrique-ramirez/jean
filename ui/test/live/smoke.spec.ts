@@ -12,6 +12,11 @@ import { expect, type Install, reset, test } from "./fixtures.ts";
 // each one puts back whatever it started.
 test.describe.configure({ mode: "serial" });
 
+test.beforeAll(async () => {
+	if (!(await player()).muted)
+		throw new Error("Mute the player first: these specs play real audio.");
+});
+
 // A library may hold files with no tags at all, and a row reading `?` proves nothing about the
 // join between what the player resolved and what Jean drew. So assertions about metadata pick
 // the first track the player answered for.

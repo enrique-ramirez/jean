@@ -9,12 +9,13 @@ import { expectPanelOpen, panelTab } from "../e2e/nowPlaying.ts";
 import {
 	COMPONENT,
 	component,
+	FIXTURES,
+	fixtureRows,
 	type PlaybackMode,
 	player,
 	playlists,
 	playRow,
 	removePlaylist,
-	rowsOf,
 	send,
 	state,
 } from "./component.ts";
@@ -37,9 +38,8 @@ import {
 // owner's.
 
 // `foo_jean` adds only media library tracks to a playlist, so the stream and the file the library
-// does not hold are copied from the playlist `plugins/fb2k/scripts/test-fixtures.ps1` builds with
-// foobar2000's own `/add`.
-const FIXTURES = "#foo_jean test";
+// does not hold are copied from the fixture playlist `fixtureRows()` reads, built with foobar2000's
+// own `/add`.
 const PROBE = "#Jean 016 probe";
 
 // An announcement lands when the station's song ends, and a station plays whole songs.
@@ -214,25 +214,18 @@ const isUrl = (path: string) => /^[a-z][a-z0-9+.-]*:\/\//i.test(path);
 // The fixture playlist's first stream and its first local file the media library does not hold, by
 // row.
 const findFixtureRows = async () => {
-	const fixtures = (await playlists()).find(
-		(entry) => entry.title === FIXTURES,
-	);
+	const { playlist, rows } = await fixtureRows();
 	const missing = (what: string) =>
 		new Error(
 			`no playlist titled ${FIXTURES} holding ${what}: run plugins/fb2k/scripts/test-fixtures.ps1 on this player first`,
 		);
-	if (!fixtures) throw missing("anything");
-	const { items } = await rowsOf(fixtures.id, 0, fixtures.itemCount);
-	const rows = items.map((item, row) => ({
-		row,
-		path: item.columns[0],
-		inLibrary: item.libraryPath !== null,
-	}));
 	const stream = rows.find((one) => isUrl(one.path));
-	const offLibrary = rows.find((one) => !one.inLibrary && !isUrl(one.path));
+	const offLibrary = rows.find(
+		(one) => one.libraryPath === null && !isUrl(one.path),
+	);
 	if (!stream) throw missing("a stream");
 	if (!offLibrary) throw missing("a file outside the media library");
-	return { source: fixtures.id, stream, offLibrary };
+	return { source: playlist.id, stream, offLibrary };
 };
 
 test.describe.configure({ mode: "serial" });

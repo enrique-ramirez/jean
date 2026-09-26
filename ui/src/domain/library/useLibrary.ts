@@ -3,14 +3,16 @@ import { librarySourceOf } from "@/domain/track/librarySource";
 import type { PathTable } from "@/domain/track/pathTable";
 import {
 	componentLibraryKey,
+	EMPTY_PLAYLIST,
 	generationKey,
 } from "@/domain/track/playlistStore";
 import { useComponentLibraryItems } from "@/domain/track/usePlaylistItems";
 import { libraryOrigin } from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
+import type { LibraryStatus } from "./libraryStatus";
 
 export function useLibrary() {
-	const { discovery } = useFooJean();
+	const { discovery, isDiscovered, recheck } = useFooJean();
 
 	const origin = libraryOrigin(discovery);
 
@@ -31,11 +33,30 @@ export function useLibrary() {
 		[library.paths, library.subsongs, origin],
 	);
 
+	const status: LibraryStatus = !isDiscovered
+		? { kind: "checking" }
+		: discovery.state.kind === "unreachable"
+			? { kind: "unreachable" }
+			: !discovery.state.capabilities.canReadLibrary
+				? { kind: "olderPlayer" }
+				: library.failure
+					? { kind: "failed", failure: library.failure }
+					: library.isLoading || library === EMPTY_PLAYLIST
+						? {
+								kind: "reading",
+								loaded: library.loaded,
+								total: library.total,
+							}
+						: { kind: "ready" };
+
 	return {
 		...library,
 		snapshot: library,
 		key,
 		source,
+		status,
+		recheck,
+		origin,
 	};
 }
 

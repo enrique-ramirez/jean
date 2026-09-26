@@ -877,13 +877,11 @@ function Shell() {
 							isCompactViewport={isCompactViewport}
 							onOpenPlaylist={openPlaylist}
 							emptyNotice={
-								library.isLoading
-									? t("library.reading")
-									: genre
-										? t("library.noGenre", { genre })
-										: album
-											? t("library.noAlbum")
-											: t("library.empty")
+								genre
+									? t("library.noGenre", { genre })
+									: album
+										? t("library.noAlbum")
+										: t("library.empty")
 							}
 						/>
 					) : isSearch ? (
@@ -914,11 +912,7 @@ function Shell() {
 									scrollRef={scrollRef}
 									isCompactViewport={isCompactViewport}
 									onOpenPlaylist={openPlaylist}
-									emptyNotice={
-										library.isLoading
-											? t("library.reading")
-											: t("library.noArtist", { artist })
-									}
+									emptyNotice={t("library.noArtist", { artist })}
 								/>
 							) : (
 								<ArtistView

@@ -1992,17 +1992,22 @@ test.describe("what the settings screen says", () => {
 
 		test("names the fix rather than going quiet", async ({ page }) => {
 			await settings(page);
-			await expect(page.getByText("Not connected")).toBeVisible();
+			// Scoped to the panel: the library view behind the dialog draws the
+			// same unreachable notice.
+			const panel = page
+				.getByRole("dialog", { name: "Settings" })
+				.getByRole("region", { name: "foo_jean" });
+			await expect(panel.getByText("Not connected")).toBeVisible();
 			await expect(
-				page.getByText("foo_jean is not answering right now."),
+				panel.getByText("foo_jean is not answering right now."),
 			).toBeVisible();
 			await expect(
-				page.getByText(
+				panel.getByText(
 					"Check that foobar2000 is still running, then try again.",
 				),
 			).toBeVisible();
 			await expect(
-				page.getByRole("button", { name: "Check again" }),
+				panel.getByRole("button", { name: "Check again" }),
 			).toBeVisible();
 		});
 	});

@@ -1,0 +1,27 @@
+.notice {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 12px;
+	max-width: 32rem;
+	padding: 56px 24px;
+}
+
+.summary {
+	margin: 0;
+	font-size: 0.9375rem;
+	line-height: 1.55;
+	color: var(--text);
+	text-wrap: pretty;
+}
+
+.fix {
+	margin: 0;
+	padding-left: 12px;
+	border-left: 2px solid var(--accent-line);
+	font-size: 0.8125rem;
+	line-height: 1.55;
+	color: var(--muted);
+	text-wrap: pretty;
+	overflow-wrap: anywhere;
+}

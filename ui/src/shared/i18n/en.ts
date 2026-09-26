@@ -240,6 +240,8 @@ export const en = {
 	"library.noAlbum": "That record is not in your library.",
 	"library.noArtist": "Nothing by {artist} in your library.",
 	"library.noGenre": "Nothing tagged {genre} in your library.",
+	"library.olderPlayer.fix": "Update foobar2000, then reload this page.",
+	"library.olderPlayer.summary": "Your library needs foobar2000 2.0 or newer.",
 	"library.readDetail": "{message} ({detail})",
 	"library.readFailed": "foo_jean could not answer for the library.",
 	"library.readRefused":
@@ -250,6 +252,10 @@ export const en = {
 	"library.readUnavailable": "foo_jean is not serving the media library.",
 	"library.readUnreachable": "Could not reach foo_jean.",
 	"library.reading": "Reading your library…",
+	"library.readingCount": {
+		one: "Reading {loaded} of {total} track…",
+		other: "Reading {loaded} of {total} tracks…",
+	},
 	"listen.alsoListening": "Also listening",
 	"listen.andOthers": {
 		one: "{label}, {count} other device listening",
@@ -609,6 +615,7 @@ export const en = {
 	"track.findPlaylist": "Find a playlist",
 	"track.goToArtist": "Go to artist",
 	"track.goToNamed": "Go to {artist}",
+	"track.loading": "Loading tracks…",
 	"track.queue": "Add to queue",
 	"track.queueLimited": "Add to queue ({limit} at a time)",
 	"track.selected": "Selected",

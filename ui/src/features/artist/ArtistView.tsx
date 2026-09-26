@@ -1,6 +1,11 @@
 import { Play, Shuffle } from "lucide-react";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
+import { libraryNoticeFor } from "@/domain/library/LibraryNotice";
+import {
+	isLibraryReading,
+	readingNotice,
+} from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
 import { albumsOf } from "@/domain/track/albums";
 import type { ArtistTracks } from "@/domain/track/artists";
@@ -130,6 +135,12 @@ export function ArtistView({
 		{ enabled: isPlayable && canShuffle },
 	);
 
+	const notice = libraryNoticeFor(library);
+	if (notice) return notice;
+
+	const { status } = library;
+	const isReading = isLibraryReading(status);
+
 	return (
 		<div className={styles.artist}>
 			<ViewHeader
@@ -195,7 +206,9 @@ export function ArtistView({
 
 			{held === 0 ? (
 				<p className={styles.notice}>
-					{library.isLoading ? t("library.reading") : t("artist.nothingBy")}
+					{isReading
+						? readingNotice(status, "library.reading", t)
+						: t("artist.nothingBy")}
 				</p>
 			) : null}
 

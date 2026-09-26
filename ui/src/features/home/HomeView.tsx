@@ -1,4 +1,9 @@
 import { useMemo } from "react";
+import { libraryNoticeFor } from "@/domain/library/LibraryNotice";
+import {
+	isLibraryReading,
+	readingNotice,
+} from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
 import { albumsOf, type CoveredAlbum } from "@/domain/track/albums";
 import { trackRows } from "@/domain/track/project";
@@ -59,13 +64,11 @@ export function HomeView({
 		[rows, library.source, t],
 	);
 
-	if (library.error) {
-		return (
-			<p className={styles.notice}>
-				Could not read your library -- {library.error.message}
-			</p>
-		);
-	}
+	const notice = libraryNoticeFor(library);
+	if (notice) return notice;
+
+	const { status } = library;
+	const isReading = isLibraryReading(status);
 
 	const free = shelves.find((shelf) => shelf.id === FREE_SHELF) ?? null;
 	const tabbed = shelves.filter((shelf) => shelf !== free);
@@ -86,7 +89,9 @@ export function HomeView({
 
 			{shelves.length === 0 ? (
 				<p className={styles.notice}>
-					{library.isLoading ? t("home.reading") : t("home.nothingYet")}
+					{isReading
+						? readingNotice(status, "home.reading", t)
+						: t("home.nothingYet")}
 				</p>
 			) : (
 				<div className={styles.shelves}>

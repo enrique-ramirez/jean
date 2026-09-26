@@ -84,6 +84,8 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		header,
 		toolbarLeading,
 		emptyNotice,
+		loadingNotice,
+		progressLabel,
 		keysEnabled = true,
 		canFollowPlayback = false,
 		onPlay,
@@ -105,6 +107,8 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		header?: ReactNode;
 		toolbarLeading?: ReactNode;
 		emptyNotice?: ReactNode;
+		loadingNotice?: ReactNode;
+		progressLabel?: string;
 		keysEnabled?: boolean;
 		canFollowPlayback?: boolean;
 		onPlay: (position: number) => void;
@@ -481,12 +485,21 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 			{isLoading ? (
 				<div
 					className={styles.progress}
+					role="progressbar"
+					aria-valuemin={0}
+					aria-valuemax={total}
+					aria-valuenow={loaded}
+					aria-label={progressLabel || t("track.loading")}
 					style={{ transform: `scaleX(${total ? loaded / total : 0})` }}
 				/>
 			) : null}
 
 			{rows.length === 0 ? (
-				isLoading ? null : (
+				loadingNotice !== undefined ? (
+					loadingNotice ? (
+						<p className={styles.notice}>{loadingNotice}</p>
+					) : null
+				) : isLoading ? null : (
 					<p className={styles.notice}>{emptyNotice}</p>
 				)
 			) : (

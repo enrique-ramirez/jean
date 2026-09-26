@@ -1,3 +1,4 @@
+import { en } from "../../src/shared/i18n/en.ts";
 import {
 	expect,
 	expectSettlesAt,
@@ -131,7 +132,12 @@ test.describe("a library read that fails", () => {
 
 		await page.goto("/");
 
-		await expect(page.getByText(/Could not read your library/)).toBeVisible();
+		await expect(
+			page.getByText(en["library.readFailed"], { exact: false }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: en["action.tryAgain"] }),
+		).toBeVisible();
 	});
 });
 
@@ -158,4 +164,35 @@ test.describe("a component that does not serve the library", () => {
 		await panelTab(panel, "Details").click();
 		await expect(panel).toContainText("Discos Manzana");
 	});
+
+	// A player with no library still has one, just not one Jean can read, so
+	// the sidebar keeps both ways in and each says why rather than being empty.
+	for (const entry of ["All music", "Genres"]) {
+		test(`the sidebar still offers ${entry}, and it says the library needs a newer foobar2000`, async ({
+			page,
+			player,
+		}) => {
+			await page.goto("/");
+			await openSidebar(page);
+			await sidebar(page)
+				.getByRole("button", { name: new RegExp(`^${entry}`) })
+				.click();
+
+			const main = page.locator("main");
+			await expect(
+				main.getByText("Your library needs foobar2000 2.0 or newer."),
+			).toBeVisible();
+			await expect(
+				main.getByText("Update foobar2000, then reload this page."),
+			).toBeVisible();
+			await expectSettlesAt(
+				player,
+				() =>
+					player.requests.filter((request) =>
+						request.path.startsWith("/api/library/"),
+					).length,
+				0,
+			);
+		});
+	}
 });

@@ -173,20 +173,84 @@ test.describe("a snapshot that has to be built first", () => {
 	});
 });
 
+// foobar2000 older than 2.0 has no media library a component can read, so
+// `foo_jean` answers `canReadLibrary: false`. The user's music is still there,
+// so every library view says why it cannot show it rather than that it is empty.
+const OLDER_PLAYER = {
+	summary: "Your library needs foobar2000 2.0 or newer.",
+	fix: "Update foobar2000, then reload this page.",
+};
+
+const LIBRARY_VIEWS = [
+	{ name: "All music", path: "/#/all", heading: /^All music$/ },
+	{ name: "home", path: "/", heading: /Your library|of music/ },
+	{ name: "the genres index", path: "/#/genres", heading: /^Genres$/ },
+	{
+		name: "an artist",
+		path: `/#/artist/${encodeURIComponent("Babasónicos")}`,
+		heading: /^Babasónicos$/,
+	},
+	{
+		name: "search results",
+		path: `/#/search/${encodeURIComponent("Babas")}`,
+		heading: /^Babas$/,
+	},
+];
+
+const EMPTY_NOTICE =
+	/Nothing in your library yet\.|Nothing tagged .+? in your library\.|That record is not in your library\.|Nothing by .+? in your library\.|Nothing to show from your library yet\.|Nothing in your library carries a genre tag\./;
+
+const libraryAsked = (player: FakePlayer) =>
+	player.requests.filter((entry) => entry.path.startsWith("/api/library/"));
+
+const expectOlderPlayerNotice = async (page: Page) => {
+	const main = page.locator("main");
+	await expect(main.getByText(OLDER_PLAYER.summary)).toBeVisible();
+	await expect(main.getByText(OLDER_PLAYER.fix)).toBeVisible();
+};
+
 test.describe("a component that does not serve the library", () => {
 	test.use({
 		fooJean: { canReadLibrary: false },
 	});
 
-	test("nothing stands in for it", async ({ page, player }) => {
-		await page.goto("/#/all");
-		await expect(
-			page.getByRole("heading", { level: 1, name: "All music" }),
-		).toBeVisible();
+	for (const view of LIBRARY_VIEWS) {
+		test(`${view.name} says the library needs a newer foobar2000, and asks it for nothing`, async ({
+			page,
+			player,
+		}) => {
+			await page.goto(view.path);
+			await expectOlderPlayerNotice(page);
 
-		await expect(page.getByText("Nothing in your library yet.")).toBeVisible();
-		await expectSettlesAt(player, () => exportsAsked(player).length, 0);
-	});
+			// One read, not a retrying one: the notice is up, so anything of the
+			// view still on screen was drawn beside it.
+			const main = page.locator("main");
+			const text = (await main.textContent()) ?? "";
+			expect({
+				buttons: await main
+					.getByRole("button", { name: /^(Try again|Check again)$/ })
+					.count(),
+				heading: await main
+					.getByRole("heading", { level: 1, name: view.heading })
+					.count(),
+				rows: await main.locator('[role="row"]').count(),
+				shelves: await main
+					.getByRole("navigation", { name: "Shelves" })
+					.count(),
+				genres: await main.getByRole("link", { name: /tracks?$/ }).count(),
+				emptyNotice: EMPTY_NOTICE.test(text),
+			}).toEqual({
+				buttons: 0,
+				heading: 0,
+				rows: 0,
+				shelves: 0,
+				genres: 0,
+				emptyNotice: false,
+			});
+
+			await expectSettlesAt(player, () => libraryAsked(player).length, 0);
+		});
+	}
 });
 
 test.describe("a library that moved while Jean was open", () => {

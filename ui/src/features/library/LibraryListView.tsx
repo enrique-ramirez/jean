@@ -1,6 +1,11 @@
 import type { ReactNode, RefObject } from "react";
 import { useEffect, useMemo, useRef } from "react";
 import { GENRES_HREF } from "@/domain/library/genreRoute";
+import { libraryNoticeFor } from "@/domain/library/LibraryNotice";
+import {
+	isLibraryReading,
+	readingNotice,
+} from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
 import { useViewPlayback } from "@/domain/library/useViewPlayback";
 import { useIsPlaying } from "@/domain/player/usePlayer";
@@ -19,7 +24,6 @@ import { CreateAutoPlaylist } from "@/features/genres/CreateAutoPlaylist";
 import type { PlaylistInfo } from "@/shared/api/types";
 import type { Phrase } from "@/shared/i18n/en";
 import { useTranslate } from "@/shared/i18n/useTranslate";
-import styles from "./LibraryListView.module.css";
 
 type FinderPhrase = Extract<Phrase, `finder.in${string}`>;
 
@@ -101,13 +105,14 @@ export function LibraryListView({
 		indices,
 	});
 
-	if (library.error) {
-		return (
-			<p className={styles.notice}>
-				Could not read your library -- {library.error.message}
-			</p>
-		);
-	}
+	const notice = libraryNoticeFor(library);
+	if (notice) return notice;
+
+	const { status } = library;
+	const isReading = isLibraryReading(status);
+	const readingText = isReading
+		? readingNotice(status, "library.reading", t)
+		: undefined;
 
 	return (
 		<TrackBrowser
@@ -131,6 +136,8 @@ export function LibraryListView({
 			onOpenFinder={finder.open}
 			toolbarLeading={finder.toolbarLeading}
 			emptyNotice={emptyNotice}
+			loadingNotice={readingText}
+			progressLabel={readingText}
 			header={
 				<ViewHeader
 					eyebrow={eyebrow}

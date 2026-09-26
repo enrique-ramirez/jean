@@ -1,6 +1,8 @@
 import { Search } from "lucide-react";
 import type { RefObject } from "react";
 import { useMemo, useRef, useState } from "react";
+import { libraryNoticeFor } from "@/domain/library/LibraryNotice";
+import { isLibraryReading } from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import { useViewPlayback } from "@/domain/library/useViewPlayback";
@@ -69,13 +71,15 @@ export function SearchResults({
 		{ enabled: canWritePlaylists && results.length > 0 && !library.isLoading },
 	);
 
-	if (library.error) {
-		return (
-			<p className={styles.notice}>
-				Could not read your library -- {library.error.message}
-			</p>
-		);
-	}
+	const notice = libraryNoticeFor(library);
+	if (notice) return notice;
+
+	const { status } = library;
+	const isReading = isLibraryReading(status);
+	const readingText =
+		status.kind === "reading" && status.loaded > 0
+			? t("search.reading", { loaded: status.loaded, total: status.total })
+			: t("library.reading");
 
 	if (!search.hasQuery) {
 		return (
@@ -111,6 +115,8 @@ export function SearchResults({
 			onPlay={playAt}
 			onOpenFinder={search.focus}
 			emptyNotice={t("search.noMatch")}
+			loadingNotice={isReading ? "" : undefined}
+			progressLabel={isReading ? readingText : undefined}
 			header={
 				<ViewHeader
 					eyebrow={t("search.resultsEyebrow")}
@@ -146,11 +152,8 @@ export function SearchResults({
 			}
 			toolbarLeading={
 				<p className={styles.summary}>
-					{library.isLoading
-						? t("search.reading", {
-								loaded: library.loaded,
-								total: library.total,
-							})
+					{isReading
+						? readingText
 						: t("search.matchCount", { count: search.matchCount })}
 				</p>
 			}

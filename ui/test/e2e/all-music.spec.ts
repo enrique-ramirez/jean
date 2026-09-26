@@ -1,3 +1,4 @@
+import { en } from "../../src/shared/i18n/en.ts";
 import { compareText } from "../fake-api/state.ts";
 import type { Page } from "./fixtures.ts";
 import {
@@ -220,11 +221,11 @@ test.describe("a component that is not answering", () => {
 	test("all music offers neither Play nor Shuffle", async ({ page }) => {
 		await page.goto("/#/all");
 		await expect(
-			page.getByRole("heading", { level: 1, name: "All music" }),
+			page.locator("main").getByText(en["fooJean.unreachable.summary"]),
 		).toBeVisible();
 
 		await expect(
-			viewHeader(page).getByRole("button", { name: /^(Play|Shuffle)$/ }),
+			page.locator("main").getByRole("button", { name: /^(Play|Shuffle)$/ }),
 		).toHaveCount(0);
 	});
 });

@@ -3,6 +3,11 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { genreRoute } from "@/domain/library/genreRoute";
+import { libraryNoticeFor } from "@/domain/library/LibraryNotice";
+import {
+	isLibraryReading,
+	readingNotice,
+} from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
 import { genresOf } from "@/domain/track/genres";
 import { trackRows } from "@/domain/track/project";
@@ -137,6 +142,12 @@ export function GenresView({
 		[genres],
 	);
 
+	const notice = libraryNoticeFor(library);
+	if (notice) return notice;
+
+	const { status } = library;
+	const isReading = isLibraryReading(status);
+
 	return (
 		// biome-ignore lint/a11y/noStaticElementInteractions: type-to-find focuses the field
 		<div className={styles.view} onKeyDown={onPageKeyDown}>
@@ -193,8 +204,8 @@ export function GenresView({
 				</div>
 			) : (
 				<p className={styles.notice}>
-					{library.isLoading
-						? t("library.reading")
+					{isReading
+						? readingNotice(status, "library.reading", t)
 						: genres.length === 0
 							? t("genre.noTags")
 							: t("genre.noMatch", { query })}

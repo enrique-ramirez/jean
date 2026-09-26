@@ -117,6 +117,12 @@ constexpr char kSongAlbumArtist[] = "Various Fictional Artists";
 // and the one GET /api/artwork?track= takes.
 constexpr char kTrackTheLibraryHolds[] = "Artist/Album/01.flac";
 
+// Shaped as foobar2000 prints an output module's GUID and a device's, joined by a colon.
+constexpr char kSpeakers[] =
+    "{5A3E1C27-8B4D-4F0E-9C61-2D7B8E9F0A13}:{0E1D3C47-5A7B-4F21-9C3D-2B8E6F4A1D90}";
+constexpr char kHeadphones[] =
+    "{5A3E1C27-8B4D-4F0E-9C61-2D7B8E9F0A13}:{7C2A9E14-3B6D-4E8F-A1C5-9D0B2F7E4A36}";
+
 json playerSection(const TestServer& server) {
     const auto response = get(server, "/api/state");
     REQUIRE(response);
@@ -403,8 +409,9 @@ TEST_CASE("a player with nothing playing still answers a player section a client
     const auto& player = body["player"];
     REQUIRE(player.is_object());
 
-    const std::vector<std::string> published = {"playback", "path",   "subsong", "position",
-                                                "duration", "volume", "muted",   "playbackMode"};
+    const std::vector<std::string> published = {
+        "playback", "path", "subsong", "position", "duration", "volume", "muted", "playbackMode",
+        "outputDeviceId"};
     for (const std::string& field : published) {
         INFO("field: ", field);
         REQUIRE(player.contains(field));
@@ -417,6 +424,7 @@ TEST_CASE("a player with nothing playing still answers a player section a client
     CHECK(player["volume"] == 0);
     CHECK(player["muted"] == false);
     CHECK(player["playbackMode"] == nullptr);
+    CHECK(player["outputDeviceId"] == nullptr);
 }
 
 // A steady_clock time point means nothing on another machine, so what crosses the wire is how old
@@ -921,6 +929,66 @@ TEST_CASE("a poll carries a body when the playing track's library path is all th
     CHECK(player.at("libraryPath") == kTrackTheLibraryHolds);
 }
 
+TEST_CASE("the poll document names the output device the player is set to, spelled as "
+          "GET /api/outputs spells it") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    PlayerState state = playing();
+    state.outputDeviceId = kSpeakers;
+    store.publish(state);
+    const TestServer server = serving(&library, &store);
+
+    CHECK(playerSection(server)["outputDeviceId"] == kSpeakers);
+}
+
+// A switch of output device moves nothing else about the player, the same shape as the library
+// path above: a field outside the comparison the version is computed from holds the ETag, the
+// switch is answered 304, and a picker stays ticked on the device the player has left.
+TEST_CASE("a poll carries a body when the output device is all that changed, and a 304 until it "
+          "changes again") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    PlayerState started = playing();
+    started.outputDeviceId = kSpeakers;
+    store.publish(started);
+    const TestServer server = serving(&library, &store);
+
+    const auto first = get(server, "/api/state");
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+
+    const auto tag = first->get_header_value("ETag");
+    REQUIRE_FALSE(tag.empty());
+
+    PlayerState switched = started;
+    switched.outputDeviceId = kHeadphones;
+    store.publish(switched);
+
+    const auto moved = getHolding(server, "/api/state", tag);
+    REQUIRE(moved);
+    REQUIRE(moved->status == 200);
+    CHECK(json::parse(moved->body).at("player").at("outputDeviceId") == kHeadphones);
+
+    const auto movedTag = moved->get_header_value("ETag");
+    REQUIRE_FALSE(movedTag.empty());
+    CHECK(movedTag != tag);
+
+    store.outputDeviceChanged(std::string{kHeadphones});
+
+    const auto held = getHolding(server, "/api/state", movedTag);
+    REQUIRE(held);
+    CHECK(held->status == 304);
+
+    store.outputDeviceChanged(std::nullopt);
+
+    const auto unnamed = getHolding(server, "/api/state", movedTag);
+    REQUIRE(unnamed);
+    REQUIRE(unnamed->status == 200);
+    CHECK(json::parse(unnamed->body).at("player").at("outputDeviceId") == nullptr);
+}
+
 TEST_CASE("a conditional poll is a 200 when the playing row moved, a 304 until it moves again") {
     Library library;
     fill(library);
@@ -1178,8 +1246,8 @@ TEST_CASE("the player section names each revision once and carries nothing else 
     const Keys published = {
         "playback",          "path",              "subsong",           "libraryPath",
         "position",          "duration",          "volume",            "muted",
-        "playbackMode",      "title",             "artist",            "album",
-        "albumArtist",       "playingLocation",   "currentPlaylistId",
+        "playbackMode",      "outputDeviceId",    "title",             "artist",
+        "album",             "albumArtist",       "playingLocation",   "currentPlaylistId",
         "queueRevision",     "playlistsRevision", "timelineRevision"};
 
     CHECK(keysOf(playerSection(server)) == published);

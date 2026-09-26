@@ -37,6 +37,12 @@ const kUnreachableRevision = 4_294_967_295;
 // itself there is nothing here to aim any of them at.
 const kUnissuedPlaylistId = "45837d74-fa4f-415c-bba9-bf2db8f0dc04";
 
+// A well-formed id no output device will ever carry, so a switch driven at it is refused with
+// 409 before the player is asked to move anything: the conformance run reads what the owner's
+// outputs are and switches none of them, the same shape kUnissuedPlaylistId buys the playlist
+// edits above.
+const kUnissuedOutputDeviceId = "contract-check:no-such-output-device";
+
 const example = (operation: Operation, name: string): unknown => {
 	const offered = operation.examples[name];
 	if (offered === undefined)
@@ -115,6 +121,14 @@ export const drives: Drive[] = [
 		// so this pins the 400 shape without moving a real listener's level.
 		id: "setVolume",
 		probe: () => ({ body: {} }),
+	},
+	{
+		id: "getOutputs",
+		probe: () => ({}),
+	},
+	{
+		id: "setActiveOutput",
+		probe: () => ({ body: { deviceId: kUnissuedOutputDeviceId } }),
 	},
 	{
 		id: "getState",

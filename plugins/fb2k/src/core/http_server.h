@@ -4,6 +4,7 @@
 #include "core/artwork.h"
 #include "core/audience.h"
 #include "core/library.h"
+#include "core/outputs.h"
 #include "core/player_state.h"
 #include "core/reload.h"
 #include "core/settings.h"
@@ -220,6 +221,9 @@ using VolumeSetter = std::function<PlaylistOutcome(double level)>;
 using VolumeStepper = std::function<PlaylistOutcome(VolumeStep)>;
 using MuteSetter = std::function<PlaylistOutcome(bool muted)>;
 
+using OutputLister = std::function<OutputsRead()>;
+using OutputSetter = std::function<OutputOutcome(const std::string& deviceId)>;
+
 // See ARCHITECTURE.md, *The seams*: src/fb2k/ supplies every one of these, and a null
 // callback is how an install that switched a feature off says so.
 struct Player {
@@ -234,6 +238,8 @@ struct Player {
     VolumeSetter setVolume;
     VolumeStepper stepVolume;
     MuteSetter setMuted;
+    OutputLister listOutputs;
+    OutputSetter setActiveOutput;
     QueueReader readQueue;
     PlaylistRowQueuer queuePlaylistRows;
     LibraryTrackQueuer queueLibraryTracks;

@@ -70,8 +70,12 @@ constexpr char kPlaybackStopPath[] = "/api/playback/stop";
 constexpr char kPlaybackSeekPath[] = "/api/playback/seek";
 constexpr char kPlaybackModePath[] = "/api/playback/mode";
 constexpr char kVolumePath[] = "/api/volume";
+constexpr char kOutputsPath[] = "/api/outputs";
+constexpr char kActiveOutputPath[] = "/api/outputs/active";
 
 constexpr char kNoPlayback[] = "playback commands are not available";
+
+constexpr char kNoOutputs[] = "output devices are not available";
 
 constexpr char kModeNotOffered[] = "this install does not offer that playback mode";
 
@@ -1468,6 +1472,18 @@ struct HttpServer::Impl {
         return true;
     }
 
+    // changeOutput permits the device alone: controlPlayback never gates this, and GET
+    // /api/outputs is never gated at all, because reading the list changes nothing. Reads
+    // currentSettings() on every call so a live reload is honoured on the next request.
+    bool outputChangeRefused(httplib::Response& res) const {
+        if (currentSettings()->changeOutput)
+            return false;
+
+        respond(res, httpStatusFor(OutputOutcome::changeDisabled),
+                outputFailedDocument(OutputOutcome::changeDisabled));
+        return true;
+    }
+
     // Only POST /playlists/{id}/items calls this. POST /playlists/own/{role}/items resolves
     // its id through the role itself, so it never holds a client-supplied one for this guard
     // to check.
@@ -2472,6 +2488,72 @@ struct HttpServer::Impl {
             }
         });
     }
+
+    // Neither route is rate limited: a device switch is a deliberate act nobody repeats in a
+    // burst, unlike a playlist edit. Which device is playing rides GET /api/state instead of
+    // this route's own answer, so a switch made here writes nothing to PlayerState -- it
+    // reaches a client through the same output callback a switch made at the player does.
+    void addOutputRoutes() {
+        server.Get(kOutputsPath, [this](const httplib::Request&, httplib::Response& res) {
+            res.set_header("Cache-Control", kAskEveryTime);
+
+            if (!player.listOutputs) {
+                respond(res, 503, errorDocument(kNoOutputs));
+                return;
+            }
+
+            const auto read = player.listOutputs();
+            if (read.outcome != OutputOutcome::done) {
+                respond(res, httpStatusFor(read.outcome), outputFailedDocument(read.outcome));
+                return;
+            }
+
+            respond(res, 200, outputsDocument(read));
+        });
+
+        server.Post(kActiveOutputPath, [this](const httplib::Request& req, httplib::Response& res) {
+            res.set_header("Cache-Control", kAskEveryTime);
+
+            if (outputChangeRefused(res))
+                return;
+
+            const auto request = parseActiveOutput(req.body);
+            if (!request.ok) {
+                respond(res, 400, activeOutputRefusedDocument(request.detail));
+                return;
+            }
+
+            if (!player.listOutputs || !player.setActiveOutput) {
+                respond(res, 503, errorDocument(kNoOutputs));
+                return;
+            }
+
+            const auto read = player.listOutputs();
+            if (read.outcome != OutputOutcome::done) {
+                respond(res, httpStatusFor(read.outcome), outputFailedDocument(read.outcome));
+                return;
+            }
+
+            const auto listed =
+                std::any_of(read.devices.begin(), read.devices.end(),
+                           [&request](const OutputDevice& device) {
+                               return device.id == request.deviceId;
+                           });
+            if (!listed) {
+                respond(res, httpStatusFor(OutputOutcome::notListed),
+                        outputFailedDocument(OutputOutcome::notListed));
+                return;
+            }
+
+            const auto outcome = player.setActiveOutput(request.deviceId);
+            if (outcome != OutputOutcome::done) {
+                respond(res, httpStatusFor(outcome), outputFailedDocument(outcome));
+                return;
+            }
+
+            res.status = 204;
+        });
+    }
 };
 
 HttpServer::HttpServer(Settings settings, Audience& audience, Player player, TicketMint mint,
@@ -2521,6 +2603,7 @@ ListenerStatus HttpServer::start() {
     impl.addQueueRoutes();
     impl.addPlaybackRoutes();
     impl.addVolumeRoute();
+    impl.addOutputRoutes();
     impl.addStreamRoutes();
     impl.addStateRoutes();
     impl.addArtworkRoute();

@@ -25,9 +25,9 @@ bool operator==(const PlayerState& a, const PlayerState& b) {
            a.libraryPath == b.libraryPath && a.position.seconds == b.position.seconds &&
            a.position.taken == b.position.taken && a.duration == b.duration &&
            a.volume == b.volume && a.muted == b.muted && a.playbackMode == b.playbackMode &&
-           a.title == b.title && a.artist == b.artist && a.album == b.album &&
-           a.albumArtist == b.albumArtist && a.playingLocation == b.playingLocation &&
-           a.currentPlaylistId == b.currentPlaylistId;
+           a.outputDeviceId == b.outputDeviceId && a.title == b.title && a.artist == b.artist &&
+           a.album == b.album && a.albumArtist == b.albumArtist &&
+           a.playingLocation == b.playingLocation && a.currentPlaylistId == b.currentPlaylistId;
 }
 
 void PlayerStateStore::publish(PlayerState state) {
@@ -137,6 +137,15 @@ void PlayerStateStore::playbackModeChanged(std::optional<std::string> mode) {
 
     PlayerState next = state_;
     next.playbackMode = std::move(mode);
+
+    applyLocked(std::move(next));
+}
+
+void PlayerStateStore::outputDeviceChanged(std::optional<std::string> id) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    PlayerState next = state_;
+    next.outputDeviceId = std::move(id);
 
     applyLocked(std::move(next));
 }

@@ -43,6 +43,11 @@ struct PlayerState {
     // a wrong name.
     std::optional<std::string> playbackMode;
 
+    // Spelled exactly as GET /api/outputs spells a device's id, published whether or not that
+    // device is still listed, and `std::nullopt` only where the component has no seam to ask.
+    // Rides the poll rather than a watch of its own, the way playbackMode does.
+    std::optional<std::string> outputDeviceId;
+
     // The playing track's name, computed by the player through title-formatting.
     std::optional<std::string> title;
     std::optional<std::string> artist;
@@ -116,6 +121,7 @@ public:
     void volumeChanged(double volume, bool muted);
     void durationChanged(double duration);
     void playbackModeChanged(std::optional<std::string> mode);
+    void outputDeviceChanged(std::optional<std::string> id);
     void playingLocationChanged(std::optional<PlayingLocation> location);
     void currentPlaylistChanged(std::optional<std::string> playlistId);
 

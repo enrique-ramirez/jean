@@ -2,6 +2,7 @@
 
 #include "core/audience.h"
 #include "core/library.h"
+#include "core/outputs.h"
 #include "core/player_state.h"
 #include "core/playlists.h"
 #include "core/settings.h"
@@ -141,6 +142,29 @@ struct PlayRowRequest {
 // routine here rather than a 404. How far the index sits past the end is the player's to
 // answer, since nothing in core/ knows how many rows a playlist holds.
 PlayRowRequest parsePlayRow(const std::string& id, const std::string& indexText);
+
+// POST /api/outputs/active's body: contract/openapi.yaml's ActiveOutputRequest,
+// additionalProperties: false, so a field this route does not declare -- an output type in
+// particular -- is refused the same as a missing or mistyped deviceId. `detail` names which,
+// the way SeekRequest and PlaybackModeRequest's do.
+struct ActiveOutputRequest {
+    bool ok = false;
+    std::string detail;
+    std::string deviceId;
+};
+
+// Never throws: a malformed body is routine for the HTTP handler that calls this.
+ActiveOutputRequest parseActiveOutput(const std::string& body);
+
+// contract/openapi.yaml's ActiveOutputRefusal: the one category a malformed body can fail
+// under, shaped like playbackRefusedDocument with the specific complaint in `detail`.
+std::string activeOutputRefusedDocument(const std::string& detail);
+
+std::string outputsDocument(const OutputsRead& read);
+
+// The same {"error", "detail"} shape playlistFailedDocument answers with, for the one enum
+// core/outputs.h owns rather than PlaylistOutcome.
+std::string outputFailedDocument(OutputOutcome outcome);
 
 // The category `POST /playback/seek`, `POST /playback/mode` and `POST /volume` each refuse a
 // malformed body under, one apiece: contract/openapi.yaml's PlaybackSeekRefusal,

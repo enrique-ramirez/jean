@@ -7,6 +7,7 @@
 #include "third_party/doctest.h"
 
 #include "core/api.h"
+#include "core/outputs.h"
 #include "core/version.h"
 #include "support/fixtures.h"
 #include "support/keys.h"
@@ -447,6 +448,24 @@ TEST_CASE("the playing track's columns are the shape contract/openapi.yaml publi
           Keys{"path", "subsong", "columns"});
 }
 
+TEST_CASE("GET /outputs is the shape contract/openapi.yaml publishes") {
+    INFO(kUpdateSpec);
+
+    OutputsRead read;
+    read.devices = {{"{5A3E1C27-8B4D-4F0E-9C61-2D7B8E9F0A13}:{0E1D3C47-5A7B-4F21-9C3D-2B8E6F4A1D90}",
+                     "Speakers (Fictional Audio)"}};
+    read.active = read.devices.front().id;
+
+    const auto listed = json::parse(outputsDocument(read));
+    CHECK(keysOf(listed) == Keys{"devices", "active"});
+    REQUIRE(listed["devices"].size() == 1);
+    CHECK(keysOf(listed["devices"][0]) == Keys{"id", "name"});
+
+    // `active` is required and nullable, so a player paired with no listed device still sends it.
+    read.active.reset();
+    CHECK(keysOf(outputsDocument(read)) == Keys{"devices", "active"});
+}
+
 // api_contract_test.cpp's other cases compare an emitted document with a key set written by
 // hand; this one is the check nothing else here makes, that the specification's own examples
 // agree with the schema they illustrate. `PlayerState` is `additionalProperties: false`, so
@@ -458,7 +477,7 @@ TEST_CASE("GET /state's documented examples are the shape PlayerState declares")
         Keys{"playback",          "path",              "subsong",           "libraryPath",
              "position",          "duration",          "volume",            "muted",
              "title",             "artist",            "album",             "albumArtist",
-             "playbackMode",      "playingLocation",   "currentPlaylistId",
+             "playbackMode",      "outputDeviceId",    "playingLocation",   "currentPlaylistId",
              "queueRevision",     "playlistsRevision", "timelineRevision"};
 
     PlayerState playing;
@@ -468,6 +487,8 @@ TEST_CASE("GET /state's documented examples are the shape PlayerState declares")
     playing.duration = 214.0;
     playing.volume = -8.5;
     playing.playbackMode = "inOrder";
+    playing.outputDeviceId =
+        "{5A3E1C27-8B4D-4F0E-9C61-2D7B8E9F0A13}:{0E1D3C47-5A7B-4F21-9C3D-2B8E6F4A1D90}";
     playing.title = "Imaginary Track";
     playing.artist = "Fictional Artist";
     playing.album = "Imaginary Album";
@@ -629,11 +650,30 @@ TEST_CASE("every playlist error contract/openapi.yaml publishes is one this comp
         CHECK(unsendable("PlaylistRefusal", everyDescribed<PlaylistRefusal>()) == std::string());
     }
 
+    // POST /outputs/active answers its refusals in this same document, from OutputOutcome.
     SUBCASE("PlaylistFailed") {
         INFO(
             "the spec follows the component's wording: correct the value in "
-            "contract/openapi.yaml, or add the enumerator to PlaylistOutcome in core/playlists.h");
-        CHECK(unsendable("PlaylistFailed", everyDescribed<PlaylistOutcome>()) == std::string());
+            "contract/openapi.yaml, or add the enumerator to PlaylistOutcome in core/playlists.h "
+            "or to OutputOutcome in core/outputs.h");
+        auto described = everyDescribed<PlaylistOutcome>();
+        const auto fromOutputs = everyDescribed<OutputOutcome>();
+        described.insert(fromOutputs.begin(), fromOutputs.end());
+
+        CHECK(unsendable("PlaylistFailed", described) == std::string());
+    }
+}
+
+TEST_CASE("every refusal POST /outputs/active answers is published, under the status it is sent "
+          "with") {
+    INFO(kUpdateSpec);
+
+    for (const auto outcome : {OutputOutcome::changeDisabled, OutputOutcome::notListed,
+                               OutputOutcome::playerRefused, OutputOutcome::timedOut}) {
+        const auto sentence = describe(outcome);
+        INFO("error: ", sentence);
+        CHECK(publishesError("PlaylistFailed", sentence));
+        CHECK(publishes("POST", "/outputs/active", httpStatusFor(outcome)));
     }
 }
 

@@ -127,6 +127,8 @@ json playerFields(const PlayerState& player, std::chrono::steady_clock::time_poi
                 {"volume", player.volume},
                 {"muted", player.muted},
                 {"playbackMode", player.playbackMode ? json(*player.playbackMode) : json(nullptr)},
+                {"outputDeviceId",
+                 player.outputDeviceId ? json(*player.outputDeviceId) : json(nullptr)},
                 {"title", player.title ? json(*player.title) : json(nullptr)},
                 {"artist", player.artist ? json(*player.artist) : json(nullptr)},
                 {"album", player.album ? json(*player.album) : json(nullptr)},
@@ -288,6 +290,8 @@ constexpr std::array<const char*, 2> kSeekFields{"seconds", "relativeSeconds"};
 constexpr char kModeField[] = "mode";
 constexpr std::array<const char*, 1> kPlaybackModeFields{kModeField};
 constexpr std::array<const char*, 3> kVolumeFields{"value", "step", "muted"};
+constexpr char kDeviceIdField[] = "deviceId";
+constexpr std::array<const char*, 1> kActiveOutputFields{kDeviceIdField};
 
 constexpr std::array<const char*, 4> kQueueRowsFields{"playlistId", "positions", "at", "revision"};
 constexpr std::array<const char*, 6> kQueueTracksFields{"structure", "runs", "bitset",
@@ -670,6 +674,49 @@ PlayRowRequest parsePlayRow(const std::string& id, const std::string& indexText)
     request.playlistId = id;
     request.index = static_cast<uint32_t>(index);
     return request;
+}
+
+ActiveOutputRequest refuseActiveOutput(std::string detail) {
+    ActiveOutputRequest request;
+    request.detail = std::move(detail);
+    return request;
+}
+
+ActiveOutputRequest parseActiveOutput(const std::string& body) {
+    const auto document = parseJsonObject(body);
+    if (!document.ok())
+        return refuseActiveOutput(document.error);
+
+    const auto& root = document.value;
+    if (!declaresOnly(root, kActiveOutputFields))
+        return refuseActiveOutput("a field this route does not take was named");
+
+    const auto deviceId = root.find(kDeviceIdField);
+    if (deviceId == root.end() || !deviceId->is_string())
+        return refuseActiveOutput("'deviceId' is required and must be a string");
+
+    ActiveOutputRequest request;
+    request.ok = true;
+    request.deviceId = deviceId->get<std::string>();
+    return request;
+}
+
+std::string activeOutputRefusedDocument(const std::string& detail) {
+    return json{{"error", "unacceptable output device"}, {"detail", detail}}.dump();
+}
+
+std::string outputsDocument(const OutputsRead& read) {
+    json devices = json::array();
+    for (const auto& device : read.devices)
+        devices.push_back(json{{"id", device.id}, {"name", device.name}});
+
+    return json{{"devices", std::move(devices)},
+                {"active", read.active ? json(*read.active) : json(nullptr)}}
+        .dump();
+}
+
+std::string outputFailedDocument(OutputOutcome outcome) {
+    return json{{"error", describe(outcome)}, {"detail", ""}}.dump();
 }
 
 std::string describe(PlaybackRefusal refusal) {

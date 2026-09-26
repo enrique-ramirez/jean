@@ -1511,6 +1511,72 @@ paths:
         "503": { $ref: "#/components/responses/PlaybackUnavailable" }
         "504": { $ref: "#/components/responses/PlaybackTooSlow" }
 
+  /outputs:
+    get:
+      tags: [player]
+      operationId: getOutputs
+      summary: The output devices foobar2000 offers, and which one is set.
+      description: |
+        Read straight from the player on every call rather than held between them: a device can appear or disappear at the operating system without foobar2000 telling this component first, so there is nothing here worth caching.
+
+        `active` is the id of the device the player is currently paired with, or `null` where that pairing matches none of `devices`, which is what a device unplugged since the last switch looks like from here.
+      responses:
+        "200":
+          description: The devices this install can send sound to.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Outputs" }
+              examples:
+                default:
+                  value:
+                    devices:
+                      - { id: "D41D2423-FBB0-4635-B233-7054F79814AB:44761B90-C842-41F7-86E5-645DE2EEA6DC", name: "Speakers (Realtek High Definition Audio)" }
+                      - { id: "D41D2423-FBB0-4635-B233-7054F79814AB:00000000-0000-0000-0000-000000000000", name: "Primary Sound Driver" }
+                    active: "D41D2423-FBB0-4635-B233-7054F79814AB:44761B90-C842-41F7-86E5-645DE2EEA6DC"
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/OutputsUnavailable" }
+        "504": { $ref: "#/components/responses/PlaybackTooSlow" }
+
+  /outputs/active:
+    post:
+      tags: [player]
+      operationId: setActiveOutput
+      summary: Switch the player's output device.
+      description: |
+        `deviceId` is one of the ids `GET /outputs` last listed. There is no output type alongside it: foobar2000 picks the module and the device together, off the pair the id itself carries, so a type field would only restate what the id already says.
+
+        The answer comes once the player has been handed this command and run it. Where the switch landed reaches a client through `GET /state`'s `outputDeviceId`, not this answer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActiveOutputRequest" }
+            examples:
+              switch:
+                value: { deviceId: "D41D2423-FBB0-4635-B233-7054F79814AB:00000000-0000-0000-0000-000000000000" }
+      responses:
+        "204":
+          description: Switched.
+        "400":
+          description: |
+            The body is not JSON, carries no `deviceId`, carries it with the wrong type, or carries a field the schema does not declare.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActiveOutputRefusal" }
+              examples:
+                noDeviceId:
+                  value: { error: unacceptable output device, detail: "'deviceId' is required and must be a string" }
+        "403": { $ref: "#/components/responses/OutputChangeDisabled" }
+        "409": { $ref: "#/components/responses/OutputDeviceNotListed" }
+        "415":
+          description: The body was not `application/json`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/OutputsUnavailable" }
+        "504": { $ref: "#/components/responses/PlaybackTooSlow" }
+
   /volume:
     post:
       tags: [player]
@@ -1608,6 +1674,7 @@ paths:
                       volume: -8.5
                       muted: false
                       playbackMode: inOrder
+                      outputDeviceId: "D41D2423-FBB0-4635-B233-7054F79814AB:44761B90-C842-41F7-86E5-645DE2EEA6DC"
                       title: Imaginary Track
                       artist: Fictional Artist
                       album: Imaginary Album
@@ -1634,6 +1701,7 @@ paths:
                       volume: 0
                       muted: false
                       playbackMode: inOrder
+                      outputDeviceId: null
                       title: null
                       artist: null
                       album: null
@@ -2627,6 +2695,36 @@ components:
             default:
               value: { error: this install has playback control turned off; turn on controlPlayback in config.json to allow it, detail: "" }
 
+    OutputChangeDisabled:
+      description: |
+        This install has `changeOutput` set to `false` in `config.json`. That is a player owner's own choice; setting it back to `true` is what grants the write. `GET /outputs` is unaffected either way, and so are the volume, the mute flag and every playback command, which follow `controlPlayback` instead.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistFailed" }
+          examples:
+            default:
+              value: { error: this install has output device changes turned off; turn on changeOutput in config.json to allow them, detail: "" }
+
+    OutputDeviceNotListed:
+      description: |
+        The `deviceId` sent is not one `GET /outputs` currently lists. The request is well formed and the player is the reason it cannot be met, the same reading `POST /playback/mode` already gives a mode this install does not offer.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistFailed" }
+          examples:
+            default:
+              value: { error: the player does not list that output device; read the outputs again, detail: "" }
+
+    OutputsUnavailable:
+      description: |
+        The component could not reach the part of the player the output device list and the active device are read from.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            off:
+              value: { error: output devices are not available }
+
     NoSuchPlaylist:
       description: No playlist has that id. It may have been deleted in the player.
       content:
@@ -3143,7 +3241,7 @@ components:
         canChangeOutput:
           type: boolean
           description: |
-            Whether this install permits switching the player's output device. `changeOutput` in `config.json`, defaulting to `true`. Reported only: no route in this bundle reads it back or acts on it.
+            Whether this install permits switching the player's output device. `changeOutput` in `config.json`, defaulting to `true`. It refuses `POST /outputs/active` alone: `GET /outputs` stays open regardless, and the volume, the mute flag and every playback command answer to `controlPlayback` instead.
         maxAutoPlaylists:
           type: integer
           minimum: 0
@@ -3301,6 +3399,59 @@ components:
         error:
           type: string
           enum: [unacceptable volume]
+        detail:
+          type: string
+          description: |
+            What specifically was wrong. Safe to show a person: every value describes the request the client sent, never anything on the player's disk. For a body that is not JSON it carries the parser's message, which quotes the client's own text.
+
+    Outputs:
+      type: object
+      additionalProperties: false
+      required: [devices, active]
+      properties:
+        devices:
+          type: array
+          items: { $ref: "#/components/schemas/OutputDevice" }
+        active:
+          type: [string, "null"]
+          description: |
+            The id of the device foobar2000 is currently paired with, or `null` where that pairing matches none of `devices`.
+
+    OutputDevice:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          description: |
+            Opaque: the output module's GUID and the device's GUID, printed the way foobar2000 prints a GUID and joined by `:`. A client MUST NOT parse, split or build one.
+          examples: ["D41D2423-FBB0-4635-B233-7054F79814AB:44761B90-C842-41F7-86E5-645DE2EEA6DC"]
+        name:
+          type: string
+          description: What to call this device in a picker, exactly as foobar2000 names it.
+          examples: ["Speakers (Realtek High Definition Audio)"]
+
+    ActiveOutputRequest:
+      type: object
+      additionalProperties: false
+      required: [deviceId]
+      properties:
+        deviceId:
+          type: string
+          description: |
+            One of the ids `GET /outputs` last listed, opaque the same way: a client MUST NOT parse, split or build one, only echo one it was handed. No output type rides alongside it; the id names the module and the device together.
+
+    ActiveOutputRefusal:
+      description: |
+        A refusal the client can act on. The request was understood and declined before the player was involved.
+      type: object
+      additionalProperties: false
+      required: [error, detail]
+      properties:
+        error:
+          type: string
+          enum: [unacceptable output device]
         detail:
           type: string
           description: |
@@ -3958,6 +4109,8 @@ components:
             - another component has locked that playlist against that edit
             - that playlist is foo_jean's own; address it by its role rather than by its id
             - this install has playback control turned off; turn on controlPlayback in config.json to allow it
+            - this install has output device changes turned off; turn on changeOutput in config.json to allow them
+            - the player does not list that output device; read the outputs again
         detail:
           type: string
           description: |
@@ -4039,8 +4192,8 @@ components:
       additionalProperties: false
       required:
         [playback, path, subsong, libraryPath, position, duration, volume, muted, playbackMode,
-         title, artist, album, albumArtist, playingLocation, currentPlaylistId, queueRevision,
-         playlistsRevision, timelineRevision]
+         outputDeviceId, title, artist, album, albumArtist, playingLocation, currentPlaylistId,
+         queueRevision, playlistsRevision, timelineRevision]
       properties:
         playback:
           type: string
@@ -4075,6 +4228,10 @@ components:
           oneOf:
             - { $ref: "#/components/schemas/PlaybackMode" }
             - type: "null"
+        outputDeviceId:
+          type: [string, "null"]
+          description: |
+            The id of the device the player is set to, spelled exactly as `GET /outputs` spells it, or `null` where the component cannot ask. It rides every poll of this document because it is one field; the device list is its own route because building it costs more than a poll should.
         title:
           type: [string, "null"]
           description: |

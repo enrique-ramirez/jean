@@ -17,6 +17,7 @@
 #include "fb2k/playback_commands.h"
 #include "fb2k/playback_watch.h"
 #include "fb2k/player_mute.h"
+#include "fb2k/player_outputs.h"
 #include "fb2k/playlists.h"
 #include "fb2k/queue.h"
 #include "fb2k/running_server.h"
@@ -78,6 +79,11 @@ Player playerUsing(MainThreadQueue& mainThread, const Streamer* streamer, Output
     player.setVolume = makeVolumeSetter(mainThread);
     player.stepVolume = makeVolumeStepper(mainThread);
     player.setMuted = makeMuteSetter(mainThread);
+
+    const auto outputs = playerOutputsVia(mainThread);
+    player.listOutputs = outputs.listOutputs;
+    player.setActiveOutput = outputs.setActiveOutput;
+
     player.readQueue = makeQueueReader(mainThread, playerState);
     player.queuePlaylistRows = makePlaylistRowQueuer(mainThread, playerState);
     player.queueLibraryTracks =
@@ -153,6 +159,7 @@ public:
           libraryFeed_(mainThread_, library_),
           playbackWatch_(mainThread_, playerState_, playlistVersions_, outputHold_,
                          nowPlayingArtwork_),
+          outputWatch_(playerState_),
           playlistWatch_(mainThread_, playlistVersions_, playerState_),
           nowPlayingArtworkWatch_(nowPlayingArtwork_),
           server_(settings_, audience_,
@@ -205,6 +212,11 @@ private:
     PlaylistVersions playlistVersions_;
     NowPlayingArtwork nowPlayingArtwork_;
     PlaybackWatch playbackWatch_;
+
+    // Fires at playerState_, so it is declared after it and destroyed before it: the shutdown
+    // order every watch here follows.
+    OutputWatch outputWatch_;
+
     PlaylistWatch playlistWatch_;
     NowPlayingArtworkWatch nowPlayingArtworkWatch_;
 

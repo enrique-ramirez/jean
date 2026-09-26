@@ -22,6 +22,12 @@ constexpr double kReachedSeconds = 42.5;
 // kReachedSeconds instead.
 constexpr seconds kRanOnFor{10};
 
+// Opaque to everything here; shaped as foobar2000 prints an output module's GUID and a device's.
+constexpr char kSpeakers[] =
+    "{5A3E1C27-8B4D-4F0E-9C61-2D7B8E9F0A13}:{0E1D3C47-5A7B-4F21-9C3D-2B8E6F4A1D90}";
+constexpr char kHeadphones[] =
+    "{5A3E1C27-8B4D-4F0E-9C61-2D7B8E9F0A13}:{7C2A9E14-3B6D-4E8F-A1C5-9D0B2F7E4A36}";
+
 PlayerState playing() {
     PlayerState state;
     state.playback = PlaybackState::playing;
@@ -33,6 +39,7 @@ PlayerState playing() {
     state.volume = -6.0;
     state.muted = false;
     state.playbackMode = "repeatAll";
+    state.outputDeviceId = kSpeakers;
     return state;
 }
 
@@ -122,6 +129,7 @@ TEST_CASE("a read gives back the state that was published") {
     CHECK(published.state.volume == doctest::Approx(-6.0));
     CHECK_FALSE(published.state.muted);
     CHECK(published.state.playbackMode == "repeatAll");
+    CHECK(published.state.outputDeviceId == kSpeakers);
 }
 
 TEST_CASE("publishing the same state twice leaves the version alone") {
@@ -171,6 +179,14 @@ TEST_CASE("changing any field a client can see advances the version") {
     }
     SUBCASE("the playback order changes") {
         changed.playbackMode = "random";
+    }
+    // A switch of output device moves nothing else about the player, so a field left out of
+    // the comparison here is a switch no client hears about.
+    SUBCASE("the output device changes") {
+        changed.outputDeviceId = kHeadphones;
+    }
+    SUBCASE("the output device stops being one the component can name") {
+        changed.outputDeviceId = std::nullopt;
     }
 
     store.publish(changed);
@@ -355,6 +371,40 @@ TEST_CASE("a playback mode change reaches a client, and an order with no Jean na
     const auto published = store.read();
     CHECK_FALSE(published.state.playbackMode.has_value());
     CHECK(published.version > withRandom);
+}
+
+TEST_CASE("an output device change reaches a client, and one the component cannot name clears it") {
+    PlayerStateStore store;
+    store.publish(playing());
+    const uint64_t before = store.read().version;
+
+    store.outputDeviceChanged(std::string{kHeadphones});
+
+    const auto switched = store.read();
+    CHECK(switched.state.outputDeviceId == kHeadphones);
+    CHECK(switched.state.path == R"(X:\music\a.flac)");
+    CHECK(switched.state.playbackMode == "repeatAll");
+    CHECK(switched.version > before);
+
+    store.outputDeviceChanged(std::nullopt);
+
+    const auto cleared = store.read();
+    CHECK_FALSE(cleared.state.outputDeviceId.has_value());
+    CHECK(cleared.version > switched.version);
+}
+
+// foobar2000's output callback fires for a buffer length or a bit depth changed at the player
+// as well as for the device, and each of those reports the pair it is already on.
+TEST_CASE("an output device reported again unchanged leaves the version alone") {
+    PlayerStateStore store;
+    store.publish(playing());
+    const uint64_t before = store.read().version;
+
+    for (int edit = 0; edit < kEditsInABurst; ++edit)
+        store.outputDeviceChanged(std::string{kSpeakers});
+
+    CHECK(store.read().version == before);
+    CHECK(store.read().state.outputDeviceId == kSpeakers);
 }
 
 // foobar2000 fires the playlist item callbacks for an edit anywhere in the playlist, once per

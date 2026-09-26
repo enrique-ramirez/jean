@@ -2,6 +2,7 @@ import type { RecordedRequest } from "../fake-api/state.ts";
 import {
 	dragFrom,
 	expect,
+	expectPlayingFrom,
 	expectSettlesAt,
 	type FakePlayer,
 	openSidebar,
@@ -422,10 +423,9 @@ test.describe("a second view played before the first one has landed", () => {
 test.describe("a view whose fill was refused because the library moved", () => {
 	test.use({ fooJean: {} });
 
-	// Two genres the captured library holds the same number of tracks in, so that a
-	// refused fill is worse than wasted: the playlist keeps the first one's rows
-	// under a title naming the second, and the row counts agree, so the title is the
-	// only thing left saying which of them is in there.
+	// Two genres the captured library holds the same number of tracks in, so the
+	// row counts agree after a refused fill and the playlist's title is the only
+	// thing left saying which of them is in there.
 	const HELD = "Alternative Rock";
 	const ASKED = "Indie Rock";
 
@@ -449,15 +449,12 @@ test.describe("a view whose fill was refused because the library moved", () => {
 
 	// Jean re-reads the library when the tab comes back, which is what a 409 asks of
 	// a client: export again, then ask again. Given here so the click that follows has
-	// a current snapshot to fill from, and the only thing left that can spoil it is
-	// the title the refused fill wrote.
+	// a current snapshot to fill from.
 	const comeBackToTheTab = (page: Page) =>
 		page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
 
-	// Resolving the role and filling are two main-thread hops, so the component has
-	// retitled its own playlist before it can know the generation has moved. The
-	// rebuild lands while the fill is held: 409, nothing inserted, and a playlist
-	// carrying the title of a view it does not hold.
+	// The rebuild lands while the fill is held: 409, nothing inserted, and the
+	// playlist still holding and naming the first view.
 	const refuseAFill = async (page: Page, player: FakePlayer) => {
 		await openGenre(page, HELD);
 		await trackRow(page, HELD_ROW).dblclick();
@@ -505,6 +502,36 @@ test.describe("a view whose fill was refused because the library moved", () => {
 		await refuseAFill(page, player);
 
 		await expectSettlesAt(player, () => uncaught, []);
+	});
+});
+
+test.describe("a view another device played over this one's", () => {
+	test.use({ fooJean: {} });
+
+	// Another device fills the one scratch playlist every client shares, straight
+	// through the component, and leaves nothing behind in this page's storage.
+	const playFromAnotherDevice = async (page: Page, title: string) => {
+		const state = await (await page.request.get("/api/state")).json();
+		const filled = await page.request.post("/api/playlists/own/scratch/items", {
+			data: { title, structure: state.library.structure, ordinals: [0] },
+		});
+		expect(filled.ok()).toBe(true);
+		const { playlistId } = await filled.json();
+		const played = await page.request.post(
+			`/api/playlists/${playlistId}/items/0/play`,
+			{ data: {} },
+		);
+		expect(played.ok()).toBe(true);
+	};
+
+	test("is what this device says it is playing from", async ({ page }) => {
+		await page.goto(`/#/genre/${encodeURIComponent("Alternative Rock")}`);
+		await trackRow(page, 0).dblclick();
+		await expectPlayingFrom(page, "Alternative Rock");
+
+		await playFromAnotherDevice(page, "#Jean [genre: Indie Rock]");
+
+		await expectPlayingFrom(page, "Indie Rock");
 	});
 });
 

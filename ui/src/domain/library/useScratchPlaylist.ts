@@ -9,8 +9,29 @@ import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 
-export const SCRATCH_LANDED_KEY = "jean.scratchPlaylistLanded";
-export const SCRATCH_LANDED_COUNT_KEY = "jean.scratchPlaylistLandedCount";
+const SCRATCH_LANDED_KEY = "jean.scratchLanded";
+
+// The last fill this device watched land, and the `structure` it left the scratch at. Every client
+// shares the one scratch, so any fill after it, from anywhere, moves the structure and retires it.
+interface Landed {
+	title: string;
+	count: number;
+	structure: string;
+}
+
+const landedOn = (playlist: PlaylistInfo | null, landed: Landed | null) =>
+	playlist && landed?.structure === playlist.structure ? landed : null;
+
+export function useLandedScratch(playlist: PlaylistInfo | null) {
+	const [landed] = useStoredState<Landed | null>(SCRATCH_LANDED_KEY, null);
+	return landedOn(playlist, landed);
+}
+
+// Preferred over the playlist's own title everywhere it is read; domain/library/CLAUDE.md has why.
+export const titledAsLanded = (
+	playlist: PlaylistInfo,
+	landed: Landed | null,
+): PlaylistInfo => (landed ? { ...playlist, title: landed.title } : playlist);
 
 // Module-scope rather than a ref: Home, a view and the now-playing menu each call this hook
 // separately, and a fill started from one must still be able to abandon a fill started from another.
@@ -23,13 +44,8 @@ export function useScratchPlaylist({
 	playlists: PlaylistInfo[];
 	canEdit: boolean;
 }) {
-	// Preferred over the playlist's own title everywhere it is read; domain/library/CLAUDE.md has why.
-	const [landedTitle, setLandedTitle] = useStoredState<string | null>(
+	const [stored, setLanded] = useStoredState<Landed | null>(
 		SCRATCH_LANDED_KEY,
-		null,
-	);
-	const [landedCount, setLandedCount] = useStoredState<number | null>(
-		SCRATCH_LANDED_COUNT_KEY,
 		null,
 	);
 	const queryClient = useQueryClient();
@@ -41,12 +57,14 @@ export function useScratchPlaylist({
 		[playlists],
 	);
 
+	const landed = landedOn(playlist, stored);
+
 	const holdsView = useCallback(
 		(kind: string, label: string | null, count: number) =>
 			playlist !== null &&
-			landedTitle === scratchTitle(kind, label) &&
+			landed?.title === scratchTitle(kind, label) &&
 			playlist.itemCount === count,
-		[playlist, landedTitle],
+		[playlist, landed],
 	);
 
 	const ensure = useCallback(
@@ -73,37 +91,37 @@ export function useScratchPlaylist({
 			sequence += 1;
 			const mine = sequence;
 			const title = scratchTitle(kind, label);
-			const landedId = await source.fill(title, refs);
+			const filled = await source.fill(title, refs);
 			if (sequence !== mine) return null;
 
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 			const id =
-				landedId ??
+				filled?.id ??
 				queryClient
 					.getQueryData<PlaylistInfo[]>(PLAYLISTS_KEY)
 					?.find((entry) => entry.title === title)?.id ??
 				null;
 
-			setLandedTitle(title);
-			setLandedCount(refs.length);
+			if (filled)
+				setLanded({ title, count: refs.length, structure: filled.structure });
 			return id;
 		},
-		[canEdit, holdsView, playlist, setLandedTitle, setLandedCount, queryClient],
+		[canEdit, holdsView, playlist, setLanded, queryClient],
 	);
 
-	// The playlist's own polled `itemCount` is the fallback for a scratch filled by another device,
-	// which leaves no `landedCount` behind for this one.
+	// The playlist's own polled `itemCount` is the fallback once `landed` is retired, which a fill
+	// from another device does.
 	const adopt = useCallback(
 		async (title: string) => {
 			if (!playlist || !origin) return null;
-			const count = landedCount ?? playlist.itemCount;
+			const count = landed?.count ?? playlist.itemCount;
 			const created = await createPlaylist(origin, {
 				title,
 				...(count > 0 ? { source: playlist.id, runs: [[0, count]] } : {}),
 			});
 			return created.id;
 		},
-		[playlist, origin, landedCount],
+		[playlist, origin, landed],
 	);
 
 	return { playlist, holdsView, ensure, adopt };

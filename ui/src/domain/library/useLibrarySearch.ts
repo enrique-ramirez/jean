@@ -24,11 +24,10 @@ import { bestMatches } from "@/domain/track/rankTracks";
 import { emptyOwnPlaylist, permitsPlaybackControl } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
-import { useStoredState } from "@/shared/hooks/useStoredState";
 import type { Phrase } from "@/shared/i18n/en";
 import { fold, fuzzyScore, squash, TIER } from "@/shared/lib/text";
 import type { Library } from "./useLibrary";
-import { SCRATCH_LANDED_KEY } from "./useScratchPlaylist";
+import { titledAsLanded, useLandedScratch } from "./useScratchPlaylist";
 
 export type SearchSectionLabel = Extract<Phrase, `search.section.${string}`>;
 
@@ -81,18 +80,13 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const [isFocused, setIsFocused] = useState(false);
 	const [isOpen, setIsOpen] = useState(false);
 	const inputRef = useRef<HTMLInputElement | null>(null);
-	const [landedTitle] = useStoredState<string | null>(SCRATCH_LANDED_KEY, null);
+	const scratch = playlists.find(isScratchPlaylist) ?? null;
+	const landed = useLandedScratch(scratch);
 
-	// Preferred over the playlist's own title everywhere it is read; domain/library/CLAUDE.md has why.
 	const remembered = useMemo(() => {
-		const scratch = playlists.find(isScratchPlaylist);
 		if (!scratch || scratch.itemCount === 0) return null;
-		return (
-			queryOfScratchPlaylist(
-				landedTitle ? { ...scratch, title: landedTitle } : scratch,
-			) || null
-		);
-	}, [playlists, landedTitle]);
+		return queryOfScratchPlaylist(titledAsLanded(scratch, landed)) || null;
+	}, [scratch, landed]);
 
 	const restore = useCallback(() => {
 		setQuery((current) => current || remembered || "");

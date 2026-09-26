@@ -9,9 +9,8 @@ import {
 	scratchContentsOf,
 	scratchName,
 } from "@/domain/track/jeanPlaylists";
-import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useTranslate } from "@/shared/i18n/useTranslate";
-import { SCRATCH_LANDED_KEY } from "./useScratchPlaylist";
+import { titledAsLanded, useLandedScratch } from "./useScratchPlaylist";
 
 export function usePlayingFrom() {
 	const t = useTranslate();
@@ -20,16 +19,13 @@ export function usePlayingFrom() {
 	const activePlaylistId = useResolvedPlaylistId(
 		snapshot?.player?.activeItem?.playlistGuid ?? null,
 	);
-	const [landedTitle] = useStoredState<string | null>(SCRATCH_LANDED_KEY, null);
+	const scratch = playlists.find(isScratchPlaylist) ?? null;
+	const landed = useLandedScratch(scratch);
 
 	return useMemo(() => {
-		const scratch = playlists.find(isScratchPlaylist);
 		if (!scratch) return null;
 
-		// Preferred over the playlist's own title everywhere it is read; domain/library/CLAUDE.md has why.
-		const held = scratchContentsOf(
-			landedTitle ? { ...scratch, title: landedTitle } : scratch,
-		);
+		const held = scratchContentsOf(titledAsLanded(scratch, landed));
 		if (!held) return null;
 		const name = scratchName(held, t);
 		if (!name) return null;
@@ -40,5 +36,5 @@ export function usePlayingFrom() {
 			itemCount: scratch.itemCount,
 			isPlaying: activePlaylistId === scratch.id,
 		};
-	}, [playlists, activePlaylistId, t, landedTitle]);
+	}, [scratch, activePlaylistId, t, landed]);
 }

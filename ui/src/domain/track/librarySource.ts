@@ -62,9 +62,9 @@ export type LibrarySource =
 			kind: "library";
 			// `target` is the title to give the scratch playlist: the component resolves and titles that
 			// playlist itself, in the same call that fills it, so there is no id to pass in ahead of the
-			// call. Answers the GUID the fill landed in, or null where the caller must resolve it
-			// another way.
-			fill: (target: string, refs: Refs) => Promise<string | null>;
+			// call. Answers the GUID the fill landed in and the structure it left the playlist at, or
+			// null where the caller must resolve the id another way.
+			fill: (target: string, refs: Refs) => Promise<Filled | null>;
 	  })
 	| (LibrarySourceCommon & { kind: "playlist" });
 
@@ -77,6 +77,11 @@ interface MediaLibraryOptions {
 type PlaylistAddresses =
 	| { paths: PathTable; subsongs: Int32Array }
 	| { paths?: undefined; subsongs?: undefined };
+
+export interface Filled {
+	id: string;
+	structure: string;
+}
 
 type PlaylistOptions = PlaylistAddresses & {
 	playlistId: string;
@@ -91,7 +96,7 @@ export type LibrarySourceOptions =
 
 const fillScratch =
 	(paths: PathTable, origin: string | null, structure: number) =>
-	async (title: string, refs: Refs): Promise<string | null> => {
+	async (title: string, refs: Refs): Promise<Filled | null> => {
 		if (!origin) return null;
 
 		const request: FillOwnPlaylistRequest = {
@@ -100,7 +105,7 @@ const fillScratch =
 		};
 
 		const result = await fillOwnPlaylist(origin, "scratch", request);
-		return result.playlistId;
+		return { id: result.playlistId, structure: result.structure };
 	};
 
 const addToPlaylist =

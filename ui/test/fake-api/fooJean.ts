@@ -1128,23 +1128,20 @@ const OWN_TITLE_PREFIX = "#Jean";
 const ownPlaylistTitle = (asked: string) =>
 	asked.startsWith(OWN_TITLE_PREFIX) ? asked : `${OWN_TITLE_PREFIX} ${asked}`;
 
-// Applies `title` on every call, whether this is what makes the playlist for
-// `role` or finds one already there, so a retitle from one fill to the next is
-// the same call that fills it. Keyed on the role rather than on the title, so a
-// playlist renamed at the player is still found.
+// Applies `title` only where this is what makes the playlist for `role`; finding one
+// already there leaves its title alone, since the caller retitles it once the structure
+// check has passed. Keyed on the role rather than on the title, so a playlist renamed at
+// the player is still found.
 function resolveOwnPlaylist(
 	state: FakeState,
 	fake: FooJeanFake,
 	role: OwnPlaylistRole,
 	title: string,
 ): FakePlaylist {
-	const asked = ownPlaylistTitle(title);
 	const existingId = fake.ownPlaylists[role];
-	if (existingId && state.playlistById(existingId)) {
-		state.renamePlaylist(existingId, asked);
+	if (existingId && state.playlistById(existingId))
 		return requirePlaylist(state, existingId);
-	}
-	const made = state.addPlaylist(asked);
+	const made = state.addPlaylist(ownPlaylistTitle(title));
 	fake.ownPlaylists[role] = made.id;
 	return requirePlaylist(state, made.id);
 }
@@ -2713,13 +2710,15 @@ export async function handleAgent({
 		});
 		if (!parsed.ok) return json(response, parsed.body, parsed.status);
 
-		// Made or found before the structure is checked: the same order the
-		// component takes, so a fill refused for a stale structure can still leave
-		// the component's own playlist behind.
+		// Made or found before the structure is checked and retitled only after it,
+		// the order the component takes: a fill refused for a stale structure can
+		// leave a new, empty playlist behind, but never an existing one misnamed.
 		const playlist = resolveOwnPlaylist(state, fake, role, parsed.title ?? "");
 
 		if (parsed.structure !== state.libraryFeed.structure)
 			return json(response, STRUCTURE_MOVED, 409);
+
+		state.renamePlaylist(playlist.id, ownPlaylistTitle(parsed.title ?? ""));
 
 		const tracks = state.ordinalOrder();
 		const positions = insertTracks(

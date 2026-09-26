@@ -415,6 +415,7 @@ export function Sidebar({
 						<NavRow
 							icon={Disc3}
 							label={playingFrom.name}
+							count={format.number(playingFrom.itemCount)}
 							isPlaying={playingFrom.isPlaying}
 							isCurrent={route === playingFrom.route}
 							onClick={() => onOpenRoute(playingFrom.route)}

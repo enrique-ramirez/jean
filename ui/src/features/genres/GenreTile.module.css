@@ -1,38 +1,27 @@
 .tile {
-	--tint: oklch(
-		var(--genre-l) var(--genre-c) calc(28deg + var(--genre-tint) * 45deg)
-	);
-	--field: color-mix(
-		in oklab,
-		var(--tint) var(--genre-wash),
-		var(--surface-raised)
-	);
-	--figure: color-mix(
-		in oklab,
-		var(--tint) var(--genre-ink-share),
-		var(--genre-ink-ground)
-	);
+	--cover: 84px;
+	--peek: 14px;
 
-	position: relative;
 	display: flex;
-	flex-direction: column;
-	justify-content: flex-end;
-	overflow: hidden;
-	aspect-ratio: 1 / 0.72;
-	padding: 14px 14px 19px;
+	align-items: center;
+	gap: 18px;
+	min-width: 0;
+	padding: 16px 18px 16px 16px;
+	border: 1px solid var(--border);
 	border-radius: 14px;
-	background: var(--field);
+	background: var(--surface-raised);
 	color: var(--text);
 	text-decoration: none;
-	isolation: isolate;
 	transition:
 		transform 140ms var(--ease),
-		box-shadow 140ms var(--ease);
+		box-shadow 140ms var(--ease),
+		border-color 140ms var(--ease);
 }
 
 .tile:hover,
 .tile:focus-visible {
 	transform: translateY(-2px);
+	border-color: var(--border-strong);
 	box-shadow: var(--shadow);
 }
 
@@ -41,100 +30,86 @@
 	outline-offset: 2px;
 }
 
-.field {
+.stack {
+	position: relative;
+	flex: 0 0 auto;
+	width: calc(var(--cover) + var(--peek));
+	height: var(--cover);
+}
+
+.sleeve {
 	position: absolute;
-	inset: 0;
-	z-index: 0;
-	color: var(--figure);
+	top: 0;
+	left: 0;
+	width: var(--cover);
+	height: var(--cover);
+	border-radius: 6px;
+	overflow: hidden;
+	box-shadow: 0 4px 12px oklch(0 0 0 / 0.3);
+	outline: 1px solid oklch(1 0 0 / 0.08);
+	outline-offset: -1px;
+}
+
+.sleeve:first-child {
+	z-index: 1;
+}
+
+.sleeve + .sleeve {
+	transform: translateX(var(--peek)) scale(0.9) rotate(4deg);
+	transform-origin: right center;
+	filter: brightness(0.7);
+}
+
+.sleeve [data-artwork] > span {
+	opacity: 0;
+}
+
+.stack[data-ready] .sleeve [data-artwork="failed"] > span {
+	opacity: 1;
+}
+
+.stack:not([data-ready]) .sleeve [data-artwork] img {
+	opacity: 0;
 }
 
 .body {
-	position: relative;
-	z-index: 1;
 	display: flex;
 	flex-direction: column;
-	gap: 14px;
+	gap: 10px;
 	min-width: 0;
 }
 
 .name {
-	font-size: 17px;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow: hidden;
+	font-size: 16px;
 	font-weight: 650;
 	letter-spacing: -0.01em;
-	line-height: 1.2;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-.counts {
-	position: absolute;
-	top: 11px;
-	right: 11px;
-	z-index: 2;
-	display: flex;
-	align-items: center;
-	gap: 5px;
-	padding: 3px 9px;
-	border-radius: var(--radius-pill);
-	background: color-mix(in oklab, var(--surface-sunken) 78%, transparent);
-	backdrop-filter: blur(6px);
-	font-size: 11px;
-	font-variant-numeric: tabular-nums;
-	color: color-mix(in oklab, var(--text) 78%, transparent);
-	white-space: nowrap;
+	line-height: 1.25;
+	overflow-wrap: anywhere;
 }
 
 .figures {
 	display: flex;
-	align-items: center;
+	flex-direction: column;
 	gap: 5px;
+	font-size: 12.5px;
+	font-variant-numeric: tabular-nums;
+	color: var(--muted);
+	white-space: nowrap;
 }
 
-.separator {
-	opacity: 0.45;
-}
-
-.stack {
+.figure {
 	display: flex;
-	align-items: flex-end;
-	min-width: 0;
+	align-items: center;
+	gap: 8px;
 }
 
-.sleeve {
+.figure svg {
 	flex: 0 0 auto;
-	width: 58px;
-	height: 58px;
-	border-radius: 5px;
-	overflow: hidden;
-	transform: rotate(var(--tilt));
-	box-shadow: 0 3px 10px oklch(0 0 0 / 0.34);
-	outline: 1px solid oklch(1 0 0 / 0.09);
-	outline-offset: -1px;
-}
-
-.sleeve + .sleeve {
-	margin-left: -27px;
-}
-
-.sleeve svg {
-	display: none;
-}
-
-.sleeve:nth-child(1) {
-	z-index: 1;
-}
-.sleeve:nth-child(2) {
-	z-index: 2;
-}
-.sleeve:nth-child(3) {
-	z-index: 3;
-}
-.sleeve:nth-child(4) {
-	z-index: 4;
-}
-.sleeve:nth-child(5) {
-	z-index: 5;
+	color: var(--faint);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -150,26 +125,24 @@
 
 @media (max-width: 640px) {
 	.tile {
-		aspect-ratio: 1 / 0.82;
-		padding: 12px 12px 17px;
+		--cover: 68px;
+		--peek: 11px;
+
+		gap: 14px;
+		padding: 12px 14px 12px 12px;
 		border-radius: 12px;
 	}
 
 	.name {
-		font-size: 16px;
+		font-size: 15px;
 	}
 
-	.sleeve {
-		width: 48px;
-		height: 48px;
+	.body {
+		gap: 7px;
 	}
 
-	.sleeve + .sleeve {
-		margin-left: -24px;
-	}
-
-	.counts {
-		top: 9px;
-		right: 9px;
+	.figures {
+		gap: 3px;
+		font-size: 12px;
 	}
 }

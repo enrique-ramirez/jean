@@ -158,6 +158,10 @@ export const en = {
 		"Check that foobar2000 is still running, then try again.",
 	"fooJean.unreachable.summary": "foo_jean is not answering right now.",
 	"genre.alphabetical": "A–Z",
+	"genre.artistCount": {
+		one: "{total} artist",
+		other: "{total} artists",
+	},
 	"genre.asking": "Asking the player what this matches…",
 	"genre.autoPlaylistOf": "An autoplaylist of {genre}",
 	"genre.count": {

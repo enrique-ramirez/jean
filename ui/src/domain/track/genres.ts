@@ -3,7 +3,7 @@ import { artistGroups, FIELD, tagGroups, tagKey } from "./fields";
 import { growingIndex } from "./growingIndex";
 import type { TrackRows } from "./project";
 
-export const COVERS_PER_TILE = 5;
+export const COVERS_PER_TILE = 2;
 
 export interface Genre {
 	name: string;
@@ -11,6 +11,7 @@ export interface Genre {
 	match: FuzzyKey;
 	trackCount: number;
 	albumCount: number;
+	artistCount: number;
 	coverRefs: number[];
 }
 
@@ -20,6 +21,7 @@ interface Draft {
 	match: FuzzyKey;
 	trackCount: number;
 	albums: Map<string, { ref: number; trackCount: number }>;
+	artists: Set<string>;
 }
 
 /**
@@ -36,6 +38,7 @@ function absorb(byKey: Map<string, Draft>, rows: TrackRows, from: number) {
 	const artists = artistGroups(columns);
 
 	const records = new Map<number, string>();
+	const artistKeys = new Map<number, string>();
 
 	for (let position = from; position < rows.length; position += 1) {
 		const ref = rows.ref(position);
@@ -52,11 +55,22 @@ function absorb(byKey: Map<string, Draft>, rows: TrackRows, from: number) {
 				match: fuzzyKey(name),
 				trackCount: 0,
 				albums: new Map(),
+				artists: new Set(),
 			};
 			byKey.set(key, draft);
 		}
 
 		draft.trackCount += 1;
+
+		const credited = artists.at(ref);
+		if (credited >= 0) {
+			let artist = artistKeys.get(credited);
+			if (artist === undefined) {
+				artist = tagKey(artists.names[credited]);
+				artistKeys.set(credited, artist);
+			}
+			draft.artists.add(artist);
+		}
 
 		const albumGroup = albums.of[album.ids[ref]];
 		if (albumGroup < 0) continue;
@@ -64,7 +78,6 @@ function absorb(byKey: Map<string, Draft>, rows: TrackRows, from: number) {
 		const pair = artists.pairedWith(ref, albumGroup);
 		let record = records.get(pair);
 		if (record === undefined) {
-			const credited = artists.at(ref);
 			const name = credited < 0 ? "Unknown" : artists.names[credited];
 			record = tagKey(`${name} ${albums.names[albumGroup]}`);
 			records.set(pair, record);
@@ -85,6 +98,7 @@ const derive = (byKey: Map<string, Draft>): Genre[] =>
 				match: draft.match,
 				trackCount: draft.trackCount,
 				albumCount: draft.albums.size,
+				artistCount: draft.artists.size,
 				coverRefs: [...draft.albums.values()]
 					.sort((a, b) => b.trackCount - a.trackCount)
 					.slice(0, COVERS_PER_TILE)

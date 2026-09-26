@@ -8,13 +8,9 @@ The index of every genre in the library, and the dialog that turns one into an a
 
 ## The tile
 
-**A genre has no artwork of its own and never will**, so `mark.ts` derives a figure and a tint from the name, seeded through `squash()`: the same genre spelled three ways is one identity, and the mark is stable on every device forever. **A fixed set of hues off a ramp, never a free hue per tag.**
+**A genre has no artwork of its own**, so a tile draws its albums' covers instead.
 
-**The figure is drawn *into* its field, not over it.** "Away from the page" is a different direction in each theme. It is held at reduced opacity rather than given a third colour token, so one value covers both directions where a colour would need two.
-
-**The sleeves are the genre's biggest albums, not a random draw**, and each leans off the same seed as the figure, so a genre with six albums does not deal a different five each visit. The tile carries extra bottom padding: **a leaning sleeve reaches past its own box** and the tile clips. `Artwork`'s disc glyph is hidden inside a sleeve.
-
-**The counts' units live in a visually-hidden sibling**, or the pill announces two numbers about nothing.
+**Covers arrive a few at a time through `artworkQueue.ts`, and a grid revealing each one the moment it lands reads as broken**, so a tile's sleeves stay hidden as a group until every one of them has settled.
 
 ## Finding one
 

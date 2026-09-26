@@ -127,6 +127,10 @@
 	"fooJean.unreachable.fix": "Comprueba que foobar2000 sigue en marcha y vuelve a intentarlo.",
 	"fooJean.unreachable.summary": "foo_jean no responde en este momento.",
 	"genre.alphabetical": "A–Z",
+	"genre.artistCount": {
+		"one": "{total} artista",
+		"other": "{total} artistas"
+	},
 	"genre.asking": "Preguntando al reproductor con qué coincide esto…",
 	"genre.autoPlaylistOf": "Una lista automática de {genre}",
 	"genre.count": {

@@ -37,6 +37,7 @@ export function usePlayingFrom() {
 		return {
 			...held,
 			name,
+			itemCount: scratch.itemCount,
 			isPlaying: activePlaylistId === scratch.id,
 		};
 	}, [playlists, activePlaylistId, t, landedTitle]);

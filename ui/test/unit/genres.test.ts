@@ -49,6 +49,12 @@ test("albums are counted per genre, and a record's tracks only once", () => {
 	assert.equal(find("Rock")?.albumCount, 2);
 });
 
+test("artists are counted per genre, and an artist's albums only once", () => {
+	assert.equal(find("Rock")?.artistCount, 1);
+	assert.equal(find("Electronic")?.artistCount, 1);
+	assert.equal(find("Rock; Blues")?.artistCount, 1);
+});
+
 // `growingIndex`'s own comment has why a key on its own is not enough; this is that trap against a
 // tag foobar has joined.
 test("the index takes in rows that arrive after it was first asked for", () => {
@@ -62,6 +68,7 @@ test("the index takes in rows that arrive after it was first asked for", () => {
 	const grown = genreIndex(key, collector.table());
 	assert.equal(grown.length, 3);
 	assert.equal(grown.find((entry) => entry.name === "Rock")?.trackCount, 2);
+	assert.equal(grown.find((entry) => entry.name === "Rock")?.artistCount, 1);
 	assert.ok(grown.some((entry) => entry.name === "Electronic"));
 });
 

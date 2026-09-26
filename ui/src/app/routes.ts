@@ -21,6 +21,7 @@ export interface PlayingSet {
 	kind: string;
 	label: string | null;
 	name: string;
+	itemCount: number;
 	isPlaying: boolean;
 }
 

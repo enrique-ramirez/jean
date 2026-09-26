@@ -773,6 +773,48 @@ TEST_CASE("every poll route asks again, in no cache but that client's, and keeps
     }
 }
 
+// Every generation a tag names starts again with the component, so a browser still holding what
+// the last run answered would revalidate against a snapshot that run never built and be told 304.
+TEST_CASE("a tag one run of the component answered is never current in the next run") {
+    Library before;
+    Library after;
+    fill(before);
+    fill(after);
+    const auto since = playOne(before, "5") - 1;
+    REQUIRE(playOne(after, "5") - 1 == since);
+
+    PlayerStateStore beforePlayer;
+    PlayerStateStore afterPlayer;
+    beforePlayer.publish(playing());
+    afterPlayer.publish(playing());
+
+    const TestServer first = serving(&before, &beforePlayer);
+    const TestServer second = serving(&after, &afterPlayer);
+
+    const std::string changes = "/api/library/changes?since=" + std::to_string(since);
+
+    for (const std::string& path : {std::string("/api/state"), std::string(kExport), changes}) {
+        INFO("path: ", path);
+
+        const auto held = get(first, path);
+        REQUIRE(held);
+        REQUIRE(held->status == 200);
+
+        const auto tag = held->get_header_value("ETag");
+        REQUIRE_FALSE(tag.empty());
+
+        const auto fresh = get(second, path);
+        REQUIRE(fresh);
+        REQUIRE(fresh->status == 200);
+        CHECK(fresh->get_header_value("ETag") != tag);
+
+        const auto revalidated = getHolding(second, path, tag);
+        REQUIRE(revalidated);
+        CHECK(revalidated->status == 200);
+        CHECK_FALSE(revalidated->body.empty());
+    }
+}
+
 TEST_CASE("a wildcard validator is honoured, as RFC 9110 requires") {
     Library library;
     fill(library);

@@ -20,6 +20,7 @@
 #include <limits>
 #include <mutex>
 #include <optional>
+#include <random>
 #include <set>
 #include <system_error>
 #include <thread>
@@ -144,13 +145,9 @@ std::string quoted(const std::string& tag) {
     return "\"" + tag + "\"";
 }
 
-std::string generationsOf(const Library::State& state, uint64_t playerVersion = 0,
-                          std::optional<uint64_t> configGeneration = std::nullopt) {
-    std::string tag = "s" + std::to_string(state.structure) + "-r" +
-                      std::to_string(state.revision) + "-p" + std::to_string(playerVersion);
-    if (configGeneration)
-        tag += "-c" + std::to_string(*configGeneration);
-    return tag;
+uint64_t freshRunId() {
+    std::random_device source;
+    return (uint64_t{source()} << 32) | source();
 }
 
 // cpp-httplib evaluates If-None-Match for its own file handler alone, so a route serving
@@ -610,6 +607,9 @@ struct HttpServer::Impl {
     Library* const library;
     PlayerStateStore* const playerState;
     NowPlayingArtwork* const nowPlayingArtwork;
+
+    const uint64_t runId = freshRunId();
+
     httplib::Server server;
     std::thread thread;
     std::atomic<bool> stopping{false};
@@ -1041,6 +1041,16 @@ struct HttpServer::Impl {
         return true;
     }
 
+    std::string tagName(const Library::State& state, uint64_t playerVersion = 0,
+                        std::optional<uint64_t> generation = std::nullopt) const {
+        std::string tag = "s" + std::to_string(state.structure) + "-r" +
+                          std::to_string(state.revision) + "-i" + std::to_string(runId) + "-p" +
+                          std::to_string(playerVersion);
+        if (generation)
+            tag += "-c" + std::to_string(*generation);
+        return tag;
+    }
+
     void addStateRoutes() {
         server.Get(kStatePath, [this](const httplib::Request& req, httplib::Response& res) {
             // cpp-httplib gives one pooled thread the whole life of a socket, not just one
@@ -1055,7 +1065,7 @@ struct HttpServer::Impl {
             const auto state = library ? library->state() : Library::State{};
             const auto published =
                 playerState ? playerState->read() : PlayerStateStore::Published{};
-            sendIfChanged(req, res, generationsOf(state, published.version, generation),
+            sendIfChanged(req, res, tagName(state, published.version, generation),
                           "application/json", [&state, &published, generation] {
                               return stateDocument(
                                   state, published.state, std::chrono::steady_clock::now(),
@@ -1084,7 +1094,7 @@ struct HttpServer::Impl {
                 return;
             }
 
-            sendIfChanged(req, res, generationsOf(state), kLibraryBytes,
+            sendIfChanged(req, res, tagName(state), kLibraryBytes,
                           [this] { return library->exported(); });
         });
 
@@ -1112,7 +1122,7 @@ struct HttpServer::Impl {
                     return;
                 }
 
-                const auto name = generationsOf(state) + "-f" + std::to_string(request.since);
+                const auto name = tagName(state) + "-f" + std::to_string(request.since);
                 sendIfChanged(req, res, name, kLibraryBytes,
                               [&changes] { return serialiseDelta(changes.delta); });
             });

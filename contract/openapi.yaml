@@ -94,7 +94,7 @@ info:
 
     Negotiation is RFC 9110's: `Accept-Encoding: gzip` gets `Content-Encoding: gzip`, `Accept-Encoding: gzip;q=0` is a refusal and gets the bytes as they stand, and no `Accept-Encoding` at all is also a refusal. Only `gzip` is offered; `br`, `zstd` and `deflate` are not, and `*` is read as offering nothing rather than as offering everything.
 
-    Every answer from these routes carries `Vary: Accept-Encoding`, and **the `ETag` names the coding**: `"s41-r903-gzip"` and `"s41-r903-identity"` are two representations of one snapshot and never share a validator. A client passes back whichever tag it holds and keeps asking with the same `Accept-Encoding` it asked with before. `GET /state` is `ETag`ged on the same terms, coding and all, because it is compressed on the same terms.
+    Every answer from these routes carries `Vary: Accept-Encoding`, and **the `ETag` names the coding**: `"s41-r903-i9231704662185031702-gzip"` and `"s41-r903-i9231704662185031702-identity"` are two representations of one snapshot and never share a validator. A client passes back whichever tag it holds and keeps asking with the same `Accept-Encoding` it asked with before. `GET /state` is `ETag`ged on the same terms, coding and all, because it is compressed on the same terms. The middle segment is fixed when the component starts and differs between runs of it, so a tag a browser cached before a restart never matches what the new run answers.
 
     The size ceiling is on the snapshot **as serialised**, before any compression: a library over it is a `413` however small it would have gzipped to, because the number that matters is what the client has to hold once it has decoded.
 

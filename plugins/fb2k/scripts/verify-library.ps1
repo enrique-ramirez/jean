@@ -5,10 +5,12 @@
 #   scripts\verify-library.ps1
 #   scripts\verify-library.ps1 -Full
 #   $env:JEAN_LIBRARY_EXPORT = 'D:\path\export.jlib'; scripts\verify-library.ps1
+#   scripts\verify-library.ps1 -Origin 'https://jean.example'
 param(
   [string]$FooJean = 'http://127.0.0.1:8881/api',
   [switch]$Full,
-  [string]$LibraryExport = $env:JEAN_LIBRARY_EXPORT
+  [string]$LibraryExport = $env:JEAN_LIBRARY_EXPORT,
+  [string]$Origin = $env:JEAN_ALLOWED_ORIGIN
 )
 
 $ErrorActionPreference = 'Stop'
@@ -103,32 +105,36 @@ function Test-SameColumns([string[]]$a, [string[]]$b) {
 }
 
 $script:librarySnapshot = $null
-Invoke-Check -Name "GET /library answers before anything else and never starts a build" -Body {
-  $probe = Invoke-ApiProbe "$FooJean/library" 'Get' @{}
+Invoke-Check -Name "GET /state answers before anything else and never starts a build" -Body {
+  $probe = Invoke-ApiProbe "$FooJean/state" 'Get' @{}
   if ($probe.StatusCode -ne 200) {
-    throw "GET /library answered $($probe.StatusCode), not 200"
+    throw "GET /state answered $($probe.StatusCode), not 200"
   }
   $parsed = $probe.Body | ConvertFrom-Json
-  if ($null -eq $parsed.ready) {
-    throw "GET /library answered with no 'ready' field"
+  if ($null -eq $parsed.library) {
+    throw "GET /state answered with no 'library' object"
   }
-  $script:librarySnapshot = @{ Ready = [bool]$parsed.ready; Columns = @($parsed.columns) }
+  if ($null -eq $parsed.library.ready) {
+    throw "GET /state's library object carried no 'ready' field"
+  }
+  $script:librarySnapshot = @{ Ready = [bool]$parsed.library.ready; Columns = @($parsed.library.columns) }
 }
 $script:snapshotWarm = $false
 if ($script:librarySnapshot -and $script:librarySnapshot.Ready) {
   $script:snapshotWarm = Test-SameColumns $script:librarySnapshot.Columns $script:DeclaredColumns
 }
 
-$corsOrigin = 'https://jean.example'
+$script:NoOriginSkip = "needs -Origin (or JEAN_ALLOWED_ORIGIN) naming an origin the player's config.json lists in allowedOrigins"
 
 Invoke-Check -Name "the preflight allows Content-Type and If-None-Match" -Body {
-  $preflight = Invoke-ApiProbe "$FooJean/library" 'Options' @{
-    Origin                           = $corsOrigin
+  if (-not $Origin) { Skip-Check $script:NoOriginSkip }
+  $preflight = Invoke-ApiProbe "$FooJean/state" 'Options' @{
+    Origin                           = $Origin
     'Access-Control-Request-Method'  = 'GET'
     'Access-Control-Request-Headers' = 'if-none-match'
   }
   if ($preflight.StatusCode -ne 204) {
-    throw "OPTIONS /library answered $($preflight.StatusCode), not 204"
+    throw "OPTIONS /state answered $($preflight.StatusCode), not 204"
   }
   $allowed = $preflight.Headers['Access-Control-Allow-Headers']
   $missing = @(Get-MissingHeaderNames $allowed @('Content-Type', 'If-None-Match'))
@@ -138,15 +144,16 @@ Invoke-Check -Name "the preflight allows Content-Type and If-None-Match" -Body {
 }
 
 Invoke-Check -Name "every answer exposes ETag and Retry-After, preflight and plain alike" -Body {
+  if (-not $Origin) { Skip-Check $script:NoOriginSkip }
   $required = @('ETag', 'Retry-After')
 
-  $preflight = Invoke-ApiProbe "$FooJean/library" 'Options' @{ Origin = $corsOrigin }
+  $preflight = Invoke-ApiProbe "$FooJean/state" 'Options' @{ Origin = $Origin }
   $missingOnPreflight = @(Get-MissingHeaderNames $preflight.Headers['Access-Control-Expose-Headers'] $required)
   if ($missingOnPreflight.Count -gt 0) {
     throw "the preflight answer is missing $($missingOnPreflight -join ', ') from Access-Control-Expose-Headers"
   }
 
-  $plain = Invoke-ApiProbe "$FooJean/status" 'Get' @{ Origin = $corsOrigin }
+  $plain = Invoke-ApiProbe "$FooJean/state" 'Get' @{ Origin = $Origin }
   $missingOnPlain = @(Get-MissingHeaderNames $plain.Headers['Access-Control-Expose-Headers'] $required)
   if ($missingOnPlain.Count -gt 0) {
     throw "a plain GET is missing $($missingOnPlain -join ', ') from Access-Control-Expose-Headers"
@@ -306,22 +313,23 @@ $script:LibraryExportTimeoutSeconds = 120
 
 function Get-CurrentLibraryState {
   Assert-SnapshotWarm
-  $probe = Invoke-ApiProbe "$FooJean/library" 'Get' @{}
+  $probe = Invoke-ApiProbe "$FooJean/state" 'Get' @{}
   if ($probe.StatusCode -ne 200) {
-    throw "GET /library answered $($probe.StatusCode), not 200"
+    throw "GET /state answered $($probe.StatusCode), not 200"
   }
-  return $probe.Body | ConvertFrom-Json
+  return ($probe.Body | ConvertFrom-Json).library
 }
 
-# Reading the current revision back through GET /library, which never starts a build, is what
+# Reading the current revision back through GET /state, which never starts a build, is what
 # makes a 'since' value on /library/changes safe to build without risking notBuilt or
 # revisionUnknown (Library::changes in core/library.cpp).
 function Get-CurrentLibraryRevision {
   return (Get-CurrentLibraryState).revision
 }
 
-# Library::state() in core/library.cpp reports only ready/not-ready, with no progress fraction, so
-# this is a flat ceiling on the wait rather than an estimate of how long a rebuild takes.
+# Library::state() in core/library.cpp reports build progress under build, but this script does
+# not poll it, so this is a flat ceiling on the wait rather than an estimate of how long a
+# rebuild takes.
 $script:LibraryBuildTimeoutSeconds = 300
 
 # ready is snapshot.structure > 0 (core/library.cpp), which never drops while an already-warm
@@ -334,13 +342,13 @@ function Wait-ForDeclaredColumns([int]$TimeoutSeconds, [uint64]$MinStructure = 0
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 2
-    $state = Invoke-ApiProbe "$FooJean/library" 'Get' @{}
+    $state = Invoke-ApiProbe "$FooJean/state" 'Get' @{}
     if ($state.StatusCode -ne 200) {
-      throw "GET /library answered $($state.StatusCode), not 200, while waiting for the declared columns to build"
+      throw "GET /state answered $($state.StatusCode), not 200, while waiting for the declared columns to build"
     }
-    $parsed = $state.Body | ConvertFrom-Json
-    $structureMoved = [uint64]$parsed.structure -gt $MinStructure
-    if ([bool]$parsed.ready -and $structureMoved -and (Test-SameColumns @($parsed.columns) $script:DeclaredColumns)) {
+    $library = ($state.Body | ConvertFrom-Json).library
+    $structureMoved = [uint64]$library.structure -gt $MinStructure
+    if ([bool]$library.ready -and $structureMoved -and (Test-SameColumns @($library.columns) $script:DeclaredColumns)) {
       $script:snapshotWarm = $true
       return
     }
@@ -348,8 +356,15 @@ function Wait-ForDeclaredColumns([int]$TimeoutSeconds, [uint64]$MinStructure = 0
   throw "the declared columns did not finish building within $TimeoutSeconds second(s)"
 }
 
-Invoke-Check -Name "GET /library revalidates by ETag, in both codings, and rejects a validator from the other" -Body {
-  Test-ConditionalRoute "GET /library" "$FooJean/library"
+Invoke-Check -Name "GET /state revalidates by ETag, in both codings, and rejects a validator from the other" -Body {
+  $initial = Invoke-ApiProbe "$FooJean/state" 'Get' @{}
+  if ($initial.StatusCode -ne 200) {
+    throw "GET /state answered $($initial.StatusCode), not 200"
+  }
+  if (($initial.Body | ConvertFrom-Json).player.playback -eq 'playing') {
+    Skip-Check "the player is playing, and GET /state's ETag folds in playback as well as the library"
+  }
+  Test-ConditionalRoute "GET /state" "$FooJean/state"
 }
 
 Invoke-Check -Name "GET /library/export revalidates by ETag, in both codings, and rejects a validator from the other" -Body {
@@ -721,7 +736,7 @@ Invoke-Check -Name "two tracks sharing a cover share an ETag, and the sample doe
   }
 }
 
-# Guarded the way Get-CurrentLibraryRevision is: GET /library never needs a warm snapshot
+# Guarded the way Get-CurrentLibraryRevision is: GET /state never needs a warm snapshot
 # itself, but the value this reads is only meaningful as the baseline for a rebuild the caller
 # is about to force on one.
 function Get-CurrentLibraryStructure {

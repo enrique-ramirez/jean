@@ -3,15 +3,14 @@
   foo_jean, built as an x64 foobar2000 component.
 
   Four things here are load-bearing and each fails in a way that does not name
-  itself. README.md, "Everything that stood between a clean VS install and that
-  DLL", has the full list with symptoms.
+  itself. README.md, "Build traps", says where each is enforced.
 
   1. pfc builds as "$(Configuration) FB2K" while every other SDK project builds as
      "$(Configuration)". Encoded as SetConfiguration metadata on the pfc
      ProjectReference below, which is why building this .vcxproj directly works.
   2. /d2notypeopt is mandatory on anything touching SDK classes.
   3. WTL and the static runtime (RuntimeLibrary) reach the compiler through
-     Directory.Build.targets at the repo root, never through /p:UseEnv=true.
+     Directory.Build.targets one directory up, never through /p:UseEnv=true.
   4. OutDir is set explicitly, because the build drives this .vcxproj directly and
      $(SolutionDir) is then undefined.
 

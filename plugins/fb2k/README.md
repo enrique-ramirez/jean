@@ -32,7 +32,7 @@ scripts\package.ps1                                # -> dist\foo_jean.fb2k-compo
 
 ### Build traps
 
-This build has several traps, each of which fails in a way that does not name its cause, and each is written down where it is enforced rather than listed here. `src/foo_jean.vcxproj`'s own header covers what the project file settles, `scripts/build.ps1` the toolset and the compiler flags, `scripts/package.ps1` where an x64 payload goes in the archive, and `scripts/generate-sln.ps1` the per-project configuration. Read all four before debugging a link, a packaging or a resource-compiler error.
+This build has several traps, each of which fails in a way that does not name its cause, and each is written down where it is enforced rather than listed here. `src/foo_jean.vcxproj`'s own header covers what the project file settles, `Directory.Build.targets` WTL's include path and the static C++ runtime, `scripts/build.ps1` the toolset, the compiler flags and its refusal of a DLL that imports the C++ runtime, `scripts/package.ps1` where an x64 payload goes in the archive, and `scripts/generate-sln.ps1` the per-project configuration. Read all five before debugging a link, a packaging or a resource-compiler error.
 
 Two things about the solutions, which no script says. **`scripts\generate-sln.ps1` exists to build the SDK's own `foo_sample`**, which is how you prove a new machine's toolchain before there is any of this code to blame. **`foo_jean.sln` in this directory is for opening the tree in Visual Studio** and is not used by the build.
 

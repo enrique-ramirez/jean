@@ -263,6 +263,100 @@ TEST_CASE("installing a snapshot moves both generations and reports the columns 
     CHECK(state.columns == std::vector<std::string>{"%artist%"});
 }
 
+TEST_CASE("a library nobody is building carries no build progress") {
+    Library library;
+
+    CHECK_FALSE(library.state().build.has_value());
+}
+
+TEST_CASE("the progress read back is the last one the build reported") {
+    Library library;
+
+    library.reportBuild({BuildPhase::ordering, 0, 7});
+    library.reportBuild({BuildPhase::formatting, 3, 7});
+
+    const auto build = library.state().build;
+    REQUIRE(build.has_value());
+    CHECK(build->phase == BuildPhase::formatting);
+    CHECK(build->formatted == 3);
+    CHECK(build->total == 7);
+}
+
+// A data rebuild runs beside the snapshot it will replace, so a client polling in between
+// reads the old library as ready and the new one as on its way.
+TEST_CASE("installing a snapshot ends its build, and the next build reports afresh") {
+    Library library;
+
+    library.reportBuild({BuildPhase::listing, 0, 0});
+    library.replace(built({"%artist%"}, {track("a/", "1.mp3", {"One"})}));
+    CHECK_FALSE(library.state().build.has_value());
+
+    library.reportBuild({BuildPhase::formatting, 1, 2});
+    const auto rebuilding = library.state();
+    CHECK(rebuilding.ready);
+    CHECK(rebuilding.trackCount == 1);
+    REQUIRE(rebuilding.build.has_value());
+    CHECK(rebuilding.build->formatted == 1);
+    CHECK(rebuilding.build->total == 2);
+
+    library.replace(
+        built({"%artist%"}, {track("a/", "1.mp3", {"One"}), track("a/", "2.mp3", {"Two"})}));
+    const auto rebuilt = library.state();
+    CHECK_FALSE(rebuilt.build.has_value());
+    CHECK(rebuilt.trackCount == 2);
+}
+
+// A rebuild that fails or is abandoned installs nothing, and the library it would have replaced
+// is still the one a client reads.
+TEST_CASE("a build that ends without a snapshot clears its progress and keeps the library held") {
+    Library library;
+    library.replace(built({"%artist%"}, {track("a/", "1.mp3", {"One"})}));
+    library.apply({{0, track("a/", "1.mp3", {"Two"})}});
+    const auto before = library.state();
+
+    library.reportBuild({BuildPhase::formatting, 1, 2});
+    library.endBuild();
+
+    const auto after = library.state();
+    CHECK_FALSE(after.build.has_value());
+    CHECK(after.ready);
+    CHECK(after.structure == before.structure);
+    CHECK(after.revision == before.revision);
+    CHECK(after.trackCount == 1);
+    CHECK(after.columns == before.columns);
+}
+
+// The build's worker reports while request threads read, so the pair has to agree on the
+// lock. A torn read shows up as progress that runs backwards or a total the build never had.
+TEST_CASE("progress reported from one thread reads back whole from another") {
+    static constexpr size_t kReports = 4000;
+
+    Library library;
+    std::thread worker([&library] {
+        for (size_t formatted = 1; formatted <= kReports; ++formatted)
+            library.reportBuild({BuildPhase::formatting, formatted, kReports});
+    });
+
+    size_t torn = 0;
+    size_t latest = 0;
+    for (size_t read = 0; read < kReports; ++read) {
+        const auto build = library.state().build;
+        if (!build)
+            continue;
+
+        if (build->phase != BuildPhase::formatting || build->total != kReports ||
+            build->formatted < latest)
+            ++torn;
+        latest = build->formatted;
+    }
+    worker.join();
+
+    CHECK(torn == 0);
+    const auto build = library.state().build;
+    REQUIRE(build.has_value());
+    CHECK(build->formatted == kReports);
+}
+
 TEST_CASE("a row whose values did not move leaves the revision alone") {
     Library library;
     library.replace(built({"%play_count%"}, {track("a/", "1.mp3", {"3"})}));

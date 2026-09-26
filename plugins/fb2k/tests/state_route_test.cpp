@@ -389,7 +389,8 @@ TEST_CASE("the poll document carries what the player is doing beside the library
                                   {"structure", 1},
                                   {"revision", 1},
                                   {"trackCount", 3},
-                                  {"columns", json::array({kTitle, kPlays})}});
+                                  {"columns", json::array({kTitle, kPlays})},
+                                  {"build", nullptr}});
 }
 
 // The first poll of a component that has just started, before a playback callback has fired.
@@ -1314,6 +1315,70 @@ TEST_CASE("either library generation moving invalidates what a client was holdin
     CHECK(again->get_header_value("ETag") != tag);
 }
 
+// Neither generation moves until the build lands, so a tag made of the generations alone would
+// hold a waiting client on a 304 and its progress bar still for the whole build.
+TEST_CASE("a conditional poll is a 200 once the build's progress moves, and a 304 until it does") {
+    Library library;
+    fill(library);
+    library.reportBuild(BuildProgress{BuildPhase::ordering, 0, 30441});
+    const TestServer server = serving(&library);
+
+    const auto first = get(server, "/api/state");
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+
+    const auto tag = first->get_header_value("ETag");
+    REQUIRE_FALSE(tag.empty());
+
+    const auto unchanged = getHolding(server, "/api/state", tag);
+    REQUIRE(unchanged);
+    REQUIRE(unchanged->status == 304);
+
+    SUBCASE("the phase moved") {
+        library.reportBuild(BuildProgress{BuildPhase::formatting, 0, 30441});
+    }
+    SUBCASE("a slice was formatted") {
+        library.reportBuild(BuildProgress{BuildPhase::ordering, 8192, 30441});
+    }
+    SUBCASE("the total moved") {
+        library.reportBuild(BuildProgress{BuildPhase::ordering, 0, 30442});
+    }
+    SUBCASE("the build ended") {
+        library.endBuild();
+    }
+
+    const auto again = getHolding(server, "/api/state", tag);
+    REQUIRE(again);
+    CHECK(again->status == 200);
+    CHECK(again->get_header_value("ETag") != tag);
+}
+
+// The export and the delta are the same bytes until the build lands, so a tag that moved with
+// progress would send a client holding either of them the whole thing again once a slice.
+TEST_CASE("a build's progress leaves the export and the delta a client holds current") {
+    Library library;
+    fill(library);
+    playOne(library, "5");
+    const TestServer server = serving(&library);
+
+    const auto exported = get(server, kExport);
+    const auto patched = get(server, "/api/library/changes?since=1");
+    REQUIRE(exported);
+    REQUIRE(patched);
+    REQUIRE(exported->status == 200);
+    REQUIRE(patched->status == 200);
+
+    library.reportBuild(BuildProgress{BuildPhase::formatting, 8192, 30441});
+
+    const auto exportedAgain = getHolding(server, kExport, exported->get_header_value("ETag"));
+    const auto patchedAgain = getHolding(server, "/api/library/changes?since=1",
+                                         patched->get_header_value("ETag"));
+    REQUIRE(exportedAgain);
+    REQUIRE(patchedAgain);
+    CHECK(exportedAgain->status == 304);
+    CHECK(patchedAgain->status == 304);
+}
+
 TEST_CASE("the export is the snapshot, framed as contract/openapi.yaml describes it") {
     Library library;
     fill(library);
@@ -1492,6 +1557,9 @@ TEST_CASE("asking again for a set already building does not start a second build
     Library library;
     const TestServer server = serving(&library, building(&log));
 
+    REQUIRE(get(server, "/api/library/export?columns=%25genre%25"));
+    library.reportBuild(BuildProgress{BuildPhase::listing, 0, 0});
+
     for (int attempt = 0; attempt < 4; ++attempt) {
         const auto response = get(server, "/api/library/export?columns=%25genre%25");
         REQUIRE(response);
@@ -1499,6 +1567,32 @@ TEST_CASE("asking again for a set already building does not start a second build
     }
 
     CHECK(log.calls == 1);
+}
+
+// A walk that times out on foobar2000's main thread ends the build without a snapshot, and the
+// set stays declared. Were the declaration all that was checked, every retry after that would be
+// answered 202 and nothing would ever build it.
+TEST_CASE("asking again for a declared set nobody is building starts it again") {
+    BuildLog log;
+    Library library;
+    const TestServer server = serving(&library, building(&log));
+
+    const auto first = get(server, "/api/library/export?columns=%25genre%25");
+    REQUIRE(first);
+    REQUIRE(first->status == 202);
+    REQUIRE(log.calls == 1);
+
+    SUBCASE("the build ended without a snapshot") {
+        library.reportBuild(BuildProgress{BuildPhase::listing, 0, 0});
+        library.endBuild();
+    }
+    SUBCASE("the build never reported") {}
+
+    const auto again = get(server, "/api/library/export?columns=%25genre%25");
+    REQUIRE(again);
+    CHECK(again->status == 202);
+    CHECK(log.calls == 2);
+    CHECK(log.columns == std::vector<std::string>{"%genre%"});
 }
 
 TEST_CASE("a 202 the player cannot honour is not made") {
@@ -1691,7 +1785,8 @@ TEST_CASE("a player with no media library still answers what it is playing") {
                                   {"structure", 0},
                                   {"revision", 0},
                                   {"trackCount", 0},
-                                  {"columns", json::array()}});
+                                  {"columns", json::array()},
+                                  {"build", nullptr}});
 }
 
 // Every other validator case fills the library, so this is the one where the player half of the
@@ -1836,6 +1931,31 @@ TEST_CASE("a client varying the set it declares stops reaching the player too") 
 
         if (response->status == 429)
             refused++;
+    }
+
+    CHECK(refused > 0);
+    CHECK(log.calls == kAttempts - refused);
+}
+
+// A client retrying an export whose build keeps dying asks for a library walk each time, which is
+// the loop the rebuild budget is there for.
+TEST_CASE("asking again for a set nobody is building spends the rebuild budget") {
+    BuildLog log;
+    Library library;
+    const TestServer server = serving(&library, building(&log));
+
+    constexpr int kAttempts = 8;
+    int refused = 0;
+
+    for (int attempt = 0; attempt < kAttempts; ++attempt) {
+        const auto response = get(server, "/api/library/export?columns=%25genre%25");
+        REQUIRE(response);
+
+        if (response->status == 429) {
+            refused++;
+            CHECK(response->get_header_value("Retry-After") == "30");
+            CHECK(json::parse(response->body)["error"] == "too many library refreshes");
+        }
     }
 
     CHECK(refused > 0);

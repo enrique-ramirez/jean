@@ -310,6 +310,7 @@ void Library::replace(Snapshot snapshot) {
     snapshot_.revision = revision;
     structureBegan_ = revision;
     retained_.clear();
+    building_ = false;
 }
 
 uint64_t Library::apply(const std::vector<RowChange>& changes) {
@@ -359,6 +360,18 @@ uint64_t Library::apply(const std::vector<RowChange>& changes) {
     return snapshot_.revision;
 }
 
+void Library::reportBuild(BuildProgress progress) {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    building_ = true;
+    build_ = progress;
+}
+
+void Library::endBuild() {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    building_ = false;
+    build_ = BuildProgress{};
+}
+
 Library::State Library::state() const {
     const std::lock_guard<std::mutex> lock(mutex_);
 
@@ -370,6 +383,9 @@ Library::State Library::state() const {
 
     for (size_t field = kSpineFieldCount; field < snapshot_.columns.size(); ++field)
         state.columns.push_back(snapshot_.columns[field].name);
+
+    if (building_)
+        state.build = build_;
 
     return state;
 }

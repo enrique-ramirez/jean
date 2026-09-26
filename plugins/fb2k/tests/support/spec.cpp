@@ -55,6 +55,23 @@ std::string statusKeyAt(const std::string& line, size_t indent) {
     return line.substr(prefix.size(), kStatusDigits);
 }
 
+std::vector<std::string> flowItems(const std::string& inside) {
+    std::vector<std::string> items(1);
+    bool quoted = false;
+
+    for (const char letter : inside) {
+        if (letter == '"')
+            quoted = !quoted;
+
+        if (letter == ',' && !quoted)
+            items.emplace_back();
+        else if (letter != ' ' || !items.back().empty())
+            items.back() += letter;
+    }
+
+    return items;
+}
+
 }  // namespace
 
 // A hand-rolled reader rather than a YAML library, because the shape it needs is two levels
@@ -125,6 +142,7 @@ std::vector<std::string> publishedEnum(const std::string& schema, const std::str
     constexpr size_t kPropertyIndent = 8;
     constexpr size_t kEnumIndent = 10;
     const std::string bullet = std::string(kEnumIndent + 2, ' ') + "- ";
+    const std::string flow = std::string(kEnumIndent, ' ') + "enum: [";
 
     std::vector<std::string> values;
     bool inSchemas = false;
@@ -169,6 +187,11 @@ std::vector<std::string> publishedEnum(const std::string& schema, const std::str
 
         if (inProperty && indent == kEnumIndent) {
             inEnum = keyAt(line, kEnumIndent, "enum:");
+            if (startsWith(line, flow) && line.back() == ']') {
+                const auto inside = line.substr(flow.size(), line.size() - flow.size() - 1);
+                const auto items = flowItems(inside);
+                values.insert(values.end(), items.begin(), items.end());
+            }
             continue;
         }
 

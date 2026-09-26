@@ -424,8 +424,10 @@ TEST_CASE("the library answers are the shapes contract/openapi.yaml publishes") 
     state.trackCount = 30441;
     state.columns = {"%title%"};
 
-    CHECK(keysOf(libraryDocument(state)) ==
-          Keys{"ready", "structure", "revision", "trackCount", "columns"});
+    // `build` is required and nullable, so a library nobody is building still sends the key.
+    const auto idle = json::parse(libraryDocument(state));
+    CHECK(keysOf(idle) == Keys{"ready", "structure", "revision", "trackCount", "columns", "build"});
+    CHECK((idle.contains("build") && idle.at("build").is_null()));
 
     const auto refused = parseLibraryRequest({"%title%", "%title%"}, std::string());
     REQUIRE_FALSE(refused.ok());
@@ -436,6 +438,44 @@ TEST_CASE("the library answers are the shapes contract/openapi.yaml publishes") 
     // No libraryPath: the caller supplied the address, so the answer carries only what it did
     // not already have.
     CHECK(keysOf(libraryTrackDocument({"Imaginary Track", "Fictional Artist"})) == Keys{"columns"});
+}
+
+TEST_CASE("a library being built carries its progress in the shape LibraryBuild publishes") {
+    INFO(kUpdateSpec);
+
+    Library::State state;
+    state.build = BuildProgress{BuildPhase::formatting, 16384, 30441};
+
+    const auto library = json::parse(libraryDocument(state));
+    CHECK(keysOf(library) ==
+          Keys{"ready", "structure", "revision", "trackCount", "columns", "build"});
+
+    REQUIRE(library.contains("build"));
+    const auto& build = library.at("build");
+    REQUIRE(build.is_object());
+    CHECK(keysOf(build) == Keys{"phase", "formatted", "total"});
+    CHECK(build["phase"] == "formatting");
+    CHECK(build["formatted"] == 16384);
+    CHECK(build["total"] == 30441);
+}
+
+TEST_CASE("every build phase is written as a name contract/openapi.yaml publishes") {
+    INFO(kUpdateSpec);
+
+    std::set<std::string> written;
+    for (const auto phase : {BuildPhase::listing, BuildPhase::ordering, BuildPhase::formatting}) {
+        Library::State state;
+        state.build = BuildProgress{phase, 0, 0};
+
+        const auto name = json::parse(libraryDocument(state))["build"]["phase"];
+        REQUIRE(name.is_string());
+        written.insert(name.get<std::string>());
+    }
+
+    CHECK(written == std::set<std::string>{"listing", "ordering", "formatting"});
+
+    const auto published = publishedEnum("LibraryBuild", "phase");
+    CHECK(written == std::set<std::string>(published.begin(), published.end()));
 }
 
 // PlayingTrackColumns. The caller named no track, so the answer says which one it was read from,
@@ -452,8 +492,9 @@ TEST_CASE("GET /outputs is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
     OutputsRead read;
-    read.devices = {{"{5A3E1C27-8B4D-4F0E-9C61-2D7B8E9F0A13}:{0E1D3C47-5A7B-4F21-9C3D-2B8E6F4A1D90}",
-                     "Speakers (Fictional Audio)"}};
+    read.devices = {
+        {"{5A3E1C27-8B4D-4F0E-9C61-2D7B8E9F0A13}:{0E1D3C47-5A7B-4F21-9C3D-2B8E6F4A1D90}",
+         "Speakers (Fictional Audio)"}};
     read.active = read.devices.front().id;
 
     const auto listed = json::parse(outputsDocument(read));

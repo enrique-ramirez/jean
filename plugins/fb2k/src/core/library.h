@@ -200,6 +200,14 @@ struct RowChange {
     std::vector<std::string> values;
 };
 
+enum class BuildPhase : uint8_t { listing, ordering, formatting };
+
+struct BuildProgress {
+    BuildPhase phase = BuildPhase::listing;
+    size_t formatted = 0;
+    size_t total = 0;
+};
+
 // The snapshot a client polls, and the revisions it may still be caught up from. `structure`
 // moves when tracks are added or removed, so ordinals shift and a client re-exports;
 // `revision` moves when rows change in place, so ordinals hold and a client patches.
@@ -212,12 +220,18 @@ public:
     // The revision after the change, which does not move when no id did.
     uint64_t apply(const std::vector<RowChange>& changes);
 
+    // Called by the worker as a build moves through its phases. `replace` clears what this
+    // sets; `endBuild` is for a build that never reaches `replace`.
+    void reportBuild(BuildProgress progress);
+    void endBuild();
+
     struct State {
         bool ready = false;
         uint64_t structure = 0;
         uint64_t revision = 0;
         size_t trackCount = 0;
         std::vector<std::string> columns;
+        std::optional<BuildProgress> build;
     };
 
     State state() const;
@@ -251,6 +265,11 @@ private:
     Snapshot snapshot_;
     uint64_t structureBegan_ = 0;
     std::deque<Retained> retained_;
+
+    // Held apart from an optional: ThreadSanitizer under Apple clang at -O0 does not flag an
+    // unlocked access through std::optional's assignment, which would hide a race here.
+    bool building_ = false;
+    BuildProgress build_;
 };
 
 enum class LibraryRefusal {

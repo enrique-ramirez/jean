@@ -61,12 +61,33 @@ json annotation(const PlaylistAnnotation& playlist) {
     return body;
 }
 
+const char* buildPhaseName(BuildPhase phase) {
+    switch (phase) {
+        case BuildPhase::listing:
+            return "listing";
+        case BuildPhase::ordering:
+            return "ordering";
+        case BuildPhase::formatting:
+            return "formatting";
+    }
+    return "listing";
+}
+
+json buildOf(const std::optional<BuildProgress>& build) {
+    if (!build)
+        return json(nullptr);
+    return json{{"phase", buildPhaseName(build->phase)},
+                {"formatted", build->formatted},
+                {"total", build->total}};
+}
+
 json libraryFields(const Library::State& state) {
     return json{{"ready", state.ready},
                 {"structure", state.structure},
                 {"revision", state.revision},
                 {"trackCount", state.trackCount},
-                {"columns", state.columns}};
+                {"columns", state.columns},
+                {"build", buildOf(state.build)}};
 }
 
 const char* playbackName(PlaybackState playback) {

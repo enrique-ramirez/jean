@@ -1008,8 +1008,7 @@ struct HttpServer::Impl {
     }
 
     // The set asked for is not the one that is ready. Say what is ready, start building what
-    // was asked for, and let the client poll GET /state. A set already declared is already
-    // being built, so it is answered without asking the player a second time.
+    // was asked for, and let the client poll GET /state.
     void startBuilding(httplib::Response& res, const std::vector<std::string>& columns,
                        const Library::State& state) {
         if (!player.refreshLibrary) {
@@ -1017,7 +1016,7 @@ struct HttpServer::Impl {
             return;
         }
 
-        if (!sameColumns(declaration(), columns)) {
+        if (!sameColumns(declaration(), columns) || !state.build) {
             if (rebuildingTooFast(res))
                 return;
 
@@ -1045,13 +1044,20 @@ struct HttpServer::Impl {
         return true;
     }
 
+    static constexpr bool kFoldBuild = true;
+
     std::string tagName(const Library::State& state, uint64_t playerVersion = 0,
-                        std::optional<uint64_t> generation = std::nullopt) const {
+                        std::optional<uint64_t> generation = std::nullopt,
+                        bool foldBuild = false) const {
         std::string tag = "s" + std::to_string(state.structure) + "-r" +
                           std::to_string(state.revision) + "-i" + std::to_string(runId) + "-p" +
                           std::to_string(playerVersion);
         if (generation)
             tag += "-c" + std::to_string(*generation);
+        if (foldBuild && state.build)
+            tag += "-b" + std::to_string(static_cast<int>(state.build->phase)) + ":" +
+                   std::to_string(state.build->formatted) + "/" +
+                   std::to_string(state.build->total);
         return tag;
     }
 
@@ -1069,7 +1075,7 @@ struct HttpServer::Impl {
             const auto state = library ? library->state() : Library::State{};
             const auto published =
                 playerState ? playerState->read() : PlayerStateStore::Published{};
-            sendIfChanged(req, res, tagName(state, published.version, generation),
+            sendIfChanged(req, res, tagName(state, published.version, generation, kFoldBuild),
                           "application/json", [&state, &published, generation] {
                               return stateDocument(
                                   state, published.state, std::chrono::steady_clock::now(),

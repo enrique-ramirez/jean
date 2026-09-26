@@ -17,6 +17,7 @@ import { usePlaySet } from "@/domain/library/usePlaySet";
 import { usePlayerPoll } from "@/domain/player/playerPoll";
 import { queueShown, useShowQueueAsked } from "@/domain/player/showQueue";
 import { useAudibleVolume } from "@/domain/player/useListener";
+import { useOutputs } from "@/domain/player/useOutputs";
 import {
 	KEY_SEEK_SECONDS,
 	useIsPlaying,
@@ -193,6 +194,9 @@ function Shell() {
 		discovery.origin,
 		discovery.state.kind === "ready" ? discovery.state.capabilities : null,
 	);
+	// Kept observed here so the list's first read happens when the component is found, whether or
+	// not a caret, a cog or the Playing on panel is drawn: every host below reads the same cache.
+	useOutputs();
 
 	const library = useLibrary();
 	const search = useLibrarySearch(library, playlists);

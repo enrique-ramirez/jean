@@ -1079,6 +1079,14 @@ export function createState({
 			notify({ player: true });
 		},
 
+		// A switch landing, whether asked for through `POST /api/outputs/active` or made at the
+		// player and mirrored here through `/__control/activeOutput`. Either way `outputDeviceId`
+		// moves on the next poll rather than being written by the route that asked for it.
+		setActiveOutput(deviceId: string | null) {
+			fake.activeOutput = deviceId;
+			notify({ player: true });
+		},
+
 		// What `%genre% IS "x"` would match, which is the only query Jean composes. Read
 		// off the media library rather than a playlist, as an autoplaylist is.
 		previewMatches(query: string): number {

@@ -6,7 +6,7 @@ Styling rules, the token layer and the app-level `z-index` scale are in [CONTRIB
 
 ## Menus
 
-**`ActionMenu.tsx` is the only menu surface in the app**, and actions are declared as **data**: the surface decides how to draw them, a popover on a desktop viewport and an action sheet on a compact one. Adding a menu means writing an array, not another component. **Never hand-roll a popover, an action sheet or a confirmation dialog.** `Menu.tsx` is a different thing and stays: a dropdown anchored under a button you can see, with no gestures and no pages.
+**`ActionMenu.tsx` is the only menu surface in the app**, and actions are declared as **data**: the surface decides how to draw them, a popover on a desktop viewport and an action sheet on a compact one. Adding a menu means writing an array, not another component. **Never hand-roll a popover, an action sheet or a confirmation dialog.** `Menu.tsx` is a different thing and stays: a dropdown anchored to a button you can see, above or below it, with no gestures and no pages.
 
 It is an **action sheet**, not a bottom sheet: detached from every edge, all four corners rounded, floating above the safe-area inset. Nested pages slide in place at every width, and destructive actions confirm on one.
 

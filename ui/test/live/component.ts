@@ -98,6 +98,7 @@ export const capabilities = () =>
 	component<{
 		canWrite: boolean;
 		canWritePlaylists: boolean;
+		canChangeOutput: boolean;
 		allowedFields: string[];
 		playbackModes: PlaybackMode[];
 	}>("/api/capabilities");
@@ -139,9 +140,32 @@ export interface PlayerState {
 	artist: string | null;
 	playingLocation: { playlistId: string; index: number } | null;
 	currentPlaylistId: string | null;
+	outputDeviceId: string | null;
 }
 
 export const state = () =>
 	component<{ player: PlayerState; library: { ready: boolean } }>("/api/state");
 
 export const player = async () => (await state()).player;
+
+export interface OutputDevice {
+	id: string;
+	name: string;
+}
+
+export const outputs = () =>
+	component<{ devices: OutputDevice[]; active: string | null }>("/api/outputs");
+
+// Answers the status rather than throwing on a refusal, since a refusal is what some cases ask for.
+export const switchOutput = async (deviceId: string) => {
+	const response = await fetchPatiently(`${COMPONENT()}/api/outputs/active`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ deviceId }),
+	});
+	const body = await response.text();
+	return {
+		status: response.status,
+		error: body ? (JSON.parse(body) as { error: string }).error : null,
+	};
+};

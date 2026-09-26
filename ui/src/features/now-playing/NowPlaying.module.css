@@ -264,6 +264,15 @@
 }
 
 .transport {
+	/* The containing block `VolumePopover`'s paged panel positions against once it steps past its
+	   own small anchor (`Volume.module.css`): this row spans the width of `.controls`, so the
+	   panel's edge holds still regardless of where the cog sits inside it. Unlike
+	   `StatusBar.module.css`'s `.row`, which runs edge to edge and the popover's default inset is
+	   tuned for, this row already sits inside `.screen`'s own 20px of horizontal padding, so
+	   `--popover-inset` narrows the panel's own inset back down to clear the screen's other edge on
+	   a narrow phone. */
+	position: relative;
+	--popover-inset: 0;
 	display: grid;
 	grid-template-columns: 1fr auto 1fr;
 	align-items: center;

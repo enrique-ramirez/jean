@@ -48,7 +48,7 @@ What the queue is, and everything the player does with it, is `../../shared/api/
 
 **The component never leaves a silent player behind**, and Jean must not build anything that assumes otherwise: the level from the start of a session comes back when the last listener stops, whether the silence was the hold's or a fader somebody dragged down mid-stream.
 
-**`audience.ts` polls only while there is something to say**: the picker is open, this device is listening, or the player reads as muted and somebody is owed a reason. An install where none of those is true sends nothing at all. The lag figure is sampled on the same tick rather than published, since it moves continuously and a store notifying on it would repaint the app.
+**`audience.ts` polls only while there is something to say**: the Playing on panel is open, this device is listening, or the player reads as muted and somebody is owed a reason. An install where none of those is true sends nothing at all. The lag figure is sampled on the same tick rather than published, since it moves continuously and a store notifying on it would repaint the app.
 
 **The seam is `listener.ts` and the connection is `listenerStore.ts`.** Nothing outside those two asks which listener it holds: a control renders or it does not, and the reason is `canListen`. **A missing capability flag means false**, so an older component gets no button rather than one that fails. A component offering only codecs this browser cannot decode resolves to no listener as well.
 
@@ -70,9 +70,11 @@ What the queue is, and everything the player does with it, is `../../shared/api/
 
 **No Web Audio, and no `crossorigin`.** A `GainNode` would trade background playback for a volume slider, since the context is suspended when the screen locks. `crossorigin` makes the media request CORS-checked for no benefit and is only needed for Web Audio.
 
-**One fader, one target at a time.** The capture is taken *before* foobar2000's volume, so while the sound is on this device the player's fader is provably dead. The control **retargets** rather than growing a second one beside it, and says which it is pointed at. The device is presented on the same decibel scale the player uses, with `audio.volume` as an amplitude multiplier at the other end of that conversion. Where the platform will not have it, as on iOS where `audio.volume` is a documented no-op, the control is not drawn and the picker says the hardware keys own it. That is **probed, never sniffed**: set a value, read it back.
+**One fader, one target at a time.** The capture is taken *before* foobar2000's volume, so while the sound is on this device the player's fader is provably dead. The control **retargets** rather than growing a second one beside it, and says which it is pointed at. The device is presented on the same decibel scale the player uses, with `audio.volume` as an amplitude multiplier at the other end of that conversion. Where the platform will not have it, as on iOS where `audio.volume` is a documented no-op, the control is not drawn and the Playing on panel says the hardware keys own it. That is **probed, never sniffed**: set a value, read it back.
 
-**Everything that moves the volume goes through one hook**, and nothing else asks which target it holds, so a key cannot end up moving a control the ear cannot reach. The keys carry their own step, since the player's own up and down routes are inaudible while the sound is here; the player's row in the picker is the deliberate exception and reads the player's volume directly.
+**The output device picker follows the same rule.** While listening here, the status bar's fader is the one retargeted to this device, so an output device picker beside it would sit next to a control that no longer reaches foobar2000. It moves into the Playing on panel's foobar2000 row instead, beside the fader that still does.
+
+**Everything that moves the volume goes through one hook**, and nothing else asks which target it holds, so a key cannot end up moving a control the ear cannot reach. The keys carry their own step, since the player's own up and down routes are inaudible while the sound is here; the player's row in the Playing on panel is the deliberate exception and reads the player's volume directly.
 
 ### The low-latency path
 

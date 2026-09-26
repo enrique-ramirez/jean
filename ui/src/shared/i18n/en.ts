@@ -325,6 +325,12 @@ export const en = {
 	"player.order.shuffleAlbums": "Shuffle (albums)",
 	"player.order.shuffleFolders": "Shuffle (folders)",
 	"player.order.shuffleTracks": "Shuffle (tracks)",
+	"player.outputBack": "Back",
+	"player.outputDeviceGone":
+		"That output device is no longer there. Open the list again to choose another.",
+	"player.outputDeviceList": "Output device",
+	"player.outputOptions": "Output options",
+	"player.outputSwitchFailed": "We couldn’t switch the output device",
 	"player.pause": "Pause",
 	"player.paused": "Paused",
 	"player.play": "Play",

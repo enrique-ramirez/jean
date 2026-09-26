@@ -234,8 +234,10 @@ function useOptimisticWrite<TData, TInput, TResult = unknown>(
 }
 
 // Always re-anchors the interpolation: freezing a position without moving `syncedAt` leaves the seek
-// bar carrying on from where the last update put it.
-const usePlayerPatch = <TInput>(
+// bar carrying on from where the last update put it. Exported for `useOutputs.ts`, whose device
+// switch patches `PlayerState.outputDeviceId` the same way a playback-order change patches
+// `playbackMode`.
+export const usePlayerPatch = <TInput>(
 	mutationFn: (input: TInput) => Promise<unknown>,
 	patchPlayer: (
 		player: PlayerState,

@@ -1,0 +1,113 @@
+.tick {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	color: var(--accent);
+}
+
+.name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow-wrap: anywhere;
+	text-align: left;
+}
+
+.cog {
+	display: grid;
+	place-items: center;
+	flex: 0 0 auto;
+	width: 26px;
+	height: 26px;
+	border: 0;
+	border-radius: var(--radius-pill);
+	background: none;
+	color: var(--muted);
+}
+
+.cog:hover {
+	background: var(--surface-sunken);
+	color: var(--text);
+}
+
+.page {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.back {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: none;
+	color: inherit;
+}
+
+.back:hover {
+	background: var(--surface-sunken);
+}
+
+.heading {
+	margin: 0;
+	font-size: 0.8125rem;
+	font-weight: 600;
+}
+
+.subtitle {
+	margin-left: auto;
+	font-size: 0.75rem;
+	color: var(--faint);
+}
+
+.list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	padding: 8px 10px;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: none;
+	font-size: 0.8125rem;
+	text-align: left;
+}
+
+.row:hover {
+	background: var(--surface-sunken);
+}
+
+@media (pointer: coarse) {
+	.row {
+		padding: 12px 10px;
+	}
+}
+
+/* The cog and Back are drawn small, at the glyph's own size, on a mouse; a finger needs the room
+   the compact controls already claim elsewhere. The glyph is a fixed size on the icon itself, so
+   widening the button around it is padding, not a redraw. */
+@media (hover: none), (pointer: coarse) {
+	.cog,
+	.back {
+		width: 44px;
+		height: 44px;
+	}
+}

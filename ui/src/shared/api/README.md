@@ -81,6 +81,13 @@ Which of these resolve varies by install, by component and by how the library wa
 - **`playback.ts` also holds `takeSkipAsked`**, the record of which way a skip was asked for. foobar2000 never says which direction a track change moved, and the cover wheel needs the direction before the player has answered anything.
 - **A skip's `POST` answers as soon as the command is queued onto foobar2000's main thread, not once the track there has actually changed.** A read sent the instant it resolves still names the old one, which is why `usePlayer.ts`'s `useSkip` waits before polling.
 
+## What Jean does about outputs
+
+`GET /api/outputs` answers the devices the player currently lists and which one is active; `POST /api/outputs/active`, taking `{ deviceId }`, switches to one of them. `setActiveOutput` in `playback.ts` sends the write and `fetchOutputs` in `fooJean.ts` sends the read; `contract/openapi.yaml` is the reference for both, including the statuses a client has to plan for.
+
+- **A `deviceId` is opaque.** It is the output module's GUID and the device's GUID as the player prints and joins them, and nothing in Jean parses, splits or builds one: it is only ever read off `GET /api/outputs` and sent back exactly as read.
+- **Which device is playing rides `GET /api/state`; the list of devices does not.** `outputDeviceId` can move under the client's feet whenever a picker might be open, and it is one string, so the poll carries it on every tick. The list is a set nobody is looking at most of the time, so it is read on demand rather than watched: once at discovery, whenever a picker opens, when the tab becomes visible again, and when `canChangeOutput` turns true.
+
 ## What Jean does about the library
 
 `GET /api/library/export?columns=…` answers the whole library in one binary body. `jlib.ts` decodes it and `fooJeanLibrary.ts` is the loop that asks for it. `contract/openapi.yaml`, *The media library*, is the format, the two generations and every status. On this side:

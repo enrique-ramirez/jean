@@ -11,7 +11,7 @@ type BeyondHandler = (context: {
 }) => boolean | undefined;
 
 const ITEMS =
-	'[role="menuitem"]:not(:disabled), [role="menuitemcheckbox"]:not(:disabled)';
+	'[role="menuitem"]:not(:disabled), [role="menuitemcheckbox"]:not(:disabled), [role="menuitemradio"]:not(:disabled)';
 
 const itemsIn = (container: HTMLElement | null | undefined): HTMLElement[] => [
 	...(container?.querySelectorAll<HTMLElement>(ITEMS) ?? []),

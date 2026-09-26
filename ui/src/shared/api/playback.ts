@@ -49,3 +49,6 @@ export const volumeDown = (origin: string) =>
 
 export const setPlaybackOrder = (origin: string, mode: PlaybackMode) =>
 	post(origin, "/api/playback/mode", { mode });
+
+export const setActiveOutput = (origin: string, deviceId: string) =>
+	post(origin, "/api/outputs/active", { deviceId });

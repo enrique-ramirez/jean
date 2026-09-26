@@ -7,6 +7,7 @@ const PLAYBACK_COMMANDS = [
 	"previousTrack",
 	"seekBy",
 	"seekTo",
+	"setActiveOutput",
 	"setMuted",
 	"setPlaybackOrder",
 	"setVolume",

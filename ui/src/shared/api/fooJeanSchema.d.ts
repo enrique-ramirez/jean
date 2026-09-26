@@ -639,6 +639,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/outputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The output devices foobar2000 offers, and which one is set.
+         * @description Read straight from the player on every call rather than held between them: a device can appear or disappear at the operating system without foobar2000 telling this component first, so there is nothing here worth caching.
+         *
+         *     `active` is the id of the device the player is currently paired with, or `null` where that pairing matches none of `devices`, which is what a device unplugged since the last switch looks like from here.
+         */
+        get: operations["getOutputs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/outputs/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch the player's output device.
+         * @description `deviceId` is one of the ids `GET /outputs` last listed. There is no output type alongside it: foobar2000 picks the module and the device together, off the pair the id itself carries, so a type field would only restate what the id already says.
+         *
+         *     The answer comes once the player has been handed this command and run it. Where the switch landed reaches a client through `GET /state`'s `outputDeviceId`, not this answer.
+         */
+        post: operations["setActiveOutput"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/volume": {
         parameters: {
             query?: never;
@@ -1188,7 +1232,7 @@ export interface components {
             canWritePlaylists: boolean;
             /** @description Whether this install permits driving playback from here: the transport, seeking, the playback mode, the volume, playing a row and every queue write. `controlPlayback` in `config.json`, defaulting to `true`. Reading the state and the queue is unaffected either way, and so is the component's own scratch playlist, which follows this rather than `canWritePlaylists`. */
             canControlPlayback: boolean;
-            /** @description Whether this install permits switching the player's output device. `changeOutput` in `config.json`, defaulting to `true`. Reported only: no route in this bundle reads it back or acts on it. */
+            /** @description Whether this install permits switching the player's output device. `changeOutput` in `config.json`, defaulting to `true`. It refuses `POST /outputs/active` alone: `GET /outputs` stays open regardless, and the volume, the mute flag and every playback command answer to `controlPlayback` instead. */
             canChangeOutput: boolean;
             /**
              * @description How many autoplaylists this component will keep at once, counting only the ones it created. `0` switches creation off.
@@ -1320,6 +1364,34 @@ export interface components {
         VolumeRefusal: {
             /** @enum {string} */
             error: "unacceptable volume";
+            /** @description What specifically was wrong. Safe to show a person: every value describes the request the client sent, never anything on the player's disk. For a body that is not JSON it carries the parser's message, which quotes the client's own text. */
+            detail: string;
+        };
+        Outputs: {
+            devices: components["schemas"]["OutputDevice"][];
+            /** @description The id of the device foobar2000 is currently paired with, or `null` where that pairing matches none of `devices`. */
+            active: string | null;
+        };
+        OutputDevice: {
+            /**
+             * @description Opaque: the output module's GUID and the device's GUID, printed the way foobar2000 prints a GUID and joined by `:`. A client MUST NOT parse, split or build one.
+             * @example D41D2423-FBB0-4635-B233-7054F79814AB:44761B90-C842-41F7-86E5-645DE2EEA6DC
+             */
+            id: string;
+            /**
+             * @description What to call this device in a picker, exactly as foobar2000 names it.
+             * @example Speakers (Realtek High Definition Audio)
+             */
+            name: string;
+        };
+        ActiveOutputRequest: {
+            /** @description One of the ids `GET /outputs` last listed, opaque the same way: a client MUST NOT parse, split or build one, only echo one it was handed. No output type rides alongside it; the id names the module and the device together. */
+            deviceId: string;
+        };
+        /** @description A refusal the client can act on. The request was understood and declined before the player was involved. */
+        ActiveOutputRefusal: {
+            /** @enum {string} */
+            error: "unacceptable output device";
             /** @description What specifically was wrong. Safe to show a person: every value describes the request the client sent, never anything on the player's disk. For a body that is not JSON it carries the parser's message, which quotes the client's own text. */
             detail: string;
         };
@@ -1749,7 +1821,7 @@ export interface components {
         /** @description The request was acceptable and the attempt failed. */
         PlaylistFailed: {
             /** @enum {string} */
-            error: "foobar2000 could not read that query" | "no such playlist" | "that position is past the end" | "the media library holds more than one track at that address" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the queue changed since that revision; read it again" | "the playlist's rows were added, removed or reordered; read them again" | "that revision is not one this playlist can catch up from; read its rows again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them" | "another component has locked that playlist against that edit" | "that playlist is foo_jean's own; address it by its role rather than by its id" | "this install has playback control turned off; turn on controlPlayback in config.json to allow it";
+            error: "foobar2000 could not read that query" | "no such playlist" | "that position is past the end" | "the media library holds more than one track at that address" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the queue changed since that revision; read it again" | "the playlist's rows were added, removed or reordered; read them again" | "that revision is not one this playlist can catch up from; read its rows again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them" | "another component has locked that playlist against that edit" | "that playlist is foo_jean's own; address it by its role rather than by its id" | "this install has playback control turned off; turn on controlPlayback in config.json to allow it" | "this install has output device changes turned off; turn on changeOutput in config.json to allow them" | "the player does not list that output device; read the outputs again";
             /** @description Empty except for a query foobar2000 could not read, where it carries the player's own parse error. That message describes text the client sent rather than anything on the player's disk, so it is safe to show. */
             detail: string;
         };
@@ -1836,6 +1908,8 @@ export interface components {
             muted: boolean;
             /** @description Jean's name for the playback order the player is in right now, or `null` when this component has no name for the order the player reports. Always present and never omitted, so a client can tell "no name for this" from "too old to report". */
             playbackMode: components["schemas"]["PlaybackMode"] | null;
+            /** @description The id of the device the player is set to, spelled exactly as `GET /outputs` spells it, or `null` where the component cannot ask. It rides every poll of this document because it is one field; the device list is its own route because building it costs more than a poll should. */
+            outputDeviceId: string | null;
             /** @description The playing track's title, computed by the player, or `null` when it has not computed one. */
             title: string | null;
             /** @description The playing track's artist, computed by the player, or `null` when it has not computed one. */
@@ -2226,6 +2300,33 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /** @description This install has `changeOutput` set to `false` in `config.json`. That is a player owner's own choice; setting it back to `true` is what grants the write. `GET /outputs` is unaffected either way, and so are the volume, the mute flag and every playback command, which follow `controlPlayback` instead. */
+        OutputChangeDisabled: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /** @description The `deviceId` sent is not one `GET /outputs` currently lists. The request is well formed and the player is the reason it cannot be met, the same reading `POST /playback/mode` already gives a mode this install does not offer. */
+        OutputDeviceNotListed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /** @description The component could not reach the part of the player the output device list and the active device are read from. */
+        OutputsUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
             };
         };
         /** @description No playlist has that id. It may have been deleted in the player. */
@@ -3698,6 +3799,74 @@ export interface operations {
             409: components["responses"]["PlaybackModeUnavailable"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
+            504: components["responses"]["PlaybackTooSlow"];
+        };
+    };
+    getOutputs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The devices this install can send sound to. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Outputs"];
+                };
+            };
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["OutputsUnavailable"];
+            504: components["responses"]["PlaybackTooSlow"];
+        };
+    };
+    setActiveOutput: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActiveOutputRequest"];
+            };
+        };
+        responses: {
+            /** @description Switched. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is not JSON, carries no `deviceId`, carries it with the wrong type, or carries a field the schema does not declare. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveOutputRefusal"];
+                };
+            };
+            403: components["responses"]["OutputChangeDisabled"];
+            409: components["responses"]["OutputDeviceNotListed"];
+            /** @description The body was not `application/json`. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["OutputsUnavailable"];
             504: components["responses"]["PlaybackTooSlow"];
         };
     };

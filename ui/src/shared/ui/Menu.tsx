@@ -2,6 +2,7 @@ import {
 	type ButtonHTMLAttributes,
 	type ReactNode,
 	useCallback,
+	useEffect,
 	useLayoutEffect,
 	useRef,
 } from "react";
@@ -20,6 +21,7 @@ export function Menu({
 	children,
 	trigger,
 	align = "end",
+	placement = "below",
 	className,
 	role = "menu",
 }: {
@@ -28,11 +30,47 @@ export function Menu({
 	children: ReactNode;
 	trigger: ReactNode;
 	align?: "start" | "end";
+	placement?: "below" | "above";
 	className?: string;
 	role?: string;
 }) {
 	const ref = useDismissable<HTMLDivElement>(isOpen, onDismiss);
 	const menuRef = useRef<HTMLDivElement | null>(null);
+	const previousFocusRef = useRef<HTMLElement | null>(null);
+	const closedFromInsideRef = useRef(false);
+
+	useLayoutEffect(() => {
+		if (isOpen) {
+			previousFocusRef.current = document.activeElement as HTMLElement | null;
+			closedFromInsideRef.current = false;
+		}
+	}, [isOpen]);
+
+	useEffect(() => {
+		if (!isOpen) return undefined;
+		const onPointerDown = (event: PointerEvent) => {
+			closedFromInsideRef.current = Boolean(
+				ref.current?.contains(event.target as Node),
+			);
+		};
+		document.addEventListener("pointerdown", onPointerDown);
+		return () => document.removeEventListener("pointerdown", onPointerDown);
+	}, [isOpen, ref]);
+
+	// Not a layout effect: it has to run after every layout effect this commit touches, an item's
+	// own click closing this menu while opening another `Menu` included (`ColumnsMenu`'s "What heat
+	// means" does exactly that), whose own `useFocusCapture` claims focus for itself in that same
+	// phase. Only once nothing else has claimed it, by the time this runs, is the trigger the right
+	// place to put it back. And only where the close came from inside: an outside press must never
+	// pull focus back to a trigger the user was not aiming at. `Menu` unmounts its panel the instant
+	// it closes, and removing the focused row hands focus to `<body>` synchronously, before any of
+	// this runs, which is why "does the panel still contain the active element" cannot be the test.
+	useEffect(() => {
+		if (isOpen) return;
+		if (!closedFromInsideRef.current) return;
+		if (document.activeElement !== document.body) return;
+		previousFocusRef.current?.focus?.({ preventScroll: true });
+	}, [isOpen]);
 
 	useFocusCapture(menuRef, isOpen);
 
@@ -67,14 +105,16 @@ export function Menu({
 					ref={menuRef}
 					className={classNames(styles.menu, className)}
 					data-align={align}
+					data-placement={placement}
 					role={role}
 					tabIndex={-1}
-					onKeyDown={(event) =>
+					onKeyDown={(event) => {
+						closedFromInsideRef.current = true;
 						handleMenuKeys(event, {
 							container: menuRef.current,
 							onEscape: onDismiss,
-						})
-					}
+						});
+					}}
 				>
 					{children}
 				</div>

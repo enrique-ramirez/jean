@@ -95,6 +95,23 @@ export function handleControl({
 		return empty(response);
 	}
 
+	if (action === "changeOutput") {
+		const next = input.canChange !== false;
+		if (next !== state.fooJean.canChangeOutput)
+			state.fooJean.configGeneration += 1;
+		state.fooJean.canChangeOutput = next;
+		return empty(response);
+	}
+
+	// A switch made at the player rather than asked for through `POST /api/outputs/active`, with no
+	// other side effect: `configGeneration` does not move, since nothing in `config.json` changed.
+	if (action === "activeOutput") {
+		state.setActiveOutput(
+			typeof input.deviceId === "string" ? input.deviceId : null,
+		);
+		return empty(response);
+	}
+
 	if (action === "lockPlaylist") {
 		const id = String(input.id ?? "");
 		if (input.locked) state.fooJean.lockedPlaylists.add(id);

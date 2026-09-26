@@ -124,6 +124,20 @@ export interface FooJeanOptions {
 	canChangeOutput?: boolean;
 	canControlPlayback?: boolean;
 
+	// The player's own device list and which one it is set to. `activeOutput` rides straight
+	// through to `GET /api/state`'s `outputDeviceId` even where it names no listed device, which is
+	// what an unplugged device looks like; `GET /api/outputs`' own `active` answers `null` in that
+	// case instead, per its own description in `contract/openapi.yaml`. A single entry stands for
+	// a machine with only one output, such as no second sound card, where the picker must not be
+	// drawn at all.
+	outputDevices?: { id: string; name: string }[];
+	activeOutput?: string | null;
+
+	// Refuses every `POST /api/outputs/active`, whatever `deviceId` it names. `409` stands for a
+	// device unplugged between the list landing and the switch arriving; `500` for the player
+	// refusing the write outright.
+	outputSwitchRefusal?: 409 | 500 | null;
+
 	canStream?: boolean;
 	// Best first, as the component reports it. An install whose Windows has no AAC
 	// encoder reports `opus` alone.
@@ -157,6 +171,26 @@ export interface FooJeanFake extends Required<FooJeanOptions> {
 	// `/__control/writePlaylists` are the only two that touch it.
 	configGeneration: number;
 }
+
+// Spelled the way foobar2000 prints a device pair: one module GUID shared by every device it
+// offers, joined by a colon to each device's own, both upper case and without braces. The default
+// endpoint's device GUID is all zeros, which is why the first entry carries one. Three, so the
+// picker is drawn by default rather than only where a fixture asks for it, and one name long
+// enough that a spec can prove it wraps.
+const DEFAULT_OUTPUT_DEVICES: { id: string; name: string }[] = [
+	{
+		id: "D41D2423-FDC8-45E3-B2A9-CC1FE04A7EE5:00000000-0000-0000-0000-000000000000",
+		name: "Primary Sound Driver",
+	},
+	{
+		id: "D41D2423-FDC8-45E3-B2A9-CC1FE04A7EE5:1F1A722D-33C9-434B-8B92-A3C7AF5E3D3D",
+		name: "Speakers (Realtek(R) Audio) [WASAPI]",
+	},
+	{
+		id: "D41D2423-FDC8-45E3-B2A9-CC1FE04A7EE5:9B8F1A2C-7D3E-4F5A-8B6C-1D2E3F4A5B6C",
+		name: "WASAPI (shared) : LG TV SSCR2 (NVIDIA High Definition Audio) (HDMI)",
+	},
+];
 
 const DEFAULTS: FooJeanFake = {
 	ownPlaylists: {},
@@ -206,6 +240,9 @@ const DEFAULTS: FooJeanFake = {
 	canWritePlaylists: true,
 	canChangeOutput: true,
 	canControlPlayback: true,
+	outputDevices: DEFAULT_OUTPUT_DEVICES,
+	activeOutput: DEFAULT_OUTPUT_DEVICES[0].id,
+	outputSwitchRefusal: null,
 	lockedPlaylists: new Set(),
 	configGeneration: 1,
 };
@@ -575,6 +612,18 @@ const WRITES_DISABLED = {
 const PLAYBACK_DISABLED = {
 	error:
 		"this install has playback control turned off; turn on controlPlayback in config.json to allow it",
+	detail: "",
+} satisfies components["schemas"]["PlaylistFailed"];
+
+// Word for word what `core/outputs.cpp` describes for `changeOutput`.
+const OUTPUT_CHANGE_DISABLED = {
+	error:
+		"this install has output device changes turned off; turn on changeOutput in config.json to allow them",
+	detail: "",
+} satisfies components["schemas"]["PlaylistFailed"];
+
+const OUTPUT_DEVICE_NOT_LISTED = {
+	error: "the player does not list that output device; read the outputs again",
 	detail: "",
 } satisfies components["schemas"]["PlaylistFailed"];
 
@@ -1270,6 +1319,10 @@ const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
 			fake.knowsPlayingLocation && item && playlist
 				? { playlistId: playlist.guid, index: item.index }
 				: null,
+		// Rides straight through even where it names no device `GET /api/outputs` lists, which is
+		// what an unplugged device looks like: `outputDeviceId` says what the player is set to, not
+		// what a picker can still offer.
+		outputDeviceId: fake.activeOutput,
 		queueRevision: state.queueRevision,
 		playlistsRevision: state.playlistsRevision,
 		timelineRevision: state.timelineRevision,
@@ -1545,6 +1598,46 @@ function parseVolume(
 			},
 		};
 	return { ok: true, muted: record.muted };
+}
+
+const OUTPUT_FIELDS = ["deviceId"] as const;
+
+type ParsedActiveOutput =
+	| { ok: true; deviceId: string }
+	| { ok: false; status: number; body: { error: string; detail: string } };
+
+// Mirrors core/api.cpp's parseActiveOutput: never throws, and `declaresOnly` refuses a field the
+// schema does not declare.
+function parseActiveOutput(body: unknown): ParsedActiveOutput {
+	if (typeof body !== "object" || body === null || Array.isArray(body))
+		return {
+			ok: false,
+			status: 400,
+			body: { error: "unacceptable output device", detail: NOT_A_JSON_OBJECT },
+		};
+
+	const record = body as Record<string, unknown>;
+	const stray = Object.keys(record).find(
+		(key) => !OUTPUT_FIELDS.includes(key as (typeof OUTPUT_FIELDS)[number]),
+	);
+	if (stray)
+		return {
+			ok: false,
+			status: 400,
+			body: { error: "unacceptable output device", detail: FIELD_NOT_TAKEN },
+		};
+
+	if (typeof record.deviceId !== "string")
+		return {
+			ok: false,
+			status: 400,
+			body: {
+				error: "unacceptable output device",
+				detail: "'deviceId' is required and must be a string",
+			},
+		};
+
+	return { ok: true, deviceId: record.deviceId };
 }
 
 // A player with no media library at all still answers what it is playing: this
@@ -2002,6 +2095,38 @@ export async function handleAgent({
 		else if (parsed.step !== undefined)
 			state.nudgeVolume(parsed.step === "up" ? 1 : -1);
 		else state.patchPlayer({ isMuted: parsed.muted });
+		return empty(response);
+	}
+
+	// `changeOutput` alone gates the switch, never `controlPlayback`: outside `needsPlaybackControl`
+	// on purpose, and `GET /api/outputs` is not gated at all.
+	if (method === "GET" && path === "/api/outputs") {
+		response.setHeader("Cache-Control", ASK_EVERY_TIME);
+		const active = fake.outputDevices.some(
+			(device) => device.id === fake.activeOutput,
+		)
+			? fake.activeOutput
+			: null;
+		return json(response, { devices: fake.outputDevices, active });
+	}
+
+	if (method === "POST" && path === "/api/outputs/active") {
+		response.setHeader("Cache-Control", ASK_EVERY_TIME);
+		if (!fake.canChangeOutput)
+			return json(response, OUTPUT_CHANGE_DISABLED, 403);
+
+		const parsed = parseActiveOutput(body);
+		if (!parsed.ok) return json(response, parsed.body, parsed.status);
+
+		if (fake.outputSwitchRefusal === 500)
+			return json(response, PLAYER_REFUSED, 500);
+		if (
+			fake.outputSwitchRefusal === 409 ||
+			!fake.outputDevices.some((device) => device.id === parsed.deviceId)
+		)
+			return json(response, OUTPUT_DEVICE_NOT_LISTED, 409);
+
+		state.setActiveOutput(parsed.deviceId);
 		return empty(response);
 	}
 

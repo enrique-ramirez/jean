@@ -151,6 +151,40 @@
 	display: inline-flex;
 }
 
+/* The paged panel is several times wider than the pill. Anchored to the small
+   button the way the closed pill is, it runs past the screen's edge on a narrow phone whenever
+   that button is not near the edge, which moves with everything upstream of it in the row (the
+   track title, the poll's first answer, a font landing) rather than with anything of the
+   popover's or the window's own, so no `ResizeObserver` on either of those ever catches it move.
+   Paged, the anchor steps aside (`position: static`) so the panel's `position: absolute` looks
+   past it for its containing block, to whichever full-width row hosts it (`StatusBar.module.css`'s
+   `.row`, `NowPlaying.module.css`'s `.transport`) instead of the button: a box whose edges hold
+   still regardless of where the button drifts inside it. */
+.popoverAnchor:has(> .popover[data-paged="true"]) {
+	position: static;
+}
+
+.caret {
+	display: grid;
+	place-items: center;
+	padding: 4px;
+	border: 0;
+	border-radius: var(--radius-pill);
+	background: none;
+	color: var(--muted);
+}
+
+.caret:hover {
+	background: var(--surface-sunken);
+	color: var(--text);
+}
+
+/* `Menu`'s own minimum is 210px; the mocks draw the output list at about 300px, wide enough that
+   a long device name wraps rather than truncates. */
+.outputMenu {
+	width: 300px;
+}
+
 @media (hover: none), (pointer: coarse) {
 	.popover {
 		touch-action: none;
@@ -190,6 +224,22 @@
 	font-size: 0.6875rem;
 	color: var(--muted);
 	font-variant-numeric: tabular-nums;
+}
+
+/* The pill widens into a panel once it pages to the list. The width alone only
+   keeps the panel narrower than the screen; the containing block change above is what keeps it
+   from running past an edge, since the pill's own anchor point is not necessarily near the
+   screen's. `right` here is against that wider box, not the button, so a value that reads as tight
+   against `.row`'s own edge (StatusBar) reads as a comfortable inset against `.transport`'s, which
+   already sits inside the now-playing screen's own padding. `--popover-inset` is the customization
+   point a host declares to say so, rather than a selector fighting this rule's own specificity for
+   the last word. */
+.popover[data-paged="true"] {
+	align-items: stretch;
+	width: min(300px, calc(100vw - 24px));
+	padding: 10px 12px 12px;
+	border-radius: var(--radius);
+	right: var(--popover-inset, 12px);
 }
 
 @keyframes volume-in {

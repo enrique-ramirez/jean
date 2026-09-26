@@ -12,7 +12,7 @@ Desktop is a gatefold: a sticky leaf and a scrolling one, both on screen. A phon
 
 **Never look like a streaming client**, per the root `CLAUDE.md`: no colour pulled out of the artwork, flush left rather than centred, and no thumbnail in the slim status bar.
 
-**The output picker is a roster and not a set of targets**, so its lower half is a plain list with no hover and no target padding. **A row that lights up under the cursor promises an action this list does not have.** A row is a control only where pressing it would do something. **No mute button anywhere in it**: a mute on foobar2000 *is* the fader at the bottom, so a button for it is a control that disappears at the one level somebody needs it at. The rows are `aria-pressed` toggles rather than a radio group, since both outputs really can be on and a radio group would announce "1 of 2" while it plays in two rooms. The playing mark is **held still rather than removed** while the player is paused.
+**The Playing on panel is a roster and not a set of targets**, so its lower half is a plain list with no hover and no target padding. **A row that lights up under the cursor promises an action this list does not have.** A row is a control only where pressing it would do something. **No mute button anywhere in it**: a mute on foobar2000 *is* the fader at the bottom, so a button for it is a control that disappears at the one level somebody needs it at. The rows are `aria-pressed` toggles rather than a radio group, since both outputs really can be on and a radio group would announce "1 of 2" while it plays in two rooms. The playing mark is **held still rather than removed** while the player is paused.
 
 ## A layer, and why it has to be
 

@@ -1,4 +1,4 @@
-import { Volume1, Volume2, VolumeX } from "lucide-react";
+import { ChevronUp, Volume1, Volume2, VolumeX } from "lucide-react";
 import { type ButtonHTMLAttributes, useState } from "react";
 import {
 	fractionToVolume,
@@ -10,6 +10,14 @@ import { useDismissable } from "@/shared/hooks/useDismissable";
 import { useDragFraction } from "@/shared/hooks/useDragFraction";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { classNames } from "@/shared/lib/classNames";
+import { Menu } from "@/shared/ui/Menu";
+import {
+	OutputCog,
+	OutputDeviceList,
+	OutputMenuRows,
+	type OutputPicker,
+	useOutputPage,
+} from "./OutputDevices";
 import styles from "./Volume.module.css";
 
 const iconFor = (percent: number, isMuted?: boolean) => {
@@ -135,33 +143,99 @@ export function VolumeSlider({
 	);
 }
 
+// The caret beside the volume icon on a wide viewport: straight to the list, no heading and no
+// intermediate menu, opening upward since the status bar sits at the foot of the window.
+function OutputCaret({ devices, activeId, onChoose, onOpen }: OutputPicker) {
+	const t = useTranslate();
+	const [isOpen, setIsOpen] = useState(false);
+	const label = t("player.outputOptions");
+
+	return (
+		<Menu
+			isOpen={isOpen}
+			onDismiss={() => setIsOpen(false)}
+			placement="above"
+			className={styles.outputMenu}
+			trigger={
+				<button
+					type="button"
+					className={styles.caret}
+					aria-label={label}
+					title={label}
+					aria-expanded={isOpen}
+					onClick={() => {
+						const opening = !isOpen;
+						setIsOpen(opening);
+						if (opening) onOpen();
+					}}
+				>
+					<ChevronUp size={14} strokeWidth={2} aria-hidden="true" />
+				</button>
+			}
+		>
+			<OutputMenuRows
+				devices={devices}
+				activeId={activeId}
+				onChoose={(deviceId) => {
+					onChoose(deviceId);
+					setIsOpen(false);
+				}}
+			/>
+		</Menu>
+	);
+}
+
 export function VolumePopover({
 	volume,
 	onChange,
 	label,
 	disabled = false,
+	outputs,
 }: {
 	volume: VolumeState | null;
 	onChange: (value: number) => void;
 	label: string;
 	disabled?: boolean;
+	outputs?: OutputPicker;
 }) {
 	const t = useTranslate();
 	const [isOpen, setIsOpen] = useState(false);
 	const ref = useDismissable<HTMLDivElement>(isOpen, () => setIsOpen(false));
+	const outputPage = useOutputPage(isOpen);
 
 	return (
 		<div className={styles.popoverAnchor} ref={ref}>
 			{isOpen ? (
-				<div className={styles.popover} data-owns-touch="">
-					<VolumeSlider
-						volume={volume}
-						onChange={onChange}
-						orientation="vertical"
-						label={label}
-						disabled={disabled}
-					/>
-					<span className={styles.readout}>{volumePercent(volume)}</span>
+				<div
+					className={styles.popover}
+					data-paged={outputPage.showsOutputs}
+					data-owns-touch=""
+				>
+					{outputPage.showsOutputs && outputs ? (
+						<OutputDeviceList
+							devices={outputs.devices}
+							activeId={outputs.activeId}
+							onChoose={outputs.onChoose}
+							onBack={outputPage.close}
+						/>
+					) : (
+						<>
+							<VolumeSlider
+								volume={volume}
+								onChange={onChange}
+								orientation="vertical"
+								label={label}
+								disabled={disabled}
+							/>
+							<span className={styles.readout}>{volumePercent(volume)}</span>
+							{outputs ? (
+								<OutputCog
+									onClick={() => outputPage.open(outputs.onOpen)}
+									autoFocus={outputPage.returnFocus}
+								/>
+							) : null}
+						</>
+					)}
 				</div>
 			) : null}
 
@@ -182,12 +256,14 @@ export function Volume({
 	onToggleMute,
 	label,
 	disabled = false,
+	outputs,
 }: {
 	volume: VolumeState | null;
 	onChange: (value: number) => void;
 	onToggleMute: () => void;
 	label: string;
 	disabled?: boolean;
+	outputs?: OutputPicker;
 }) {
 	return (
 		<div className={styles.volume}>
@@ -197,6 +273,7 @@ export function Volume({
 				onPress={onToggleMute}
 				disabled={disabled}
 			/>
+			{outputs ? <OutputCaret {...outputs} /> : null}
 			<VolumeSlider
 				volume={volume}
 				onChange={onChange}

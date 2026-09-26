@@ -298,6 +298,11 @@ export const permitsPlaybackControl = (discovery: FooJeanDiscovery) =>
 	discovery.state.kind !== "ready" ||
 	discovery.state.capabilities.canControlPlayback !== false;
 
+// Absent or unreached reads as permitted, for the same reason `permitsPlaybackControl` does.
+export const permitsOutputChange = (discovery: FooJeanDiscovery) =>
+	discovery.state.kind !== "ready" ||
+	discovery.state.capabilities.canChangeOutput !== false;
+
 export const isFooJeanReady = (discovery: FooJeanDiscovery) =>
 	discovery.state.kind === "ready";
 
@@ -701,6 +706,12 @@ const queueMutationResult = async (
 
 export const fetchQueue = (origin: string) =>
 	fetchJson<QueueRead>(origin, "/api/queue");
+
+export type Outputs = Schema["Outputs"];
+export type OutputDevice = Schema["OutputDevice"];
+
+export const fetchOutputs = (origin: string) =>
+	fetchJson<Outputs>(origin, "/api/outputs");
 
 export async function postQueue(
 	origin: string,

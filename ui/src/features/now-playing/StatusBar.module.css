@@ -12,6 +12,10 @@
 }
 
 .row {
+	/* The containing block `VolumePopover`'s paged panel positions against once it steps past its
+	   own small anchor (`Volume.module.css`): the row spans the full status bar, so the panel's
+	   edge holds still regardless of where the volume button sits inside it. */
+	position: relative;
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 	align-items: center;

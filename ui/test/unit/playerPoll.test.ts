@@ -63,6 +63,7 @@ const stateDocument = (
 		volume: -6,
 		muted: false,
 		playbackMode: "inOrder",
+		outputDeviceId: null,
 		title: null,
 		artist: null,
 		playingLocation: null,
@@ -136,6 +137,15 @@ const PLAYING_FROM = {
 	index: 5,
 };
 
+// Opaque ids spelled the way `foo_jean` spells a real one, and different from each
+// other, so nothing can pass by reading the wrong one.
+const SPEAKERS =
+	"D41A7A4B-2F0B-4E4C-9A8A-5B6C7D8E9F10:0B6E1C2D-3A4F-4B5C-8D9E-0F1A2B3C4D5E";
+const HEADPHONES =
+	"D41A7A4B-2F0B-4E4C-9A8A-5B6C7D8E9F10:7C8D9E0F-1A2B-4C3D-9E4F-5A6B7C8D9E0F";
+const HELD_DEVICE =
+	"00000000-0000-0000-0000-000000000000:11111111-1111-1111-1111-111111111111";
+
 // Whatever the key holds when a tick lands: an optimistic patch Jean wrote for a
 // press it has not seen confirmed, or the tick before this one. Every field
 // disagrees with the documents below, so an assertion cannot pass on this by
@@ -155,6 +165,7 @@ const held = (over: Partial<PlayerState> = {}): PlayerState => ({
 		version: "0.0",
 	},
 	playbackMode: "repeatOne",
+	outputDeviceId: HELD_DEVICE,
 	playbackState: "stopped",
 	volume: { type: "linear", min: 0, max: 100, value: 80, isMuted: true },
 	...over,
@@ -585,6 +596,56 @@ test("a tick before capabilities have landed reports the level with no range to 
 
 	assert.equal(player?.volume.value, -6);
 	assert.equal(volumePercent(player?.volume), 0);
+});
+
+test("criterion 11: a tick carries the output device the player is set to, and the next tick moves it", async (t) => {
+	const poll = harness(
+		t,
+		() => document200("playing", TAG, { outputDeviceId: SPEAKERS }),
+		CAPABILITIES,
+	);
+	await poll.settle();
+	putInKey(poll.client, held());
+	await poll.ticks(1);
+
+	assert.equal(playerIn(poll.client)?.outputDeviceId, SPEAKERS);
+
+	poll.answers(() =>
+		document200("playing", LATER_TAG, { outputDeviceId: HEADPHONES }),
+	);
+	await poll.ticks(1);
+
+	assert.equal(playerIn(poll.client)?.outputDeviceId, HEADPHONES);
+});
+
+test("criterion 11: a tick naming no output device writes null, rather than keeping the last one", async (t) => {
+	// `null` is the device foobar2000 is pointed at having been unplugged, or a component that
+	// cannot ask. Holding the last id instead ticks a device the player has left.
+	const poll = harness(
+		t,
+		() => document200("playing", TAG, { outputDeviceId: SPEAKERS }),
+		CAPABILITIES,
+	);
+	await poll.settle();
+	await poll.ticks(1);
+	assert.equal(playerIn(poll.client)?.outputDeviceId, SPEAKERS);
+
+	poll.answers(() =>
+		document200("playing", LATER_TAG, { outputDeviceId: null }),
+	);
+	await poll.ticks(1);
+
+	assert.strictEqual(playerIn(poll.client)?.outputDeviceId, null);
+});
+
+test("criterion 11: a tick before capabilities have landed still carries the output device", async (t) => {
+	const poll = harness(t, () =>
+		document200("playing", TAG, { outputDeviceId: SPEAKERS }),
+	);
+	await poll.settle();
+	await poll.ticks(1);
+
+	assert.equal(playerIn(poll.client)?.outputDeviceId, SPEAKERS);
 });
 
 test("a 304 tick hands the last announced revisions on again, so a failed queue or playlist read is retried", async (t) => {

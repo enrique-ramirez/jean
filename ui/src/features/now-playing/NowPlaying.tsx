@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
 import { formatTime } from "@/domain/player/position";
 import { useAudibleVolume } from "@/domain/player/useListener";
+import { useOutputs } from "@/domain/player/useOutputs";
 import {
 	useAudiblePlayer,
 	usePlaybackOrder,
@@ -47,6 +48,7 @@ import { LyricsScreen } from "./LyricsScreen";
 import { parseLyrics } from "./lyricsFormat";
 import styles from "./NowPlaying.module.css";
 import { NOW_PLAYING_FIELD } from "./nowPlayingFields";
+import type { OutputPicker } from "./OutputDevices";
 import { PlayToggle } from "./PlayToggle";
 import type { PanelTab } from "./panelRoute";
 import { QueueButton } from "./QueueButton";
@@ -236,6 +238,19 @@ export function NowPlaying({
 	const playlistId = useResolvedPlaylistId(item?.playlistGuid ?? null);
 	const hasPosition = Boolean(item && item.index >= 0);
 	const isPlaying = player?.playbackState === "playing";
+
+	const outputsQuery = useOutputs();
+	// Absent while listening here, for the reason `StatusBar` gives: this screen's own fader is
+	// already this device's, and a picker beside it would reach nothing.
+	const outputs: OutputPicker | undefined =
+		!isHere && outputsQuery.isAvailable
+			? {
+					devices: outputsQuery.devices,
+					activeId: player?.outputDeviceId ?? null,
+					onChoose: outputsQuery.choose,
+					onOpen: outputsQuery.refetch,
+				}
+			: undefined;
 
 	const isReady = isFooJeanReady(discovery);
 	const origin = isReady ? discovery.origin : null;
@@ -580,6 +595,7 @@ export function NowPlaying({
 										onChange={setValue}
 										label={t(isHere ? "player.volumeHere" : "player.volume")}
 										disabled={!canControlPlayback}
+										outputs={outputs}
 									/>
 								) : null}
 							</div>

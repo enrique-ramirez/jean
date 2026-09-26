@@ -71,6 +71,7 @@ function mergePlayer(
 			value: doc.volume,
 			isMuted: doc.muted,
 		},
+		outputDeviceId: doc.outputDeviceId,
 	};
 }
 

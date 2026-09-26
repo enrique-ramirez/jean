@@ -55,6 +55,7 @@ export interface PlayerState {
 	playbackMode: PlaybackMode | null;
 	playbackState: PlaybackState;
 	volume: Volume;
+	outputDeviceId: string | null;
 }
 
 export interface PlaylistInfo {

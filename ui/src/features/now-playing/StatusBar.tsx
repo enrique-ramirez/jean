@@ -1,5 +1,6 @@
 import { formatTime } from "@/domain/player/position";
 import { useAudibleVolume } from "@/domain/player/useListener";
+import { useOutputs } from "@/domain/player/useOutputs";
 import {
 	useAudiblePlayer,
 	usePlaybackOrder,
@@ -27,6 +28,7 @@ import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";
 import { ListenHere, playerNameOf } from "./ListenHere";
+import type { OutputPicker } from "./OutputDevices";
 import { PlayToggle } from "./PlayToggle";
 import { QueueButton } from "./QueueButton";
 import { SeekBar, useElapsedSeconds } from "./SeekBar";
@@ -103,6 +105,7 @@ export function StatusBar({
 	);
 
 	const origin = isFooJeanReady(discovery) ? discovery.origin : null;
+	const outputsQuery = useOutputs();
 
 	if (isPending || isError || !snapshot) {
 		return (
@@ -117,6 +120,17 @@ export function StatusBar({
 	}
 
 	const { player } = snapshot;
+	// Absent while listening here: the fader above is this device's own, and an output device
+	// picker beside it would sit next to a control that no longer reaches foobar2000.
+	const outputs: OutputPicker | undefined =
+		!isHere && outputsQuery.isAvailable
+			? {
+					devices: outputsQuery.devices,
+					activeId: player.outputDeviceId,
+					onChoose: outputsQuery.choose,
+					onOpen: outputsQuery.refetch,
+				}
+			: undefined;
 	const track = readTrack(player);
 	const item = player.activeItem;
 	const isPlaying = player.playbackState === "playing";
@@ -208,6 +222,7 @@ export function StatusBar({
 									onChange={changeVolume}
 									label={t(isHere ? "player.volumeHere" : "player.volume")}
 									disabled={!canControlPlayback}
+									outputs={outputs}
 								/>
 							) : null}
 						</>
@@ -249,6 +264,7 @@ export function StatusBar({
 								onToggleMute={toggleMute}
 								label={t(isHere ? "player.volumeHere" : "player.volume")}
 								disabled={!canControlPlayback}
+								outputs={outputs}
 							/>
 						) : null}
 					</div>

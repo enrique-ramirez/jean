@@ -187,7 +187,7 @@ LIVE=http://localhost:<port>/ LIVE_LIBRARY_ROOT=<root> pnpm test:live c32.spec.t
 
 Each spec's other half skips itself and says why: a spec asserting that a write is refused has nothing to assert while its switch is on, and one asserting that a write lands has nothing to assert while it is off.
 
-**The player starts stopped and muted, and a spec that plays anything refuses to start otherwise.**
+A spec that plays anything refuses to start unless the player is already muted, and one that reads the level or the output as the owner left it refuses unless the player is stopped too.
 
 **It exists for rule 11 below.** These are the comparisons where that matters: the join between the `%path%` the player reports playing and the row Jean drew, a cover that has to decode rather than merely have a `src`, `fold()` against tags read off real files, and `foo_jean` itself rather than the fake standing in for it.
 
@@ -195,7 +195,7 @@ Each spec's other half skips itself and says why: a spec asserting that a write 
 
 **`LIVE_LIBRARY_ROOT` is required and has no default, and it names a folder on a throwaway install holding nothing but disposable copies.** These specs play tracks, write the play queue and can write rating tags, so the `install` fixture, which every spec gets, reads the whole library through `GET /api/library/export` first and refuses to start if one track sits outside the named folder. The check runs before any page is opened, so a wrong answer costs nothing. Every tag write the suite makes goes through the one helper that refuses a target outside the root before sending anything, which makes the root the only place a write can land. Whether that root is disposable is the runner's to know: the code has no way to tell a throwaway install from any other.
 
-`details-read.spec.ts` also needs a playlist titled `#foo_jean test`, which `plugins/fb2k/scripts/test-fixtures.ps1` builds: library rows, a file the media library does not hold, and a stream URL. `c26.spec.ts` writes its rating to a row of the same playlist and puts back whatever rating that row held, whether the run passed or failed.
+`details-read.spec.ts` also needs a playlist titled `#foo_jean test`, which `plugins/fb2k/scripts/test-fixtures.ps1` builds: library rows, a file the media library does not hold, and a stream URL. Its `-Dest` must sit under `LIVE_LIBRARY_ROOT`, with the `one` and `two` folders it writes added to the player's media library, since `c26.spec.ts` rates a row the library holds; the script's own default destination sits beside the player instead, outside anything the library watches. `c26.spec.ts` writes its rating to a row of the same playlist and puts back whatever rating that row held, whether the run passed or failed.
 
 **A run that ends with a playlist added or removed, or any track's rating moved from where it started, fails.** Playback state and the output device stay each spec's own to put back.
 

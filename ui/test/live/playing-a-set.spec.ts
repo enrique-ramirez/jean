@@ -8,7 +8,7 @@ import {
 	rowsOf,
 	state,
 } from "./component.ts";
-import { expect, test } from "./fixtures.ts";
+import { expect, refuseUnmuted, test } from "./fixtures.ts";
 
 // Starting a row is not the same as deciding where the track after it comes from, and only a real
 // player can tell the two apart: `POST /playlists/{id}/items/{index}/play` reaches
@@ -16,6 +16,8 @@ import { expect, test } from "./fixtures.ts";
 // plugins/fb2k/ARCHITECTURE.md, *Facts about the player*, has why that matters.
 
 test.describe.configure({ mode: "serial" });
+
+test.beforeAll(refuseUnmuted);
 
 const FOCUS_AWAY = "#live playing-a-set";
 

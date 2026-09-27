@@ -111,8 +111,6 @@ export const fixtureRows = async () => {
 	return { playlist: found, rows };
 };
 
-// No separator or case normalisation: either would let a path that merely contains the root
-// elsewhere, such as a backup copy, count as inside it.
 export const underRoot = (path: string, root: string): boolean =>
 	path.startsWith(root);
 

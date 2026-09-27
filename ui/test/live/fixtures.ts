@@ -6,6 +6,7 @@ import {
 	capabilities,
 	component,
 	type Playlist,
+	player,
 	playlists,
 	send,
 	underRoot,
@@ -36,8 +37,6 @@ export interface Install {
 	canWriteRatings: boolean;
 }
 
-// A library may hold files with no tags at all, so a search term comes from the first artist the
-// player actually resolved rather than one only a particular library carries.
 export const searchTerm = (install: Install) => {
 	const found = install.tracks.find((track) => track.artist !== "?");
 	if (!found)
@@ -181,8 +180,7 @@ const SEEDED_SETTINGS = {
 // No test-scoped fixtures of its own: `page` below overrides a built-in. `Record<string, never>`
 // would give it an index signature, under which `install` resolves as `never`.
 export const test = base.extend<Record<never, never>, LiveFixtures>({
-	// Automatic, so no spec reaches the player before the guard has passed. Its teardown runs once
-	// per worker, and the live project runs one worker, so this is the whole run's before-and-after.
+	// Automatic, so no spec reaches the player before the guard has passed.
 	install: [
 		// biome-ignore lint/correctness/noEmptyPattern: playwright reads dependencies off this pattern
 		async ({}, use) => {
@@ -216,6 +214,11 @@ export const test = base.extend<Record<never, never>, LiveFixtures>({
 
 export type { Locator, Page } from "@playwright/test";
 export { expect };
+
+export const refuseUnmuted = async () => {
+	if (!(await player()).muted)
+		throw new Error("Mute the player first: these specs play real audio.");
+};
 
 // Restores the player to stopped and the queue to empty. Every spec that starts something owns
 // putting it back, because the next one reads the same single player.

@@ -24,6 +24,7 @@ import {
 	type Install,
 	type Locator,
 	type Page,
+	refuseUnmuted,
 	reset,
 	test,
 } from "./fixtures.ts";
@@ -238,8 +239,7 @@ let stream = "";
 let offLibrary = "";
 
 test.beforeAll(async ({ install }) => {
-	if (!(await player()).muted)
-		throw new Error("Mute the player first: these specs play real audio.");
+	await refuseUnmuted();
 
 	const stale = (await playlists()).filter((entry) => entry.title === PROBE);
 	for (const entry of stale) await removePlaylist(entry.id);

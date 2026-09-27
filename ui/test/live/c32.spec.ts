@@ -46,6 +46,14 @@ const writesAsked = (seen: Seen[]) =>
 
 test.describe.configure({ mode: "serial" });
 
+test.beforeAll(async () => {
+	const allowed = await capabilities();
+	test.skip(
+		allowed.canWritePlaylists,
+		"writePlaylists is on in config.json; this spec runs with it off",
+	);
+});
+
 test("the component reports the setting off", async () => {
 	const answer = await capabilities();
 	console.log(`[c32] canWritePlaylists: ${answer.canWritePlaylists}`);

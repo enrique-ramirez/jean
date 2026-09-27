@@ -6,7 +6,7 @@ import {
 	rowsOf,
 	writeRating,
 } from "./component.ts";
-import { expect, type Page, test } from "./fixtures.ts";
+import { expect, type LiveTrack, type Page, test } from "./fixtures.ts";
 
 // On a real player: a rating written outside Jean reaches the open playlist through the changes
 // route, inside one poll, and costs no whole-playlist refetch.
@@ -24,29 +24,45 @@ interface Seen {
 }
 
 const QUIET_MS = 3_000;
+const PAGING_TIMEOUT_MS = 60_000;
 
 const hasLibraryPath = (
 	row: FixtureRow,
 ): row is FixtureRow & { libraryPath: string } => row.libraryPath !== null;
 
-const uniquelyAddressed = (rows: FixtureRow[]) => {
-	const inLibrary = rows.filter(hasLibraryPath);
+const countsByLibraryPath = (paths: string[]) => {
 	const counts = new Map<string, number>();
-	for (const row of inLibrary)
-		counts.set(row.libraryPath, (counts.get(row.libraryPath) ?? 0) + 1);
-	const found = inLibrary.find((row) => counts.get(row.libraryPath) === 1);
+	for (const path of paths) counts.set(path, (counts.get(path) ?? 0) + 1);
+	return counts;
+};
+
+const uniquelyAddressed = (rows: FixtureRow[], tracks: LiveTrack[]) => {
+	const inLibrary = rows.filter(hasLibraryPath);
+	const rowCounts = countsByLibraryPath(
+		inLibrary.map((row) => row.libraryPath),
+	);
+	const trackCounts = countsByLibraryPath(
+		tracks.map((track) => track.libraryPath),
+	);
+	const found = inLibrary.find(
+		(row) =>
+			rowCounts.get(row.libraryPath) === 1 &&
+			trackCounts.get(row.libraryPath) === 1,
+	);
 	if (!found)
 		throw new Error(
-			`no row in ${FIXTURES} names a media library track by an address nothing else in the playlist shares`,
+			`no row in ${FIXTURES} names a media library track by an address nothing else in the playlist or the library shares`,
 		);
 	return found;
 };
 
 test("a rating written at the player reaches the open playlist through the changes route", async ({
 	page,
+	install,
 }) => {
+	test.setTimeout(PAGING_TIMEOUT_MS + 30_000);
 	const { playlist, rows } = await fixtureRows();
-	const { row, path, libraryPath } = uniquelyAddressed(rows);
+	const { row, path, libraryPath } = uniquelyAddressed(rows, install.tracks);
 
 	// foobar2000 answers `?` for a field with no value, which for a rating means unrated.
 	const held = (await rowsOf(playlist.id, row, 1, ["%rating%"])).items[0]
@@ -96,7 +112,7 @@ test("a rating written at the player reaches the open playlist through the chang
 		// something once that paging has stopped.
 		await expect
 			.poll(() => Date.now() - (pageReads().at(-1)?.at ?? 0), {
-				timeout: 60_000,
+				timeout: PAGING_TIMEOUT_MS,
 				intervals: [500],
 			})
 			.toBeGreaterThan(QUIET_MS);

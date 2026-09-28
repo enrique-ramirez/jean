@@ -44,24 +44,31 @@ export function onForgotten(key: string, listener: () => void): () => void {
 	};
 }
 
+const announceForgotten = (key: string) => {
+	for (const listener of forgetListeners.get(key) ?? []) listener();
+};
+
 const remember = (key: string, outcome: ArtworkOutcome) => {
 	if (seen.size >= SEEN_LIMIT) seen = new Map();
 	seen.set(key, outcome);
 
-	const pending = forgetTimers.get(key);
-	if (pending) {
-		clearTimeout(pending);
+	const heldFailure = forgetTimers.get(key);
+	if (heldFailure) {
+		clearTimeout(heldFailure);
 		forgetTimers.delete(key);
 	}
 
-	if (outcome !== "failed") return;
+	if (outcome === "ok") {
+		if (heldFailure) announceForgotten(key);
+		return;
+	}
 
 	forgetTimers.set(
 		key,
 		setTimeout(() => {
 			forgetTimers.delete(key);
 			seen.delete(key);
-			for (const listener of forgetListeners.get(key) ?? []) listener();
+			announceForgotten(key);
 		}, FAILURE_FORGET_MS),
 	);
 };

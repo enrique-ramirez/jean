@@ -211,27 +211,83 @@ test.describe("the cover wheel", () => {
 
 		await across(page, 0.85, 0.25);
 
+		// The hold is a centre with no picture on it and no name under it, rather
+		// than "Nothing playing" or the track that was left.
 		const current = wheel(page).locator("[data-current]");
-		await expect(current.locator(".loading")).toBeVisible();
-		await expect(nowPlayingScreen(page).locator("h1")).not.toHaveText(
-			"Nothing playing",
-		);
+		await expect(current.locator("img")).toHaveCount(0);
+		await expect(nowPlayingScreen(page).locator("h1")).toHaveText("");
 
 		await expect(current.locator("img")).toBeVisible();
 		expect(await detents(page)).toBe(-1);
 	});
 
+	const SKIP_DELAY_MS = 2000;
+
 	test("under Default it turns straight onto the next sleeve, with no hold at all", async ({
 		page,
 	}) => {
 		await playRow(page, 0);
-		await page.request.post("/__control/skipDelay", { data: { ms: 700 } });
+		await page.request.post("/__control/skipDelay", {
+			data: { ms: SKIP_DELAY_MS },
+		});
 
 		await across(page, 0.85, 0.25);
 
+		// A hold leaves the centre bare until the skip lands, so the sleeve has to
+		// be there well inside the delay; a retrying read given the whole delay
+		// would wait a hold out and pass.
 		const current = wheel(page).locator("[data-current]");
-		await expect(current.locator("img")).toBeVisible();
-		await expect(current.locator(".loading")).toHaveCount(0);
+		await expect(current.locator("img")).toBeVisible({
+			timeout: SKIP_DELAY_MS / 2,
+		});
+	});
+
+	// The last of Jessico in the library, so the sleeve it turns onto is another
+	// record's, held by the neighbour slot alone.
+	const LAST_OF_A_RECORD = 11;
+
+	test("under Default the sleeve it turns onto stays drawn, and is not asked for again", async ({
+		page,
+		player,
+	}) => {
+		const asks: string[] = [];
+		page.on("request", (request) => {
+			if (request.url().includes("/api/artwork")) asks.push(request.url());
+		});
+
+		await playRow(page, LAST_OF_A_RECORD);
+		await expect(drawnSleeves(page)).toHaveCount(3);
+		await untilQuiet(player);
+		const before = new Set(asks.splice(0));
+
+		await page.evaluate(() => {
+			const turning = document.querySelector("[data-cover-wheel]");
+			if (!turning) throw new Error("no cover wheel");
+			const record = window as unknown as { bareFrames: number };
+			record.bareFrames = 0;
+			new MutationObserver(() => {
+				if (!turning.querySelector("[data-current] [data-artwork] img"))
+					record.bareFrames += 1;
+			}).observe(turning, { subtree: true, childList: true, attributes: true });
+		});
+		await page.request.post("/__control/skipDelay", {
+			data: { ms: SKIP_DELAY_MS },
+		});
+
+		await across(page, 0.85, 0.25);
+		await expect
+			.poll(() => player.player.activeItem.index)
+			.toBe(LAST_OF_A_RECORD + 1);
+		await expect(currentSleeve(page)).toHaveAttribute("data-artwork", "ok");
+		await untilQuiet(player);
+
+		expect(
+			await page.evaluate(
+				() => (window as unknown as { bareFrames: number }).bareFrames,
+			),
+			"the centre dropped its picture on the way",
+		).toBe(0);
+		expect(asks.filter((url) => before.has(url))).toEqual([]);
 	});
 
 	test("a turn nothing answers is put back", async ({ page, player }) => {
@@ -474,15 +530,13 @@ test.describe("the wheel while the sound is a stream", () => {
 		await expect.poll(() => detents(page)).toBe(-1);
 
 		await expect(title).not.toHaveText(String(leaving));
-		await expect(nowPlayingScreen(page).locator("h1.loading")).toBeVisible();
+		await expect(title).toHaveText("");
 
 		await page.waitForTimeout(6000);
 		expect(await detents(page)).toBe(-1);
 
 		await expect(title).not.toHaveText(String(leaving), { timeout: 60_000 });
-		await expect(nowPlayingScreen(page).locator("h1.loading")).toHaveCount(0, {
-			timeout: 60_000,
-		});
+		await expect(title).not.toHaveText("", { timeout: 60_000 });
 	});
 });
 

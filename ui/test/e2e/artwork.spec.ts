@@ -1,3 +1,4 @@
+import type { Route } from "@playwright/test";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	componentOrigin,
@@ -693,6 +694,7 @@ test.describe("a cover the player did not have the first time", () => {
 	// `kMissingCoverCacheLifetimeSeconds` in the component's `core/http_server.cpp`, which
 	// `contract/openapi.yaml` documents as ten minutes.
 	const FORGETS_A_FAILURE_AFTER_MS = 600_000;
+	const QUIET_MS = 400;
 
 	test("is drawn once that window has passed, with no reload", async ({
 		page,
@@ -702,7 +704,9 @@ test.describe("a cover the player did not have the first time", () => {
 		await page.clock.install();
 
 		let hasCover = false;
+		let asks = 0;
 		await page.route("**/api/artwork?track=**", async (route) => {
+			asks += 1;
 			if (hasCover) return route.continue();
 
 			// `no-store`, so the only thing remembering this absence is Jean. The component holds a
@@ -720,6 +724,17 @@ test.describe("a cover the player did not have the first time", () => {
 		const cover = page.locator('main [role="row"] [data-artwork]').first();
 		await expect(cover).toHaveAttribute("data-artwork", "failed");
 
+		// Every row of an album asks for the same cover, a few at a time. One still
+		// queued when the cover appears is answered and draws the whole record,
+		// which is the case below rather than the forgetting this one waits on.
+		await expect
+			.poll(async () => {
+				const before = asks;
+				await page.waitForTimeout(QUIET_MS);
+				return asks - before;
+			})
+			.toBe(0);
+
 		hasCover = true;
 
 		// Still the glyph. The absence is held rather than asked about again on the next render,
@@ -736,5 +751,48 @@ test.describe("a cover the player did not have the first time", () => {
 			timeout: 15_000,
 		});
 		await expect(cover.locator("img")).toBeVisible();
+	});
+
+	// Every row of a record asks for the same cover, a few at a time, so one ask
+	// can be refused while another for the same record is still waiting on its
+	// answer. The answer that draws the second has to reach the first as well,
+	// and every ask refused while it was on its way.
+	test("is drawn wherever its record was refused once another ask for it is answered", async ({
+		page,
+	}) => {
+		const ANSWERED_LATE = 2;
+		let record: string | null = null;
+		let released = false;
+		const held: Route[] = [];
+		await page.route("**/api/artwork?track=**", async (route) => {
+			const address = route.request().url();
+			const isFirst = record === null;
+			record ??= address;
+			if (released || address !== record) return route.continue();
+
+			if (!isFirst && held.length < ANSWERED_LATE) {
+				held.push(route);
+				return;
+			}
+			return route.fulfill({
+				status: 404,
+				headers: { "cache-control": "no-store" },
+				contentType: "application/json",
+				body: JSON.stringify({ error: "no artwork for that track" }),
+			});
+		});
+
+		await openAllMusic(page);
+		const refused = page.locator('main [data-artwork="failed"]');
+		await expect(refused).not.toHaveCount(0);
+		await expect.poll(() => held.length).toBe(ANSWERED_LATE);
+
+		released = true;
+		await Promise.all(held.map((route) => route.continue()));
+
+		await expect(
+			page.locator('main [data-artwork="ok"]').first(),
+		).toBeVisible();
+		await expect(refused).toHaveCount(0);
 	});
 });

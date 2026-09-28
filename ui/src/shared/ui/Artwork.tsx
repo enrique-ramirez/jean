@@ -1,5 +1,5 @@
 import { DiscAlbum } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { classNames } from "@/shared/lib/classNames";
 import { dropArtwork, heldArtwork, holdArtwork } from "./artworkHandles";
 import {
@@ -41,15 +41,17 @@ export function Artwork({
 	);
 	const [href, setHref] = useState<string | null>(null);
 	const [retryToken, setRetryToken] = useState(0);
+	const retryIfRefused = useEffectEvent(() => {
+		if (state === "failed") setRetryToken((token) => token + 1);
+	});
+	const revealsAtOnce = useEffectEvent(() => revealsInstantly);
 	const box = useRef<HTMLDivElement | null>(null);
 	const release = useRef<((outcome?: ArtworkOutcome) => void) | null>(null);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: retryToken re-fires this after a forgotten key, not a read
 	useEffect(() => {
 		const known = knownState(key);
-		const forget = key
-			? onForgotten(key, () => setRetryToken((token) => token + 1))
-			: undefined;
+		const forget = key ? onForgotten(key, retryIfRefused) : undefined;
 
 		if (!src) {
 			setState(src === null ? "failed" : "waiting");
@@ -128,7 +130,7 @@ export function Artwork({
 		};
 
 		let cancel = () => {};
-		if (revealsInstantly) claim();
+		if (revealsAtOnce()) claim();
 		else cancel = whenNearViewport(element, claim);
 
 		return () => {
@@ -141,7 +143,7 @@ export function Artwork({
 			release.current?.();
 			release.current = null;
 		};
-	}, [src, key, revealsInstantly, retryToken]);
+	}, [src, key, retryToken]);
 
 	const settle = (outcome: ArtworkOutcome) => {
 		release.current?.(outcome);

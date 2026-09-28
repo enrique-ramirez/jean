@@ -1,5 +1,3 @@
 # Globs exempt from the style hook, matched against the absolute path.
-# A file whose subject is the rules has to quote what they forbid.
-*/CONTRIBUTING.md
 */src/shared/api/fooJeanSchema.d.ts
 */public/locales/*

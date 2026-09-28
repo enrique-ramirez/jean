@@ -53,14 +53,14 @@ The `useExhaustiveDependencies` suppressions are all one shape, a dependency tha
 |---|---|
 | `README.md` | what Jean is and how to use it. A pitch, not a specification |
 | `ui/CONTRIBUTING.md` | how to write code here |
-| `ui/ARCHITECTURE.md` | how the pieces fit, where state lives, why the boundaries sit there |
+| `ui/ARCHITECTURE.md` | how the pieces fit, where state lives, why the boundaries sit there, and *Facts about the browser* |
 | `ui/src/shared/api/README.md` | what `foo_jean` returns, and the gotchas a reader could not infer |
 | `ui/test/README.md` | the suite and the fake player |
 | `CLAUDE.md` | the root one is project-wide; one beside a module is local to it |
 
 ### Where an external fact belongs
 
-`ui/ARCHITECTURE.md`, or `ui/src/shared/api/README.md` for anything the player answers.
+Beside the one line it constrains. A fact governing several files goes in `ui/ARCHITECTURE.md`, *Facts about the browser*, or `ui/src/shared/api/README.md` for anything the player answers.
 
 ### Commands
 
@@ -100,7 +100,7 @@ This boundary pays twice. A decision moved into `core/` becomes coverable by a s
 | `plugins/fb2k/README.md` | what the component is, how to build it, install it, configure it and run it |
 | `plugins/fb2k/CONTRIBUTING.md` | how to write its code |
 | `plugins/fb2k/ARCHITECTURE.md` | how the pieces fit, which thread owns what, why the boundaries sit there |
-| `plugins/fb2k/CLAUDE.md` | what an agent cannot read off the code: the priorities, the rules about touching a real player, and the measured facts that constrain the design |
+| `plugins/fb2k/CLAUDE.md` | what an agent cannot read off the code: the priorities and the rules about driving a real player |
 | `plugins/fb2k/src/README.md` | the source tree, file by file |
 | `contract/openapi.yaml` | the HTTP contract, hand-written, and what clients generate types from |
 
@@ -108,7 +108,7 @@ This boundary pays twice. A decision moved into `core/` becomes coverable by a s
 
 ### Where an external fact belongs
 
-`plugins/fb2k/CLAUDE.md`, *Facts about the player*, or `plugins/fb2k/ARCHITECTURE.md`.
+Beside the one line it constrains. A fact governing several files goes in `plugins/fb2k/ARCHITECTURE.md`, *Facts about the player*.
 
 ### Commands
 
@@ -118,7 +118,7 @@ Run from the repository root. `scripts/test.sh` finds its own tree, so the path 
 |---|---|---|
 | the whole suite | `plugins/fb2k/scripts/test.sh` | about 2s with nothing changed, 4s after editing a file, 17s from clean |
 | one test file | `plugins/fb2k/scripts/test.sh '-sf=*cors_test.cpp'` | the same |
-| one case | `plugins/fb2k/scripts/test.sh '-tc=*bearer*'` | the same |
+| one case | `plugins/fb2k/scripts/test.sh '-tc=*private address*'` | the same |
 | threaded code | `plugins/fb2k/scripts/test.sh --sanitize=thread` | 15s from clean, then incremental in its own directories |
 
 The build is incremental and the filters narrow only what runs, never what compiles. Run the whole suite rather than a filtered one: it costs the same and covers everything. Filter only to read less output.

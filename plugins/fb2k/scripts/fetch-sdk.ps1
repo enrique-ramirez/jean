@@ -1,20 +1,23 @@
 # Fetches the foobar2000 SDK into sdk/. Run on the build machine.
 # Fetched rather than vendored because the SDK's licence does not permit redistributing it.
 # The version is a pinned release date: the SDK carries no other version, and a silent bump breaks the build.
-param([string]$Version = '2025-03-07')
-
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\lib\download.ps1"
+
+$version = '2025-03-07'
+$sha = 'CCDA3C5840E66E0E28A7E4FE36407C4E78581AA30C40C362A188FCBAAE799A3E'
+
 $root = Split-Path -Parent $PSScriptRoot
 $sdk = Join-Path $root 'sdk'
-$archive = Join-Path $env:TEMP "foobar2000-SDK-$Version.7z"
+$archive = Join-Path $env:TEMP "foobar2000-SDK-$version.7z"
 
 if (Test-Path (Join-Path $sdk 'foobar2000')) {
   Write-Output "SDK already present in $sdk -- delete it to re-fetch."
   exit 0
 }
 
-Write-Output "Fetching foobar2000 SDK $Version ..."
-Invoke-WebRequest -Uri "https://www.foobar2000.org/downloads/SDK-$Version.7z" -OutFile $archive
+Write-Output "Fetching foobar2000 SDK $version ..."
+Save-VerifiedDownload -Uri "https://www.foobar2000.org/downloads/SDK-$version.7z" -OutFile $archive -Sha256 $sha
 
 # The SDK ships as .7z, which Expand-Archive cannot read.
 $sevenZip = Get-Command 7z.exe -EA SilentlyContinue

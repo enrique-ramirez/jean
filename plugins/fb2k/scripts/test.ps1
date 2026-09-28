@@ -22,8 +22,11 @@ $vcvars = Join-Path $vsPath 'VC\Auxiliary\Build\vcvars64.bat'
 $out = Join-Path $root 'bin\tests'
 $opus = Join-Path $root 'third_party\opus'
 $ogg = Join-Path $root 'third_party\ogg'
+$zlib = Join-Path $root 'third_party\zlib'
 $codec = Join-Path $root 'bin\codec'
 $codecLib = Join-Path $codec 'codec.lib'
+$deflate = Join-Path $root 'bin\zlib'
+$zlibLib = Join-Path $deflate 'zlib.lib'
 
 # cl's command line runs past the limit long before this many sources fit on it.
 function Invoke-Tool {
@@ -84,6 +87,37 @@ function Build-CodecArchiveIfMissing {
     @("/nologo /OUT:`"$codecLib`"") + $objects)
 }
 
+function Build-ZlibArchiveIfMissing {
+  if (Test-Path $zlibLib) { return }
+  New-Item -ItemType Directory -Force -Path $deflate | Out-Null
+
+  $sources = Get-ChildItem $zlib -Filter *.c | ForEach-Object { "`"$($_.FullName)`"" }
+  Invoke-Tool -Tool 'cl' -ResponseFile (Join-Path $deflate 'compile.rsp') -Failure 'zlib build failed' -Arguments (@(
+      "/c /nologo /O2 /W0 /MD",
+      "/Fo:`"$deflate\\`""
+    ) + $sources)
+
+  $objects = Get-ChildItem $deflate -Filter *.obj | ForEach-Object { "`"$($_.FullName)`"" }
+  Invoke-Tool -Tool 'lib' -ResponseFile (Join-Path $deflate 'archive.rsp') -Failure 'zlib archive failed' -Arguments (
+    @("/nologo /OUT:`"$zlibLib`"") + $objects)
+}
+
+# scripts/lib/compile-flags.sh is the one list of defines and include paths the suite compiles with,
+# so it is read here and spelled the way cl takes it rather than copied.
+function Read-CompileFlags {
+  $text = Get-Content -LiteralPath (Join-Path $root 'scripts\lib\compile-flags.sh') -Raw
+  $list = [regex]::Match($text, '(?ms)^compile_flags=\((.*?)^\)').Groups[1].Value
+  if (-not $list) { throw "scripts/lib/compile-flags.sh no longer holds a compile_flags=( ... ) list." }
+
+  $list -split "`n" | ForEach-Object { ($_ -replace '#.*$', '').Trim().Trim('"') } | Where-Object { $_ } | ForEach-Object {
+    $flag = $_.Replace('$vendor_include', '-I').Replace('$root', $root)
+    if ($flag -eq '-std=c++17') { '/std:c++17' }
+    elseif ($flag.StartsWith('-D')) { "/D$($flag.Substring(2))" }
+    elseif ($flag.StartsWith('-I')) { "/I`"$($flag.Substring(2))`"" }
+    else { throw "scripts/lib/compile-flags.sh holds '$flag', which this script does not know how to hand to cl." }
+  }
+}
+
 function Build-Tests {
   New-Item -ItemType Directory -Force -Path $out | Out-Null
 
@@ -93,14 +127,15 @@ function Build-Tests {
     Get-ChildItem (Join-Path $root 'src\core') -Filter *.cpp
   ) | ForEach-Object { "`"$($_.FullName)`"" }
 
-  # /W3 rather than /W4 because these translation units include the vendored headers.
+  # /W3 rather than /W4 because these translation units include the vendored headers. /Zc:lambda is MSVC's
+  # conforming lambda processor: without it a lambda reading a constexpr local it never captured fails as C3493,
+  # which clang accepts and the suite relies on.
   # The object directory ends in a doubled backslash: cl needs the trailing separator to treat /Fo: as a directory,
   # and a single one before the closing quote escapes it, failing as "D8036: not allowed with multiple source files".
   Invoke-Tool -Tool 'cl' -ResponseFile (Join-Path $out 'compile.rsp') -Failure 'Test build failed' -Arguments (@(
-      "/nologo /std:c++17 /EHsc /W3 /MD",
-      "/I`"$root`" /I`"$root\src`" /I`"$root\tests`" /I`"$opus\include`" /I`"$ogg\include`""
-    ) + $sources + @(
-      "/Fe:`"$exe`" /Fo:`"$out\\`" `"$codecLib`" ws2_32.lib"))
+      "/nologo /EHsc /W3 /MD /Zc:lambda"
+    ) + @(Read-CompileFlags) + $sources + @(
+      "/Fe:`"$exe`" /Fo:`"$out\\`" `"$codecLib`" `"$zlibLib`" ws2_32.lib"))
 }
 
 $exe = Join-Path $out 'foo_jean_tests.exe'
@@ -108,6 +143,7 @@ $exe = Join-Path $out 'foo_jean_tests.exe'
 Assert-OpenApiVersionMatchesCode
 Require-CodecSources
 Build-CodecArchiveIfMissing
+Build-ZlibArchiveIfMissing
 Build-Tests
 
 & $exe @DoctestArgs

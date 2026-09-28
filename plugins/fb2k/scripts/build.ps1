@@ -58,6 +58,16 @@ if ((Split-Path -Leaf $proj) -eq 'foo_jean.vcxproj') {
     $names = ($forbidden | ForEach-Object { $_.ToString().Trim() }) -join ', '
     throw "foo_jean.dll imports a runtime DLL it must link statically instead: $names"
   }
+
+  if ($Configuration -eq 'Release') {
+    $hardeningCmd = "`"$vcvars`" >nul && dumpbin /nologo /headers /loadconfig `"$dll`""
+    $hardeningOutput = cmd /c $hardeningCmd 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "dumpbin failed on $dll (exit $LASTEXITCODE)." }
+    $missing = @()
+    if (-not ($hardeningOutput | Select-String -SimpleMatch 'CF instrumented')) { $missing += 'Control Flow Guard (/guard:cf)' }
+    if (-not ($hardeningOutput | Select-String -SimpleMatch 'CET compatible')) { $missing += 'CET compatibility (/CETCOMPAT)' }
+    if ($missing) { throw "foo_jean.dll was built without $($missing -join ' and '); see Directory.Build.targets." }
+  }
 }
 
 Write-Output "Build succeeded."

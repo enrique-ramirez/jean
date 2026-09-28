@@ -1,5 +1,6 @@
 # Fetches libopus and libogg into third_party/, where the Ogg Opus encoder expects them.
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\lib\download.ps1"
 
 $opusVersion = '1.5.2'
 $oggVersion = '1.3.5'
@@ -18,10 +19,7 @@ function Fetch($name, $url, $sha, $stripped) {
     }
 
     $archive = Join-Path $work "$name.tar.gz"
-    Invoke-WebRequest -Uri $url -OutFile $archive -UseBasicParsing
-
-    $got = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash
-    if ($got -ne $sha) { throw "checksum mismatch for $name`: expected $sha, got $got" }
+    Save-VerifiedDownload -Uri $url -OutFile $archive -Sha256 $sha
 
     # tar has shipped with Windows since 1803, so there is no unpacking library here.
     tar xzf $archive -C $work

@@ -37,6 +37,13 @@
     </ClCompile>
     <ClCompile Condition="!$(Configuration.StartsWith('Debug'))">
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <ControlFlowGuard>Guard</ControlFlowGuard>
     </ClCompile>
+    <Link Condition="!$(Configuration.StartsWith('Debug'))">
+      <CETCompat>true</CETCompat>
+    </Link>
   </ItemDefinitionGroup>
+  <PropertyGroup Condition="!$(Configuration.StartsWith('Debug'))">
+    <LinkControlFlowGuard>Guard</LinkControlFlowGuard>
+  </PropertyGroup>
 </Project>

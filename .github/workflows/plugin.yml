@@ -30,7 +30,7 @@ jobs:
   tests:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # libopus and libogg are fetched rather than vendored, so the suite cannot link without this.
       - run: plugins/fb2k/scripts/fetch-opus.sh
@@ -40,7 +40,7 @@ jobs:
   format:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - uses: ./.github/actions/apt-llvm
         with:
@@ -53,7 +53,7 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # scripts/lint.sh finds clang-tidy-$llvm_major on its own and refuses anything else.
       - uses: ./.github/actions/apt-llvm

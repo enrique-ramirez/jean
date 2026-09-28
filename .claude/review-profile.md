@@ -124,6 +124,7 @@ Run from the repository root. `scripts/test.sh` finds its own tree, so the path 
 | one test file | `plugins/fb2k/scripts/test.sh '-sf=*cors_test.cpp'` | the same |
 | one case | `plugins/fb2k/scripts/test.sh '-tc=*private address*'` | the same |
 | threaded code | `plugins/fb2k/scripts/test.sh --sanitize=thread` | 15s from clean, then incremental in its own directories |
+| any C++ change, before it is called ready | `plugins/fb2k/scripts/test.sh --sanitize=address` | about 2 minutes from clean, then incremental in its own directories |
 
 The build is incremental and the filters narrow only what runs, never what compiles. Run the whole suite rather than a filtered one: it costs the same and covers everything. Filter only to read less output.
 

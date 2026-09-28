@@ -122,6 +122,7 @@ Two things hold across the whole surface. Every request is checked first for whe
 scripts/fetch-opus.sh                     # once; the suite links libopus and libogg
 scripts/test.sh                           # the whole suite
 scripts/test.sh '-sf=*cors_test.cpp'      # one file
+scripts/test.sh --sanitize=address        # AddressSanitizer and UBSan
 scripts/test.sh --sanitize=thread         # ThreadSanitizer
 scripts/format.sh --check                 # clang-format, without writing
 scripts/lint.sh                           # clang-tidy over src/core/ and tests/
@@ -140,7 +141,7 @@ On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\tes
 
 The tests need **neither Windows nor the foobar2000 SDK nor a running player**: everything they cover lives in `src/core/`, which compiles standalone. They are feature tests rather than unit tests: `tests/` starts a real `HttpServer` on a real port and drives it with a real HTTP client, so an assertion about admission or a CORS header is about the bytes a browser would see.
 
-Covered: admission, CORS and preflight, every way a hand-edited `config.json` can be wrong including a reload while the listener runs, the listener and its port collision, the preferences page's decisions, tag-write permission and the tag route, autoplaylist requests and their routes, the rate limiter with time passed in, stream tickets, the stream route, the audience and the listener roster, the output hold, the PCM and broadcast rings, the Ogg Opus encoder (whose tests decode their own output), the timeline and its route, the artwork route and what it will and will not send, and every key set and status `contract/openapi.yaml` publishes.
+Covered: admission, CORS and preflight, every way a hand-edited `config.json` can be wrong including a reload while the listener runs, the listener and its port collision, the preferences page's decisions, tag-write permission and the tag route, autoplaylist requests and their routes, the rate limiter with time passed in, stream tickets, the stream route, the audience and the listener roster, the output hold, the PCM and broadcast rings, the Ogg Opus encoder (whose tests decode their own output), the 16-bit conversion AAC is fed, the timeline and its route, the artwork route and what it will and will not send, and every key set and status `contract/openapi.yaml` publishes.
 
 **Nothing here covers `src/fb2k/`.** That half needs the SDK and compiles for the first time on the build machine.
 

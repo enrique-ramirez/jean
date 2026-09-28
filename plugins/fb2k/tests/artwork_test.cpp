@@ -113,12 +113,12 @@ PlaylistRowArtworkReader rowReader(RowArtLog* log) {
 
         PlaylistArtworkRead read;
         if (playlistId != kPlaylistId) {
-            read.outcome = PlaylistOutcome::noSuchPlaylist;
+            read.outcome = PlayerOutcome::noSuchPlaylist;
             return read;
         }
 
         if (row >= kRowsInPlaylist) {
-            read.outcome = PlaylistOutcome::positionPastEnd;
+            read.outcome = PlayerOutcome::positionPastEnd;
             return read;
         }
 
@@ -136,7 +136,7 @@ PlaylistRowArtworkReader rowReader(RowArtLog* log) {
 
 Player showingRows(RowArtLog* rows, ArtLog* byTrack = nullptr) {
     Player player = byTrack ? showing(byTrack) : Player{};
-    player.readPlaylistRowArtwork = rowReader(rows);
+    player.playlists.readRowArtwork = rowReader(rows);
     return player;
 }
 

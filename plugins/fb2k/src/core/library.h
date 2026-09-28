@@ -200,8 +200,6 @@ enum class DeltaOutcome {
     revisionUnknown,
 };
 
-std::string describe(DeltaOutcome outcome);
-
 // One re-queried row, values in the order LibraryBuilder::fields() gives.
 struct RowChange {
     uint32_t ordinal = 0;
@@ -301,8 +299,6 @@ struct LibraryRequest {
 // Never throws: the caller is an HTTP handler. `since` is empty for an export.
 LibraryRequest parseLibraryRequest(const std::vector<std::string>& columns,
                                    const std::string& since);
-
-std::string describe(LibraryRefusal refusal);
 
 enum class RebuildReason { columnsDeclared, dataChanged };
 

@@ -4,9 +4,9 @@
 
 #include "third_party/doctest.h"
 
+#include "core/failures.h"
 #include "core/outputs.h"
 #include "core/player_state.h"
-#include "core/playlists.h"
 #include "support/fixtures.h"
 #include "support/keys.h"
 #include "support/test_server.h"
@@ -16,7 +16,6 @@
 #include <cstddef>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 using namespace jean;
@@ -64,8 +63,8 @@ struct Outputs {
     std::vector<OutputDevice> devices = threeDevices();
     std::optional<std::string> active = std::string{kHeadphones};
 
-    OutputOutcome listAnswer = OutputOutcome::done;
-    OutputOutcome setAnswer = OutputOutcome::done;
+    PlayerOutcome listAnswer = PlayerOutcome::done;
+    PlayerOutcome setAnswer = PlayerOutcome::done;
 
     size_t lists = 0;
     std::vector<std::string> switched;
@@ -76,7 +75,7 @@ struct Outputs {
 Player switching(Outputs* outputs) {
     Player player = servingPlayer();
 
-    player.listOutputs = [outputs]() {
+    player.outputs.list = [outputs]() {
         ++outputs->lists;
 
         OutputsRead read;
@@ -85,7 +84,7 @@ Player switching(Outputs* outputs) {
         read.active = outputs->active;
         return read;
     };
-    player.setActiveOutput = [outputs](const std::string& deviceId) {
+    player.outputs.setActive = [outputs](const std::string& deviceId) {
         outputs->switched.push_back(deviceId);
         return outputs->setAnswer;
     };
@@ -376,7 +375,7 @@ TEST_CASE("a switch to a player missing either output seam is a 503, and reaches
     SUBCASE("a lister and no setter") {
         Outputs outputs;
         Player player = switching(&outputs);
-        player.setActiveOutput = nullptr;
+        player.outputs.setActive = nullptr;
         const TestServer server(servingSettings(), player);
 
         const auto response = post(server, kActive, switchTo(kSpeakers));
@@ -388,7 +387,7 @@ TEST_CASE("a switch to a player missing either output seam is a 503, and reaches
     SUBCASE("a setter and no lister") {
         Outputs outputs;
         Player player = switching(&outputs);
-        player.listOutputs = nullptr;
+        player.outputs.list = nullptr;
         const TestServer server(servingSettings(), player);
 
         const auto response = post(server, kActive, switchTo(kSpeakers));
@@ -399,17 +398,11 @@ TEST_CASE("a switch to a player missing either output seam is a 503, and reaches
     }
 }
 
-// What a client acts on is the sentence, so these two are the ones every other player command
-// already answers with.
 TEST_CASE("a player that could not answer, or did not in time, is a 500 or a 504 on either "
           "route") {
-    const std::array<std::pair<OutputOutcome, PlaylistOutcome>, 2> failures{
-        {{OutputOutcome::playerRefused, PlaylistOutcome::playerRefused},
-         {OutputOutcome::timedOut, PlaylistOutcome::timedOut}}};
-
-    for (const auto& [outcome, same] : failures) {
-        const int status = httpStatusFor(same);
-        const std::string sentence = describe(same);
+    for (const auto outcome : {PlayerOutcome::playerRefused, PlayerOutcome::timedOut}) {
+        const int status = httpStatusFor(outcome);
+        const std::string sentence = describe(outcome);
         INFO(sentence);
 
         Outputs listing;
@@ -519,7 +512,7 @@ TEST_CASE("every answer either route gives asks again each time and carries no v
 
     SUBCASE("a switch the player did not finish in time, a 504") {
         Outputs outputs;
-        outputs.setAnswer = OutputOutcome::timedOut;
+        outputs.setAnswer = PlayerOutcome::timedOut;
         const TestServer server(servingSettings(), switching(&outputs));
 
         checkAsksEveryTime(post(server, kActive, switchTo(kSpeakers)));
@@ -561,25 +554,10 @@ TEST_CASE("a switch leaves GET /api/state's outputDeviceId where the player last
     CHECK(store.read().state.outputDeviceId == kHeadphones);
 }
 
-TEST_CASE("every OutputOutcome has a sentence, and the refusals answer the statuses the contract "
-          "publishes") {
-    const std::array<OutputOutcome, 5> every{{OutputOutcome::done, OutputOutcome::changeDisabled,
-                                              OutputOutcome::notListed,
-                                              OutputOutcome::playerRefused,
-                                              OutputOutcome::timedOut}};
+TEST_CASE("an output refusal says what the contract publishes, under the status it publishes") {
+    CHECK(describe(PlayerOutcome::changeDisabled) == std::string(kChangeDisabled));
+    CHECK(describe(PlayerOutcome::notListed) == std::string(kNotListed));
 
-    for (const auto outcome : every) {
-        INFO("enumerator ", static_cast<int>(outcome));
-        CHECK_FALSE(std::string(describe(outcome)).empty());
-        CHECK(std::string(describe(outcome)) != "unknown");
-    }
-
-    CHECK(describe(OutputOutcome::changeDisabled) == std::string(kChangeDisabled));
-    CHECK(describe(OutputOutcome::notListed) == std::string(kNotListed));
-
-    CHECK(httpStatusFor(OutputOutcome::changeDisabled) == 403);
-    CHECK(httpStatusFor(OutputOutcome::notListed) == 409);
-    CHECK(httpStatusFor(OutputOutcome::playerRefused) ==
-          httpStatusFor(PlaylistOutcome::playerRefused));
-    CHECK(httpStatusFor(OutputOutcome::timedOut) == httpStatusFor(PlaylistOutcome::timedOut));
+    CHECK(httpStatusFor(PlayerOutcome::changeDisabled) == 403);
+    CHECK(httpStatusFor(PlayerOutcome::notListed) == 409);
 }

@@ -30,9 +30,9 @@ namespace {
 // TagWriteOutcome instead.
 constexpr char kNamesMoreThanOneTrack[] = "more than one track";
 
-std::optional<PlaylistOutcome> outcomeForAnAddressNamingTwoTracks() {
+std::optional<PlayerOutcome> outcomeForAnAddressNamingTwoTracks() {
     for (int raw = 0;; ++raw) {
-        const auto outcome = static_cast<PlaylistOutcome>(raw);
+        const auto outcome = static_cast<PlayerOutcome>(raw);
         const auto said = describe(outcome);
 
         if (said == "unknown")
@@ -152,8 +152,8 @@ FakeLibrary holding() {
 // The pointer must outlive the server.
 Player reading(FakeLibrary* library) {
     Player player;
-    player.readLibraryTrack = [library](const std::string& track, uint32_t subsong,
-                                        const std::vector<std::string>& columns) {
+    player.library.readTrack = [library](const std::string& track, uint32_t subsong,
+                                         const std::vector<std::string>& columns) {
         library->asked.push_back({track, subsong, std::nullopt, columns});
 
         LibraryTrackRead read;
@@ -165,13 +165,13 @@ Player reading(FakeLibrary* library) {
         return library->readAt(track, subsong, columns);
     };
 
-    player.readLibraryOrdinal = [library](const OrdinalTrackRef& at,
-                                          const std::vector<std::string>& columns) {
+    player.library.readOrdinal = [library](const OrdinalTrackRef& at,
+                                           const std::vector<std::string>& columns) {
         library->asked.push_back({{}, 0, at, columns});
 
         LibraryTrackRead read;
         if (at.structure != library->structure) {
-            read.outcome = PlaylistOutcome::structureMoved;
+            read.outcome = PlayerOutcome::structureMoved;
             return read;
         }
 
@@ -288,7 +288,7 @@ TEST_CASE("an address the snapshot does not hold is a 404, `..` and all") {
 // out what the write did.
 TEST_CASE("an address held under two roots is a 409 instead of one track's columns") {
     const auto ambiguous = outcomeForAnAddressNamingTwoTracks();
-    REQUIRE_MESSAGE(ambiguous, "no PlaylistOutcome says an address names more than one track");
+    REQUIRE_MESSAGE(ambiguous, "no PlayerOutcome says an address names more than one track");
 
     FakeLibrary library = holding();
     library.heldTwice = {kTrackAddress};
@@ -514,11 +514,11 @@ FakePlayback stopped() {
     return playback;
 }
 
-// The pointer must outlive the server. Leaves readLibraryTrack null, which is an install with
+// The pointer must outlive the server. Leaves library.readTrack null, which is an install with
 // the media library switched off.
 Player playingFrom(FakePlayback* playback) {
     Player player;
-    player.readPlayingTrack = [playback](const std::vector<std::string>& columns) {
+    player.playback.readPlayingTrack = [playback](const std::vector<std::string>& columns) {
         playback->asked.push_back(columns);
 
         PlayingTrackRead read;

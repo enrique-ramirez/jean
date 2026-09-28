@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/artwork.h"
-#include "core/http_server.h"
+#include "core/player.h"
 #include "core/player_state.h"
 
 #include <memory>

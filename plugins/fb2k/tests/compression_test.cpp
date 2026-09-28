@@ -28,7 +28,7 @@ Player listingManyPlaylists() {
     }
 
     return TestServer::listing(
-        [playlists] { return PlaylistsResult{PlaylistOutcome::done, playlists}; });
+        [playlists] { return PlaylistsResult{PlayerOutcome::done, playlists}; });
 }
 
 class Repetitive : public StreamSession {

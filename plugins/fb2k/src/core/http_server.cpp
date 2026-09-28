@@ -290,8 +290,8 @@ LibraryRequest columnsDeclared(const httplib::Request& req) {
 }
 
 void respondLibraryTrackRead(httplib::Response& res, const LibraryTrackRead& read) {
-    if (read.outcome != PlaylistOutcome::done) {
-        respond(res, httpStatusFor(read.outcome), playlistFailedDocument(playlistFailure(read.outcome)));
+    if (read.outcome != PlayerOutcome::done) {
+        respond(res, httpStatusFor(read.outcome), failureDocument(read.outcome));
         return;
     }
 
@@ -318,17 +318,9 @@ LibraryRequest columnsAndSinceDeclared(const httplib::Request& req) {
     return parseLibraryRequest(asked, req.get_param_value("since"));
 }
 
-// FillRequest carries no detail: parseFill has nothing more specific to say than the refusal
-// itself, so this is what stands in for AutoPlaylistRequest's on a fill route's own refusals.
-std::string fillRefusedDocument(PlaylistRefusal refusal) {
-    AutoPlaylistRequest request;
-    request.refusal = refusal;
-    return playlistRefusedDocument(request);
-}
-
-PlaylistOutcome rowsRefusal(DeltaOutcome catchUp) {
-    return catchUp == DeltaOutcome::structureChanged ? PlaylistOutcome::rowsMoved
-                                                     : PlaylistOutcome::rowsRevisionTooOld;
+PlayerOutcome rowsRefusal(DeltaOutcome catchUp) {
+    return catchUp == DeltaOutcome::structureChanged ? PlayerOutcome::rowsMoved
+                                                     : PlayerOutcome::rowsRevisionTooOld;
 }
 
 std::optional<OwnPlaylistRole> ownPlaylistRoleFor(const std::string& role) {
@@ -752,7 +744,7 @@ struct HttpServer::Impl {
 
     void servePageFromDisk(const httplib::Request& req, httplib::Response& res,
                            const std::string& resolved) const {
-        const auto route = routePage(resolved, player.pageNames);
+        const auto route = routePage(resolved, player.page.names);
 
         if (route.kind == PageRouteKind::Reserved) {
             logReservedNameOnce(route.name);
@@ -760,13 +752,13 @@ struct HttpServer::Impl {
             return;
         }
 
-        if (!player.readDiskPage) {
+        if (!player.page.readDisk) {
             res.status = 404;
             return;
         }
 
         if (route.kind == PageRouteKind::FolderRoot) {
-            const auto folder = player.readDiskPage(route.name);
+            const auto folder = player.page.readDisk(route.name);
             if (folder.kind != DiskPage::Kind::Directory) {
                 res.status = 404;
                 return;
@@ -785,7 +777,7 @@ struct HttpServer::Impl {
             return;
         }
 
-        const auto page = player.readDiskPage(route.diskPath);
+        const auto page = player.page.readDisk(route.diskPath);
         if (page.kind != DiskPage::Kind::File) {
             res.status = 404;
             return;
@@ -804,7 +796,7 @@ struct HttpServer::Impl {
         }
 
         const auto type = pageContentType(*resolved);
-        const auto bytes = type ? player.readPage(*resolved) : std::nullopt;
+        const auto bytes = type ? player.page.read(*resolved) : std::nullopt;
         if (!bytes) {
             servePageFromDisk(req, res, *resolved);
             return;
@@ -858,7 +850,7 @@ struct HttpServer::Impl {
             return Routing::Handled;
         }
 
-        if (player.readPage && !api) {
+        if (player.page.read && !api) {
             if (req.method == "GET" || req.method == "HEAD") {
                 servePage(req, res);
                 return Routing::Handled;
@@ -918,7 +910,7 @@ struct HttpServer::Impl {
     }
 
     bool streamingAvailable() const {
-        return player.openStream && !player.streamFormats.empty() &&
+        return player.stream.open && !player.stream.formats.empty() &&
                currentSettings()->streamingEnabled;
     }
 
@@ -953,19 +945,20 @@ struct HttpServer::Impl {
                                                    httplib::Response& res) {
             denyCachingAndRanges(res);
             const auto settings = currentSettings();
-            respond(res, 200,
-                    streamListenersDocument(audience.roster(std::chrono::steady_clock::now()),
-                                            audience.connections(), settings->maxConcurrentStreams,
-                                            player.outputHeld && player.outputHeld()));
+            respond(
+                res, 200,
+                streamListenersDocument(audience.roster(std::chrono::steady_clock::now()),
+                                        audience.connections(), settings->maxConcurrentStreams,
+                                        player.stream.outputHeld && player.stream.outputHeld()));
         });
 
         server.Delete("/api/stream/hold", [this](const httplib::Request&, httplib::Response& res) {
-            if (!player.releaseOutput) {
+            if (!player.stream.releaseOutput) {
                 respond(res, 503, errorDocument("this install does not mute the player"));
                 return;
             }
 
-            player.releaseOutput();
+            player.stream.releaseOutput();
             res.status = 204;
         });
 
@@ -985,13 +978,13 @@ struct HttpServer::Impl {
                     });
 
         server.Get("/api/stream/timeline", [this](const httplib::Request&, httplib::Response& res) {
-            if (!player.readTimeline) {
+            if (!player.stream.readTimeline) {
                 respond(res, 503, errorDocument(kNoStreaming));
                 return;
             }
 
             denyCachingAndRanges(res);
-            respond(res, 200, player.readTimeline());
+            respond(res, 200, player.stream.readTimeline());
         });
 
         server.Get("/api/stream", [this](const httplib::Request& req, httplib::Response& res) {
@@ -1008,10 +1001,10 @@ struct HttpServer::Impl {
             }
 
             const auto format = req.has_param("format") ? req.get_param_value("format")
-                                                        : player.streamFormats.front();
+                                                        : player.stream.formats.front();
 
-            if (std::find(player.streamFormats.begin(), player.streamFormats.end(), format) ==
-                player.streamFormats.end()) {
+            if (std::find(player.stream.formats.begin(), player.stream.formats.end(), format) ==
+                player.stream.formats.end()) {
                 respond(res, 400,
                         errorDocument("this install does not encode '" + format +
                                       "'; GET /api/capabilities lists what it does"));
@@ -1027,7 +1020,7 @@ struct HttpServer::Impl {
                 return;
             }
 
-            auto opened = player.openStream(format);
+            auto opened = player.stream.open(format);
             if (!opened.session) {
                 respond(res, 503, errorDocument(kNoStreaming));
                 return;
@@ -1090,7 +1083,7 @@ struct HttpServer::Impl {
     // was asked for, and let the client poll GET /state.
     void startBuilding(httplib::Response& res, const std::vector<std::string>& columns,
                        const Library::State& state) {
-        if (!player.refreshLibrary) {
+        if (!player.library.refresh) {
             respond(res, 503, errorDocument(kNoLibrary));
             return;
         }
@@ -1100,7 +1093,7 @@ struct HttpServer::Impl {
                 return;
 
             declare(columns);
-            player.refreshLibrary(columns, RebuildReason::columnsDeclared);
+            player.library.refresh(columns, RebuildReason::columnsDeclared);
         }
 
         respond(res, 202, libraryDocument(state));
@@ -1168,7 +1161,8 @@ struct HttpServer::Impl {
         server.Get(kLibraryExportPath, [this](const httplib::Request& req, httplib::Response& res) {
             const auto request = columnsDeclared(req);
             if (!request.ok()) {
-                respond(res, httpStatusFor(request.refusal), libraryRefusedDocument(request));
+                respond(res, httpStatusFor(request.refusal),
+                        refusalDocument(request.refusal, request.detail));
                 return;
             }
 
@@ -1194,7 +1188,8 @@ struct HttpServer::Impl {
                                          : missing(LibraryRefusal::badSince, "'since' is required");
 
                 if (!request.ok()) {
-                    respond(res, httpStatusFor(request.refusal), libraryRefusedDocument(request));
+                    respond(res, httpStatusFor(request.refusal),
+                            refusalDocument(request.refusal, request.detail));
                     return;
                 }
 
@@ -1206,8 +1201,7 @@ struct HttpServer::Impl {
                 const auto state = library->state();
                 const auto changes = library->changes(request.since);
                 if (changes.outcome != DeltaOutcome::ok) {
-                    respond(res, httpStatusFor(changes.outcome),
-                            libraryFailedDocument(changes.outcome));
+                    respond(res, httpStatusFor(changes.outcome), failureDocument(changes.outcome));
                     return;
                 }
 
@@ -1217,7 +1211,7 @@ struct HttpServer::Impl {
             });
 
         server.Post(kLibraryRefreshPath, [this](const httplib::Request&, httplib::Response& res) {
-            if (!library || !player.refreshLibrary) {
+            if (!library || !player.library.refresh) {
                 respond(res, 503, errorDocument(kNoLibrary));
                 return;
             }
@@ -1228,8 +1222,8 @@ struct HttpServer::Impl {
             const auto state = library->state();
             const auto columns = declaration();
 
-            player.refreshLibrary(columns.empty() ? state.columns : columns,
-                                  RebuildReason::dataChanged);
+            player.library.refresh(columns.empty() ? state.columns : columns,
+                                   RebuildReason::dataChanged);
             respond(res, 202, libraryDocument(state));
         });
 
@@ -1255,16 +1249,18 @@ struct HttpServer::Impl {
 
                 const auto declared = columnsDeclared(req);
                 if (!declared.ok()) {
-                    respond(res, httpStatusFor(declared.refusal), libraryRefusedDocument(declared));
+                    respond(res, httpStatusFor(declared.refusal),
+                            refusalDocument(declared.refusal, declared.detail));
                     return;
                 }
 
-                if (!player.readLibraryOrdinal) {
+                if (!player.library.readOrdinal) {
                     respond(res, 503, errorDocument(kNoLibrary));
                     return;
                 }
 
-                respondLibraryTrackRead(res, player.readLibraryOrdinal(asked.ref, declared.columns));
+                respondLibraryTrackRead(res,
+                                        player.library.readOrdinal(asked.ref, declared.columns));
                 return;
             }
 
@@ -1287,16 +1283,18 @@ struct HttpServer::Impl {
 
             const auto declared = columnsDeclared(req);
             if (!declared.ok()) {
-                respond(res, httpStatusFor(declared.refusal), libraryRefusedDocument(declared));
+                respond(res, httpStatusFor(declared.refusal),
+                        refusalDocument(declared.refusal, declared.detail));
                 return;
             }
 
-            if (!player.readLibraryTrack) {
+            if (!player.library.readTrack) {
                 respond(res, 503, errorDocument(kNoLibrary));
                 return;
             }
 
-            respondLibraryTrackRead(res, player.readLibraryTrack(track, *subsong, declared.columns));
+            respondLibraryTrackRead(res,
+                                    player.library.readTrack(track, *subsong, declared.columns));
         });
 
         server.Get(kPlayingTrackPath, [this](const httplib::Request& req, httplib::Response& res) {
@@ -1304,19 +1302,19 @@ struct HttpServer::Impl {
 
             const auto declared = columnsDeclared(req);
             if (!declared.ok()) {
-                respond(res, httpStatusFor(declared.refusal), libraryRefusedDocument(declared));
+                respond(res, httpStatusFor(declared.refusal),
+                        refusalDocument(declared.refusal, declared.detail));
                 return;
             }
 
-            if (!player.readPlayingTrack) {
+            if (!player.playback.readPlayingTrack) {
                 respond(res, 404, errorDocument(kNothingPlaying));
                 return;
             }
 
-            const auto read = player.readPlayingTrack(declared.columns);
-            if (read.outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(read.outcome),
-                        playlistFailedDocument(playlistFailure(read.outcome)));
+            const auto read = player.playback.readPlayingTrack(declared.columns);
+            if (read.outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(read.outcome), failureDocument(read.outcome));
                 return;
             }
 
@@ -1377,7 +1375,7 @@ struct HttpServer::Impl {
                 return;
             }
 
-            if (!player.readArtwork) {
+            if (!player.library.readArtwork) {
                 respond(res, 503, errorDocument(kNoArtwork));
                 return;
             }
@@ -1385,7 +1383,7 @@ struct HttpServer::Impl {
             if (fetchingArtworkTooFast(res))
                 return;
 
-            const auto source = player.readArtwork(track);
+            const auto source = player.library.readArtwork(track);
             const auto missingCoverCacheControl = freshFor(kMissingCoverCacheLifetimeSeconds);
 
             if (source.picture.empty()) {
@@ -1433,11 +1431,11 @@ struct HttpServer::Impl {
 
             const auto request = parsePlayRow(req.matches[1].str(), req.matches[2].str());
             if (!request.ok()) {
-                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                respond(res, httpStatusFor(request.refusal), refusalDocument(request.refusal));
                 return;
             }
 
-            if (!player.readPlaylistRowArtwork) {
+            if (!player.playlists.readRowArtwork) {
                 respond(res, 503, errorDocument(kNoArtwork));
                 return;
             }
@@ -1445,18 +1443,18 @@ struct HttpServer::Impl {
             if (fetchingArtworkTooFast(res))
                 return;
 
-            const auto read = player.readPlaylistRowArtwork(request.playlistId, request.index);
+            const auto read = player.playlists.readRowArtwork(request.playlistId, request.index);
 
             // Both refused as 404, unlike POST .../play: neither is a position a client could
             // choose differently, and a client drawing a grid of covers treats every one the
             // same as a track address the snapshot never held.
-            if (read.outcome == PlaylistOutcome::noSuchPlaylist ||
-                read.outcome == PlaylistOutcome::positionPastEnd) {
+            if (read.outcome == PlayerOutcome::noSuchPlaylist ||
+                read.outcome == PlayerOutcome::positionPastEnd) {
                 respond(res, 404, errorDocument(describe(read.outcome)));
                 return;
             }
 
-            if (read.outcome != PlaylistOutcome::done) {
+            if (read.outcome != PlayerOutcome::done) {
                 respond(res, httpStatusFor(read.outcome), errorDocument(describe(read.outcome)));
                 return;
             }
@@ -1474,21 +1472,22 @@ struct HttpServer::Impl {
         server.Post("/api/tags", [this](const httplib::Request& req, httplib::Response& res) {
             const auto request = parseTagWrite(req.body, *currentSettings());
             if (!request.ok()) {
-                respond(res, httpStatusFor(request.refusal), tagRefusedDocument(request));
+                respond(res, httpStatusFor(request.refusal),
+                        tagRefusalDocument(request.refusal, request.detail));
                 return;
             }
 
             if (writingTagsTooFast()) {
                 res.set_header("Retry-After", "1");
                 respond(res, httpStatusFor(TagWriteOutcome::tooFast),
-                        tagFailedDocument(TagWriteOutcome::tooFast));
+                        tagFailureDocument(TagWriteOutcome::tooFast));
                 return;
             }
 
-            const auto outcome =
-                askIfAvailable(player.writeTags, TagWriteOutcome::unavailable, request.write);
+            const auto outcome = askIfAvailable(player.library.writeTags,
+                                                TagWriteOutcome::unavailable, request.write);
             if (outcome != TagWriteOutcome::written) {
-                respond(res, httpStatusFor(outcome), tagFailedDocument(outcome));
+                respond(res, httpStatusFor(outcome), tagFailureDocument(outcome));
                 return;
             }
 
@@ -1503,13 +1502,15 @@ struct HttpServer::Impl {
             if (request.refusal == PlaylistRefusal::tooFast)
                 res.set_header("Retry-After", "1");
 
-            respond(res, httpStatusFor(request.refusal), playlistRefusedDocument(request));
+            respond(res, httpStatusFor(request.refusal),
+                    refusalDocument(request.refusal, request.detail));
             return std::nullopt;
         }
 
         auto result = ask();
-        if (result.outcome != PlaylistOutcome::done) {
-            respond(res, httpStatusFor(result.outcome), playlistFailedDocument(result));
+        if (result.outcome != PlayerOutcome::done) {
+            respond(res, httpStatusFor(result.outcome),
+                    failureDocument(result.outcome, result.detail));
             return std::nullopt;
         }
 
@@ -1544,8 +1545,8 @@ struct HttpServer::Impl {
         if (currentSettings()->writePlaylists)
             return false;
 
-        respond(res, httpStatusFor(PlaylistOutcome::writesDisabled),
-                playlistFailedDocument(playlistFailure(PlaylistOutcome::writesDisabled)));
+        respond(res, httpStatusFor(PlayerOutcome::writesDisabled),
+                failureDocument(PlayerOutcome::writesDisabled));
         return true;
     }
 
@@ -1553,8 +1554,8 @@ struct HttpServer::Impl {
         if (currentSettings()->controlPlayback)
             return false;
 
-        respond(res, httpStatusFor(PlaylistOutcome::playbackDisabled),
-                playlistFailedDocument(playlistFailure(PlaylistOutcome::playbackDisabled)));
+        respond(res, httpStatusFor(PlayerOutcome::playbackDisabled),
+                failureDocument(PlayerOutcome::playbackDisabled));
         return true;
     }
 
@@ -1565,8 +1566,8 @@ struct HttpServer::Impl {
         if (currentSettings()->changeOutput)
             return false;
 
-        respond(res, httpStatusFor(OutputOutcome::changeDisabled),
-                outputFailedDocument(OutputOutcome::changeDisabled));
+        respond(res, httpStatusFor(PlayerOutcome::changeDisabled),
+                failureDocument(PlayerOutcome::changeDisabled));
         return true;
     }
 
@@ -1574,7 +1575,7 @@ struct HttpServer::Impl {
     // its id through the role itself, so it never holds a client-supplied one for this guard
     // to check.
     //
-    // `!player.listPlaylists` is unreachable with a real player: component.cpp wires it
+    // `!player.playlists.list` is unreachable with a real player: component.cpp wires it
     // unconditionally. The escape exists only for a fake built to model some other route,
     // free to leave the field unset because it never claims to answer for playlist roles.
     //
@@ -1583,13 +1584,12 @@ struct HttpServer::Impl {
     // it would open the scratch playlist to whichever client holds its id at the moment the
     // component is struggling.
     bool ownPlaylistRefused(const std::string& id, httplib::Response& res) {
-        if (!player.listPlaylists)
+        if (!player.playlists.list)
             return false;
 
-        const auto listed = player.listPlaylists();
-        if (listed.outcome != PlaylistOutcome::done) {
-            respond(res, httpStatusFor(listed.outcome),
-                    playlistFailedDocument(playlistFailure(listed.outcome)));
+        const auto listed = player.playlists.list();
+        if (listed.outcome != PlayerOutcome::done) {
+            respond(res, httpStatusFor(listed.outcome), failureDocument(listed.outcome));
             return true;
         }
 
@@ -1600,8 +1600,8 @@ struct HttpServer::Impl {
         if (found == listed.playlists.end() || !found->role)
             return false;
 
-        respond(res, httpStatusFor(PlaylistOutcome::ownPlaylist),
-                playlistFailedDocument(playlistFailure(PlaylistOutcome::ownPlaylist)));
+        respond(res, httpStatusFor(PlayerOutcome::ownPlaylist),
+                failureDocument(PlayerOutcome::ownPlaylist));
         return true;
     }
 
@@ -1609,7 +1609,7 @@ struct HttpServer::Impl {
         if (isPlaylistId(id))
             return false;
 
-        respond(res, 400, fillRefusedDocument(PlaylistRefusal::badId));
+        respond(res, 400, refusalDocument(PlaylistRefusal::badId));
         return true;
     }
 
@@ -1619,13 +1619,14 @@ struct HttpServer::Impl {
 
         res.set_header("Retry-After", "1");
         respond(res, httpStatusFor(PlaylistRefusal::tooFast),
-                fillRefusedDocument(PlaylistRefusal::tooFast));
+                refusalDocument(PlaylistRefusal::tooFast));
         return true;
     }
 
     static void answerPlaylistEdit(httplib::Response& res, const PlaylistResult& result) {
-        if (result.outcome != PlaylistOutcome::done) {
-            respond(res, httpStatusFor(result.outcome), playlistFailedDocument(result));
+        if (result.outcome != PlayerOutcome::done) {
+            respond(res, httpStatusFor(result.outcome),
+                    failureDocument(result.outcome, result.detail));
             return;
         }
 
@@ -1645,19 +1646,17 @@ struct HttpServer::Impl {
 
                 const auto state = library->state();
                 if (!state.ready) {
-                    respond(res, 503, libraryFailedDocument(DeltaOutcome::notBuilt));
+                    respond(res, 503, failureDocument(DeltaOutcome::notBuilt));
                     return std::nullopt;
                 }
 
                 const auto request = parseFill(req.body, state.trackCount, state.structure, true);
-                if (request.outcome != PlaylistOutcome::done) {
-                    respond(res, httpStatusFor(request.outcome),
-                            playlistFailedDocument(playlistFailure(request.outcome)));
+                if (request.outcome != PlayerOutcome::done) {
+                    respond(res, httpStatusFor(request.outcome), failureDocument(request.outcome));
                     return std::nullopt;
                 }
                 if (!request.ok()) {
-                    respond(res, httpStatusFor(request.refusal),
-                            fillRefusedDocument(request.refusal));
+                    respond(res, httpStatusFor(request.refusal), refusalDocument(request.refusal));
                     return std::nullopt;
                 }
 
@@ -1668,8 +1667,7 @@ struct HttpServer::Impl {
             case NewPlaylistSet::playlistRows: {
                 const auto request = parseSourceRows(req.body, true);
                 if (!request.ok()) {
-                    respond(res, httpStatusFor(request.refusal),
-                            fillRefusedDocument(request.refusal));
+                    respond(res, httpStatusFor(request.refusal), refusalDocument(request.refusal));
                     return std::nullopt;
                 }
 
@@ -1686,12 +1684,11 @@ struct HttpServer::Impl {
 
     void addPlaylistRoutes() {
         server.Get("/api/playlists", [this](const httplib::Request&, httplib::Response& res) {
-            const auto result = askIfAvailable(player.listPlaylists,
-                                               PlaylistsResult{PlaylistOutcome::unavailable, {}});
+            const auto result = askIfAvailable(player.playlists.list,
+                                               PlaylistsResult{PlayerOutcome::unavailable, {}});
 
-            if (result.outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(result.outcome),
-                        playlistFailedDocument(playlistFailure(result.outcome)));
+            if (result.outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(result.outcome), failureDocument(result.outcome));
                 return;
             }
 
@@ -1705,7 +1702,7 @@ struct HttpServer::Impl {
             const auto set = newPlaylistSetOf(req.body);
             const auto title = requiredTitle(req.body, set == NewPlaylistSet::none);
             if (!title.ok()) {
-                respond(res, httpStatusFor(title.refusal), fillRefusedDocument(title.refusal));
+                respond(res, httpStatusFor(title.refusal), refusalDocument(title.refusal));
                 return;
             }
 
@@ -1716,14 +1713,15 @@ struct HttpServer::Impl {
             if (playlistChangeTooFast(res))
                 return;
 
-            if (!player.createPlaylist) {
+            if (!player.playlists.create) {
                 respond(res, 503, errorDocument(kNoPlaylistWrites));
                 return;
             }
 
-            const auto made = player.createPlaylist(title.value, *rows);
-            if (made.outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(made.outcome), playlistFailedDocument(made));
+            const auto made = player.playlists.create(title.value, *rows);
+            if (made.outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(made.outcome),
+                        failureDocument(made.outcome, made.detail));
                 return;
             }
 
@@ -1742,19 +1740,19 @@ struct HttpServer::Impl {
 
             const auto title = requiredTitle(req.body, kOnlyTitle);
             if (!title.ok()) {
-                respond(res, httpStatusFor(title.refusal), fillRefusedDocument(title.refusal));
+                respond(res, httpStatusFor(title.refusal), refusalDocument(title.refusal));
                 return;
             }
 
             if (playlistChangeTooFast(res))
                 return;
 
-            if (!player.renamePlaylist) {
+            if (!player.playlists.rename) {
                 respond(res, 503, errorDocument(kNoPlaylistWrites));
                 return;
             }
 
-            answerPlaylistEdit(res, player.renamePlaylist(id, title.value));
+            answerPlaylistEdit(res, player.playlists.rename(id, title.value));
         });
 
         server.Delete(kPlaylistById, [this](const httplib::Request& req, httplib::Response& res) {
@@ -1768,12 +1766,12 @@ struct HttpServer::Impl {
             if (playlistChangeTooFast(res))
                 return;
 
-            if (!player.removePlaylist) {
+            if (!player.playlists.remove) {
                 respond(res, 503, errorDocument(kNoPlaylistWrites));
                 return;
             }
 
-            answerPlaylistEdit(res, player.removePlaylist(id));
+            answerPlaylistEdit(res, player.playlists.remove(id));
         });
 
         constexpr char kMovePlaylist[] = R"(/api/playlists/([0-9a-f-]{36})/move)";
@@ -1788,19 +1786,19 @@ struct HttpServer::Impl {
 
             const auto request = parseMovePlaylist(req.body);
             if (!request.ok()) {
-                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                respond(res, httpStatusFor(request.refusal), refusalDocument(request.refusal));
                 return;
             }
 
             if (playlistChangeTooFast(res))
                 return;
 
-            if (!player.movePlaylist) {
+            if (!player.playlists.move) {
                 respond(res, 503, errorDocument(kNoPlaylistWrites));
                 return;
             }
 
-            answerPlaylistEdit(res, player.movePlaylist(id, request.index));
+            answerPlaylistEdit(res, player.playlists.move(id, request.index));
         });
 
         server.Post("/api/autoplaylists/preview", [this](const httplib::Request& req,
@@ -1813,17 +1811,17 @@ struct HttpServer::Impl {
             }
 
             if (!request.ok()) {
-                respond(res, httpStatusFor(request.refusal), playlistRefusedDocument(request));
+                respond(res, httpStatusFor(request.refusal),
+                        refusalDocument(request.refusal, request.detail));
                 return;
             }
 
             const auto preview =
-                askIfAvailable(player.previewQuery, previewFailure(PlaylistOutcome::unavailable),
-                               request.spec.query);
+                askIfAvailable(player.autoPlaylists.preview,
+                               previewFailure(PlayerOutcome::unavailable), request.spec.query);
 
-            if (preview.outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(preview.outcome),
-                        playlistFailedDocument(playlistFailure(preview.outcome)));
+            if (preview.outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(preview.outcome), failureDocument(preview.outcome));
                 return;
             }
 
@@ -1839,8 +1837,8 @@ struct HttpServer::Impl {
             const auto maxAutoPlaylists = currentSettings()->maxAutoPlaylists;
 
             const auto created = attempt(res, request, [this, &request, maxAutoPlaylists] {
-                return askIfAvailable(player.createAutoPlaylist,
-                                      playlistFailure(PlaylistOutcome::unavailable), request.spec,
+                return askIfAvailable(player.autoPlaylists.create,
+                                      playlistFailure(PlayerOutcome::unavailable), request.spec,
                                       maxAutoPlaylists);
             });
 
@@ -1859,8 +1857,8 @@ struct HttpServer::Impl {
                 refuseChange(withId(parseAutoPlaylist(req.body, Need::optional), id));
 
             const auto updated = attempt(res, request, [this, &request, &id] {
-                return askIfAvailable(player.updateAutoPlaylist,
-                                      playlistFailure(PlaylistOutcome::unavailable), id,
+                return askIfAvailable(player.autoPlaylists.update,
+                                      playlistFailure(PlayerOutcome::unavailable), id,
                                       request.spec);
             });
 
@@ -1876,8 +1874,8 @@ struct HttpServer::Impl {
             const auto request = refuseChange(withId(AutoPlaylistRequest(), id));
 
             const auto removed = attempt(res, request, [this, &id] {
-                return askIfAvailable(player.removeAutoPlaylist,
-                                      playlistFailure(PlaylistOutcome::unavailable), id);
+                return askIfAvailable(player.autoPlaylists.remove,
+                                      playlistFailure(PlayerOutcome::unavailable), id);
             });
 
             if (removed)
@@ -1897,55 +1895,52 @@ struct HttpServer::Impl {
 
             const auto state = library->state();
             if (!state.ready) {
-                respond(res, 503, libraryFailedDocument(DeltaOutcome::notBuilt));
+                respond(res, 503, failureDocument(DeltaOutcome::notBuilt));
                 return;
             }
 
             const auto role = ownPlaylistRoleFor(req.matches[1].str());
             if (!role) {
-                respond(res, 400, fillRefusedDocument(PlaylistRefusal::malformedBody));
+                respond(res, 400, refusalDocument(PlaylistRefusal::malformedBody));
                 return;
             }
 
             const auto request =
                 refuseFillChange(parseFill(req.body, state.trackCount, state.structure, true));
             if (!request.ok()) {
-                if (request.outcome != PlaylistOutcome::done) {
-                    respond(res, httpStatusFor(request.outcome),
-                            playlistFailedDocument(playlistFailure(request.outcome)));
+                if (request.outcome != PlayerOutcome::done) {
+                    respond(res, httpStatusFor(request.outcome), failureDocument(request.outcome));
                     return;
                 }
                 if (request.refusal == PlaylistRefusal::tooFast)
                     res.set_header("Retry-After", "1");
-                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                respond(res, httpStatusFor(request.refusal), refusalDocument(request.refusal));
                 return;
             }
 
             const auto title = requiredTitle(req.body);
             if (!title.ok()) {
-                respond(res, httpStatusFor(title.refusal), fillRefusedDocument(title.refusal));
+                respond(res, httpStatusFor(title.refusal), refusalDocument(title.refusal));
                 return;
             }
 
-            if (!player.ownPlaylist || !player.fill) {
+            if (!player.playlists.resolveOwn || !player.playlists.fill) {
                 respond(res, 503, errorDocument(kNoOwnPlaylists));
                 return;
             }
 
             const auto titled = ownPlaylistTitle(title.value);
 
-            const auto resolved = player.ownPlaylist(*role, titled);
-            if (resolved.outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(resolved.outcome),
-                        playlistFailedDocument(playlistFailure(resolved.outcome)));
+            const auto resolved = player.playlists.resolveOwn(*role, titled);
+            if (resolved.outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(resolved.outcome), failureDocument(resolved.outcome));
                 return;
             }
 
-            const auto filled = player.fill(resolved.playlist.id, titled, request.structure,
-                                            request.ordinals, true);
-            if (filled.outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(filled.outcome),
-                        playlistFailedDocument(playlistFailure(filled.outcome)));
+            const auto filled = player.playlists.fill(resolved.playlist.id, titled,
+                                                      request.structure, request.ordinals, true);
+            if (filled.outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(filled.outcome), failureDocument(filled.outcome));
                 return;
             }
 
@@ -1959,26 +1954,25 @@ struct HttpServer::Impl {
 
             const auto role = ownPlaylistRoleFor(req.matches[1].str());
             if (!role) {
-                respond(res, 400, fillRefusedDocument(PlaylistRefusal::malformedBody));
+                respond(res, 400, refusalDocument(PlaylistRefusal::malformedBody));
                 return;
             }
 
             if (changingTooFast()) {
                 res.set_header("Retry-After", "1");
                 respond(res, httpStatusFor(PlaylistRefusal::tooFast),
-                        fillRefusedDocument(PlaylistRefusal::tooFast));
+                        refusalDocument(PlaylistRefusal::tooFast));
                 return;
             }
 
-            if (!player.emptyOwnPlaylist) {
+            if (!player.playlists.emptyOwn) {
                 respond(res, 503, errorDocument(kNoOwnPlaylists));
                 return;
             }
 
-            const auto emptied = player.emptyOwnPlaylist(*role);
-            if (emptied.outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(emptied.outcome),
-                        playlistFailedDocument(playlistFailure(emptied.outcome)));
+            const auto emptied = player.playlists.emptyOwn(*role);
+            if (emptied.outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(emptied.outcome), failureDocument(emptied.outcome));
                 return;
             }
 
@@ -1998,13 +1992,13 @@ struct HttpServer::Impl {
 
             const auto state = library->state();
             if (!state.ready) {
-                respond(res, 503, libraryFailedDocument(DeltaOutcome::notBuilt));
+                respond(res, 503, failureDocument(DeltaOutcome::notBuilt));
                 return;
             }
 
             const auto id = req.matches[1].str();
             if (!isPlaylistId(id)) {
-                respond(res, 400, fillRefusedDocument(PlaylistRefusal::badId));
+                respond(res, 400, refusalDocument(PlaylistRefusal::badId));
                 return;
             }
 
@@ -2014,27 +2008,25 @@ struct HttpServer::Impl {
             const auto request =
                 refuseFillChange(parseFill(req.body, state.trackCount, state.structure));
             if (!request.ok()) {
-                if (request.outcome != PlaylistOutcome::done) {
-                    respond(res, httpStatusFor(request.outcome),
-                            playlistFailedDocument(playlistFailure(request.outcome)));
+                if (request.outcome != PlayerOutcome::done) {
+                    respond(res, httpStatusFor(request.outcome), failureDocument(request.outcome));
                     return;
                 }
                 if (request.refusal == PlaylistRefusal::tooFast)
                     res.set_header("Retry-After", "1");
-                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                respond(res, httpStatusFor(request.refusal), refusalDocument(request.refusal));
                 return;
             }
 
-            if (!player.fill) {
+            if (!player.playlists.fill) {
                 respond(res, 503, errorDocument(kNoPlaylistWrites));
                 return;
             }
 
-            const auto filled =
-                player.fill(id, std::string{}, request.structure, request.ordinals, false);
-            if (filled.outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(filled.outcome),
-                        playlistFailedDocument(playlistFailure(filled.outcome)));
+            const auto filled = player.playlists.fill(id, std::string{}, request.structure,
+                                                      request.ordinals, false);
+            if (filled.outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(filled.outcome), failureDocument(filled.outcome));
                 return;
             }
 
@@ -2044,34 +2036,34 @@ struct HttpServer::Impl {
         server.Get(kPlaylistItems, [this](const httplib::Request& req, httplib::Response& res) {
             const auto id = req.matches[1].str();
             if (!isPlaylistId(id)) {
-                respond(res, 400, fillRefusedDocument(PlaylistRefusal::badId));
+                respond(res, 400, refusalDocument(PlaylistRefusal::badId));
                 return;
             }
 
             const auto declared = columnsDeclared(req);
             if (!declared.ok()) {
-                respond(res, httpStatusFor(declared.refusal), libraryRefusedDocument(declared));
+                respond(res, httpStatusFor(declared.refusal),
+                        refusalDocument(declared.refusal, declared.detail));
                 return;
             }
 
             const auto page =
                 parsePlaylistPage(req.get_param_value("offset"), req.get_param_value("count"));
             if (!page.ok()) {
-                respond(res, httpStatusFor(page.refusal), fillRefusedDocument(page.refusal));
+                respond(res, httpStatusFor(page.refusal), refusalDocument(page.refusal));
                 return;
             }
 
-            if (!player.readPlaylistRows) {
+            if (!player.playlists.readRows) {
                 respond(res, 503, errorDocument(kNoPlaylistRows));
                 return;
             }
 
             const auto read =
-                player.readPlaylistRows(id, page.offset, page.count, declared.columns);
+                player.playlists.readRows(id, page.offset, page.count, declared.columns);
 
-            if (read.outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(read.outcome),
-                        playlistFailedDocument(playlistFailure(read.outcome)));
+            if (read.outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(read.outcome), failureDocument(read.outcome));
                 return;
             }
 
@@ -2084,41 +2076,40 @@ struct HttpServer::Impl {
             kPlaylistItemChanges, [this](const httplib::Request& req, httplib::Response& res) {
                 const auto id = req.matches[1].str();
                 if (!isPlaylistId(id)) {
-                    respond(res, 400, fillRefusedDocument(PlaylistRefusal::badId));
+                    respond(res, 400, refusalDocument(PlaylistRefusal::badId));
                     return;
                 }
 
                 const auto declared = columnsAndSinceDeclared(req);
                 if (!declared.ok()) {
-                    respond(res, httpStatusFor(declared.refusal), libraryRefusedDocument(declared));
+                    respond(res, httpStatusFor(declared.refusal),
+                            refusalDocument(declared.refusal, declared.detail));
                     return;
                 }
 
                 uint64_t structure = 0;
                 if (!readDecimal(req.get_param_value("structure"), structure)) {
                     respond(res, httpStatusFor(PlaylistRefusal::badOrdinals),
-                            fillRefusedDocument(PlaylistRefusal::badOrdinals));
+                            refusalDocument(PlaylistRefusal::badOrdinals));
                     return;
                 }
 
-                if (!player.readChangedPlaylistRows) {
+                if (!player.playlists.readChangedRows) {
                     respond(res, 503, errorDocument(kNoPlaylistRows));
                     return;
                 }
 
-                const auto read =
-                    player.readChangedPlaylistRows(id, structure, declared.since, declared.columns);
+                const auto read = player.playlists.readChangedRows(id, structure, declared.since,
+                                                                   declared.columns);
 
-                if (read.outcome != PlaylistOutcome::done) {
-                    respond(res, httpStatusFor(read.outcome),
-                            playlistFailedDocument(playlistFailure(read.outcome)));
+                if (read.outcome != PlayerOutcome::done) {
+                    respond(res, httpStatusFor(read.outcome), failureDocument(read.outcome));
                     return;
                 }
 
                 if (read.catchUp != DeltaOutcome::ok) {
                     const auto refusal = rowsRefusal(read.catchUp);
-                    respond(res, httpStatusFor(refusal),
-                            playlistFailedDocument(playlistFailure(refusal)));
+                    respond(res, httpStatusFor(refusal), failureDocument(refusal));
                     return;
                 }
 
@@ -2138,22 +2129,22 @@ struct HttpServer::Impl {
 
             const auto request = parseSourceRows(req.body);
             if (!request.ok()) {
-                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                respond(res, httpStatusFor(request.refusal), refusalDocument(request.refusal));
                 return;
             }
 
             if (playlistChangeTooFast(res))
                 return;
 
-            if (!player.copyPlaylistRows) {
+            if (!player.playlists.copyRows) {
                 respond(res, 503, errorDocument(kNoPlaylistRows));
                 return;
             }
 
-            const auto copied = player.copyPlaylistRows(id, request.playlistId, request.positions);
-            if (copied.outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(copied.outcome),
-                        playlistFailedDocument(playlistFailure(copied.outcome)));
+            const auto copied =
+                player.playlists.copyRows(id, request.playlistId, request.positions);
+            if (copied.outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(copied.outcome), failureDocument(copied.outcome));
                 return;
             }
 
@@ -2173,22 +2164,22 @@ struct HttpServer::Impl {
 
             const auto request = parseRemoveRows(req.body);
             if (!request.ok()) {
-                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                respond(res, httpStatusFor(request.refusal), refusalDocument(request.refusal));
                 return;
             }
 
             if (playlistChangeTooFast(res))
                 return;
 
-            if (!player.removePlaylistRows) {
+            if (!player.playlists.removeRows) {
                 respond(res, 503, errorDocument(kNoPlaylistRows));
                 return;
             }
 
-            const auto removed = player.removePlaylistRows(id, request.structure, request.ordinals);
-            if (removed.outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(removed.outcome),
-                        playlistFailedDocument(playlistFailure(removed.outcome)));
+            const auto removed =
+                player.playlists.removeRows(id, request.structure, request.ordinals);
+            if (removed.outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(removed.outcome), failureDocument(removed.outcome));
                 return;
             }
 
@@ -2203,16 +2194,16 @@ struct HttpServer::Impl {
 
             const auto request = parsePlayRow(req.matches[1].str(), req.matches[2].str());
             if (!request.ok()) {
-                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                respond(res, httpStatusFor(request.refusal), refusalDocument(request.refusal));
                 return;
             }
 
-            if (!player.playPlaylistRow) {
+            if (!player.playback.playPlaylistRow) {
                 respond(res, 503, errorDocument(kNoPlaylistRows));
                 return;
             }
 
-            answerCommand(res, player.playPlaylistRow(request.playlistId, request.index));
+            answerCommand(res, player.playback.playPlaylistRow(request.playlistId, request.index));
         });
     }
 
@@ -2226,15 +2217,14 @@ struct HttpServer::Impl {
 
     void addQueueRoutes() {
         server.Get(kQueuePath, [this](const httplib::Request&, httplib::Response& res) {
-            if (!player.readQueue) {
+            if (!player.queue.read) {
                 respond(res, 503, errorDocument(kNoQueue));
                 return;
             }
 
-            const auto read = player.readQueue();
-            if (read.outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(read.outcome),
-                        playlistFailedDocument(playlistFailure(read.outcome)));
+            const auto read = player.queue.read();
+            if (read.outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(read.outcome), failureDocument(read.outcome));
                 return;
             }
 
@@ -2253,7 +2243,7 @@ struct HttpServer::Impl {
                     postQueueLibraryTracks(req, res);
                     return;
                 case QueueSource::invalid:
-                    respond(res, 400, fillRefusedDocument(PlaylistRefusal::malformedBody));
+                    respond(res, 400, refusalDocument(PlaylistRefusal::malformedBody));
                     return;
             }
         });
@@ -2265,19 +2255,18 @@ struct HttpServer::Impl {
             if (changingTooFast()) {
                 res.set_header("Retry-After", "1");
                 respond(res, httpStatusFor(PlaylistRefusal::tooFast),
-                        fillRefusedDocument(PlaylistRefusal::tooFast));
+                        refusalDocument(PlaylistRefusal::tooFast));
                 return;
             }
 
-            if (!player.clearQueue) {
+            if (!player.queue.clear) {
                 respond(res, 503, errorDocument(kNoQueue));
                 return;
             }
 
-            const auto outcome = player.clearQueue();
-            if (outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(outcome),
-                        playlistFailedDocument(playlistFailure(outcome)));
+            const auto outcome = player.queue.clear();
+            if (outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(outcome), failureDocument(outcome));
                 return;
             }
 
@@ -2294,7 +2283,7 @@ struct HttpServer::Impl {
             if (!request.ok()) {
                 if (request.refusal == PlaylistRefusal::tooFast)
                     res.set_header("Retry-After", "1");
-                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                respond(res, httpStatusFor(request.refusal), refusalDocument(request.refusal));
                 return;
             }
 
@@ -2303,15 +2292,14 @@ struct HttpServer::Impl {
                 return;
             }
 
-            if (!player.moveQueueEntry) {
+            if (!player.queue.moveEntry) {
                 respond(res, 503, errorDocument(kNoQueue));
                 return;
             }
 
-            const auto outcome = player.moveQueueEntry(request.from, request.to, request.revision);
-            if (outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(outcome),
-                        playlistFailedDocument(playlistFailure(outcome)));
+            const auto outcome = player.queue.moveEntry(request.from, request.to, request.revision);
+            if (outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(outcome), failureDocument(outcome));
                 return;
             }
 
@@ -2331,7 +2319,7 @@ struct HttpServer::Impl {
             if (!request.ok()) {
                 if (request.refusal == PlaylistRefusal::tooFast)
                     res.set_header("Retry-After", "1");
-                respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                respond(res, httpStatusFor(request.refusal), refusalDocument(request.refusal));
                 return;
             }
 
@@ -2340,15 +2328,14 @@ struct HttpServer::Impl {
                 return;
             }
 
-            if (!player.removeQueueEntry) {
+            if (!player.queue.removeEntry) {
                 respond(res, 503, errorDocument(kNoQueue));
                 return;
             }
 
-            const auto outcome = player.removeQueueEntry(request.index, request.revision);
-            if (outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(outcome),
-                        playlistFailedDocument(playlistFailure(outcome)));
+            const auto outcome = player.queue.removeEntry(request.index, request.revision);
+            if (outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(outcome), failureDocument(outcome));
                 return;
             }
 
@@ -2361,7 +2348,7 @@ struct HttpServer::Impl {
         if (!request.ok()) {
             if (request.refusal == PlaylistRefusal::tooFast)
                 res.set_header("Retry-After", "1");
-            respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+            respond(res, httpStatusFor(request.refusal), refusalDocument(request.refusal));
             return;
         }
 
@@ -2370,15 +2357,15 @@ struct HttpServer::Impl {
             return;
         }
 
-        if (!player.queuePlaylistRows) {
+        if (!player.queue.addPlaylistRows) {
             respond(res, 503, errorDocument(kNoQueue));
             return;
         }
 
         const auto outcome =
-            player.queuePlaylistRows(request.playlistId, request.positions, request.at);
-        if (outcome != PlaylistOutcome::done) {
-            respond(res, httpStatusFor(outcome), playlistFailedDocument(playlistFailure(outcome)));
+            player.queue.addPlaylistRows(request.playlistId, request.positions, request.at);
+        if (outcome != PlayerOutcome::done) {
+            respond(res, httpStatusFor(outcome), failureDocument(outcome));
             return;
         }
 
@@ -2393,21 +2380,20 @@ struct HttpServer::Impl {
 
         const auto state = library->state();
         if (!state.ready) {
-            respond(res, 503, libraryFailedDocument(DeltaOutcome::notBuilt));
+            respond(res, 503, failureDocument(DeltaOutcome::notBuilt));
             return;
         }
 
         auto request =
             refuseQueueTracksChange(parseQueueTracks(req.body, state.trackCount, state.structure));
         if (!request.ok()) {
-            if (request.outcome != PlaylistOutcome::done) {
-                respond(res, httpStatusFor(request.outcome),
-                        playlistFailedDocument(playlistFailure(request.outcome)));
+            if (request.outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(request.outcome), failureDocument(request.outcome));
                 return;
             }
             if (request.refusal == PlaylistRefusal::tooFast)
                 res.set_header("Retry-After", "1");
-            respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+            respond(res, httpStatusFor(request.refusal), refusalDocument(request.refusal));
             return;
         }
 
@@ -2416,15 +2402,15 @@ struct HttpServer::Impl {
             return;
         }
 
-        if (!player.queueLibraryTracks) {
+        if (!player.queue.addLibraryTracks) {
             respond(res, 503, errorDocument(kNoQueue));
             return;
         }
 
         const auto outcome =
-            player.queueLibraryTracks(request.structure, request.ordinals, request.at);
-        if (outcome != PlaylistOutcome::done) {
-            respond(res, httpStatusFor(outcome), playlistFailedDocument(playlistFailure(outcome)));
+            player.queue.addLibraryTracks(request.structure, request.ordinals, request.at);
+        if (outcome != PlayerOutcome::done) {
+            respond(res, httpStatusFor(outcome), failureDocument(outcome));
             return;
         }
 
@@ -2464,17 +2450,17 @@ struct HttpServer::Impl {
     }
 
     static void respondQueueMoved(httplib::Response& res) {
-        respond(res, httpStatusFor(PlaylistOutcome::queueMoved),
-                playlistFailedDocument(playlistFailure(PlaylistOutcome::queueMoved)));
+        respond(res, httpStatusFor(PlayerOutcome::queueMoved),
+                failureDocument(PlayerOutcome::queueMoved));
     }
 
-    static void answerCommand(httplib::Response& res, PlaylistOutcome outcome) {
-        if (outcome == PlaylistOutcome::done) {
+    static void answerCommand(httplib::Response& res, PlayerOutcome outcome) {
+        if (outcome == PlayerOutcome::done) {
             res.status = 204;
             return;
         }
 
-        respond(res, httpStatusFor(outcome), playlistFailedDocument(playlistFailure(outcome)));
+        respond(res, httpStatusFor(outcome), failureDocument(outcome));
     }
 
     void addTransportRoute(const char* path, Transport command) {
@@ -2482,12 +2468,12 @@ struct HttpServer::Impl {
             if (playbackRefused(res))
                 return;
 
-            if (!player.commandTransport) {
+            if (!player.playback.commandTransport) {
                 respond(res, 503, errorDocument(kNoPlayback));
                 return;
             }
 
-            answerCommand(res, player.commandTransport(command));
+            answerCommand(res, player.playback.commandTransport(command));
         });
     }
 
@@ -2504,16 +2490,16 @@ struct HttpServer::Impl {
             const auto request = parseSeek(req.body);
             if (!request.ok()) {
                 respond(res, httpStatusFor(request.refusal),
-                        playbackRefusedDocument(request.refusal, request.detail));
+                        refusalDocument(request.refusal, request.detail));
                 return;
             }
 
-            if (!player.seek) {
+            if (!player.playback.seek) {
                 respond(res, 503, errorDocument(kNoPlayback));
                 return;
             }
 
-            answerCommand(res, player.seek(request.seconds, request.relative));
+            answerCommand(res, player.playback.seek(request.seconds, request.relative));
         });
 
         server.Post(kPlaybackModePath, [this](const httplib::Request& req, httplib::Response& res) {
@@ -2523,16 +2509,16 @@ struct HttpServer::Impl {
             const auto request = parsePlaybackMode(req.body);
             if (!request.ok()) {
                 respond(res, httpStatusFor(request.refusal),
-                        playbackRefusedDocument(request.refusal, request.detail));
+                        refusalDocument(request.refusal, request.detail));
                 return;
             }
 
-            const auto resolved = resolvePlaybackMode(request.mode, player.playbackOrders);
+            const auto resolved = resolvePlaybackMode(request.mode, player.report.playbackOrders);
             if (resolved.resolution == PlaybackModeResolution::unknownMode) {
                 respond(res, httpStatusFor(PlaybackRefusal::badMode),
-                        playbackRefusedDocument(PlaybackRefusal::badMode,
-                                                "'" + request.mode +
-                                                    "' is not a playback mode this API knows"));
+                        refusalDocument(
+                            PlaybackRefusal::badMode,
+                            "'" + request.mode + "' is not a playback mode this API knows"));
                 return;
             }
 
@@ -2541,12 +2527,12 @@ struct HttpServer::Impl {
                 return;
             }
 
-            if (!player.setPlaybackOrder) {
+            if (!player.playback.setOrder) {
                 respond(res, 503, errorDocument(kNoPlayback));
                 return;
             }
 
-            answerCommand(res, player.setPlaybackOrder(resolved.index));
+            answerCommand(res, player.playback.setOrder(resolved.index));
         });
     }
 
@@ -2555,37 +2541,39 @@ struct HttpServer::Impl {
             if (playbackRefused(res))
                 return;
 
-            const auto request = parseVolume(req.body, player.volumeMin, player.volumeMax);
+            const auto request =
+                parseVolume(req.body, player.report.volumeMin, player.report.volumeMax);
             if (!request.ok()) {
                 respond(res, httpStatusFor(request.refusal),
-                        playbackRefusedDocument(request.refusal, request.detail));
+                        refusalDocument(request.refusal, request.detail));
                 return;
             }
 
             switch (request.form) {
                 case VolumeRequest::Form::value:
-                    if (!player.setVolume) {
+                    if (!player.playback.setVolume) {
                         respond(res, 503, errorDocument(kNoVolume));
                         return;
                     }
-                    answerCommand(res, player.setVolume(request.value));
+                    answerCommand(res, player.playback.setVolume(request.value));
                     return;
 
                 case VolumeRequest::Form::step:
-                    if (!player.stepVolume) {
+                    if (!player.playback.stepVolume) {
                         respond(res, 503, errorDocument(kNoVolume));
                         return;
                     }
-                    answerCommand(res, player.stepVolume(request.step == "up" ? VolumeStep::Up
+                    answerCommand(
+                        res, player.playback.stepVolume(request.step == "up" ? VolumeStep::Up
                                                                              : VolumeStep::Down));
                     return;
 
                 case VolumeRequest::Form::muted:
-                    if (!player.setMuted) {
+                    if (!player.playback.setMuted) {
                         respond(res, 503, errorDocument(kNoVolume));
                         return;
                     }
-                    answerCommand(res, player.setMuted(request.muted));
+                    answerCommand(res, player.playback.setMuted(request.muted));
                     return;
             }
         });
@@ -2599,14 +2587,14 @@ struct HttpServer::Impl {
         server.Get(kOutputsPath, [this](const httplib::Request&, httplib::Response& res) {
             res.set_header("Cache-Control", kAskEveryTime);
 
-            if (!player.listOutputs) {
+            if (!player.outputs.list) {
                 respond(res, 503, errorDocument(kNoOutputs));
                 return;
             }
 
-            const auto read = player.listOutputs();
-            if (read.outcome != OutputOutcome::done) {
-                respond(res, httpStatusFor(read.outcome), outputFailedDocument(read.outcome));
+            const auto read = player.outputs.list();
+            if (read.outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(read.outcome), failureDocument(read.outcome));
                 return;
             }
 
@@ -2625,14 +2613,14 @@ struct HttpServer::Impl {
                 return;
             }
 
-            if (!player.listOutputs || !player.setActiveOutput) {
+            if (!player.outputs.list || !player.outputs.setActive) {
                 respond(res, 503, errorDocument(kNoOutputs));
                 return;
             }
 
-            const auto read = player.listOutputs();
-            if (read.outcome != OutputOutcome::done) {
-                respond(res, httpStatusFor(read.outcome), outputFailedDocument(read.outcome));
+            const auto read = player.outputs.list();
+            if (read.outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(read.outcome), failureDocument(read.outcome));
                 return;
             }
 
@@ -2642,14 +2630,14 @@ struct HttpServer::Impl {
                                return device.id == request.deviceId;
                            });
             if (!listed) {
-                respond(res, httpStatusFor(OutputOutcome::notListed),
-                        outputFailedDocument(OutputOutcome::notListed));
+                respond(res, httpStatusFor(PlayerOutcome::notListed),
+                        failureDocument(PlayerOutcome::notListed));
                 return;
             }
 
-            const auto outcome = player.setActiveOutput(request.deviceId);
-            if (outcome != OutputOutcome::done) {
-                respond(res, httpStatusFor(outcome), outputFailedDocument(outcome));
+            const auto outcome = player.outputs.setActive(request.deviceId);
+            if (outcome != PlayerOutcome::done) {
+                respond(res, httpStatusFor(outcome), failureDocument(outcome));
                 return;
             }
 
@@ -2694,11 +2682,9 @@ ListenerStatus HttpServer::start() {
 
     server.Get("/api/capabilities", [&impl](const httplib::Request&, httplib::Response& res) {
         respond(res, 200,
-                capabilitiesDocument(*impl.currentSettings(), impl.player.streamFormats,
-                                     impl.player.releaseOutput != nullptr, impl.library != nullptr,
-                                     impl.player.playerName, impl.player.playerVersion,
-                                     impl.player.volumeMin, impl.player.volumeMax,
-                                     impl.player.volumeUnit, impl.player.playbackOrders));
+                capabilitiesDocument(
+                    *impl.currentSettings(), impl.player.report, impl.player.stream.formats,
+                    impl.player.stream.releaseOutput != nullptr, impl.library != nullptr));
     });
 
     impl.addTagRoutes();

@@ -54,13 +54,13 @@ std::optional<std::string> currentDeviceId() {
 
 }  // namespace
 
-PlayerOutputs playerOutputsVia(MainThreadQueue& mainThread) {
-    PlayerOutputs outputs;
+OutputCalls playerOutputsVia(MainThreadQueue& mainThread) {
+    OutputCalls outputs;
 
     if (output_manager_v2::tryGet().is_empty())
         return outputs;
 
-    outputs.listOutputs = [&mainThread]() {
+    outputs.list = [&mainThread]() {
         return askPlayer<OutputsRead>(
             mainThread, "listing the output devices",
             [](const AnswerPtr<OutputsRead>& answer) {
@@ -82,14 +82,14 @@ PlayerOutputs playerOutputsVia(MainThreadQueue& mainThread) {
 
                 answer->set(std::move(read));
             },
-            OutputsRead{OutputOutcome::timedOut, {}, std::nullopt},
-            OutputsRead{OutputOutcome::playerRefused, {}, std::nullopt});
+            OutputsRead{PlayerOutcome::timedOut, {}, std::nullopt},
+            OutputsRead{PlayerOutcome::playerRefused, {}, std::nullopt});
     };
 
-    outputs.setActiveOutput = [&mainThread](const std::string& id) {
-        return askPlayer<OutputOutcome>(
+    outputs.setActive = [&mainThread](const std::string& id) {
+        return askPlayer<PlayerOutcome>(
             mainThread, "switching the output device",
-            [id](const AnswerPtr<OutputOutcome>& answer) {
+            [id](const AnswerPtr<PlayerOutcome>& answer) {
                 const auto parsed = parseDeviceId(id);
 
                 // Comparing the GUIDs themselves, never the printed id, so this never depends on
@@ -104,14 +104,14 @@ PlayerOutputs playerOutputsVia(MainThreadQueue& mainThread) {
                 }
 
                 if (!listed) {
-                    answer->set(OutputOutcome::notListed);
+                    answer->set(PlayerOutcome::notListed);
                     return;
                 }
 
                 output_manager_v2::get()->setCoreConfigDevice(parsed.module, parsed.device);
-                answer->set(OutputOutcome::done);
+                answer->set(PlayerOutcome::done);
             },
-            OutputOutcome::timedOut, OutputOutcome::playerRefused);
+            PlayerOutcome::timedOut, PlayerOutcome::playerRefused);
     };
 
     return outputs;

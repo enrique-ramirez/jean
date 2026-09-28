@@ -20,26 +20,26 @@ Player TestServer::recordingWriter(WriterLog* log) {
 
 Player TestServer::writing(TagWriter writeTags) {
     Player player;
-    player.writeTags = std::move(writeTags);
+    player.library.writeTags = std::move(writeTags);
     return player;
 }
 
 Player TestServer::showing(ArtworkReader readArtwork) {
     Player player;
-    player.readArtwork = std::move(readArtwork);
+    player.library.readArtwork = std::move(readArtwork);
     return player;
 }
 
 Player TestServer::listing(PlaylistLister listPlaylists) {
     Player player;
-    player.listPlaylists = std::move(listPlaylists);
+    player.playlists.list = std::move(listPlaylists);
     return player;
 }
 
 Player TestServer::streaming(StreamOpener openStream, std::vector<std::string> formats) {
     Player player;
-    player.openStream = std::move(openStream);
-    player.streamFormats = std::move(formats);
+    player.stream.open = std::move(openStream);
+    player.stream.formats = std::move(formats);
     return player;
 }
 

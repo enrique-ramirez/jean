@@ -286,16 +286,16 @@ constexpr char kPlayPause[] = "/api/playback/play-pause";
 
 Player countingTransport(std::atomic<size_t>* sent) {
     Player player = servingPlayer();
-    player.commandTransport = [sent](Transport) {
+    player.playback.commandTransport = [sent](Transport) {
         ++*sent;
-        return PlaylistOutcome::done;
+        return PlayerOutcome::done;
     };
     return player;
 }
 
 Player countingCreates(std::atomic<size_t>* created) {
     Player player = servingPlayer();
-    player.createPlaylist = [created](const std::string& title, const NewPlaylistRows&) {
+    player.playlists.create = [created](const std::string& title, const NewPlaylistRows&) {
         ++*created;
         PlaylistResult made;
         made.playlist.id = "6f1c0b8a-2d4e-4f7a-9c31-0ab5e8d24f60";
@@ -342,7 +342,7 @@ TEST_CASE("a reload turning controlPlayback off refuses the next playback comman
     const auto refused = post(server, kPlayPause, "");
     REQUIRE(refused);
     CHECK(refused->status == 403);
-    CHECK(errorOf(*refused) == describe(PlaylistOutcome::playbackDisabled));
+    CHECK(errorOf(*refused) == describe(PlayerOutcome::playbackDisabled));
     CHECK(sent == 1);
     CHECK(capabilitiesOf(server)["canControlPlayback"] == false);
 
@@ -369,7 +369,7 @@ TEST_CASE("a reload turning writePlaylists off refuses the next playlist write, 
     const auto refused = post(server, "/api/playlists", R"({"title": "Evening"})");
     REQUIRE(refused);
     CHECK(refused->status == 403);
-    CHECK(errorOf(*refused) == describe(PlaylistOutcome::writesDisabled));
+    CHECK(errorOf(*refused) == describe(PlayerOutcome::writesDisabled));
     CHECK(created == 1);
     CHECK(capabilitiesOf(server)["canWritePlaylists"] == false);
 }

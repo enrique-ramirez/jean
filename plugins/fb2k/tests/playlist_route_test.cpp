@@ -72,7 +72,7 @@ struct PlayerLog {
     int removals = 0;
     AutoPlaylistSpec lastSpec;
     std::string lastId;
-    PlaylistOutcome answer = PlaylistOutcome::done;
+    PlayerOutcome answer = PlayerOutcome::done;
 };
 
 PlaylistResult answering(const PlayerLog* log) {
@@ -85,28 +85,28 @@ PlaylistResult answering(const PlayerLog* log) {
 Player recordingPlayer(PlayerLog* log) {
     Player player;
 
-    player.listPlaylists = [] { return PlaylistsResult{PlaylistOutcome::done, {rock()}}; };
+    player.playlists.list = [] { return PlaylistsResult{PlayerOutcome::done, {rock()}}; };
 
-    player.createAutoPlaylist = [log](const AutoPlaylistSpec& spec, int) {
+    player.autoPlaylists.create = [log](const AutoPlaylistSpec& spec, int) {
         log->creates++;
         log->lastSpec = spec;
         return answering(log);
     };
 
-    player.updateAutoPlaylist = [log](const std::string& id, const AutoPlaylistSpec& spec) {
+    player.autoPlaylists.update = [log](const std::string& id, const AutoPlaylistSpec& spec) {
         log->updates++;
         log->lastId = id;
         log->lastSpec = spec;
         return answering(log);
     };
 
-    player.removeAutoPlaylist = [log](const std::string& id) {
+    player.autoPlaylists.remove = [log](const std::string& id) {
         log->removals++;
         log->lastId = id;
         return answering(log);
     };
 
-    player.previewQuery = [](const std::string& query) {
+    player.autoPlaylists.preview = [](const std::string& query) {
         PreviewResult preview;
         preview.valid = query != "bad";
         preview.error = preview.valid ? "" : "Query syntax error";
@@ -128,7 +128,7 @@ json capabilitiesOf(const Settings& settings) {
 
 json capabilitiesReporting(std::vector<std::string> orders) {
     Player player = servingPlayer();
-    player.playbackOrders = std::move(orders);
+    player.report.playbackOrders = std::move(orders);
 
     const TestServer server(servingSettings(), player);
     const auto response = server.client().Get("/api/capabilities");
@@ -213,7 +213,7 @@ struct FillLog {
 Player fillingPlayer(FillLog* log) {
     Player player;
 
-    player.ownPlaylist = [log](OwnPlaylistRole role, const std::string& title) {
+    player.playlists.resolveOwn = [log](OwnPlaylistRole role, const std::string& title) {
         log->roles.push_back(nameOf(role));
         log->title = title;
 
@@ -233,7 +233,7 @@ Player fillingPlayer(FillLog* log) {
         return result;
     };
 
-    player.emptyOwnPlaylist = [log](OwnPlaylistRole role) {
+    player.playlists.emptyOwn = [log](OwnPlaylistRole role) {
         PlaylistAnnotation playlist;
         playlist.id = log->idFor(role);
 
@@ -247,7 +247,7 @@ Player fillingPlayer(FillLog* log) {
     // The seam's one delete, and the only way anything in core/ can destroy a playlist. The fake
     // answers it rather than leaving it null, so a route that emptied a playlist by deleting it
     // is caught having done so instead of crashing on the way.
-    player.removeAutoPlaylist = [log](const std::string& id) {
+    player.autoPlaylists.remove = [log](const std::string& id) {
         log->deletes++;
         log->held.erase(id);
 
@@ -260,14 +260,15 @@ Player fillingPlayer(FillLog* log) {
         return result;
     };
 
-    player.fill = [log](const std::string& playlistId, const std::string& title, uint64_t structure,
-                        const std::vector<uint32_t>& ordinals, bool replace) {
+    player.playlists.fill = [log](const std::string& playlistId, const std::string& title,
+                                  uint64_t structure, const std::vector<uint32_t>& ordinals,
+                                  bool replace) {
         log->fills++;
         log->filled = playlistId;
         log->replace = replace;
 
         if (structure != log->structure)
-            return FillResult{PlaylistOutcome::structureMoved, {}};
+            return FillResult{PlayerOutcome::structureMoved, {}};
 
         if (!title.empty())
             log->titles[playlistId] = title;
@@ -288,7 +289,7 @@ Player fillingPlayer(FillLog* log) {
         if (!ordinals.empty())
             generation++;
 
-        return FillResult{PlaylistOutcome::done, std::move(positions), generation};
+        return FillResult{PlayerOutcome::done, std::move(positions), generation};
     };
 
     return player;
@@ -372,11 +373,11 @@ Settings readOnlyPlaylists() {
 Player fillingPlayerListing(FillLog* log) {
     auto player = fillingPlayer(log);
 
-    player.listPlaylists = [log] {
+    player.playlists.list = [log] {
         PlaylistAnnotation playlist;
         playlist.id = kPlaylistId;
         playlist.title = log->listedTitle;
-        return PlaylistsResult{PlaylistOutcome::done, {playlist}};
+        return PlaylistsResult{PlayerOutcome::done, {playlist}};
     };
 
     return player;
@@ -388,7 +389,7 @@ Player fillingPlayerListing(FillLog* log) {
 Player namingPlayer(FillLog* log) {
     auto player = fillingPlayer(log);
 
-    player.listPlaylists = [log] {
+    player.playlists.list = [log] {
         const auto own = log->playlists[nameOf(OwnPlaylistRole::scratch)];
 
         std::vector<PlaylistAnnotation> playlists;
@@ -404,7 +405,7 @@ Player namingPlayer(FillLog* log) {
                            return playlist;
                        });
 
-        return PlaylistsResult{PlaylistOutcome::done, std::move(playlists)};
+        return PlaylistsResult{PlayerOutcome::done, std::move(playlists)};
     };
 
     return player;
@@ -580,12 +581,12 @@ PlaylistRow formatted(const Row& row, const std::vector<std::string>& columns) {
 Player rowReadingPlayer(std::vector<Row> rows = playlistRows()) {
     Player player = servingPlayer();
 
-    player.readPlaylistRows = [rows = std::move(rows)](const std::string& playlistId, size_t offset,
-                                                       size_t count,
-                                                       const std::vector<std::string>& columns) {
+    player.playlists.readRows = [rows = std::move(rows)](const std::string& playlistId,
+                                                         size_t offset, size_t count,
+                                                         const std::vector<std::string>& columns) {
         PlaylistRowsRead read;
         if (playlistId != kPlaylistId) {
-            read.outcome = PlaylistOutcome::noSuchPlaylist;
+            read.outcome = PlayerOutcome::noSuchPlaylist;
             return read;
         }
 
@@ -610,9 +611,9 @@ Player rowReadingPlayer(std::vector<Row> rows = playlistRows()) {
 Player countingRowReads(int* reads) {
     Player player = rowReadingPlayer();
 
-    player.readPlaylistRows = [reads, read = player.readPlaylistRows](
-                                  const std::string& playlistId, size_t offset, size_t count,
-                                  const std::vector<std::string>& columns) {
+    player.playlists.readRows = [reads, read = player.playlists.readRows](
+                                    const std::string& playlistId, size_t offset, size_t count,
+                                    const std::vector<std::string>& columns) {
         ++*reads;
         return read(playlistId, offset, count, columns);
     };
@@ -678,34 +679,34 @@ constexpr uint64_t kOldestRetained = kRowsRevision - 2;
 Player changeReadingPlayer(std::map<uint32_t, Row> changed = changedRows()) {
     Player player = rowReadingPlayer();
 
-    player.readChangedPlaylistRows = [changed = std::move(changed)](
-                                         const std::string& playlistId, uint64_t structure,
-                                         uint64_t since, const std::vector<std::string>& columns) {
-        PlaylistChangesRead read;
-        if (playlistId != kPlaylistId) {
-            read.outcome = PlaylistOutcome::noSuchPlaylist;
+    player.playlists.readChangedRows =
+        [changed = std::move(changed)](const std::string& playlistId, uint64_t structure,
+                                       uint64_t since, const std::vector<std::string>& columns) {
+            PlaylistChangesRead read;
+            if (playlistId != kPlaylistId) {
+                read.outcome = PlayerOutcome::noSuchPlaylist;
+                return read;
+            }
+
+            if (structure != kRowsStructure) {
+                read.catchUp = DeltaOutcome::structureChanged;
+                return read;
+            }
+
+            if (since < kOldestRetained) {
+                read.catchUp = DeltaOutcome::revisionTooOld;
+                return read;
+            }
+
+            read.revision = kRowsRevision;
+            if (since >= kRowsRevision)
+                return read;
+
+            for (const auto& [position, row] : changed)
+                read.rows.push_back({position, formatted(row, columns)});
+
             return read;
-        }
-
-        if (structure != kRowsStructure) {
-            read.catchUp = DeltaOutcome::structureChanged;
-            return read;
-        }
-
-        if (since < kOldestRetained) {
-            read.catchUp = DeltaOutcome::revisionTooOld;
-            return read;
-        }
-
-        read.revision = kRowsRevision;
-        if (since >= kRowsRevision)
-            return read;
-
-        for (const auto& [position, row] : changed)
-            read.rows.push_back({position, formatted(row, columns)});
-
-        return read;
-    };
+        };
 
     return player;
 }
@@ -713,12 +714,13 @@ Player changeReadingPlayer(std::map<uint32_t, Row> changed = changedRows()) {
 Player countingChangeReads(int* reads) {
     Player player = countingRowReads(reads);
 
-    player.readChangedPlaylistRows = [reads, read = changeReadingPlayer().readChangedPlaylistRows](
-                                         const std::string& playlistId, uint64_t structure,
-                                         uint64_t since, const std::vector<std::string>& columns) {
-        ++*reads;
-        return read(playlistId, structure, since, columns);
-    };
+    player.playlists.readChangedRows =
+        [reads, read = changeReadingPlayer().playlists.readChangedRows](
+            const std::string& playlistId, uint64_t structure, uint64_t since,
+            const std::vector<std::string>& columns) {
+            ++*reads;
+            return read(playlistId, structure, since, columns);
+        };
 
     // The captured copy lives inside the std::function that owns it. The analyser reads
     // std::function's inline storage as a stack temporary and calls the copy an escape.
@@ -812,13 +814,13 @@ struct PlayLog {
     int calls = 0;
     std::string playlistId;
     uint32_t index = 0;
-    PlaylistOutcome answer = PlaylistOutcome::done;
+    PlayerOutcome answer = PlayerOutcome::done;
 };
 
 Player playingPlayer(PlayLog* log) {
     Player player = rowReadingPlayer();
 
-    player.playPlaylistRow = [log](const std::string& playlistId, uint32_t index) {
+    player.playback.playPlaylistRow = [log](const std::string& playlistId, uint32_t index) {
         log->calls++;
         log->playlistId = playlistId;
         log->index = index;
@@ -863,7 +865,7 @@ struct CreateLog {
     NewPlaylistRows rows;
 
     std::vector<PlaylistAnnotation> playlists{rock(), ordinary()};
-    PlaylistOutcome answer = PlaylistOutcome::done;
+    PlayerOutcome answer = PlayerOutcome::done;
 };
 
 // Stands in for fb2k/playlists.cpp: a create lands at the end of the player's list holding the
@@ -872,15 +874,15 @@ struct CreateLog {
 Player creatingPlayer(CreateLog* log) {
     Player player = servingPlayer();
 
-    player.listPlaylists = [log] { return PlaylistsResult{PlaylistOutcome::done, log->playlists}; };
+    player.playlists.list = [log] { return PlaylistsResult{PlayerOutcome::done, log->playlists}; };
 
-    player.createPlaylist = [log](const std::string& title, const NewPlaylistRows& rows) {
+    player.playlists.create = [log](const std::string& title, const NewPlaylistRows& rows) {
         log->jobs++;
         log->creates++;
         log->title = title;
         log->rows = rows;
 
-        if (log->answer != PlaylistOutcome::done)
+        if (log->answer != PlayerOutcome::done)
             return playlistFailure(log->answer);
 
         PlaylistAnnotation made;
@@ -898,13 +900,13 @@ Player creatingPlayer(CreateLog* log) {
         return result;
     };
 
-    player.fill = [log](const std::string&, const std::string&, uint64_t,
-                        const std::vector<uint32_t>&, bool) {
+    player.playlists.fill = [log](const std::string&, const std::string&, uint64_t,
+                                  const std::vector<uint32_t>&, bool) {
         log->jobs++;
-        return FillResult{PlaylistOutcome::done, {}};
+        return FillResult{PlayerOutcome::done, {}};
     };
 
-    player.ownPlaylist = [log](OwnPlaylistRole, const std::string&) {
+    player.playlists.resolveOwn = [log](OwnPlaylistRole, const std::string&) {
         log->jobs++;
         return PlaylistResult{};
     };
@@ -1008,19 +1010,19 @@ struct EditLog {
 Player editingPlayer(EditLog* log) {
     Player player = servingPlayer();
 
-    player.listPlaylists = [log] { return PlaylistsResult{PlaylistOutcome::done, log->playlists}; };
+    player.playlists.list = [log] { return PlaylistsResult{PlayerOutcome::done, log->playlists}; };
 
-    player.renamePlaylist = [log](const std::string& id, const std::string& title) {
+    player.playlists.rename = [log](const std::string& id, const std::string& title) {
         log->renames++;
         log->lastId = id;
         log->lastTitle = title;
 
         const auto found = log->at(id);
         if (found == log->playlists.end())
-            return playlistFailure(PlaylistOutcome::noSuchPlaylist);
+            return playlistFailure(PlayerOutcome::noSuchPlaylist);
 
         if (found->role)
-            return playlistFailure(PlaylistOutcome::ownPlaylist);
+            return playlistFailure(PlayerOutcome::ownPlaylist);
 
         found->title = title;
 
@@ -1029,16 +1031,16 @@ Player editingPlayer(EditLog* log) {
         return result;
     };
 
-    player.removePlaylist = [log](const std::string& id) {
+    player.playlists.remove = [log](const std::string& id) {
         log->removals++;
         log->lastId = id;
 
         const auto found = log->at(id);
         if (found == log->playlists.end())
-            return playlistFailure(PlaylistOutcome::noSuchPlaylist);
+            return playlistFailure(PlayerOutcome::noSuchPlaylist);
 
         if (found->role)
-            return playlistFailure(PlaylistOutcome::ownPlaylist);
+            return playlistFailure(PlayerOutcome::ownPlaylist);
 
         log->playlists.erase(found);
         log->renumber();
@@ -1048,20 +1050,20 @@ Player editingPlayer(EditLog* log) {
         return result;
     };
 
-    player.movePlaylist = [log](const std::string& id, uint32_t index) {
+    player.playlists.move = [log](const std::string& id, uint32_t index) {
         log->moves++;
         log->lastId = id;
         log->lastIndex = index;
 
         const auto found = log->at(id);
         if (found == log->playlists.end())
-            return playlistFailure(PlaylistOutcome::noSuchPlaylist);
+            return playlistFailure(PlayerOutcome::noSuchPlaylist);
 
         if (found->role)
-            return playlistFailure(PlaylistOutcome::ownPlaylist);
+            return playlistFailure(PlayerOutcome::ownPlaylist);
 
         if (index >= log->playlists.size())
-            return playlistFailure(PlaylistOutcome::positionPastEnd);
+            return playlistFailure(PlayerOutcome::positionPastEnd);
 
         auto moved = std::move(*found);
         log->playlists.erase(found);
@@ -1078,36 +1080,36 @@ Player editingPlayer(EditLog* log) {
 }
 
 Player countingQueueCalls(Player player, int* calls) {
-    player.readQueue = [calls] {
+    player.queue.read = [calls] {
         ++*calls;
         return QueueRead{};
     };
 
-    player.queuePlaylistRows = [calls](const std::string&, const std::vector<uint32_t>&,
-                                       std::optional<QueuePosition>) {
+    player.queue.addPlaylistRows = [calls](const std::string&, const std::vector<uint32_t>&,
+                                           std::optional<QueuePosition>) {
         ++*calls;
-        return PlaylistOutcome::done;
+        return PlayerOutcome::done;
     };
 
-    player.queueLibraryTracks = [calls](uint64_t, const std::vector<uint32_t>&,
-                                        std::optional<QueuePosition>) {
+    player.queue.addLibraryTracks = [calls](uint64_t, const std::vector<uint32_t>&,
+                                            std::optional<QueuePosition>) {
         ++*calls;
-        return PlaylistOutcome::done;
+        return PlayerOutcome::done;
     };
 
-    player.moveQueueEntry = [calls](uint32_t, uint32_t, uint64_t) {
+    player.queue.moveEntry = [calls](uint32_t, uint32_t, uint64_t) {
         ++*calls;
-        return PlaylistOutcome::done;
+        return PlayerOutcome::done;
     };
 
-    player.removeQueueEntry = [calls](uint32_t, uint64_t) {
+    player.queue.removeEntry = [calls](uint32_t, uint64_t) {
         ++*calls;
-        return PlaylistOutcome::done;
+        return PlayerOutcome::done;
     };
 
-    player.clearQueue = [calls] {
+    player.queue.clear = [calls] {
         ++*calls;
-        return PlaylistOutcome::done;
+        return PlayerOutcome::done;
     };
 
     return player;
@@ -1183,7 +1185,7 @@ bool namesARow(const Held& held, const std::vector<uint32_t>& positions) {
 Player rowEditingPlayer(RowsLog* log) {
     Player player = servingPlayer();
 
-    player.listPlaylists = [log] {
+    player.playlists.list = [log] {
         ++log->calls;
 
         std::vector<PlaylistAnnotation> playlists;
@@ -1199,17 +1201,17 @@ Player rowEditingPlayer(RowsLog* log) {
             playlists.push_back(playlist);
         }
 
-        return PlaylistsResult{PlaylistOutcome::done, std::move(playlists)};
+        return PlaylistsResult{PlayerOutcome::done, std::move(playlists)};
     };
 
-    player.readPlaylistRows = [log](const std::string& playlistId, size_t offset, size_t count,
-                                    const std::vector<std::string>& columns) {
+    player.playlists.readRows = [log](const std::string& playlistId, size_t offset, size_t count,
+                                      const std::vector<std::string>& columns) {
         ++log->calls;
 
         PlaylistRowsRead read;
         const auto* held = log->at(playlistId);
         if (!held) {
-            read.outcome = PlaylistOutcome::noSuchPlaylist;
+            read.outcome = PlayerOutcome::noSuchPlaylist;
             return read;
         }
 
@@ -1231,24 +1233,24 @@ Player rowEditingPlayer(RowsLog* log) {
         return read;
     };
 
-    player.copyPlaylistRows = [log](const std::string& playlistId,
-                                    const std::string& sourcePlaylistId,
-                                    const std::vector<uint32_t>& positions) {
+    player.playlists.copyRows = [log](const std::string& playlistId,
+                                      const std::string& sourcePlaylistId,
+                                      const std::vector<uint32_t>& positions) {
         ++log->calls;
         log->copies++;
 
         auto* target = log->at(playlistId);
         const auto* source = log->at(sourcePlaylistId);
         if (!target || !source)
-            return RowsEdited{PlaylistOutcome::noSuchPlaylist, 0, {}};
+            return RowsEdited{PlayerOutcome::noSuchPlaylist, 0, {}};
 
         // The target only. A source is read rather than changed, so its role is no reason to
         // refuse: the two cases below drive that either way round.
         if (target->role)
-            return RowsEdited{PlaylistOutcome::ownPlaylist, target->structure, {}};
+            return RowsEdited{PlayerOutcome::ownPlaylist, target->structure, {}};
 
         if (!namesARow(*source, positions))
-            return RowsEdited{PlaylistOutcome::positionPastEnd, target->structure, {}};
+            return RowsEdited{PlayerOutcome::positionPastEnd, target->structure, {}};
 
         RowsEdited copied;
         for (const uint32_t position : positions) {
@@ -1263,23 +1265,23 @@ Player rowEditingPlayer(RowsLog* log) {
         return copied;
     };
 
-    player.removePlaylistRows = [log](const std::string& playlistId, uint64_t structure,
-                                      const std::vector<uint32_t>& positions) {
+    player.playlists.removeRows = [log](const std::string& playlistId, uint64_t structure,
+                                        const std::vector<uint32_t>& positions) {
         ++log->calls;
         log->removals++;
 
         auto* target = log->at(playlistId);
         if (!target)
-            return RowsEdited{PlaylistOutcome::noSuchPlaylist, 0, {}};
+            return RowsEdited{PlayerOutcome::noSuchPlaylist, 0, {}};
 
         if (target->role)
-            return RowsEdited{PlaylistOutcome::ownPlaylist, target->structure, {}};
+            return RowsEdited{PlayerOutcome::ownPlaylist, target->structure, {}};
 
         if (structure != target->structure)
-            return RowsEdited{PlaylistOutcome::rowsMoved, target->structure, {}};
+            return RowsEdited{PlayerOutcome::rowsMoved, target->structure, {}};
 
         if (!namesARow(*target, positions))
-            return RowsEdited{PlaylistOutcome::positionPastEnd, target->structure, {}};
+            return RowsEdited{PlayerOutcome::positionPastEnd, target->structure, {}};
 
         // Descending, so taking one row out does not move the position of the next.
         auto descending = positions;
@@ -1291,17 +1293,17 @@ Player rowEditingPlayer(RowsLog* log) {
         if (!positions.empty())
             target->structure++;
 
-        return RowsEdited{PlaylistOutcome::done, target->structure, {}};
+        return RowsEdited{PlayerOutcome::done, target->structure, {}};
     };
 
     // Answered rather than left null because the fill route is what a removal's grammar is held
     // against below: a body that parsed when it should not have is then caught by the count
     // instead of by a crash.
-    player.fill = [log](const std::string&, const std::string&, uint64_t,
-                        const std::vector<uint32_t>&, bool) {
+    player.playlists.fill = [log](const std::string&, const std::string&, uint64_t,
+                                  const std::vector<uint32_t>&, bool) {
         ++log->calls;
         log->fills++;
-        return FillResult{PlaylistOutcome::done, {}};
+        return FillResult{PlayerOutcome::done, {}};
     };
 
     return player;
@@ -1311,7 +1313,7 @@ Player rowEditingPlayer(RowsLog* log) {
 // can be held against it on one server.
 Player rowEditingPlayerCreating(RowsLog* log, CreateLog* creates) {
     auto player = rowEditingPlayer(log);
-    player.createPlaylist = creatingPlayer(creates).createPlaylist;
+    player.playlists.create = creatingPlayer(creates).playlists.create;
     return player;
 }
 
@@ -1476,14 +1478,14 @@ Player writingPlayer(WriteLog* log) {
     const Player editing = editingPlayer(&log->edits);
     const Player rowEditing = rowEditingPlayer(&log->rows);
 
-    player.ownPlaylist = filling.ownPlaylist;
-    player.fill = filling.fill;
-    player.createPlaylist = creating.createPlaylist;
-    player.renamePlaylist = editing.renamePlaylist;
-    player.removePlaylist = editing.removePlaylist;
-    player.movePlaylist = editing.movePlaylist;
-    player.copyPlaylistRows = rowEditing.copyPlaylistRows;
-    player.removePlaylistRows = rowEditing.removePlaylistRows;
+    player.playlists.resolveOwn = filling.playlists.resolveOwn;
+    player.playlists.fill = filling.playlists.fill;
+    player.playlists.create = creating.playlists.create;
+    player.playlists.rename = editing.playlists.rename;
+    player.playlists.remove = editing.playlists.remove;
+    player.playlists.move = editing.playlists.move;
+    player.playlists.copyRows = rowEditing.playlists.copyRows;
+    player.playlists.removeRows = rowEditing.playlists.removeRows;
     return player;
 }
 
@@ -1520,7 +1522,7 @@ void namesTheRole(const httplib::Response& response, bool writePlaylists) {
     if (!writePlaylists)
         return;
 
-    CHECK(errorIn(response) == describe(PlaylistOutcome::ownPlaylist));
+    CHECK(errorIn(response) == describe(PlayerOutcome::ownPlaylist));
 }
 
 // The scratch under a title a user could have given a playlist of their own, so a route that
@@ -1575,28 +1577,28 @@ std::vector<Write> lockableWrites() {
 Player lockedPlaylistPlayer(int* asked) {
     Player player = servingPlayer();
 
-    player.listPlaylists = [] { return PlaylistsResult{PlaylistOutcome::done, {rock()}}; };
+    player.playlists.list = [] { return PlaylistsResult{PlayerOutcome::done, {rock()}}; };
 
-    player.renamePlaylist = [asked](const std::string&, const std::string&) {
+    player.playlists.rename = [asked](const std::string&, const std::string&) {
         ++*asked;
-        return playlistFailure(PlaylistOutcome::playlistLocked);
+        return playlistFailure(PlayerOutcome::playlistLocked);
     };
 
-    player.removePlaylist = [asked](const std::string&) {
+    player.playlists.remove = [asked](const std::string&) {
         ++*asked;
-        return playlistFailure(PlaylistOutcome::playlistLocked);
+        return playlistFailure(PlayerOutcome::playlistLocked);
     };
 
-    player.copyPlaylistRows = [asked](const std::string&, const std::string&,
-                                      const std::vector<uint32_t>&) {
-        ++*asked;
-        return RowsEdited{PlaylistOutcome::playlistLocked, 0, {}};
-    };
-
-    player.removePlaylistRows = [asked](const std::string&, uint64_t,
+    player.playlists.copyRows = [asked](const std::string&, const std::string&,
                                         const std::vector<uint32_t>&) {
         ++*asked;
-        return RowsEdited{PlaylistOutcome::playlistLocked, 0, {}};
+        return RowsEdited{PlayerOutcome::playlistLocked, 0, {}};
+    };
+
+    player.playlists.removeRows = [asked](const std::string&, uint64_t,
+                                          const std::vector<uint32_t>&) {
+        ++*asked;
+        return RowsEdited{PlayerOutcome::playlistLocked, 0, {}};
     };
 
     return player;
@@ -1606,11 +1608,11 @@ Player lockedPlaylistPlayer(int* asked) {
 // fill rather than through copyPlaylistRows. foobar2000 takes an insert into a locked playlist
 // and drops it without failing anything, so the positions a fill worked out ahead of the insert
 // are no evidence that rows landed. They ride along with the refusal here for that reason.
-Player refusingFillPlayer(FillLog* log, PlaylistOutcome outcome) {
+Player refusingFillPlayer(FillLog* log, PlayerOutcome outcome) {
     auto player = fillingPlayer(log);
 
-    player.fill = [log, outcome](const std::string& playlistId, const std::string&, uint64_t,
-                                 const std::vector<uint32_t>&, bool) {
+    player.playlists.fill = [log, outcome](const std::string& playlistId, const std::string&,
+                                           uint64_t, const std::vector<uint32_t>&, bool) {
         log->fills++;
         log->filled = playlistId;
         return FillResult{outcome, {53, 54, 55}};
@@ -1622,10 +1624,10 @@ Player refusingFillPlayer(FillLog* log, PlaylistOutcome outcome) {
 // A player that will not say which playlists it has. makePlaylistLister goes through askPlayer,
 // which answers timedOut after the full wait and playerRefused once the main thread's queue is
 // closed at shutdown, so both of these reach a route on an install that is still serving.
-Player refusingListingPlayer(FillLog* log, PlaylistOutcome outcome) {
+Player refusingListingPlayer(FillLog* log, PlayerOutcome outcome) {
     auto player = fillingPlayer(log);
 
-    player.listPlaylists = [outcome] { return PlaylistsResult{outcome, {}}; };
+    player.playlists.list = [outcome] { return PlaylistsResult{outcome, {}}; };
 
     return player;
 }
@@ -1634,7 +1636,7 @@ Player refusingListingPlayer(FillLog* log, PlaylistOutcome outcome) {
 
 TEST_CASE("GET /api/playlists answers each playlist by everything a client draws it from") {
     const TestServer server(servingSettings(), TestServer::listing([] {
-                                return PlaylistsResult{PlaylistOutcome::done, {rock(), ordinary()}};
+                                return PlaylistsResult{PlayerOutcome::done, {rock(), ordinary()}};
                             }));
 
     const auto response = server.client().Get("/api/playlists");
@@ -1680,7 +1682,7 @@ TEST_CASE("the scratch answers its role however it and the playlists around it a
                                 auto titled = ordinary();
                                 titled.title = kScratchTitle;
 
-                                return PlaylistsResult{PlaylistOutcome::done, {scratch, titled}};
+                                return PlaylistsResult{PlayerOutcome::done, {scratch, titled}};
                             }));
 
     const auto response = server.client().Get("/api/playlists");
@@ -1706,7 +1708,7 @@ TEST_CASE("a playlist carries these keys and no others") {
                                 scratch.id = kScratchPlaylistId;
                                 scratch.role = OwnPlaylistRole::scratch;
 
-                                return PlaylistsResult{PlaylistOutcome::done, {rock(), scratch}};
+                                return PlaylistsResult{PlayerOutcome::done, {rock(), scratch}};
                             }));
 
     const auto response = server.client().Get("/api/playlists");
@@ -2195,12 +2197,12 @@ TEST_CASE(
     "playing from a playlist the player does not hold is a 404, and a row past that "
     "playlist's end is a 400") {
     struct Case {
-        PlaylistOutcome outcome;
+        PlayerOutcome outcome;
         int status;
     };
 
-    for (const auto& expected : {Case{PlaylistOutcome::noSuchPlaylist, 404},
-                                 Case{PlaylistOutcome::positionPastEnd, 400}}) {
+    for (const auto& expected :
+         {Case{PlayerOutcome::noSuchPlaylist, 404}, Case{PlayerOutcome::positionPastEnd, 400}}) {
         INFO("outcome: ", describe(expected.outcome));
         PlayLog log;
         log.answer = expected.outcome;
@@ -2748,7 +2750,7 @@ TEST_CASE(
 
     REQUIRE(response);
     CHECK(response->status == 409);
-    CHECK(json::parse(response->body)["error"] == describe(PlaylistOutcome::rowsMoved));
+    CHECK(json::parse(response->body)["error"] == describe(PlayerOutcome::rowsMoved));
 
     CHECK(heldTitles(server, kPlaylistId) == before);
 
@@ -2810,7 +2812,7 @@ TEST_CASE("an edit the player refuses for a locked playlist is a 409 rather than
 
         REQUIRE(response);
         CHECK(response->status == 409);
-        CHECK(json::parse(response->body)["error"] == describe(PlaylistOutcome::playlistLocked));
+        CHECK(json::parse(response->body)["error"] == describe(PlayerOutcome::playlistLocked));
 
         CHECK(asked == 1);
     }
@@ -2827,14 +2829,14 @@ TEST_CASE("a fill into a locked playlist is the 409 a copy into one is") {
         INFO("target: ", target.name);
 
         FillLog log;
-        const TestServer server(
-            servingSettings(), refusingFillPlayer(&log, PlaylistOutcome::playlistLocked), &library);
+        const TestServer server(servingSettings(),
+                                refusingFillPlayer(&log, PlayerOutcome::playlistLocked), &library);
 
         const auto response = post(server, target.path, target.body);
 
         REQUIRE(response);
         CHECK(response->status == 409);
-        CHECK(json::parse(response->body)["error"] == describe(PlaylistOutcome::playlistLocked));
+        CHECK(json::parse(response->body)["error"] == describe(PlayerOutcome::playlistLocked));
 
         CHECK(log.fills == 1);
     }
@@ -2845,7 +2847,7 @@ TEST_CASE("a fill into a locked playlist is the 409 a copy into one is") {
 // none, whatever the player reported adding on its way to refusing.
 TEST_CASE("a fill the player refused answers no positions") {
     struct Refusal {
-        PlaylistOutcome outcome;
+        PlayerOutcome outcome;
         int status;
     };
 
@@ -2853,9 +2855,8 @@ TEST_CASE("a fill the player refused answers no positions") {
     buildLibrary(library);
 
     for (const auto& refusal :
-         {Refusal{PlaylistOutcome::playlistLocked, 409},
-          Refusal{PlaylistOutcome::noSuchPlaylist, 404},
-          Refusal{PlaylistOutcome::playerRefused, 500}, Refusal{PlaylistOutcome::timedOut, 504}}) {
+         {Refusal{PlayerOutcome::playlistLocked, 409}, Refusal{PlayerOutcome::noSuchPlaylist, 404},
+          Refusal{PlayerOutcome::playerRefused, 500}, Refusal{PlayerOutcome::timedOut, 504}}) {
         INFO("outcome: ", describe(refusal.outcome));
 
         FillLog log;
@@ -3118,15 +3119,15 @@ TEST_CASE("a request the component can judge for itself never reaches the player
 
 TEST_CASE("what the player says about a playlist maps onto a status a client can act on") {
     struct Case {
-        PlaylistOutcome outcome;
+        PlayerOutcome outcome;
         int status;
     };
 
     for (const auto& expected :
-         {Case{PlaylistOutcome::queryInvalid, 400}, Case{PlaylistOutcome::notOurs, 403},
-          Case{PlaylistOutcome::noSuchPlaylist, 404}, Case{PlaylistOutcome::keyInUse, 409},
-          Case{PlaylistOutcome::tooMany, 409}, Case{PlaylistOutcome::playerRefused, 500},
-          Case{PlaylistOutcome::timedOut, 504}, Case{PlaylistOutcome::unavailable, 503}}) {
+         {Case{PlayerOutcome::queryInvalid, 400}, Case{PlayerOutcome::notOurs, 403},
+          Case{PlayerOutcome::noSuchPlaylist, 404}, Case{PlayerOutcome::keyInUse, 409},
+          Case{PlayerOutcome::tooMany, 409}, Case{PlayerOutcome::playerRefused, 500},
+          Case{PlayerOutcome::timedOut, 504}, Case{PlayerOutcome::unavailable, 503}}) {
         PlayerLog log;
         log.answer = expected.outcome;
         const TestServer server(servingSettings(), recordingPlayer(&log));
@@ -3150,7 +3151,7 @@ TEST_CASE("a component with no player refuses honestly rather than pretending it
               ->status == 503);
 }
 
-// A create, a rename, a delete and a move all answer PlaylistOutcome::unavailable when there is
+// A create, a rename, a delete and a move all answer PlayerOutcome::unavailable when there is
 // no seam behind them, and that outcome's message is the autoplaylist one. It sends a player
 // owner to maxAutoPlaylists in config.json over a request that named no autoplaylist.
 TEST_CASE("a playlist write with nothing behind it does not blame autoplaylists") {
@@ -3166,7 +3167,7 @@ TEST_CASE("a playlist write with nothing behind it does not blame autoplaylists"
 
         const auto error = errorIn(*response);
         INFO("error: ", error);
-        CHECK(error != describe(PlaylistOutcome::unavailable));
+        CHECK(error != describe(PlayerOutcome::unavailable));
         CHECK(error.find("autoplaylist") == std::string::npos);
     }
 }
@@ -3303,7 +3304,7 @@ struct PreviewLog {
 
 Player countingPreviews(PlayerLog* log, PreviewLog* previews) {
     Player player = recordingPlayer(log);
-    player.previewQuery = [previews](const std::string&) {
+    player.autoPlaylists.preview = [previews](const std::string&) {
         previews->previews++;
         PreviewResult preview;
         preview.valid = true;
@@ -4195,7 +4196,7 @@ TEST_CASE(
         REQUIRE(response);
         CHECK(response->status == 403);
 
-        CHECK(errorIn(*response) == describe(PlaylistOutcome::writesDisabled));
+        CHECK(errorIn(*response) == describe(PlayerOutcome::writesDisabled));
     }
 
     CHECK(log.autoPlaylists.creates == 0);
@@ -4233,7 +4234,7 @@ TEST_CASE(
     CHECK(gated.updates == 0);
 
     PlayerLog asked;
-    asked.answer = PlaylistOutcome::notOurs;
+    asked.answer = PlayerOutcome::notOurs;
     const TestServer writing(servingSettings(), recordingPlayer(&asked));
 
     const auto byOwnership = update(writing);
@@ -4389,15 +4390,15 @@ TEST_CASE(
     "a fill by id the component could not check against the listing is refused with the "
     "listing's own outcome") {
     struct Unanswered {
-        PlaylistOutcome outcome;
+        PlayerOutcome outcome;
         int status;
     };
 
     Library library;
     buildLibrary(library);
 
-    for (const auto& listing : {Unanswered{PlaylistOutcome::timedOut, 504},
-                                Unanswered{PlaylistOutcome::playerRefused, 500}}) {
+    for (const auto& listing : {Unanswered{PlayerOutcome::timedOut, 504},
+                                Unanswered{PlayerOutcome::playerRefused, 500}}) {
         INFO("outcome: ", describe(listing.outcome));
 
         FillLog log;
@@ -4554,7 +4555,7 @@ TEST_CASE("an empty the player cannot serve names its own playlists rather than 
     CHECK(response->status == 503);
 
     const std::string error = json::parse(response->body)["error"];
-    CHECK(error != describe(PlaylistOutcome::unavailable));
+    CHECK(error != describe(PlayerOutcome::unavailable));
     CHECK(error.find("autoplaylist") == std::string::npos);
 }
 
@@ -4665,9 +4666,9 @@ TEST_CASE("with controlPlayback off, playing a row and both scratch routes are 4
     int plays = 0;
 
     Player player = fillingPlayer(&fills);
-    player.playPlaylistRow = [&plays](const std::string&, uint32_t) {
+    player.playback.playPlaylistRow = [&plays](const std::string&, uint32_t) {
         ++plays;
-        return PlaylistOutcome::done;
+        return PlayerOutcome::done;
     };
 
     const TestServer server(parseSettings(R"({"controlPlayback": false})"), player, &library);

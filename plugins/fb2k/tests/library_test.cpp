@@ -4,6 +4,7 @@
 
 #include "third_party/doctest.h"
 
+#include "core/failures.h"
 #include "core/library.h"
 #include "support/wire.h"
 #include "third_party/json.hpp"

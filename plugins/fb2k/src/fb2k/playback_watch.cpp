@@ -100,7 +100,7 @@ void publishName(PlayerStateStore& store, const titleformat_object::ptr& titleSc
     store.nameChanged(toStd(title), toStd(artist), toStd(album), toStd(albumArtist));
 }
 
-PlayingTrackRead playingTrackReadFailure(PlaylistOutcome outcome) {
+PlayingTrackRead playingTrackReadFailure(PlayerOutcome outcome) {
     PlayingTrackRead read;
     read.outcome = outcome;
     return read;
@@ -485,8 +485,8 @@ PlayingTrackReader playingTrackReader(MainThreadQueue& mainThread) {
                 read.columns = formattedPlayingColumns(track, compiledColumns(compiler, columns));
                 answer->set(std::move(read));
             },
-            playingTrackReadFailure(PlaylistOutcome::timedOut),
-            playingTrackReadFailure(PlaylistOutcome::playerRefused));
+            playingTrackReadFailure(PlayerOutcome::timedOut),
+            playingTrackReadFailure(PlayerOutcome::playerRefused));
     };
 }
 

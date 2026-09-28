@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/http_server.h"
+#include "core/player.h"
 #include "fb2k/main_thread.h"
 
 namespace jean {

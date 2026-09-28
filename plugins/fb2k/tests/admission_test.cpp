@@ -26,7 +26,7 @@ Admission fromLan(const std::string& host, const std::vector<std::string>& allow
 // The pointer must outlive the server.
 Player servingPage(int* pagesRead) {
     Player player = servingPlayer();
-    player.readPage = [pagesRead](const std::string&) -> std::optional<std::string> {
+    player.page.read = [pagesRead](const std::string&) -> std::optional<std::string> {
         ++*pagesRead;
         return std::string(kIndex);
     };

@@ -143,7 +143,7 @@ struct Commands {
     std::vector<VolumeStep> steps;
     std::vector<bool> mutes;
 
-    PlaylistOutcome answer = PlaylistOutcome::done;
+    PlayerOutcome answer = PlayerOutcome::done;
 
     size_t count() const {
         return transports.size() + seeks.size() + orders.size() + levels.size() + steps.size() +
@@ -156,29 +156,29 @@ struct Commands {
 Player commanding(Commands* commands,
                   const std::vector<std::string>& playbackOrders = stockOrders()) {
     Player player = servingPlayer();
-    player.playbackOrders = playbackOrders;
+    player.report.playbackOrders = playbackOrders;
 
-    player.commandTransport = [commands](Transport command) {
+    player.playback.commandTransport = [commands](Transport command) {
         commands->transports.push_back(command);
         return commands->answer;
     };
-    player.seek = [commands](double seconds, bool relative) {
+    player.playback.seek = [commands](double seconds, bool relative) {
         commands->seeks.push_back({seconds, relative});
         return commands->answer;
     };
-    player.setPlaybackOrder = [commands](size_t index) {
+    player.playback.setOrder = [commands](size_t index) {
         commands->orders.push_back(index);
         return commands->answer;
     };
-    player.setVolume = [commands](double level) {
+    player.playback.setVolume = [commands](double level) {
         commands->levels.push_back(level);
         return commands->answer;
     };
-    player.stepVolume = [commands](VolumeStep step) {
+    player.playback.stepVolume = [commands](VolumeStep step) {
         commands->steps.push_back(step);
         return commands->answer;
     };
-    player.setMuted = [commands](bool muted) {
+    player.playback.setMuted = [commands](bool muted) {
         commands->mutes.push_back(muted);
         return commands->answer;
     };
@@ -363,7 +363,7 @@ TEST_CASE("a volume level past either end of the player's own range is a 400") {
 TEST_CASE("a volume level is judged against the range this player publishes, not a fixed one") {
     Commands commands;
     Player player = commanding(&commands);
-    player.volumeMin = -50;
+    player.report.volumeMin = -50;
     const TestServer server(servingSettings(), player);
 
     REQUIRE(capabilitiesOf(server)["volumeMin"] == -50);
@@ -618,7 +618,7 @@ TEST_CASE("a run of commands faster than the playlist limit allows is answered e
 
 TEST_CASE("every command the player did not finish in time is a 504 saying so") {
     Commands commands;
-    commands.answer = PlaylistOutcome::timedOut;
+    commands.answer = PlayerOutcome::timedOut;
     const TestServer server(servingSettings(), commanding(&commands));
 
     for (const auto& command : kEveryForm)
@@ -627,7 +627,7 @@ TEST_CASE("every command the player did not finish in time is a 504 saying so") 
 
 TEST_CASE("every command the player refused is a 500 saying so") {
     Commands commands;
-    commands.answer = PlaylistOutcome::playerRefused;
+    commands.answer = PlayerOutcome::playerRefused;
     const TestServer server(servingSettings(), commanding(&commands));
 
     for (const auto& command : kEveryForm)
@@ -637,7 +637,7 @@ TEST_CASE("every command the player refused is a 500 saying so") {
 // A null seam is how src/fb2k/ says an install switched a feature off.
 TEST_CASE("an install with no playback seams answers every command 503") {
     Player player = servingPlayer();
-    player.playbackOrders = stockOrders();
+    player.report.playbackOrders = stockOrders();
     const TestServer server(servingSettings(), player);
 
     for (const auto& command : kOneOfEach) {

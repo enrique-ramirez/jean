@@ -158,18 +158,18 @@ bool ours(size_t index) {
 // thread.
 struct OurPlaylist {
     size_t index = pfc::infinite_size;
-    PlaylistOutcome outcome = PlaylistOutcome::done;
+    PlayerOutcome outcome = PlayerOutcome::done;
 };
 
 OurPlaylist ourPlaylist(const std::string& id) {
     const auto index = findPlaylist(id);
     if (index == pfc::infinite_size)
-        return {index, PlaylistOutcome::noSuchPlaylist};
+        return {index, PlayerOutcome::noSuchPlaylist};
 
     if (!ours(index))
-        return {index, PlaylistOutcome::notOurs};
+        return {index, PlayerOutcome::notOurs};
 
-    return {index, PlaylistOutcome::done};
+    return {index, PlayerOutcome::done};
 }
 
 // Main thread. The SDK forbids playlist callbacks from modifying playlist state, so an
@@ -179,20 +179,20 @@ void beginCreate(const AutoPlaylistSpec& spec, const PlaylistVersions& versions,
     const auto existing = everyPlaylist(versions);
 
     if (const auto room = roomForAnotherAutoPlaylist(existing, maxAutoPlaylists);
-        room.outcome != PlaylistOutcome::done) {
+        room.outcome != PlayerOutcome::done) {
         answer->set(room);
         return;
     }
 
     if (keyTaken(existing, spec.key, {})) {
-        answer->set(playlistFailure(PlaylistOutcome::keyInUse, spec.key));
+        answer->set(playlistFailure(PlayerOutcome::keyInUse, spec.key));
         return;
     }
 
     try {
         compileQuery(spec.query);
     } catch (const std::exception& e) {
-        answer->set(playlistFailure(PlaylistOutcome::queryInvalid, e.what()));
+        answer->set(playlistFailure(PlayerOutcome::queryInvalid, e.what()));
         return;
     }
 
@@ -201,7 +201,7 @@ void beginCreate(const AutoPlaylistSpec& spec, const PlaylistVersions& versions,
         manager->create_playlist(spec.title.c_str(), spec.title.size(), pfc::infinite_size);
 
     if (index == pfc::infinite_size) {
-        answer->set(playlistFailure(PlaylistOutcome::playerRefused));
+        answer->set(playlistFailure(PlayerOutcome::playerRefused));
         return;
     }
 
@@ -211,20 +211,20 @@ void beginCreate(const AutoPlaylistSpec& spec, const PlaylistVersions& versions,
     } catch (const std::exception& e) {
         manager->remove_playlist(index);
         logError(std::string("could not make a new playlist into an autoplaylist: ") + e.what());
-        answer->set(playlistFailure(PlaylistOutcome::playerRefused));
+        answer->set(playlistFailure(PlayerOutcome::playerRefused));
         return;
     }
 
     writeProperty(index, kJeanRecord, serialiseAutoPlaylist(spec));
 
     logInfo("created autoplaylist '" + spec.title + "'");
-    answer->set(PlaylistResult{PlaylistOutcome::done, {}, annotate(index, versions)});
+    answer->set(PlaylistResult{PlayerOutcome::done, {}, annotate(index, versions)});
 }
 
 void beginUpdate(const std::string& id, const AutoPlaylistSpec& spec,
                  const PlaylistVersions& versions, const AnswerPtr<PlaylistResult>& answer) {
     const auto found = ourPlaylist(id);
-    if (found.outcome != PlaylistOutcome::done) {
+    if (found.outcome != PlayerOutcome::done) {
         answer->set(playlistFailure(found.outcome));
         return;
     }
@@ -232,14 +232,14 @@ void beginUpdate(const std::string& id, const AutoPlaylistSpec& spec,
     const auto index = found.index;
 
     if (keyTaken(everyPlaylist(versions), spec.key, id)) {
-        answer->set(playlistFailure(PlaylistOutcome::keyInUse, spec.key));
+        answer->set(playlistFailure(PlayerOutcome::keyInUse, spec.key));
         return;
     }
 
     try {
         compileQuery(spec.query);
     } catch (const std::exception& e) {
-        answer->set(playlistFailure(PlaylistOutcome::queryInvalid, e.what()));
+        answer->set(playlistFailure(PlayerOutcome::queryInvalid, e.what()));
         return;
     }
 
@@ -255,7 +255,7 @@ void beginUpdate(const std::string& id, const AutoPlaylistSpec& spec,
     } catch (const std::exception& e) {
         logError(std::string("autoplaylist '") + playlistTitle(index) +
                  "' lost its query and is now an ordinary playlist: " + e.what());
-        answer->set(playlistFailure(PlaylistOutcome::playerRefused));
+        answer->set(playlistFailure(PlayerOutcome::playerRefused));
         return;
     }
 
@@ -264,7 +264,7 @@ void beginUpdate(const std::string& id, const AutoPlaylistSpec& spec,
 
     writeProperty(index, kJeanRecord, serialiseAutoPlaylist(spec));
 
-    answer->set(PlaylistResult{PlaylistOutcome::done, {}, annotate(index, versions)});
+    answer->set(PlaylistResult{PlayerOutcome::done, {}, annotate(index, versions)});
 }
 
 void removePlaylistAt(size_t index, const std::string& kind,
@@ -272,7 +272,7 @@ void removePlaylistAt(size_t index, const std::string& kind,
     const auto title = playlistTitle(index);
 
     if (!playlist_manager::get()->remove_playlist(index)) {
-        answer->set(playlistFailure(PlaylistOutcome::playerRefused));
+        answer->set(playlistFailure(PlayerOutcome::playerRefused));
         return;
     }
 
@@ -282,7 +282,7 @@ void removePlaylistAt(size_t index, const std::string& kind,
 
 void beginRemove(const std::string& id, const AnswerPtr<PlaylistResult>& answer) {
     const auto found = ourPlaylist(id);
-    if (found.outcome != PlaylistOutcome::done) {
+    if (found.outcome != PlayerOutcome::done) {
         answer->set(playlistFailure(found.outcome));
         return;
     }
@@ -307,7 +307,7 @@ void beginOwnPlaylist(OwnPlaylistRole role, const std::string& title,
         index = manager->create_playlist(title.c_str(), title.size(), pfc::infinite_size);
 
         if (index == pfc::infinite_size) {
-            answer->set(playlistFailure(PlaylistOutcome::playerRefused));
+            answer->set(playlistFailure(PlayerOutcome::playerRefused));
             return;
         }
 
@@ -315,7 +315,7 @@ void beginOwnPlaylist(OwnPlaylistRole role, const std::string& title,
         logInfo("created own playlist '" + title + "'");
     }
 
-    answer->set(PlaylistResult{PlaylistOutcome::done, {}, annotate(index, versions)});
+    answer->set(PlaylistResult{PlayerOutcome::done, {}, annotate(index, versions)});
 }
 
 // Removing items rather than deleting and recreating the playlist keeps its id, and any
@@ -336,7 +336,7 @@ void beginEmptyOwnPlaylist(OwnPlaylistRole role, const PlaylistVersions& version
     }
 
     removeEveryItem(index);
-    answer->set(PlaylistResult{PlaylistOutcome::done, {}, annotate(index, versions)});
+    answer->set(PlaylistResult{PlayerOutcome::done, {}, annotate(index, versions)});
 }
 
 void beginFill(const std::string& playlistId, const std::string& title, uint64_t structure,
@@ -345,18 +345,18 @@ void beginFill(const std::string& playlistId, const std::string& title, uint64_t
                const AnswerPtr<FillResult>& answer) {
     const auto index = findPlaylist(playlistId);
     if (index == pfc::infinite_size) {
-        answer->set(FillResult{PlaylistOutcome::noSuchPlaylist, {}});
+        answer->set(FillResult{PlayerOutcome::noSuchPlaylist, {}});
         return;
     }
 
     if (lockRefuses(index, playlist_lock::filter_add)) {
-        answer->set(FillResult{PlaylistOutcome::playlistLocked, {}});
+        answer->set(FillResult{PlayerOutcome::playlistLocked, {}});
         return;
     }
 
     const auto resolved = resolveOrdinals(structure, ordinals);
     if (!resolved.structureMatched) {
-        answer->set(FillResult{PlaylistOutcome::structureMoved, {}});
+        answer->set(FillResult{PlayerOutcome::structureMoved, {}});
         return;
     }
 
@@ -375,15 +375,15 @@ void beginFill(const std::string& playlistId, const std::string& title, uint64_t
     std::iota(positions.begin(), positions.end(), base);
 
     answer->set(
-        FillResult{PlaylistOutcome::done, std::move(positions), versions.of(playlistId).structure});
+        FillResult{PlayerOutcome::done, std::move(positions), versions.of(playlistId).structure});
 }
 
 struct CopiedRows {
-    PlaylistOutcome outcome = PlaylistOutcome::done;
+    PlayerOutcome outcome = PlayerOutcome::done;
     metadb_handle_list items;
 };
 
-CopiedRows rowsFailure(PlaylistOutcome outcome) {
+CopiedRows rowsFailure(PlayerOutcome outcome) {
     CopiedRows rows;
     rows.outcome = outcome;
     return rows;
@@ -395,7 +395,7 @@ CopiedRows rowsFailure(PlaylistOutcome outcome) {
 CopiedRows rowsOfPlaylist(const std::string& playlistId, const std::vector<uint32_t>& positions) {
     const auto index = findPlaylist(playlistId);
     if (index == pfc::infinite_size)
-        return rowsFailure(PlaylistOutcome::noSuchPlaylist);
+        return rowsFailure(PlayerOutcome::noSuchPlaylist);
 
     const auto manager = playlist_manager::get();
     const auto rowCount = manager->playlist_get_item_count(index);
@@ -403,11 +403,11 @@ CopiedRows rowsOfPlaylist(const std::string& playlistId, const std::vector<uint3
     CopiedRows copied;
     for (const uint32_t position : positions) {
         if (position >= rowCount)
-            return rowsFailure(PlaylistOutcome::positionPastEnd);
+            return rowsFailure(PlayerOutcome::positionPastEnd);
 
         metadb_handle_ptr handle;
         if (!manager->playlist_get_item_handle(handle, index, position))
-            return rowsFailure(PlaylistOutcome::playerRefused);
+            return rowsFailure(PlayerOutcome::playerRefused);
 
         copied.items.add_item(handle);
     }
@@ -424,7 +424,7 @@ CopiedRows rowsFor(const NewPlaylistRows& rows, const OrdinalResolver& resolveOr
 
     const auto resolved = resolveOrdinals(rows.structure, rows.ordinals);
     if (!resolved.structureMatched)
-        return rowsFailure(PlaylistOutcome::structureMoved);
+        return rowsFailure(PlayerOutcome::structureMoved);
 
     CopiedRows gathered;
     gathered.items = resolved.items;
@@ -437,7 +437,7 @@ void beginCreatePlaylist(const std::string& title, const NewPlaylistRows& rows,
                          const PlaylistVersions& versions, const OrdinalResolver& resolveOrdinals,
                          const AnswerPtr<PlaylistResult>& answer) {
     const auto gathered = rowsFor(rows, resolveOrdinals);
-    if (gathered.outcome != PlaylistOutcome::done) {
+    if (gathered.outcome != PlayerOutcome::done) {
         answer->set(playlistFailure(gathered.outcome));
         return;
     }
@@ -446,36 +446,36 @@ void beginCreatePlaylist(const std::string& title, const NewPlaylistRows& rows,
     const auto index = manager->create_playlist(title.c_str(), title.size(), pfc::infinite_size);
 
     if (index == pfc::infinite_size) {
-        answer->set(playlistFailure(PlaylistOutcome::playerRefused));
+        answer->set(playlistFailure(PlayerOutcome::playerRefused));
         return;
     }
 
     manager->playlist_insert_items(index, 0, gathered.items, bit_array_false());
 
     logInfo("created playlist '" + title + "'");
-    answer->set(PlaylistResult{PlaylistOutcome::done, {}, annotate(index, versions)});
+    answer->set(PlaylistResult{PlayerOutcome::done, {}, annotate(index, versions)});
 }
 
 void beginRenamePlaylist(const std::string& id, const std::string& title,
                          const AnswerPtr<PlaylistResult>& answer) {
     const auto index = findPlaylist(id);
     if (index == pfc::infinite_size) {
-        answer->set(playlistFailure(PlaylistOutcome::noSuchPlaylist));
+        answer->set(playlistFailure(PlayerOutcome::noSuchPlaylist));
         return;
     }
 
     if (roleOf(index)) {
-        answer->set(playlistFailure(PlaylistOutcome::ownPlaylist));
+        answer->set(playlistFailure(PlayerOutcome::ownPlaylist));
         return;
     }
 
     if (lockRefuses(index, playlist_lock::filter_rename)) {
-        answer->set(playlistFailure(PlaylistOutcome::playlistLocked));
+        answer->set(playlistFailure(PlayerOutcome::playlistLocked));
         return;
     }
 
     if (!playlist_manager::get()->playlist_rename(index, title.c_str(), title.size())) {
-        answer->set(playlistFailure(PlaylistOutcome::playerRefused));
+        answer->set(playlistFailure(PlayerOutcome::playerRefused));
         return;
     }
 
@@ -487,17 +487,17 @@ void beginRenamePlaylist(const std::string& id, const std::string& title,
 void beginRemovePlaylist(const std::string& id, const AnswerPtr<PlaylistResult>& answer) {
     const auto index = findPlaylist(id);
     if (index == pfc::infinite_size) {
-        answer->set(playlistFailure(PlaylistOutcome::noSuchPlaylist));
+        answer->set(playlistFailure(PlayerOutcome::noSuchPlaylist));
         return;
     }
 
     if (roleOf(index)) {
-        answer->set(playlistFailure(PlaylistOutcome::ownPlaylist));
+        answer->set(playlistFailure(PlayerOutcome::ownPlaylist));
         return;
     }
 
     if (lockRefuses(index, playlist_lock::filter_remove_playlist)) {
-        answer->set(playlistFailure(PlaylistOutcome::playlistLocked));
+        answer->set(playlistFailure(PlayerOutcome::playlistLocked));
         return;
     }
 
@@ -525,32 +525,32 @@ void beginMovePlaylist(const std::string& id, uint32_t index,
                        const AnswerPtr<PlaylistResult>& answer) {
     const auto from = findPlaylist(id);
     if (from == pfc::infinite_size) {
-        answer->set(playlistFailure(PlaylistOutcome::noSuchPlaylist));
+        answer->set(playlistFailure(PlayerOutcome::noSuchPlaylist));
         return;
     }
 
     if (roleOf(from)) {
-        answer->set(playlistFailure(PlaylistOutcome::ownPlaylist));
+        answer->set(playlistFailure(PlayerOutcome::ownPlaylist));
         return;
     }
 
     auto manager = playlist_manager::get();
     const auto count = manager->get_playlist_count();
     if (index >= count) {
-        answer->set(playlistFailure(PlaylistOutcome::positionPastEnd));
+        answer->set(playlistFailure(PlayerOutcome::positionPastEnd));
         return;
     }
 
     const auto order = listOrderMoving(count, from, index);
     if (!manager->reorder(order.data(), order.size())) {
-        answer->set(playlistFailure(PlaylistOutcome::playerRefused));
+        answer->set(playlistFailure(PlayerOutcome::playerRefused));
         return;
     }
 
     answer->set(PlaylistResult{});
 }
 
-RowsEdited rowsEditFailure(PlaylistOutcome outcome) {
+RowsEdited rowsEditFailure(PlayerOutcome outcome) {
     RowsEdited edited;
     edited.outcome = outcome;
     return edited;
@@ -562,24 +562,24 @@ void beginCopyRows(const std::string& playlistId, const std::string& sourcePlayl
                    const AnswerPtr<RowsEdited>& answer) {
     const auto index = findPlaylist(playlistId);
     if (index == pfc::infinite_size) {
-        answer->set(rowsEditFailure(PlaylistOutcome::noSuchPlaylist));
+        answer->set(rowsEditFailure(PlayerOutcome::noSuchPlaylist));
         return;
     }
 
     // The target only. A source is read rather than changed, so *Add to playlist* over results
     // Jean played through the scratch keeps working.
     if (roleOf(index)) {
-        answer->set(rowsEditFailure(PlaylistOutcome::ownPlaylist));
+        answer->set(rowsEditFailure(PlayerOutcome::ownPlaylist));
         return;
     }
 
     if (lockRefuses(index, playlist_lock::filter_add)) {
-        answer->set(rowsEditFailure(PlaylistOutcome::playlistLocked));
+        answer->set(rowsEditFailure(PlayerOutcome::playlistLocked));
         return;
     }
 
     const auto gathered = rowsOfPlaylist(sourcePlaylistId, positions);
-    if (gathered.outcome != PlaylistOutcome::done) {
+    if (gathered.outcome != PlayerOutcome::done) {
         answer->set(rowsEditFailure(gathered.outcome));
         return;
     }
@@ -602,12 +602,12 @@ void beginRemoveRows(const std::string& playlistId, uint64_t structure,
                      const AnswerPtr<RowsEdited>& answer) {
     const auto index = findPlaylist(playlistId);
     if (index == pfc::infinite_size) {
-        answer->set(rowsEditFailure(PlaylistOutcome::noSuchPlaylist));
+        answer->set(rowsEditFailure(PlayerOutcome::noSuchPlaylist));
         return;
     }
 
     if (roleOf(index)) {
-        answer->set(rowsEditFailure(PlaylistOutcome::ownPlaylist));
+        answer->set(rowsEditFailure(PlayerOutcome::ownPlaylist));
         return;
     }
 
@@ -615,12 +615,12 @@ void beginRemoveRows(const std::string& playlistId, uint64_t structure,
     // reading the playlist again, and a lock has none, so a request that is both answers the one
     // outcome a re-read cannot fix.
     if (lockRefuses(index, playlist_lock::filter_remove)) {
-        answer->set(rowsEditFailure(PlaylistOutcome::playlistLocked));
+        answer->set(rowsEditFailure(PlayerOutcome::playlistLocked));
         return;
     }
 
     if (versions.of(playlistId).structure != structure) {
-        answer->set(rowsEditFailure(PlaylistOutcome::rowsMoved));
+        answer->set(rowsEditFailure(PlayerOutcome::rowsMoved));
         return;
     }
 
@@ -629,7 +629,7 @@ void beginRemoveRows(const std::string& playlistId, uint64_t structure,
 
     if (std::any_of(positions.begin(), positions.end(),
                     [rowCount](uint32_t position) { return position >= rowCount; })) {
-        answer->set(rowsEditFailure(PlaylistOutcome::positionPastEnd));
+        answer->set(rowsEditFailure(PlayerOutcome::positionPastEnd));
         return;
     }
 
@@ -639,13 +639,13 @@ void beginRemoveRows(const std::string& playlistId, uint64_t structure,
 
     manager->playlist_remove_items(index, mask);
 
-    answer->set(RowsEdited{PlaylistOutcome::done, versions.of(playlistId).structure, {}});
+    answer->set(RowsEdited{PlayerOutcome::done, versions.of(playlistId).structure, {}});
 }
 
 // What the main thread hands over for a page of rows: the handles, the cheap half, and the
 // compiled columns to run against them off it. See ARCHITECTURE.md, *Facts about the player*.
 struct CopiedPage {
-    PlaylistOutcome outcome = PlaylistOutcome::done;
+    PlayerOutcome outcome = PlayerOutcome::done;
     uint64_t structure = 0;
     uint64_t revision = 0;
     size_t totalCount = 0;
@@ -653,7 +653,7 @@ struct CopiedPage {
     std::vector<titleformat_object::ptr> scripts;
 };
 
-CopiedPage pageFailure(PlaylistOutcome outcome) {
+CopiedPage pageFailure(PlayerOutcome outcome) {
     CopiedPage page;
     page.outcome = outcome;
     return page;
@@ -664,7 +664,7 @@ void beginReadRows(const std::string& playlistId, size_t offset, size_t count,
                    const AnswerPtr<CopiedPage>& answer) {
     const auto index = findPlaylist(playlistId);
     if (index == pfc::infinite_size) {
-        answer->set(pageFailure(PlaylistOutcome::noSuchPlaylist));
+        answer->set(pageFailure(PlayerOutcome::noSuchPlaylist));
         return;
     }
 
@@ -686,7 +686,7 @@ void beginReadRows(const std::string& playlistId, size_t offset, size_t count,
 }
 
 struct CopiedChanges {
-    PlaylistOutcome outcome = PlaylistOutcome::done;
+    PlayerOutcome outcome = PlayerOutcome::done;
     DeltaOutcome catchUp = DeltaOutcome::ok;
     uint64_t revision = 0;
     std::vector<uint32_t> positions;
@@ -694,7 +694,7 @@ struct CopiedChanges {
     std::vector<titleformat_object::ptr> scripts;
 };
 
-CopiedChanges changesFailure(PlaylistOutcome outcome) {
+CopiedChanges changesFailure(PlayerOutcome outcome) {
     CopiedChanges changes;
     changes.outcome = outcome;
     return changes;
@@ -705,7 +705,7 @@ void beginReadChangedRows(const std::string& playlistId, uint64_t structure, uin
                           const AnswerPtr<CopiedChanges>& answer) {
     const auto index = findPlaylist(playlistId);
     if (index == pfc::infinite_size) {
-        answer->set(changesFailure(PlaylistOutcome::noSuchPlaylist));
+        answer->set(changesFailure(PlayerOutcome::noSuchPlaylist));
         return;
     }
 
@@ -738,29 +738,29 @@ void beginReadChangedRows(const std::string& playlistId, uint64_t structure, uin
 // plugins/fb2k/ARCHITECTURE.md, "Facts about the player": why this ignores the bool
 // playlist_execute_default_action returns, and why the row it starts is not enough on its own
 // to say which playlist the track after it comes from.
-PlaylistOutcome beginPlayRow(const std::string& playlistId, uint32_t index) {
+PlayerOutcome beginPlayRow(const std::string& playlistId, uint32_t index) {
     const auto playlist = findPlaylist(playlistId);
     if (playlist == pfc::infinite_size)
-        return PlaylistOutcome::noSuchPlaylist;
+        return PlayerOutcome::noSuchPlaylist;
 
     const auto manager = playlist_manager::get();
     if (index >= manager->playlist_get_item_count(playlist))
-        return PlaylistOutcome::positionPastEnd;
+        return PlayerOutcome::positionPastEnd;
 
     manager->set_active_playlist(playlist);
     manager->playlist_execute_default_action(playlist, index);
-    return PlaylistOutcome::done;
+    return PlayerOutcome::done;
 }
 
 // What the main thread hands over for GET /api/artwork/playlists/{id}/{row}: the handle alone,
 // so the library-path check and the cover read happen off it exactly as they do for a page of
 // rows.
 struct RowHandle {
-    PlaylistOutcome outcome = PlaylistOutcome::done;
+    PlayerOutcome outcome = PlayerOutcome::done;
     metadb_handle_ptr handle;
 };
 
-RowHandle rowHandleFailure(PlaylistOutcome outcome) {
+RowHandle rowHandleFailure(PlayerOutcome outcome) {
     RowHandle failure;
     failure.outcome = outcome;
     return failure;
@@ -770,19 +770,19 @@ void beginReadRowHandle(const std::string& playlistId, uint32_t row,
                         const AnswerPtr<RowHandle>& answer) {
     const auto playlist = findPlaylist(playlistId);
     if (playlist == pfc::infinite_size) {
-        answer->set(rowHandleFailure(PlaylistOutcome::noSuchPlaylist));
+        answer->set(rowHandleFailure(PlayerOutcome::noSuchPlaylist));
         return;
     }
 
     const auto manager = playlist_manager::get();
     if (row >= manager->playlist_get_item_count(playlist)) {
-        answer->set(rowHandleFailure(PlaylistOutcome::positionPastEnd));
+        answer->set(rowHandleFailure(PlayerOutcome::positionPastEnd));
         return;
     }
 
     RowHandle found;
     if (!manager->playlist_get_item_handle(found.handle, playlist, row)) {
-        answer->set(rowHandleFailure(PlaylistOutcome::playerRefused));
+        answer->set(rowHandleFailure(PlayerOutcome::playerRefused));
         return;
     }
 
@@ -944,10 +944,10 @@ PlaylistLister makePlaylistLister(MainThreadQueue& mainThread, const PlaylistVer
         return askPlayer<PlaylistsResult>(
             mainThread, "listing playlists",
             [&versions](const AnswerPtr<PlaylistsResult>& answer) {
-                answer->set(PlaylistsResult{PlaylistOutcome::done, everyPlaylist(versions)});
+                answer->set(PlaylistsResult{PlayerOutcome::done, everyPlaylist(versions)});
             },
-            PlaylistsResult{PlaylistOutcome::timedOut, {}},
-            PlaylistsResult{PlaylistOutcome::playerRefused, {}});
+            PlaylistsResult{PlayerOutcome::timedOut, {}},
+            PlaylistsResult{PlayerOutcome::playerRefused, {}});
     };
 }
 
@@ -963,7 +963,7 @@ PlaylistRowReader makePlaylistRowReader(MainThreadQueue& mainThread,
             [playlistId, offset, count, columns, &versions](const AnswerPtr<CopiedPage>& answer) {
                 beginReadRows(playlistId, offset, count, columns, versions, answer);
             },
-            pageFailure(PlaylistOutcome::timedOut), pageFailure(PlaylistOutcome::playerRefused));
+            pageFailure(PlayerOutcome::timedOut), pageFailure(PlayerOutcome::playerRefused));
 
         PlaylistRowsRead read;
         read.outcome = page.outcome;
@@ -971,7 +971,7 @@ PlaylistRowReader makePlaylistRowReader(MainThreadQueue& mainThread,
         read.revision = page.revision;
         read.totalCount = page.totalCount;
 
-        if (read.outcome != PlaylistOutcome::done)
+        if (read.outcome != PlayerOutcome::done)
             return read;
 
         read.rows.reserve(page.handles.get_count());
@@ -995,15 +995,14 @@ PlaylistChangeReader makeChangedPlaylistRowReader(MainThreadQueue& mainThread,
              &versions](const AnswerPtr<CopiedChanges>& answer) {
                 beginReadChangedRows(playlistId, structure, since, columns, versions, answer);
             },
-            changesFailure(PlaylistOutcome::timedOut),
-            changesFailure(PlaylistOutcome::playerRefused));
+            changesFailure(PlayerOutcome::timedOut), changesFailure(PlayerOutcome::playerRefused));
 
         PlaylistChangesRead read;
         read.outcome = copied.outcome;
         read.catchUp = copied.catchUp;
         read.revision = copied.revision;
 
-        if (read.outcome != PlaylistOutcome::done || read.catchUp != DeltaOutcome::ok)
+        if (read.outcome != PlayerOutcome::done || read.catchUp != DeltaOutcome::ok)
             return read;
 
         read.rows.reserve(copied.positions.size());
@@ -1018,12 +1017,12 @@ PlaylistChangeReader makeChangedPlaylistRowReader(MainThreadQueue& mainThread,
 
 PlaylistRowPlayer makePlaylistRowPlayer(MainThreadQueue& mainThread) {
     return [&mainThread](const std::string& playlistId, uint32_t index) {
-        return askPlayer<PlaylistOutcome>(
+        return askPlayer<PlayerOutcome>(
             mainThread, "playing a playlist row",
-            [playlistId, index](const AnswerPtr<PlaylistOutcome>& answer) {
+            [playlistId, index](const AnswerPtr<PlayerOutcome>& answer) {
                 answer->set(beginPlayRow(playlistId, index));
             },
-            PlaylistOutcome::timedOut, PlaylistOutcome::playerRefused);
+            PlayerOutcome::timedOut, PlayerOutcome::playerRefused);
     };
 }
 
@@ -1037,12 +1036,12 @@ PlaylistRowArtworkReader makePlaylistRowArtworkReader(MainThreadQueue& mainThrea
             [playlistId, row](const AnswerPtr<RowHandle>& answer) {
                 beginReadRowHandle(playlistId, row, answer);
             },
-            rowHandleFailure(PlaylistOutcome::timedOut),
-            rowHandleFailure(PlaylistOutcome::playerRefused));
+            rowHandleFailure(PlayerOutcome::timedOut),
+            rowHandleFailure(PlayerOutcome::playerRefused));
 
         PlaylistArtworkRead read;
         read.outcome = found.outcome;
-        if (read.outcome != PlaylistOutcome::done)
+        if (read.outcome != PlayerOutcome::done)
             return read;
 
         pfc::string8 relative;
@@ -1060,15 +1059,15 @@ AutoPlaylistCreator makeAutoPlaylistCreator(MainThreadQueue& mainThread,
                                             const PlaylistVersions& versions) {
     return [&mainThread, &versions](const AutoPlaylistSpec& spec, int maxAutoPlaylists) {
         if (maxAutoPlaylists <= 0)
-            return playlistFailure(PlaylistOutcome::unavailable);
+            return playlistFailure(PlayerOutcome::unavailable);
 
         return askPlayer<PlaylistResult>(
             mainThread, "creating an autoplaylist",
             [spec, &versions, maxAutoPlaylists](const AnswerPtr<PlaylistResult>& answer) {
                 beginCreate(spec, versions, maxAutoPlaylists, answer);
             },
-            playlistFailure(PlaylistOutcome::timedOut),
-            playlistFailure(PlaylistOutcome::playerRefused));
+            playlistFailure(PlayerOutcome::timedOut),
+            playlistFailure(PlayerOutcome::playerRefused));
     };
 }
 
@@ -1080,8 +1079,8 @@ AutoPlaylistUpdater makeAutoPlaylistUpdater(MainThreadQueue& mainThread,
             [id, spec, &versions](const AnswerPtr<PlaylistResult>& answer) {
                 beginUpdate(id, spec, versions, answer);
             },
-            playlistFailure(PlaylistOutcome::timedOut),
-            playlistFailure(PlaylistOutcome::playerRefused));
+            playlistFailure(PlayerOutcome::timedOut),
+            playlistFailure(PlayerOutcome::playerRefused));
     };
 }
 
@@ -1090,8 +1089,8 @@ AutoPlaylistRemover makeAutoPlaylistRemover(MainThreadQueue& mainThread) {
         return askPlayer<PlaylistResult>(
             mainThread, "removing an autoplaylist",
             [id](const AnswerPtr<PlaylistResult>& answer) { beginRemove(id, answer); },
-            playlistFailure(PlaylistOutcome::timedOut),
-            playlistFailure(PlaylistOutcome::playerRefused));
+            playlistFailure(PlayerOutcome::timedOut),
+            playlistFailure(PlayerOutcome::playerRefused));
     };
 }
 
@@ -1103,8 +1102,8 @@ OwnPlaylistResolver makeOwnPlaylistResolver(MainThreadQueue& mainThread,
             [role, title, &versions](const AnswerPtr<PlaylistResult>& answer) {
                 beginOwnPlaylist(role, title, versions, answer);
             },
-            playlistFailure(PlaylistOutcome::timedOut),
-            playlistFailure(PlaylistOutcome::playerRefused));
+            playlistFailure(PlayerOutcome::timedOut),
+            playlistFailure(PlayerOutcome::playerRefused));
     };
 }
 
@@ -1116,8 +1115,8 @@ OwnPlaylistEmptier makeOwnPlaylistEmptier(MainThreadQueue& mainThread,
             [role, &versions](const AnswerPtr<PlaylistResult>& answer) {
                 beginEmptyOwnPlaylist(role, versions, answer);
             },
-            playlistFailure(PlaylistOutcome::timedOut),
-            playlistFailure(PlaylistOutcome::playerRefused));
+            playlistFailure(PlayerOutcome::timedOut),
+            playlistFailure(PlayerOutcome::playerRefused));
     };
 }
 
@@ -1130,8 +1129,8 @@ PlaylistCreator makePlaylistCreator(MainThreadQueue& mainThread, const PlaylistV
             [title, rows, &versions, resolveOrdinals](const AnswerPtr<PlaylistResult>& answer) {
                 beginCreatePlaylist(title, rows, versions, resolveOrdinals, answer);
             },
-            playlistFailure(PlaylistOutcome::timedOut),
-            playlistFailure(PlaylistOutcome::playerRefused));
+            playlistFailure(PlayerOutcome::timedOut),
+            playlistFailure(PlayerOutcome::playerRefused));
     };
 }
 
@@ -1142,8 +1141,8 @@ PlaylistRenamer makePlaylistRenamer(MainThreadQueue& mainThread) {
             [id, title](const AnswerPtr<PlaylistResult>& answer) {
                 beginRenamePlaylist(id, title, answer);
             },
-            playlistFailure(PlaylistOutcome::timedOut),
-            playlistFailure(PlaylistOutcome::playerRefused));
+            playlistFailure(PlayerOutcome::timedOut),
+            playlistFailure(PlayerOutcome::playerRefused));
     };
 }
 
@@ -1152,8 +1151,8 @@ PlaylistRemover makePlaylistRemover(MainThreadQueue& mainThread) {
         return askPlayer<PlaylistResult>(
             mainThread, "removing a playlist",
             [id](const AnswerPtr<PlaylistResult>& answer) { beginRemovePlaylist(id, answer); },
-            playlistFailure(PlaylistOutcome::timedOut),
-            playlistFailure(PlaylistOutcome::playerRefused));
+            playlistFailure(PlayerOutcome::timedOut),
+            playlistFailure(PlayerOutcome::playerRefused));
     };
 }
 
@@ -1164,8 +1163,8 @@ PlaylistMover makePlaylistMover(MainThreadQueue& mainThread) {
             [id, index](const AnswerPtr<PlaylistResult>& answer) {
                 beginMovePlaylist(id, index, answer);
             },
-            playlistFailure(PlaylistOutcome::timedOut),
-            playlistFailure(PlaylistOutcome::playerRefused));
+            playlistFailure(PlayerOutcome::timedOut),
+            playlistFailure(PlayerOutcome::playerRefused));
     };
 }
 
@@ -1180,8 +1179,8 @@ PlaylistRowCopier makePlaylistRowCopier(MainThreadQueue& mainThread,
                  &versions](const AnswerPtr<RowsEdited>& answer) {
                     beginCopyRows(playlistId, sourcePlaylistId, positions, versions, answer);
                 },
-                rowsEditFailure(PlaylistOutcome::timedOut),
-                rowsEditFailure(PlaylistOutcome::playerRefused));
+                rowsEditFailure(PlayerOutcome::timedOut),
+                rowsEditFailure(PlayerOutcome::playerRefused));
         };
 }
 
@@ -1194,8 +1193,8 @@ PlaylistRowRemover makePlaylistRowRemover(MainThreadQueue& mainThread,
             [playlistId, structure, positions, &versions](const AnswerPtr<RowsEdited>& answer) {
                 beginRemoveRows(playlistId, structure, positions, versions, answer);
             },
-            rowsEditFailure(PlaylistOutcome::timedOut),
-            rowsEditFailure(PlaylistOutcome::playerRefused));
+            rowsEditFailure(PlayerOutcome::timedOut),
+            rowsEditFailure(PlayerOutcome::playerRefused));
     };
 }
 
@@ -1211,8 +1210,7 @@ PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver r
                 beginFill(playlistId, title, structure, ordinals, replace, resolveOrdinals,
                           versions, answer);
             },
-            FillResult{PlaylistOutcome::timedOut, {}},
-            FillResult{PlaylistOutcome::playerRefused, {}});
+            FillResult{PlayerOutcome::timedOut, {}}, FillResult{PlayerOutcome::playerRefused, {}});
     };
 }
 
@@ -1221,8 +1219,7 @@ QueryPreviewer makeQueryPreviewer(MainThreadQueue& mainThread) {
         return askPlayer<PreviewResult>(
             mainThread, "previewing a query",
             [query](const AnswerPtr<PreviewResult>& answer) { beginPreview(query, answer); },
-            previewFailure(PlaylistOutcome::timedOut),
-            previewFailure(PlaylistOutcome::playerRefused));
+            previewFailure(PlayerOutcome::timedOut), previewFailure(PlayerOutcome::playerRefused));
     };
 }
 

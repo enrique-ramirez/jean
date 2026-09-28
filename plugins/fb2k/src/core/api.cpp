@@ -2,6 +2,7 @@
 
 #include "core/json.h"
 #include "core/playback_modes.h"
+#include "core/player.h"
 #include "core/text.h"
 #include "core/version.h"
 #include "third_party/json.hpp"
@@ -490,12 +491,9 @@ std::string statusDocument() {
     return identity().dump();
 }
 
-std::string capabilitiesDocument(const Settings& settings,
+std::string capabilitiesDocument(const Settings& settings, const PlayerReport& report,
                                  const std::vector<std::string>& streamFormats,
-                                 bool mutesWhileStreaming, bool servesLibrary,
-                                 const std::string& playerName, const std::string& playerVersion,
-                                 double volumeMin, double volumeMax, const std::string& volumeUnit,
-                                 const std::vector<std::string>& playbackOrders) {
+                                 bool mutesWhileStreaming, bool servesLibrary) {
     const json body{
         {"apiVersion", kApiVersion},
         {"allowedFields", settings.allowedFields},
@@ -509,12 +507,12 @@ std::string capabilitiesDocument(const Settings& settings,
         {"streamFormats", streamFormats},
         {"canMuteWhileStreaming", mutesWhileStreaming},
         {"canReadLibrary", servesLibrary},
-        {"playerName", playerName},
-        {"playerVersion", playerVersion},
-        {"volumeMin", volumeMin},
-        {"volumeMax", volumeMax},
-        {"volumeUnit", volumeUnit},
-        {"playbackModes", playbackModesOf(playbackOrders)}};
+        {"playerName", report.name},
+        {"playerVersion", report.version},
+        {"volumeMin", report.volumeMin},
+        {"volumeMax", report.volumeMax},
+        {"volumeUnit", report.volumeUnit},
+        {"playbackModes", playbackModesOf(report.playbackOrders)}};
     return body.dump();
 }
 
@@ -528,10 +526,6 @@ std::string streamListenersDocument(const std::vector<AudienceMember>& members, 
                 {"maxConnections", maxConnections},
                 {"playerMuted", playerMuted}}
         .dump();
-}
-
-std::string errorDocument(const std::string& message) {
-    return json{{"error", message}}.dump();
 }
 
 std::string streamTicketDocument(const std::string& ticket, int expiresInSeconds) {
@@ -561,35 +555,6 @@ std::string tagWrittenDocument(const TagWrite& write) {
     return body.dump();
 }
 
-std::string tagRefusedDocument(const TagWriteRequest& request) {
-    json body{{"written", false}, {"error", describe(request.refusal)}, {"detail", request.detail}};
-
-    if (request.refusal == TagWriteRefusal::fieldNotAllowed)
-        body["field"] = request.detail;
-
-    return body.dump();
-}
-
-// No detail beyond the category: error text is a reliable way to leak paths.
-std::string tagFailedDocument(TagWriteOutcome outcome) {
-    const json body{{"written", false}, {"error", describe(outcome)}};
-    return body.dump();
-}
-
-int httpStatusFor(TagWriteRefusal refusal) {
-    switch (refusal) {
-        case TagWriteRefusal::none:
-            return 200;
-        case TagWriteRefusal::fieldNotAllowed:
-            return 403;
-        case TagWriteRefusal::malformedBody:
-        case TagWriteRefusal::badAddress:
-        case TagWriteRefusal::noFields:
-            return 400;
-    }
-    return 400;
-}
-
 std::string playlistsDocument(const std::vector<PlaylistAnnotation>& playlists) {
     json entries = json::array();
     std::transform(playlists.begin(), playlists.end(), std::back_inserter(entries), annotation);
@@ -603,16 +568,6 @@ std::string playlistDocument(const PlaylistAnnotation& playlist) {
 
 std::string playlistRemovedDocument(const std::string& id) {
     return json{{"removed", true}, {"id", id}}.dump();
-}
-
-std::string playlistRefusedDocument(const AutoPlaylistRequest& request) {
-    return json{{"error", describe(request.refusal)}, {"detail", request.detail}}.dump();
-}
-
-// Nothing here describes the player's internals: the detail is empty except for an
-// unreadable query, where it is foobar2000's own message about text the client sent.
-std::string playlistFailedDocument(const PlaylistResult& result) {
-    return json{{"error", describe(result.outcome)}, {"detail", result.detail}}.dump();
 }
 
 std::string fillResultDocument(const std::string& playlistId, uint64_t structure,
@@ -722,10 +677,6 @@ ActiveOutputRequest parseActiveOutput(const std::string& body) {
     return request;
 }
 
-std::string activeOutputRefusedDocument(const std::string& detail) {
-    return json{{"error", "unacceptable output device"}, {"detail", detail}}.dump();
-}
-
 std::string outputsDocument(const OutputsRead& read) {
     json devices = json::array();
     for (const auto& device : read.devices)
@@ -734,40 +685,6 @@ std::string outputsDocument(const OutputsRead& read) {
     return json{{"devices", std::move(devices)},
                 {"active", read.active ? json(*read.active) : json(nullptr)}}
         .dump();
-}
-
-std::string outputFailedDocument(OutputOutcome outcome) {
-    return json{{"error", describe(outcome)}, {"detail", ""}}.dump();
-}
-
-std::string describe(PlaybackRefusal refusal) {
-    switch (refusal) {
-        case PlaybackRefusal::none:
-            return "ok";
-        case PlaybackRefusal::badSeek:
-            return "unacceptable seek";
-        case PlaybackRefusal::badMode:
-            return "unacceptable mode";
-        case PlaybackRefusal::badVolume:
-            return "unacceptable volume";
-    }
-    return "unknown";
-}
-
-int httpStatusFor(PlaybackRefusal refusal) {
-    switch (refusal) {
-        case PlaybackRefusal::none:
-            return 200;
-        case PlaybackRefusal::badSeek:
-        case PlaybackRefusal::badMode:
-        case PlaybackRefusal::badVolume:
-            return 400;
-    }
-    return 400;
-}
-
-std::string playbackRefusedDocument(PlaybackRefusal refusal, const std::string& detail) {
-    return json{{"error", describe(refusal)}, {"detail", detail}}.dump();
 }
 
 SeekRequest parseSeek(const std::string& body) {
@@ -945,7 +862,7 @@ QueueTracksRequest parseQueueTracks(const std::string& body, size_t trackCount,
     request.structure = structure->get<uint64_t>();
 
     if (expectedStructure && request.structure != *expectedStructure) {
-        request.outcome = PlaylistOutcome::structureMoved;
+        request.outcome = PlayerOutcome::structureMoved;
         return request;
     }
 
@@ -1029,58 +946,6 @@ std::string queryPreviewDocument(const PreviewResult& preview) {
         .dump();
 }
 
-int httpStatusFor(PlaylistRefusal refusal) {
-    switch (refusal) {
-        case PlaylistRefusal::none:
-            return 200;
-        case PlaylistRefusal::tooFast:
-            return 429;
-        case PlaylistRefusal::malformedBody:
-        case PlaylistRefusal::badTitle:
-        case PlaylistRefusal::badKey:
-        case PlaylistRefusal::badQuery:
-        case PlaylistRefusal::badSort:
-        case PlaylistRefusal::badId:
-        case PlaylistRefusal::badOrdinals:
-            return 400;
-    }
-    return 400;
-}
-
-int httpStatusFor(PlaylistOutcome outcome) {
-    switch (outcome) {
-        case PlaylistOutcome::done:
-            return 200;
-        case PlaylistOutcome::queryInvalid:
-        case PlaylistOutcome::positionPastEnd:
-            return 400;
-        case PlaylistOutcome::notOurs:
-        case PlaylistOutcome::writesDisabled:
-        case PlaylistOutcome::ownPlaylist:
-        case PlaylistOutcome::playbackDisabled:
-            return 403;
-        case PlaylistOutcome::noSuchPlaylist:
-            return 404;
-        case PlaylistOutcome::ambiguousAddress:
-        case PlaylistOutcome::keyInUse:
-        case PlaylistOutcome::tooMany:
-        case PlaylistOutcome::structureMoved:
-        case PlaylistOutcome::queueMoved:
-        case PlaylistOutcome::rowsMoved:
-        case PlaylistOutcome::playlistLocked:
-            return 409;
-        case PlaylistOutcome::rowsRevisionTooOld:
-            return 410;
-        case PlaylistOutcome::playerRefused:
-            return 500;
-        case PlaylistOutcome::timedOut:
-            return 504;
-        case PlaylistOutcome::unavailable:
-            return 503;
-    }
-    return 500;
-}
-
 FillRequest parseFill(const std::string& body, size_t trackCount,
                       std::optional<uint64_t> expectedStructure, bool allowsTitle) {
     const auto document = parseJsonObject(body);
@@ -1106,7 +971,7 @@ FillRequest parseFill(const std::string& body, size_t trackCount,
     request.structure = structure->get<uint64_t>();
 
     if (expectedStructure && request.structure != *expectedStructure) {
-        request.outcome = PlaylistOutcome::structureMoved;
+        request.outcome = PlayerOutcome::structureMoved;
         return request;
     }
 
@@ -1219,14 +1084,6 @@ std::string stateDocument(const Library::State& state, const PlayerState& player
     return body.dump();
 }
 
-std::string libraryRefusedDocument(const LibraryRequest& request) {
-    return json{{"error", describe(request.refusal)}, {"detail", request.detail}}.dump();
-}
-
-std::string libraryFailedDocument(DeltaOutcome outcome) {
-    return json{{"error", describe(outcome)}, {"detail", ""}}.dump();
-}
-
 std::string libraryTrackDocument(const std::vector<std::string>& columns) {
     return json{{"columns", columns}}.dump();
 }
@@ -1234,56 +1091,6 @@ std::string libraryTrackDocument(const std::vector<std::string>& columns) {
 std::string playingTrackDocument(const std::string& path, uint32_t subsong,
                                  const std::vector<std::string>& columns) {
     return json{{"path", path}, {"subsong", subsong}, {"columns", columns}}.dump();
-}
-
-int httpStatusFor(LibraryRefusal refusal) {
-    switch (refusal) {
-        case LibraryRefusal::none:
-            return 200;
-        case LibraryRefusal::tooManyColumns:
-        case LibraryRefusal::badColumn:
-        case LibraryRefusal::duplicateColumn:
-        case LibraryRefusal::badSince:
-            return 400;
-    }
-    return 400;
-}
-
-int httpStatusFor(DeltaOutcome outcome) {
-    switch (outcome) {
-        case DeltaOutcome::ok:
-            return 200;
-        case DeltaOutcome::structureChanged:
-            return 409;
-        case DeltaOutcome::revisionTooOld:
-        case DeltaOutcome::revisionUnknown:
-            return 410;
-        case DeltaOutcome::notBuilt:
-            return 503;
-    }
-    return 500;
-}
-
-int httpStatusFor(TagWriteOutcome outcome) {
-    switch (outcome) {
-        case TagWriteOutcome::written:
-            return 200;
-        case TagWriteOutcome::trackNotKnown:
-            return 404;
-        case TagWriteOutcome::ambiguousAddress:
-        case TagWriteOutcome::rowsMoved:
-        case TagWriteOutcome::libraryRebuilt:
-            return 409;
-        case TagWriteOutcome::writeFailed:
-            return 500;
-        case TagWriteOutcome::timedOut:
-            return 504;
-        case TagWriteOutcome::unavailable:
-            return 503;
-        case TagWriteOutcome::tooFast:
-            return 429;
-    }
-    return 500;
 }
 
 }  // namespace jean

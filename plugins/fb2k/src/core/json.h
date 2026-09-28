@@ -1,7 +1,9 @@
 #pragma once
 
+#include "core/text.h"
 #include "third_party/json.hpp"
 
+#include <cstddef>
 #include <string>
 
 // Reading JSON that arrived from outside: an HTTP body, a hand-edited config file, a
@@ -28,5 +30,18 @@ struct OptionalString {
 };
 
 OptionalString readString(const nlohmann::json& root, const char* key);
+
+// Whether `key`'s text field is present, printable and within `limit`, folding the presence
+// check `need` asks for into the one result. Shared by every route that reads a title, a key
+// or a query, so what makes one of those acceptable is answered once rather than once per
+// caller.
+struct TextField {
+    std::string why;
+    std::string value;
+
+    bool ok() const { return why.empty(); }
+};
+
+TextField readText(const nlohmann::json& root, const char* key, size_t limit, Need need);
 
 }  // namespace jean

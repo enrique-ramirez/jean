@@ -6,6 +6,8 @@
 
 namespace jean {
 
+enum class Need { required, optional };
+
 std::string toLower(std::string value);
 
 // The non-empty elements of a delimited header field, each trimmed of the optional whitespace

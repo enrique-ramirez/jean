@@ -239,44 +239,4 @@ TagWriteRequest parseTagWrite(const std::string& body, const Settings& settings)
     return request;
 }
 
-std::string describe(TagWriteRefusal refusal) {
-    switch (refusal) {
-        case TagWriteRefusal::none:
-            return "ok";
-        case TagWriteRefusal::malformedBody:
-            return "malformed request";
-        case TagWriteRefusal::badAddress:
-            return "unacceptable address";
-        case TagWriteRefusal::noFields:
-            return "no fields to write";
-        case TagWriteRefusal::fieldNotAllowed:
-            return "field not allowed";
-    }
-    return "unknown";
-}
-
-std::string describe(TagWriteOutcome outcome) {
-    switch (outcome) {
-        case TagWriteOutcome::written:
-            return "written";
-        case TagWriteOutcome::trackNotKnown:
-            return "foobar2000 does not know that track";
-        case TagWriteOutcome::ambiguousAddress:
-            return "the media library holds more than one track at that address";
-        case TagWriteOutcome::rowsMoved:
-            return "the playlist's rows were added, removed or reordered; read them again";
-        case TagWriteOutcome::libraryRebuilt:
-            return "the media library was rebuilt; export it again";
-        case TagWriteOutcome::writeFailed:
-            return "the player could not write the tags";
-        case TagWriteOutcome::timedOut:
-            return "the player did not answer in time";
-        case TagWriteOutcome::unavailable:
-            return "tag writing is not available";
-        case TagWriteOutcome::tooFast:
-            return "too many tag writes";
-    }
-    return "unknown";
-}
-
 }  // namespace jean

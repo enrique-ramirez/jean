@@ -63,8 +63,8 @@ struct Source {
         auto built = TestServer::streaming([gate = gate](const std::string&) -> OpenedStream {
             return {"audio/ogg", std::make_unique<HeldStream>(gate)};
         });
-        built.outputHeld = std::move(outputHeld);
-        built.releaseOutput = std::move(releaseOutput);
+        built.stream.outputHeld = std::move(outputHeld);
+        built.stream.releaseOutput = std::move(releaseOutput);
         return built;
     }
 };

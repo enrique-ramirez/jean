@@ -71,7 +71,7 @@ void formatRow(const metadb_v2::ptr& metadb, const metadb_handle_ptr& item,
     }
 }
 
-LibraryTrackRead trackReadFailure(PlaylistOutcome outcome) {
+LibraryTrackRead trackReadFailure(PlayerOutcome outcome) {
     LibraryTrackRead read;
     read.outcome = outcome;
     return read;
@@ -185,12 +185,12 @@ struct LibraryFeed::State {
     }
 
     // On a connection thread like `artwork()`; the columns go to the main thread for the reason
-    // core/http_server.h's `LibraryTrackReader` gives.
+    // core/player.h's `LibraryTrackReader` gives.
     LibraryTrackRead readTrackColumns(const std::string& track, uint32_t subsong,
                                       const std::vector<std::string>& columns) const {
         const LibraryTrackResolution at = trackAt(track, subsong);
         if (at.heldTwice)
-            return trackReadFailure(PlaylistOutcome::ambiguousAddress);
+            return trackReadFailure(PlayerOutcome::ambiguousAddress);
 
         const metadb_handle_ptr handle = at.handle;
         if (!handle.is_valid())
@@ -204,8 +204,8 @@ struct LibraryFeed::State {
                 read.columns = formattedColumns(handle, compiledColumns(compiler, columns));
                 answer->set(std::move(read));
             },
-            trackReadFailure(PlaylistOutcome::timedOut),
-            trackReadFailure(PlaylistOutcome::playerRefused));
+            trackReadFailure(PlayerOutcome::timedOut),
+            trackReadFailure(PlayerOutcome::playerRefused));
     }
 
     // On a connection thread like readTrackColumns, and for the same reason. Checked against
@@ -217,7 +217,7 @@ struct LibraryFeed::State {
                                         const std::vector<std::string>& columns) const {
         const OrderedPtr ordered = order();
         if (!ordered || ordered->structure != at.structure)
-            return trackReadFailure(PlaylistOutcome::structureMoved);
+            return trackReadFailure(PlayerOutcome::structureMoved);
 
         if (at.ordinal >= ordered->items.get_count())
             return {};
@@ -232,8 +232,8 @@ struct LibraryFeed::State {
                 read.columns = formattedColumns(handle, compiledColumns(compiler, columns));
                 answer->set(std::move(read));
             },
-            trackReadFailure(PlaylistOutcome::timedOut),
-            trackReadFailure(PlaylistOutcome::playerRefused));
+            trackReadFailure(PlayerOutcome::timedOut),
+            trackReadFailure(PlayerOutcome::playerRefused));
     }
 
     OrdinalResolution resolveOrdinals(uint64_t structure,

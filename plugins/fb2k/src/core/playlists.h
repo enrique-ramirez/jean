@@ -1,8 +1,9 @@
 #pragma once
 
-#include "core/json.h"
 #include "core/library.h"
+#include "core/player_outcome.h"
 #include "core/player_state.h"
+#include "core/text.h"
 
 #include <cstdint>
 #include <deque>
@@ -157,42 +158,8 @@ struct AutoPlaylistRequest {
     bool ok() const { return refusal == PlaylistRefusal::none; }
 };
 
-enum class PlaylistOutcome {
-    done,
-    // An outcome rather than a refusal because only foobar2000 can parse a query.
-    queryInvalid,
-    noSuchPlaylist,
-    positionPastEnd,
-    // Says what POST /api/tags says by TagWriteOutcome::ambiguousAddress, in those words: a
-    // client tells one refusal from another by the sentence rather than by the route.
-    ambiguousAddress,
-    notOurs,
-    keyInUse,
-    tooMany,
-    // Means what GET /api/library/changes already means by 409: export again, then ask again.
-    structureMoved,
-    // The revision a move, a remove or a positioned queue named is not the queue's current
-    // one, checked at the route and answered again from inside the job for the same reason
-    // structureMoved is: a change can land between the two. Distinct from structureMoved so a
-    // client with both remedies at hand -- re-read the queue, or export the library again --
-    // knows which one applies.
-    queueMoved,
-    rowsMoved,
-    rowsRevisionTooOld,
-    playerRefused,
-    timedOut,
-    unavailable,
-    // The read-only-playlists setting, checked at the route before the player is asked
-    // anything. Distinct from notOurs, the structural refusal ourPlaylist() answers whatever
-    // the setting says.
-    writesDisabled,
-    playlistLocked,
-    ownPlaylist,
-    playbackDisabled,
-};
-
 struct PlaylistResult {
-    PlaylistOutcome outcome = PlaylistOutcome::done;
+    PlayerOutcome outcome = PlayerOutcome::done;
 
     // Set for queryInvalid: foobar2000's own message, which describes only text the
     // client sent and so is safe to relay.
@@ -201,10 +168,10 @@ struct PlaylistResult {
     PlaylistAnnotation playlist;
 };
 
-PlaylistResult playlistFailure(PlaylistOutcome outcome, std::string detail = {});
+PlaylistResult playlistFailure(PlayerOutcome outcome, std::string detail = {});
 
 struct PlaylistsResult {
-    PlaylistOutcome outcome = PlaylistOutcome::done;
+    PlayerOutcome outcome = PlayerOutcome::done;
     std::vector<PlaylistAnnotation> playlists;
 };
 
@@ -212,7 +179,7 @@ struct PlaylistsResult {
 // here, because this route is called while somebody is still typing; creating with the
 // same query is a 400.
 struct PreviewResult {
-    PlaylistOutcome outcome = PlaylistOutcome::done;
+    PlayerOutcome outcome = PlayerOutcome::done;
     bool valid = false;
     std::string error;
     int matches = 0;
@@ -223,31 +190,16 @@ struct PreviewResult {
     bool libraryEnabled = false;
 };
 
-PreviewResult previewFailure(PlaylistOutcome outcome);
-
-// Creating requires a title; updating leaves the name alone when none is given, so changing
-// a query cannot silently rename a playlist back to a stale title.
-enum class Need { required, optional };
+PreviewResult previewFailure(PlayerOutcome outcome);
 
 // A limit every title on a playlist this component names shares: the autoplaylist's own and
 // the title a fill hands to the component's own scratch playlist. One number, so the two
 // routes that both accept a title cannot drift apart on how long one may be.
 constexpr size_t kMaxTitle = 256;
 
-// Whether `key`'s text field is present, printable and within `limit`, folding the presence
-// check `need` asks for into the one result. Shared by every route that reads a title, a key
-// or a query, so what makes one of those acceptable is answered once rather than once per
-// caller.
-struct TextField {
-    std::string why;
-    std::string value;
-
-    bool ok() const { return why.empty(); }
-};
-
-TextField readText(const nlohmann::json& root, const char* key, size_t limit, Need need);
-
-// Never throws: a malformed body is routine for the HTTP handler that calls these.
+// Never throws: a malformed body is routine for the HTTP handler that calls these. Creating
+// requires a title; updating leaves the name alone when none is given, so changing a query
+// cannot silently rename a playlist back to a stale title.
 AutoPlaylistRequest parseAutoPlaylist(const std::string& body, Need title);
 AutoPlaylistRequest parseQueryPreview(const std::string& body);
 
@@ -273,8 +225,5 @@ std::string serialiseAutoPlaylist(const AutoPlaylistSpec& spec);
 // Tolerant like the config parser: a record written by a future version of this component
 // must not stop this one reading the parts it still understands.
 AutoPlaylistSpec parseStoredAutoPlaylist(const std::string& stored);
-
-std::string describe(PlaylistRefusal refusal);
-std::string describe(PlaylistOutcome outcome);
 
 }  // namespace jean

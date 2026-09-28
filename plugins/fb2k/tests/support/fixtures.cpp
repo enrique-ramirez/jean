@@ -32,11 +32,11 @@ Settings servingSettingsAllowing(std::vector<std::string> fields) {
 
 Player servingPlayer() {
     Player player;
-    player.playerName = "foobar2000";
-    player.playerVersion = "2.25.3";
-    player.volumeMin = -100;
-    player.volumeMax = 0;
-    player.volumeUnit = "db";
+    player.report.name = "foobar2000";
+    player.report.version = "2.25.3";
+    player.report.volumeMin = -100;
+    player.report.volumeMax = 0;
+    player.report.volumeUnit = "db";
     return player;
 }
 

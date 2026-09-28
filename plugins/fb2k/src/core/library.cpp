@@ -502,38 +502,6 @@ LibraryRequest parseLibraryRequest(const std::vector<std::string>& columns,
     return request;
 }
 
-std::string describe(LibraryRefusal refusal) {
-    switch (refusal) {
-        case LibraryRefusal::none:
-            return "ok";
-        case LibraryRefusal::tooManyColumns:
-            return "too many columns";
-        case LibraryRefusal::badColumn:
-            return "unacceptable column";
-        case LibraryRefusal::duplicateColumn:
-            return "duplicate column";
-        case LibraryRefusal::badSince:
-            return "unacceptable revision";
-    }
-    return "unknown";
-}
-
-std::string describe(DeltaOutcome outcome) {
-    switch (outcome) {
-        case DeltaOutcome::ok:
-            return "ok";
-        case DeltaOutcome::notBuilt:
-            return "the library snapshot has not been built yet";
-        case DeltaOutcome::structureChanged:
-            return "tracks were added or removed; export the library again";
-        case DeltaOutcome::revisionTooOld:
-            return "that revision is older than the retained window; export the library again";
-        case DeltaOutcome::revisionUnknown:
-            return "no such revision";
-    }
-    return "unknown";
-}
-
 void RebuildQueue::ask(std::vector<std::string> columns, RebuildReason why) {
     if (why == RebuildReason::dataChanged)
         dataMoved();

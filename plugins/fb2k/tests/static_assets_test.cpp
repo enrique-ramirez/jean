@@ -57,7 +57,7 @@ FakePages aBuild() {
 // The pointer must outlive the server.
 Player serving(FakePages* pages) {
     Player player = servingPlayer();
-    player.readPage = [pages](const std::string& path) -> std::optional<std::string> {
+    player.page.read = [pages](const std::string& path) -> std::optional<std::string> {
         pages->asked.push_back(path);
 
         const auto found = pages->files.find(path);
@@ -90,8 +90,8 @@ const std::vector<std::string> kJeanRoot{"index.html", "assets", "locales", "fav
 
 Player serving(FakePages* pages, FakeDisk* disk) {
     Player player = serving(pages);
-    player.pageNames = kJeanRoot;
-    player.readDiskPage = [disk](const std::string& path) -> DiskPage {
+    player.page.names = kJeanRoot;
+    player.page.readDisk = [disk](const std::string& path) -> DiskPage {
         disk->asked.push_back(path);
 
         DiskPage page;

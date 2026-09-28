@@ -30,7 +30,7 @@ StreamMark playing() {
 // would look identical from here.
 Player publishing(std::atomic<int>* reads) {
     Player player;
-    player.readTimeline = [reads] {
+    player.stream.readTimeline = [reads] {
         ++*reads;
         return streamTimelineDocument(12.5, {playing()});
     };

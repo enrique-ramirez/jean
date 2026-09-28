@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/audience.h"
+#include "core/failures.h"
 #include "core/library.h"
 #include "core/outputs.h"
 #include "core/player_state.h"
@@ -31,50 +32,35 @@ struct ListenerStatus {
 
 std::string statusDocument();
 
+struct PlayerReport;
+
 // `mutesWhileStreaming` is whether this install actually holds the player's output, not
 // whether it was asked to: the setting alone is true on an install with no encoder, where
 // there is nothing to hold and DELETE /stream/hold answers 503.
 //
-// `playerName`, `playerVersion`, `volumeMin`, `volumeMax` and `volumeUnit` are read once from
-// the player and never change while it runs, which is why they ride this document and not the
-// poll: see GET /state's `PlayerState.volume`, which is a bare number in this same range.
-//
-// `playbackOrders` is the player's own listing of its playback orders, in its own order; the
-// document maps each through core/playback_modes.h and keeps the ones that answer, so an order
-// this component has no Jean name for is offered to a client not at all.
-std::string capabilitiesDocument(const Settings& settings,
+// `report` is read once from the player and never changes while it runs, which is why it rides
+// this document and not the poll: see GET /state's `PlayerState.volume`, which is a bare number
+// in this same range. The document maps each of its playback orders through
+// core/playback_modes.h and keeps the ones that answer, so an order this component has no Jean
+// name for is offered to a client not at all.
+std::string capabilitiesDocument(const Settings& settings, const PlayerReport& report,
                                  const std::vector<std::string>& streamFormats,
-                                 bool mutesWhileStreaming, bool servesLibrary,
-                                 const std::string& playerName, const std::string& playerVersion,
-                                 double volumeMin, double volumeMax, const std::string& volumeUnit,
-                                 const std::vector<std::string>& playbackOrders);
+                                 bool mutesWhileStreaming, bool servesLibrary);
 
 std::string streamListenersDocument(const std::vector<AudienceMember>& members, int connections,
                                     int maxConnections, bool playerMuted);
-
-std::string errorDocument(const std::string& message);
 
 std::string streamTicketDocument(const std::string& ticket, int expiresInSeconds);
 
 std::string streamTimelineDocument(double streamTime, const std::vector<StreamMark>& marks);
 
 std::string tagWrittenDocument(const TagWrite& write);
-std::string tagRefusedDocument(const TagWriteRequest& request);
-std::string tagFailedDocument(TagWriteOutcome outcome);
-
-int httpStatusFor(TagWriteRefusal refusal);
-int httpStatusFor(TagWriteOutcome outcome);
 
 std::string playlistsDocument(const std::vector<PlaylistAnnotation>& playlists);
 
 std::string playlistDocument(const PlaylistAnnotation& playlist);
 std::string playlistRemovedDocument(const std::string& id);
-std::string playlistRefusedDocument(const AutoPlaylistRequest& request);
-std::string playlistFailedDocument(const PlaylistResult& result);
 std::string queryPreviewDocument(const PreviewResult& preview);
-
-int httpStatusFor(PlaylistRefusal refusal);
-int httpStatusFor(PlaylistOutcome outcome);
 
 std::string fillResultDocument(const std::string& playlistId, uint64_t structure,
                                const std::vector<size_t>& positions);
@@ -93,7 +79,7 @@ struct PlaylistRow {
 };
 
 struct PlaylistRowsRead {
-    PlaylistOutcome outcome = PlaylistOutcome::done;
+    PlayerOutcome outcome = PlayerOutcome::done;
 
     uint64_t structure = 0;
     uint64_t revision = 0;
@@ -110,7 +96,7 @@ struct ChangedPlaylistRow {
 };
 
 struct PlaylistChangesRead {
-    PlaylistOutcome outcome = PlaylistOutcome::done;
+    PlayerOutcome outcome = PlayerOutcome::done;
     DeltaOutcome catchUp = DeltaOutcome::ok;
 
     uint64_t revision = 0;
@@ -156,26 +142,7 @@ struct ActiveOutputRequest {
 // Never throws: a malformed body is routine for the HTTP handler that calls this.
 ActiveOutputRequest parseActiveOutput(const std::string& body);
 
-// contract/openapi.yaml's ActiveOutputRefusal: the one category a malformed body can fail
-// under, shaped like playbackRefusedDocument with the specific complaint in `detail`.
-std::string activeOutputRefusedDocument(const std::string& detail);
-
 std::string outputsDocument(const OutputsRead& read);
-
-// The same {"error", "detail"} shape playlistFailedDocument answers with, for the one enum
-// core/outputs.h owns rather than PlaylistOutcome.
-std::string outputFailedDocument(OutputOutcome outcome);
-
-// The category `POST /playback/seek`, `POST /playback/mode` and `POST /volume` each refuse a
-// malformed body under, one apiece: contract/openapi.yaml's PlaybackSeekRefusal,
-// PlaybackModeRefusal and VolumeRefusal.
-enum class PlaybackRefusal { none, badSeek, badMode, badVolume };
-
-std::string describe(PlaybackRefusal refusal);
-
-int httpStatusFor(PlaybackRefusal refusal);
-
-std::string playbackRefusedDocument(PlaybackRefusal refusal, const std::string& detail);
 
 struct SeekRequest {
     PlaybackRefusal refusal = PlaybackRefusal::none;
@@ -232,7 +199,7 @@ struct QueuedTrack {
 };
 
 struct QueueRead {
-    PlaylistOutcome outcome = PlaylistOutcome::done;
+    PlayerOutcome outcome = PlayerOutcome::done;
     uint64_t revision = 0;
     std::vector<QueuedTrack> entries;
 };
@@ -258,13 +225,13 @@ QueueRowsRequest parseQueueRows(const std::string& body);
 
 struct QueueTracksRequest {
     PlaylistRefusal refusal = PlaylistRefusal::none;
-    PlaylistOutcome outcome = PlaylistOutcome::done;
+    PlayerOutcome outcome = PlayerOutcome::done;
 
     uint64_t structure = 0;
     std::vector<uint32_t> ordinals;
     std::optional<QueuePosition> at;
 
-    bool ok() const { return refusal == PlaylistRefusal::none && outcome == PlaylistOutcome::done; }
+    bool ok() const { return refusal == PlaylistRefusal::none && outcome == PlayerOutcome::done; }
 };
 
 // Never throws.
@@ -305,12 +272,12 @@ RemoveQueueRequest parseRemoveQueue(const std::string& indexText, const std::str
 // ascending for `runs` and `bitset`, because neither of those can carry any other order.
 struct FillRequest {
     PlaylistRefusal refusal = PlaylistRefusal::none;
-    PlaylistOutcome outcome = PlaylistOutcome::done;
+    PlayerOutcome outcome = PlayerOutcome::done;
 
     uint64_t structure = 0;
     std::vector<uint32_t> ordinals;
 
-    bool ok() const { return refusal == PlaylistRefusal::none && outcome == PlaylistOutcome::done; }
+    bool ok() const { return refusal == PlaylistRefusal::none && outcome == PlayerOutcome::done; }
 };
 
 // `trackCount` bounds what an ordinal may name; one at or past it is refused rather than
@@ -395,17 +362,11 @@ std::string stateDocument(const Library::State& state, const PlayerState& player
                           PlayerRevisions revisions = {},
                           std::optional<uint64_t> configGeneration = std::nullopt);
 
-std::string libraryRefusedDocument(const LibraryRequest& request);
-std::string libraryFailedDocument(DeltaOutcome outcome);
-
 // One track's declared columns, in the order declared. The address the caller sent is not
 // echoed back.
 std::string libraryTrackDocument(const std::vector<std::string>& columns);
 
 std::string playingTrackDocument(const std::string& path, uint32_t subsong,
                                  const std::vector<std::string>& columns);
-
-int httpStatusFor(LibraryRefusal refusal);
-int httpStatusFor(DeltaOutcome outcome);
 
 }  // namespace jean

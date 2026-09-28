@@ -52,4 +52,23 @@ OptionalString readString(const nlohmann::json& root, const char* key) {
     return given(found->get<std::string>());
 }
 
+TextField readText(const nlohmann::json& root, const char* key, size_t limit, Need need) {
+    const std::string named = std::string("'") + key + "'";
+    const auto field = readString(root, key);
+
+    if (field.wrongType)
+        return {named + " must be a string", {}};
+
+    if (need == Need::required && (!field.present || field.value.empty()))
+        return {named + " is required", {}};
+
+    if (field.value.size() > limit || !isPrintable(field.value)) {
+        return {
+            named + " must be printable text of at most " + std::to_string(limit) + " characters",
+            {}};
+    }
+
+    return {{}, field.value};
+}
+
 }  // namespace jean

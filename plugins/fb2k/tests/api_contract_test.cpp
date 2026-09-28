@@ -53,9 +53,9 @@ Player wiredUp() {
         return {"audio/ogg", std::make_unique<OneChunk>()};
     });
 
-    player.readTimeline = [] { return streamTimelineDocument(0, {}); };
-    player.outputHeld = [] { return true; };
-    player.releaseOutput = [] {};
+    player.stream.readTimeline = [] { return streamTimelineDocument(0, {}); };
+    player.stream.outputHeld = [] { return true; };
+    player.stream.releaseOutput = [] {};
     return player;
 }
 
@@ -161,8 +161,14 @@ TEST_CASE("GET /status is the shape contract/openapi.yaml publishes") {
 
 TEST_CASE("GET /capabilities is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
-    CHECK(keysOf(capabilitiesDocument(servingSettings(), {"opus", "aac"}, true, true, "foobar2000",
-                                      "2.25.3", -100, 0, "db", {"Default"})) ==
+    PlayerReport report;
+    report.name = "foobar2000";
+    report.version = "2.25.3";
+    report.volumeMin = -100;
+    report.volumeUnit = "db";
+    report.playbackOrders = {"Default"};
+
+    CHECK(keysOf(capabilitiesDocument(servingSettings(), report, {"opus", "aac"}, true, true)) ==
           Keys{"apiVersion", "allowedFields", "canWrite", "canWritePlaylists", "canControlPlayback",
                "canChangeOutput", "maxAutoPlaylists", "canCreateAutoPlaylists", "canStream",
                "streamFormats", "canMuteWhileStreaming", "canReadLibrary", "playerName",
@@ -249,15 +255,17 @@ TEST_CASE("a refusal is the shape contract/openapi.yaml publishes") {
     REQUIRE_FALSE(refused.ok());
 
     // `field` is present only for a rejected field, which is the difference a client branches on.
-    CHECK(keysOf(tagRefusedDocument(refused)) == Keys{"written", "error", "detail", "field"});
+    CHECK(keysOf(tagRefusalDocument(refused.refusal, refused.detail)) ==
+          Keys{"written", "error", "detail", "field"});
 
     const auto malformed = parseTagWrite("not json", servingSettings());
-    CHECK(keysOf(tagRefusedDocument(malformed)) == Keys{"written", "error", "detail"});
+    CHECK(keysOf(tagRefusalDocument(malformed.refusal, malformed.detail)) ==
+          Keys{"written", "error", "detail"});
 }
 
 TEST_CASE("a failure is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
-    CHECK(keysOf(tagFailedDocument(TagWriteOutcome::trackNotKnown)) == Keys{"written", "error"});
+    CHECK(keysOf(tagFailureDocument(TagWriteOutcome::trackNotKnown)) == Keys{"written", "error"});
 }
 
 TEST_CASE("a playlist annotation is the shape contract/openapi.yaml publishes") {
@@ -373,11 +381,11 @@ TEST_CASE("the other playlist answers are the shapes contract/openapi.yaml publi
 
     const auto refused = parseAutoPlaylist("not json", Need::required);
     REQUIRE_FALSE(refused.ok());
-    CHECK(keysOf(playlistRefusedDocument(refused)) == Keys{"error", "detail"});
+    CHECK(keysOf(refusalDocument(refused.refusal, refused.detail)) == Keys{"error", "detail"});
 
     PlaylistResult failed;
-    failed.outcome = PlaylistOutcome::queryInvalid;
-    CHECK(keysOf(playlistFailedDocument(failed)) == Keys{"error", "detail"});
+    failed.outcome = PlayerOutcome::queryInvalid;
+    CHECK(keysOf(failureDocument(failed.outcome, failed.detail)) == Keys{"error", "detail"});
 
     CHECK(keysOf(queryPreviewDocument(PreviewResult())) ==
           Keys{"valid", "error", "matches", "libraryEnabled"});
@@ -395,23 +403,23 @@ TEST_CASE("the playlist statuses contract/openapi.yaml documents are the ones we
     CHECK(httpStatusFor(PlaylistRefusal::badOrdinals) == 400);
     CHECK(httpStatusFor(PlaylistRefusal::tooFast) == 429);
 
-    CHECK(httpStatusFor(PlaylistOutcome::done) == 200);
-    CHECK(httpStatusFor(PlaylistOutcome::queryInvalid) == 400);
-    CHECK(httpStatusFor(PlaylistOutcome::positionPastEnd) == 400);
-    CHECK(httpStatusFor(PlaylistOutcome::notOurs) == 403);
-    CHECK(httpStatusFor(PlaylistOutcome::noSuchPlaylist) == 404);
-    CHECK(httpStatusFor(PlaylistOutcome::keyInUse) == 409);
-    CHECK(httpStatusFor(PlaylistOutcome::tooMany) == 409);
-    CHECK(httpStatusFor(PlaylistOutcome::structureMoved) == 409);
-    CHECK(httpStatusFor(PlaylistOutcome::queueMoved) == 409);
-    CHECK(httpStatusFor(PlaylistOutcome::rowsMoved) == 409);
-    CHECK(httpStatusFor(PlaylistOutcome::playlistLocked) == 409);
-    CHECK(httpStatusFor(PlaylistOutcome::rowsRevisionTooOld) == 410);
-    CHECK(httpStatusFor(PlaylistOutcome::playerRefused) == 500);
-    CHECK(httpStatusFor(PlaylistOutcome::timedOut) == 504);
-    CHECK(httpStatusFor(PlaylistOutcome::unavailable) == 503);
-    CHECK(httpStatusFor(PlaylistOutcome::writesDisabled) == 403);
-    CHECK(httpStatusFor(PlaylistOutcome::ownPlaylist) == 403);
+    CHECK(httpStatusFor(PlayerOutcome::done) == 200);
+    CHECK(httpStatusFor(PlayerOutcome::queryInvalid) == 400);
+    CHECK(httpStatusFor(PlayerOutcome::positionPastEnd) == 400);
+    CHECK(httpStatusFor(PlayerOutcome::notOurs) == 403);
+    CHECK(httpStatusFor(PlayerOutcome::noSuchPlaylist) == 404);
+    CHECK(httpStatusFor(PlayerOutcome::keyInUse) == 409);
+    CHECK(httpStatusFor(PlayerOutcome::tooMany) == 409);
+    CHECK(httpStatusFor(PlayerOutcome::structureMoved) == 409);
+    CHECK(httpStatusFor(PlayerOutcome::queueMoved) == 409);
+    CHECK(httpStatusFor(PlayerOutcome::rowsMoved) == 409);
+    CHECK(httpStatusFor(PlayerOutcome::playlistLocked) == 409);
+    CHECK(httpStatusFor(PlayerOutcome::rowsRevisionTooOld) == 410);
+    CHECK(httpStatusFor(PlayerOutcome::playerRefused) == 500);
+    CHECK(httpStatusFor(PlayerOutcome::timedOut) == 504);
+    CHECK(httpStatusFor(PlayerOutcome::unavailable) == 503);
+    CHECK(httpStatusFor(PlayerOutcome::writesDisabled) == 403);
+    CHECK(httpStatusFor(PlayerOutcome::ownPlaylist) == 403);
 }
 
 TEST_CASE("the library answers are the shapes contract/openapi.yaml publishes") {
@@ -431,9 +439,9 @@ TEST_CASE("the library answers are the shapes contract/openapi.yaml publishes") 
 
     const auto refused = parseLibraryRequest({"%title%", "%title%"}, std::string());
     REQUIRE_FALSE(refused.ok());
-    CHECK(keysOf(libraryRefusedDocument(refused)) == Keys{"error", "detail"});
+    CHECK(keysOf(refusalDocument(refused.refusal, refused.detail)) == Keys{"error", "detail"});
 
-    CHECK(keysOf(libraryFailedDocument(DeltaOutcome::structureChanged)) == Keys{"error", "detail"});
+    CHECK(keysOf(failureDocument(DeltaOutcome::structureChanged)) == Keys{"error", "detail"});
 
     // No libraryPath: the caller supplied the address, so the answer carries only what it did
     // not already have.
@@ -652,24 +660,24 @@ TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we se
     CHECK(describe(PlaylistRefusal::badOrdinals) == "unacceptable ordinal set");
     CHECK(describe(PlaylistRefusal::tooFast) == "too many requests");
 
-    CHECK(describe(PlaylistOutcome::queryInvalid) == "foobar2000 could not read that query");
-    CHECK(describe(PlaylistOutcome::noSuchPlaylist) == "no such playlist");
-    CHECK(describe(PlaylistOutcome::notOurs) == "that playlist was not created by foo_jean");
-    CHECK(describe(PlaylistOutcome::keyInUse) == "another playlist already has that key");
-    CHECK(describe(PlaylistOutcome::tooMany) == "this install's autoplaylist limit is reached");
-    CHECK(describe(PlaylistOutcome::structureMoved) ==
+    CHECK(describe(PlayerOutcome::queryInvalid) == "foobar2000 could not read that query");
+    CHECK(describe(PlayerOutcome::noSuchPlaylist) == "no such playlist");
+    CHECK(describe(PlayerOutcome::notOurs) == "that playlist was not created by foo_jean");
+    CHECK(describe(PlayerOutcome::keyInUse) == "another playlist already has that key");
+    CHECK(describe(PlayerOutcome::tooMany) == "this install's autoplaylist limit is reached");
+    CHECK(describe(PlayerOutcome::structureMoved) ==
           "tracks were added or removed; export the library again");
-    CHECK(describe(PlaylistOutcome::rowsMoved) ==
+    CHECK(describe(PlayerOutcome::rowsMoved) ==
           "the playlist's rows were added, removed or reordered; read them again");
-    CHECK(describe(PlaylistOutcome::rowsRevisionTooOld) ==
+    CHECK(describe(PlayerOutcome::rowsRevisionTooOld) ==
           "that revision is not one this playlist can catch up from; read its rows again");
-    CHECK(describe(PlaylistOutcome::playerRefused) == "the player could not do that");
-    CHECK(describe(PlaylistOutcome::timedOut) == "the player did not answer in time");
-    CHECK(describe(PlaylistOutcome::unavailable) == "autoplaylists are not available");
-    CHECK(describe(PlaylistOutcome::writesDisabled) ==
+    CHECK(describe(PlayerOutcome::playerRefused) == "the player could not do that");
+    CHECK(describe(PlayerOutcome::timedOut) == "the player did not answer in time");
+    CHECK(describe(PlayerOutcome::unavailable) == "autoplaylists are not available");
+    CHECK(describe(PlayerOutcome::writesDisabled) ==
           "this install has playlist writes turned off; turn on writePlaylists in config.json to "
           "allow them");
-    CHECK(describe(PlaylistOutcome::ownPlaylist) ==
+    CHECK(describe(PlayerOutcome::ownPlaylist) ==
           "that playlist is foo_jean's own; address it by its role rather than by its id");
 
     CHECK(describe(LibraryRefusal::tooManyColumns) == "too many columns");
@@ -691,17 +699,12 @@ TEST_CASE("every playlist error contract/openapi.yaml publishes is one this comp
         CHECK(unsendable("PlaylistRefusal", everyDescribed<PlaylistRefusal>()) == std::string());
     }
 
-    // POST /outputs/active answers its refusals in this same document, from OutputOutcome.
     SUBCASE("PlaylistFailed") {
         INFO(
             "the spec follows the component's wording: correct the value in "
-            "contract/openapi.yaml, or add the enumerator to PlaylistOutcome in core/playlists.h "
-            "or to OutputOutcome in core/outputs.h");
-        auto described = everyDescribed<PlaylistOutcome>();
-        const auto fromOutputs = everyDescribed<OutputOutcome>();
-        described.insert(fromOutputs.begin(), fromOutputs.end());
-
-        CHECK(unsendable("PlaylistFailed", described) == std::string());
+            "contract/openapi.yaml, or add the enumerator to PlayerOutcome in "
+            "core/player_outcome.h");
+        CHECK(unsendable("PlaylistFailed", everyDescribed<PlayerOutcome>()) == std::string());
     }
 }
 
@@ -709,8 +712,8 @@ TEST_CASE("every refusal POST /outputs/active answers is published, under the st
           "with") {
     INFO(kUpdateSpec);
 
-    for (const auto outcome : {OutputOutcome::changeDisabled, OutputOutcome::notListed,
-                               OutputOutcome::playerRefused, OutputOutcome::timedOut}) {
+    for (const auto outcome : {PlayerOutcome::changeDisabled, PlayerOutcome::notListed,
+                               PlayerOutcome::playerRefused, PlayerOutcome::timedOut}) {
         const auto sentence = describe(outcome);
         INFO("error: ", sentence);
         CHECK(publishesError("PlaylistFailed", sentence));
@@ -721,8 +724,8 @@ TEST_CASE("every refusal POST /outputs/active answers is published, under the st
 TEST_CASE("a moved generation is refused with the 409 GET /library/changes already sends") {
     const auto moved = describe(DeltaOutcome::structureChanged);
 
-    INFO("add an enumerator to PlaylistOutcome in core/playlists.h whose describe() is ", moved);
-    CHECK(statusAnswered<PlaylistOutcome>(moved) == 409);
+    INFO("add an enumerator to PlayerOutcome in core/player_outcome.h whose describe() is ", moved);
+    CHECK(statusAnswered<PlayerOutcome>(moved) == 409);
 
     INFO("and publish that string as a PlaylistFailed.error in contract/openapi.yaml");
     const auto published = publishedEnum("PlaylistFailed", "error");
@@ -733,12 +736,12 @@ TEST_CASE("a moved generation is refused with the 409 GET /library/changes alrea
 // remove or a positioned queue has a different remedy, re-reading the queue rather than
 // exporting the library again, and needs a string of its own to tell the two apart.
 TEST_CASE("a stale queue revision is refused with a 409 distinct from a moved structure") {
-    const auto moved = describe(PlaylistOutcome::queueMoved);
+    const auto moved = describe(PlayerOutcome::queueMoved);
 
     CHECK(moved != describe(DeltaOutcome::structureChanged));
 
-    INFO("add an enumerator to PlaylistOutcome in core/playlists.h whose describe() is ", moved);
-    CHECK(statusAnswered<PlaylistOutcome>(moved) == 409);
+    INFO("add an enumerator to PlayerOutcome in core/player_outcome.h whose describe() is ", moved);
+    CHECK(statusAnswered<PlayerOutcome>(moved) == 409);
 
     INFO("and publish that string as a PlaylistFailed.error in contract/openapi.yaml");
     const auto published = publishedEnum("PlaylistFailed", "error");
@@ -753,15 +756,15 @@ TEST_CASE("an address naming more than one track is one 409 both library routes 
     constexpr char kNamesMoreThanOneTrack[] = "more than one track";
 
     const auto fromTags = errorsSaying<TagWriteOutcome>(kNamesMoreThanOneTrack);
-    const auto fromColumns = errorsSaying<PlaylistOutcome>(kNamesMoreThanOneTrack);
+    const auto fromColumns = errorsSaying<PlayerOutcome>(kNamesMoreThanOneTrack);
 
-    INFO("add one enumerator to TagWriteOutcome and one to PlaylistOutcome, saying it");
+    INFO("add one enumerator to TagWriteOutcome and one to PlayerOutcome, saying it");
     REQUIRE(fromTags.size() == 1);
     REQUIRE(fromColumns.size() == 1);
     CHECK(fromTags.front() == fromColumns.front());
 
     CHECK(statusAnswered<TagWriteOutcome>(fromTags.front()) == 409);
-    CHECK(statusAnswered<PlaylistOutcome>(fromColumns.front()) == 409);
+    CHECK(statusAnswered<PlayerOutcome>(fromColumns.front()) == 409);
 
     INFO(kUpdateSpec);
     CHECK(publishesError("TagFailed", fromTags.front()));
@@ -946,7 +949,7 @@ TEST_CASE("the playback refusal is a sentence contract/openapi.yaml publishes as
     INFO(kUpdateSpec);
 
     Player player = servingPlayer();
-    player.commandTransport = [](Transport) { return PlaylistOutcome::done; };
+    player.playback.commandTransport = [](Transport) { return PlayerOutcome::done; };
     const TestServer server(parseSettings(R"({"controlPlayback": false})"), player);
 
     const auto response = server.client().Post("/api/playback/next", "", "application/json");

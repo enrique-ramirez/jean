@@ -76,8 +76,6 @@ struct TagWriteRequest {
 // Never throws: the caller is an HTTP handler, where a malformed body is routine.
 TagWriteRequest parseTagWrite(const std::string& body, const Settings& settings);
 
-std::string describe(TagWriteRefusal refusal);
-
 enum class TagWriteOutcome {
     written,
     trackNotKnown,
@@ -93,7 +91,5 @@ enum class TagWriteOutcome {
     unavailable,
     tooFast,
 };
-
-std::string describe(TagWriteOutcome outcome);
 
 }  // namespace jean

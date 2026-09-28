@@ -56,7 +56,7 @@ QueuedTrack fromAPlaylistRow(std::string title, uint32_t index) {
 
 Player queueing(std::vector<QueuedTrack> entries, uint64_t revision = 1) {
     Player player = servingPlayer();
-    player.readQueue = [entries = std::move(entries), revision] {
+    player.queue.read = [entries = std::move(entries), revision] {
         QueueRead read;
         read.revision = revision;
         read.entries = entries;
@@ -249,14 +249,14 @@ struct RowQueueLog {
     std::string playlistId;
     std::vector<uint32_t> positions;
     std::optional<QueuePosition> at;
-    PlaylistOutcome answer = PlaylistOutcome::done;
+    PlayerOutcome answer = PlayerOutcome::done;
 };
 
 Player queueingRows(RowQueueLog* log) {
     Player player = servingPlayer();
-    player.queuePlaylistRows = [log](const std::string& playlistId,
-                                     const std::vector<uint32_t>& positions,
-                                     std::optional<QueuePosition> at) {
+    player.queue.addPlaylistRows = [log](const std::string& playlistId,
+                                         const std::vector<uint32_t>& positions,
+                                         std::optional<QueuePosition> at) {
         log->calls++;
         log->playlistId = playlistId;
         log->positions = positions;
@@ -374,12 +374,12 @@ TEST_CASE(
     "queueing from a playlist the player does not have is a 404, and a position past that "
     "playlist's end is a 400") {
     struct Case {
-        PlaylistOutcome outcome;
+        PlayerOutcome outcome;
         int status;
     };
 
-    for (const auto& expected : {Case{PlaylistOutcome::noSuchPlaylist, 404},
-                                 Case{PlaylistOutcome::positionPastEnd, 400}}) {
+    for (const auto& expected :
+         {Case{PlayerOutcome::noSuchPlaylist, 404}, Case{PlayerOutcome::positionPastEnd, 400}}) {
         INFO("outcome: ", describe(expected.outcome));
         RowQueueLog log;
         log.answer = expected.outcome;
@@ -401,14 +401,15 @@ struct TrackQueueLog {
     uint64_t structure = 0;
     std::vector<uint32_t> ordinals;
     std::optional<QueuePosition> at;
-    PlaylistOutcome answer = PlaylistOutcome::done;
+    PlayerOutcome answer = PlayerOutcome::done;
 };
 
 // Both sources recorded, so a body can be shown to reach the one it names and never the other.
 Player queueingEither(RowQueueLog* rows, TrackQueueLog* tracks) {
     Player player = queueingRows(rows);
-    player.queueLibraryTracks = [tracks](uint64_t structure, const std::vector<uint32_t>& ordinals,
-                                         std::optional<QueuePosition> at) {
+    player.queue.addLibraryTracks = [tracks](uint64_t structure,
+                                             const std::vector<uint32_t>& ordinals,
+                                             std::optional<QueuePosition> at) {
         tracks->calls++;
         tracks->structure = structure;
         tracks->ordinals = ordinals;
@@ -666,7 +667,7 @@ TEST_CASE("a structure the library moves past before the player's job runs is a 
 
     RowQueueLog rows;
     TrackQueueLog tracks;
-    tracks.answer = PlaylistOutcome::structureMoved;
+    tracks.answer = PlayerOutcome::structureMoved;
     const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
 
     const auto response = post(server, kQueueRows, tracksOf(structure, "ordinals", {2}).dump());
@@ -824,12 +825,12 @@ struct MoveLog {
     uint32_t from = 0;
     uint32_t to = 0;
     uint64_t revision = 0;
-    PlaylistOutcome answer = PlaylistOutcome::done;
+    PlayerOutcome answer = PlayerOutcome::done;
 };
 
 Player moving(MoveLog* log) {
     Player player = servingPlayer();
-    player.moveQueueEntry = [log](uint32_t from, uint32_t to, uint64_t revision) {
+    player.queue.moveEntry = [log](uint32_t from, uint32_t to, uint64_t revision) {
         log->calls++;
         log->from = from;
         log->to = to;
@@ -845,12 +846,12 @@ json moveOf(const json& from, const json& to, const json& revision) {
 
 struct ClearLog {
     int calls = 0;
-    PlaylistOutcome answer = PlaylistOutcome::done;
+    PlayerOutcome answer = PlayerOutcome::done;
 };
 
 Player clearing(ClearLog* log) {
     Player player = servingPlayer();
-    player.clearQueue = [log] {
+    player.queue.clear = [log] {
         log->calls++;
         return log->answer;
     };
@@ -861,12 +862,12 @@ struct RemoveLog {
     int calls = 0;
     uint32_t index = 0;
     uint64_t revision = 0;
-    PlaylistOutcome answer = PlaylistOutcome::done;
+    PlayerOutcome answer = PlayerOutcome::done;
 };
 
 Player removing(RemoveLog* log) {
     Player player = servingPlayer();
-    player.removeQueueEntry = [log](uint32_t index, uint64_t revision) {
+    player.queue.removeEntry = [log](uint32_t index, uint64_t revision) {
         log->calls++;
         log->index = index;
         log->revision = revision;
@@ -1098,7 +1099,7 @@ TEST_CASE("a field no queue schema declares is refused, and nothing is queued or
     MoveLog moves;
 
     Player player = queueingEither(&rows, &tracks);
-    player.moveQueueEntry = moving(&moves).moveQueueEntry;
+    player.queue.moveEntry = moving(&moves).queue.moveEntry;
     const TestServer server = servingQueue(player, &store, &library);
 
     struct Target {
@@ -1148,7 +1149,7 @@ TEST_CASE("moving an entry from or to past the end of the queue is a 400") {
     const uint64_t current = store.read().queueRevision;
 
     MoveLog log;
-    log.answer = PlaylistOutcome::positionPastEnd;
+    log.answer = PlayerOutcome::positionPastEnd;
     const TestServer server = servingQueue(moving(&log), &store);
 
     const auto response = post(server, kMoveEntry, moveOf(9, 0, current).dump());
@@ -1176,12 +1177,12 @@ TEST_CASE(
     RowQueueLog rows;
     TrackQueueLog tracks;
     MoveLog moves;
-    rows.answer = PlaylistOutcome::queueMoved;
-    tracks.answer = PlaylistOutcome::queueMoved;
-    moves.answer = PlaylistOutcome::queueMoved;
+    rows.answer = PlayerOutcome::queueMoved;
+    tracks.answer = PlayerOutcome::queueMoved;
+    moves.answer = PlayerOutcome::queueMoved;
 
     Player player = queueingEither(&rows, &tracks);
-    player.moveQueueEntry = moving(&moves).moveQueueEntry;
+    player.queue.moveEntry = moving(&moves).queue.moveEntry;
     const TestServer server = servingQueue(player, &store, &library);
 
     const auto staleAtTheRoute = post(server, kMoveEntry, moveOf(2, 0, current - 1).dump());
@@ -1313,13 +1314,13 @@ TEST_CASE(
     REQUIRE(staleAtTheRoute->status == 409);
     const auto routeError = json::parse(staleAtTheRoute->body)["error"];
 
-    log.answer = PlaylistOutcome::positionPastEnd;
+    log.answer = PlayerOutcome::positionPastEnd;
     const auto pastTheEnd = removeEntry(server, 9, current);
     REQUIRE(pastTheEnd);
     CHECK(pastTheEnd->status == 400);
     CHECK(json::parse(pastTheEnd->body)["error"].is_string());
 
-    log.answer = PlaylistOutcome::queueMoved;
+    log.answer = PlayerOutcome::queueMoved;
     const auto moved = removeEntry(server, 2, current);
     REQUIRE(moved);
     CHECK(moved->status == 409);
@@ -1350,7 +1351,7 @@ TEST_CASE("a clear the player does not finish in time is a 504") {
     changeTheQueueTwice(store);
 
     ClearLog log;
-    log.answer = PlaylistOutcome::timedOut;
+    log.answer = PlayerOutcome::timedOut;
     const TestServer server = servingQueue(clearing(&log), &store);
 
     const auto response = clearTheQueue(server);
@@ -1424,27 +1425,27 @@ namespace {
 
 Player countingQueueWrites(int* calls) {
     Player player = queueing({track("Queued")});
-    player.queuePlaylistRows = [calls](const std::string&, const std::vector<uint32_t>&,
-                                       std::optional<QueuePosition>) {
+    player.queue.addPlaylistRows = [calls](const std::string&, const std::vector<uint32_t>&,
+                                           std::optional<QueuePosition>) {
         ++*calls;
-        return PlaylistOutcome::done;
+        return PlayerOutcome::done;
     };
-    player.queueLibraryTracks = [calls](uint64_t, const std::vector<uint32_t>&,
-                                        std::optional<QueuePosition>) {
+    player.queue.addLibraryTracks = [calls](uint64_t, const std::vector<uint32_t>&,
+                                            std::optional<QueuePosition>) {
         ++*calls;
-        return PlaylistOutcome::done;
+        return PlayerOutcome::done;
     };
-    player.moveQueueEntry = [calls](uint32_t, uint32_t, uint64_t) {
+    player.queue.moveEntry = [calls](uint32_t, uint32_t, uint64_t) {
         ++*calls;
-        return PlaylistOutcome::done;
+        return PlayerOutcome::done;
     };
-    player.removeQueueEntry = [calls](uint32_t, uint64_t) {
+    player.queue.removeEntry = [calls](uint32_t, uint64_t) {
         ++*calls;
-        return PlaylistOutcome::done;
+        return PlayerOutcome::done;
     };
-    player.clearQueue = [calls] {
+    player.queue.clear = [calls] {
         ++*calls;
-        return PlaylistOutcome::done;
+        return PlayerOutcome::done;
     };
     return player;
 }

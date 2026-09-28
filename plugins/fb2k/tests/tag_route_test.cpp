@@ -27,7 +27,7 @@ httplib::Result write(const TestServer& server, const std::string& body) {
 
 // What the client acts on, which is the sentence rather than the enumerator carrying it: the
 // same refusal reaches a client from GET /api/track/library, and that route answers out of
-// PlaylistOutcome instead.
+// PlayerOutcome instead.
 constexpr char kNamesMoreThanOneTrack[] = "more than one track";
 
 std::optional<TagWriteOutcome> outcomeForAnAddressNamingTwoTracks() {

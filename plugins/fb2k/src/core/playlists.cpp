@@ -2,7 +2,6 @@
 
 #include "core/json.h"
 #include "core/library.h"
-#include "core/tag_write.h"
 #include "core/text.h"
 
 #include <algorithm>
@@ -39,33 +38,14 @@ uint64_t randomStart() {
 
 }  // namespace
 
-TextField readText(const json& root, const char* key, size_t limit, Need need) {
-    const std::string named = std::string("'") + key + "'";
-    const auto field = readString(root, key);
-
-    if (field.wrongType)
-        return {named + " must be a string", {}};
-
-    if (need == Need::required && (!field.present || field.value.empty()))
-        return {named + " is required", {}};
-
-    if (field.value.size() > limit || !isPrintable(field.value)) {
-        return {
-            named + " must be printable text of at most " + std::to_string(limit) + " characters",
-            {}};
-    }
-
-    return {{}, field.value};
-}
-
-PlaylistResult playlistFailure(PlaylistOutcome outcome, std::string detail) {
+PlaylistResult playlistFailure(PlayerOutcome outcome, std::string detail) {
     PlaylistResult result;
     result.outcome = outcome;
     result.detail = std::move(detail);
     return result;
 }
 
-PreviewResult previewFailure(PlaylistOutcome outcome) {
+PreviewResult previewFailure(PlayerOutcome outcome) {
     PreviewResult preview;
     preview.outcome = outcome;
     return preview;
@@ -111,7 +91,7 @@ PlaylistResult roomForAnotherAutoPlaylist(const std::vector<PlaylistAnnotation>&
     if (managed < maxAutoPlaylists)
         return PlaylistResult{};
 
-    return playlistFailure(PlaylistOutcome::tooMany,
+    return playlistFailure(PlayerOutcome::tooMany,
                            "this install allows " + std::to_string(maxAutoPlaylists) +
                                " and already has " + std::to_string(managed));
 }
@@ -330,76 +310,6 @@ void PlaylistVersions::recordChangeLocked(const std::string& playlistId,
     tracked.retained.push_back(std::move(entry));
     while (tracked.retained.size() > retainedRevisions_)
         tracked.retained.pop_front();
-}
-
-std::string describe(PlaylistRefusal refusal) {
-    switch (refusal) {
-        case PlaylistRefusal::none:
-            return "ok";
-        case PlaylistRefusal::malformedBody:
-            return "malformed request";
-        case PlaylistRefusal::badTitle:
-            return "unacceptable title";
-        case PlaylistRefusal::badKey:
-            return "unacceptable key";
-        case PlaylistRefusal::badQuery:
-            return "unacceptable query";
-        case PlaylistRefusal::badSort:
-            return "unacceptable sort";
-        case PlaylistRefusal::badId:
-            return "unacceptable playlist id";
-        case PlaylistRefusal::badOrdinals:
-            return "unacceptable ordinal set";
-        case PlaylistRefusal::tooFast:
-            return "too many requests";
-    }
-    return "unknown";
-}
-
-std::string describe(PlaylistOutcome outcome) {
-    switch (outcome) {
-        case PlaylistOutcome::done:
-            return "done";
-        case PlaylistOutcome::queryInvalid:
-            return "foobar2000 could not read that query";
-        case PlaylistOutcome::noSuchPlaylist:
-            return "no such playlist";
-        case PlaylistOutcome::positionPastEnd:
-            return "that position is past the end";
-        case PlaylistOutcome::ambiguousAddress:
-            return describe(TagWriteOutcome::ambiguousAddress);
-        case PlaylistOutcome::notOurs:
-            return "that playlist was not created by foo_jean";
-        case PlaylistOutcome::keyInUse:
-            return "another playlist already has that key";
-        case PlaylistOutcome::tooMany:
-            return "this install's autoplaylist limit is reached";
-        case PlaylistOutcome::structureMoved:
-            return describe(DeltaOutcome::structureChanged);
-        case PlaylistOutcome::queueMoved:
-            return "the queue changed since that revision; read it again";
-        case PlaylistOutcome::rowsMoved:
-            return "the playlist's rows were added, removed or reordered; read them again";
-        case PlaylistOutcome::rowsRevisionTooOld:
-            return "that revision is not one this playlist can catch up from; read its rows again";
-        case PlaylistOutcome::playerRefused:
-            return "the player could not do that";
-        case PlaylistOutcome::timedOut:
-            return "the player did not answer in time";
-        case PlaylistOutcome::unavailable:
-            return "autoplaylists are not available";
-        case PlaylistOutcome::writesDisabled:
-            return "this install has playlist writes turned off; turn on writePlaylists in "
-                   "config.json to allow them";
-        case PlaylistOutcome::playlistLocked:
-            return "another component has locked that playlist against that edit";
-        case PlaylistOutcome::ownPlaylist:
-            return "that playlist is foo_jean's own; address it by its role rather than by its id";
-        case PlaylistOutcome::playbackDisabled:
-            return "this install has playback control turned off; turn on controlPlayback in "
-                   "config.json to allow it";
-    }
-    return "unknown";
 }
 
 }  // namespace jean

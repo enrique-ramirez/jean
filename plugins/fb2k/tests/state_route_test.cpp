@@ -138,7 +138,7 @@ Player listingThePlayingPlaylist() {
         PlaylistAnnotation playlist;
         playlist.id = kPlayingPlaylistId;
         playlist.title = "Evening";
-        return PlaylistsResult{PlaylistOutcome::done, {playlist}};
+        return PlaylistsResult{PlayerOutcome::done, {playlist}};
     });
 }
 
@@ -236,7 +236,7 @@ struct Encoder {
 
     Player publishing() {
         Player player;
-        player.readTimeline = [this] {
+        player.stream.readTimeline = [this] {
             return streamTimelineDocument(timeline.streamTime(), timeline.marks());
         };
         return player;
@@ -284,7 +284,7 @@ struct BuildLog {
 
 Player building(BuildLog* log) {
     Player player;
-    player.refreshLibrary = [log](std::vector<std::string> columns, RebuildReason why) {
+    player.library.refresh = [log](std::vector<std::string> columns, RebuildReason why) {
         log->calls++;
         log->columns = std::move(columns);
         log->reasons.push_back(why);
@@ -300,13 +300,13 @@ constexpr char kTrackTheJobIsTooSlowFor[] = "Artist/Album/slow.flac";
 // one server drives every status the player half of GET /api/track/library can produce.
 Player readingOneTrack() {
     Player player;
-    player.readLibraryTrack = [](const std::string& track, uint32_t,
-                                 const std::vector<std::string>& columns) {
+    player.library.readTrack = [](const std::string& track, uint32_t,
+                                  const std::vector<std::string>& columns) {
         LibraryTrackRead read;
         if (track == kTrackTheJobRefuses)
-            read.outcome = PlaylistOutcome::playerRefused;
+            read.outcome = PlayerOutcome::playerRefused;
         else if (track == kTrackTheJobIsTooSlowFor)
-            read.outcome = PlaylistOutcome::timedOut;
+            read.outcome = PlayerOutcome::timedOut;
         else if (track == kTrackTheLibraryHolds) {
             read.held = true;
             read.columns.assign(columns.size(), "One");
@@ -330,12 +330,12 @@ constexpr char kColumnAskedWithNothingPlaying[] = "stopped";
 // /api/track/playing can produce.
 Player readingThePlayingTrack() {
     Player player;
-    player.readPlayingTrack = [](const std::vector<std::string>& columns) {
+    player.playback.readPlayingTrack = [](const std::vector<std::string>& columns) {
         PlayingTrackRead read;
         if (columns.front() == kColumnThePlayerRefuses)
-            read.outcome = PlaylistOutcome::playerRefused;
+            read.outcome = PlayerOutcome::playerRefused;
         else if (columns.front() == kColumnThePlayerIsTooSlowFor)
-            read.outcome = PlaylistOutcome::timedOut;
+            read.outcome = PlayerOutcome::timedOut;
         else if (columns.front() != kColumnAskedWithNothingPlaying) {
             read.playing = true;
             read.path = R"(C:\Music\Artist\Album\one.flac)";

@@ -8,15 +8,15 @@ namespace jean {
 
 namespace {
 
-PlaylistOutcome askCommand(MainThreadQueue& mainThread, const std::string& what,
-                           std::function<void()> work) {
-    return askPlayer<PlaylistOutcome>(
+PlayerOutcome askCommand(MainThreadQueue& mainThread, const std::string& what,
+                         std::function<void()> work) {
+    return askPlayer<PlayerOutcome>(
         mainThread, what,
-        [work](const AnswerPtr<PlaylistOutcome>& answer) {
+        [work](const AnswerPtr<PlayerOutcome>& answer) {
             work();
-            answer->set(PlaylistOutcome::done);
+            answer->set(PlayerOutcome::done);
         },
-        PlaylistOutcome::timedOut, PlaylistOutcome::playerRefused);
+        PlayerOutcome::timedOut, PlayerOutcome::playerRefused);
 }
 
 }  // namespace
@@ -37,7 +37,7 @@ TransportCommander makeTransportCommander(MainThreadQueue& mainThread) {
                 return askCommand(mainThread, "stopping playback",
                                   [] { playback_control::get()->stop(); });
         }
-        return PlaylistOutcome::playerRefused;
+        return PlayerOutcome::playerRefused;
     };
 }
 

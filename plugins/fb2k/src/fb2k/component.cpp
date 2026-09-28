@@ -67,78 +67,82 @@ Player playerUsing(MainThreadQueue& mainThread, const Streamer* streamer, Output
                    LibraryFeed& libraryFeed, PlayerStateStore& playerState,
                    const PlaylistVersions& playlistVersions, const AlbumArt& rowArt) {
     Player player;
-    player.writeTags = makeTagWriter(mainThread, libraryFeed.trackResolver(),
-                                     libraryFeed.ordinalResolver(), playlistVersions);
-    player.listPlaylists = makePlaylistLister(mainThread, playlistVersions);
-    player.readPlaylistRows = makePlaylistRowReader(mainThread, playlistVersions);
-    player.readChangedPlaylistRows = makeChangedPlaylistRowReader(mainThread, playlistVersions);
-    player.playPlaylistRow = makePlaylistRowPlayer(mainThread);
-    player.commandTransport = makeTransportCommander(mainThread);
-    player.seek = makePlaybackSeeker(mainThread);
-    player.setPlaybackOrder = makePlaybackOrderSetter(mainThread);
-    player.setVolume = makeVolumeSetter(mainThread);
-    player.stepVolume = makeVolumeStepper(mainThread);
-    player.setMuted = makeMuteSetter(mainThread);
-
-    const auto outputs = playerOutputsVia(mainThread);
-    player.listOutputs = outputs.listOutputs;
-    player.setActiveOutput = outputs.setActiveOutput;
-
-    player.readQueue = makeQueueReader(mainThread, playerState);
-    player.queuePlaylistRows = makePlaylistRowQueuer(mainThread, playerState);
-    player.queueLibraryTracks =
-        makeLibraryTrackQueuer(mainThread, libraryFeed.ordinalResolver(), playerState);
-    player.moveQueueEntry = makeMoveQueueEntry(mainThread, playerState);
-    player.removeQueueEntry = makeRemoveQueueEntry(mainThread, playerState);
-    player.clearQueue = makeClearQueue(mainThread);
-    player.createAutoPlaylist = makeAutoPlaylistCreator(mainThread, playlistVersions);
-    player.updateAutoPlaylist = makeAutoPlaylistUpdater(mainThread, playlistVersions);
-    player.removeAutoPlaylist = makeAutoPlaylistRemover(mainThread);
-    player.ownPlaylist = makeOwnPlaylistResolver(mainThread, playlistVersions);
-    player.createPlaylist =
-        makePlaylistCreator(mainThread, playlistVersions, libraryFeed.ordinalResolver());
-    player.renamePlaylist = makePlaylistRenamer(mainThread);
-    player.removePlaylist = makePlaylistRemover(mainThread);
-    player.movePlaylist = makePlaylistMover(mainThread);
-    player.copyPlaylistRows = makePlaylistRowCopier(mainThread, playlistVersions);
-    player.removePlaylistRows = makePlaylistRowRemover(mainThread, playlistVersions);
-    player.emptyOwnPlaylist = makeOwnPlaylistEmptier(mainThread, playlistVersions);
-    player.fill = makePlaylistFiller(mainThread, libraryFeed.ordinalResolver(), playlistVersions);
-    player.previewQuery = makeQueryPreviewer(mainThread);
-    player.refreshLibrary = libraryFeed.refresher();
-    player.readArtwork = libraryFeed.artworkReader();
-    player.readPlaylistRowArtwork = makePlaylistRowArtworkReader(mainThread, rowArt);
-    player.readLibraryTrack = libraryFeed.trackColumnReader();
-    player.readLibraryOrdinal = libraryFeed.ordinalTrackColumnReader();
-    player.readPlayingTrack = playingTrackReader(mainThread);
-    player.readPage = readEmbeddedPage;
-    player.pageNames = embeddedPageNames();
-    player.readDiskPage = readWwwPage;
-
-    if (streamer != nullptr) {
-        player.openStream = streamer->opener();
-        player.streamFormats = streamer->formats();
-        player.readTimeline = [streamer] { return streamer->timeline(); };
-    }
-
-    if (outputHold.enabled()) {
-        player.outputHeld = [&outputHold] { return outputHold.held(); };
-        player.releaseOutput = [&outputHold] { outputHold.release(); };
-    }
 
     // Static for the life of the process, so read once here rather than on every capabilities
     // request. The foobar2000 SDK documents playback_control's volume as dB against full
     // scale, with 0 the ceiling and volume_mute the floor.
     const auto version = core_version_info_v2::get();
-    player.playerName = version->get_name();
-    player.playerVersion = version->get_version_as_text();
-    player.volumeMin = playback_control::volume_mute;
-    player.volumeMax = 0;
-    player.volumeUnit = "db";
+    player.report.name = version->get_name();
+    player.report.version = version->get_version_as_text();
+    player.report.volumeMin = playback_control::volume_mute;
+    player.report.volumeMax = 0;
+    player.report.volumeUnit = "db";
 
     const auto playlists = playlist_manager::get();
     for (t_size index = 0; index < playlists->playback_order_get_count(); ++index)
-        player.playbackOrders.emplace_back(playlists->playback_order_get_name(index));
+        player.report.playbackOrders.emplace_back(playlists->playback_order_get_name(index));
+
+    player.playlists.list = makePlaylistLister(mainThread, playlistVersions);
+    player.playlists.readRows = makePlaylistRowReader(mainThread, playlistVersions);
+    player.playlists.readChangedRows = makeChangedPlaylistRowReader(mainThread, playlistVersions);
+    player.playlists.readRowArtwork = makePlaylistRowArtworkReader(mainThread, rowArt);
+    player.playlists.create =
+        makePlaylistCreator(mainThread, playlistVersions, libraryFeed.ordinalResolver());
+    player.playlists.rename = makePlaylistRenamer(mainThread);
+    player.playlists.remove = makePlaylistRemover(mainThread);
+    player.playlists.move = makePlaylistMover(mainThread);
+    player.playlists.copyRows = makePlaylistRowCopier(mainThread, playlistVersions);
+    player.playlists.removeRows = makePlaylistRowRemover(mainThread, playlistVersions);
+    player.playlists.fill =
+        makePlaylistFiller(mainThread, libraryFeed.ordinalResolver(), playlistVersions);
+    player.playlists.resolveOwn = makeOwnPlaylistResolver(mainThread, playlistVersions);
+    player.playlists.emptyOwn = makeOwnPlaylistEmptier(mainThread, playlistVersions);
+
+    player.autoPlaylists.create = makeAutoPlaylistCreator(mainThread, playlistVersions);
+    player.autoPlaylists.update = makeAutoPlaylistUpdater(mainThread, playlistVersions);
+    player.autoPlaylists.remove = makeAutoPlaylistRemover(mainThread);
+    player.autoPlaylists.preview = makeQueryPreviewer(mainThread);
+
+    player.queue.read = makeQueueReader(mainThread, playerState);
+    player.queue.addPlaylistRows = makePlaylistRowQueuer(mainThread, playerState);
+    player.queue.addLibraryTracks =
+        makeLibraryTrackQueuer(mainThread, libraryFeed.ordinalResolver(), playerState);
+    player.queue.moveEntry = makeMoveQueueEntry(mainThread, playerState);
+    player.queue.removeEntry = makeRemoveQueueEntry(mainThread, playerState);
+    player.queue.clear = makeClearQueue(mainThread);
+
+    player.playback.playPlaylistRow = makePlaylistRowPlayer(mainThread);
+    player.playback.commandTransport = makeTransportCommander(mainThread);
+    player.playback.seek = makePlaybackSeeker(mainThread);
+    player.playback.setOrder = makePlaybackOrderSetter(mainThread);
+    player.playback.setVolume = makeVolumeSetter(mainThread);
+    player.playback.stepVolume = makeVolumeStepper(mainThread);
+    player.playback.setMuted = makeMuteSetter(mainThread);
+    player.playback.readPlayingTrack = playingTrackReader(mainThread);
+
+    player.outputs = playerOutputsVia(mainThread);
+
+    player.library.refresh = libraryFeed.refresher();
+    player.library.readTrack = libraryFeed.trackColumnReader();
+    player.library.readOrdinal = libraryFeed.ordinalTrackColumnReader();
+    player.library.readArtwork = libraryFeed.artworkReader();
+    player.library.writeTags = makeTagWriter(mainThread, libraryFeed.trackResolver(),
+                                             libraryFeed.ordinalResolver(), playlistVersions);
+
+    if (streamer != nullptr) {
+        player.stream.open = streamer->opener();
+        player.stream.formats = streamer->formats();
+        player.stream.readTimeline = [streamer] { return streamer->timeline(); };
+    }
+
+    if (outputHold.enabled()) {
+        player.stream.outputHeld = [&outputHold] { return outputHold.held(); };
+        player.stream.releaseOutput = [&outputHold] { outputHold.release(); };
+    }
+
+    player.page.read = readEmbeddedPage;
+    player.page.names = embeddedPageNames();
+    player.page.readDisk = readWwwPage;
 
     return player;
 }

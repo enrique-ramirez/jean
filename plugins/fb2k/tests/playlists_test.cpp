@@ -460,17 +460,17 @@ TEST_CASE("a key is taken only by another playlist this component created") {
 TEST_CASE("the autoplaylist limit counts only the playlists this component created") {
     const std::vector<PlaylistAnnotation> one{managed("id-1", "a"), theirs("id-2"), theirs("id-3")};
 
-    CHECK(roomForAnotherAutoPlaylist(one, 2).outcome == PlaylistOutcome::done);
+    CHECK(roomForAnotherAutoPlaylist(one, 2).outcome == PlayerOutcome::done);
 
     const auto full = roomForAnotherAutoPlaylist(one, 1);
-    CHECK(full.outcome == PlaylistOutcome::tooMany);
+    CHECK(full.outcome == PlayerOutcome::tooMany);
 
     CHECK(full.detail == "this install allows 1 and already has 1");
 
     // Zero is how an install turns creation off, the same shape as an empty allowedFields
     // turning writes off.
-    CHECK(roomForAnotherAutoPlaylist({}, 0).outcome == PlaylistOutcome::tooMany);
-    CHECK(roomForAnotherAutoPlaylist({}, 1).outcome == PlaylistOutcome::done);
+    CHECK(roomForAnotherAutoPlaylist({}, 0).outcome == PlayerOutcome::tooMany);
+    CHECK(roomForAnotherAutoPlaylist({}, 1).outcome == PlayerOutcome::done);
 }
 
 TEST_CASE("a queued position is answered as the playlist's GUID and the row") {

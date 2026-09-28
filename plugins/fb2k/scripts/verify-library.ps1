@@ -211,7 +211,7 @@ Invoke-Check -Name "a control character in the address is refused before any loo
   Assert-ArtworkRefusal ("Album/a$([char]0)b.flac") 400 $script:printableRefusal 'a track holding a NUL'
 }
 
-# acceptsGzip() in core/http_server.cpp matches only a literal "gzip" token, so naming the
+# acceptsGzip() in core/http_responses.cpp matches only a literal "gzip" token, so naming the
 # coding explicitly rather than omitting the header is what makes the identity request
 # unambiguous: an omitted header risks whatever Invoke-WebRequest's own transport adds on top.
 function Get-CodingHeaders([string]$coding) {
@@ -219,7 +219,7 @@ function Get-CodingHeaders([string]$coding) {
 }
 
 # The three library routes name the content coding in the validator (sendIfChanged in
-# core/http_server.cpp appends "-gzip" or "-identity" to the generation string), so a validator
+# core/http_responses.cpp appends "-gzip" or "-identity" to the generation string), so a validator
 # taken under one coding must not revalidate the other. GET /api/artwork does not: sendArtwork
 # never varies its ETag by coding, and images are outside can_compress_content_type's list, so
 # this helper is exercised only against the three routes that do.
@@ -392,7 +392,7 @@ Invoke-Check -Name "GET /library/export captures the export to JEAN_LIBRARY_EXPO
     }
     Wait-ForDeclaredColumns $script:LibraryBuildTimeoutSeconds
     # A set already building answers 202 again rather than starting a second build (startBuilding()
-    # in core/http_server.cpp), so this second ask is the one that reads the finished export.
+    # in core/routes_library.cpp), so this second ask is the one that reads the finished export.
     $export = Invoke-WebRequest -Uri $uri -Method Get -Headers $headers -UseBasicParsing -TimeoutSec $script:LibraryExportTimeoutSeconds
     if ([int]$export.StatusCode -ne 200) {
       throw "GET /library/export answered $([int]$export.StatusCode) after the declared columns were reported ready, not 200"

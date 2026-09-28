@@ -17,7 +17,7 @@ What `foo_jean` answers, as Jean uses it, and the foobar2000 behaviour behind it
 
 **A request a browser marks `Sec-Fetch-Site: cross-site` or `same-site` is refused `403` under `/api/`** unless its `Origin` is in `allowedOrigins`. Jean's own requests are `same-origin`; a page on another port of the same host is `same-site`.
 
-**`POST /api/tags` and `POST /api/autoplaylists/preview` each have a rate limit of their own, and a request past it is refused `429` with `Retry-After`**, having written or run nothing. `contract/openapi.yaml` has both budgets.
+**`POST /api/tags`, `POST /api/autoplaylists/preview`, `GET /api/track/library` and `GET /api/track/playing` each have a rate limit of their own, and a request past it is refused `429` with `Retry-After`**, having written or run nothing. `contract/openapi.yaml` has the budgets. Jean retries all four through `retryWhenTooFast` in `fooJean.ts`.
 
 ## Discovery
 

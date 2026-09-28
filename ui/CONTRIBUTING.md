@@ -40,6 +40,7 @@ pnpm test:unit      # node --test, every package
 pnpm test:e2e       # playwright, desktop and mobile
 pnpm test:ui        # pick and watch tests interactively
 pnpm test:live      # the small suite against a real player. Needs LIVE
+pnpm test:iphone    # the @iphone subset under WebKit, run by nothing else
 pnpm test:contract  # drive a running plugin against the specification. Needs CONTRACT_URL
 pnpm fake           # the fake player alone, on :8881
 pnpm demo           # build the live demo into dist-demo/

@@ -15,7 +15,7 @@ The rationale, the enforcement and what the seam buys are in `plugins/fb2k/ARCHI
 
 ## 2. Comments and documentation
 
-1. The one home for a shared fact: `core/json.h`, `core/text.h`, `core/http_server.h`'s `kMaxBodyBytes`, `core/failures.h` for every refusal sentence and status, `fb2k/strings.h`, `fb2k/playlists.h`'s `playlistIndices()` and `tests/support/fixtures.h`.
+1. The one home for a shared fact: `core/json.h`, `core/text.h`, `core/http_server.h`'s `kMaxBodyBytes`, `core/failures.h` for every refusal sentence and status, `core/http_responses.h` for how a route answers, `fb2k/strings.h`, `fb2k/playlists.h`'s `playlistIndices()` and `tests/support/fixtures.h`.
 2. A comment names the system it is about: the foobar2000 SDK, Windows, Media Foundation, libogg, libopus, cpp-httplib, MSVC or a browser. A fact about one of them that bites in several files goes in `plugins/fb2k/ARCHITECTURE.md`, *Facts about the player*, and the files depending on it point there in a clause.
 3. Name each document in full, since the root and `ui/` keep files of the same names as this tree's.
 
@@ -37,7 +37,7 @@ The rationale, the enforcement and what the seam buys are in `plugins/fb2k/ARCHI
 6. Fixtures live in `tests/support/`, never at the top of whichever file needed one first.
 7. **Nothing sleeps.** `RateLimiter::allow` and the ticket store take the time as an argument for this reason. A test that waits to observe a limit fails on a loaded machine, which teaches everybody to ignore it. A route test's rate limits stand still until it calls `advanceRateLimits`.
 8. Run the suite more than once before believing it: `tests/support/test_server.cpp` retries a port race. The assertion count is deterministic, so two runs of one tree that disagree are a real difference rather than weather. Nothing in the suite may make it depend on scheduling.
-9. **Every change runs under `scripts/test.sh --sanitize=address` before it is called ready, and anything threaded under `--sanitize=thread` too.** A plain run on the Mac does not see a write past a buffer that MSVC's heap aborts on. Threaded code is `core/pcm_ring`, `core/broadcast_ring`, `core/audience`, `core/output_hold`, `core/stream_ticket`, `core/timeline`, `core/rate_limit` and `core/library`. It runs clean, so a report is a regression. **The flag has to come first**: `scripts/test.sh` reads only its first argument for it, so `--sanitize=thread` written after a `-sf=` filter is ignored and the run passes unsanitised while still reporting success.
+9. **Every change runs under `scripts/test.sh --sanitize=address` before it is called ready, and anything threaded under `--sanitize=thread` too.** A plain run on the Mac does not see a write past a buffer that MSVC's heap aborts on. Threaded code is `core/pcm_ring`, `core/broadcast_ring`, `core/audience`, `core/output_hold`, `core/stream_ticket`, `core/timeline`, `core/rate_limit`, `core/library` and `core/main_thread_queue`. It runs clean, so a report is a regression. **The flag has to come first**: `scripts/test.sh` reads only its first argument for it, so `--sanitize=thread` written after a `-sf=` filter is ignored and the run passes unsanitised while still reporting success.
 10. `leaks` is macOS's own tool rather than LeakSanitizer, because LSan has no implementation on this platform and an ASan binary given `detect_leaks=1` aborts before `main`. It is a conservative scanner rather than a proof, so a clean run promises less than a green LeakSanitizer run would, and it fails outright anywhere but macOS.
 11. **The suite reads `contract/openapi.yaml` at run time, and that file sits outside this tree.** Two tests drive every route the contract publishes, and a stale copy answers for a build that has different routes. `plugins/fb2k/` does not test on its own, though `scripts/build.ps1` and `scripts/package.ps1` read nothing outside it: whatever syncs the tree to a build machine syncs `contract/` with it, at the same position relative to it, because `tests/support/spec.cpp` and `scripts/test.sh` both reach the spec by climbing out of the plugin directory.
 12. A doctest filter matching nothing exits 0, so a typo in one reports success.
@@ -50,7 +50,6 @@ Each of these is unreachable from the suite by nature, so each says how it is ve
 |---|---|
 | Everything in `src/fb2k/` | compiled on the build machine. `scripts/verify-tag-write.ps1`, `verify-stream.ps1`, `verify-listeners.ps1` and `verify-library.ps1` drive four of its paths against a real player |
 | A `setsockopt` failure, and the refusal to listen that follows | neither can be induced from a test, so the path is reviewed only |
-| `MainThreadQueue::close()`, and abandoning work at shutdown | quitting the player with requests in flight; the log says how many it gave up |
 | The AAC encoder | Windows-only and unreachable from the suite at all. `verify-stream.ps1` drives it |
 | The preferences page's `GWLP_USERDATA` teardown | opening and closing **Preferences → Tools → Jean** is the whole test |
 | `notOurs`, the guard refusing to touch a playlist this component did not create | no live coverage; exercised by hand against a playlist created for the purpose |

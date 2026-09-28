@@ -120,4 +120,4 @@ Everything is reachable from the keyboard on desktop, and `?` shows you what is 
 
 ## Working on Jean
 
-[ui/CONTRIBUTING.md](./ui/CONTRIBUTING.md) is where to start, and [plugins/fb2k/CONTRIBUTING.md](./plugins/fb2k/CONTRIBUTING.md) for `foo_jean`.
+[CONTRIBUTING.md](./CONTRIBUTING.md) is where to start.

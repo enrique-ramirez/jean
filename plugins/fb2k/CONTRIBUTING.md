@@ -1,6 +1,6 @@
 # Contributing to foo_jean
 
-How to write code in this repository. `plugins/fb2k/README.md` is what the component is, how to build it and how to run its tests; `plugins/fb2k/ARCHITECTURE.md` is how the pieces fit and why the boundaries sit where they do; `plugins/fb2k/src/README.md` maps the source tree file by file. Setting up is `scripts/fetch-opus.sh` and `scripts/compile-commands.sh` once, then `scripts/test.sh` thereafter. Skip the second and an editor is wrong about this tree. See `plugins/fb2k/README.md`, *Testing*.
+How to write `foo_jean`'s code. The root `CONTRIBUTING.md` holds the rules the whole repository shares. `plugins/fb2k/README.md` is what the component is, how to build it and how to run its tests; `plugins/fb2k/ARCHITECTURE.md` is how the pieces fit and why the boundaries sit where they do; `plugins/fb2k/src/README.md` maps the source tree file by file. Setting up is `scripts/fetch-opus.sh` and `scripts/compile-commands.sh` once, then `scripts/test.sh` thereafter. Skip the second and an editor is wrong about this tree. See `plugins/fb2k/README.md`, *Testing*.
 
 ## 1. The `core/` / `fb2k/` boundary
 
@@ -13,14 +13,11 @@ The rationale, the enforcement and what the seam buys are in `plugins/fb2k/ARCHI
 5. Headers live beside their sources. This is a DLL with no exported headers; do not restructure towards `include/` + `src/`.
 6. The two directories deliberately share filenames, since each pair is one feature split at the boundary. `src/foo_jean.vcxproj` keeps their object files apart and says how beside the setting that does it. Keep it.
 
-## 2. Design, comments and documentation
-
-`ui/CONTRIBUTING.md`, *Design*, *Comments*, *Documentation* and *Writing*, hold here too. What this tree adds:
+## 2. Comments and documentation
 
 1. The one home for a shared fact: `core/json.h`, `core/text.h`, `core/http_server.h`'s `kMaxBodyBytes`, `fb2k/strings.h`, `fb2k/playlists.h`'s `playlistIndices()` and `tests/support/fixtures.h`.
 2. A comment names the system it is about: the foobar2000 SDK, Windows, Media Foundation, libogg, libopus, cpp-httplib, MSVC or a browser. A fact about one of them that bites in several files goes in `plugins/fb2k/ARCHITECTURE.md`, *Facts about the player*, and the files depending on it point there in a clause.
-3. Why a value was chosen is a named constant: `kBroadcastSeconds` says what `8` cannot.
-4. `plugins/fb2k/README.md` is what the component is and how to use it, `plugins/fb2k/ARCHITECTURE.md` how the pieces fit and which thread owns what, this file how to write its code, and `plugins/fb2k/src/README.md` the file map. Name each in full, since the root and `ui/` keep files of the same names.
+3. Name each document in full, since the root and `ui/` keep files of the same names as this tree's.
 
 ## 3. Style
 
@@ -84,7 +81,3 @@ Each of these is unreachable from the suite by nature, so each says how it is ve
 4. PowerShell's bitwise operators share one precedence level with comparison and associate left to right, so `-shl`/`-bor` do not read like the same expression in C. Use arithmetic where the grouping matters.
 5. `ConvertFrom-Json` unwraps a one-element JSON array into the bare element, so a field that is a list everywhere else stops being one on the install that has a single entry. Wrap any such read in `@()`. The failure is silent and only that install sees it.
 6. A generated file that `rc.exe` or `cl.exe` will read, rather than PowerShell, needs `-Encoding ascii`. The default still adds a UTF-8 BOM under PowerShell 5.1, and neither compiler skips it.
-
-## 8. Agent tooling
-
-The kit is installed once, at the repository root, and there is no `.claude/` in this directory. `ui/CONTRIBUTING.md`, *Documentation*, describes it. `.claude/review-profile.md` carries a `plugins/fb2k/` block: the `core/` boundary, the excluded paths, the directives that are functional, and the fact that `src/fb2k/` cannot be built on an editing machine.

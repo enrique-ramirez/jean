@@ -264,6 +264,7 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 - **`GET /__control/state`** returns the player, the playlists, the queue and the request log in one read, for a spec driving the fake from outside the fixture. **`POST /__control/state { failState: n }`** switches `GET /api/state`'s refusal on mid-test and `{ failState: null }` turns it back off, the one thing `failWrites` cannot do: a spec cuts the poll off, drives the player through the routes above while it is blind, then lets it back and reads the next tick.
 - **`POST /__control/lockPlaylist { id, locked }`** locks a playlist, by the fake's own key, against having rows added, or releases it, the way some other component locking a playlist would: the copy and the fill routes both consult it beside `isAuto`, and both answer `409` for as long as it holds.
 - **`POST /__control/failPlaylistWrites { status }`** refuses every playlist mutation with that status, the same pattern `failState` uses for `GET /api/state`: a write that failed at the player rather than one it refused. Leaving `status` out turns the refusal back off.
+- **`POST /__control/reachable { reachable }`** destroys every `/api/` connection rather than answering one, the way a closed foobar2000 or a player off the network looks to a browser, and admits them again once set back to `true`.
 
 ### Rules
 

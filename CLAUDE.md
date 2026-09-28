@@ -2,7 +2,7 @@
 
 A web UI for foobar2000, served by `foo_jean`, its component in `plugins/fb2k/`.
 
-Read `ui/CONTRIBUTING.md`, how to write code here, before writing anything. `ui/ARCHITECTURE.md` is how the parts fit, `foo_jean`'s two seams included; `ui/src/shared/api/README.md` is what the player answers; `ui/test/README.md` is the suite and its fake player; `README.md` is what Jean does for its user.
+Read `CONTRIBUTING.md`, how to write code here, before writing anything. `ui/ARCHITECTURE.md` is how the parts fit, `foo_jean`'s two seams included; `ui/src/shared/api/README.md` is what the player answers; `ui/test/README.md` is the suite and its fake player; `README.md` is what Jean does for its user.
 
 ## Ground rules
 

@@ -22,7 +22,7 @@ Four roles, and a script touching one assumes nothing of another: **a build mach
 | Player | portable install at `<foobar2000-install>`, profile beside the executable |
 | foo_jean | port 8881; config and log in `<profile>/foo_jean/` |
 | Library | `<library-root>`, never written and never scanned |
-| Restart | `schtasks /run /tn foo_jean_exit`, then `/tn foo_jean_start` |
+| Restart | `Invoke-PlayerCommand -Arguments @('/exit')`, then `@('/hide')`, from `scripts/lib/player.ps1` |
 
 - **Never run `foobar2000.exe` over SSH.** An SSH session is session 0, so it starts a second instance that intercepts the single-instance IPC and hangs the next `/exit`. Use `scripts/lib/player.ps1`. A stray shows in `tasklist` as a `Services` row; kill that PID.
 - Tag writes go only to the tree `scripts/test-fixtures.ps1` builds from its own corpus. Registering its two roots as media library folders is manual.

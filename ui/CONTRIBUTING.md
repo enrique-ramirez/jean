@@ -1,6 +1,6 @@
 # Contributing
 
-How to write code in this repo. To *use* Jean, read the [README](../README.md).
+How to write the web UI's code. The root [CONTRIBUTING.md](../CONTRIBUTING.md) holds the rules the whole repository shares.
 
 [ARCHITECTURE.md](./ARCHITECTURE.md) is how the pieces fit and why the boundaries sit where they do, [src/shared/api/README.md](src/shared/api/README.md) is what `foo_jean` returns, and [test/README.md](./test/README.md) is the suite and the fake player.
 
@@ -58,29 +58,16 @@ pnpm sync-kit       # refresh .claude/ from the ai-engineering kit
 
 **Imports run one way: `app → features → domain → shared`, and Biome fails the build on a violation.** [ARCHITECTURE.md](./ARCHITECTURE.md), *Tiers*, is what each tier may know about, the rest of the direction rules, and why the boundaries sit where they do; it also has where state lives and what the two optional-component seams are.
 
-This file governs `ui/`. Three siblings share the repository: `site/` is the landing page, its own package, built by `pnpm site` and published to Pages with the demo underneath it; `contract/` is the API specification every plugin implements and the conformance suite that measures one; `plugins/fb2k/` is the foobar2000 component, which is C++ and has a `plugins/fb2k/CONTRIBUTING.md` of its own. Commands run from the repository root and the root `package.json` delegates them, so nothing here needs running from inside `ui/`.
+Commands run from the repository root and the root `package.json` delegates them, so nothing here needs running from inside `ui/`.
 
-## 4. Design
-
-The standard is one thing: control complexity so a person can read the result. Craftsmanship and simplicity agree on nearly all of what follows: names carry the meaning, a unit does one thing, duplication is a defect, clarity beats cleverness. Where they pull apart is how much structure is worth its cost, and that is settled below in favour of the simpler reading.
-
-1. **Structure is never free, and must earn its place.** SOLID describes forces, not a checklist. An interface, a factory or a layer is justified by a second caller that exists, not by one that might. "Open for extension" is not a licence to design for a change nobody has asked for; the cheapest way to be open to a change is to be small enough to alter.
-2. **Extract until the name stops paying.** Pull a block out when its name tells the reader more than the code did. Stop when following one idea means jumping between fragments that only make sense together. A shredded function is harder to read than the loop it replaced, and readability is the whole point.
-3. **One reason to change.** A unit that both decides and acts has two. Keep the decision pure and testable, and put the mechanism where it belongs.
-4. **Names are the primary documentation.** If a name needs a comment, the name is wrong. Reach for a better name before reaching for a sentence.
-5. **The second copy is the bug.** Two statements of one fact drift, silently. Name it once and let both callers reach it.
-6. **Do one thing well, and compose.** Prefer a small piece with a plain interface over a subsystem with options. Prefer passing a value in to reaching out for one. It is what makes a thing testable, and it is dependency inversion at the only scale that reliably pays.
-7. **Be pragmatic before dogmatic.** No pattern is owed an appearance. If a rule here would make a file harder to read, the rule is wrong for that file; say so in the change rather than obeying it quietly.
-8. **The tier boundary is the one architectural boundary, and it is enough.** Keep its direction exact, with no container, service locator or mediator to soften it.
-
-## 5. Naming
+## 4. Naming
 
 1. **Never name a store, a parser or a helper after the component beside it.** A case-insensitive filesystem cannot tell `toasts.ts` from `Toasts.tsx`, so TypeScript resolves `'./Toasts'` to the wrong file silently. Hence `toastStore.ts`, `lyricsFormat.ts`, `volumeScale.ts`.
 2. **Never name a declaration file after the module beside it.** `fooJean.d.ts` next to `fooJean.ts` is read as that file's own declarations. The generated component types are `fooJeanSchema.d.ts`.
 3. Components are `PascalCase.tsx`, hooks are `useThing.ts`, everything else is `camelCase.ts`.
 4. Stylesheets are `Component.module.css`, beside the component.
 
-## 6. Styling
+## 5. Styling
 
 1. **CSS Modules, colocated with the component.** The only global stylesheets are `shared/styles/tokens.css` (the palette and scale, as custom properties) and `base.css`. Re-theming Jean SHOULD mean editing custom properties and nothing else.
 2. **A rule in one module that overrides another's MUST outrank it on specificity, never merely follow it.** Module order in the bundle follows import order, and import sorting can flip two rules of equal specificity.
@@ -88,7 +75,7 @@ The standard is one thing: control complexity so a person can read the result. C
 4. Animate compositor properties only: `transform`, `scale`, `rotate`, `opacity`.
 5. **A new stacking layer goes in the table in `ARCHITECTURE.md` before it goes in a stylesheet.** The app-level scale is shared by everything, and picking a number without reading it is how a dialog ends up under a toolbar.
 
-## 7. Phrases
+## 6. Phrases
 
 1. **Every phrase a person reads goes through `t()`**, keyed in `src/shared/i18n/en.ts`. Keys are flat, dotted and sorted, and the prefix names the area rather than the file.
 2. **A key chosen at runtime is typed narrower than `Phrase`**, through a template-literal `Extract` beside whatever holds it (`ShortcutName`, `ColumnLabel`, `DetailPhrase`). `t()` derives its arguments from the key, so the whole union demands every phrase's fields. A family that takes fields stays out of such a union.
@@ -96,62 +83,17 @@ The standard is one thing: control complexity so a person can read the result. C
 4. **Plurals come from the catalogue.** A value written as an object is selected by `Intl.PluralRules` on `count`, and `other` is the only form required.
 5. **Figures and dates go through `useFormats()`**, never `toLocaleString()` or a bare `Intl` constructor, which follow the browser rather than the language showing. Sorting and grouping go through `collatorIn`.
 
-## 8. Comments
+## 7. Comments
 
-Write a comment when the code is correct **because of something outside this repository**, and name that thing: what foobar2000, `foo_jean`, a browser or a library actually does. Every other claim a reader can check by reading; that one they cannot.
+A fact about the player that governs several files goes in `src/shared/api/README.md`; one about the browser goes in `ARCHITECTURE.md`, *Facts about the browser*. The files depending on either say nothing.
 
-Everything else that seems to want a sentence is a name you have not found yet, or a function you have not extracted.
+Read the `useExhaustiveDependencies` suppressions before running `lint:fix`, which would remove every one and break the feature silently; the root `CLAUDE.md` has the one shape they all take.
 
-1. **Why a value was chosen is a named constant.** A duration, a threshold, a breakpoint, a `staleTime`. A name says it at every use rather than once above one of them.
-2. **What the code does is the code.** If following it needs prose, the prose is a bug report against the structure. Fix the structure.
-3. **An external fact sits beside the one line it constrains.** One that governs several files is written once, in `ARCHITECTURE.md` or, for what the player answers, `src/shared/api/README.md`, and the files depending on it say nothing.
-4. **Specs carry more.** A spec's name states the behaviour; a comment may state why the case exists at all and what breaks without it. That is documentation and it earns its place. Narrating the assertions is not.
-
-**The test, before you write one.** Strip the comment and hand the code to somebody competent who has not seen it:
-
-| they get it right | verdict |
-|---|---|
-| from the code | it was never needed |
-| only because they happen to know foobar2000, or how Safari handles it | the fact is real: write the comment, naming the system |
-| they cannot get it at all | write the comment |
-
-`.claude/agents/comment-reaper.md` runs that test with an agent that has not seen the file.
-
-**A lint suppression is code, not a comment, and carries its reason.** Read the `useExhaustiveDependencies` suppressions before running `lint:fix`, which would remove every one and break the feature silently; the root `CLAUDE.md` has the one shape they all take.
-
-## 9. Documentation
-
-Documentation states the current design and nothing else. No history: what something used to be, why it changed, or what was rejected belongs in git rather than in a file. A sentence that exists to stop somebody undoing a decision is a test instead, or it goes; `.claude/doctrine/documentation.md` is the whole rule. No personal detail either: no names, machines, hostnames, addresses or real library paths, in prose, comments or test data. Use placeholders. Public repository URLs are fine.
-
-**No measurements.** A measured number ties Jean to one library on one machine and then ships to everyone. Record the constraint a measurement established, such as "under *Playback follows cursor* foobar2000 advances through the focused playlist, not the playing one" or "there is no way to ask for a thumbnail", and never the measurement itself.
-
-Never hard-wrap prose. One paragraph is one line, however long; editors wrap.
-
-Each file has one job. `README.md` is what the project is and how to use it. `ui/CONTRIBUTING.md` is how to write its code. `ui/ARCHITECTURE.md` is how the parts fit. `ui/src/shared/api/README.md` is the player's surface. A `CLAUDE.md` is what an agent cannot read off the code, and stays short. Anything that is really a contribution rule belongs here and is linked from there, never copied.
-
-`.claude/hooks/check-style.sh` fails an edit that reintroduces personal detail, history, hard-wrapped prose, a recorded measurement, an em dash, or one of the mechanical phrases in `.claude/voice/register.txt`. It fires on the edit tools and on a shell command that wrote a file, so a heredoc does not walk past it. It only catches what a grep can be certain of; the rest is your judgement.
-
-Two reviewers cover that rest, over uncommitted changes and in this order: `style-reviewer` for design, structure, naming and duplication, then `comment-reaper` for comments and the prose of documentation. Run both before asking for a commit. Comment density is the rule that slips first, and it slips a little at a time.
-
-`.claude/review-profile.md` is what tells both agents about this repository, and it carries a block per project: *Everywhere* applies to any diff, and `ui/` is the block that covers this directory. The agents, the hooks and the voice files come from the `ai-engineering` kit and are the same in every project; the profile is the only part that is Jean's.
-
-`pnpm sync-kit` takes the kit's current version of those files. It reports anything under `.claude/` that was edited here rather than in the kit, and moves it to `<name>.local.bak` rather than dropping it. A rule worth keeping belongs in the kit, so every project gets it; `.claude/register.local.txt` is the place for something that is genuinely only true of Jean.
-
-## 10. Writing
-
-Short sentences. RFC 2119 keywords for obligations. Commit messages take an imperative subject; add a body only for a fact the diff cannot show.
-
-**Write like a person, not like an assistant.** Code is the source of truth; prose exists to say what the code cannot. The register that makes documentation unreadable is a house of throat-clearing, elevated synonyms and hedges. `.claude/voice/register.txt` holds the words to avoid and the hook checks a subset of them.
-
-The words are the easy half. What actually gives an assistant away is shape: an em dash at every joint, a bolded pronouncement opening every paragraph, and sentences that never vary in length. `.claude/voice/constructions.md` is that list, and it is the one worth reading twice.
-
-Plain words over elevated ones. No selling to a reader who is already here. No sentence whose only job is to introduce the next one.
-
-## 11. Tag hygiene is the library owner's business
+## 8. Tag hygiene is the library owner's business
 
 Jean reads tags. It never writes or normalises them to make its own life easier. A genre spelled two ways is two rows in a list; the fix belongs in the player, where it sticks for every other client too.
 
-## 12. Stack
+## 9. Stack
 
 React 19 · TypeScript 7 · Vite 8 · TanStack Query 5 · TanStack Virtual · TanStack Hotkeys · lucide-react · CSS Modules · Biome · pnpm · Playwright · `node --test`.
 

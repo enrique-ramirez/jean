@@ -17,6 +17,10 @@ What the review agents need to know about this repository. They read this first 
 
 `plugins/fb2k/third_party/` is cpp-httplib, nlohmann/json and doctest as single headers, tens of thousands of lines of somebody else's code. Never read it and never review it. `plugins/fb2k/sdk/` is the foobar2000 SDK, fetched rather than vendored, and the same applies.
 
+### Documentation map
+
+The root `CONTRIBUTING.md` holds the rules every project shares: design, comments, documentation and writing. Each project's map below adds its own files.
+
 ### Doc comments
 
 Judged like any other comment on both sides. Nothing requires one, so there is no floor.
@@ -52,7 +56,7 @@ The `useExhaustiveDependencies` suppressions are all one shape, a dependency tha
 | file | its job |
 |---|---|
 | `README.md` | what Jean is and how to use it. A pitch, not a specification |
-| `ui/CONTRIBUTING.md` | how to write code here |
+| `ui/CONTRIBUTING.md` | how to write the web UI's code |
 | `ui/ARCHITECTURE.md` | how the pieces fit, where state lives, why the boundaries sit there, and *Facts about the browser* |
 | `ui/src/shared/api/README.md` | what `foo_jean` returns, and the gotchas a reader could not infer |
 | `ui/test/README.md` | the suite and the fake player |
@@ -98,7 +102,7 @@ This boundary pays twice. A decision moved into `core/` becomes coverable by a s
 | file | its job |
 |---|---|
 | `plugins/fb2k/README.md` | what the component is, how to build it, install it, configure it and run it |
-| `plugins/fb2k/CONTRIBUTING.md` | how to write its code |
+| `plugins/fb2k/CONTRIBUTING.md` | how to write the component's code |
 | `plugins/fb2k/ARCHITECTURE.md` | how the pieces fit, which thread owns what, why the boundaries sit there |
 | `plugins/fb2k/CLAUDE.md` | what an agent cannot read off the code: the priorities and the rules about driving a real player |
 | `plugins/fb2k/src/README.md` | the source tree, file by file |

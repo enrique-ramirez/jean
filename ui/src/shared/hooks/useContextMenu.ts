@@ -20,6 +20,7 @@ export function useContextMenu({ disabled = false } = {}) {
 		if (disabled) return;
 		event.preventDefault();
 
+		// The Menu key's `contextmenu` carries no coordinates.
 		if (event.clientX === 0 && event.clientY === 0) {
 			const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
 			openAt({ x: rect.left + 16, y: rect.bottom - 4 });

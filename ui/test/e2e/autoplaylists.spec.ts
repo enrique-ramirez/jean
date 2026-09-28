@@ -173,6 +173,53 @@ test.describe("creating one from a genre", () => {
 	});
 });
 
+// The component runs each preview over the whole Media Library on foobar2000's main thread. A
+// refused preview once sat on "asking" for as long as the editor stayed open, with Create still
+// offered.
+test.describe("when the player is asked what a query matches too fast", () => {
+	test.use({ fooJean: { maxAutoPlaylists: 100 } });
+
+	const refuse = (page: Page, times: number) =>
+		page.request.post("/__control/previewBusy", { data: { times } });
+
+	const create = (page: Page) =>
+		page.getByRole("button", { name: "Create", exact: true });
+
+	test("asks again once the player says to, and only then offers Create", async ({
+		page,
+	}) => {
+		await page.goto("/#/genre/Post%20Rock");
+		await refuse(page, 1);
+		await createButton(page).click();
+
+		await expect(page.getByText(en["genre.previewBusy"])).toBeVisible();
+		await expect(create(page)).toBeDisabled();
+
+		await expect(page.getByText(/The player matches 13 tracks/)).toBeVisible();
+		await expect(create(page)).toBeEnabled();
+	});
+
+	test("says so and how to ask again when it keeps refusing, and asks again when reopened", async ({
+		page,
+	}) => {
+		await page.goto("/#/genre/Post%20Rock");
+		await refuse(page, 100);
+		await createButton(page).click();
+
+		await expect(page.getByText(en["genre.previewFailed"])).toBeVisible({
+			timeout: 15_000,
+		});
+		await expect(create(page)).toBeDisabled();
+
+		await refuse(page, 0);
+		await page.getByRole("button", { name: "Cancel" }).click();
+		await createButton(page).click();
+
+		await expect(page.getByText(/The player matches 13 tracks/)).toBeVisible();
+		await expect(create(page)).toBeEnabled();
+	});
+});
+
 test.describe("when the player cannot make one", () => {
 	test.use({ fooJean: { maxAutoPlaylists: 0 } });
 

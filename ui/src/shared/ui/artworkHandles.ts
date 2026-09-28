@@ -26,6 +26,7 @@ const share = (key: string, blob: Blob) => {
 		return held.url;
 	}
 
+	// `createObjectURL` mints a new handle per call, never one shared per blob.
 	const url = URL.createObjectURL(blob);
 	handles.set(key, { url, refs: 1, expiry: null });
 	return url;

@@ -205,6 +205,7 @@
 	transition: color 0.16s var(--ease);
 }
 
+/* `text-overflow` acts on a block's own text, not on an anonymous text node beside a flex sibling. */
 .nameText {
 	overflow: hidden;
 	white-space: nowrap;

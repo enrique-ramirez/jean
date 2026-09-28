@@ -22,9 +22,6 @@ import { dropArtwork, holdArtwork } from "@/shared/ui/artworkHandles";
 
 const SEEK_STEP_SECONDS = 10;
 
-// Every read of `navigator.mediaSession` in this file MUST go through here, so the
-// secure-context guard (`src/app/CLAUDE.md`, *The media session*) covers the whole module
-// in one place.
 export const mediaSession = () =>
 	isSecureContext && "mediaSession" in navigator
 		? navigator.mediaSession
@@ -72,7 +69,8 @@ function setPosition(duration: number, position: number) {
 					},
 		);
 	} catch {
-		// A duration the browser refuses costs the scrubber, not the session.
+		// Chrome throws a `TypeError` for a position past the duration, and a duration the browser
+		// refuses costs the scrubber, not the session.
 	}
 }
 
@@ -80,6 +78,7 @@ const LOCK_SCREEN_MAX_EDGE = 512;
 const LOCK_SCREEN_TYPE = "image/jpeg";
 const LOCK_SCREEN_QUALITY = 0.85;
 
+// The OS fetches media session artwork out of process, and Chrome on iOS refuses a `blob:` URL there.
 async function shrinkForLockScreen(blobUrl: string): Promise<MediaImage> {
 	const image = new Image();
 	image.src = blobUrl;

@@ -182,6 +182,9 @@ export const en = {
 		"This player has no Media Library configured, so an autoplaylist would stay empty.",
 	"genre.noTags": "Nothing in your library carries a genre tag.",
 	"genre.order": "Order genres",
+	"genre.previewBusy": "foobar2000 is busy. Asking again in a moment…",
+	"genre.previewFailed":
+		"foobar2000 did not say what this matches. Close this and open it again to ask once more.",
 	"genre.queryFailed": "The player could not read that query — {error}",
 	"genre.sortBy": "Sort by",
 	"genre.summary": "{genres} across {tracks}",
@@ -405,6 +408,8 @@ export const en = {
 	"rate.moved": "That track has moved. Reload to rate it.",
 	"rate.notAllowed": "This foobar2000 does not allow ratings to be written.",
 	"rate.notRemoved": "We couldn’t remove the rating from {track}",
+	"rate.tooFast":
+		"{track} was not rated: ratings are arriving faster than foobar2000 takes them. Wait a moment and try again.",
 	"rate.unknownTrack":
 		"foobar2000 does not know that track, so it was not rated.",
 	"rating.clearOn": "Clear rating ({label})",

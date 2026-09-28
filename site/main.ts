@@ -38,12 +38,14 @@ function mount(frame: HTMLElement) {
 	if (iframeOf(frame)) return;
 
 	const iframe = document.createElement("iframe");
+	// A screen reader reaches each iframe as a document of its own, named by its `title`.
 	iframe.title = frame.dataset.frameTitle ?? "";
 	iframe.inert = true;
 	iframe.addEventListener(
 		"load",
 		() => {
 			frame.dataset.ready = "true";
+			// `contentDocument` is null for a cross-origin frame.
 			iframe.contentDocument?.addEventListener("keydown", (event) => {
 				if (event.key === "Escape" && live?.frame === frame) release();
 			});

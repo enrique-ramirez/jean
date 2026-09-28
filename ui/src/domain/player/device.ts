@@ -1,16 +1,9 @@
 import { readStoredState } from "@/shared/hooks/useStoredState";
 import { translate } from "@/shared/i18n/locale";
+import { randomId } from "@/shared/lib/randomId";
 
 export const DEVICE_ID_KEY = "jean.deviceId";
 export const DEVICE_NAME_KEY = "jean.deviceName";
-
-const randomId = () => {
-	const bytes = new Uint8Array(16);
-	crypto.getRandomValues(bytes);
-	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
-		"",
-	);
-};
 
 let id: string | null = null;
 

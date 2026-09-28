@@ -1030,6 +1030,35 @@ test.describe("a refusal that is not about the address", () => {
 		});
 });
 
+test.describe("when ratings arrive faster than the player takes them", () => {
+	test.use({ ...RATED, fooJean: { failWrites: 429 } });
+
+	test.skip(
+		({ isMobile }) => Boolean(isMobile),
+		"the row's stars are a pointer control; touch uses the track menu",
+	);
+
+	test("takes the star back and says to wait a moment and try again", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		await expect(trackRow(page, 2)).toContainText("Deléctrico");
+		await expect(ratingOf(page, 2)).toHaveAccessibleName("3 of 5 stars");
+
+		await star(page, 2, 4).click();
+
+		await expect(page.getByRole("status")).toContainText(
+			saying(en["rate.tooFast"], { track: "Deléctrico" }),
+		);
+		await expect(page.getByRole("status")).not.toContainText(
+			"too many tag writes",
+		);
+		await expect(ratingOf(page, 2)).toHaveAccessibleName("3 of 5 stars");
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
+	});
+});
+
 // A `504` is the component saying it did not answer in time, which says nothing
 // about whether the tag was written: the player may have taken the rating and
 // lost the answer, or taken nothing at all. Jean cannot write again to find out,

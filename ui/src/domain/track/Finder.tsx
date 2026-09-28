@@ -147,6 +147,7 @@ export function Finder({
 								aria-selected={position === active}
 								className={styles.result}
 								data-active={position === active}
+								// A press blurs the focused field before its `click` lands.
 								onPointerDown={(event) => event.preventDefault()}
 								onClick={() => onConfirm(index)}
 								onMouseEnter={(event) => {

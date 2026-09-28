@@ -1,3 +1,4 @@
+import type { Route } from "@playwright/test";
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
@@ -11,8 +12,8 @@ import {
 	trackRow,
 } from "./fixtures.ts";
 
-// Nothing here calls MusicBrainz: it is a third party on the open internet, so
-// turning the lookup on is only checked as far as the panel's own words.
+// Nothing here relies on MusicBrainz or Wikipedia answering: both are third
+// parties on the open internet, so a case that needs an answer intercepts it.
 
 const ARTIST_SWITCH = "Look up artists on MusicBrainz and Wikipedia";
 
@@ -111,5 +112,72 @@ test.describe("artist information", () => {
 		// Looking up or nothing found, depending on what the lookup can reach: only
 		// the off state can be asserted against without calling a third party.
 		await expect(page.getByText("Artist information is off.")).toBeHidden();
+	});
+
+	test.describe("with the lookup answered", () => {
+		test.use({ settings: { "jean.artistInfo": true } });
+
+		// Every third party is answered here rather than reached. The summary names
+		// a script as its page, which is what a compromised or spoofed answer would
+		// hand the link.
+		const answerTheLookup = async (page: Page) => {
+			const referrers: (string | null)[] = [];
+			const answer = (body: unknown) => async (route: Route) => {
+				referrers.push(await route.request().headerValue("referer"));
+				await route.fulfill({ json: body });
+			};
+
+			await page.route(
+				"https://musicbrainz.org/ws/2/artist?*",
+				answer({ artists: [{ id: "mbid", name: "Babasónicos", score: 100 }] }),
+			);
+			await page.route(
+				"https://musicbrainz.org/ws/2/artist/mbid?*",
+				answer({
+					id: "mbid",
+					name: "Babasónicos",
+					relations: [
+						{
+							type: "wikipedia",
+							url: { resource: "https://en.wikipedia.org/wiki/Babasonicos" },
+						},
+					],
+				}),
+			);
+			await page.route(
+				"https://en.wikipedia.org/api/rest_v1/page/summary/*",
+				answer({
+					extract: "An Argentine rock band.",
+					content_urls: { desktop: { page: "javascript:alert(1)" } },
+				}),
+			);
+
+			return referrers;
+		};
+
+		test("tells none of them where Jean is served from", async ({
+			page,
+			isMobile,
+		}) => {
+			const referrers = await answerTheLookup(page);
+
+			await playSomething(page);
+			await openArtistTab(page, isMobile);
+			await expect(page.getByText("An Argentine rock band.")).toBeVisible();
+
+			expect(referrers).toHaveLength(3);
+			expect(referrers).toEqual([null, null, null]);
+		});
+
+		test("links out only over https", async ({ page, isMobile }) => {
+			await answerTheLookup(page);
+
+			await playSomething(page);
+			await openArtistTab(page, isMobile);
+
+			await expect(
+				page.getByRole("link", { name: "Read more on Wikipedia" }),
+			).toHaveAttribute("href", "https://en.wikipedia.org/wiki/Babasonicos");
+		});
 	});
 });

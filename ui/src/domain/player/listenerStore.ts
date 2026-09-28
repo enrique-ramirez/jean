@@ -37,6 +37,7 @@ const SEEK_WAIT_MS = 20_000;
 const WATCHDOG_MS = 1000;
 const STALLS_ALLOWED = 3;
 const STALL_WINDOW_MS = 30_000;
+// Firefox rebuffers more than once after a flush, where Chromium recovers in one.
 const AFTER_FLUSH_MS = 3000;
 const MSE_START_MS = 5000;
 
@@ -134,8 +135,6 @@ export const subscribeListening = listeners.subscribe;
 export const listeningSnapshot = () => snapshot;
 export const listeningServerSnapshot = () => snapshot;
 
-// Fed by the poll; see ../../ARCHITECTURE.md, `["player"]`, for why the stall check below reads
-// this rather than asking `foo_jean` itself.
 export const notePlaybackState = (state: PlaybackState) => {
 	knownPlaybackState = state;
 };
@@ -569,6 +568,8 @@ export { decibelsOf };
 
 export const listenTarget = () => target;
 
+// Wall time since connecting minus audio played, rather than a measured buffer depth: no browser
+// reports the bytes still in the socket.
 export function listeningLagSeconds(): number | null {
 	const audio = element;
 	if (anchor === null || !audio || timelineStreamTime === null) return null;

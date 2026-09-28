@@ -236,6 +236,8 @@ export const KEYMAP: Binding[] = [
 		scope: SCOPE.global,
 		group: "shortcutGroup.navigation",
 		name: "shortcut.openSettings",
+		// Chrome, Safari and Firefox on macOS may claim Cmd+, for their own preferences before the
+		// page sees it.
 		keys: ["Mod+,"],
 	},
 	{

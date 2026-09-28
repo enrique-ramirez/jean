@@ -128,6 +128,11 @@ export function handleControl({
 		return empty(response);
 	}
 
+	if (action === "previewBusy") {
+		state.fooJean.previewBusy = Number(input.times) || 0;
+		return empty(response);
+	}
+
 	if (action === "skipDelay") {
 		state.skipDelayMs = Number(input?.ms) || 0;
 		return empty(response);

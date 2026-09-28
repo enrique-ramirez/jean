@@ -1,3 +1,4 @@
+// A browser's own `loading="lazy"` answers "visible" for every row a jump scrolls past.
 const SETTLE_MS = 100;
 
 // `kMissingCoverCacheLifetimeSeconds` in `plugins/fb2k/src/core/http_server.cpp`: ten minutes, so a

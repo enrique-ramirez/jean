@@ -23,8 +23,8 @@ const figure = async (page: Page, noun: string) => {
 	return found ? found[1] : null;
 };
 
-// The genre bars sit outside the header on purpose: see
-// `features/home/CLAUDE.md`.
+// Found on the page rather than in `viewHeader`: the genre bars are a region of
+// their own, beside the header.
 const genres = (page: Page) => page.getByRole("region", { name: "Genres" });
 
 // The bars themselves. Scoped to the list, because the section's heading is a

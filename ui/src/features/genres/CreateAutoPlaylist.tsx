@@ -7,15 +7,54 @@ import { genreQuery } from "@/domain/library/genreQuery";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
 import {
 	createAutoPlaylist,
+	type PreviewResult,
 	previewQuery,
+	type QueryPreview,
 	requireFooJean,
 } from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
-import { useTranslate } from "@/shared/i18n/useTranslate";
+import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
 import { Input } from "@/shared/ui/Input";
 import { Menu } from "@/shared/ui/Menu";
 import styles from "./CreateAutoPlaylist.module.css";
+
+const PREVIEW_BUSY_RETRIES = 3;
+
+class PreviewRefused extends Error {
+	readonly retryInMs: number | null;
+
+	constructor({ retryInMs }: Extract<PreviewResult, { ok: false }>) {
+		super("preview refused");
+		this.retryInMs = retryInMs;
+	}
+}
+
+const retryInMsOf = (error: Error) =>
+	error instanceof PreviewRefused ? error.retryInMs : null;
+
+async function askPreview(origin: string, query: string) {
+	const result = await previewQuery(origin, query);
+	if (!result.ok) throw new PreviewRefused(result);
+	return result.preview;
+}
+
+function previewSays(
+	t: Translate,
+	{
+		preview,
+		failed,
+		refused,
+	}: { preview: QueryPreview | undefined; failed: boolean; refused: boolean },
+) {
+	if (preview) {
+		if (!preview.valid) return t("genre.queryFailed", { error: preview.error });
+		if (!preview.libraryEnabled) return t("genre.noMediaLibrary");
+		return t("genre.matches", { count: preview.matches });
+	}
+	if (failed) return t("genre.previewFailed");
+	return t(refused ? "genre.previewBusy" : "genre.asking");
+}
 
 export function CreateAutoPlaylist({
 	genre,
@@ -41,13 +80,20 @@ export function CreateAutoPlaylist({
 		if (!isOpen) setTitle(genre);
 	}, [isOpen, genre]);
 
-	const { data: preview } = useQuery({
+	const {
+		data: preview,
+		isError,
+		isFetching,
+		failureCount,
+	} = useQuery({
 		queryKey: ["fooJeanPreview", origin, query],
-		queryFn: () => (origin ? previewQuery(origin, query) : null),
+		queryFn: () => askPreview(requireFooJean(origin), query),
 		enabled: isOpen && Boolean(origin),
 		staleTime: Number.POSITIVE_INFINITY,
 		refetchOnWindowFocus: false,
-		retry: false,
+		retry: (count, error) =>
+			retryInMsOf(error) !== null && count < PREVIEW_BUSY_RETRIES,
+		retryDelay: (_, error) => retryInMsOf(error) ?? 0,
 	});
 
 	const create = useMutation({
@@ -109,13 +155,11 @@ export function CreateAutoPlaylist({
 				/>
 
 				<p className={styles.preview}>
-					{preview == null
-						? t("genre.asking")
-						: !preview.valid
-							? t("genre.queryFailed", { error: preview.error })
-							: !preview.libraryEnabled
-								? t("genre.noMediaLibrary")
-								: t("genre.matches", { count: preview.matches })}
+					{previewSays(t, {
+						preview,
+						failed: isError && !isFetching,
+						refused: failureCount > 0,
+					})}
 				</p>
 
 				<p className={styles.note}>{t("genre.keptFilled", { genre })}</p>
@@ -134,7 +178,7 @@ export function CreateAutoPlaylist({
 						disabled={
 							title.trim().length === 0 ||
 							create.isPending ||
-							preview?.valid === false
+							preview?.valid !== true
 						}
 					>
 						{t(create.isPending ? "action.creating" : "action.create")}

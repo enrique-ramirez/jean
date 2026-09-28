@@ -20,7 +20,7 @@ const overflow = (page: Page) =>
 		return root.scrollWidth - root.clientWidth;
 	});
 
-// Mechanism and the 400px threshold are in src/app/CLAUDE.md.
+// Neither the sideways scroll nor the short grid it causes shows above about 400px.
 test.describe("the shell fits the screen", () => {
 	test.skip(({ isMobile }) => !isMobile, "a phone is the case at stake");
 

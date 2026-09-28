@@ -105,9 +105,6 @@ export function ListenHere({ playerName }: { playerName: string }) {
 		if (box) setGap(window.innerWidth - box.right);
 	}, [isOpen, ref]);
 
-	// The output device picker's other two hosts move here instead while this device is listening,
-	// for the reason `domain/player/CLAUDE.md` gives: this panel's own fader is the one still
-	// reaching foobar2000.
 	const outputPage = useOutputPage(isOpen);
 	const outputsQuery = useOutputs();
 	const { data: snapshot } = usePlayer();

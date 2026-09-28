@@ -129,6 +129,8 @@
 	color: var(--accent);
 }
 
+/* `linear` over keyframes sampled from a curve: any easing on a two-stop keyframe brings the element
+   to a dead stop at each stop. */
 .pill[data-visible="true"] svg {
 	animation:
 		nod-up 850ms linear infinite,

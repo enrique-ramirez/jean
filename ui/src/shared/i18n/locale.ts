@@ -20,8 +20,6 @@ export const CUSTOM_FILE = "custom.json";
 
 const listeners = subscribers();
 
-// Resolved against the document rather than the root: `site/CLAUDE.md` has why a root-relative
-// path would be wrong for the demo.
 const fileIn = (name: string) =>
 	new URL(`${LOCALES_FOLDER}/${name}`, document.baseURI).href;
 
@@ -92,7 +90,7 @@ function parse(body: unknown): Partial<Record<Phrase, Message>> {
 
 	const held: Partial<Record<Phrase, Message>> = {};
 	for (const [key, value] of Object.entries(body))
-		if (key in en && isMessage(value)) held[key as Phrase] = value;
+		if (Object.hasOwn(en, key) && isMessage(value)) held[key as Phrase] = value;
 
 	return held;
 }

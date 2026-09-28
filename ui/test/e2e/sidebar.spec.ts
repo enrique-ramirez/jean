@@ -285,6 +285,22 @@ test.describe("creating a playlist", () => {
 
 		await expect.poll(() => titlesInOrder(player)).toContain("New playlist 2");
 	});
+
+	// A browser defines `crypto.randomUUID` only in a secure context, and a player
+	// on the LAN serves Jean over plain HTTP. The suite runs on localhost, which
+	// the browser counts as secure, so the page has to lose it by hand.
+	test("works on a page served over plain HTTP", async ({ page, player }) => {
+		await page.addInitScript(() => {
+			Reflect.deleteProperty(Crypto.prototype, "randomUUID");
+		});
+		await openApp(page);
+		await page.getByRole("button", { name: "New playlist" }).click();
+
+		await expect(
+			page.getByRole("textbox", { name: "Rename New playlist" }),
+		).toBeFocused();
+		await expect.poll(() => titlesInOrder(player)).toContain("New playlist");
+	});
 });
 
 test.describe("renaming a playlist", () => {

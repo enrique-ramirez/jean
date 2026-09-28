@@ -188,6 +188,9 @@ export function useSortableList({
 	) => {
 		if (event.pointerType === "mouse" && event.button !== 0) return;
 		justDragged.current = false;
+		// `setPointerCapture` retargets the compatibility `mousedown` and `mouseup`, and `click` goes to
+		// their common ancestor, so capturing on a row sends a click meant for a button inside it to the
+		// row.
 		if (captureNow)
 			(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
 		drag.current = {

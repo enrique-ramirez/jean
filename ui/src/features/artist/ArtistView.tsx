@@ -156,7 +156,6 @@ export function ArtistView({
 						total={<b>{format.number(discography.length)}</b>}
 					/>
 				}
-				// No artist image to fall back to -- see this feature's CLAUDE.md.
 				aside={
 					own && discography.length > 0 ? (
 						<Mosaic source={library.source} rows={own} seed={name} size={176} />

@@ -1555,7 +1555,7 @@ export interface components {
             /** @constant */
             written: false;
             /** @enum {string} */
-            error: "foobar2000 does not know that track" | "the media library holds more than one track at that address" | "the playlist's rows were added, removed or reordered; read them again" | "the media library was rebuilt; export it again" | "the player could not write the tags" | "the player did not answer in time" | "tag writing is not available";
+            error: "foobar2000 does not know that track" | "the media library holds more than one track at that address" | "the playlist's rows were added, removed or reordered; read them again" | "the media library was rebuilt; export it again" | "the player could not write the tags" | "the player did not answer in time" | "tag writing is not available" | "too many tag writes";
         };
         /** @description One playlist, with everything a client draws its entry in a list from. */
         PlaylistAnnotation: {
@@ -2388,7 +2388,7 @@ export interface components {
         /**
          * @description Playlist changes or queue changes are arriving faster than this component will make them. The limit bounds how fast a client bug can flood the player with playlists or queue entries; it is not a security control.
          *
-         *     A burst of thirty is allowed, refilling at one a second, one budget shared across creating, renaming, moving and deleting a playlist, copying rows into one and removing them, and across queueing, moving, removing and clearing the queue. Reading and previewing are not limited. `Retry-After` is sent in seconds.
+         *     A burst of thirty is allowed, refilling at one a second, one budget shared across creating, renaming, moving and deleting a playlist, copying rows into one and removing them, and across queueing, moving, removing and clearing the queue. Reading is not limited, and a query preview spends a budget of its own. `Retry-After` is sent in seconds.
          */
         TooManyRequests: {
             headers: {
@@ -2449,7 +2449,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Either this install does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or no snapshot has been built yet. Both mean there is nothing to resolve the set against. */
+        /** @description Either this install does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or no snapshot has been built yet. Both mean there is nothing to resolve the set against. The third is a component that cannot reach the playlist it would fill, which names the component's own playlists on `POST /playlists/own/{role}/items` and playlist changes on `POST /playlists/{id}/items`. */
         FillUnavailable: {
             headers: {
                 [name: string]: unknown;
@@ -2528,6 +2528,17 @@ export interface components {
                 [name: string]: unknown;
             };
             content?: never;
+        };
+        /** @description Query previews are arriving faster than this component will run them: a burst of 30, refilling one every 200 milliseconds, a budget apart from the one playlist changes spend. Each preview runs the query over the whole Media Library on foobar2000's main thread. Somebody typing into an editor that sends one per keystroke never meets it; a client stuck in a loop does. `Retry-After` is sent in seconds. */
+        QueryPreviewedTooFast: {
+            headers: {
+                /** @description Seconds to wait. */
+                "Retry-After"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistRefusal"];
+            };
         };
         /**
          * @description Polls of `GET /state` are arriving faster than this component will answer them: a burst of 30, refilling one every 100 milliseconds, per source address. An ordinary poll on its own interval never meets this; a client stuck in a loop does.
@@ -2916,6 +2927,17 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            /** @description Tag writes are arriving faster than this component will make them: a burst of 200, refilling one every 50 milliseconds, one budget however many clients are writing. Rating a whole album or a box set one track after another never meets it; a client stuck in a loop does. A request refused for what it asks is refused for that first and spends nothing. Nothing was written. `Retry-After` is sent in seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait. */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagFailed"];
+                };
+            };
             /** @description The player could not write the tags. No reason is given, because error text leaks filesystem paths. */
             500: {
                 headers: {
@@ -3075,6 +3097,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["PlaylistRefused"];
+            429: components["responses"]["QueryPreviewedTooFast"];
             503: components["responses"]["PlaylistUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
         };

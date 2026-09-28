@@ -187,6 +187,7 @@ export type WriteFailure =
 	| { ok: false; reason: "moved"; message: string }
 	// The write may still land, so it is never rolled back.
 	| { ok: false; reason: "timeout"; message: string }
+	| { ok: false; reason: "too-fast"; message: string }
 	| { ok: false; reason: "refused"; message: string }
 	| { ok: false; reason: "failed"; message: string }
 	| { ok: false; reason: "unavailable"; message: string }
@@ -263,6 +264,8 @@ export async function writeTags(
 			? { ok: false, reason: "ambiguous", message }
 			: { ok: false, reason: "moved", message };
 	if (response.status === 504) return { ok: false, reason: "timeout", message };
+	if (response.status === 429)
+		return { ok: false, reason: "too-fast", message };
 	if (response.status === 400 || response.status === 413)
 		return { ok: false, reason: "refused", message };
 	if (response.status === 503)
@@ -358,6 +361,8 @@ export async function issueStreamTicket(
 	return { ok: false, reason: "unreachable", message };
 }
 
+const playlistPath = (id: string) => `playlists/${encodeURIComponent(id)}`;
+
 export const libraryArtworkUrl = (origin: string | null, path: string) =>
 	origin && `${origin}/api/artwork?track=${encodeURIComponent(path)}`;
 
@@ -368,7 +373,7 @@ export const playlistRowArtworkUrl = (
 	origin: string | null,
 	playlistId: string,
 	index: number,
-) => origin && `${origin}/api/artwork/playlists/${playlistId}/${index}`;
+) => origin && `${origin}/api/artwork/${playlistPath(playlistId)}/${index}`;
 
 export const streamUrl = (origin: string, ticket: string, format: string) =>
 	`${origin}/api/stream?ticket=${encodeURIComponent(ticket)}&format=${encodeURIComponent(format)}`;
@@ -389,14 +394,39 @@ export async function fetchPlaylistAnnotations(
 	return body?.playlists ?? null;
 }
 
+// Seconds, per RFC 9110. The date form is legal and foo_jean does not send it.
+export const retryAfterMs = (response: Response) => {
+	const seconds = Number(response.headers.get("Retry-After"));
+	return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
+};
+
+// foo_jean always sends `Retry-After: 1` when it refuses a preview; this is the fallback for
+// the header ever being missing.
+const PREVIEW_BUSY_WAIT_MS = 1_000;
+
+export type PreviewResult =
+	| { ok: true; preview: QueryPreview }
+	| { ok: false; retryInMs: number | null };
+
 // A query that does not parse comes back as a 200 carrying `valid: false`, never as a 400. Debounce
 // the caller: this runs on foobar2000's main thread.
-export const previewQuery = (origin: string, query: string) =>
-	fetchJson<QueryPreview>(origin, "/api/autoplaylists/preview", {
-		method: "POST",
-		headers: JSON_BODY,
-		body: JSON.stringify({ query }),
+export async function previewQuery(
+	origin: string,
+	query: string,
+): Promise<PreviewResult> {
+	const response = await postJson(`${origin}/api/autoplaylists/preview`, {
+		query,
 	});
+	if (response?.status === 429)
+		return {
+			ok: false,
+			retryInMs: retryAfterMs(response) ?? PREVIEW_BUSY_WAIT_MS,
+		};
+	const preview = response?.ok
+		? ((await response.json().catch(() => null)) as QueryPreview | null)
+		: null;
+	return preview ? { ok: true, preview } : { ok: false, retryInMs: null };
+}
 
 export type CreatedAutoPlaylist =
 	| { ok: true; playlist: PlaylistAnnotation }
@@ -459,7 +489,7 @@ export async function postFooJeanCommand(
 }
 
 const playlistUrl = (origin: string, id: string) =>
-	`${origin}/api/playlists/${encodeURIComponent(id)}`;
+	`${origin}/api/${playlistPath(id)}`;
 
 export async function fillOwnPlaylist(
 	origin: string,
@@ -485,7 +515,7 @@ export async function fillPlaylist(
 	request: FillPlaylistRequest,
 ): Promise<FillResult> {
 	const response = await postThrowing(
-		`${origin}/api/playlists/${guid}/items`,
+		`${playlistUrl(origin, guid)}/items`,
 		request,
 	);
 	return (await response.json()) as FillResult;

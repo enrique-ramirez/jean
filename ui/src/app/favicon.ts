@@ -53,6 +53,8 @@ function dot(context: CanvasRenderingContext2D, radius: number, fill: string) {
 	context.fill();
 }
 
+// Rasterised rather than animated in the SVG: a CSS-animated SVG favicon animates only in Firefox,
+// and a media query inside an SVG loaded as an image resolves inconsistently.
 function disc(state: PlaybackBadge, turn: number) {
 	const key = `${state}:${turn}`;
 	const hit = cache.get(key);
@@ -98,6 +100,7 @@ function paint(image: HTMLImageElement) {
 	halt();
 	apply(disc(badge, angle), "image/png");
 	if (badge !== "playing") return;
+	// A browser clamps a background tab's timers to about a second, which slows the spin there.
 	timer = window.setInterval(() => {
 		angle = (angle + 1) % FRAMES;
 		apply(disc("playing", angle), "image/png");

@@ -129,9 +129,12 @@ const IDLE_ITEM: FakeActiveItem = {
 	position: -1,
 };
 
+// Copies, because a tag write or a counted play lands in the track object
+// itself, and the captured fixture outlives every state one worker builds.
+const copied = (tracks: Track[]) => tracks.map((track) => ({ ...track }));
 const tracksOf = (album: string) =>
-	LIBRARY.albums.find((entry) => entry.slug === album)?.tracks ?? [];
-const allTracks = () => LIBRARY.albums.flatMap((album) => album.tracks);
+	copied(LIBRARY.albums.find((entry) => entry.slug === album)?.tracks ?? []);
+const allTracks = () => copied(LIBRARY.albums.flatMap((album) => album.tracks));
 
 export function generateTracks(count: number): Track[] {
 	const source = allTracks();
@@ -789,8 +792,13 @@ export function createState({
 		if (ordinal < 0) return;
 
 		const row = items[ordinal].track;
-		row[PLAY_COUNT] = String(Number(row[PLAY_COUNT] ?? 0) + 1);
-		dictionaryFor(PLAY_COUNT).id(row[PLAY_COUNT] as string);
+		const count = String(Number(row[PLAY_COUNT] ?? 0) + 1);
+		for (const copy of [
+			...state.playlists.flatMap((playlist) => playlist.items),
+			...libraryTracks,
+		])
+			if (copy["%path%"] === track["%path%"]) copy[PLAY_COUNT] = count;
+		dictionaryFor(PLAY_COUNT).id(count);
 
 		feed.revision += 1;
 		remember(new Map([[PLAY_COUNT, [ordinal]]]));

@@ -17,6 +17,8 @@ export interface ArtistInfo {
 	years: string | null;
 }
 
+// foo_jean's page policy, kPageContentPolicy, lets the page connect to musicbrainz.org,
+// www.wikidata.org and en.wikipedia.org and to no other host.
 const MUSICBRAINZ = "https://musicbrainz.org/ws/2";
 const WIKIPEDIA = "https://en.wikipedia.org/api/rest_v1/page/summary";
 
@@ -29,6 +31,21 @@ interface MbArtist {
 	relations?: { type: string; url?: { resource: string } }[];
 	score?: number;
 }
+
+const askThirdParty = (url: string, signal: AbortSignal) =>
+	fetch(url, {
+		signal,
+		referrerPolicy: "no-referrer",
+		headers: { Accept: "application/json" },
+	});
+
+const httpsUrl = (url: string | undefined) => {
+	try {
+		return url && new URL(url).protocol === "https:" ? url : null;
+	} catch {
+		return null;
+	}
+};
 
 const lifeSpan = (artist: MbArtist) => {
 	const begin = artist["life-span"]?.begin?.slice(0, 4);
@@ -53,9 +70,9 @@ async function wikipediaTitle(
 	const id = wikidata.split("/").pop();
 	if (!id) return null;
 
-	const response = await fetch(
+	const response = await askThirdParty(
 		`https://www.wikidata.org/w/rest.php/wikibase/v1/entities/items/${id}/sitelinks/enwiki`,
-		{ signal, headers: { Accept: "application/json" } },
+		signal,
 	);
 	if (!response.ok) return null;
 	const link = (await response.json()) as { title?: string };
@@ -73,9 +90,9 @@ export function useArtistInfo(artist: string | null | undefined) {
 		gcTime: 24 * 60 * 60 * 1000,
 		retry: false,
 		queryFn: async ({ signal }): Promise<ArtistInfo | null> => {
-			const found = await fetch(
+			const found = await askThirdParty(
 				`${MUSICBRAINZ}/artist?query=${encodeURIComponent(`artist:${artist}`)}&fmt=json&limit=1`,
-				{ signal, headers: { Accept: "application/json" } },
+				signal,
 			);
 			if (!found.ok) return null;
 
@@ -84,9 +101,9 @@ export function useArtistInfo(artist: string | null | undefined) {
 			// MusicBrainz scores a match out of 100, and an exact name scores 100.
 			if (!match || (match.score ?? 0) < 90) return null;
 
-			const detailed = await fetch(
+			const detailed = await askThirdParty(
 				`${MUSICBRAINZ}/artist/${match.id}?inc=url-rels&fmt=json`,
-				{ signal, headers: { Accept: "application/json" } },
+				signal,
 			);
 			const full = detailed.ok ? ((await detailed.json()) as MbArtist) : match;
 
@@ -103,10 +120,10 @@ export function useArtistInfo(artist: string | null | undefined) {
 			const title = await wikipediaTitle(full.relations, signal);
 			if (!title) return base;
 
-			const summary = await fetch(`${WIKIPEDIA}/${encodeURIComponent(title)}`, {
+			const summary = await askThirdParty(
+				`${WIKIPEDIA}/${encodeURIComponent(title)}`,
 				signal,
-				headers: { Accept: "application/json" },
-			});
+			);
 			if (!summary.ok) return base;
 
 			const page = (await summary.json()) as {
@@ -119,7 +136,7 @@ export function useArtistInfo(artist: string | null | undefined) {
 				summary: page.extract ?? "",
 				sourceName: page.extract ? "Wikipedia" : base.sourceName,
 				sourceUrl:
-					page.content_urls?.desktop?.page ??
+					httpsUrl(page.content_urls?.desktop?.page) ??
 					`https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`,
 			};
 		},

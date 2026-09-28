@@ -16,8 +16,8 @@ const MAX_BODY_BYTES = 256 * 1024;
 
 const REQUEST_LOG_LIMIT = 200;
 
-// The capture, fetched once per worker. Held so a reset can rebuild the player
-// without going back to the network for a library that has not changed.
+// Held so a reset can rebuild the player without going back to the network for
+// a library that has not changed.
 let captured: CapturedLibrary | null = null;
 
 const fetchLibrary = async () => {
@@ -37,7 +37,8 @@ const build = (library: CapturedLibrary) => {
 			playlists: demo.playlists,
 			mediaLibrary: demo.tracks,
 			artworkOf: demo.artworkOf,
-			// Installed and listening; see `demo/CLAUDE.md`.
+			// The bundle carries no audio, so streaming is off, a state a real
+			// install can present too.
 			fooJean: {
 				allowedFields: ["rating"],
 				canStream: false,

@@ -147,6 +147,8 @@ h1 {
 	box-shadow: 0 24px 70px -24px oklch(0 0 0 / 0.75);
 }
 
+/* An iframe's width is the viewport its document's media queries read, so a frame's size decides
+   which layout Jean draws inside it. */
 .frame iframe {
 	display: block;
 	width: 100%;

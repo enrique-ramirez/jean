@@ -81,7 +81,8 @@ test.describe("the media session", () => {
 		expect(live.state).toBe("playing");
 	});
 
-	// `app/CLAUDE.md`'s *The media session* has why the cover is redrawn rather than addressed.
+	// Redrawn rather than addressed: the OS fetches the artwork out of process, and
+	// Chrome on iOS refuses a `blob:` URL there.
 	// No test can see a lock screen, so this is as close as the suite gets to it.
 	test("carries the cover as an encoded picture, and keeps naming the track it moves to", async ({
 		page,

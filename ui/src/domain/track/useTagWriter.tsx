@@ -134,6 +134,8 @@ const refusalMessage = (result: WriteFailure, label: string, raw: string) => {
 	if (result.reason === "moved") return translate("rate.moved");
 	if (result.reason === "not-allowed") return translate("rate.notAllowed");
 	if (result.reason === "unknown-track") return translate("rate.unknownTrack");
+	if (result.reason === "too-fast")
+		return translate("rate.tooFast", { track: label });
 	return translate("rate.failed", { label, message: result.message });
 };
 

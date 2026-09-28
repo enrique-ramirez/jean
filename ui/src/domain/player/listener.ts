@@ -3,6 +3,8 @@ import { clamp } from "@/shared/lib/math";
 
 import { canUseMse } from "./mseStream";
 
+// A browser's `canPlayType` answers `''`, `'maybe'` or `'probably'`, only `''` is definite, and it can
+// be wrong either way. Bare `audio/ogg` can answer for Vorbis alone, so the codec is named.
 const MIME: Record<string, string[]> = {
 	opus: ['audio/ogg; codecs="opus"'],
 	aac: ["audio/aac", "audio/aacp"],
@@ -17,6 +19,8 @@ export const playsNatively = (format: string) => {
 	return types.some((type) => probe?.canPlayType(type) !== "");
 };
 
+// Safari takes WebM/Opus through Media Source Extensions while refusing Opus in an element, and plays
+// no Opus at all before 18.4.
 const isPlayable = (format: string) =>
 	playsNatively(format) || (format === "opus" && canUseMse());
 
@@ -61,9 +65,13 @@ export function resolveListener({ state, origin }: FooJeanDiscovery): Listener {
 export const anchorOf = (streamTimeAtConnect: number, bufferedStart: number) =>
 	streamTimeAtConnect - bufferedStart;
 
+// A browser starts `currentTime` at zero or at the stream's granule position, and `buffered.start(0)`
+// is whichever it chose.
 export const bufferedStart = (audio: HTMLAudioElement) =>
 	audio.buffered.length > 0 ? audio.buffered.start(0) : null;
 
+// `foo_jean` publishes the same display path on a stream mark and on the poll's `player.path`. A join
+// that fails shows nothing: every correction silently turns off.
 export const samePlayerPath = (
 	left: string | null | undefined,
 	right: string | null | undefined,

@@ -42,6 +42,7 @@ import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { hintFor, matchesBinding, SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { mergeHandlers, type PropBag } from "@/shared/lib/mergeHandlers";
+import { randomId } from "@/shared/lib/randomId";
 import { isRefusal } from "@/shared/lib/refusal";
 import { ActionMenu, type ActionNode } from "@/shared/ui/ActionMenu";
 import { useDragState } from "@/shared/ui/dnd";
@@ -267,7 +268,7 @@ export function Sidebar({
 		});
 
 	const newPlaylist = () => {
-		const id = `pending:${crypto.randomUUID()}`;
+		const id = `pending:${randomId()}`;
 		const title = untitledPlaylistName(shown);
 		setRenamingId(id);
 

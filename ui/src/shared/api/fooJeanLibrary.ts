@@ -1,5 +1,5 @@
 import { sleep } from "@/shared/lib/sleep";
-import { fetchState, withTimeout } from "./fooJean";
+import { fetchState, retryAfterMs, withTimeout } from "./fooJean";
 import type { components } from "./fooJeanSchema";
 import { decodeJlib, type JlibDelta, type JlibSnapshot } from "./jlib";
 
@@ -56,12 +56,8 @@ const detailOf = async (response: Response) => {
 	return body.detail ? `${body.error}: ${body.detail}` : body.error;
 };
 
-// Seconds, per RFC 9110. The date form is legal and this component does not send it.
-const retryAfterOf = (response: Response) => {
-	const seconds = Number(response.headers.get("Retry-After"));
-	if (!Number.isFinite(seconds) || seconds <= 0) return BUSY_WAIT_MS;
-	return Math.min(seconds * 1000, BUSY_WAIT_MAX_MS);
-};
+const retryAfterOf = (response: Response) =>
+	Math.min(retryAfterMs(response) ?? BUSY_WAIT_MS, BUSY_WAIT_MAX_MS);
 
 const exportUrl = (origin: string, columns: readonly string[]) => {
 	const asked = new URLSearchParams();

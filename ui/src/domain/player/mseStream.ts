@@ -58,6 +58,7 @@ export function openMseStream(
 		if (resync && element.buffered.length > 0) {
 			const ready =
 				element.buffered.end(0) - element.buffered.start(0) >= START_MS / 1000;
+			// Removing a buffered range leaves the playhead in the hole it made.
 			if (ready) {
 				resync = false;
 				element.currentTime = element.buffered.start(0);
@@ -160,6 +161,8 @@ export function openMseStream(
 			if (trimTimer) clearInterval(trimTimer);
 			URL.revokeObjectURL(src);
 		},
+		// The demuxer and the muxer are kept: `foo_jean` sends the Opus header once, at the top of the
+		// stream.
 		flush() {
 			if (!buffer) return;
 			queue.length = 0;

@@ -29,6 +29,8 @@
 	pointer-events: none;
 }
 
+/* An absolutely positioned grid item takes its containing block from an explicit `grid-column`, so
+   the screen follows the body column's own transition. */
 .screen:not([data-compact="true"]) {
 	grid-column: 2;
 }
@@ -422,6 +424,7 @@
 	}
 }
 
+/* A size container query measures the content box, so the screen's padding comes off the threshold. */
 @container (max-width: calc(1040px - 2 * 28px)) {
 	.screen:not([data-compact="true"]) .spread {
 		grid-template-columns: minmax(0, 1fr);

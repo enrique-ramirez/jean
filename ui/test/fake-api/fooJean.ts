@@ -123,6 +123,9 @@ export interface FooJeanOptions {
 	autoPlaylists?: string[];
 	libraryEnabled?: boolean;
 	failCreate?: number | null;
+	// Query previews answered `429` before the limiter lets one through, shaped
+	// like `libraryBusy`. `POST /__control/previewBusy` sets it mid-test.
+	previewBusy?: number;
 
 	canWritePlaylists?: boolean | "absent";
 	canChangeOutput?: boolean;
@@ -243,6 +246,7 @@ const DEFAULTS: FooJeanFake = {
 	autoPlaylists: [],
 	libraryEnabled: true,
 	failCreate: null,
+	previewBusy: 0,
 	canWritePlaylists: true,
 	canChangeOutput: true,
 	canControlPlayback: true,
@@ -379,14 +383,17 @@ const FAILURES: Record<number, unknown> = {
 	500: { written: false, error: "the player could not write the tags" },
 	503: { written: false, error: "tag writing is not available" },
 	504: { written: false, error: "the player did not answer in time" },
+	429: { written: false, error: "too many tag writes" },
 };
 
-const refuseWrite = (response: Responder, status: number) =>
-	json(
+const refuseWrite = (response: Responder, status: number) => {
+	if (status === 429) response.setHeader("Retry-After", "1");
+	return json(
 		response,
 		FAILURES[status] ?? { written: false, error: "refused" },
 		status,
 	);
+};
 
 const subsongOf = (track: Track) => Number(track["%subsong%"]) || 0;
 
@@ -3004,6 +3011,12 @@ export async function handleAgent({
 	}
 
 	if (method === "POST" && path === "/api/autoplaylists/preview") {
+		if (fake.previewBusy > 0) {
+			fake.previewBusy -= 1;
+			response.setHeader("Retry-After", "1");
+			return json(response, { error: "too many requests" }, 429);
+		}
+
 		const asked = body as { query?: string } | null;
 		const query = String(asked?.query ?? "");
 		const valid = query.length > 0 && !query.includes("((");

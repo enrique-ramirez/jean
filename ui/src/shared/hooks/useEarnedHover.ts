@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 
+// A browser fires `mouseenter` on a row that appears under a resting pointer, and can fire it before
+// the first `mousemove`.
 export function useEarnedHover(results: unknown) {
 	const moved = useRef(false);
 	const lastSeen = useRef<{ x: number; y: number } | null>(null);

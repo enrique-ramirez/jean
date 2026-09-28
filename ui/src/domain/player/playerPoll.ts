@@ -95,9 +95,24 @@ interface AnnouncedRevisions {
 	timelineRevision: number;
 }
 
-interface PollOutcome {
+// `foo_jean`'s `GET /api/state` body carries no counter that orders two answers, and its `ETag` is
+// opaque, so the order the reads were asked in stands in for the order the player answered them.
+interface DrawnAnswer {
+	asked: number;
+	drawn: number;
 	tag: string | null;
 	revisions: AnnouncedRevisions | null;
+}
+
+const drawnAnswers = new WeakMap<QueryClient, DrawnAnswer>();
+
+function drawnAnswerOf(client: QueryClient): DrawnAnswer {
+	let drawn = drawnAnswers.get(client);
+	if (!drawn) {
+		drawn = { asked: 0, drawn: 0, tag: null, revisions: null };
+		drawnAnswers.set(client, drawn);
+	}
+	return drawn;
 }
 
 const pendingMarkFollowUps = new WeakMap<
@@ -117,11 +132,14 @@ function scheduleMarkFollowUp(client: QueryClient, origin: string) {
 async function applyPoll(
 	client: QueryClient,
 	origin: string,
-	tag: string | null,
-	revisions: AnnouncedRevisions | null,
-	capabilities: FooJeanCapabilities | undefined,
+	read: "conditional" | "unconditional",
+	capabilities?: FooJeanCapabilities,
 	onConfigGeneration?: (generation: number) => void,
-): Promise<PollOutcome> {
+): Promise<void> {
+	const drawn = drawnAnswerOf(client);
+	drawn.asked += 1;
+	const ask = drawn.asked;
+	const tag = read === "conditional" ? drawn.tag : null;
 	const exportHeldWhenAsked = playlistSnapshot(
 		componentLibraryKey(origin),
 	).structure;
@@ -130,20 +148,24 @@ async function applyPoll(
 	if (!result.ok && result.reason === "unreachable")
 		notePlayerUnreached(askedAt);
 	else notePlayerReached();
-	if (!result.ok) return { tag, revisions };
+	if (!result.ok) return;
 
 	// Asked on every tick the player answers, not only on one that carries a change: a quiet player
 	// answers `304` forever, and a read lost under it has nothing else coming to carry its value.
 	void retryFailedPlaylistReads(origin);
 	void retryFailedLibraryRead(origin);
+	const answersNewerAsk = ask > drawn.drawn;
 	if (result.kind === "unchanged") {
+		if (answersNewerAsk && tag === drawn.tag) drawn.drawn = ask;
+		const { revisions } = drawn;
 		if (revisions) {
 			followQueue(client, origin, revisions.queueRevision);
 			followPlaylists(client, origin, revisions.playlistsRevision);
 			followTimeline(origin, revisions.timelineRevision);
 		}
-		return { tag, revisions };
+		return;
 	}
+	if (!answersNewerAsk) return;
 
 	onConfigGeneration?.(result.state.configGeneration);
 
@@ -164,17 +186,17 @@ async function applyPoll(
 	);
 
 	void recheckComponentLibrary(origin, result.state.library);
-	const nextRevisions: AnnouncedRevisions = {
+	const revisions: AnnouncedRevisions = {
 		queueRevision: result.state.player.queueRevision,
 		playlistsRevision: result.state.player.playlistsRevision,
 		timelineRevision: result.state.player.timelineRevision,
 	};
-	followQueue(client, origin, nextRevisions.queueRevision);
-	followPlaylists(client, origin, nextRevisions.playlistsRevision);
-	const timelineUnmoved = followTimeline(
-		origin,
-		nextRevisions.timelineRevision,
-	);
+	drawn.drawn = ask;
+	drawn.tag = result.tag;
+	drawn.revisions = revisions;
+	followQueue(client, origin, revisions.queueRevision);
+	followPlaylists(client, origin, revisions.playlistsRevision);
+	const timelineUnmoved = followTimeline(origin, revisions.timelineRevision);
 
 	if (
 		sawChangeOrSeek &&
@@ -182,15 +204,13 @@ async function applyPoll(
 		isListening(listeningSnapshot().phase)
 	)
 		scheduleMarkFollowUp(client, origin);
-
-	return { tag: result.tag, revisions: nextRevisions };
 }
 
 export async function pollPlayerNow(
 	client: QueryClient,
 	origin: string,
 ): Promise<void> {
-	await applyPoll(client, origin, null, null, undefined);
+	await applyPoll(client, origin, "unconditional");
 }
 
 export function startPlayerPoll(
@@ -199,8 +219,7 @@ export function startPlayerPoll(
 	capabilities?: FooJeanCapabilities | (() => FooJeanCapabilities | undefined),
 	onConfigChange?: () => void,
 ): () => void {
-	let tag: string | null = null;
-	let revisions: AnnouncedRevisions | null = null;
+	drawnAnswerOf(client).tag = null;
 	let inFlight = false;
 	let lastGeneration: number | undefined;
 
@@ -223,14 +242,13 @@ export function startPlayerPoll(
 
 		inFlight = true;
 		try {
-			({ tag, revisions } = await applyPoll(
+			await applyPoll(
 				client,
 				origin,
-				tag,
-				revisions,
+				"conditional",
 				readCapabilities(),
 				noticeGeneration,
-			));
+			);
 		} finally {
 			inFlight = false;
 		}

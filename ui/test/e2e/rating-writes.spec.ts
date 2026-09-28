@@ -12,6 +12,7 @@ import {
 	expect,
 	expectSettlesAt,
 	guidOfPlaylist,
+	holdRequests,
 	inSequence,
 	nowPlayingScreen,
 	openAllMusic,
@@ -136,26 +137,19 @@ interface WriteBody {
 // flight from a second write sent after the first came back. Every one is let go
 // before the test ends, or the route handler outlives it.
 const holdTheWrites = async (page: Page) => {
-	const sent: WriteBody[] = [];
-	const waiting: (() => void)[] = [];
-	let open = false;
-
-	await page.route(
-		(url) => url.pathname === "/api/tags",
-		async (route) => {
-			sent.push(route.request().postDataJSON() as WriteBody);
-			if (!open) await new Promise<void>((resolve) => waiting.push(resolve));
-			return route.continue();
-		},
+	const writes = await holdRequests(
+		page,
+		(request) => new URL(request.url()).pathname === "/api/tags",
 	);
 
 	return {
-		sent,
-		letOneThrough: () => waiting.shift()?.(),
-		openTheDoor: () => {
-			open = true;
-			while (waiting.length > 0) waiting.shift()?.();
+		get sent() {
+			return writes.caught.map(
+				(request) => request.postDataJSON() as WriteBody,
+			);
 		},
+		letOneThrough: writes.release,
+		openTheDoor: writes.releaseAll,
 	};
 };
 
@@ -1938,16 +1932,11 @@ test.describe("the track actions on the now-playing screen", () => {
 	test("offer no rating until the player has answered with one", async ({
 		page,
 	}) => {
-		let answer = () => {};
-		const answered = new Promise<void>((resolve) => {
-			answer = resolve;
-		});
-		await page.route(
-			(url) => url.pathname === "/api/track/playing",
-			async (route) => {
-				if (route.request().method() === "GET") await answered;
-				await route.continue();
-			},
+		const reads = await holdRequests(
+			page,
+			(request) =>
+				request.method() === "GET" &&
+				new URL(request.url()).pathname === "/api/track/playing",
 		);
 
 		await openLibrary(page);
@@ -1960,7 +1949,7 @@ test.describe("the track actions on the now-playing screen", () => {
 		).toBeVisible();
 		await expect(page.getByRole("menuitem", { name: "Rating" })).toHaveCount(0);
 
-		answer();
+		reads.releaseAll();
 		await expect(page.getByRole("menuitem", { name: "Rating" })).toBeVisible();
 	});
 });

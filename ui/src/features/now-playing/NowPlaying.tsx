@@ -355,6 +355,8 @@ export function NowPlaying({
 	const liveItem = live?.player?.activeItem;
 	const livePlaylistId = useResolvedPlaylistId(liveItem?.playlistGuid ?? null);
 
+	const coverName = album ? t("album.coverAlt", { album }) : "";
+
 	const wheel = useCoverWheel({
 		audibleTrackKey: artworkKey,
 		audibleCover: playingCover,
@@ -364,7 +366,7 @@ export function NowPlaying({
 				: null,
 		artwork,
 		neighbourArtworkSrc,
-		alt: album ? `${album} cover` : "",
+		alt: coverName,
 		...neighbours,
 		onSkip: sendSkip,
 	});
@@ -396,7 +398,7 @@ export function NowPlaying({
 			key={artworkKey}
 			src={artwork}
 			identity={playingCover}
-			alt={album ? `${album} cover` : ""}
+			alt={coverName}
 			className={styles.cover}
 		/>
 	);

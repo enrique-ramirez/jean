@@ -6,10 +6,15 @@ import type {
 	CDPSession,
 	Locator,
 	Page,
+	Request,
+	Route,
 } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
 import { createServer, type FakeServer } from "../fake-api/agentServer.ts";
-import type { FooJeanOptions } from "../fake-api/fooJean.ts";
+import {
+	COMPONENT_RATE_LIMITS,
+	type FooJeanOptions,
+} from "../fake-api/fooJean.ts";
 import {
 	createState,
 	DEFAULT_PLAYLISTS,
@@ -42,6 +47,7 @@ interface JeanFixtures {
 	settings: Record<string, unknown>;
 	firstRun: boolean;
 	motion: "reduce" | "allow";
+	unaskedRateLimits: undefined;
 }
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), "../../dist");
@@ -143,11 +149,36 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 					playlistsFromRow,
 					countsPlays,
 					player: playerState,
-					fooJean,
+					fooJean: {
+						...fooJean,
+						rateLimits: { ...COMPONENT_RATE_LIMITS, ...fooJean.rateLimits },
+					},
 				}),
 			),
 		);
 	},
+
+	// A `429` from one of the component's buckets means the client sent a burst the
+	// player would refuse, whatever the test was looking at, so every test answers
+	// for its own. One the test provokes on purpose is named in
+	// `fooJean.expectRateLimited`.
+	unaskedRateLimits: [
+		async ({ player }, use) => {
+			await use(undefined);
+			const asked = new Set(player.fooJean.expectRateLimited);
+			const refused = player.requests
+				.filter((entry) => entry.limited && !asked.has(entry.limited))
+				.map(
+					(entry) =>
+						`${entry.method} ${entry.path.split("?")[0]} (${entry.limited})`,
+				);
+			expect(
+				[...new Set(refused)],
+				`foo_jean's rate limits refused ${refused.length} request(s) this test did not ask to be refused`,
+			).toEqual([]);
+		},
+		{ auto: true },
+	],
 
 	baseURL: async ({ fakeServer }, use) => {
 		const address = fakeServer.address();
@@ -519,6 +550,68 @@ export const holdThePoll = async (page: Page) => {
 		untilRefusedAgain,
 		letOneThrough: () => {
 			allowed = 1;
+		},
+	};
+};
+
+// Requests stopped in the browser until the test lets each one go, oldest first.
+// Stopped on the way out by default, so what one carries back is whatever the
+// player holds when it is let go. With `answered`, the player answers at once and
+// the answer is what waits, so a request let go late still carries what the
+// player held when it was asked: the only way to have an older answer land after
+// a newer one. `count` is how many are caught; the rest go straight through, and
+// so does everything once `releaseAll` has been called.
+//
+// Letting one go falls back to any route registered before this one, so two holds
+// on the same requests compose: one registered first with `answered`, one after it
+// without, holds a request on its way out and then holds its answer.
+export const holdRequests = async (
+	page: Page,
+	matches: (request: Request) => boolean,
+	{ answered = false, count = Number.POSITIVE_INFINITY } = {},
+) => {
+	const caught: Request[] = [];
+	const waiting: ((settle: (route: Route) => Promise<void>) => void)[] = [];
+	let holding = true;
+	const letGo = (route: Route) => route.fallback();
+
+	await page.route(
+		(url) => url.pathname.startsWith("/api/"),
+		async (route) => {
+			const request = route.request();
+			if (!holding || caught.length >= count || !matches(request))
+				return route.fallback();
+			caught.push(request);
+
+			const response = answered ? await route.fetch() : null;
+			const body = response ? await response.body() : null;
+			const settle = await new Promise<(route: Route) => Promise<void>>(
+				(resolve) => waiting.push(resolve),
+			);
+			// A request the page has since given up on can no longer be answered.
+			await (response && settle === letGo
+				? route.fulfill({ response, body: body ?? undefined })
+				: settle(route)
+			).catch(() => {});
+		},
+	);
+
+	return {
+		caught,
+		untilHeld: (atLeast = 1) =>
+			expect
+				.poll(() => waiting.length, {
+					message: `fewer than ${atLeast} matching requests were held`,
+				})
+				.toBeGreaterThanOrEqual(atLeast),
+		release: () => waiting.shift()?.(letGo),
+		// Answers the oldest held request with `settle` instead: `route.abort()` for
+		// a connection that dropped, `route.fulfill({ status })` for a refusal.
+		refuse: (settle: (route: Route) => Promise<void>) =>
+			waiting.shift()?.(settle),
+		releaseAll: () => {
+			holding = false;
+			while (waiting.length > 0) waiting.shift()?.(letGo);
 		},
 	};
 };

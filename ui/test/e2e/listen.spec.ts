@@ -236,7 +236,10 @@ test.describe("a first check that times out", () => {
 test.describe("listening on this device", () => {
 	test.use({ fooJean: {} });
 
-	test("takes a ticket and opens the stream", async ({ page, player }) => {
+	test("takes a ticket and opens the stream", { tag: "@iphone" }, async ({
+		page,
+		player,
+	}) => {
 		await page.goto("/");
 		await startListening(page);
 
@@ -255,7 +258,7 @@ test.describe("listening on this device", () => {
 		await expect.poll(() => player.streamFormats).toEqual(["opus"]);
 	});
 
-	test("advances the element's clock", async ({ page }) => {
+	test("advances the element's clock", { tag: "@iphone" }, async ({ page }) => {
 		await page.goto("/");
 		await startListening(page);
 

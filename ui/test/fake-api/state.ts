@@ -4,6 +4,7 @@ import type {
 	Volume,
 } from "../../src/shared/api/types.ts";
 import {
+	type Bucket,
 	type FooJeanOptions,
 	fooJeanState,
 	JEAN_MODE_BY_ORDER,
@@ -108,6 +109,8 @@ export interface RecordedRequest {
 	// path cannot say: a cover sent again and a cover revalidated are one GET at
 	// one address, and only the answer tells them apart.
 	answered?: { conditional: boolean; status: number; bytes: number };
+	// The bucket that refused it, where a rate limit rather than a knob answered `429`.
+	limited?: Bucket;
 }
 
 const LIBRARY = capturedLibrary as { albums: CapturedAlbum[] };

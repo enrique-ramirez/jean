@@ -143,7 +143,7 @@ test("a different library is built afresh rather than added to", () => {
 	assert.equal(other[0].key, "blood, sweat & tears");
 });
 
-const named = (query: string, floor = TIER.word) =>
+const named = (query: string, floor: number = TIER.word) =>
 	rankEntities(artists, query, floor).map((entry) => entry.name);
 
 test("a name the query holds whole is offered; one it only contains is not", () => {

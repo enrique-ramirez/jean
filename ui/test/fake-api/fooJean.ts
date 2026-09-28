@@ -2,7 +2,12 @@ import type { components } from "../../src/shared/api/fooJeanSchema.d.ts";
 import type { PlaybackMode } from "../../src/shared/api/types.ts";
 import { empty, json, type RequestHeaders, type Responder } from "./http.ts";
 import type { ArtworkServer } from "./routes.ts";
-import type { createState, FakePlaylist, Track } from "./state.ts";
+import type {
+	createState,
+	FakePlaylist,
+	RecordedRequest,
+	Track,
+} from "./state.ts";
 import { evaluate, libraryItemsOf } from "./state.ts";
 
 type FakeState = ReturnType<typeof createState>;
@@ -71,6 +76,32 @@ export interface FooJeanOptions {
 	// `POST /__control/state`, because the case it exists for is a poll cut off
 	// mid-test rather than one refused from the start.
 	failState?: number | null;
+
+	// Holds GET /api/state open and never answers it, shaped like `hangLibraryTrack`
+	// and switched like `failState`.
+	hangState?: boolean;
+
+	// Refuses all three artwork routes with this status, or holds them open without
+	// answering, after the rate limit has been spent the way the component spends it.
+	failArtwork?: number | null;
+	hangArtwork?: boolean;
+
+	// The component's token buckets, sized as `COMPONENT_RATE_LIMITS`. Off unless
+	// given: the demo replays its whole journal through this fake in one burst,
+	// which no real client does. The suite's fixture turns them on.
+	rateLimits?: RateLimits | null;
+
+	// The buckets a spec means to be refused by. The suite fails any other `429` a
+	// bucket answers, since a client meeting a rate limit it did not ask for is
+	// sending a burst the player would refuse.
+	expectRateLimited?: Bucket[];
+
+	// Answers built when a request arrives and delivered this many milliseconds
+	// later, plus up to `jitterMs` at random, keyed by `"METHOD /api/path"` and
+	// matched as a prefix. Built first so that a slow answer carries what the
+	// player held when it was asked, which is what lets two of them arrive in the
+	// opposite order to the one they were asked in.
+	routeLatency?: Record<string, { ms: number; jitterMs?: number }>;
 
 	// Refuses every queue mutation with this status, leaving the queue itself
 	// where it was and both reads answering. A 500, a 429 from the rate limiter
@@ -177,6 +208,17 @@ export interface FooJeanFake extends Required<FooJeanOptions> {
 	// `GET /api/state`'s `configGeneration`. `/__control/controlPlayback` and
 	// `/__control/writePlaylists` are the only two that touch it.
 	configGeneration: number;
+	limiter: Limiter;
+	// The specification of every autoplaylist `POST /api/autoplaylists` made, by the
+	// fake's own key: the only playlists the two `/api/autoplaylists/{id}` routes touch.
+	managedAutoPlaylists: Map<string, ManagedAutoPlaylist>;
+}
+
+interface ManagedAutoPlaylist {
+	key: string;
+	query: string;
+	sort: string;
+	forceSort: boolean;
 }
 
 // Spelled the way foobar2000 prints a device pair: one module GUID shared by every device it
@@ -218,6 +260,12 @@ const DEFAULTS: FooJeanFake = {
 	playingTrackKnobsFor: null,
 	storesRatingAs: null,
 	failState: null,
+	hangState: false,
+	failArtwork: null,
+	hangArtwork: false,
+	rateLimits: null,
+	expectRateLimited: [],
+	routeLatency: {},
 	failQueue: null,
 	failPlaylistWrites: null,
 	loseQueueAnswer: null,
@@ -255,17 +303,177 @@ const DEFAULTS: FooJeanFake = {
 	outputSwitchRefusal: null,
 	lockedPlaylists: new Set(),
 	configGeneration: 1,
+	limiter: new Map(),
+	managedAutoPlaylists: new Map(),
 };
 
 export const fooJeanState = (options: FooJeanOptions): FooJeanFake => ({
 	...DEFAULTS,
 	...options,
+	// Copied, since a route or a spec mutates each of these in place and `DEFAULTS`
+	// outlives every test on a worker.
+	autoPlaylists: [...(options.autoPlaylists ?? [])],
+	expectRateLimited: [...(options.expectRateLimited ?? [])],
+	routeLatency: { ...options.routeLatency },
 	ownPlaylists: {},
 	lockedPlaylists: new Set(),
+	limiter: new Map(),
+	managedAutoPlaylists: new Map(),
 });
+
+export type Bucket =
+	| "playlistChanges"
+	| "libraryRebuilds"
+	| "artwork"
+	| "tagWrites"
+	| "previews"
+	| "statePolls";
+
+export interface BucketSize {
+	burst: number;
+	refillMs: number;
+}
+
+export type RateLimits = Partial<Record<Bucket, BucketSize>>;
+
+// `kPlaylistBurst` and its siblings in `plugins/fb2k/src/core/http_server.cpp`.
+export const COMPONENT_RATE_LIMITS: Record<Bucket, BucketSize> = {
+	playlistChanges: { burst: 30, refillMs: 1000 },
+	libraryRebuilds: { burst: 3, refillMs: 30_000 },
+	artwork: { burst: 300, refillMs: 50 },
+	tagWrites: { burst: 200, refillMs: 50 },
+	previews: { burst: 30, refillMs: 200 },
+	statePolls: { burst: 30, refillMs: 100 },
+};
+
+// `foo_jean` keeps one bucket per source address for state polls and one for the whole
+// server for everything else.
+const PER_CLIENT = new Set<Bucket>(["statePolls"]);
+
+const PLAYLIST_CHANGES: [string, RegExp][] = [
+	["POST", /^\/api\/playlists$/],
+	["POST", /^\/api\/playlists\/[^/]+$/],
+	["DELETE", /^\/api\/playlists\/[^/]+$/],
+	["POST", /^\/api\/playlists\/[^/]+\/move$/],
+	["POST", /^\/api\/playlists\/[^/]+\/items$/],
+	["POST", /^\/api\/playlists\/own\/[^/]+\/items$/],
+	["DELETE", /^\/api\/playlists\/own\/[^/]+\/items$/],
+	["POST", /^\/api\/playlists\/[^/]+\/items\/(copy|remove)$/],
+	["POST", /^\/api\/autoplaylists$/],
+	["POST", /^\/api\/autoplaylists\/[^/]+$/],
+	["DELETE", /^\/api\/autoplaylists\/[^/]+$/],
+	["POST", /^\/api\/queue(\/move)?$/],
+	["DELETE", /^\/api\/queue(\/[^/]+)?$/],
+];
+
+// The export spends from `libraryRebuilds` only when it starts a build, which is
+// `handleLibrary`'s to decide, so it is not named here.
+export const bucketOf = (method: string, path: string): Bucket | null => {
+	if (method === "GET" && path === "/api/state") return "statePolls";
+	if (method === "GET" && path.startsWith("/api/artwork")) return "artwork";
+	if (method === "POST" && path === "/api/tags") return "tagWrites";
+	if (method === "POST" && path === "/api/autoplaylists/preview")
+		return "previews";
+	if (method === "POST" && path === "/api/library/refresh")
+		return "libraryRebuilds";
+	if (
+		PLAYLIST_CHANGES.some(
+			([verb, pattern]) => verb === method && pattern.test(path),
+		)
+	)
+		return "playlistChanges";
+	return null;
+};
+
+interface Tokens {
+	tokens: number;
+	at: number;
+}
+
+export type Limiter = Map<string, Tokens>;
+
+// A bucket starts full and refills continuously, never past its burst.
+export const spend = (
+	limiter: Limiter,
+	limits: RateLimits,
+	bucket: Bucket,
+	client: string,
+	now = Date.now(),
+): boolean => {
+	const size = limits[bucket];
+	if (!size) return true;
+
+	const key = PER_CLIENT.has(bucket) ? `${bucket} ${client}` : bucket;
+	const held = limiter.get(key) ?? { tokens: size.burst, at: now };
+	const tokens = Math.min(
+		size.burst,
+		held.tokens + (now - held.at) / size.refillMs,
+	);
+
+	if (tokens < 1) {
+		limiter.set(key, { tokens, at: now });
+		return false;
+	}
+
+	limiter.set(key, { tokens: tokens - 1, at: now });
+	return true;
+};
+
+// Word for word what the component answers from each bucket. The autoplaylist routes carry a
+// `detail` the other playlist changes do not.
+const REFUSALS: Record<Bucket, { retryAfter: string; body: unknown }> = {
+	playlistChanges: {
+		retryAfter: "1",
+		body: { error: "too many requests", detail: "" },
+	},
+	libraryRebuilds: {
+		retryAfter: "30",
+		body: { error: "too many library refreshes" },
+	},
+	artwork: { retryAfter: "1", body: { error: "too many artwork requests" } },
+	tagWrites: {
+		retryAfter: "1",
+		body: { written: false, error: "too many tag writes" },
+	},
+	previews: {
+		retryAfter: "1",
+		body: {
+			error: "too many requests",
+			detail: "query previews are arriving faster than they can be run",
+		},
+	},
+	statePolls: { retryAfter: "1", body: { error: "too many state polls" } },
+};
+
+const AUTOPLAYLIST_CHANGES_REFUSED = {
+	error: "too many requests",
+	detail: "playlist changes are arriving faster than they can be made",
+};
+
+export const refuseTooFast = (
+	response: Responder,
+	bucket: Bucket,
+	path = "",
+) => {
+	const refusal = REFUSALS[bucket];
+	response.setHeader("Retry-After", refusal.retryAfter);
+	return json(
+		response,
+		bucket === "playlistChanges" && path.startsWith("/api/autoplaylists")
+			? AUTOPLAYLIST_CHANGES_REFUSED
+			: refusal.body,
+		429,
+	);
+};
 
 const one = (value: string | string[] | undefined) =>
 	(Array.isArray(value) ? value[0] : value) ?? "";
+
+// `kMaxBodyBytes` in `plugins/fb2k/src/core/http_server.h`, refused before any
+// route reads the body.
+export const MAX_BODY_BYTES = 256 * 1024;
+
+const BODY_TOO_LARGE = { error: "request too large" };
 
 // Mirrors core/http_server.cpp's isJsonRequest. See src/shared/api/README.md.
 const isJsonContentType = (headers: RequestHeaders) =>
@@ -460,6 +668,51 @@ const abandoned = (response: Responder, within: number) =>
 			resolve(true);
 		});
 	});
+
+const latencyOf = (fake: FooJeanFake, method: string, path: string) => {
+	const asked = `${method} ${path}`;
+	const match = Object.entries(fake.routeLatency).find(([route]) =>
+		asked.startsWith(route),
+	)?.[1];
+	if (!match) return 0;
+	return match.ms + Math.random() * (match.jitterMs ?? 0);
+};
+
+// Everything a route does to its response, replayed in order once `ms` has passed.
+const deliveredAfter = (response: Responder, ms: number): Responder => {
+	const pending: (() => unknown)[] = [];
+	let open = false;
+	let ended = false;
+	setTimeout(() => {
+		open = true;
+		for (const step of pending.splice(0)) step();
+	}, ms);
+	const later = (step: () => unknown) => {
+		if (open) return step();
+		pending.push(step);
+		return true;
+	};
+	return {
+		writeHead: (status, headers) =>
+			later(() => response.writeHead(status, headers)),
+		setHeader: (name, value) => later(() => response.setHeader(name, value)),
+		write: (chunk) => later(() => response.write(chunk)),
+		end: (body) => {
+			ended = true;
+			return later(() => response.end(body));
+		},
+		on: (event, listener) => response.on(event, listener),
+		get writableEnded() {
+			return ended || Boolean(response.writableEnded);
+		},
+	};
+};
+
+const ARTWORK_FAILURES: Record<number, { error: string }> = {
+	500: { error: "the player could not do that" },
+	503: { error: "artwork is not available" },
+	504: { error: "the player did not answer in time" },
+};
 
 // The device an <audio> element belongs to, remembered from the request that
 // minted its ticket: the element itself sends no body and no header.
@@ -676,6 +929,16 @@ const PLAYER_REFUSED = {
 	error: "the player could not do that",
 	detail: "",
 };
+
+const AUTOPLAYLISTS_UNAVAILABLE = {
+	error: "autoplaylists are not available",
+	detail: "",
+} satisfies components["schemas"]["PlaylistFailed"];
+
+const NOT_OURS = {
+	error: "that playlist was not created by foo_jean",
+	detail: "",
+} satisfies components["schemas"]["PlaylistFailed"];
 
 const OWN_PLAYLIST = {
 	error:
@@ -1183,6 +1446,35 @@ const ownRoleOf = (fake: FooJeanFake, id: string): OwnPlaylistRole | null =>
 const locksAgainstAdds = (fake: FooJeanFake, playlist: FakePlaylist): boolean =>
 	Boolean(playlist.isAuto) || fake.autoPlaylists.includes(playlist.id);
 
+// One playlist as `GET /api/playlists` lists it, which is also what the two
+// autoplaylist writes answer with.
+const annotationOf = (state: FakeState, playlist: FakePlaylist) => ({
+	id: playlist.guid,
+	index: state.playlists.indexOf(playlist),
+	title: playlist.title,
+	itemCount: playlist.items.length,
+	isAutoPlaylist: locksAgainstAdds(state.fooJean, playlist),
+	role: ownRoleOf(state.fooJean, playlist.id),
+	structure: generationText(playlist.structure),
+	revision: generationText(playlist.revision),
+	managed: state.fooJean.managedAutoPlaylists.get(playlist.id) ?? null,
+});
+
+interface AutoPlaylistAsked {
+	title?: string;
+	key?: string;
+	query?: string;
+	sort?: string;
+	forceSort?: boolean;
+}
+
+const managedOf = (asked: AutoPlaylistAsked | null): ManagedAutoPlaylist => ({
+	key: String(asked?.key ?? ""),
+	query: String(asked?.query ?? ""),
+	sort: String(asked?.sort ?? ""),
+	forceSort: asked?.forceSort === true,
+});
+
 const OWN_TITLE_PREFIX = "#Jean";
 
 // A title beginning `#Jean` reaches the player exactly as sent; one that does not is prefixed
@@ -1355,6 +1647,8 @@ const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
 			fake.knowsPlayingLocation && item && playlist
 				? { playlistId: playlist.guid, index: item.index }
 				: null,
+		currentPlaylistId:
+			state.playlists.find((entry) => entry.isCurrent)?.guid ?? null,
 		// Rides straight through even where it names no device `GET /api/outputs` lists, which is
 		// what an unplugged device looks like: `outputDeviceId` says what the player is set to, not
 		// what a picker can still offer.
@@ -1721,6 +2015,10 @@ async function handleState({
 			fake.failState,
 		);
 	}
+	if (fake.hangState) {
+		await abandoned(response, STALLED_READ_MS);
+		return true;
+	}
 
 	if (fake.libraryRebuilds > 0 && state.libraryFeed.columns.length > 0) {
 		fake.libraryRebuilds -= 1;
@@ -1756,9 +2054,11 @@ async function handleLibrary({
 	url,
 	headers,
 	response,
+	recorded,
 }: {
 	state: FakeState;
 	fake: FooJeanFake;
+	recorded: RecordedRequest;
 	method: string;
 	path: string;
 	url: URL;
@@ -1767,17 +2067,29 @@ async function handleLibrary({
 }) {
 	if (!fake.canReadLibrary)
 		return json(response, { error: "the media library is not available" }, 503);
+
+	// Rebuilds the set already declared, so it answers as the export's own `202` does
+	// and the build finishes on the ticks that follow.
+	if (method === "POST" && path === "/api/library/refresh") {
+		const columns = state.libraryFeed.columns;
+		if (columns.length > 0 && state.libraryFeed.building === null)
+			state.startLibraryBuild(columns);
+		return json(response, libraryStateOf(state, fake), 202);
+	}
+
 	if (method !== "GET") return json(response, { error: "not found" }, 404);
 
 	// One track's columns, addressed the way a cover is. It echoes no
 	// `libraryPath`, because the caller supplied the address.
 	if (path === "/api/track/library") {
-		if (fake.failLibraryTrack)
+		if (fake.failLibraryTrack) {
+			if (fake.failLibraryTrack === 429) response.setHeader("Retry-After", "1");
 			return json(
 				response,
 				{ error: "the player could not read that track", detail: "" },
 				fake.failLibraryTrack,
 			);
+		}
 		// Nothing is answered once the hold is up either, for the reason
 		// `hangLibraryTrack` gives.
 		if (fake.hangLibraryTrack) {
@@ -1883,15 +2195,23 @@ async function handleLibrary({
 
 		if (fake.libraryBusy > 0) {
 			fake.libraryBusy -= 1;
-			response.setHeader("Retry-After", "1");
-			return json(response, { error: "rebuilding too fast" }, 429);
+			return refuseTooFast(response, "libraryRebuilds");
 		}
 
 		if (!sameMembers(state.libraryFeed.columns, asked)) {
 			const alreadyBuildingAsked =
 				state.libraryFeed.building !== null &&
 				sameMembers(state.libraryFeed.building, asked);
-			if (!alreadyBuildingAsked) state.startLibraryBuild(asked);
+			if (!alreadyBuildingAsked) {
+				if (
+					fake.rateLimits &&
+					!spend(fake.limiter, fake.rateLimits, "libraryRebuilds", "")
+				) {
+					recorded.limited = "libraryRebuilds";
+					return refuseTooFast(response, "libraryRebuilds");
+				}
+				state.startLibraryBuild(asked);
+			}
 			if (fake.libraryBuilds > 0 || !fake.libraryReady)
 				return json(response, libraryStateOf(state, fake), 202);
 			state.finishLibraryBuild();
@@ -1944,7 +2264,9 @@ export async function handleAgent({
 	url,
 	headers,
 	body,
-	response,
+	bodyBytes = 0,
+	client = "",
+	response: socket,
 	artwork,
 }: {
 	state: FakeState;
@@ -1952,6 +2274,9 @@ export async function handleAgent({
 	url: URL;
 	headers: RequestHeaders;
 	body: unknown;
+	bodyBytes?: number;
+	// The source address, which `foo_jean` keys its state-poll budget by.
+	client?: string;
 	response: Responder;
 	artwork: ArtworkServer;
 }) {
@@ -1959,6 +2284,9 @@ export async function handleAgent({
 	const path = url.pathname;
 
 	const recorded = state.record(method, path + url.search, body as never);
+
+	const late = latencyOf(fake, method, path);
+	const response = late > 0 ? deliveredAfter(socket, late) : socket;
 
 	const sendCover = (file: string, cacheControl: string) => {
 		const conditional = Boolean(headers["if-none-match"]);
@@ -1979,11 +2307,26 @@ export async function handleAgent({
 		return response.end();
 	}
 
+	if (bodyBytes > MAX_BODY_BYTES) {
+		response.setHeader("Connection", "close");
+		return json(response, BODY_TOO_LARGE, 413);
+	}
+
 	if (method === "POST" && !isJsonContentType(headers))
 		return json(response, SEND_JSON, 415);
 
 	if (!fake.canControlPlayback && needsPlaybackControl(method, path))
 		return json(response, PLAYBACK_DISABLED, 403);
+
+	const bucket = bucketOf(method, path);
+	if (
+		bucket &&
+		fake.rateLimits &&
+		!spend(fake.limiter, fake.rateLimits, bucket, client)
+	) {
+		recorded.limited = bucket;
+		return refuseTooFast(response, bucket, path);
+	}
 
 	if (path === "/api/status") {
 		return json(response, {
@@ -2055,7 +2398,7 @@ export async function handleAgent({
 			volumeMax: state.player.volume.max,
 			volumeUnit: state.player.volume.type,
 			playbackModes: playbackModesOf(state),
-			...(fake.canStream ? { streamFormats: fake.streamFormats } : null),
+			streamFormats: fake.canStream ? fake.streamFormats : [],
 			...(fake.canWritePlaylists === "absent"
 				? null
 				: { canWritePlaylists: fake.canWritePlaylists }),
@@ -2378,7 +2721,16 @@ export async function handleAgent({
 	}
 
 	if (path.startsWith("/api/library/") || path === "/api/track/library")
-		return handleLibrary({ state, fake, method, path, url, headers, response });
+		return handleLibrary({
+			state,
+			fake,
+			method,
+			path,
+			url,
+			headers,
+			response,
+			recorded,
+		});
 
 	// Outside handleLibrary on purpose: this route answers even in the window
 	// canReadLibrary gates every /api/library/ route behind.
@@ -2389,12 +2741,14 @@ export async function handleAgent({
 			fake.playingTrackKnobsFor === null || fake.playingTrackKnobsFor > 0;
 		if (fake.playingTrackKnobsFor) fake.playingTrackKnobsFor -= 1;
 
-		if (knobsApply && fake.failPlayingTrack)
+		if (knobsApply && fake.failPlayingTrack) {
+			if (fake.failPlayingTrack === 429) response.setHeader("Retry-After", "1");
 			return json(
 				response,
 				{ error: "the player could not read the playing track", detail: "" },
 				fake.failPlayingTrack,
 			);
+		}
 
 		if (knobsApply && fake.hangPlayingTrack) {
 			await abandoned(response, STALLED_READ_MS);
@@ -2417,6 +2771,19 @@ export async function handleAgent({
 				(Number(track["%subsong%"]) || 0),
 			columns: asked.map((expression) => evaluate(track, expression)),
 		});
+	}
+
+	if (method === "GET" && path.startsWith("/api/artwork")) {
+		if (fake.failArtwork)
+			return json(
+				response,
+				ARTWORK_FAILURES[fake.failArtwork] ?? { error: "request failed" },
+				fake.failArtwork,
+			);
+		if (fake.hangArtwork) {
+			await abandoned(response, STALLED_READ_MS);
+			return true;
+		}
 	}
 
 	if (path === "/api/artwork") {
@@ -2478,17 +2845,9 @@ export async function handleAgent({
 		// spec can hold a refetch open across a playlist mutation the tick has already moved past.
 		if (state.latency > 0) await delay(state.latency);
 
-		const annotated = state.playlists.map((playlist, index) => ({
-			id: playlist.guid,
-			index,
-			title: playlist.title,
-			itemCount: playlist.items.length,
-			isAutoPlaylist: locksAgainstAdds(fake, playlist),
-			role: ownRoleOf(fake, playlist.id),
-			structure: generationText(playlist.structure),
-			revision: generationText(playlist.revision),
-			managed: null,
-		}));
+		const annotated = state.playlists.map((playlist) =>
+			annotationOf(state, playlist),
+		);
 		return json(response, {
 			playlists: fake.annotatesEveryPlaylist
 				? annotated
@@ -3013,8 +3372,7 @@ export async function handleAgent({
 	if (method === "POST" && path === "/api/autoplaylists/preview") {
 		if (fake.previewBusy > 0) {
 			fake.previewBusy -= 1;
-			response.setHeader("Retry-After", "1");
-			return json(response, { error: "too many requests" }, 429);
+			return refuseTooFast(response, "previews");
 		}
 
 		const asked = body as { query?: string } | null;
@@ -3028,46 +3386,51 @@ export async function handleAgent({
 		});
 	}
 
+	const asked = body as AutoPlaylistAsked | null;
+
 	if (method === "POST" && path === "/api/autoplaylists") {
 		// Before the limit, as the component checks it: the two refusals have separate causes and a
 		// fixture setting both would otherwise be told the wrong one.
 		if (fake.canWritePlaylists === false)
 			return json(response, WRITES_DISABLED, 403);
 		if (fake.maxAutoPlaylists === 0)
-			return json(response, { error: "autoplaylists are not available" }, 503);
-		if (fake.failCreate)
+			return json(response, AUTOPLAYLISTS_UNAVAILABLE, 503);
+		if (fake.failCreate) return json(response, PLAYER_REFUSED, fake.failCreate);
+
+		const made = state.addPlaylist(String(asked?.title ?? ""));
+		fake.autoPlaylists.push(made.id);
+		fake.managedAutoPlaylists.set(made.id, managedOf(asked));
+		return json(response, annotationOf(state, requirePlaylist(state, made.id)));
+	}
+
+	const autoPlaylistMatch = /^\/api\/autoplaylists\/([^/]+)$/.exec(path);
+	if ((method === "POST" || method === "DELETE") && autoPlaylistMatch) {
+		if (fake.canWritePlaylists === false)
+			return json(response, WRITES_DISABLED, 403);
+		if (!GUID_PATTERN.test(autoPlaylistMatch[1]))
 			return json(
 				response,
-				{ error: "the player could not do that" },
-				fake.failCreate,
+				{ error: "unacceptable playlist id", detail: "" },
+				400,
 			);
 
-		const asked = body as {
-			title?: string;
-			key?: string;
-			query?: string;
-		} | null;
-		const title = String(asked?.title ?? "");
-		const made = state.addPlaylist(title);
-		fake.autoPlaylists.push(made.id);
-		const playlist = requirePlaylist(state, made.id);
+		const playlist = state.playlistByGuid(autoPlaylistMatch[1]);
+		if (!playlist)
+			return json(response, { error: "no such playlist", detail: "" }, 404);
+		const held = fake.managedAutoPlaylists.get(playlist.id);
+		if (!held) return json(response, NOT_OURS, 403);
 
-		return json(response, {
-			id: playlist.guid,
-			index: state.playlists.length - 1,
-			title: playlist.title,
-			itemCount: playlist.items.length,
-			isAutoPlaylist: true,
-			role: ownRoleOf(fake, playlist.id),
-			structure: generationText(playlist.structure),
-			revision: generationText(playlist.revision),
-			managed: {
-				key: String(asked?.key ?? ""),
-				query: String(asked?.query ?? ""),
-				sort: "",
-				forceSort: false,
-			},
-		});
+		if (method === "DELETE") {
+			fake.managedAutoPlaylists.delete(playlist.id);
+			fake.autoPlaylists.splice(fake.autoPlaylists.indexOf(playlist.id), 1);
+			state.removePlaylist(playlist.id);
+			return json(response, { removed: true, id: playlist.guid });
+		}
+
+		fake.managedAutoPlaylists.set(playlist.id, managedOf(asked));
+		if (typeof asked?.title === "string" && asked.title.length > 0)
+			state.renamePlaylist(playlist.id, asked.title);
+		return json(response, annotationOf(state, playlist));
 	}
 
 	if (path === "/api/stream/listeners") {

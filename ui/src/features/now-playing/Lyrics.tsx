@@ -113,6 +113,7 @@ function Synced({
 						data-state={
 							index === active ? "active" : index < active ? "past" : "coming"
 						}
+						aria-current={index === active ? "true" : undefined}
 						aria-disabled={canControlPlayback ? undefined : "true"}
 						aria-label={
 							canControlPlayback || !line.text

@@ -159,7 +159,10 @@ const libraryGuid = (player: FakePlayer) =>
 			).toBeVisible();
 		});
 
-		test("a tap plays the track", async ({ page, player }) => {
+		test("a tap plays the track", { tag: "@iphone" }, async ({
+			page,
+			player,
+		}) => {
 			await trackRow(page, THIRD_TRACK.index).tap();
 
 			await expect
@@ -172,10 +175,9 @@ const libraryGuid = (player: FakePlayer) =>
 			);
 		});
 
-		test("a press-and-hold opens the menu and plays nothing", async ({
-			page,
-			player,
-		}) => {
+		test("a press-and-hold opens the menu and plays nothing", {
+			tag: "@iphone",
+		}, async ({ page, player }) => {
 			await pressAndHold(page, trackRow(page, THIRD_TRACK.index));
 
 			await expect(page.getByRole("dialog")).toBeVisible();

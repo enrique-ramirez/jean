@@ -18,7 +18,6 @@ const FLICK_PX = 50;
 interface Sleeve {
 	src: string;
 	identity?: string;
-	alt: string;
 }
 
 export interface NeighbourArtwork {
@@ -131,9 +130,9 @@ export function useCoverWheel({
 			if (!artwork) return held;
 			if (held[at]?.src === artwork && held[at]?.identity === audibleCover)
 				return held;
-			return { ...held, [at]: { src: artwork, alt, identity: audibleCover } };
+			return { ...held, [at]: { src: artwork, identity: audibleCover } };
 		});
-	}, [audibleTrackKey, artwork, audibleCover, alt, neighbourArtworkSrc]);
+	}, [audibleTrackKey, artwork, audibleCover, neighbourArtworkSrc]);
 
 	const confirmed = useRef<string | null>(null);
 	useEffect(() => {
@@ -151,11 +150,7 @@ export function useCoverWheel({
 				[position - 1, previousArtwork],
 			] as const) {
 				if (!neighbour || filled[at]) continue;
-				filled[at] = {
-					src: neighbour.src,
-					alt: "",
-					identity: neighbour.identity,
-				};
+				filled[at] = { src: neighbour.src, identity: neighbour.identity };
 				added = true;
 			}
 			return added ? filled : held;
@@ -235,6 +230,7 @@ export function useCoverWheel({
 			node: nodeOf(at),
 			sleeve: sleeves[at] ?? null,
 			isCurrent: at === position,
+			alt: at === position && !isAwaiting ? alt : "",
 		})),
 	};
 }
@@ -245,7 +241,7 @@ export function CoverWheel({
 }: Pick<ReturnType<typeof useCoverWheel>, "ref" | "slots">) {
 	return (
 		<div className={styles.wheel} ref={ref} data-cover-wheel="">
-			{slots.map(({ at, node, sleeve, isCurrent }) => (
+			{slots.map(({ at, node, sleeve, isCurrent, alt }) => (
 				<div
 					key={node}
 					className={styles.slot}
@@ -255,7 +251,7 @@ export function CoverWheel({
 					<Artwork
 						src={sleeve?.src}
 						identity={sleeve?.identity}
-						alt={sleeve?.alt ?? ""}
+						alt={alt}
 						className={styles.cover}
 						revealsInstantly={!isCurrent}
 					/>

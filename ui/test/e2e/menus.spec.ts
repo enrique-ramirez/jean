@@ -40,7 +40,10 @@ const isTransportCommand = (path: string) =>
 	path.startsWith("/api/playback/") || path === "/api/volume";
 
 test.describe("the menu names what it is about", () => {
-	test("a single row is headed by the track", async ({ page, isMobile }) => {
+	test("a single row is headed by the track", { tag: "@iphone" }, async ({
+		page,
+		isMobile,
+	}) => {
 		await openLibrary(page);
 		await openTrackMenu(page, isMobile);
 

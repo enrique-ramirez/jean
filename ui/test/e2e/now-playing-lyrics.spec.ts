@@ -1,4 +1,4 @@
-import type { FakePlayer, Page } from "./fixtures.ts";
+import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	expect,
 	listenHere,
@@ -11,6 +11,7 @@ import {
 	sidebarToggle,
 	statusBar,
 	test,
+	times,
 	trackRow,
 } from "./fixtures.ts";
 import {
@@ -78,10 +79,18 @@ const recheckColumnCounts = (player: FakePlayer) =>
 					.length,
 		);
 
+// The panel's view switcher marks its own tab current as well.
+const currentLine = (panel: Locator) =>
+	panel.locator('[aria-current="true"]:not(nav *)');
+
 // See "A fake clock advances honestly only in small steps" in test/README.md.
+const CLOCK_STEP_MS = 250;
+
 const runClockTo = async (page: Page, until: number) => {
-	while ((await page.evaluate(() => Date.now())) < until)
-		await page.clock.runFor(250);
+	const from = await page.evaluate(() => Date.now());
+	await times(Math.ceil((until - from) / CLOCK_STEP_MS), () =>
+		page.clock.runFor(CLOCK_STEP_MS),
+	);
 };
 
 test.describe("reading the lyric tag", () => {
@@ -297,23 +306,26 @@ test.describe("a lyric read through the stream", () => {
 		await openNowPlaying(page);
 		const panel = await openPanels(page, isMobile);
 		await panelTab(panel, "Lyrics").click();
-		await expect(panel.locator('[data-state="active"]')).toHaveText(
-			"And I don't mind",
-		);
+		await expect(currentLine(panel)).toHaveText("And I don't mind");
 	});
 
 	test("a clicked line answers at once, before the audio reaches it", async ({
 		page,
+		player,
 		isMobile,
 	}) => {
 		await openLibrary(page);
 		await trackRow(page, 0).dblclick();
+		await expect(statusBar(page)).toContainText("Los Calientes");
+		// Started at the line the click goes back to, so the wait below is the
+		// lag and one line rather than the whole opening of the track.
+		player.patchPlayer({ position: 12 });
 		await listenHere(page);
 
 		await openNowPlaying(page);
 		const panel = await openPanels(page, isMobile);
 		await panelTab(panel, "Lyrics").click();
-		const active = panel.locator('[data-state="active"]');
+		const active = currentLine(panel);
 
 		await expect(active).toHaveText("Give you all my time", {
 			timeout: 90_000,

@@ -50,6 +50,22 @@ const boxOfToggle = () => {
 	return `${box!.width.toFixed(3)}x${box!.height.toFixed(3)}`;
 };
 
+// Only the animations that end: the toggle's spin and the arrow's nod repeat
+// forever, and are what the samples below are about.
+const entrancesFinished = (page: Page) =>
+	page.evaluate(async () => {
+		await new Promise(requestAnimationFrame);
+		await Promise.all(
+			document
+				.getAnimations()
+				.filter(
+					(animation) =>
+						animation.effect?.getComputedTiming().endTime !== Infinity,
+				)
+				.map((animation) => animation.finished.catch(() => undefined)),
+		);
+	});
+
 const startPlaying = async (page: Page) => {
 	await openLibrary(page);
 	await page
@@ -57,7 +73,7 @@ const startPlaying = async (page: Page) => {
 		.getByRole("button", { name: "Play", exact: true })
 		.click();
 	await toggle(page).waitFor();
-	await page.waitForTimeout(400);
+	await entrancesFinished(page);
 };
 
 test("the toggle comes to rest when motion is reduced", async ({ page }) => {
@@ -146,9 +162,9 @@ test.describe("the now-playing arrow", () => {
 			)
 			.toBe(0);
 		await expect(pill(page)).toBeVisible();
-		// The pill slides in over 240ms, so sampling straight away measures its
-		// entrance rather than the arrow's nod.
-		await page.waitForTimeout(400);
+		// Sampling during the pill's entrance would measure the slide rather than
+		// the arrow's nod.
+		await entrancesFinished(page);
 	};
 
 	test("the arrow moves and the pill it sits in does not", async ({

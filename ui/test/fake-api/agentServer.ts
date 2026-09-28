@@ -14,22 +14,31 @@ type FakeState = ReturnType<typeof createState>;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-const readBody = (
-	request: IncomingMessage,
-): Promise<Record<string, unknown> | null> =>
+interface ReadBody {
+	body: Record<string, unknown> | null;
+	bytes: number;
+}
+
+const readBody = (request: IncomingMessage): Promise<ReadBody> =>
 	new Promise((resolve) => {
-		let raw = "";
-		request.on("data", (chunk: Buffer | string) => {
-			raw += chunk;
+		const chunks: Buffer[] = [];
+		request.on("data", (chunk: Buffer) => {
+			chunks.push(chunk);
 		});
 		request.on("end", () => {
+			const raw = Buffer.concat(chunks);
 			try {
-				resolve(raw ? JSON.parse(raw) : null);
+				resolve({
+					body: raw.length > 0 ? JSON.parse(raw.toString("utf8")) : null,
+					bytes: raw.length,
+				});
 			} catch {
-				resolve(null);
+				resolve({ body: null, bytes: raw.length });
 			}
 		});
 	});
+
+const NO_BODY: ReadBody = { body: null, bytes: 0 };
 
 const etags = new Map<string, string>();
 
@@ -75,7 +84,8 @@ export function createFooJeanServer(
 		const state = current();
 		const method = request.method ?? "GET";
 		const url = new URL(request.url ?? "/", "http://fake");
-		const body = method === "POST" ? await readBody(request) : null;
+		const { body, bytes } =
+			method === "POST" ? await readBody(request) : NO_BODY;
 
 		await handleAgent({
 			state,
@@ -83,6 +93,8 @@ export function createFooJeanServer(
 			url,
 			headers: request.headers,
 			body,
+			bodyBytes: bytes,
+			client: request.socket.remoteAddress ?? "",
 			response,
 			artwork,
 		});
@@ -143,13 +155,16 @@ export function createServer({
 				request.socket.destroy();
 				return;
 			}
-			const body = method === "POST" ? await readBody(request) : null;
+			const { body, bytes } =
+				method === "POST" ? await readBody(request) : NO_BODY;
 			await handleAgent({
 				state,
 				method,
 				url,
 				headers: request.headers,
 				body,
+				bodyBytes: bytes,
+				client: request.socket.remoteAddress ?? "",
 				response,
 				artwork: serveArtwork,
 			});
@@ -157,7 +172,7 @@ export function createServer({
 		}
 
 		if (path.startsWith("/__control/")) {
-			const body = method === "POST" ? await readBody(request) : null;
+			const { body } = method === "POST" ? await readBody(request) : NO_BODY;
 			return handleControl({ state, method, path, body, response });
 		}
 

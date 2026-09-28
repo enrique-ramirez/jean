@@ -10,6 +10,7 @@ import {
 	settingsDialog,
 	statusBar,
 	test,
+	times,
 	trackRow,
 } from "./fixtures.ts";
 
@@ -325,10 +326,15 @@ test.describe("playback follows cursor", () => {
 			// Without the `wasPlaying` guard this pair loops on one track forever.
 			player.next();
 			await expect(statusBar(page)).toContainText("Soy Rock");
-			await page.waitForTimeout(500);
-
 			await expect(cursorRow(page)).toHaveAttribute("data-row", "3");
-			await expect(statusBar(page)).toContainText("Soy Rock");
+
+			// Sampled with reads that do not retry: a replay that flips the track
+			// away and back would satisfy a retrying assertion at either end.
+			await times(6, async () => {
+				expect(await cursorRow(page).getAttribute("data-row")).toBe("3");
+				expect(await statusBar(page).textContent()).toContain("Soy Rock");
+				await page.waitForTimeout(100);
+			});
 		});
 	});
 });

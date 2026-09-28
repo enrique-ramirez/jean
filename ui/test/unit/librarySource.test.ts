@@ -45,10 +45,12 @@ const pathTableOf = (paths: string[]) => {
 	return collector.table();
 };
 
+type MediaLibrarySource = Extract<LibrarySource, { kind: "library" }>;
+
 const librarySource = (
 	paths: string[] = LIBRARY_PATHS,
 	subsongs: Int32Array = LIBRARY_SUBSONGS,
-): LibrarySource =>
+): MediaLibrarySource =>
 	librarySourceOf({
 		kind: "library",
 		paths: pathTableOf(paths),
@@ -104,7 +106,7 @@ const settles = async (call: Promise<unknown>) => {
 
 interface Call {
 	name: string;
-	run: (source: LibrarySource) => Promise<unknown>;
+	run: (source: MediaLibrarySource) => Promise<unknown>;
 }
 
 const CALLS: Call[] = [

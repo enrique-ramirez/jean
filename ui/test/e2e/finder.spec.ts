@@ -250,7 +250,6 @@ const openFinder = async (page: Page) => {
 				await expect(results(page)).toHaveCount(OFF_SCREEN.matches);
 
 				await page.keyboard.press("ArrowDown");
-				await page.waitForTimeout(300);
 
 				// With the playlist's own cursor keys still live, this would move one row
 				// down the playlist instead of one result down the finder.

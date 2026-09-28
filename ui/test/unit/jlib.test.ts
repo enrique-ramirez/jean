@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import {
 	decodeJlib,
-	type Jlib,
+	type JlibSnapshot,
 	patchColumn,
 } from "../../src/shared/api/jlib.ts";
 import {
@@ -56,7 +56,14 @@ const snapshotOf = (values: string[]): Body => ({
 	spine: spineOf(values.length),
 });
 
-const readBack = (library: Jlib, name: string) => {
+const snapshotRoundTrip = (values: string[]): JlibSnapshot => {
+	const library = roundTrip(snapshotOf(values));
+	if (library.kind !== "snapshot")
+		throw new Error(`a snapshot came back as a ${library.kind}`);
+	return library;
+};
+
+const readBack = (library: JlibSnapshot, name: string) => {
 	const column = library.columns.get(name);
 	assert.ok(column, `no ${name} column`);
 	return Array.from({ length: library.trackCount }, (_, at) => column.at(at));
@@ -72,11 +79,11 @@ test("every value comes back exactly as it went in", () => {
 		"?",
 		"0",
 	];
-	assert.deepEqual(readBack(roundTrip(snapshotOf(values)), "%title%"), values);
+	assert.deepEqual(readBack(snapshotRoundTrip(values), "%title%"), values);
 });
 
 test("the three ways a field can be blank stay three different answers", () => {
-	const library = roundTrip(snapshotOf(["?", "", "N/A", "value"]));
+	const library = snapshotRoundTrip(["?", "", "N/A", "value"]);
 	const column = library.columns.get("%title%");
 	assert.ok(column);
 
@@ -89,7 +96,7 @@ test("the three ways a field can be blank stay three different answers", () => {
 });
 
 test("a column the player resolves for nothing says so", () => {
-	const column = roundTrip(snapshotOf(["?", "?", "?"])).columns.get("%title%");
+	const column = snapshotRoundTrip(["?", "?", "?"]).columns.get("%title%");
 	assert.ok(column);
 	assert.equal(column.hasUnresolved, true);
 	assert.equal(column.allUnresolved, true);
@@ -105,16 +112,16 @@ test("a value with characters outside ASCII comes back whole", () => {
 		"plain",
 		"Babasónicos",
 	];
-	assert.deepEqual(readBack(roundTrip(snapshotOf(values)), "%title%"), values);
+	assert.deepEqual(readBack(snapshotRoundTrip(values), "%title%"), values);
 });
 
 test("a dictionary wider than a byte and one wider than two", () => {
 	const wide = Array.from({ length: 300 }, (_, at) => `value ${at}`);
 	const wider = Array.from({ length: 70_000 }, (_, at) => `value ${at}`);
 
-	assert.deepEqual(readBack(roundTrip(snapshotOf(wide)), "%title%"), wide);
+	assert.deepEqual(readBack(snapshotRoundTrip(wide), "%title%"), wide);
 
-	const library = roundTrip(snapshotOf(wider));
+	const library = snapshotRoundTrip(wider);
 	const column = library.columns.get("%title%");
 	assert.ok(column);
 	assert.equal(column.ids.BYTES_PER_ELEMENT, 4);
@@ -123,7 +130,7 @@ test("a dictionary wider than a byte and one wider than two", () => {
 });
 
 test("the spine reads back as a library-relative path", () => {
-	const library = roundTrip(snapshotOf(["a", "b", "c", "d"]));
+	const library = snapshotRoundTrip(["a", "b", "c", "d"]);
 	assert.equal(library.kind, "snapshot");
 	if (library.kind !== "snapshot") return;
 	const { directory, filename } = library.spine;
@@ -134,7 +141,7 @@ test("the spine reads back as a library-relative path", () => {
 });
 
 test("an empty library decodes to nothing rather than throwing", () => {
-	const library = roundTrip(snapshotOf([]));
+	const library = snapshotRoundTrip([]);
 	assert.equal(library.trackCount, 0);
 	assert.equal(library.columns.get("%title%")?.distinct, 0);
 });

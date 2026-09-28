@@ -15,8 +15,8 @@ const annotation = (
 	itemCount: 0,
 	isAutoPlaylist: false,
 	role: null,
-	structure: 0,
-	revision: 0,
+	structure: "0",
+	revision: "0",
 	managed: null,
 	...entry,
 });

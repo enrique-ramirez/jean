@@ -60,5 +60,16 @@ export default defineConfig({
 					name: "mobile",
 					use: { ...devices["Pixel 7"] },
 				},
+				// Opt-in, since a second engine is a second browser to launch on every worker. Playwright's
+				// WebKit is not Safari: it shares the engine and none of iOS's audio or gesture policy.
+				...(process.env.IPHONE
+					? [
+							{
+								name: "iphone",
+								use: { ...devices["iPhone 15"] },
+								grep: /@iphone/,
+							},
+						]
+					: []),
 			],
 });

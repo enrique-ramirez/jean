@@ -124,6 +124,28 @@ test.describe("the way in and the way out", () => {
 	});
 });
 
+test.describe("the cover", () => {
+	// A phone draws the cover as the centre of a wheel whose next slot is filled
+	// ahead of time, so the name has to follow the track onto a sleeve that was
+	// drawn before it was the one playing.
+	test("is named for its album, and the next album's once the player moves on", async ({
+		page,
+		player,
+	}) => {
+		await playRow(page, 11);
+		await expect(
+			nowPlayingScreen(page).getByRole("img", { name: "Jessico cover" }),
+		).toBeVisible();
+
+		player.next();
+
+		await expect(
+			nowPlayingScreen(page).getByRole("img", { name: "Deja Entendu cover" }),
+		).toBeVisible();
+		await expect(nowPlayingScreen(page).getByRole("img")).toHaveCount(1);
+	});
+});
+
 test.describe("the set it is playing from", () => {
 	test("the header takes you back to it, and closes on the way", async ({
 		page,
@@ -826,10 +848,15 @@ test.describe("skipping with a flick", () => {
 		);
 	};
 
+	// Not `@iphone`: the finger is driven through CDP, which Playwright has only
+	// for Chromium, so the gesture cannot run under WebKit at all.
 	test("leftwards is the next track and rightwards is the one before", async ({
 		page,
 		player,
+		browserName,
 	}) => {
+		test.skip(browserName !== "chromium", "a finger is driven through CDP");
+
 		await playRow(page, 0);
 		await expect.poll(() => player.player.activeItem.index).toBe(0);
 

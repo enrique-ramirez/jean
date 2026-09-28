@@ -18,7 +18,7 @@ const WITH_ACTION_MS = 9000;
 const PLAIN_MS = 5000;
 
 const listeners = subscribers();
-const timers = new Map<number, number>();
+const timers = new Map<number, ReturnType<typeof setTimeout>>();
 
 let toasts: Toast[] = [];
 let nextId = 1;

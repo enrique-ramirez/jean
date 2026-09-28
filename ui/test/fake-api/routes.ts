@@ -40,9 +40,10 @@ export function handleControl({
 		if (method === "POST") {
 			// Switches GET /api/state's refusal mid-test, unlike `failWrites`,
 			// which only takes effect at fixture construction. Omitting the field
-			// (or sending it null) turns the refusal back off.
+			// (or sending it null) turns the refusal back off, and the hang with it.
 			state.fooJean.failState =
 				typeof input.failState === "number" ? input.failState : null;
+			state.fooJean.hangState = input.hangState === true;
 			return empty(response);
 		}
 		return json(response, {
@@ -81,8 +82,20 @@ export function handleControl({
 			: empty(response, 404);
 	}
 
+	// With a `route`, one route's answers are held back rather than every write:
+	// see `routeLatency` in `fooJean.ts`. `ms: 0` takes it off again.
 	if (action === "latency") {
-		state.latency = Number(input?.ms) || 0;
+		const ms = Number(input.ms) || 0;
+		if (typeof input.route !== "string") {
+			state.latency = ms;
+			return empty(response);
+		}
+		if (ms > 0 || Number(input.jitterMs) > 0)
+			state.fooJean.routeLatency[input.route] = {
+				ms,
+				jitterMs: Number(input.jitterMs) || 0,
+			};
+		else delete state.fooJean.routeLatency[input.route];
 		return empty(response);
 	}
 

@@ -1,4 +1,4 @@
-import type { Route } from "@playwright/test";
+import type { Request, Route } from "@playwright/test";
 import { tagKey } from "../../src/domain/track/fields.ts";
 import { en } from "../../src/shared/i18n/en.ts";
 import { evaluate, type Track } from "../fake-api/state.ts";
@@ -11,6 +11,7 @@ import {
 	expectSettlesAt,
 	globalControls,
 	guidOfPlaylist,
+	holdRequests,
 	holdThePoll,
 	listenHere,
 	nowPlayingScreen,
@@ -27,6 +28,7 @@ import {
 	sidebar,
 	statusBar,
 	test,
+	times,
 	touchDrag,
 	trackPlayed,
 	trackRow,
@@ -34,6 +36,9 @@ import {
 	withNoListOnScreen,
 } from "./fixtures.ts";
 import { openPanels, panelTab } from "./nowPlaying.ts";
+
+const isPlayingTrackRead = (request: Request) =>
+	new URL(request.url()).pathname === "/api/track/playing";
 
 const playToggle = (page: Page, name: "Play" | "Pause") =>
 	statusBar(page).getByRole("button", { name, exact: true });
@@ -589,19 +594,16 @@ test("an announcement never draws the reading notice, and the previous song's ro
 		{ reading: READING_DETAILS, album: STATION_ALBUM },
 	);
 
-	const held: { release?: () => void } = {};
-	await page.route("**/api/track/playing**", (route) => {
-		held.release = () => void route.continue();
-	});
+	const read = await holdRequests(page, isPlayingTrackRead);
 	player.announceSong(ANNOUNCED);
-	await expect.poll(() => held.release !== undefined).toBe(true);
+	await read.untilHeld();
 
 	await expect(stationAlbum(panel)).toHaveAttribute(
 		"href",
 		albumBy(RADIO_STATION["%artist%"]),
 	);
 
-	held.release?.();
+	read.releaseAll();
 	await expect(stationAlbum(panel)).toHaveAttribute(
 		"href",
 		albumBy(ANNOUNCED.artist),
@@ -704,15 +706,12 @@ test("an announcement over a panel left empty by two failed reads says it is rea
 	await expect(panel.getByRole("term")).toHaveCount(0);
 
 	player.fooJean.failPlayingTrack = null;
-	const held: { release?: () => void } = {};
-	await page.route("**/api/track/playing**", (route) => {
-		held.release = () => void route.continue();
-	});
+	const read = await holdRequests(page, isPlayingTrackRead);
 	player.announceSong(ANNOUNCED);
-	await expect.poll(() => held.release !== undefined).toBe(true);
+	await read.untilHeld();
 
 	await expect(panel).toContainText(READING_DETAILS);
-	held.release?.();
+	read.releaseAll();
 	// A gatefold turns to Lyrics when the answer carries one.
 	await expect(async () => {
 		await panelTab(panel, "Details").click();
@@ -889,7 +888,6 @@ test("the queue countdown keeps counting when the playing row is pulled from its
 	// Present is not enough: the position `positionAt` interpolates from is what
 	// would freeze if it mistook the pulled row for nothing playing.
 	const before = await remainingLabel(page).textContent();
-	await page.waitForTimeout(2200);
 	await expect
 		.poll(() => remainingLabel(page).textContent(), {
 			message: "the countdown is frozen",
@@ -1302,33 +1300,12 @@ test("asks nothing about a second playlist it still holds when one playlist's ro
 // edit can be made while it is still out. Held after the answer rather than on
 // its way out: a request stopped before it reaches the player comes back
 // carrying both edits at once, and a run built on that measures nothing.
-const holdTheFirstChangesRead = async (page: Page) => {
-	let taken = false;
-	let answered = () => {};
-	let release = () => {};
-	const onTheWire = new Promise<void>((resolve) => {
-		answered = resolve;
-	});
-	const held = new Promise<void>((resolve) => {
-		release = resolve;
-	});
-
-	await page.route(
-		(url) => url.pathname.endsWith("/items/changes"),
-		async (route) => {
-			if (taken) return route.continue();
-			taken = true;
-
-			const response = await route.fetch();
-			const body = await response.body();
-			answered();
-			await held;
-			await route.fulfill({ response, body });
-		},
+const holdTheFirstChangesRead = (page: Page) =>
+	holdRequests(
+		page,
+		(request) => new URL(request.url()).pathname.endsWith("/items/changes"),
+		{ answered: true, count: 1 },
 	);
-
-	return { onTheWire, release: () => release() };
-};
 
 const PATCHED_ONCE = "Rotten Apple (first pass)";
 
@@ -1347,7 +1324,7 @@ test("shows both changes to a row where the second was made while the first was 
 
 	player.retagPlaying({ "%title%": PATCHED_ONCE });
 	poll.letOneThrough();
-	await firstRead.onTheWire;
+	await firstRead.untilHeld();
 
 	player.retagPlaying({ "%title%": PATCHED_TWICE });
 	poll.letOneThrough();
@@ -1660,36 +1637,19 @@ const REVISION_GONE = 410;
 // about. Held after the answer rather than on its way out: a request stopped
 // before it reaches the player comes back carrying the edit, and then there is
 // nothing for the client to have missed.
-const holdTheReloadsFirstPage = async (page: Page, guid: string) => {
-	let taken = false;
-	let answered = () => {};
-	let release = () => {};
-	const onTheWire = new Promise<void>((resolve) => {
-		answered = resolve;
-	});
-	const held = new Promise<void>((resolve) => {
-		release = resolve;
-	});
-
-	await page.route(
-		(url) => url.pathname === `/api/playlists/${guid}/items`,
-		async (route) => {
-			const request = route.request();
-			const offset = new URL(request.url()).searchParams.get("offset");
-			if (taken || offset !== "0" || request.method() !== "GET")
-				return route.continue();
-			taken = true;
-
-			const response = await route.fetch();
-			const body = await response.body();
-			answered();
-			await held;
-			await route.fulfill({ response, body }).catch(() => {});
+const holdTheReloadsFirstPage = (page: Page, guid: string) =>
+	holdRequests(
+		page,
+		(request) => {
+			const url = new URL(request.url());
+			return (
+				request.method() === "GET" &&
+				url.pathname === `/api/playlists/${guid}/items` &&
+				url.searchParams.get("offset") === "0"
+			);
 		},
+		{ answered: true, count: 1 },
 	);
-
-	return { onTheWire, release: () => release() };
-};
 
 const PATCHED_DURING_THE_RELOAD = "Rotten Apple (during the reload)";
 
@@ -1705,7 +1665,7 @@ test("shows a row changed at the player while the playlist was being read again"
 	// The edit that sends the client to the changes route, which the refusal turns
 	// into a read of the whole playlist.
 	await retitleTheFirstRow(page, player);
-	await firstPage.onTheWire;
+	await firstPage.untilHeld();
 
 	// A second edit, made with the reload's rows already off the player and the
 	// client still waiting for them, and given two whole polls to reach a client
@@ -2054,11 +2014,24 @@ test('a playlist created elsewhere does not blank "Playing from" for one already
 	// still in flight when the assertion below runs. Unrelated to the playlist
 	// that is playing, which the join already had an answer for before this.
 	await page.request.post("/__control/latency", { data: { ms: 1500 } });
+	const listReads = () =>
+		player.requests.filter(
+			({ method, path }) =>
+				method === "GET" && /^\/api\/playlists(\?|$)/.test(path),
+		).length;
+	const readsBefore = listReads();
 	player.addPlaylist("Unrelated");
+	await expect.poll(listReads).toBeGreaterThan(readsBefore);
 
-	await page.waitForTimeout(500);
-	await expect(header).toContainText("Playing from");
-	await expect(header).toContainText("All music");
+	// Sampled with reads that do not retry, inside the window the refetch is
+	// held for: a retrying assertion waits out a blank header until the list
+	// lands and passes with the blank present.
+	await times(6, async () => {
+		const shown = await header.textContent();
+		expect(shown).toContain("Playing from");
+		expect(shown).toContain("All music");
+		await page.waitForTimeout(100);
+	});
 
 	await page.request.post("/__control/latency", { data: { ms: 0 } });
 });

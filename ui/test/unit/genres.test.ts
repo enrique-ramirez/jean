@@ -72,7 +72,7 @@ test("the index takes in rows that arrive after it was first asked for", () => {
 	assert.ok(grown.some((entry) => entry.name === "Electronic"));
 });
 
-const named = (query: string, floor = TIER.word) =>
+const named = (query: string, floor: number = TIER.word) =>
 	rankEntities(genres, query, floor).map((entry) => entry.name);
 
 test("a name the query holds whole is offered; one it only contains is not", () => {

@@ -2,7 +2,7 @@
 
 #include "fb2k/tag_writer.h"
 
-#include "fb2k/ask_player.h"
+#include "core/ask_player.h"
 #include "fb2k/playlists.h"
 
 #include <algorithm>

@@ -9,6 +9,7 @@
 #include "core/playlists.h"
 #include "core/version.h"
 #include "fb2k/artwork.h"
+#include "fb2k/autoplaylists.h"
 #include "fb2k/config_file.h"
 #include "fb2k/config_watch.h"
 #include "fb2k/library.h"
@@ -18,7 +19,9 @@
 #include "fb2k/playback_watch.h"
 #include "fb2k/player_mute.h"
 #include "fb2k/player_outputs.h"
-#include "fb2k/playlists.h"
+#include "fb2k/playlist_edits.h"
+#include "fb2k/playlist_reads.h"
+#include "fb2k/playlist_watch.h"
 #include "fb2k/queue.h"
 #include "fb2k/running_server.h"
 #include "fb2k/running_settings.h"
@@ -46,7 +49,7 @@ using namespace jean;
 
 constexpr double kPcmBufferSeconds = 3.0;
 
-// Built regardless of streamingEnabled, which a reload flips with no restart: http_server.cpp
+// Built regardless of streamingEnabled, which a reload flips with no restart: routes_stream.cpp
 // answers 503 while it is off rather than this never having a source to open.
 std::unique_ptr<Streamer> makeStreamer(const Settings& settings, PlayerStateStore& playerState) {
     if (settings.maxConcurrentStreams == 0) {
@@ -203,7 +206,7 @@ public:
 
 private:
     const Settings settings_;
-    MainThreadQueue mainThread_;
+    MainThreadQueue mainThread_{foobarMainThread()};
 
     PlayerStateStore playerState_;
     std::unique_ptr<Streamer> streamer_;

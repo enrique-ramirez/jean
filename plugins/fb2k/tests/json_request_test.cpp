@@ -16,7 +16,7 @@ using nlohmann::json;
 
 namespace {
 
-constexpr char kSendJson[] = "send application/json";
+constexpr char kJsonRequired[] = "send application/json";
 
 // Whatever a callback would answer. A refused request never asks for one.
 struct Anything {
@@ -137,7 +137,7 @@ void checkEveryPostRefuses(const Refusable& request) {
 
         const auto body = json::parse(response->body, nullptr, false);
         CHECK(body.is_object());
-        CHECK(body.value("error", "") == kSendJson);
+        CHECK(body.value("error", "") == kJsonRequired);
 
         CHECK(*calls == 0);
         CHECK(*minted == 0);
@@ -175,6 +175,6 @@ TEST_CASE("a DELETE with no Content-Type is served, since only a POST must be ap
 
         REQUIRE(response);
         CHECK(response->status != 415);
-        CHECK(response->body.find(kSendJson) == std::string::npos);
+        CHECK(response->body.find(kJsonRequired) == std::string::npos);
     }
 }

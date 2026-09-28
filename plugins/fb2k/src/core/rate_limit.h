@@ -1,14 +1,22 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
 
 namespace jean {
+
+using RateLimitClock = std::function<std::chrono::steady_clock::time_point()>;
+
+inline std::chrono::steady_clock::time_point steadyNow() {
+    return std::chrono::steady_clock::now();
+}
 
 class RateLimiter {
 public:
@@ -72,6 +80,23 @@ private:
     BoundedByKey<std::unique_ptr<RateLimiter>> entries_;
     const int burst_;
     const std::chrono::milliseconds perToken_;
+};
+
+class Throttle {
+public:
+    Throttle(int burst, std::chrono::milliseconds refill, std::string complaint,
+             RateLimitClock clock);
+
+    bool refuses();
+
+    int retryAfterSeconds() const;
+
+private:
+    RateLimiter limiter_;
+    const std::chrono::milliseconds refill_;
+    const std::string complaint_;
+    const RateLimitClock clock_;
+    std::atomic<bool> refusing_{false};
 };
 
 class OncePerBurst {

@@ -6,7 +6,7 @@
 
 #include "third_party/doctest.h"
 
-#include "core/api.h"
+#include "core/documents.h"
 #include "core/outputs.h"
 #include "core/version.h"
 #include "support/fixtures.h"
@@ -563,7 +563,7 @@ TEST_CASE("the snapshot is framed the way contract/openapi.yaml describes") {
     Library library;
     library.replace(builder.finish());
 
-    const auto snapshot = library.exported();
+    const auto snapshot = *library.exported().bytes;
     REQUIRE(snapshot.size() > 8);
 
     CHECK(snapshot.substr(0, 4) == "JLIB");

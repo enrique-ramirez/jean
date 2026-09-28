@@ -1,21 +1,31 @@
 #pragma once
 
-#include "core/api.h"
 #include "core/artwork.h"
 #include "core/audience.h"
+#include "core/documents.h"
 #include "core/library.h"
 #include "core/player.h"
 #include "core/player_state.h"
+#include "core/rate_limit.h"
 #include "core/reload.h"
 #include "core/settings.h"
 #include "core/stream_ticket.h"
 
-#include <chrono>
 #include <cstddef>
-#include <functional>
 #include <memory>
+#include <mutex>
+#include <string>
 
 namespace jean {
+
+struct ListenerStatus {
+    bool listening = false;
+
+    std::string error;
+
+    // Separate because it is the one failure with a specific remedy.
+    bool portInUse = false;
+};
 
 constexpr size_t kMaxBodyBytes = size_t{256} * 1024;
 
@@ -37,11 +47,20 @@ struct ConnectionPool {
 
 ConnectionPool connectionPoolFor(unsigned hardwareThreads);
 
-using RateLimitClock = std::function<std::chrono::steady_clock::time_point()>;
+// Swapped whole on a reload, so a handler that takes one copy at the top of its own run never
+// sees a Settings with some fields from the file and some from before it.
+class LiveSettings {
+public:
+    explicit LiveSettings(Settings settings);
 
-inline std::chrono::steady_clock::time_point steadyNow() {
-    return std::chrono::steady_clock::now();
-}
+    std::shared_ptr<const Settings> current() const;
+
+    void replace(Settings next);
+
+private:
+    mutable std::mutex lock_;
+    std::shared_ptr<const Settings> current_;
+};
 
 class HttpServer {
 public:

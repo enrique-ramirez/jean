@@ -358,6 +358,84 @@ TEST_CASE("progress reported from one thread reads back whole from another") {
     CHECK(build->formatted == kReports);
 }
 
+// Every export of a revision hands out the same bytes, so a second client asking costs neither a
+// serialisation nor the lock the state poll waits on.
+TEST_CASE("two exports of one revision are one serialisation") {
+    Library library;
+    library.replace(built({"%play_count%"}, {track("a/", "1.mp3", {"3"})}));
+
+    const auto first = library.exported();
+    const auto second = library.exported();
+
+    REQUIRE(first.bytes);
+    CHECK(first.bytes == second.bytes);
+    CHECK(first.revision == library.state().revision);
+    CHECK(first.structure == library.state().structure);
+}
+
+TEST_CASE("an export after a row moved carries the row, and one already handed out keeps its own") {
+    Library library;
+    library.replace(built({"%play_count%"}, {track("a/", "1.mp3", {"3"})}));
+    const auto before = library.exported();
+
+    REQUIRE(library.apply({{0, track("a/", "1.mp3", {"4"})}}) == 2);
+    const auto after = library.exported();
+
+    CHECK(after.bytes != before.bytes);
+    CHECK(after.revision == 2);
+
+    const Wire now = decode(*after.bytes);
+    CHECK(now.header.at("revision") == 2);
+    CHECK(column(now, namedColumn(now, "%play_count%")) == std::vector<std::string>{"4"});
+
+    const Wire then = decode(*before.bytes);
+    CHECK(then.header.at("revision") == 1);
+    CHECK(column(then, namedColumn(then, "%play_count%")) == std::vector<std::string>{"3"});
+}
+
+TEST_CASE("an export after a rebuild names the new structure") {
+    Library library;
+    library.replace(built({"%title%"}, {track("a/", "1.mp3", {"One"})}));
+    const auto before = library.exported();
+
+    library.replace(
+        built({"%title%"}, {track("a/", "1.mp3", {"One"}), track("a/", "2.mp3", {"Two"})}));
+    const auto after = library.exported();
+
+    CHECK(after.structure == before.structure + 1);
+    CHECK(decode(*after.bytes).header.at("trackCount") == 2);
+}
+
+// An export serialises outside the lock a state poll takes, so a row changing meanwhile must land
+// in a copy rather than under the serialiser. ThreadSanitizer is what sees a torn read here; the
+// check below is what a client would see of one. Revision N has interned N play counts and points
+// row 0 at the newest, which is readable from the header and the ids alone: reading the
+// dictionary back would make the assertion count depend on which revision the reader caught.
+TEST_CASE("an export racing a row change always reads one whole revision") {
+    Library library;
+    library.replace(built({"%play_count%"}, {track("a/", "1.mp3", {"1"})}));
+
+    constexpr int kChanges = 200;
+    std::thread writer([&library] {
+        for (int plays = 2; plays <= kChanges; ++plays)
+            library.apply({{0, track("a/", "1.mp3", {std::to_string(plays)})}});
+    });
+
+    size_t torn = 0;
+    for (int read = 0; read < kChanges; ++read) {
+        const auto exported = library.exported();
+        const Wire wire = decode(*exported.bytes);
+        const json plays = namedColumn(wire, "%play_count%");
+        const auto newest = plays.at("distinct").get<uint64_t>();
+        if (wire.header.at("revision") != exported.revision || newest != exported.revision ||
+            ids(wire, plays.at("ids")) != std::vector<uint32_t>{static_cast<uint32_t>(newest - 1)})
+            ++torn;
+    }
+    writer.join();
+
+    CHECK(torn == 0);
+}
+
 TEST_CASE("a row whose values did not move leaves the revision alone") {
     Library library;
     library.replace(built({"%play_count%"}, {track("a/", "1.mp3", {"3"})}));

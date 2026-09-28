@@ -7,7 +7,7 @@
 #include <memory>
 
 // output_manager_v2's half of Player: listing the devices foobar2000 offers and switching
-// between them. Whether a request is acceptable was decided in core/http_server.cpp before any
+// between them. Whether a request is acceptable was decided in core/routes_outputs.cpp before any
 // of this runs; what is left is the SDK call and the id it turns into.
 namespace jean {
 

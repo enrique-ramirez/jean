@@ -2234,6 +2234,7 @@ paths:
                   value:
                     error: "tracks were added or removed; export the library again"
                     detail: ""
+        "429": { $ref: "#/components/responses/LibraryTrackReadTooFast" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/LibraryUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
@@ -2303,6 +2304,7 @@ paths:
                 noColumns:
                   value: { error: unacceptable column, detail: "'columns' is required" }
         "404": { $ref: "#/components/responses/NoTrackPlaying" }
+        "429": { $ref: "#/components/responses/PlayingTrackReadTooFast" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
 
@@ -3205,6 +3207,37 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+
+    LibraryTrackReadTooFast:
+      description: |
+        Reads of one library track are arriving faster than this component will answer them: a burst of 200, refilling one every 50 milliseconds, the same budget tag writes have, because the read this route exists for follows a write. Each read evaluates columns the client wrote, so what this bounds is a client stuck in a loop. A request refused for what it asks is refused for that first and spends nothing. The player was not asked. `Retry-After` is sent in seconds.
+      headers:
+        Retry-After:
+          schema: { type: string }
+          description: Seconds to wait.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            default:
+              value: { error: too many track reads }
+
+    PlayingTrackReadTooFast:
+      description: |
+        Reads of the playing track are arriving faster than this component will answer them: a burst of 60, refilling one every 250 milliseconds, a budget of its own. A client reading once per track change, and again while it waits for lyrics, never meets it, however many tabs it has open; a client stuck in a loop does. A request refused for what it asks is refused for that first and spends nothing. The player was not asked. `Retry-After` is sent in seconds, and `Cache-Control` is `private, no-cache` here as on every answer from this route.
+      headers:
+        Retry-After:
+          schema: { type: string }
+          description: Seconds to wait.
+        Cache-Control:
+          schema: { type: string }
+          description: "`private, no-cache`."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            default:
+              value: { error: too many track reads }
 
     ArtworkRequestedTooFast:
       description: |

@@ -2,7 +2,7 @@
 
 #include "fb2k/player_mute.h"
 
-#include "fb2k/ask_player.h"
+#include "core/ask_player.h"
 
 #include <optional>
 

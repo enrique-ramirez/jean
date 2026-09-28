@@ -2776,6 +2776,30 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Reads of one library track are arriving faster than this component will answer them: a burst of 200, refilling one every 50 milliseconds, the same budget tag writes have, because the read this route exists for follows a write. Each read evaluates columns the client wrote, so what this bounds is a client stuck in a loop. A request refused for what it asks is refused for that first and spends nothing. The player was not asked. `Retry-After` is sent in seconds. */
+        LibraryTrackReadTooFast: {
+            headers: {
+                /** @description Seconds to wait. */
+                "Retry-After"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Reads of the playing track are arriving faster than this component will answer them: a burst of 60, refilling one every 250 milliseconds, a budget of its own. A client reading once per track change, and again while it waits for lyrics, never meets it, however many tabs it has open; a client stuck in a loop does. A request refused for what it asks is refused for that first and spends nothing. The player was not asked. `Retry-After` is sent in seconds, and `Cache-Control` is `private, no-cache` here as on every answer from this route. */
+        PlayingTrackReadTooFast: {
+            headers: {
+                /** @description Seconds to wait. */
+                "Retry-After"?: string;
+                /** @description `private, no-cache`. */
+                "Cache-Control"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /**
          * @description Covers are arriving faster than this component will read them: a burst of 300, refilling one every 50 milliseconds. A screenful of covers at once is the case this exists to allow, so a client drawing a grid never meets it; a client looping does.
          *
@@ -4473,6 +4497,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistFailed"];
                 };
             };
+            429: components["responses"]["LibraryTrackReadTooFast"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["LibraryUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
@@ -4517,6 +4542,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NoTrackPlaying"];
+            429: components["responses"]["PlayingTrackReadTooFast"];
             500: components["responses"]["PlayerRefused"];
             504: components["responses"]["PlayerTooSlow"];
         };

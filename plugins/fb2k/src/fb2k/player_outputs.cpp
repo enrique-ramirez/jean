@@ -2,7 +2,7 @@
 
 #include "fb2k/player_outputs.h"
 
-#include "fb2k/ask_player.h"
+#include "core/ask_player.h"
 
 #include <optional>
 #include <string>
@@ -61,57 +61,48 @@ OutputCalls playerOutputsVia(MainThreadQueue& mainThread) {
         return outputs;
 
     outputs.list = [&mainThread]() {
-        return askPlayer<OutputsRead>(
-            mainThread, "listing the output devices",
-            [](const AnswerPtr<OutputsRead>& answer) {
-                outputCoreConfig_t config{};
-                output_manager_v2::get()->getCoreConfig(&config, sizeof(config));
+        return askForOutcome<OutputsRead>(mainThread, "listing the output devices", [] {
+            outputCoreConfig_t config{};
+            output_manager_v2::get()->getCoreConfig(&config, sizeof(config));
 
-                OutputsRead read;
-                output_manager_v2::get()->listDevices(
-                    [&read, &config](const char* name, const GUID& module, const GUID& device) {
-                        OutputDevice entry;
-                        entry.id = deviceIdOf(module, device);
-                        entry.name = name;
+            OutputsRead read;
+            output_manager_v2::get()->listDevices(
+                [&read, &config](const char* name, const GUID& module, const GUID& device) {
+                    OutputDevice entry;
+                    entry.id = deviceIdOf(module, device);
+                    entry.name = name;
 
-                        if (module == config.m_output && device == config.m_device)
-                            read.active = entry.id;
+                    if (module == config.m_output && device == config.m_device)
+                        read.active = entry.id;
 
-                        read.devices.push_back(std::move(entry));
-                    });
+                    read.devices.push_back(std::move(entry));
+                });
 
-                answer->set(std::move(read));
-            },
-            OutputsRead{PlayerOutcome::timedOut, {}, std::nullopt},
-            OutputsRead{PlayerOutcome::playerRefused, {}, std::nullopt});
+            return read;
+        });
     };
 
     outputs.setActive = [&mainThread](const std::string& id) {
-        return askPlayer<PlayerOutcome>(
-            mainThread, "switching the output device",
-            [id](const AnswerPtr<PlayerOutcome>& answer) {
-                const auto parsed = parseDeviceId(id);
+        return askForOutcome<PlayerOutcome>(mainThread, "switching the output device", [id] {
+            const auto parsed = parseDeviceId(id);
 
-                // Comparing the GUIDs themselves, never the printed id, so this never depends on
-                // how deviceIdOf spells one.
-                bool listed = false;
-                if (parsed.ok) {
-                    output_manager_v2::get()->listDevices(
-                        [&listed, &parsed](const char*, const GUID& module, const GUID& device) {
-                            if (module == parsed.module && device == parsed.device)
-                                listed = true;
-                        });
-                }
+            // Comparing the GUIDs themselves, never the printed id, so this never depends on how
+            // deviceIdOf spells one.
+            bool listed = false;
+            if (parsed.ok) {
+                output_manager_v2::get()->listDevices(
+                    [&listed, &parsed](const char*, const GUID& module, const GUID& device) {
+                        if (module == parsed.module && device == parsed.device)
+                            listed = true;
+                    });
+            }
 
-                if (!listed) {
-                    answer->set(PlayerOutcome::notListed);
-                    return;
-                }
+            if (!listed)
+                return PlayerOutcome::notListed;
 
-                output_manager_v2::get()->setCoreConfigDevice(parsed.module, parsed.device);
-                answer->set(PlayerOutcome::done);
-            },
-            PlayerOutcome::timedOut, PlayerOutcome::playerRefused);
+            output_manager_v2::get()->setCoreConfigDevice(parsed.module, parsed.device);
+            return PlayerOutcome::done;
+        });
     };
 
     return outputs;

@@ -2,24 +2,51 @@
 
 #include "fb2k/playback_commands.h"
 
-#include "fb2k/ask_player.h"
+#include "core/ask_player.h"
+#include "fb2k/playlists.h"
+
+#include <cstdint>
+#include <string>
+#include <utility>
 
 namespace jean {
 
 namespace {
 
 PlayerOutcome askCommand(MainThreadQueue& mainThread, const std::string& what,
-                         std::function<void()> work) {
-    return askPlayer<PlayerOutcome>(
-        mainThread, what,
-        [work](const AnswerPtr<PlayerOutcome>& answer) {
-            work();
-            answer->set(PlayerOutcome::done);
-        },
-        PlayerOutcome::timedOut, PlayerOutcome::playerRefused);
+                         std::function<void()> command) {
+    return askForOutcome<PlayerOutcome>(mainThread, what, [command = std::move(command)] {
+        command();
+        return PlayerOutcome::done;
+    });
+}
+
+// plugins/fb2k/ARCHITECTURE.md, "Facts about the player": why this ignores the bool
+// playlist_execute_default_action returns, and why the row it starts is not enough on its own to
+// say which playlist the track after it comes from.
+PlayerOutcome playRowOnMainThread(const std::string& playlistId, uint32_t index) {
+    const auto playlist = findPlaylist(playlistId);
+    if (playlist == pfc::infinite_size)
+        return PlayerOutcome::noSuchPlaylist;
+
+    const auto manager = playlist_manager::get();
+    if (index >= manager->playlist_get_item_count(playlist))
+        return PlayerOutcome::positionPastEnd;
+
+    manager->set_active_playlist(playlist);
+    manager->playlist_execute_default_action(playlist, index);
+    return PlayerOutcome::done;
 }
 
 }  // namespace
+
+PlaylistRowPlayer makePlaylistRowPlayer(MainThreadQueue& mainThread) {
+    return [&mainThread](const std::string& playlistId, uint32_t index) {
+        return askForOutcome<PlayerOutcome>(
+            mainThread, "playing a playlist row",
+            [playlistId, index] { return playRowOnMainThread(playlistId, index); });
+    };
+}
 
 TransportCommander makeTransportCommander(MainThreadQueue& mainThread) {
     return [&mainThread](Transport command) {

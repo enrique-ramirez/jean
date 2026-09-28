@@ -1,10 +1,11 @@
 #pragma once
 
+#include "core/main_thread_queue.h"
 #include "core/player.h"
-#include "fb2k/main_thread.h"
 
 namespace jean {
 
+PlaylistRowPlayer makePlaylistRowPlayer(MainThreadQueue& mainThread);
 TransportCommander makeTransportCommander(MainThreadQueue& mainThread);
 PlaybackSeeker makePlaybackSeeker(MainThreadQueue& mainThread);
 PlaybackOrderSetter makePlaybackOrderSetter(MainThreadQueue& mainThread);

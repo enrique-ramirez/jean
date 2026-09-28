@@ -806,7 +806,7 @@ TEST_CASE(
 namespace {
 
 constexpr char kMoveEntry[] = "/api/queue/move";
-constexpr char kNoQueue[] = "the queue is not available";
+constexpr char kQueueUnavailable[] = "the queue is not available";
 
 // Two changes, so a revision one behind the store is still not zero, which is what a parse
 // reading a missing field would also produce.
@@ -1376,7 +1376,7 @@ TEST_CASE("moving, removing or clearing on an install with no queue is a 503 nam
     for (const httplib::Result* response : {&moved, &removed, &cleared}) {
         REQUIRE(*response);
         CHECK((*response)->status == 503);
-        CHECK(json::parse((*response)->body)["error"] == kNoQueue);
+        CHECK(json::parse((*response)->body)["error"] == kQueueUnavailable);
     }
 }
 

@@ -2,9 +2,9 @@
 
 #include "fb2k/library.h"
 
+#include "core/ask_player.h"
 #include "core/log.h"
 #include "fb2k/artwork.h"
-#include "fb2k/ask_player.h"
 #include "fb2k/columns.h"
 #include "fb2k/strings.h"
 
@@ -71,11 +71,10 @@ void formatRow(const metadb_v2::ptr& metadb, const metadb_handle_ptr& item,
     }
 }
 
-LibraryTrackRead trackReadFailure(PlayerOutcome outcome) {
-    LibraryTrackRead read;
-    read.outcome = outcome;
-    return read;
-}
+struct CompiledScripts {
+    PlayerOutcome outcome = PlayerOutcome::done;
+    std::vector<titleformat_object::ptr> scripts;
+};
 
 }  // namespace
 
@@ -184,56 +183,53 @@ struct LibraryFeed::State {
         return at;
     }
 
-    // On a connection thread like `artwork()`; the columns go to the main thread for the reason
-    // core/player.h's `LibraryTrackReader` gives.
+    // On a connection thread like `artwork()`.
     LibraryTrackRead readTrackColumns(const std::string& track, uint32_t subsong,
                                       const std::vector<std::string>& columns) const {
         const LibraryTrackResolution at = trackAt(track, subsong);
         if (at.heldTwice)
-            return trackReadFailure(PlayerOutcome::ambiguousAddress);
+            return failureOf<LibraryTrackRead>(PlayerOutcome::ambiguousAddress);
 
-        const metadb_handle_ptr handle = at.handle;
-        if (!handle.is_valid())
+        if (!at.handle.is_valid())
             return {};
 
-        return askPlayer<LibraryTrackRead>(
-            mainThread_, "reading one library track's columns",
-            [handle, columns, compiler = compiler_](const AnswerPtr<LibraryTrackRead>& answer) {
-                LibraryTrackRead read;
-                read.held = true;
-                read.columns = formattedColumns(handle, compiledColumns(compiler, columns));
-                answer->set(std::move(read));
-            },
-            trackReadFailure(PlayerOutcome::timedOut),
-            trackReadFailure(PlayerOutcome::playerRefused));
+        return readColumnsOf(at.handle, columns, "compiling one library track's columns");
     }
 
-    // On a connection thread like readTrackColumns, and for the same reason. Checked against
-    // the current structure and count directly, rather than through resolveOrdinals: that
-    // resolver folds a stale structure and an ordinal past the end into the same empty answer,
-    // which is right for its five other callers and wrong here, where GET /api/track/library
-    // must tell a client which one happened.
+    // On a connection thread like readTrackColumns. Checked against the current structure and
+    // count directly, rather than through resolveOrdinals: that resolver folds a stale structure
+    // and an ordinal past the end into the same empty answer, which is right for its five other
+    // callers and wrong here, where GET /api/track/library must tell a client which one happened.
     LibraryTrackRead readOrdinalColumns(const OrdinalTrackRef& at,
                                         const std::vector<std::string>& columns) const {
         const OrderedPtr ordered = order();
         if (!ordered || ordered->structure != at.structure)
-            return trackReadFailure(PlayerOutcome::structureMoved);
+            return failureOf<LibraryTrackRead>(PlayerOutcome::structureMoved);
 
         if (at.ordinal >= ordered->items.get_count())
             return {};
 
-        const metadb_handle_ptr handle = ordered->items[at.ordinal];
+        return readColumnsOf(ordered->items[at.ordinal], columns,
+                             "compiling one library track's columns by ordinal");
+    }
 
-        return askPlayer<LibraryTrackRead>(
-            mainThread_, "reading one library track's columns by ordinal",
-            [handle, columns, compiler = compiler_](const AnswerPtr<LibraryTrackRead>& answer) {
-                LibraryTrackRead read;
-                read.held = true;
-                read.columns = formattedColumns(handle, compiledColumns(compiler, columns));
-                answer->set(std::move(read));
-            },
-            trackReadFailure(PlayerOutcome::timedOut),
-            trackReadFailure(PlayerOutcome::playerRefused));
+    // The columns compile on the main thread, for the reason core/player.h's LibraryTrackReader
+    // gives, and are evaluated here, on the connection thread, the way a page of playlist rows is.
+    LibraryTrackRead readColumnsOf(const metadb_handle_ptr& handle,
+                                   const std::vector<std::string>& columns,
+                                   const std::string& what) const {
+        const auto compiled =
+            askForOutcome<CompiledScripts>(mainThread_, what, [compiler = compiler_, columns] {
+                return CompiledScripts{PlayerOutcome::done, compiledColumns(compiler, columns)};
+            });
+
+        if (compiled.outcome != PlayerOutcome::done)
+            return failureOf<LibraryTrackRead>(compiled.outcome);
+
+        LibraryTrackRead read;
+        read.held = true;
+        read.columns = formattedColumns(handle, compiled.scripts);
+        return read;
     }
 
     OrdinalResolution resolveOrdinals(uint64_t structure,

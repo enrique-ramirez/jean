@@ -302,36 +302,36 @@ Library::Library(size_t retainedRevisions) : retainedRevisions_(retainedRevision
 void Library::replace(Snapshot snapshot) {
     const std::lock_guard<std::mutex> lock(mutex_);
 
-    const uint64_t structure = snapshot_.structure + 1;
-    const uint64_t revision = snapshot_.revision + 1;
+    snapshot.structure = snapshot_->structure + 1;
+    snapshot.revision = snapshot_->revision + 1;
+    structureBegan_ = snapshot.revision;
 
-    snapshot_ = std::move(snapshot);
-    snapshot_.structure = structure;
-    snapshot_.revision = revision;
-    structureBegan_ = revision;
+    snapshot_ = std::make_shared<Snapshot>(std::move(snapshot));
     retained_.clear();
     building_ = false;
 }
 
 uint64_t Library::apply(const std::vector<RowChange>& changes) {
     const std::lock_guard<std::mutex> lock(mutex_);
-    if (snapshot_.structure == 0)
+    if (snapshot_->structure == 0)
         return 0;
 
+    Snapshot& snapshot = writableSnapshotLocked();
+
     Retained entry;
-    entry.ordinals.resize(snapshot_.columns.size());
-    entry.dictionarySizes.reserve(snapshot_.columns.size());
-    for (const Column& column : snapshot_.columns)
+    entry.ordinals.resize(snapshot.columns.size());
+    entry.dictionarySizes.reserve(snapshot.columns.size());
+    for (const Column& column : snapshot.columns)
         entry.dictionarySizes.push_back(static_cast<uint32_t>(column.dictionary.values.size()));
 
-    const size_t trackCount = snapshot_.trackCount();
+    const size_t trackCount = snapshot.trackCount();
 
     for (const RowChange& change : changes) {
-        if (change.ordinal >= trackCount || change.values.size() != snapshot_.columns.size())
+        if (change.ordinal >= trackCount || change.values.size() != snapshot.columns.size())
             continue;
 
-        for (size_t field = 0; field < snapshot_.columns.size(); ++field) {
-            Column& column = snapshot_.columns[field];
+        for (size_t field = 0; field < snapshot.columns.size(); ++field) {
+            Column& column = snapshot.columns[field];
             const uint32_t id = column.dictionary.intern(change.values[field]);
             if (id == column.ids[change.ordinal])
                 continue;
@@ -345,19 +345,19 @@ uint64_t Library::apply(const std::vector<RowChange>& changes) {
         std::any_of(entry.ordinals.begin(), entry.ordinals.end(),
                     [](const std::vector<uint32_t>& ordinals) { return !ordinals.empty(); });
     if (!moved)
-        return snapshot_.revision;
+        return snapshot.revision;
 
     for (std::vector<uint32_t>& ordinals : entry.ordinals) {
         std::sort(ordinals.begin(), ordinals.end());
         ordinals.erase(std::unique(ordinals.begin(), ordinals.end()), ordinals.end());
     }
 
-    entry.revision = ++snapshot_.revision;
+    entry.revision = ++snapshot.revision;
     retained_.push_back(std::move(entry));
     while (retained_.size() > retainedRevisions_)
         retained_.pop_front();
 
-    return snapshot_.revision;
+    return snapshot.revision;
 }
 
 void Library::reportBuild(BuildProgress progress) {
@@ -376,13 +376,13 @@ Library::State Library::state() const {
     const std::lock_guard<std::mutex> lock(mutex_);
 
     State state;
-    state.ready = snapshot_.structure > 0;
-    state.structure = snapshot_.structure;
-    state.revision = snapshot_.revision;
-    state.trackCount = snapshot_.trackCount();
+    state.ready = snapshot_->structure > 0;
+    state.structure = snapshot_->structure;
+    state.revision = snapshot_->revision;
+    state.trackCount = snapshot_->trackCount();
 
-    for (size_t field = kSpineFieldCount; field < snapshot_.columns.size(); ++field)
-        state.columns.push_back(snapshot_.columns[field].name);
+    for (size_t field = kSpineFieldCount; field < snapshot_->columns.size(); ++field)
+        state.columns.push_back(snapshot_->columns[field].name);
 
     if (building_)
         state.build = build_;
@@ -390,17 +390,41 @@ Library::State Library::state() const {
     return state;
 }
 
-std::string Library::exported() const {
-    const std::lock_guard<std::mutex> lock(mutex_);
-    return serialiseSnapshot(snapshot_);
+Library::Export Library::exported() const {
+    const std::lock_guard<std::mutex> exporting(exportLock_);
+
+    std::shared_ptr<const Snapshot> reading;
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        reading = snapshot_;
+    }
+
+    if (lastExport_.bytes && lastExport_.structure == reading->structure &&
+        lastExport_.revision == reading->revision)
+        return lastExport_;
+
+    lastExport_.structure = reading->structure;
+    lastExport_.revision = reading->revision;
+    lastExport_.bytes = std::make_shared<const std::string>(serialiseSnapshot(*reading));
+    return lastExport_;
+}
+
+// std::shared_ptr::use_count is only approximate while other threads copy or release the
+// pointer. Every copy of snapshot_ is taken under mutex_, which this runs under, so a count of
+// one means no export holds it, and an export letting go at the same moment costs at worst a
+// copy nobody needed.
+Snapshot& Library::writableSnapshotLocked() {
+    if (snapshot_.use_count() > 1)
+        snapshot_ = std::make_shared<Snapshot>(*snapshot_);
+    return *snapshot_;
 }
 
 Library::Changes Library::changes(uint64_t since) const {
     const std::lock_guard<std::mutex> lock(mutex_);
 
-    if (snapshot_.structure == 0)
+    if (snapshot_->structure == 0)
         return {DeltaOutcome::notBuilt, {}};
-    if (since > snapshot_.revision)
+    if (since > snapshot_->revision)
         return {DeltaOutcome::revisionUnknown, {}};
     if (since < structureBegan_)
         return {DeltaOutcome::structureChanged, {}};
@@ -411,7 +435,7 @@ Library::Changes Library::changes(uint64_t since) const {
         std::find_if(retained_.begin(), retained_.end(),
                      [since](const Retained& entry) { return entry.revision > since; });
 
-    std::vector<std::set<uint32_t>> moved(snapshot_.columns.size());
+    std::vector<std::set<uint32_t>> moved(snapshot_->columns.size());
     for (auto entry = firstUnseen; entry != retained_.end(); ++entry) {
         for (size_t field = 0; field < moved.size(); ++field)
             moved[field].insert(entry->ordinals[field].begin(), entry->ordinals[field].end());
@@ -423,16 +447,16 @@ Library::Changes Library::changes(uint64_t since) const {
         firstUnseen == retained_.end() ? std::vector<uint32_t>() : firstUnseen->dictionarySizes;
 
     Delta delta;
-    delta.structure = snapshot_.structure;
-    delta.revision = snapshot_.revision;
+    delta.structure = snapshot_->structure;
+    delta.revision = snapshot_->revision;
     delta.since = since;
-    delta.trackCount = snapshot_.trackCount();
+    delta.trackCount = snapshot_->trackCount();
 
-    for (size_t field = 0; field < snapshot_.columns.size(); ++field) {
+    for (size_t field = 0; field < snapshot_->columns.size(); ++field) {
         if (moved[field].empty())
             continue;
 
-        const Column& column = snapshot_.columns[field];
+        const Column& column = snapshot_->columns[field];
         const ColumnFacts facts = factsOf(column);
 
         ColumnDelta patch;

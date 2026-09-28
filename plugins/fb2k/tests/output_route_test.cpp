@@ -31,7 +31,7 @@ constexpr char kChangeDisabled[] =
     "this install has output device changes turned off; turn on changeOutput in config.json to "
     "allow them";
 constexpr char kNotListed[] = "the player does not list that output device; read the outputs again";
-constexpr char kNoOutputs[] = "output devices are not available";
+constexpr char kOutputsUnavailable[] = "output devices are not available";
 
 constexpr char kAskEveryTime[] = "private, no-cache";
 
@@ -363,12 +363,12 @@ TEST_CASE("a player with neither output seam answers 503 on both routes") {
     const auto listed = get(server, kOutputs);
     REQUIRE(listed);
     CHECK(listed->status == 503);
-    CHECK(errorOf(*listed) == kNoOutputs);
+    CHECK(errorOf(*listed) == kOutputsUnavailable);
 
     const auto switched = post(server, kActive, switchTo(kSpeakers));
     REQUIRE(switched);
     CHECK(switched->status == 503);
-    CHECK(errorOf(*switched) == kNoOutputs);
+    CHECK(errorOf(*switched) == kOutputsUnavailable);
 }
 
 TEST_CASE("a switch to a player missing either output seam is a 503, and reaches the other") {
@@ -381,7 +381,7 @@ TEST_CASE("a switch to a player missing either output seam is a 503, and reaches
         const auto response = post(server, kActive, switchTo(kSpeakers));
         REQUIRE(response);
         CHECK(response->status == 503);
-        CHECK(errorOf(*response) == kNoOutputs);
+        CHECK(errorOf(*response) == kOutputsUnavailable);
     }
 
     SUBCASE("a setter and no lister") {
@@ -393,7 +393,7 @@ TEST_CASE("a switch to a player missing either output seam is a 503, and reaches
         const auto response = post(server, kActive, switchTo(kSpeakers));
         REQUIRE(response);
         CHECK(response->status == 503);
-        CHECK(errorOf(*response) == kNoOutputs);
+        CHECK(errorOf(*response) == kOutputsUnavailable);
         CHECK(outputs.switched.empty());
     }
 }

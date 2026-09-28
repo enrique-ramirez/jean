@@ -6,7 +6,7 @@
 #include "fb2k/main_thread.h"
 
 // The half of the play queue that involves foobar2000. What a queue read may answer, and what
-// a queue request may ask for, was decided in core/api.h before any of this runs.
+// a queue request may ask for, was decided in core/requests_queue.h before any of this runs.
 namespace jean {
 
 QueueReader makeQueueReader(MainThreadQueue& mainThread, PlayerStateStore& store);

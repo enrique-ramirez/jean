@@ -1,0 +1,139 @@
+#pragma once
+
+#include "core/player_outcome.h"
+#include "core/playlists.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
+
+// What a playlist route's request asks for, decoded and refused before the player is asked
+// anything. Never throws: a malformed request is routine for the HTTP handler that calls these.
+namespace jean {
+
+struct JsonObject;
+
+struct PlaylistPageRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+    uint32_t offset = 0;
+    uint32_t count = 0;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+PlaylistPageRequest parsePlaylistPage(const std::string& offsetText, const std::string& countText);
+
+struct PlayRowRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+    std::string playlistId;
+    uint32_t index = 0;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+// Both halves of the address arrive as URL segments, so a client's typo is
+// routine here rather than a 404. How far the index sits past the end is the player's to
+// answer, since nothing in core/ knows how many rows a playlist holds.
+PlayRowRequest parsePlayRow(const std::string& id, const std::string& indexText);
+
+// The library ordinals a fill inserts, decoded from whichever one of the three wire forms
+// the request body carried; see contract/openapi.yaml, `FillPlaylistRequest`. `ordinals`
+// is already in the order the fill must insert at: as given for the `ordinals` form,
+// ascending for `runs` and `bitset`, because neither of those can carry any other order.
+struct FillRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+    PlayerOutcome outcome = PlayerOutcome::done;
+
+    uint64_t structure = 0;
+    std::vector<uint32_t> ordinals;
+
+    bool ok() const { return refusal == PlaylistRefusal::none && outcome == PlayerOutcome::done; }
+};
+
+// `trackCount` bounds what an ordinal may name; one at or past it is refused rather than
+// dropped, because narrowing the set silently is not what the caller asked for.
+//
+// `allowsTitle` is `FillOwnPlaylistRequest`'s alone: `title` is declared there and nowhere
+// else, so a body carrying it against `FillPlaylistRequest` is refused with any other field
+// neither schema declares.
+//
+// `expectedStructure` is `std::nullopt` only where there is no snapshot to check against,
+// such as a test exercising the decode on its own.
+FillRequest parseFill(const JsonObject& body, size_t trackCount,
+                      std::optional<uint64_t> expectedStructure, bool allowsTitle = false);
+
+// The row ceiling `parseRemoveRows` and `parseSourceRows` hold a selection against, in place
+// of the real playlist length, which core/ does not have at parse time. A playlist's rows are
+// not bounded by the library: the same track can repeat any number of times through queueing,
+// repeated adds or a deliberate repeat. This is an engineered ceiling on what one request may
+// resolve to, set far above any selection a person makes in a playlist view; the real playlist
+// length is checked again on the main thread once the player has answered.
+constexpr size_t kMaxPlaylistPositionRows = 1500000;
+
+// `POST /api/playlists/{id}/items/remove`'s body. `structure` names the playlist's own
+// generation, so it arrives as a run of decimal digits rather than the number a fill's does;
+// see contract/openapi.yaml, `RemovePlaylistRowsRequest`. Whether it still matches the
+// playlist's current generation is for the caller to ask the player, not this.
+struct RemoveRowsRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+
+    uint64_t structure = 0;
+    std::vector<uint32_t> ordinals;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+RemoveRowsRequest parseRemoveRows(const JsonObject& body);
+
+// Which of the two sets a create carries, or neither; see contract/openapi.yaml,
+// `CreatePlaylistRequest`. A body naming both is read as naming a source playlist, and the
+// library fields it also carries are then fields that form does not declare.
+enum class NewPlaylistSet { none, libraryTracks, playlistRows };
+
+NewPlaylistSet newPlaylistSetOf(const JsonObject& body);
+
+// The rows of another playlist a create copies, by position, ascending regardless of the
+// order `runs` named them in: decodeSelection sorts before returning.
+struct SourceRowsRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+
+    std::string playlistId;
+    std::vector<uint32_t> positions;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+// `allowsTitle` is `CreatePlaylistRequest`'s alone, on the same terms parseFill
+// takes it: a copy names a playlist that already has a title, so a body carrying one is
+// refused with any other field the schema does not declare.
+SourceRowsRequest parseSourceRows(const JsonObject& body, bool allowsTitle = false);
+
+struct MovePlaylistRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+    uint32_t index = 0;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+MovePlaylistRequest parseMovePlaylist(const JsonObject& body);
+
+// A title every writing route reads through the check parseAutoPlaylist's title takes, since a
+// value the contract calls unusable there is unusable here for the same reason.
+struct TitleRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+    std::string value;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+// `onlyTitle` is for the two schemas contract/openapi.yaml declares additionalProperties: false
+// with nothing beside title: the rename, and a create naming no set. A create naming one, and the
+// own-playlist fill that shares this reader, are held to their own wider field list by parseFill
+// or parseSourceRows, so they leave it false.
+constexpr bool kOnlyTitle = true;
+
+TitleRequest parseTitle(const JsonObject& body, bool onlyTitle = false);
+
+}  // namespace jean

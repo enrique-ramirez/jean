@@ -3,7 +3,9 @@
 #include "core/text.h"
 #include "third_party/json.hpp"
 
+#include <algorithm>
 #include <cstddef>
+#include <iterator>
 #include <string>
 
 // Reading JSON that arrived from outside: an HTTP body, a hand-edited config file, a
@@ -43,5 +45,15 @@ struct TextField {
 };
 
 TextField readText(const nlohmann::json& root, const char* key, size_t limit, Need need);
+
+// Whether `root` names nothing but `fields`: the request bodies contract/openapi.yaml declares
+// `additionalProperties: false`.
+template <typename Fields>
+bool declaresOnly(const nlohmann::json& root, const Fields& fields) {
+    return std::all_of(root.items().begin(), root.items().end(), [&fields](const auto& item) {
+        return std::any_of(std::begin(fields), std::end(fields),
+                           [&item](const char* field) { return item.key() == field; });
+    });
+}
 
 }  // namespace jean

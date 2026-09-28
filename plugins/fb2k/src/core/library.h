@@ -242,7 +242,16 @@ public:
 
     State state() const;
 
-    std::string exported() const;
+    // The serialised snapshot, and the generations it was serialised at.
+    struct Export {
+        uint64_t structure = 0;
+        uint64_t revision = 0;
+        std::shared_ptr<const std::string> bytes;
+    };
+
+    // Serialised once per revision and handed to every caller after that. The serialising
+    // happens outside the lock state() takes, so a poll never waits on an export.
+    Export exported() const;
 
     struct Changes {
         DeltaOutcome outcome = DeltaOutcome::ok;
@@ -265,10 +274,14 @@ private:
         std::vector<uint32_t> dictionarySizes;
     };
 
+    // An export may still be reading the snapshot it was handed after mutex_ is let go, so a
+    // change made meanwhile writes to a copy instead.
+    Snapshot& writableSnapshotLocked();
+
     const size_t retainedRevisions_;
 
     mutable std::mutex mutex_;
-    Snapshot snapshot_;
+    std::shared_ptr<Snapshot> snapshot_ = std::make_shared<Snapshot>();
     uint64_t structureBegan_ = 0;
     std::deque<Retained> retained_;
 
@@ -276,6 +289,11 @@ private:
     // unlocked access through std::optional's assignment, which would hide a race here.
     bool building_ = false;
     BuildProgress build_;
+
+    // Held by one export at a time and never with mutex_, so two clients exporting one revision
+    // at once serialise it once between them.
+    mutable std::mutex exportLock_;
+    mutable Export lastExport_;
 };
 
 enum class LibraryRefusal {

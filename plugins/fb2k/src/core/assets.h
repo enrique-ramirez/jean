@@ -7,7 +7,7 @@
 // What a request for Jean's own page meets on its way to a file: which path it names relative
 // to the build root, whether that shape may be looked up at all, what a client is told the
 // bytes are, and how long a browser may keep them. Pure: this half decides, and
-// core/http_server.cpp asks the seam and answers.
+// core/routes_page.cpp asks the seam and answers.
 namespace jean {
 
 // The path to ask the page seam for, relative to the build root and with no leading slash, for

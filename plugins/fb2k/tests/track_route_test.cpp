@@ -725,3 +725,62 @@ TEST_CASE("a conditional request for the playing track is answered in full, neve
         CHECK(json::parse(response->body).at("columns") == json::array({"The Middle"}));
     }
 }
+
+namespace {
+
+struct Refusals {
+    int count = 0;
+    std::string retryAfter;
+    std::string error;
+};
+
+// Kept rather than asserted inside the loop, so how many refusals a machine's speed produces
+// cannot change how many assertions the suite runs.
+Refusals askRepeatedly(const TestServer& server, const std::string& path, int attempts) {
+    auto client = server.client();
+    Refusals refusals;
+
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+        const auto response = client.Get(path);
+        if (!response || response->status != 429)
+            continue;
+
+        refusals.count++;
+        refusals.retryAfter = response->get_header_value("Retry-After");
+        refusals.error = json::parse(response->body)["error"].get<std::string>();
+    }
+
+    return refusals;
+}
+
+}  // namespace
+
+// Each read evaluates columns the client wrote, and a title-formatting script's cost is the
+// client's to choose, so what this pins is that the ceiling exists and that the player stops
+// being asked once it is met. The server's clock stands still, so every read past the burst is
+// refused.
+TEST_CASE("a client looping on one library track stops reaching the player") {
+    FakeLibrary library = holding();
+    const TestServer server(servingSettings(), reading(&library));
+
+    constexpr int kAttempts = 400;
+    const auto refusals = askRepeatedly(server, oneTrack(kTrackAddress, {kTitle}), kAttempts);
+
+    CHECK(refusals.count > 0);
+    CHECK(refusals.retryAfter == "1");
+    CHECK(refusals.error == "too many track reads");
+    CHECK(static_cast<int>(library.asked.size()) == kAttempts - refusals.count);
+}
+
+TEST_CASE("a client looping on the playing track stops reaching the player") {
+    FakePlayback playback;
+    const TestServer server(servingSettings(), playingFrom(&playback));
+
+    constexpr int kAttempts = 120;
+    const auto refusals = askRepeatedly(server, playing({kTitle}), kAttempts);
+
+    CHECK(refusals.count > 0);
+    CHECK(refusals.retryAfter == "1");
+    CHECK(refusals.error == "too many track reads");
+    CHECK(static_cast<int>(playback.asked.size()) == kAttempts - refusals.count);
+}

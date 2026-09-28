@@ -1,6 +1,9 @@
 #include "core/rate_limit.h"
 
+#include "core/log.h"
+
 #include <algorithm>
+#include <utility>
 
 namespace jean {
 
@@ -36,6 +39,30 @@ bool PerClientRateLimiter::allow(const std::string& client,
         return std::make_unique<RateLimiter>(burst_, perToken_);
     });
     return entry.payload->allow(now);
+}
+
+Throttle::Throttle(int burst, std::chrono::milliseconds refill, std::string complaint,
+                   RateLimitClock clock)
+    : limiter_(burst, refill),
+      refill_(refill),
+      complaint_(std::move(complaint)),
+      clock_(std::move(clock)) {}
+
+bool Throttle::refuses() {
+    if (limiter_.allow(clock_())) {
+        refusing_ = false;
+        return false;
+    }
+
+    if (!refusing_.exchange(true))
+        logError(complaint_);
+
+    return true;
+}
+
+int Throttle::retryAfterSeconds() const {
+    const auto rounded = std::chrono::ceil<std::chrono::seconds>(refill_);
+    return static_cast<int>(std::max<std::chrono::seconds::rep>(1, rounded.count()));
 }
 
 bool OncePerBurst::refused(const std::string& key) {

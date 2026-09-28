@@ -30,6 +30,9 @@ bool secureEquals(const std::string& a, const std::string& b);
 // parameter, where nothing upstream has already ruled out a sign, a fraction or an overflow.
 bool readDecimal(const std::string& text, uint64_t& value);
 
+// Every position and index a client names is carried in 32 bits.
+bool fitsUint32(uint64_t value);
+
 // A strong, quoted ETag for `bytes`, by FNV-1a rather than a cryptographic hash: nothing here
 // needs to resist a forged tag, only to notice that the bytes changed. Shared by whatever holds
 // bytes with no version number of its own to publish instead, such as an artwork cover or the

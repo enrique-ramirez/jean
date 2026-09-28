@@ -2,7 +2,7 @@
 
 #include "fb2k/streamer.h"
 
-#include "core/api.h"
+#include "core/documents.h"
 #include "core/broadcast_ring.h"
 #include "core/log.h"
 #include "core/opus_stream.h"
@@ -10,7 +10,7 @@
 #include "core/stream.h"
 #include "core/timeline.h"
 #include "fb2k/aac_encoder.h"
-#include "fb2k/strings.h"
+#include "fb2k/tracks.h"
 
 #include <algorithm>
 #include <atomic>
@@ -144,17 +144,9 @@ struct Streamer::Capture : public playback_stream_capture_callback_impl,
         StreamMark mark;
         mark.position = position;
 
-        if (track.is_valid()) {
+        mark.path = displayPathOf(track);
+        if (track.is_valid())
             mark.subsong = static_cast<int>(track->get_subsong_index());
-
-            try {
-                pfc::string8 display;
-                filesystem::g_get_display_path(track->get_path(), display);
-                mark.path = toStd(display);
-            } catch (const std::exception&) {
-                mark.path = track->get_path();
-            }
-        }
 
         return mark;
     }

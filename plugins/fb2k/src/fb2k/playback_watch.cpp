@@ -2,13 +2,14 @@
 
 #include "fb2k/playback_watch.h"
 
+#include "core/ask_player.h"
 #include "core/output_hold.h"
 #include "core/playback_modes.h"
-#include "fb2k/ask_player.h"
 #include "fb2k/columns.h"
 #include "fb2k/main_thread.h"
 #include "fb2k/playlists.h"
 #include "fb2k/strings.h"
+#include "fb2k/tracks.h"
 
 #include <chrono>
 #include <mutex>
@@ -18,50 +19,10 @@ namespace jean {
 
 namespace {
 
-// The title reads as foobar2000's own filename fallback for a track with no title tag: "If
-// 'title' metadata field is missing, file name is used instead."
-constexpr char kTitleScript[] = "%title%";
-
-// %artist% checks artist, album artist, composer and performer in that order, and where none
-// of the four resolves the title-format engine answers the literal string "?" rather than an
-// empty one. Bracketing discards an unresolved field instead of the literal text, so a track
-// with none of the four reads as no artist rather than as an artist named "?".
-constexpr char kArtistScript[] = "[%artist%]";
-
-// Bracketed for the same reason as %artist%: an untagged track reads as no record rather than
-// one named "?". `[%album artist%]` is a separate title-formatting field, not filled in from
-// `[%artist%]`.
-constexpr char kAlbumScript[] = "[%album%]";
-constexpr char kAlbumArtistScript[] = "[%album artist%]";
-
-std::string displayPathOf(const metadb_handle_ptr& track) {
-    if (!track.is_valid())
-        return {};
-
-    try {
-        pfc::string8 display;
-        filesystem::g_get_display_path(track->get_path(), display);
-        return toStd(display);
-    } catch (const std::exception&) {
-        return track->get_path();
-    }
-}
-
-std::optional<std::string> libraryPathOf(const metadb_handle_ptr& track) {
-    if (!track.is_valid())
-        return std::nullopt;
-
-    pfc::string8 relative;
-    if (!library_manager::get()->get_relative_path(track, relative))
-        return std::nullopt;
-
-    return forwardSlashed(toStd(relative));
-}
-
 PlayingTrack trackOf(const metadb_handle_ptr& track) {
     PlayingTrack playing;
     playing.path = displayPathOf(track);
-    playing.libraryPath = libraryPathOf(track);
+    playing.libraryPath = libraryPathOf(track, library_manager::get());
 
     if (track.is_valid()) {
         playing.subsong = track->get_subsong_index();
@@ -74,36 +35,17 @@ PlayingTrack trackOf(const metadb_handle_ptr& track) {
 // `playback_format_title_ex` rather than a plain metadb query is what folds in a station's
 // own broadcast update, since that is a currently-playing concept `playback_control` resolves
 // rather than something the track's stored tags carry.
-void publishName(PlayerStateStore& store, const titleformat_object::ptr& titleScript,
-                 const titleformat_object::ptr& artistScript,
-                 const titleformat_object::ptr& albumScript,
-                 const titleformat_object::ptr& albumArtistScript,
-                 const metadb_handle_ptr& track) {
-    const auto playback = playback_control::get();
-
-    pfc::string8 title;
-    playback->playback_format_title_ex(track, nullptr, title, titleScript, nullptr,
-                                       playback_control::display_level_titles);
-
-    pfc::string8 artist;
-    playback->playback_format_title_ex(track, nullptr, artist, artistScript, nullptr,
-                                       playback_control::display_level_titles);
-
-    pfc::string8 album;
-    playback->playback_format_title_ex(track, nullptr, album, albumScript, nullptr,
-                                       playback_control::display_level_titles);
-
-    pfc::string8 albumArtist;
-    playback->playback_format_title_ex(track, nullptr, albumArtist, albumArtistScript, nullptr,
-                                       playback_control::display_level_titles);
-
-    store.nameChanged(toStd(title), toStd(artist), toStd(album), toStd(albumArtist));
+std::string playingField(const metadb_handle_ptr& track, const titleformat_object::ptr& script) {
+    pfc::string8 field;
+    playback_control::get()->playback_format_title_ex(track, nullptr, field, script, nullptr,
+                                                      playback_control::display_level_titles);
+    return toStd(field);
 }
 
-PlayingTrackRead playingTrackReadFailure(PlayerOutcome outcome) {
-    PlayingTrackRead read;
-    read.outcome = outcome;
-    return read;
+void publishName(PlayerStateStore& store, const NameScripts& scripts,
+                 const metadb_handle_ptr& track) {
+    store.nameChanged(playingField(track, scripts.title), playingField(track, scripts.artist),
+                      playingField(track, scripts.album), playingField(track, scripts.albumArtist));
 }
 
 // `output_hold`'s mute and the player's own look identical to foobar2000, since it has no
@@ -219,7 +161,7 @@ PlayerState initialStateOf(const OutputHold& outputHold,
     metadb_handle_ptr track;
     if (playback->get_now_playing(track)) {
         state.path = displayPathOf(track);
-        state.libraryPath = libraryPathOf(track);
+        state.libraryPath = libraryPathOf(track, library_manager::get());
         state.subsong = track->get_subsong_index();
         state.duration = playback->playback_get_length();
         state.position = {playback->playback_get_position(), now};
@@ -239,9 +181,7 @@ service_factory_single_t<QueueServiceCallback> g_queueServiceCallback;
 
 struct PlaybackWatch::Callback : public play_callback_impl_base {
     Callback(MainThreadQueue& mainThread, PlayerStateStore& store, PlaylistVersions& versions,
-             OutputHold& outputHold, NowPlayingArtwork& artwork,
-             titleformat_object::ptr titleScript, titleformat_object::ptr artistScript,
-             titleformat_object::ptr albumScript, titleformat_object::ptr albumArtistScript)
+             OutputHold& outputHold, NowPlayingArtwork& artwork, NameScripts nameScripts)
         : play_callback_impl_base(flag_on_playback_new_track | flag_on_playback_pause |
                                   flag_on_playback_stop | flag_on_playback_seek |
                                   flag_on_playback_dynamic_info |
@@ -251,10 +191,7 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
           versions_(versions),
           outputHold_(outputHold),
           artwork_(artwork),
-          titleScript_(std::move(titleScript)),
-          artistScript_(std::move(artistScript)),
-          albumScript_(std::move(albumScript)),
-          albumArtistScript_(std::move(albumArtistScript)) {}
+          nameScripts_(std::move(nameScripts)) {}
 
     // Reading the location inline here would race the player: see ARCHITECTURE.md, *Facts about
     // the player*. `started()` leaves `playingLocation` standing on purpose (player_state.cpp),
@@ -264,7 +201,7 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
     void on_playback_new_track(metadb_handle_ptr track) override {
         artwork_.clear();
         store_.started(trackOf(track), std::chrono::steady_clock::now());
-        publishName(store_, titleScript_, artistScript_, albumScript_, albumArtistScript_, track);
+        publishName(store_, nameScripts_, track);
         queueLocationRead();
     }
 
@@ -306,7 +243,7 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
     void on_playback_dynamic_info_track(const file_info&) override {
         metadb_handle_ptr track;
         if (playback_control::get()->get_now_playing(track))
-            publishName(store_, titleScript_, artistScript_, albumScript_, albumArtistScript_, track);
+            publishName(store_, nameScripts_, track);
     }
 
     void on_volume_change(float value) override {
@@ -327,10 +264,7 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
     PlaylistVersions& versions_;
     OutputHold& outputHold_;
     NowPlayingArtwork& artwork_;
-    titleformat_object::ptr titleScript_;
-    titleformat_object::ptr artistScript_;
-    titleformat_object::ptr albumScript_;
-    titleformat_object::ptr albumArtistScript_;
+    const NameScripts nameScripts_;
 };
 
 // foobar2000 keeps the playback order on playlist_manager rather than on playback_control, so
@@ -431,25 +365,10 @@ struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
 PlaybackWatch::PlaybackWatch(MainThreadQueue& mainThread, PlayerStateStore& store,
                              PlaylistVersions& playlistVersions, OutputHold& outputHold,
                              NowPlayingArtwork& artwork) {
-    // On the main thread, once: see the class comment and ARCHITECTURE.md, *Facts about the
-    // player*, for why a shared titleformat_object still has to compile here rather than on
-    // whichever thread first runs it.
-    const auto compiler = titleformat_compiler::get();
-
-    titleformat_object::ptr titleScript;
-    compiler->compile_safe_ex(titleScript, kTitleScript, "");
-
-    titleformat_object::ptr artistScript;
-    compiler->compile_safe_ex(artistScript, kArtistScript, "");
-
-    titleformat_object::ptr albumScript;
-    compiler->compile_safe_ex(albumScript, kAlbumScript, "");
-
-    titleformat_object::ptr albumArtistScript;
-    compiler->compile_safe_ex(albumArtistScript, kAlbumArtistScript, "");
+    const NameScripts nameScripts = compiledNameScripts(kTitleOrFilenameScript);
 
     callback_ = std::make_unique<Callback>(mainThread, store, playlistVersions, outputHold, artwork,
-                                           titleScript, artistScript, albumScript, albumArtistScript);
+                                           nameScripts);
     orderCallback_ = std::make_unique<OrderCallback>(store);
     currentCallback_ = std::make_unique<CurrentCallback>(store);
     locationCallback_ = std::make_unique<LocationCallback>(mainThread, store, playlistVersions);
@@ -460,7 +379,7 @@ PlaybackWatch::PlaybackWatch(MainThreadQueue& mainThread, PlayerStateStore& stor
 
     metadb_handle_ptr track;
     if (playback_control::get()->get_now_playing(track))
-        publishName(store, titleScript, artistScript, albumScript, albumArtistScript, track);
+        publishName(store, nameScripts, track);
 }
 
 PlaybackWatch::~PlaybackWatch() = default;
@@ -469,24 +388,19 @@ PlayingTrackReader playingTrackReader(MainThreadQueue& mainThread) {
     const auto compiler = titleformat_compiler::get();
 
     return [&mainThread, compiler](const std::vector<std::string>& columns) {
-        return askPlayer<PlayingTrackRead>(
-            mainThread, "reading the playing track's columns",
-            [compiler, columns](const AnswerPtr<PlayingTrackRead>& answer) {
+        return askForOutcome<PlayingTrackRead>(
+            mainThread, "reading the playing track's columns", [compiler, columns] {
                 metadb_handle_ptr track;
-                if (!playback_control::get()->get_now_playing(track)) {
-                    answer->set(PlayingTrackRead{});
-                    return;
-                }
+                if (!playback_control::get()->get_now_playing(track))
+                    return PlayingTrackRead{};
 
                 PlayingTrackRead read;
                 read.playing = true;
                 read.path = displayPathOf(track);
                 read.subsong = track->get_subsong_index();
                 read.columns = formattedPlayingColumns(track, compiledColumns(compiler, columns));
-                answer->set(std::move(read));
-            },
-            playingTrackReadFailure(PlayerOutcome::timedOut),
-            playingTrackReadFailure(PlayerOutcome::playerRefused));
+                return read;
+            });
     };
 }
 

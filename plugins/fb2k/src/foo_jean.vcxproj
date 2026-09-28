@@ -143,8 +143,8 @@
     precompiled header *is* the foobar2000 SDK. Compiling it without the PCH is
     what turns that rule from a convention into a build failure if it is broken.
 
-    It also has to be this way round for http_server.cpp specifically: cpp-httplib
-    includes <winsock2.h>, which must be seen before anything pulls in
+    It also has to be this way round for every file that includes cpp-httplib:
+    it includes <winsock2.h>, which must be seen before anything pulls in
     <windows.h>, and the SDK pulls in <windows.h>. Wrong order and the build fails
     deep inside Winsock with errors that mention none of this.
 

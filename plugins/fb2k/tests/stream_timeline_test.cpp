@@ -3,7 +3,7 @@
 
 #include "third_party/doctest.h"
 
-#include "core/api.h"
+#include "core/documents.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 

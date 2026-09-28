@@ -3,9 +3,11 @@
 
 #include "third_party/doctest.h"
 
-#include "core/api.h"
+#include "core/documents.h"
+#include "core/json.h"
 #include "core/player_state.h"
 #include "core/playlists.h"
+#include "core/requests_playlists.h"
 #include "third_party/json.hpp"
 
 #include <cstddef>
@@ -101,8 +103,9 @@ const std::vector<std::string>& playlistGuids() {
 }
 
 FillRequest filling(const std::string& form, size_t trackCount = kTracks) {
-    return parseFill(R"({"structure": )" + std::to_string(kStructure) + ", " + form + "}",
-                     trackCount, std::nullopt);
+    return parseFill(
+        parseJsonObject(R"({"structure": )" + std::to_string(kStructure) + ", " + form + "}"),
+        trackCount, std::nullopt);
 }
 
 constexpr uint32_t kRowCeiling = 1500000;
@@ -112,11 +115,12 @@ std::string runsOf(uint64_t start, uint64_t count) {
 }
 
 RemoveRowsRequest removing(const std::string& form) {
-    return parseRemoveRows(R"({"structure": "7", )" + form + "}");
+    return parseRemoveRows(parseJsonObject(R"({"structure": "7", )" + form + "}"));
 }
 
 SourceRowsRequest copying(const std::string& form) {
-    return parseSourceRows(R"({"source": ")" + playlistGuids()[0] + R"(", )" + form + "}");
+    return parseSourceRows(
+        parseJsonObject(R"({"source": ")" + playlistGuids()[0] + R"(", )" + form + "}"));
 }
 
 }  // namespace
@@ -258,7 +262,7 @@ TEST_CASE("a body names exactly one of the three forms, so two is refused and so
 
     // A body naming no set at all is the same refusal: a fill that would insert nothing is a
     // caller's mistake rather than a request to honour.
-    const auto silent = parseFill(R"({"structure": 41})", kTracks, std::nullopt);
+    const auto silent = parseFill(parseJsonObject(R"({"structure": 41})"), kTracks, std::nullopt);
     CHECK_FALSE(silent.ok());
     CHECK(describe(silent.refusal) == "unacceptable ordinal set");
     CHECK(httpStatusFor(silent.refusal) == 400);
@@ -270,7 +274,7 @@ TEST_CASE("a body that is not JSON is a malformed body rather than a bad ordinal
     // send a caller looking at ordinals it never managed to send.
     for (const std::string& body : {"not json", "[0, 1, 9]", R"("a string")"}) {
         INFO("body: ", body);
-        const auto request = parseFill(body, kTracks, std::nullopt);
+        const auto request = parseFill(parseJsonObject(body), kTracks, std::nullopt);
 
         CHECK_FALSE(request.ok());
         CHECK(describe(request.refusal) == "malformed request");

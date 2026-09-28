@@ -14,10 +14,8 @@ class PlaylistVersions;
 
 // Registering a callback touches the player, so this is constructed and destroyed on the
 // main thread. Construction also seeds the store with what the player is already doing, since
-// the callbacks it registers fire only on the next change. The two title-format scripts that
-// compute the playing track's name compile here as well, once, because a shared
-// `titleformat_object` may run on many threads at once but only its lazy, cached compile is
-// guarded against one: see ARCHITECTURE.md, *Facts about the player*.
+// the callbacks it registers fire only on the next change. The scripts naming the playing track
+// compile here as well, once, through compiledNameScripts.
 class PlaybackWatch {
 public:
     PlaybackWatch(MainThreadQueue& mainThread, PlayerStateStore& store,

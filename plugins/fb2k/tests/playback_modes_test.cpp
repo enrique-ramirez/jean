@@ -5,7 +5,7 @@
 
 #include "third_party/doctest.h"
 
-#include "core/api.h"
+#include "core/documents.h"
 #include "core/library.h"
 #include "core/playback_modes.h"
 #include "core/player_state.h"

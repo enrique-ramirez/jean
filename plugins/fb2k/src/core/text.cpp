@@ -118,6 +118,10 @@ bool readDecimal(const std::string& text, uint64_t& value) {
     return true;
 }
 
+bool fitsUint32(uint64_t value) {
+    return value <= std::numeric_limits<uint32_t>::max();
+}
+
 std::string eTagFor(const std::string& bytes) {
     return quotedHex(fold(bytes));
 }

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "core/api.h"
 #include "core/artwork.h"
+#include "core/documents.h"
 #include "core/library.h"
 #include "core/outputs.h"
 #include "core/player_outcome.h"
@@ -235,15 +235,16 @@ struct LibraryTrackRead {
 };
 
 // Evaluates `columns` against the one track the media library holds at `track` and `subsong`,
-// the address GET /api/artwork takes. Unlike the artwork read, which resolves on the calling
-// thread, this takes GET /api/playlists/{id}/items' shape and does its work on the player's
-// main thread: foobar2000 does not document titleformat_compiler::compile as safe anywhere
-// else, and the scripts already compiled hold only the columns the snapshot was declared with.
+// the address GET /api/artwork takes. The address resolves on the calling thread, as the artwork
+// read's does, and the columns take GET /api/playlists/{id}/items' shape: they compile on the
+// player's main thread, since foobar2000 does not document titleformat_compiler::compile as safe
+// anywhere else and the scripts already compiled hold only the columns the snapshot was declared
+// with, and are evaluated back on the calling thread.
 using LibraryTrackReader = std::function<LibraryTrackRead(
     const std::string& track, uint32_t subsong, const std::vector<std::string>& columns)>;
 
 // Evaluates `columns` against the one track the media library holds at `at`, the precise
-// address POST /api/tags' ordinal form also resolves through. Same main-thread hop as
+// address POST /api/tags' ordinal form also resolves through. Same threads as
 // LibraryTrackReader, and the same shape of failure: `outcome` carries structureMoved for a
 // stale generation, and `held` false is an ordinal past the end of the current one.
 using LibraryOrdinalReader = std::function<LibraryTrackRead(

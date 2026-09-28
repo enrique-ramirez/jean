@@ -3,7 +3,7 @@
 
 #include "third_party/doctest.h"
 
-#include "core/api.h"
+#include "core/documents.h"
 #include "core/artwork.h"
 #include "core/tag_write.h"
 #include "support/fixtures.h"

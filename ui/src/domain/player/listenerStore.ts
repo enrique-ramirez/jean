@@ -92,6 +92,7 @@ let pendingSeek: number | null = null;
 let mse: MseStream | null = null;
 let lowLatencyFellBack = false;
 let stalls: number[] = [];
+let stalledThisSession = false;
 let flushedAt = 0;
 let pendingMarkAt = 0;
 let pendingAt = 0;
@@ -229,6 +230,7 @@ function sourceFor(
 	if (!wantsLowLatency(forFormat)) return url;
 
 	mse = openMseStream(url, audio, {
+		afterStall: stalledThisSession,
 		onReady: () => {
 			if (audio.paused) void audio.play().catch(() => undefined);
 		},
@@ -253,6 +255,9 @@ function retireLowLatency() {
 function onWaiting() {
 	if (!mse || !hasRendered) return;
 	if (performance.now() - flushedAt < AFTER_FLUSH_MS) return;
+
+	stalledThisSession = true;
+	mse.stalled();
 
 	const now = performance.now();
 	stalls = stalls.filter((at) => now - at < STALL_WINDOW_MS);
@@ -358,6 +363,7 @@ export function connect() {
 	if (!target) return;
 	teardown();
 	attempt = 0;
+	stalledThisSession = false;
 	nextFormat();
 }
 
@@ -435,6 +441,7 @@ export function resume() {
 function scheduleReconnect() {
 	if (!target) return;
 	if (reconnectTimer) clearTimeout(reconnectTimer);
+	if (hasRendered) stalledThisSession = true;
 
 	if (attempt >= RECONNECT_MS.length) {
 		stopStream();

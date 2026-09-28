@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/stream.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -16,7 +18,7 @@ namespace jean {
 // The stream never restarts. A track change is not a new logical stream, because Firefox
 // stops at the first chained Ogg boundary (bug 455165) and the symptom is audio that
 // freezes while bytes keep arriving.
-class OpusStream {
+class OpusStream : public StreamEncoder {
 public:
     static constexpr unsigned kSampleRate = 48000;
 
@@ -24,29 +26,24 @@ public:
     // bitrate, longer costs latency.
     static constexpr size_t kFrameSize = kSampleRate / 50;
 
-    // How much audio a page is allowed to gather before it is emitted. libogg's own default
-    // is 4096 bytes, which at 128 kbps is a quarter of a second held back before a listener
-    // sees a byte; every millisecond of that becomes permanent lag, because the stream is
-    // delivered at 1x and a listener never catches up. libogg will not build a page out of
-    // fewer than four packets whatever this says, so 80 ms is the floor and asking for less
-    // buys nothing.
+    // How much audio a page carries. Every millisecond of it becomes permanent lag, because the
+    // stream is delivered at 1x and a listener never catches up. A page is cut by duration rather
+    // than by libogg's byte count, because libopus spends three bytes on a frame of silence, and a
+    // byte count would hold a quiet passage back until the listener ran dry.
     static constexpr double kPageSeconds = 0.1;
 
     OpusStream(unsigned channels, int bitrate);
-    ~OpusStream();
+    ~OpusStream() override;
 
-    bool ok() const;
-    const std::string& error() const;
+    bool ok() const override;
+    const std::string& error() const override;
 
     // OpusHead and OpusTags. Every listener MUST be sent these before any audio.
     const std::vector<std::uint8_t>& headers() const;
 
     // Appends whole Ogg pages, so `out` is always safe to hand a listener joining
     // mid-stream. Buffers whatever does not fill a frame.
-    void write(const float* samples, size_t frames, std::vector<std::uint8_t>& out);
-
-    OpusStream(const OpusStream&) = delete;
-    OpusStream& operator=(const OpusStream&) = delete;
+    void write(const float* samples, size_t frames, std::vector<std::uint8_t>& out) override;
 
 private:
     struct State;

@@ -2,7 +2,7 @@
 
 #include "fb2k/aac_encoder.h"
 
-#include "core/log.h"
+#include "core/pcm16.h"
 #include "core/stream.h"
 
 #include <mfapi.h>
@@ -12,7 +12,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cmath>
 #include <cstdio>
 #include <utility>
 
@@ -39,11 +38,6 @@ int samplingFrequencyIndex(unsigned sampleRate) {
     }
 }
 
-std::int16_t toPcm16(float sample) {
-    const float clamped = pfc::min_t(1.0F, pfc::max_t(-1.0F, sample));
-    return static_cast<std::int16_t>(std::lround(clamped * 32767.0F));
-}
-
 void appendAdtsHeader(std::vector<std::uint8_t>& out, size_t payload, int frequencyIndex,
                       unsigned channels) {
     const size_t total = payload + 7;
@@ -57,23 +51,6 @@ void appendAdtsHeader(std::vector<std::uint8_t>& out, size_t payload, int freque
     out.push_back(static_cast<std::uint8_t>(((total & 7) << 5) | 0x1f));
     out.push_back(0xfc);
 }
-
-template <typename T>
-class Owned {
-public:
-    explicit Owned(T* pointer) : pointer_(pointer) {}
-
-    ~Owned() {
-        if (pointer_ != nullptr)
-            pointer_->Release();
-    }
-
-    Owned(const Owned&) = delete;
-    Owned& operator=(const Owned&) = delete;
-
-private:
-    T* const pointer_;
-};
 
 class BufferLock {
 public:
@@ -115,6 +92,7 @@ struct AacEncoder::State {
 
     LONGLONG time = 0;
 
+    Pcm16Converter toPcm16;
     std::vector<std::int16_t> pcm;
 };
 
@@ -216,7 +194,6 @@ void AacEncoder::State::fail(const char* what, HRESULT result) {
     char code[16];
     std::snprintf(code, sizeof code, "0x%08lx", static_cast<unsigned long>(result));
     fail(std::string(what) + " (" + code + ")");
-    logError("AAC: " + error);
 }
 
 void AacEncoder::write(const float* samples, size_t frames, std::vector<std::uint8_t>& out) {
@@ -225,8 +202,7 @@ void AacEncoder::write(const float* samples, size_t frames, std::vector<std::uin
         return;
 
     const size_t count = frames * state.channels;
-    state.pcm.resize(count);
-    std::transform(samples, samples + count, state.pcm.begin(), toPcm16);
+    state.toPcm16.convert(samples, count, state.pcm);
 
     const auto bytes = static_cast<DWORD>(count * sizeof(std::int16_t));
 
@@ -278,13 +254,17 @@ void AacEncoder::write(const float* samples, size_t frames, std::vector<std::uin
 
         const HRESULT result = state.encoder->ProcessOutput(0, 1, &produced, &status);
 
-        const Owned<IMFCollection> events(produced.pEvents);
+        // Media Foundation hands back the events already referenced, for the caller to
+        // release.
+        pfc::com_ptr_t<IMFCollection> events;
+        events.attach(produced.pEvents);
 
         // A transform declaring MFT_OUTPUT_STREAM_INFO_PROVIDES_SAMPLES replaces the sample
         // it was handed, and the replacement is the caller's to release. This encoder does
         // not, which is why allocating one above is right here at all.
-        const Owned<IMFSample> replacement(
-            produced.pSample == outSample.get_ptr() ? nullptr : produced.pSample);
+        pfc::com_ptr_t<IMFSample> replacement;
+        if (produced.pSample != outSample.get_ptr())
+            replacement.attach(produced.pSample);
 
         if (result == MF_E_TRANSFORM_NEED_MORE_INPUT)
             return;

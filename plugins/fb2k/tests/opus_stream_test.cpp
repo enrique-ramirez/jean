@@ -8,7 +8,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <random>
 #include <set>
+#include <string>
 #include <vector>
 
 using namespace jean;
@@ -63,8 +65,18 @@ Pages scan(const std::vector<std::uint8_t>& bytes) {
     return seen;
 }
 
-// The loudest decoded sample, which is what distinguishes real audio from well-formed silence.
-float loudestAfterDecoding(const std::vector<std::uint8_t>& bytes, unsigned channels) {
+// What a player reads before any audio: RFC 7845 section 5.1 puts the pre-skip at bytes 10
+// and 11 of OpusHead, little-endian.
+unsigned preSkipOf(const std::vector<std::uint8_t>& headers) {
+    const std::string text(headers.begin(), headers.end());
+    const size_t head = text.find("OpusHead");
+    REQUIRE(head != std::string::npos);
+    return headers[head + 10] | (headers[head + 11] << 8);
+}
+
+// Every audio packet decoded in order, interleaved, the way a player would hand it on before
+// dropping the pre-skip.
+std::vector<float> decodeAll(const std::vector<std::uint8_t>& bytes, unsigned channels) {
     ogg_sync_state sync;
     ogg_sync_init(&sync);
     char* buffer = ogg_sync_buffer(&sync, static_cast<long>(bytes.size()));
@@ -79,7 +91,7 @@ float loudestAfterDecoding(const std::vector<std::uint8_t>& bytes, unsigned chan
     ogg_stream_state stream;
     bool started = false;
     int skipped = 0;
-    float loudest = 0;
+    std::vector<float> all;
     std::vector<float> decoded(OpusStream::kFrameSize * channels * 6);
 
     ogg_page page;
@@ -103,8 +115,8 @@ float loudestAfterDecoding(const std::vector<std::uint8_t>& bytes, unsigned chan
                                   decoded.data(), static_cast<int>(decoded.size() / channels), 0);
             REQUIRE(frames > 0);
 
-            for (size_t i = 0; i < static_cast<size_t>(frames) * channels; ++i)
-                loudest = std::max(loudest, std::fabs(decoded[i]));
+            all.insert(all.end(), decoded.begin(),
+                       decoded.begin() + (static_cast<std::ptrdiff_t>(frames) * channels));
         }
     }
 
@@ -113,7 +125,34 @@ float loudestAfterDecoding(const std::vector<std::uint8_t>& bytes, unsigned chan
     opus_decoder_destroy(decoder);
     ogg_sync_clear(&sync);
 
+    return all;
+}
+
+// The loudest decoded sample, which is what distinguishes real audio from well-formed silence.
+float loudestAfterDecoding(const std::vector<std::uint8_t>& bytes, unsigned channels) {
+    const auto decoded = decodeAll(bytes, channels);
+    float loudest = 0;
+    for (const float sample : decoded)
+        loudest = std::max(loudest, std::fabs(sample));
     return loudest;
+}
+
+std::vector<std::uint8_t> encodeWhole(OpusStream& stream, const std::vector<float>& pcm,
+                                      unsigned channels) {
+    std::vector<std::uint8_t> whole = stream.headers();
+    stream.write(pcm.data(), pcm.size() / channels, whole);
+    return whole;
+}
+
+double widestPageSeconds(const std::vector<std::uint8_t>& bytes) {
+    const auto seen = scan(bytes);
+    REQUIRE(seen.granules.size() > 4);
+
+    std::int64_t widest = 0;
+    for (size_t i = 1; i < seen.granules.size(); ++i)
+        widest = std::max(widest, seen.granules[i] - seen.granules[i - 1]);
+
+    return static_cast<double>(widest) / OpusStream::kSampleRate;
 }
 
 }  // namespace
@@ -183,30 +222,30 @@ TEST_CASE("a second write continues the same logical stream") {
 }
 
 // Every millisecond a page waits to fill is a millisecond of permanent lag: the stream is
-// delivered at 1x, so a listener who starts behind stays behind. libogg's own default gathers
-// 4096 bytes, a quarter of a second at this bitrate.
+// delivered at 1x, so a listener who starts behind stays behind.
 TEST_CASE("a page carries about as much audio as it was asked to") {
-    const size_t frames = size_t{OpusStream::kSampleRate} * 5;
-
     OpusStream stream(2, 128000);
-    const auto pcm = tone(frames, 2);
-
     std::vector<std::uint8_t> out;
-    stream.write(pcm.data(), frames, out);
+    const auto pcm = tone(size_t{OpusStream::kSampleRate} * 5, 2);
+    stream.write(pcm.data(), pcm.size() / 2, out);
 
-    const auto seen = scan(out);
-    REQUIRE(seen.granules.size() > 4);
-
-    std::int64_t widest = 0;
-    for (size_t i = 1; i < seen.granules.size(); ++i)
-        widest = std::max(widest, seen.granules[i] - seen.granules[i - 1]);
-
-    const double seconds = static_cast<double>(widest) / OpusStream::kSampleRate;
+    const double seconds = widestPageSeconds(out);
 
     CHECK(seconds <= OpusStream::kPageSeconds * 1.5);
 
     // And not a page per packet, which would spend a tenth of the bitrate on page headers.
     CHECK(seconds >= 4 * static_cast<double>(OpusStream::kFrameSize) / OpusStream::kSampleRate);
+}
+
+// libopus spends a few bytes on a frame of silence, so a page gathered to a byte count holds a
+// quiet passage back for seconds, and a listener's buffer runs dry waiting for it.
+TEST_CASE("a silent passage is paged as promptly as music") {
+    OpusStream stream(2, 128000);
+    std::vector<std::uint8_t> out;
+    const std::vector<float> silence(size_t{OpusStream::kSampleRate} * 5 * 2, 0.0F);
+    stream.write(silence.data(), silence.size() / 2, out);
+
+    CHECK(widestPageSeconds(out) <= OpusStream::kPageSeconds * 1.5);
 }
 
 TEST_CASE("granule position advances with the audio") {
@@ -268,4 +307,53 @@ TEST_CASE("samples above full scale do not break the encoder") {
 
     CHECK(stream.ok());
     CHECK_FALSE(out.empty());
+}
+
+// RFC 7845 section 4.2: a player drops the pre-skip from the start of what it decodes, and
+// whatever the encoder's own delay is beyond that is heard late by that much.
+TEST_CASE("once the pre-skip is dropped, a sound is heard where it was played") {
+    const size_t onset = (OpusStream::kSampleRate / 2) + 123;
+
+    const size_t channels = 2;
+    std::vector<float> pcm(size_t{OpusStream::kSampleRate} * 2 * channels, 0.0F);
+    const auto burst = tone(OpusStream::kSampleRate / 2, 2);
+    std::copy(burst.begin(), burst.end(), pcm.begin() + static_cast<std::ptrdiff_t>(onset * 2));
+
+    OpusStream stream(2, 128000);
+    const auto whole = encodeWhole(stream, pcm, 2);
+    const auto decoded = decodeAll(whole, 2);
+    const unsigned preSkip = preSkipOf(stream.headers());
+
+    CHECK(preSkip > 0);
+
+    const auto loud = std::find_if(decoded.begin() + static_cast<std::ptrdiff_t>(preSkip * 2),
+                                   decoded.end(), [](float s) { return std::fabs(s) > 0.05F; });
+    REQUIRE(loud != decoded.end());
+
+    const auto heardAt =
+        static_cast<long>((loud - decoded.begin()) / 2) - static_cast<long>(preSkip);
+    CHECK(std::labs(heardAt - static_cast<long>(onset)) <= 48);
+}
+
+// Constrained VBR holds every stretch of a second or so near the target, so a dense passage
+// gets the same bytes as a sparse one. Unconstrained, the encoder spends where the music asks.
+TEST_CASE("the bitrate follows the music rather than the clock") {
+    const size_t frames = size_t{OpusStream::kSampleRate} * 2;
+
+    std::vector<float> noise(frames * 2);
+    std::mt19937 generator(7);
+    std::uniform_real_distribution<float> level(-0.5F, 0.5F);
+    std::generate(noise.begin(), noise.end(), [&] { return level(generator); });
+
+    OpusStream sparse(2, 128000);
+    OpusStream dense(2, 128000);
+    std::vector<std::uint8_t> sparseBytes;
+    std::vector<std::uint8_t> denseBytes;
+    const auto pure = tone(frames, 2);
+    sparse.write(pure.data(), frames, sparseBytes);
+    dense.write(noise.data(), frames, denseBytes);
+
+    const double ratio =
+        static_cast<double>(sparseBytes.size()) / static_cast<double>(denseBytes.size());
+    CHECK(std::fabs(ratio - 1.0) > 0.15);
 }

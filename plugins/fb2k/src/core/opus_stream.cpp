@@ -1,7 +1,5 @@
 #include "core/opus_stream.h"
 
-#include "core/stream.h"
-
 #include <ogg/ogg.h>
 #include <opus.h>
 
@@ -18,6 +16,14 @@ namespace {
 
 constexpr char kVendor[] = "foo_jean";
 
+constexpr int kHighestComplexity = 10;
+
+constexpr int kUnconstrainedVbr = 0;
+
+constexpr std::int64_t kPacketsPerPage =
+    static_cast<std::int64_t>(OpusStream::kPageSeconds * OpusStream::kSampleRate) /
+    static_cast<std::int64_t>(OpusStream::kFrameSize);
+
 void appendPage(std::vector<std::uint8_t>& out, const ogg_page& page) {
     out.insert(out.end(), page.header, page.header + page.header_len);
     out.insert(out.end(), page.body, page.body + page.body_len);
@@ -29,12 +35,12 @@ void appendLittleEndian(std::vector<std::uint8_t>& out, std::uint32_t value) {
 }
 
 // RFC 7845 section 5.1.
-std::vector<std::uint8_t> opusHead(unsigned channels) {
+std::vector<std::uint8_t> opusHead(unsigned channels, std::uint16_t preSkip) {
     std::vector<std::uint8_t> head{'O', 'p', 'u', 's', 'H', 'e', 'a', 'd'};
     head.push_back(1);
     head.push_back(static_cast<std::uint8_t>(channels));
-    head.push_back(0);  // pre-skip, low byte
-    head.push_back(0);
+    head.push_back(static_cast<std::uint8_t>(preSkip & 0xffU));
+    head.push_back(static_cast<std::uint8_t>(preSkip >> 8));
     appendLittleEndian(head, OpusStream::kSampleRate);
     head.push_back(0);  // output gain
     head.push_back(0);
@@ -90,7 +96,7 @@ struct OpusStream::State {
 
     std::int64_t granule = 0;
     std::int64_t packets = 0;
-    int pageFill = 0;
+    std::int64_t packetsOnPage = 0;
 
     ~State() {
         if (encoder != nullptr)
@@ -120,8 +126,13 @@ OpusStream::OpusStream(unsigned channels, int bitrate) : state_(std::make_unique
 
     opus_encoder_ctl(state.encoder, OPUS_SET_BITRATE(bitrate));
     opus_encoder_ctl(state.encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_MUSIC));
+    opus_encoder_ctl(state.encoder, OPUS_SET_VBR_CONSTRAINT(kUnconstrainedVbr));
+    opus_encoder_ctl(state.encoder, OPUS_SET_COMPLEXITY(kHighestComplexity));
 
-    state.pageFill = static_cast<int>(bytesPerSecond(bitrate) * kPageSeconds);
+    // RFC 7845 section 4.2: the pre-skip is the encoder's own delay, which a player drops from
+    // the start of what it decodes.
+    opus_int32 lookahead = 0;
+    opus_encoder_ctl(state.encoder, OPUS_GET_LOOKAHEAD(&lookahead));
 
     // A random serial rather than a fixed one, so two streams from one player cannot be
     // mistaken for each other by anything that multiplexes Ogg.
@@ -132,7 +143,7 @@ OpusStream::OpusStream(unsigned channels, int bitrate) : state_(std::make_unique
     }
     state.oggReady = true;
 
-    const auto head = opusHead(channels);
+    const auto head = opusHead(channels, static_cast<std::uint16_t>(lookahead));
     const auto tags = opusTags();
 
     auto headPacket = packetOf(head.data(), head.size(), true, 0, state.packets++);
@@ -191,8 +202,12 @@ void OpusStream::write(const float* samples, size_t frames, std::vector<std::uin
                                state.granule, state.packets++);
         ogg_stream_packetin(&state.ogg, &packet);
 
+        if (++state.packetsOnPage < kPacketsPerPage)
+            continue;
+
+        state.packetsOnPage = 0;
         ogg_page page;
-        while (ogg_stream_pageout_fill(&state.ogg, &page, state.pageFill) != 0)
+        while (ogg_stream_flush(&state.ogg, &page) != 0)
             appendPage(out, page);
     }
 

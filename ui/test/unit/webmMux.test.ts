@@ -106,9 +106,10 @@ const uint = (bytes: Uint8Array) =>
 	bytes.reduce((total, b) => total * 256 + b, 0);
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
+// A pre-skip of 312 samples at 48 kHz, which is libopus's own delay at the component's settings.
 const OPUS_HEAD = Uint8Array.from([
-	0x4f, 0x70, 0x75, 0x73, 0x48, 0x65, 0x61, 0x64, 1, 2, 0, 0, 0x80, 0xbb, 0, 0,
-	0, 0, 0,
+	0x4f, 0x70, 0x75, 0x73, 0x48, 0x65, 0x61, 0x64, 1, 2, 0x38, 0x01, 0x80, 0xbb,
+	0, 0, 0, 0, 0,
 ]);
 
 const track = { codecPrivate: OPUS_HEAD, sampleRate: 48000, channels: 2 };
@@ -147,6 +148,17 @@ test("SeekPreRoll is declared", () => {
 	assert.equal(
 		uint(find(nodes, "56bb")?.payload ?? new Uint8Array()),
 		80_000_000,
+	);
+});
+
+// Matroska's Opus mapping declares the pre-skip again as CodecDelay, in nanoseconds. Left at zero,
+// the decoder's own delay plays as the first few milliseconds of every connection.
+test("CodecDelay is the pre-skip the head carries", () => {
+	const nodes = parse(initSegment(track));
+
+	assert.equal(
+		uint(find(nodes, "56aa")?.payload ?? new Uint8Array()),
+		6_500_000,
 	);
 });
 

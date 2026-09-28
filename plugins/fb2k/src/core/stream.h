@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -13,6 +14,25 @@ namespace jean {
 constexpr int bytesPerSecond(int bitrate) {
     return bitrate / 8;
 }
+
+// One format's encoder, fed interleaved float by the one encoder thread. A failed encoder stays
+// failed, and its error says why.
+class StreamEncoder {
+public:
+    virtual ~StreamEncoder() = default;
+
+    virtual bool ok() const = 0;
+    virtual const std::string& error() const = 0;
+
+    // Appends only what a listener joining at the end of `out` can start decoding from.
+    virtual void write(const float* samples, size_t frames, std::vector<std::uint8_t>& out) = 0;
+
+    StreamEncoder(const StreamEncoder&) = delete;
+    StreamEncoder& operator=(const StreamEncoder&) = delete;
+
+protected:
+    StreamEncoder() = default;
+};
 
 class StreamSession {
 public:

@@ -10,6 +10,15 @@ const SEEK_PREROLL_NS = 80_000_000;
 
 const CLUSTER_MS = 1000;
 
+// RFC 7845 section 5.1: OpusHead carries the pre-skip at byte 10, little-endian, counted at 48 kHz
+// whatever the source rate. Matroska's Opus mapping declares the same delay as CodecDelay.
+const OPUS_CLOCK_HZ = 48_000;
+
+function codecDelayNs(head: Uint8Array): number {
+	const preSkip = (head[10] ?? 0) | ((head[11] ?? 0) << 8);
+	return Math.round((preSkip * 1_000_000_000) / OPUS_CLOCK_HZ);
+}
+
 const bytes = (...values: number[]) => Uint8Array.from(values);
 
 // An EBML size is a length in unary followed by the value. Only the widths this needs.
@@ -109,8 +118,7 @@ export function initSegment({
 			element([0x83], uint(2)), // TrackType: audio
 			element([0x86], text("A_OPUS")), // CodecID
 			element([0x63, 0xa2], codecPrivate),
-			// The component writes a pre-skip of zero, so there is nothing to declare here.
-			element([0x56, 0xaa], uint(0)), // CodecDelay
+			element([0x56, 0xaa], uint(codecDelayNs(codecPrivate))), // CodecDelay
 			element([0x56, 0xbb], uint(SEEK_PREROLL_NS)),
 			audio,
 		),

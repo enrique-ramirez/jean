@@ -1,9 +1,8 @@
+import { Cushion } from "./cushion";
 import { OggDemuxer } from "./oggDemux";
 import { initSegment, WebmMuxer } from "./webmMux";
 
 const MIME = 'audio/webm; codecs="opus"';
-
-const START_MS = 250;
 
 const KEEP_BEHIND = 10;
 const TRIM_EVERY_MS = 5000;
@@ -19,16 +18,19 @@ export interface MseStream {
 	src: string;
 	stop: () => void;
 	flush: () => void;
+	stalled: () => void;
 }
 
 export function openMseStream(
 	url: string,
 	element: HTMLAudioElement,
 	{
+		afterStall,
 		onReady,
 		onError,
 		onUnusable,
 	}: {
+		afterStall: boolean;
 		onReady: () => void;
 		// Retryable: the connection dropped, and another one may well work.
 		onError: () => void;
@@ -43,6 +45,7 @@ export function openMseStream(
 	let buffer: SourceBuffer | null = null;
 	const muxer = new WebmMuxer();
 	const demuxer = new OggDemuxer();
+	const cushion = new Cushion(afterStall);
 
 	const queue: Uint8Array[] = [];
 	let started = false;
@@ -55,14 +58,10 @@ export function openMseStream(
 	function pump() {
 		if (!buffer || buffer.updating) return;
 
+		// Removing a buffered range leaves the playhead in the hole it made.
 		if (resync && element.buffered.length > 0) {
-			const ready =
-				element.buffered.end(0) - element.buffered.start(0) >= START_MS / 1000;
-			// Removing a buffered range leaves the playhead in the hole it made.
-			if (ready) {
-				resync = false;
-				element.currentTime = element.buffered.start(0);
-			}
+			resync = false;
+			element.currentTime = element.buffered.start(0);
 		}
 
 		if (queue.length === 0) return;
@@ -141,12 +140,15 @@ export function openMseStream(
 					continue;
 				}
 
+				const before = muxer.buffered;
 				for (const packet of packets) muxer.add(packet.data, packet.duration);
 
 				const chunk = muxer.take();
-				if (chunk) append(chunk);
+				if (!chunk) continue;
 
-				if (muxer.buffered >= START_MS) onReady();
+				const released = cushion.add(chunk, muxer.buffered - before);
+				for (const part of released) append(part);
+				if (released.length > 0) onReady();
 			}
 		} catch {
 			if (!stopped) onError();
@@ -166,6 +168,7 @@ export function openMseStream(
 		flush() {
 			if (!buffer) return;
 			queue.length = 0;
+			cushion.flush();
 			try {
 				if (buffer.updating) buffer.abort();
 				const ranges = element.buffered;
@@ -176,5 +179,6 @@ export function openMseStream(
 				// Nothing buffered to drop.
 			}
 		},
+		stalled: () => cushion.stalled(),
 	};
 }

@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <initializer_list>
 #include <iterator>
 #include <optional>
 #include <string>
@@ -51,13 +52,15 @@ void copyAs(const From* first, size_t count, std::vector<To>& out) {
 }  // namespace
 
 struct Format {
-    Format(std::string name, std::string contentType, int bitrate)
+    Format(std::string name, std::string contentType, int bitrate, StreamEncoder& encoder)
         : name(std::move(name)),
           contentType(std::move(contentType)),
+          encoder(encoder),
           broadcast(broadcastBytes(bitrate)) {}
 
     const std::string name;
     const std::string contentType;
+    StreamEncoder& encoder;
 
     BroadcastRing broadcast;
     std::atomic<int> listeners{0};
@@ -78,15 +81,22 @@ struct Streamer::State {
         : pcm(bufferSeconds),
           opus(kOutputChannels, opusBitrate),
           aac(kOutputChannels, OpusStream::kSampleRate, aacBitrate),
-          ogg("opus", "audio/ogg", opusBitrate),
-          adts("aac", "audio/aac", aacBitrate),
+          ogg("opus", "audio/ogg", opusBitrate, opus),
+          adts("aac", "audio/aac", aacBitrate, aac),
           timeline(kTimelineMarks, [&playerState] { playerState.timelineMarked(); }) {
         ogg.preamble = opus.headers();
 
-        if (opus.ok())
-            working.push_back(&ogg);
-        if (aac.ok())
-            working.push_back(&adts);
+        for (Format* format : {&ogg, &adts}) {
+            if (format->encoder.ok())
+                working.push_back(format);
+            else
+                logError(format->name + " streaming is unavailable: " + format->encoder.error());
+        }
+    }
+
+    bool anyoneListening() const {
+        return std::any_of(working.begin(), working.end(),
+                           [](const Format* format) { return format->listeners > 0; });
     }
 
     Format* formatNamed(const std::string& name) const {
@@ -161,8 +171,13 @@ namespace {
 class Converter {
 public:
     bool convert(const PcmBlock& block, std::vector<float>& out) {
-        if (!reconfigure(block.spec))
-            return false;
+        out.clear();
+
+        if (block.spec != configured_) {
+            drain(out);
+            if (!reconfigure(block.spec))
+                return false;
+        }
 
         copyAs(block.samples.data(), block.samples.size(), incoming_);
 
@@ -172,8 +187,25 @@ public:
                         block.spec.sampleRate, 0);
 
         dsp_.run(&list, dsp_track_t(), 0, fb2k::noAbort);
+        appendConverted(list, out);
 
-        out.clear();
+        return true;
+    }
+
+private:
+    // The foobar2000 SDK's dsp_impl_base hands back what a DSP has buffered ahead from
+    // on_endofplayback, which only dsp::FLUSH calls. END_OF_TRACK alone reaches on_endoftrack,
+    // and only in a DSP that asked for track change marks.
+    void drain(std::vector<float>& out) {
+        if (configured_ == AudioSpec{})
+            return;
+
+        dsp_chunk_list_impl list;
+        dsp_.run(&list, dsp_track_t(), dsp::END_OF_TRACK | dsp::FLUSH, fb2k::noAbort);
+        appendConverted(list, out);
+    }
+
+    void appendConverted(const dsp_chunk_list& list, std::vector<float>& out) {
         for (size_t i = 0; i < list.get_count(); ++i) {
             const audio_chunk* produced = list.get_item(i);
             if (produced == nullptr || produced->is_empty())
@@ -187,15 +219,9 @@ public:
                    outgoing_);
             out.insert(out.end(), outgoing_.begin(), outgoing_.end());
         }
-
-        return true;
     }
 
-private:
     bool reconfigure(const AudioSpec& spec) {
-        if (spec == configured_)
-            return true;
-
         auto resamplers = resampler_manager_v3::tryGet();
         if (resamplers.is_empty()) {
             if (!complained_) {
@@ -270,7 +296,7 @@ void encode(const std::shared_ptr<Streamer::State>& state) {
     const ComOnThisThread com;
     Converter converter;
     std::vector<float> converted;
-    std::vector<std::uint8_t> pages;
+    std::vector<std::uint8_t> encoded;
     double streamSeconds = 0;
 
     PcmBlock block;
@@ -283,7 +309,7 @@ void encode(const std::shared_ptr<Streamer::State>& state) {
         streamSeconds += block.seconds();
         state->timeline.setStreamTime(streamSeconds);
 
-        if (state->ogg.listeners == 0 && state->adts.listeners == 0)
+        if (!state->anyoneListening())
             continue;
 
         if (!converter.convert(block, converted) || converted.empty())
@@ -292,29 +318,20 @@ void encode(const std::shared_ptr<Streamer::State>& state) {
         const size_t frames = converted.size() / kOutputChannels;
 
         // The formats fail apart on purpose; see ARCHITECTURE.md, "The audio path".
-        if (state->ogg.listeners > 0 && state->opus.ok()) {
-            pages.clear();
-            state->opus.write(converted.data(), frames, pages);
+        for (Format* format : state->working) {
+            if (format->listeners == 0 || !format->encoder.ok())
+                continue;
 
-            if (!pages.empty())
-                state->ogg.broadcast.write(pages.data(), pages.size());
+            encoded.clear();
+            format->encoder.write(converted.data(), frames, encoded);
 
-            if (!state->opus.ok()) {
-                logError(state->opus.error());
-                state->ogg.broadcast.close();
+            if (!encoded.empty())
+                format->broadcast.write(encoded.data(), encoded.size());
+
+            if (!format->encoder.ok()) {
+                logError(format->name + " streaming stopped: " + format->encoder.error());
+                format->broadcast.close();
             }
-        }
-
-        if (state->adts.listeners > 0 && state->aac.ok()) {
-            pages.clear();
-            state->aac.write(converted.data(), frames, pages);
-
-            if (!pages.empty())
-                state->adts.broadcast.write(pages.data(), pages.size());
-
-            // AacEncoder logs its own failure once, on the way to setting it.
-            if (!state->aac.ok())
-                state->adts.broadcast.close();
         }
     }
 }
@@ -340,12 +357,6 @@ void runEncoder(const std::shared_ptr<Streamer::State>& state) {
 Streamer::Streamer(int opusBitrate, int aacBitrate, double bufferSeconds,
                    PlayerStateStore& playerState)
     : state_(std::make_shared<State>(opusBitrate, aacBitrate, bufferSeconds, playerState)) {
-    if (!state_->opus.ok())
-        logError("Opus streaming is unavailable: " + state_->opus.error());
-
-    if (!state_->aac.ok())
-        logError("AAC streaming is unavailable: " + state_->aac.error());
-
     if (state_->working.empty()) {
         logError("streaming is unavailable: no encoder started");
         return;

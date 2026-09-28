@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { resolveRoute } from "../../src/app/routes.ts";
 import type { Album } from "../../src/domain/track/albums.ts";
 import { buildShelves, refsOfShelf } from "../../src/features/home/shelves.ts";
 
@@ -81,6 +82,15 @@ test("Remember these? offers nothing played inside the last eighteen months", ()
 
 	assert.ok(!ids(library(now - 30 * 24 * 60 * 60 * 1000)).includes("loved"));
 	assert.ok(ids(library(now - 4 * YEAR_MS)).includes("loved"));
+});
+
+const SAVED_IDS = ["recent", "top", "rated", "loved", "upgrade", "unopened"];
+
+test("every shelf id a user may have saved still opens that shelf", () => {
+	assert.deepEqual(
+		SAVED_IDS.map((id) => resolveRoute(`shelf/${id}`).shelf?.id ?? null),
+		SAVED_IDS,
+	);
 });
 
 test("a shelf holds at most twenty-four albums and still reports the whole count", () => {

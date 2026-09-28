@@ -2108,6 +2108,39 @@ TEST_CASE(
     CHECK(reads == 0);
 }
 
+TEST_CASE(
+    "a column set past either cap is refused on both row routes and never reaches the player") {
+    int reads = 0;
+    const TestServer server(servingSettings(), countingChangeReads(&reads));
+
+    std::vector<std::string> tooMany;
+    for (size_t column = 0; column <= kMaxColumns; ++column)
+        tooMany.push_back("%field" + std::to_string(column) + "%");
+
+    const std::vector<std::string> tooLong = {std::string(kMaxColumnLength + 1, 'x')};
+
+    struct Refusal {
+        std::vector<std::string> columns;
+        std::string error;
+    };
+
+    for (const auto& refusal :
+         {Refusal{tooMany, "too many columns"}, Refusal{tooLong, "unacceptable column"}}) {
+        for (const auto& path :
+             {itemsPath(kPlaylistId, 0, 10, refusal.columns),
+              changesPath(kPlaylistId, kRowsStructure, kChangedSince, refusal.columns)}) {
+            INFO("path: ", path.substr(0, 80));
+            const auto response = get(server, path);
+
+            REQUIRE(response);
+            CHECK(response->status == 400);
+            CHECK(json::parse(response->body)["error"] == refusal.error);
+        }
+    }
+
+    CHECK(reads == 0);
+}
+
 // The stray row, so that a row is played by where it sits in the playlist rather than by
 // anything the media library knows about it. Where playback then goes is GET /api/state's to
 // report, published by the player's own callback: state_route_test.cpp holds that half.

@@ -1,3 +1,4 @@
+import type { Page } from "./fixtures.ts";
 import {
 	expect,
 	expectPlayingFrom,
@@ -7,6 +8,7 @@ import {
 	test,
 	trackPlayed,
 	trackRow,
+	untilQuiet,
 	viewHeader,
 } from "./fixtures.ts";
 
@@ -195,5 +197,122 @@ test.describe("a guest is not a member of the band", () => {
 		await expect(page.getByRole("heading", { name: "Appears on" })).toHaveCount(
 			0,
 		);
+	});
+});
+
+// Every streaming client leads an artist's page with a photograph. Jean has none and must not fake
+// one: the page is a portrait of the collection, so the only pictures on it are sleeves the
+// component serves. The lookup is answered the way Wikipedia really answers, with a portrait in the
+// summary, since that is the picture a page would be tempted to lead with.
+test.describe("the pictures on an artist's page", () => {
+	test.use({ settings: { "jean.artistInfo": true } });
+
+	const PORTRAIT =
+		"https://upload.wikimedia.org/wikipedia/commons/portrait.jpg";
+
+	const answerTheLookup = async (page: Page) => {
+		await page.route("https://musicbrainz.org/ws/2/artist?*", (route) =>
+			route.fulfill({
+				json: { artists: [{ id: "mbid", name: ARTIST, score: 100 }] },
+			}),
+		);
+		await page.route("https://musicbrainz.org/ws/2/artist/mbid?*", (route) =>
+			route.fulfill({
+				json: {
+					id: "mbid",
+					name: ARTIST,
+					relations: [
+						{
+							type: "wikipedia",
+							url: { resource: "https://en.wikipedia.org/wiki/Babasonicos" },
+						},
+					],
+				},
+			}),
+		);
+		await page.route(
+			"https://en.wikipedia.org/api/rest_v1/page/summary/*",
+			(route) =>
+				route.fulfill({
+					json: {
+						extract: "An Argentine rock band.",
+						thumbnail: { source: PORTRAIT, width: 320, height: 213 },
+						originalimage: { source: PORTRAIT, width: 1200, height: 800 },
+						content_urls: {
+							desktop: { page: "https://en.wikipedia.org/wiki/Babasonicos" },
+						},
+					},
+				}),
+		);
+		await page.route("https://upload.wikimedia.org/**", (route) =>
+			route.fulfill({ status: 404 }),
+		);
+	};
+
+	// The lookup's own answers are text. Anything else the page reaches for is a picture from
+	// somewhere other than the component's covers, a bundled stock image included.
+	const THE_LOOKUP =
+		/^https:\/\/(musicbrainz\.org\/ws\/2\/|en\.wikipedia\.org\/api\/rest_v1\/page\/summary\/|www\.wikidata\.org\/w\/rest\.php\/)/;
+
+	// The tab's own icon, which the page rasterises for the favicon and never draws on the page.
+	const TAB_ICON = "/favicon.svg";
+
+	const picturesFromElsewhere = (page: Page, origin: string) => {
+		const seen: string[] = [];
+		page.on("request", (request) => {
+			const url = new URL(request.url());
+			if (url.origin === origin) {
+				if (request.resourceType() !== "image") return;
+				if (url.pathname.startsWith("/api/artwork")) return;
+				if (url.pathname === TAB_ICON) return;
+			} else if (THE_LOOKUP.test(request.url())) return;
+			seen.push(request.url());
+		});
+		return seen;
+	};
+
+	// What each picture on the page is drawn from: the component's covers reach the page as the
+	// blobs they were fetched into, so a `data:` image or an address is something else.
+	const picturesDrawnFromElsewhere = (page: Page) =>
+		page.locator("main").evaluate((root) => {
+			const sources = Array.from(root.querySelectorAll("img"), (image) =>
+				image.getAttribute("src"),
+			).filter((src): src is string => Boolean(src));
+			const backgrounds = Array.from(
+				root.querySelectorAll("*"),
+				(node) => getComputedStyle(node).backgroundImage,
+			).filter((image) => image.includes("url("));
+			return [
+				...sources.filter(
+					(src) =>
+						!src.startsWith("blob:") &&
+						!new URL(src, location.href).pathname.startsWith("/api/artwork"),
+				),
+				...backgrounds,
+			];
+		});
+
+	test("are the records you own, and never a photograph of the artist", async ({
+		page,
+		player,
+		baseURL,
+	}) => {
+		await answerTheLookup(page);
+		const fetched = picturesFromElsewhere(page, new URL(baseURL ?? "").origin);
+
+		await openArtist(page, ARTIST);
+		await expect(page.getByText("An Argentine rock band.")).toBeVisible();
+		await expect(
+			page.locator("main").getByRole("button", { name: /Jessico/ }),
+		).toBeVisible();
+		await untilQuiet(player);
+
+		expect(fetched).toEqual([]);
+		expect(await picturesDrawnFromElsewhere(page)).toEqual([]);
+		// And the sleeves are there, so the empty reads above are about a page that drew pictures.
+		expect(
+			await page.locator("main img").count(),
+			"the page drew no covers at all",
+		).toBeGreaterThan(0);
 	});
 });

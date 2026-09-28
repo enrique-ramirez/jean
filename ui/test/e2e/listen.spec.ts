@@ -64,6 +64,25 @@ const picker = (page: Page) => page.getByRole("group", { name: "Playing on" });
 const thePlayer = (page: Page) =>
 	picker(page).getByText("foobar2000", { exact: true });
 
+// The whole panel the button opens, the roster under the two outputs included.
+const pickerPanel = (page: Page) => picker(page).locator("xpath=..");
+
+const playerFader = (page: Page) =>
+	picker(page).getByRole("slider", { name: "Volume on foobar2000" });
+
+// A mute on foobar2000 is its fader at the bottom of its travel, so a button for it would be a
+// control that disappears at the one level somebody needs it at. Read once the fader beside where it
+// would sit is drawn, so an empty count is about a panel that is on screen.
+const mutesInThePanel = async (page: Page) => {
+	await expect(playerFader(page)).toBeVisible();
+	const named = { name: /mute|silence/i };
+	return pickerPanel(page)
+		.getByRole("button", named)
+		.or(pickerPanel(page).getByRole("switch", named))
+		.or(pickerPanel(page).getByRole("checkbox", named))
+		.count();
+};
+
 // One per device the sound reaches, and the same bars a playing row carries in a
 // track list.
 const marks = (within: Locator) => within.locator("[data-paused]");
@@ -907,6 +926,28 @@ test.describe("the clock once the short buffer is written off", () => {
 	});
 });
 
+test.describe("the Playing on panel", () => {
+	test.use({ fooJean: {} });
+
+	test("offers no mute while the player is the one playing, nor once this device listens", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		await listenButton(page).click();
+		expect(await mutesInThePanel(page)).toBe(0);
+
+		// Listening here silences the player, and the row that hands the sound back is the panel
+		// saying so. A player held silent is where a mute would be drawn if anywhere.
+		await thisDevice(page).click();
+		await expect(
+			picker(page).getByRole("button", {
+				name: "Move the sound back to foobar2000",
+			}),
+		).toBeVisible();
+		expect(await mutesInThePanel(page)).toBe(0);
+	});
+});
+
 test.describe("who else is listening", () => {
 	test.use({
 		fooJean: {
@@ -971,6 +1012,16 @@ test.describe("who else is listening", () => {
 		);
 	});
 
+	test("offers no mute for a player somebody else has silenced, only its fader", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		await listenButton(page).click();
+		await expect(picker(page)).toContainText("Silent while");
+
+		expect(await mutesInThePanel(page)).toBe(0);
+	});
+
 	test("the player's own fader is what gives it its sound back", async ({
 		page,
 		isMobile,
@@ -1007,6 +1058,29 @@ test.describe("who else is listening", () => {
 
 		const roster = page.getByRole("list", { name: "Also listening" });
 		await expect(marks(roster)).toHaveCount(3);
+	});
+});
+
+// Safari probes a source with a range request before fetching it, so one device
+// routinely holds two of foo_jean's stream connections, and the component
+// reports both the devices and the connections.
+test.describe("a device holding several connections", () => {
+	test.use({
+		fooJean: {
+			otherListeners: [
+				{ deviceId: "tablet-1", name: "iPad", connections: 2 },
+				{ deviceId: "phone-1", name: "Android phone", connections: 3 },
+			],
+		},
+	});
+
+	test("is counted once, on the button and in the list", async ({ page }) => {
+		await page.goto("/");
+		await expect(listenButton(page)).toHaveText("2");
+		await listenButton(page).click();
+
+		const roster = page.getByRole("list", { name: "Also listening" });
+		await expect(roster.getByRole("listitem")).toHaveCount(2);
 	});
 });
 

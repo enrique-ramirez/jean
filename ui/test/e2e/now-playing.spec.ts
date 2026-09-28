@@ -1,4 +1,4 @@
-import type { Page } from "./fixtures.ts";
+import type { Locator, Page } from "./fixtures.ts";
 import {
 	closeSidebar,
 	expect,
@@ -18,6 +18,7 @@ import {
 	test,
 	touchDrag,
 	trackRow,
+	untilQuiet,
 } from "./fixtures.ts";
 import {
 	expectPanelOpen,
@@ -943,5 +944,154 @@ test.describe("the panel is part of the address", () => {
 
 		await page.goBack();
 		await expect(screen).toBeHidden();
+	});
+});
+
+// Not looking like a streaming client. Every reference pulls a colour out of the artwork and centres
+// the title under a centred square, which is what makes them interchangeable; the cover is the only
+// colour on this screen and the identity is set flush left, like the back of a sleeve.
+test.describe("not looking like a streaming client", () => {
+	const JESSICO = { row: 0, title: "Los Calientes", album: "Jessico" };
+
+	// Two records whose sleeves share nothing, both unrated, and neither track first or last in the
+	// list, so each has a sleeve on either side of it in a phone's wheel and every other difference
+	// on the screen is words.
+	const ON_JESSICO = 1;
+	const ON_DEJA_ENTENDU = 13;
+
+	// The sleeves the screen has finished drawing, by address. On a phone the wheel holds a
+	// neighbour's sleeve beside the playing one.
+	const drawnCovers = (page: Page) =>
+		nowPlayingScreen(page).evaluate((screen) =>
+			Array.from(screen.querySelectorAll("img"))
+				.filter(
+					(image) =>
+						image.complete &&
+						image.naturalWidth > 0 &&
+						image.getBoundingClientRect().width > 0,
+				)
+				.map((image) => image.src),
+		);
+
+	const untilACoverIsDrawn = (page: Page, besides: string[] = []) =>
+		expect
+			.poll(async () =>
+				(await drawnCovers(page)).some((src) => !besides.includes(src)),
+			)
+			.toBe(true);
+
+	// Every colour the screen paints with, cover images aside. An address inside a background is
+	// written out as `url()`, so a picture changing is not read as a colour changing.
+	const coloursOnTheScreen = (page: Page) =>
+		nowPlayingScreen(page).evaluate((screen) => {
+			const seen = new Set<string>();
+			for (const node of [
+				screen,
+				...Array.from(screen.querySelectorAll("*")),
+			]) {
+				if (node instanceof HTMLImageElement) continue;
+				const style = getComputedStyle(node);
+				for (const value of [
+					style.color,
+					style.backgroundColor,
+					style.backgroundImage.replace(/url\([^)]*\)/g, "url()"),
+					style.borderTopColor,
+					style.boxShadow,
+					style.fill,
+				])
+					seen.add(value);
+			}
+			return Array.from(seen).sort();
+		});
+
+	test("takes no colour from the artwork", async ({ page, player }) => {
+		await playRow(page, ON_JESSICO);
+		await untilACoverIsDrawn(page);
+		await untilQuiet(player);
+		const jessico = await drawnCovers(page);
+		const withJessico = await coloursOnTheScreen(page);
+
+		const { playlistId } = player.player.activeItem;
+		player.playItem(playlistId, ON_DEJA_ENTENDU);
+		const next = player.playlistById(playlistId)?.items[ON_DEJA_ENTENDU];
+		await expect(
+			nowPlayingScreen(page).getByRole("heading", {
+				level: 1,
+				name: next?.["%title%"],
+			}),
+		).toBeVisible();
+		await untilACoverIsDrawn(page, jessico);
+		await untilQuiet(player);
+
+		expect(await coloursOnTheScreen(page)).toEqual(withJessico);
+	});
+
+	// Where each line's words begin, and where the box they sit in begins.
+	const setAt = (line: Locator) =>
+		line.evaluate((element) => {
+			const words = document.createRange();
+			words.selectNodeContents(element);
+			return {
+				text: Math.round(words.getBoundingClientRect().left),
+				box: Math.round(element.getBoundingClientRect().left),
+			};
+		});
+
+	test("sets the title, the artist and the record flush left", async ({
+		page,
+	}) => {
+		await playRow(page, JESSICO.row);
+		const screen = nowPlayingScreen(page);
+		const title = await setAt(
+			screen.getByRole("heading", { level: 1, name: JESSICO.title }),
+		);
+		// The first: the identity comes before the panels, which may name the artist again.
+		const artist = await setAt(
+			screen.getByRole("link", { name: "Babasónicos" }).first(),
+		);
+		const record = await setAt(
+			screen.getByRole("link", { name: JESSICO.album }).first(),
+		);
+
+		// A centred title starts somewhere inside its own line, and centred lines of different
+		// lengths start in different places.
+		expect(title.text).toBe(title.box);
+		expect(artist.text).toBe(title.text);
+		expect(record.text).toBe(title.text);
+	});
+
+	// Artwork plus two lines is the streaming client's mini-player exactly, and the cover is one
+	// dismissal away at full size.
+	test("keeps the slim strip over the panels to the title and the artist, with no thumbnail", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(
+			!isMobile,
+			"the slim strip is the phone's layer; a desktop's panels sit beside the cover",
+		);
+
+		await playRow(page, JESSICO.row);
+		// Held before the layer opens, so a copy in the strip would be drawn with it rather than after.
+		await untilACoverIsDrawn(page);
+
+		await nowPlayingScreen(page)
+			.getByRole("button", { name: "Lyrics" })
+			.click();
+		const strip = trackInfo(page);
+		await expect(strip).toBeVisible();
+		await expect(strip).toContainText(JESSICO.title);
+		await expect(strip).toContainText("Babasónicos");
+
+		// Read once any cover the strip asked for has had time to arrive and be drawn.
+		await untilQuiet(player);
+		await page.evaluate(
+			() =>
+				new Promise((resolve) =>
+					requestAnimationFrame(() => requestAnimationFrame(resolve)),
+				),
+		);
+		expect(await strip.locator('img, [role="img"]').count()).toBe(0);
 	});
 });

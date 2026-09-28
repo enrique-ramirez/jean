@@ -80,3 +80,49 @@ test.describe("a library with no ratings at all", () => {
 		).toBeVisible();
 	});
 });
+
+// A filled star's colour, read off the glyphs a person sees: the outline is drawn unfilled and only
+// the filled half carries a colour. Parsed from the `oklch()` Chromium computes, so what is compared
+// is lightness, chroma and hue rather than a string.
+const filledStarColours = (page: Page, row: number) =>
+	stars(page, row).evaluate((root) =>
+		Array.from(root.querySelectorAll("svg"))
+			.map((glyph) => getComputedStyle(glyph).fill)
+			.filter((fill) => fill !== "none"),
+	);
+
+const OKLCH = /^oklch\(([\d.]+) ([\d.]+) ([\d.]+)\)$/;
+
+// What reads as gold rather than as orange or brown. Clearing WCAG's 3:1 for a graphical object on
+// the light ground takes the lightness down below this floor, which is the change the rule refuses.
+const GOLD = { minLightness: 0.75, minChroma: 0.12, hue: [65, 85] };
+
+for (const theme of ["dark", "light"] as const) {
+	test.describe(`a rating on the ${theme} theme`, () => {
+		test.use({
+			...RATED,
+			settings: { ...SHOWING_RATINGS, "jean.theme": theme },
+		});
+
+		// Deliberately under WCAG's 3:1 on light: what carries the meaning is fill against outline,
+		// not the hue, and a star dark enough to clear it is orange.
+		test("is filled in gold, even though gold falls short of 3:1 contrast", async ({
+			page,
+		}) => {
+			await openLibrary(page);
+			await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+			await expect(stars(page, 0)).toHaveAccessibleName("5 of 5 stars");
+
+			const colours = await filledStarColours(page, 0);
+			expect(colours).toHaveLength(5);
+			expect(new Set(colours).size).toBe(1);
+
+			expect(colours[0], "a filled star's colour in oklch()").toMatch(OKLCH);
+			const [, lightness, chroma, hue] = OKLCH.exec(colours[0]) ?? [];
+			expect(Number(lightness)).toBeGreaterThanOrEqual(GOLD.minLightness);
+			expect(Number(chroma)).toBeGreaterThanOrEqual(GOLD.minChroma);
+			expect(Number(hue)).toBeGreaterThanOrEqual(GOLD.hue[0]);
+			expect(Number(hue)).toBeLessThanOrEqual(GOLD.hue[1]);
+		});
+	});
+}

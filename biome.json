@@ -62,7 +62,61 @@
 	},
 	"overrides": [
 		{
+			"includes": ["ui/src/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": [
+											"@tanstack/react-hotkeys",
+											"@tanstack/react-hotkeys/**",
+											"@tanstack/hotkeys",
+											"@tanstack/hotkeys/**"
+										],
+										"message": "The hotkeys library is reached through shared/keyboard alone. Declare a binding in keymap.ts and register it with useKeymap, so the shortcut sheet and the keys cannot drift apart."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
 			"includes": ["ui/src/shared/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": ["@/domain/**", "@/features/**", "@/app/**"],
+										"message": "shared/ knows nothing about the rest of the app. Invert the dependency: take what you need as an argument."
+									},
+									{
+										"group": [
+											"@tanstack/react-hotkeys",
+											"@tanstack/react-hotkeys/**",
+											"@tanstack/hotkeys",
+											"@tanstack/hotkeys/**"
+										],
+										"message": "The hotkeys library is reached through shared/keyboard alone. Declare a binding in keymap.ts and register it with useKeymap, so the shortcut sheet and the keys cannot drift apart."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			"includes": ["ui/src/shared/keyboard/**"],
 			"linter": {
 				"rules": {
 					"style": {
@@ -93,6 +147,15 @@
 									{
 										"group": ["@/features/**", "@/app/**"],
 										"message": "domain/ is below features/. A domain slice that needs a view belongs in features/."
+									},
+									{
+										"group": [
+											"@tanstack/react-hotkeys",
+											"@tanstack/react-hotkeys/**",
+											"@tanstack/hotkeys",
+											"@tanstack/hotkeys/**"
+										],
+										"message": "The hotkeys library is reached through shared/keyboard alone. Declare a binding in keymap.ts and register it with useKeymap, so the shortcut sheet and the keys cannot drift apart."
 									}
 								]
 							}
@@ -113,6 +176,15 @@
 									{
 										"group": ["@/app/**"],
 										"message": "features/ is below app/. The shell composes features, never the other way round."
+									},
+									{
+										"group": [
+											"@tanstack/react-hotkeys",
+											"@tanstack/react-hotkeys/**",
+											"@tanstack/hotkeys",
+											"@tanstack/hotkeys/**"
+										],
+										"message": "The hotkeys library is reached through shared/keyboard alone. Declare a binding in keymap.ts and register it with useKeymap, so the shortcut sheet and the keys cannot drift apart."
 									}
 								]
 							}

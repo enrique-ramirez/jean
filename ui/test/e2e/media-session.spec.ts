@@ -1,11 +1,13 @@
 import {
 	expect,
+	type FakePlayer,
 	listenHere,
 	openLibrary,
 	type Page,
 	statusBar,
 	test,
 	trackRow,
+	untilQuiet,
 } from "./fixtures.ts";
 
 const play = async (page: Page) => {
@@ -45,6 +47,61 @@ const session = (page: Page) =>
 // rather than scaled up, so this is a ceiling and never an expected value.
 const LOCK_SCREEN_MAX_EDGE = 512;
 
+type MediaPlay = { loop: boolean };
+
+// Every media element anything on the page starts, whether or not it is in the document: an element
+// kept only to claim the media keys never needs to be in the tree. A call to `play()` is recorded, and
+// so is every `play` event, from an element made through `new Audio()`, through `createElement` or
+// parsed into the document, since `autoplay` starts one with no call at all.
+const recordMediaPlays = (page: Page) =>
+	page.addInitScript(() => {
+		const played: MediaPlay[] = [];
+		Object.assign(window, { __mediaPlays: played });
+		const record = (element: HTMLMediaElement) =>
+			played.push({ loop: element.loop });
+		const onPlay = (event: Event) => record(event.target as HTMLMediaElement);
+		const watch = <T extends Node>(element: T) => {
+			if (element instanceof HTMLMediaElement)
+				element.addEventListener("play", onPlay);
+			return element;
+		};
+
+		const play = HTMLMediaElement.prototype.play;
+		HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
+			record(this);
+			return play.call(this);
+		};
+		window.Audio = new Proxy(window.Audio, {
+			construct: (target, args) => watch(Reflect.construct(target, args)),
+		});
+		const createElement = document.createElement;
+		document.createElement = function (
+			this: Document,
+			...args: Parameters<Document["createElement"]>
+		) {
+			return watch(createElement.apply(this, args));
+		} as Document["createElement"];
+		document.addEventListener(
+			"play",
+			(event) => {
+				const element = event.target as HTMLMediaElement;
+				if (!element.isConnected) return;
+				record(element);
+			},
+			true,
+		);
+	});
+
+const mediaPlays = (page: Page) =>
+	page.evaluate(
+		() => (window as unknown as { __mediaPlays: MediaPlay[] }).__mediaPlays,
+	);
+
+const settledMediaPlays = async (page: Page, player: FakePlayer) => {
+	await untilQuiet(player);
+	return mediaPlays(page);
+};
+
 test.describe("the media session", () => {
 	test.use({ fooJean: {} });
 
@@ -56,6 +113,36 @@ test.describe("the media session", () => {
 		).toBeVisible();
 
 		expect(await session(page)).toMatchObject({ state: "none", title: null });
+	});
+
+	// A silent looping element would claim the media keys and the lock screen for a tab that is only
+	// a remote, badge every Jean tab as audible and spend a phone's battery for a notification. The
+	// session belongs to whatever is audible, and while the sound is on the player that is not Jean.
+	test("nothing plays in the tab until this device is asked to listen, and the stream never loops", async ({
+		page,
+		player,
+	}) => {
+		await recordMediaPlays(page);
+		await page.goto("/");
+		await play(page);
+		const pause = statusBar(page).getByRole("button", {
+			name: "Pause",
+			exact: true,
+		});
+		await expect(pause).toBeVisible();
+		await pause.click();
+		await statusBar(page)
+			.getByRole("button", { name: "Play", exact: true })
+			.click();
+		await expect(pause).toBeVisible();
+
+		expect(await settledMediaPlays(page, player)).toEqual([]);
+
+		// The recorder sees a real start, so the empty read above is not a recorder that sees nothing.
+		await listenHere(page);
+		const played = await settledMediaPlays(page, player);
+		expect(played.length).toBeGreaterThan(0);
+		expect(played.filter((one) => one.loop)).toEqual([]);
 	});
 
 	test("names the track once the sound is here", async ({ page }) => {

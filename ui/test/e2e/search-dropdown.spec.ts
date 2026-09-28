@@ -196,6 +196,44 @@ test.describe("what a query might mean", () => {
 		await expect(ofKind(page, "album")).toContainText("12 tracks");
 	});
 
+	test.describe("two records the query names", () => {
+		// A second record with the same name by another band, which is what a search has to tell apart
+		// by its words: the covers say nothing about which *Jessico* is whose.
+		const NAMESAKE = "Alice in Chains";
+		test.use({ retagged: { Nutshell: { "%album%": ALBUM } } });
+
+		// A strip of covers needs left and right keys and breaks the one up-and-down axis the panel is
+		// walked on, and a cover shelf in a search dropdown is the most streaming-client thing there is.
+		test("are rows, one under the other, walked with the arrows and told apart by name", async ({
+			page,
+		}) => {
+			await openWithSearch(page);
+			await searchField(page).fill(ALBUM);
+
+			const albums = ofKind(page, "album");
+			await expect(albums).toHaveCount(2);
+			await expect(albums.filter({ hasText: ARTIST })).toHaveCount(1);
+			await expect(albums.filter({ hasText: NAMESAKE })).toHaveCount(1);
+
+			const [first, second] = await albums.evaluateAll((rows) =>
+				rows.map((row) => row.getBoundingClientRect().toJSON()),
+			);
+			const track = await tracks(page).first().boundingBox();
+			expect(
+				second.top,
+				"the second record sits below the first",
+			).toBeGreaterThanOrEqual(first.bottom - 1);
+			expect(second.left).toBeCloseTo(first.left, 0);
+			expect(first.width).toBeCloseTo(track?.width ?? 0, 0);
+			expect(second.width).toBeCloseTo(track?.width ?? 0, 0);
+
+			await searchField(page).press("ArrowDown");
+			await expect(albums.first()).toHaveAttribute("aria-selected", "true");
+			await searchField(page).press("ArrowDown");
+			await expect(albums.nth(1)).toHaveAttribute("aria-selected", "true");
+		});
+	});
+
 	test("choosing an album opens the record and leaves the search alone", async ({
 		page,
 		player,

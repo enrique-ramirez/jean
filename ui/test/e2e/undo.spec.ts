@@ -12,7 +12,10 @@ import {
 	pressAndHold,
 	refusePlaylistWrites,
 	requestsTo,
+	rowByTitle,
+	scrollUntilMounted,
 	test,
+	titlesIn,
 	trackRow,
 } from "./fixtures.ts";
 
@@ -23,10 +26,6 @@ const FAVORITES = { id: "p2", title: "Favorites", itemCount: 7 };
 const LIBRARY = "p7";
 
 const toast = (page: Page) => page.getByRole("status");
-const titlesIn = (player: FakePlayer, id: string) =>
-	player.playlists
-		.find((entry) => entry.id === id)!
-		.items.map((track) => track["%title%"]);
 
 // A string of decimal digits on the wire, never the fake's own internal number: the requests below
 // compare against exactly what the client sent.
@@ -319,6 +318,46 @@ test.describe("adding tracks to a playlist", () => {
 		);
 	});
 });
+
+// foobar2000 playlists are ordered lists, not sets, so a track already in one goes in again: a
+// uniqueness rule the player does not have would be Jean lying about the data. Both ways an add is
+// made, a copy out of a playlist and a fill from a library view.
+const SPANISH = { id: "p5", title: "Rock en Español" };
+const HELD = "Los Calientes";
+
+for (const [view, open] of [
+	["a playlist", openLibrary],
+	["a library view", openAllMusic],
+] as const) {
+	test.describe(`adding from ${view} a track the target already holds`, () => {
+		test("adds it again rather than skipping it", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			const held = titlesIn(player, SPANISH.id);
+			expect(held, `${SPANISH.title} already holds ${HELD}`).toContain(HELD);
+
+			await open(page);
+			const row = rowByTitle(page, HELD);
+			await scrollUntilMounted(page, row);
+			if (isMobile) await pressAndHold(page, row);
+			else await row.click({ button: "right" });
+			await page.getByRole("menuitem", { name: "Add to playlist" }).click();
+			await page
+				.getByRole("menuitem", { name: SPANISH.title, exact: true })
+				.click();
+
+			await expect(toast(page)).toContainText(
+				`Added 1 track to ${SPANISH.title}`,
+			);
+			await expectSettlesAt(player, () => titlesIn(player, SPANISH.id), [
+				...held,
+				HELD,
+			]);
+		});
+	});
+}
 
 test.describe("undoing it", () => {
 	test.beforeEach(({ page }) => openLibrary(page));

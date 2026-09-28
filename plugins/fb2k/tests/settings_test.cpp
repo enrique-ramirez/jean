@@ -239,6 +239,12 @@ TEST_CASE("an absent writePlaylists permits playlist writes, and an explicit fal
     CHECK_FALSE(parseFresh(R"({"writePlaylists": false})").writePlaylists);
 }
 
+// The stream runs behind the player, so both outputs in one room is slapback. Playing on both is
+// reached by raising the player's own fader, never by a default that doubles the sound.
+TEST_CASE("an absent muteWhileStreaming moves the sound to a listener rather than doubling it") {
+    CHECK(parseFresh("{}").muteWhileStreaming);
+}
+
 TEST_CASE("a malformed writePlaylists keeps writes permitted and names itself") {
     for (const auto* text : {R"({"writePlaylists": "false"})", R"({"writePlaylists": 0})",
                              R"({"writePlaylists": null})"}) {

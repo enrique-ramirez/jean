@@ -2,6 +2,7 @@ import { en } from "../../src/shared/i18n/en.ts";
 import type { RecordedRequest } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
+	closeSidebar,
 	dragFrom,
 	expect,
 	expectPlayingFrom,
@@ -21,6 +22,7 @@ import {
 	searchFor,
 	sidebar,
 	test,
+	titlesIn,
 	touchDrag,
 	trackRow,
 } from "./fixtures.ts";
@@ -727,6 +729,63 @@ test.describe("the search entry", () => {
 	});
 });
 
+// Searching is a filter over what is already held: no playlist is made and nothing is written. Drawn
+// among the playlists it would promise to persist the way they do, so it is filed under a heading of
+// its own. What sits under the Playlists heading, top to bottom, as a reader sees it.
+const listedUnderPlaylists = (page: Page) =>
+	sidebar(page).evaluate((nav) => {
+		const heading = Array.from(nav.querySelectorAll("p")).find((line) =>
+			line.textContent?.startsWith("Playlists"),
+		);
+		if (!heading) return null;
+		const below = heading.getBoundingClientRect().bottom;
+		return Array.from(nav.querySelectorAll("button"))
+			.filter((button) => button.getBoundingClientRect().top >= below)
+			.map((button) => button.innerText.trim().split("\n")[0])
+			.filter(Boolean);
+	});
+
+const playlistCreates = (player: FakePlayer) =>
+	player.requests.filter(
+		(entry) => entry.method === "POST" && entry.path === "/api/playlists",
+	);
+
+test.describe("a search in the sidebar", () => {
+	const QUERY = "babasonicos";
+
+	test("is filed under Search and never among the playlists, even once something plays from it", async ({
+		page,
+		player,
+	}) => {
+		await openApp(page);
+		const before = await listedUnderPlaylists(page);
+		expect(before, "the sidebar lists the player's playlists").toContain(
+			FAVORITES,
+		);
+		const titles = titlesInOrder(player);
+
+		await searchFor(page, QUERY);
+		await openSidebar(page);
+		await expect(link(page, QUERY)).toBeVisible();
+		expect(await listedUnderPlaylists(page)).toEqual(before);
+
+		await closeSidebar(page);
+		await trackRow(page, 0).dblclick();
+		await expect.poll(() => scratchOf(player)).toBeTruthy();
+		await openSidebar(page);
+		await expect(link(page, QUERY)).toBeVisible();
+		expect(await listedUnderPlaylists(page)).toEqual(before);
+
+		// Playing materialised the results into the component's own scratch, and nothing else.
+		await expectSettlesAt(player, () => playlistCreates(player), []);
+		expect(
+			titlesInOrder(player).filter(
+				(title) => title !== scratchOf(player)?.title,
+			),
+		).toEqual(titles);
+	});
+});
+
 test.describe("playing from the sidebar", () => {
 	test.skip(
 		({ isMobile }) => isMobile,
@@ -1080,6 +1139,80 @@ test.describe("dragging tracks onto a playlist", () => {
 			.toBe(before + 1);
 
 		await expect(page.getByRole("status")).toContainText(FAVORITES);
+	});
+
+	// Collapsing a selection on pointer-down empties it before the pointer has moved a pixel, and a
+	// multi-track drag cannot exist. The decision waits for the release.
+	test.describe("pressing inside a selection of several", () => {
+		const selected = (page: Page) =>
+			page.locator('[role="row"][aria-selected="true"]');
+
+		const selectThree = async (page: Page) => {
+			await openApp(page);
+			await scrollUntilMounted(page, trackRow(page, 2));
+			await trackRow(page, 0).click();
+			await trackRow(page, 2).click({ modifiers: ["Shift"] });
+			await expect(selected(page)).toHaveCount(3);
+		};
+
+		// Read after two frames rather than retried: a collapse lands on the render after the press,
+		// and a retrying read taken before it would pass on the way through.
+		const selectedOnceDrawn = async (page: Page) => {
+			await page.evaluate(
+				() =>
+					new Promise((resolve) =>
+						requestAnimationFrame(() => requestAnimationFrame(resolve)),
+					),
+			);
+			return selected(page).count();
+		};
+
+		const pressOn = async (page: Page, index: number) => {
+			const box = await trackRow(page, index).boundingBox();
+			await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+			await page.mouse.down();
+		};
+
+		test("keeps the whole selection, and drags all of it", async ({
+			page,
+			player,
+		}) => {
+			await selectThree(page);
+			const before = titlesIn(player, "p2").length;
+
+			await pressOn(page, 1);
+			expect(await selectedOnceDrawn(page)).toBe(3);
+
+			const target = row(page, FAVORITES);
+			const box = await target.boundingBox();
+			await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2, {
+				steps: 16,
+			});
+			await expect(target).toHaveAttribute("data-drop-over", "true");
+			await page.mouse.up();
+
+			await expect(page.getByRole("status")).toContainText(
+				`Added 3 tracks to ${FAVORITES}`,
+			);
+			await expectSettlesAt(
+				player,
+				() => titlesIn(player, "p2").length,
+				before + 3,
+			);
+		});
+
+		test("and a release that did not drag narrows it to the row pressed", async ({
+			page,
+		}) => {
+			await selectThree(page);
+
+			await pressOn(page, 1);
+			expect(await selectedOnceDrawn(page)).toBe(3);
+			await page.mouse.up();
+
+			await expect(selected(page)).toHaveCount(1);
+			await expect(trackRow(page, 1)).toHaveAttribute("aria-selected", "true");
+		});
 	});
 
 	test("a drop onto a playlist that fills itself says so in the ghost, and sends nothing", async ({

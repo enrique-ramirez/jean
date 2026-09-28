@@ -556,6 +556,11 @@ export const coversByPosition = (player: FakePlayer) =>
 export const scratchOf = (player: FakePlayer) =>
 	player.playlists.find((entry) => entry.title.startsWith("#Jean ["));
 
+export const titlesIn = (player: FakePlayer, playlistId: string) =>
+	player.playlists
+		.find((entry) => entry.id === playlistId)!
+		.items.map((track) => track["%title%"]);
+
 export const scratchFills = (player: FakePlayer) =>
 	player.requests.filter(
 		(entry) =>

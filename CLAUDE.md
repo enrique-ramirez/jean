@@ -1,108 +1,55 @@
 # Jean
 
-A web UI for foobar2000, served by and talking to `foo_jean`, a foobar2000 component, over HTTP.
+A web UI for foobar2000, served by `foo_jean`, its component in `plugins/fb2k/`.
 
-This file is what an agent cannot read off the code: project-wide rules, external constraints, and decisions somebody would otherwise undo. The four documents it points at do not overlap with it or with each other, and the only rule repeated here is the one about comments, because it applies to every line an agent writes. [ui/CONTRIBUTING.md](./ui/CONTRIBUTING.md) is how to write the code, [ui/ARCHITECTURE.md](./ui/ARCHITECTURE.md) is how the parts fit and why the boundaries sit where they do, [ui/src/shared/api/README.md](ui/src/shared/api/README.md) is what the player answers, [ui/test/README.md](./ui/test/README.md) is the suite and the fake player. Read `ui/CONTRIBUTING.md` before writing anything; its *Design*, *Comments* and *Documentation* sections are the three that get ignored first, and two of its rules are enforced rather than trusted. `.claude/hooks/check-style.sh` fails an edit that reintroduces personal detail, history, hard-wrapped prose, a recorded measurement, an em dash or an assistant's phrasing, and it fires on a shell command that wrote a file as well as on the edit tools. Two agents review changed code for the rest: `style-reviewer` for design and structure, then `comment-reaper` for comments and prose. All three come from the `ai-engineering` kit; `.claude/review-profile.md` is the only part of that setup that is Jean's.
-
-There is one of these files beside each part of the tree, for what is local to it:
-
-| | |
-|---|---|
-| `ui/src/shared/api/CLAUDE.md` | traps in `foo_jean`'s API |
-| `ui/src/shared/ui/CLAUDE.md` | menus, gestures, drag and drop, toasts, animation |
-| `ui/src/shared/keyboard/CLAUDE.md` | the keymap and how bindings are declared |
-| `ui/src/shared/i18n/CLAUDE.md` | the phrase catalogue, translations and the `Intl` formatters |
-| `ui/src/domain/track/CLAUDE.md` | rows, refs, the virtualised list, ratings |
-| `ui/src/domain/library/CLAUDE.md` | where the library comes from, playing a set, search results |
-| `ui/src/domain/player/CLAUDE.md` | playback state, the queue, the volume curve, listening here |
-| `ui/src/features/artist/CLAUDE.md` | who an artist is, and their page |
-| `ui/src/features/home/CLAUDE.md` | the home screen and its shelves |
-| `ui/src/features/now-playing/CLAUDE.md` | the status bar, the screen, lyrics and details |
-| `ui/src/features/queue/CLAUDE.md` | the play queue panel |
-| `ui/src/features/genres/CLAUDE.md` | the genres index |
-| `ui/src/features/search/CLAUDE.md` | the search control |
-| `ui/src/app/CLAUDE.md` | the shell, breakpoints, themes, the tab, the media session |
-| `ui/demo/CLAUDE.md` | the live demo |
-| `site/CLAUDE.md` | the landing page, and where its words come from |
-| `plugins/fb2k/CLAUDE.md` | `foo_jean` itself: its priorities, driving a real player, what the SDK will and will not do |
+Read `ui/CONTRIBUTING.md`, how to write code here, before writing anything. `ui/ARCHITECTURE.md` is how the parts fit, `foo_jean`'s two seams included; `ui/src/shared/api/README.md` is what the player answers; `ui/test/README.md` is the suite and its fake player; `README.md` is what Jean does for its user.
 
 ## Ground rules
 
-- **Never run a git command that writes.** No `commit`, `add`, `push`, `branch`, `tag`, `rebase`, `reset`. Read-only git (`status`, `diff`, `log`) is fine.
-- **A product decision belongs to the owner, and an agent MUST NOT take one on its own.** Where work would add, remove or change what Jean does for a user, whether a feature, a refusal, a default, an information architecture choice or a security default, stop before writing anything. Present the options with what each one costs and what it buys, say which way you lean, and ask. The owner decides. Silence, an obvious-looking gap in the code, and a rule that merely permits the work are none of them an answer. The outcome MUST NOT be written down unless it is one somebody would otherwise undo for a strong reason; the human is the gatekeeper, not the documentation.
-- **A general-purpose UI meant for public release, not a personal dashboard.** Nothing may assume a particular library: no hardcoded playlist ids, no assumed paths, no assumed scale, no assumed components.
-- **A LAN is assumed.** Jean and `foo_jean` are for a player on the same network, never across the internet, because `foo_jean` admits only a private source address behind a `Host` it recognises, with nothing to authenticate on top. So bandwidth is cheap and a design may spend it. What this does **not** buy is a perfect link: wifi at the edge of a house is a LAN condition, and a phone in the garden is the case to keep honest. **Nor does it buy request *volume*, which is the separate budget.** `foo_jean` serves each connection on its own thread, from a pool that starts at `max(8, cores - 1)` and grows to four times that, and keeps a connection open for up to a hundred requests rather than closing it after one, so a screenful of covers is not a screenful of connections. What still meters volume is the component's own limiters: `kArtworkBurst` and its kin in `plugins/fb2k/src/core/http_server.cpp` size a token bucket per route, deep enough for a screenful landing at once and too shallow for a client stuck in a loop. Cheap bytes, expensive requests.
-- **The primary axis of quality is UX/UI, and performance is part of UX.** A feature that makes the interface slower has to justify itself.
-- **Fully responsive**, one codebase, no separate mobile build. Desktop is keyboard-first; mobile is aggressively optimised for touch targets, safe-area insets and payload.
-- **Light and dark themes, both designed.** Neither is `#000` / `#fff`.
-- **Everything a person can read is a phrase in the catalogue**, and English is the only language shipped in the bundle. A translation is a JSON file in `locales/` beside `index.html`, added by hand and never by Jean. `ui/src/shared/i18n/CLAUDE.md` is the whole of it; the rule that gets broken first is a string literal written straight into JSX.
-- **Minimum required components: `foo_jean` alone, with nothing else to install.** Everything beyond it is optional, auto-detected and individually toggleable in Settings. A bare install MUST get a complete, coherent app, never a dead panel or an empty shelf. Keep the component table in `README.md` current.
-- **Run the suite before claiming a change works.** `pnpm lint`, `pnpm typecheck` and `pnpm test` MUST pass. See `ui/CONTRIBUTING.md` for which parts of the suite are cheap enough to run freely.
-- **Write a comment only for a fact from outside this repository**, and name the system it is about: foobar2000, `foo_jean`, a browser, a library. Why a value was chosen is a named constant; what the code does is the code; how the parts fit is `ui/ARCHITECTURE.md`; what the player answers is `ui/src/shared/api/README.md`. An external fact lives in one place and it is usually not a source file. `ui/src/` is near zero and an exception should be a surprise; specs carry more, because why a case exists is worth saying.
+- **Never run a git command that writes**, `stash` and `checkout` included. Reading is fine.
+- **A product decision belongs to the owner.** Where work would add, remove or change what Jean does for a user (a feature, a refusal, a default, an information architecture choice, a security default), stop before writing: present the options with what each costs and buys, say which way you lean, and ask. Silence, a gap in the code and a rule that merely permits the work are not answers. The outcome is not written into any file.
+- **A general-purpose UI for public release.** Nothing assumes a particular library: no hardcoded playlist ids, paths, scale or components.
+- **A LAN is assumed**, since `foo_jean` admits only a private source address behind a `Host` it recognises. Bytes are cheap, though a phone at the edge of the wifi is the case to design for. Requests are the budget: `foo_jean` meters each route with a token bucket (`kArtworkBurst` and its kin in `http_server.cpp`), deep enough for a screenful and too shallow for a client in a loop.
+- **UX is the primary axis of quality, and performance is part of it.** A feature that slows the interface has to justify itself.
+- **Fully responsive**. Desktop is keyboard-first; mobile is optimised for touch targets, safe-area insets and payload.
+- **Light and dark themes, both designed.** Neither is `#000` or `#fff`.
+- **Everything a person reads is a phrase in the catalogue.** A string literal in JSX is the rule broken first.
+- **`foo_jean` is the only component an install needs.** Everything else is optional, auto-detected and toggleable in Settings, and a bare install gets a complete app with no dead panel or empty shelf. Keep the component table in `README.md` current.
+- **`pnpm lint`, `pnpm typecheck` and `pnpm test` pass before a change is called working.**
+- **A comment is only for a fact from outside this repository**, and names the system: foobar2000, `foo_jean`, a browser, a library.
 
 ## Look it up before you draw it
 
-**Every piece of UI gets a reference pass before it is written.** Search how good products solve the same problem, then decide. Mobbin, Refero, Screenlane, UI Sources, Godly, Awwwards, Land-book, Dribbble, Behance, Pinterest. Naming the component and the platform is usually query enough: "action sheet mobile", "context menu desktop dark", "sidebar drag reorder".
-
-The point is not to copy. The shape a component takes when written from memory is the median of everything you have seen, and the median is what makes an interface look templated. Look at several and take the one good decision from each.
-
-- **Never look like Spotify.** It is the obvious reference for a music player and therefore the one place Jean has nothing to gain by resembling. If a screen could be mistaken for it, redraw it.
-- **Vocabulary is a design decision.** An action sheet and a bottom sheet are different components. Say which one a thing is.
+Every piece of UI gets a reference pass first (Mobbin, Refero, Screenlane, UI Sources, Godly, Awwwards, Land-book, Dribbble, Behance, Pinterest), taking the one good decision from each rather than the median from memory. **Never look like Spotify.** **Vocabulary is a design decision**: an action sheet and a bottom sheet are different components, so say which one a thing is.
 
 ## foobar is the source of truth
 
-Prefer the player's own metadata over anything Jean invents, in this order:
+Prefer the player's metadata over anything Jean invents, in this order:
 
-1. **Read it from foobar** via title-formatting columns. Check this first: the player computes, so the reachable surface is far wider than any fixed schema.
-2. **Get it to live in foobar**, if a component or tag can supply it. Requiring an optional component for an optional feature is expected.
-3. **Store it locally in Jean**, only when foobar genuinely cannot hold it. A legitimate fallback, reached for third.
+1. **Read it from foobar2000** through title-formatting columns.
+2. **Get it to live in foobar2000**, where a component or a tag can supply it. An optional component for an optional feature is expected.
+3. **Store it locally in Jean**, only where foobar2000 cannot hold it.
 
-Writing a custom foobar component to feed Jean is a last resort. Do not design toward it.
-
-**Jean's own settings live in `localStorage`, and there is no server-side settings store.**
+A custom component written to feed Jean is a last resort.
 
 ## Capability detection
 
-`ui/src/shared/api/README.md` has what the player answers: the `?` sentinel and what `$meta()` cannot do. `ui/ARCHITECTURE.md` has where Jean puts the answer. Three rules on top of both:
+- **Detection is a guess, so a feature a probe enables has a switch in Settings.**
+- **foobar2000 is the only player.** A second, with its own title-format dialect, is the owner's decision.
 
-- **Detection is a guess and Settings overrides it.** A feature enabled by a probe MUST have a switch.
-- **Detect per track wherever a field is sparse.** What one install resolves is not a rule.
-- **foobar2000 is the only player.** `player.info.name` is what a client reads to know which one answered, and a second player is designed for rather than inherited: its own measurement, its own title-format dialect, and a decision to take it on.
-
-## `foo_jean`
-
-Required, and the only thing an install needs: it serves Jean's own page as well as the media library, tag writing and listening. Jean is served by the same origin it calls, so no request it makes is cross-origin and none is preflighted. Its source is `plugins/fb2k/`, and `plugins/fb2k/CLAUDE.md` is the way into it: the rules for writing that component are its own, and this file governs only what Jean does about it. The two seams and the security model that decides whether a request is even admitted are in `ui/ARCHITECTURE.md`; the endpoints and their failure modes are in `ui/src/shared/api/README.md`. What must not be undone:
-
-- **Nothing outside `domain/track/tagWriter.ts` and `domain/player/listener.ts` may ask which implementation it holds.** If something has to branch on `kind`, the seam is in the wrong place.
-- **Every connection state gets a message and a remedy. None of them is silence.** "foo_jean is not answering right now. Check that foobar2000 is still running, then try again." is actionable; silently rendering ratings read-only is not. `ui/src/features/settings/TagWriting.tsx` is where those live.
-- **Jean's per-field switches narrow and never widen.** The component's `config.json` is the player owner's; Jean lists exactly the fields it permits and turns them off, never on.
-
-## Generality constraints
-
-Things that vary between installs and MUST never be assumed:
+## Never assume
 
 | | |
 |---|---|
-| Which playlist is which | The library is not one of them: `foo_jean` answers it. Never read a role out of a title somebody chose, and never assume `p1`, which is scratch space |
-| `permissions` | `canControlPlayback`, `canWritePlaylists`, `canChangeOutput` and `canStream` each come from the player and can go false independently. Gate the UI on each: a read-only instance gets a read-only Jean, not buttons that 403 |
-| Library size | Anywhere from empty to very large. Nothing may be linear in it on the main thread |
-| Components | Detect, never require |
-| Keyboard layout | A binding written as an unshifted key is not unshifted everywhere. See `ui/src/shared/keyboard/CLAUDE.md` |
+| Which playlist is which | `foo_jean` answers the library, and no playlist is it. Never read a role out of a title somebody chose |
+| `permissions` | `canControlPlayback`, `canWritePlaylists`, `canChangeOutput` and `canStream` each go false independently. A read-only instance gets a read-only Jean, not buttons that 403 |
+| Library size | anywhere from empty to very large. Nothing linear in it on the main thread |
+| Components | detect, never require |
+| Keyboard layout | a binding written as an unshifted key is not unshifted everywhere |
 
-Jean MUST be served same-origin with the API it calls: by `foo_jean` itself, or through the dev proxy in development.
+## Invariants
 
-## Invariants that hold everywhere
-
-`ui/ARCHITECTURE.md` covers where state lives, the one listener set, the sequencing rule and its `void` trap, and why a positional column set is declared once as pairs. These are the rest:
-
-**An exhaustive dependency array can be exhaustive and useless, and the linter only checks the first half.** A hook returning an object literal has a new identity every render, so a `useMemo` keyed on it never hits. Depend on the store's own object instead. Read a green dependency array as saying nothing about whether the memo works.
-
-The corollary is a signature rule: **a caller's dependency array can only be as narrow as the function it calls.** Handed a whole object it must depend on the whole object, so the narrowing has to happen at the parameter.
-
-**The `useExhaustiveDependencies` suppressions are deliberate and all one shape**: a dependency that exists to *fire* the effect rather than to be read inside it. The rule cannot model that, so `lint:fix` would remove every one and break the feature silently.
-
-**Never gate behaviour on a `mounted` ref set only in an effect cleanup.** StrictMode mounts, unmounts and remounts in development, so the cleanup sets the flag false and nothing sets it back: the guard is permanently on, in dev only. If a guard is genuinely needed, set it true in the effect body as well. Usually it is not: work touching only refs and network calls is safe to finish after unmount.
-
-**Anything the user types at a list is matched through `fold()` in `ui/src/shared/lib/text.ts`.** Fold when the haystack is built, never per keystroke, and fold the query too, or an accented query stops matching a folded index.
-
-**A stale `itemCount` is nobody's to fix but the caller's.** Any arithmetic on it that cannot survive being wrong MUST re-read the count from the player first, for the reason `ui/src/shared/api/README.md` gives.
+- **A green dependency array says nothing about whether a memo works.** A hook returning an object literal has a new identity every render, so a `useMemo` keyed on it never hits; depend on the store's own object. A caller's dependency array can only be as narrow as the function it calls: narrow at the parameter.
+- **The `useExhaustiveDependencies` suppressions are all one shape**: a dependency that fires an effect rather than being read inside it. `lint:fix` removes every one and breaks the feature silently.
+- **React StrictMode mounts, unmounts and remounts in development**, so a `mounted` ref set false only in a cleanup stays false. Set it true in the effect body too; work touching only refs and the network is safe after unmount anyway.
+- **Anything typed at a list is matched through `fold()` in `ui/src/shared/lib/text.ts`**, folded when the haystack is built and for the query, never per keystroke.

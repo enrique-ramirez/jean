@@ -15,15 +15,25 @@ What `foo_jean` answers, as Jean uses it, and the foobar2000 behaviour behind it
 
 **Every `POST` needs `Content-Type: application/json`, matched as a case-insensitive prefix**, so a charset parameter riding along still counts. `foo_jean` checks this ahead of the body, so a body-less command such as a transport call still needs the header, and a request sending anything else is refused `415`.
 
+**A request a browser marks `Sec-Fetch-Site: cross-site` or `same-site` is refused `403` under `/api/`** unless its `Origin` is in `allowedOrigins`. Jean's own requests are `same-origin`; a page on another port of the same host is `same-site`.
+
+**`POST /api/tags` and `POST /api/autoplaylists/preview` each have a rate limit of their own, and a request past it is refused `429` with `Retry-After`**, having written or run nothing. `contract/openapi.yaml` has both budgets.
+
 ## Discovery
 
 `discoverFooJean()` in `fooJean.ts` takes the origin straight off `window.location.origin` and asks `GET /api/capabilities`, with no credential to attach. `ui/ARCHITECTURE.md`, *The `foo_jean` security model*, has the states that call resolves to.
+
+A failure that might clear is marked `retryable`, and `shared/hooks/useFooJean.ts` widens the interval between attempts while it stays that way, so a player started after the page still turns up without a reload. The widening happens inside the query function, since react-query may consult `refetchInterval` more than once per cycle.
+
+## Types
+
+`fooJeanSchema.d.ts` is generated from `contract/openapi.yaml` by `pnpm types:api` and committed; `contract/README.md` is how it is kept current. `types.ts` is hand-written: the shapes the rest of the app reads the player through once an answer has been mapped. The fake player is checked against both.
 
 ## Columns and title formatting
 
 Every `columns` parameter takes **foobar2000 title-formatting expressions**, evaluated by the player and answered as a positional array in the order requested. The player computes, so the reachable surface is far wider than any fixed schema: any component publishing fields or functions to the title-formatting engine becomes readable this way, and installing a playback-statistics component makes its fields start answering values instead of `?`.
 
-> **Answers come back positionally, so the expression list and the name-to-index map must come off one declaration.** `fieldTable()` in `src/shared/api/fieldTable.ts` derives both. Written out separately, the day somebody inserts an expression in the middle is the day a row reports its genre as its artist.
+`ui/ARCHITECTURE.md`, *Capability detection*, is how Jean declares a column set so the positions cannot drift.
 
 ### Capability detection
 
@@ -44,7 +54,7 @@ Every `columns` parameter takes **foobar2000 title-formatting expressions**, eva
 | `%genre%` `%publisher%` `%composer%` | tags | |
 | `%length_seconds%` `%codec%` `%codec_profile%` `%bitrate%` `%samplerate%` `%channels%` | core | |
 | `%filesize_natural%` `%filename_ext%` `%path%` `%subsong%` | core | `%path%` is absolute and platform-separated |
-| `%rating%` | core, from the file tag | |
+| `%rating%` | core, from the file tag | `foo_playcount` takes it over and answers from its own database, so a rating set in foobar2000's own UI shows here and not through `$meta(rating)` |
 | `%replaygain_track_gain%` `%replaygain_album_gain%` `%bpm%` | tags | |
 | `%lastfm_play_count%` `%lastfm_last_played%` `%lastfm_first_played%` | `foo_enhanced_playcount` | counts scrobbles across every device. `0` and `N/A` when unplayed, not `?` |
 | `%play_count%` `%last_played%` `%first_played%` | `foo_playcount` | counts plays on this machine. A different number from the last.fm pair, so preferring one is a choice |
@@ -68,7 +78,7 @@ Which of these resolve varies by install, by component and by how the library wa
 
 - **The route answers `Cache-Control: private, no-cache`, and its `ETag` does not cover every field that moves tick to tick.** Left alone, a browser revalidates an untagged read on its own and hands back the last cached `200` body on a `304`, however stale. `fetchState()` in `fooJean.ts` sends every read with `cache: "no-store"` so nothing but Jean's own `If-None-Match` ever decides whether a read is fresh.
 - **`player.position` is a mark, not a moving number.** It carries `seconds`, the position at the moment the component last looked, and `ageSeconds`, how long ago that was. A client adds the two to place the mark and then keeps counting on its own while `player.playback` is `playing`, which `src/domain/player/position.ts` does.
-- **`player` carries no `info` block.** The player's name and version do not change while it runs, so the poll does not repeat them; they come off a startup read of `GET /api/capabilities` instead, alongside the volume range (`volumeMin`, `volumeMax`, `volumeUnit`), the permissions (`canWritePlaylists`, `canChangeOutput`) and the list of playback modes this install can be put into.
+- **`player` carries no `info` block.** The player's name and version do not change while it runs, so the poll does not repeat them; they come off a startup read of `GET /api/capabilities` instead, alongside the volume range (`volumeMin`, `volumeMax`, `volumeUnit`), the four permissions (`canControlPlayback`, `canWritePlaylists`, `canChangeOutput`, `canStream`) and the list of playback modes this install can be put into.
 - **`player.playbackMode` crosses the wire as Jean's own name**, one of `inOrder`, `repeatAll`, `repeatOne`, `random`, `shuffleTracks`, `shuffleAlbums` or `shuffleFolders`, mapped from whatever the player calls its own orders. `null` means the player is in an order this component has no name for, never a wrong one.
 - **A manual skip leaves no empty track between two.** foobar2000 stops the outgoing track before it opens the next one, and reports that stop as one that is starting another. `foo_jean` ignores a stop of that kind, so `player` goes on naming the outgoing track, title, path and artwork, until the next one replaces it. A client that saw nothing playing across a skip would flash an empty cover and `0:00` on every manual change, and only on manual ones.
 
@@ -126,9 +136,9 @@ Queueing, moving, removing and clearing each send exactly one request: `POST /qu
 
 ## What Jean does about the stream
 
-The component's stream clock is what a listener hears, and the player's reported position runs ahead of it; the spec carries the arithmetic that turns one into the other, and `src/domain/player/CLAUDE.md` is what Jean builds on it.
+The component's stream clock is what a listener hears, and the player's reported position runs ahead of it; the spec carries the arithmetic that turns one into the other, and `ui/ARCHITECTURE.md`, *Listening on this device*, is what Jean builds on it.
 
-`foo_jean` lays a mark on the timeline tens of milliseconds after the change it marks, and the low-latency stream itself runs under half a second behind foobar2000, so a client reading `GET /stream/timeline` that long after a track change or a seek is already caught up on both.
+`foo_jean` lays a timeline mark shortly after the change it marks, so a client reads `GET /stream/timeline` again a moment after a track change or a seek rather than at once.
 
 > **The ticket is the one credential `foo_jean` asks for, because an `<audio>` element sends no header at all.** Every other route needs none, but `GET /stream?ticket=…&format=…` would otherwise be a plain address any page could open. Minting one is a `POST` with a JSON body, refused cross-origin by the same CORS rule as every other route, so only a page the component served can ever get one. A ticket is a capability URL bounded by a short lifetime and grants nothing but the audio already playing. Clients MUST NOT store, log, or otherwise place a ticket where a credential would not go.
 
@@ -138,4 +148,4 @@ The component's stream clock is what a listener hears, and the player's reported
 
 `libraryArtworkUrl()`, `playingArtworkUrl()` and `playlistRowArtworkUrl()` in `fooJean.ts` build the three client-side addresses; `GET /artwork`, `GET /artwork/playing` and the positional route in the contract are what they name, and the contract's *Artwork* section is the reference for what each one answers. Every in-library cover is addressed by its album's canonical track rather than by the row's own path: `canonicalTrackRefs` and `albumCanonicalIndex` in `domain/track/grouping.ts` pick that track once from the library index, and `canonicalArtworkUrl()` / `canonicalPlayingArtworkUrl()` in `domain/track/librarySource.ts` turn a raw path, or the playing track's album and album artist, into the shared address.
 
-The status bar, the now-playing screen and the cover wheel resolve the playing track's album this way, off `PlayerState.activeItem` on the same poll title and artist already ride, and fall back to `playingArtworkUrl()` for a track the library holds no album for. A playlist row, a queue entry or a wheel neighbour with a library path reads the same canonical address; one with no library path but a known playlist position reads `playlistRowArtworkUrl()` instead, and one with neither draws no cover. The media session takes neither address directly: the OS fetches whatever it is given itself, out of process from the page, so it is handed a `data:` URL built from the cover Jean already fetched. `src/app/CLAUDE.md`'s *The media session* has that half.
+The status bar, the now-playing screen and the cover wheel resolve the playing track's album this way, off `PlayerState.activeItem` on the same poll title and artist already ride, and fall back to `playingArtworkUrl()` for a track the library holds no album for. A playlist row, a queue entry or a wheel neighbour with a library path reads the same canonical address; one with no library path but a known playlist position reads `playlistRowArtworkUrl()` instead, and one with neither draws no cover. The media session takes neither address directly: the OS fetches whatever it is given itself, out of process from the page, so it is handed a `data:` URL that `shrinkForLockScreen()` builds from the cover Jean already fetched.

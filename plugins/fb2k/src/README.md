@@ -18,7 +18,7 @@ The rest of `core/` is the machinery those decisions run on: `json` reads anythi
 | `version.h` | Name, version, API version. Three consumers, two of them contracts with things outside this repository |
 | `settings.{h,cpp}` | The `Settings` struct and a pure parser and serialiser for `config.json`. No file IO |
 | `reload.{h,cpp}` | Compares a freshly parsed `config.json` against what is running, and decides which keys move and which wait for a restart |
-| `admission.{h,cpp}` | `isPrivateAddress` and the `Host` allowlist: who may reach the component at all |
+| `admission.{h,cpp}` | `isPrivateAddress`, the `Host` allowlist and the `Sec-Fetch-Site` check: who may reach the component at all |
 | `http_server.{h,cpp}` | The listener, the routes, CORS, admission, the body cap |
 | `stream.h` | The stream seam: what a session is, and who may open one |
 | `device.{h,cpp}` | How a device names itself, and the bound on what it may call itself |

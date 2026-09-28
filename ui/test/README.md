@@ -69,7 +69,7 @@ Tracks are stored as objects keyed by title-formatting expression, not as the po
 
 The cover art is real and downscaled by `capture.ts`, which shells out to macOS `sips` and says so when it cannot. Nothing but the fake reads `artwork/`.
 
-**The same tool captures the demo's library, and the two must not be confused.** `capture.ts --albums demo/albums.ts --out demo` writes into `demo/`; see `demo/CLAUDE.md`. Nothing in `demo/` is read by a test and nothing here is read by the demo. A demo capture leaves `player.json` alone; a named album the tool cannot find is skipped and logged either way. `--url` falls back to `CAPTURE_URL` and then to `http://localhost:8881`.
+**The same tool captures the demo's library, and the two must not be confused.** `capture.ts --albums demo/albums.ts --out demo` writes into `demo/`. Nothing in `demo/` is read by a test and nothing here is read by the demo. A demo capture leaves `player.json` alone; a named album the tool cannot find is skipped and logged either way. `--url` falls back to `CAPTURE_URL` and then to `http://localhost:8881`.
 
 ### The media library
 
@@ -145,7 +145,7 @@ The routes model the declaration the contract describes rather than answering fr
 A fake kinder than the player it stands in for makes the suite agree with itself and disagree with reality.
 
 - **A request body over 256 KiB is answered `413` in the demo and nowhere else.** `demo/sw.ts` refuses it before any route runs, as `foo_jean` does; `agentServer.ts` has no cap, so no spec sees one.
-- **`POST /api/library/refresh` has no route.** A rate limiter is one of the things a kinder fake would get wrong, and nothing in Jean asks for a refresh yet.
+- **`POST /api/library/refresh` has no route.** A rate limiter is one of the things a kinder fake would get wrong, and nothing in Jean asks for a refresh.
 - **A queue entry with no position is skipped rather than played.** A real player plays one. The fake's own playback is addressed by a playlist and a row and has nowhere to play a bare handle from, so nothing asserting what reaches the head may lean on it.
 - **The unreachable state destroys the connection rather than answering 500.** A refused socket and an error response are different events in the browser.
 - **A queue body carrying a field no schema declares is refused, as in the component.** `POST /queue` and `POST /queue/move` all answer `400` with an empty `detail`, matching `declaresOnly` in `core/api.cpp`; a fake that stayed permissive here would pass a request built from a stale type and fail against a real install.
@@ -157,12 +157,6 @@ A fake kinder than the player it stands in for makes the suite agree with itself
 **One place the fake is deliberately kinder.** The stream serves WAV rather than Ogg Opus, since there is no encoder in a Node fake, and in Chromium a non-seekable WAV does not fire `loadedmetadata` until a substantial amount of *content* has arrived. Not bytes: the same byte rate with a longer primed burst starts playing far sooner. That is a property of PCM in a container never meant to be streamed. So the healthy stream hands over a burst up front and then feeds at 1x, which starts sooner than a real one would; what that could hide, a long gap between asking and hearing, is covered by `quiet` instead.
 
 **Two places it is poorer than the component, and both are about the playing cover.** The fake resolves a sleeve by matching the playing path against the captured albums, so a track it has never seen answers `404`; the component reads the file through foobar2000's own now-playing loader, and an off-library track with embedded art does get a cover. And the fake has no loader, so it resolves a new cover in the same tick: the component clears the held picture on a track change and answers `404` until the core pushes the next one, which is a gap no spec here can see. Modelling that second one would put a timing race into the assertion that a track change within an album costs no request at all, since every row of it addresses the same cover and the browser already holds it.
-
-### Three gaps against the contract
-
-These are not on purpose and are not fixed. `contract/` found them. `POST` and `DELETE /api/autoplaylists/{id}` have no route here at all, so they fall to the catch-all and answer `error` where the contract publishes a `detail` beside it; the `503` from `POST /api/autoplaylists` has the same gap; and `GET /api/capabilities` omits `streamFormats` when `canStream` is false, which the contract requires either way.
-
-Reproducing them takes more than pointing `CONTRACT_URL` at `pnpm fake`, since the defaults still hide two of the three: `maxAutoPlaylists` is `0`, so the create refuses and the update and the delete are skipped rather than driven, and `canStream` is `true`.
 
 ## Against a real player
 
@@ -283,7 +277,7 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 
    Where the end state is what matters, prefer a retrying assertion over settle-then-assert. `expectCentredOrClamped` polls a sentence describing what it saw, so a failure reports the offset rather than a boolean.
 6. **A case that means to watch which address a cover is asked for has to own the page.** A cover is held for 180 days, and `artworkHandles` holds a blob per identity for the tab's life, so any view that draws tracks pre-warms both, and a later ask at the same identity is answered inside the browser rather than reaching the player. `withNoListOnScreen` in `fixtures.ts` is the page that draws none: the search route before anything has been searched for. It waits on the status bar rather than on the empty list, since no rows is true of a page that has not rendered yet.
-7. **Touch is a gesture, not a narrow mouse.** Touch tests go through CDP `Input.dispatchTouchEvent` rather than dispatching DOM events, since what is under test is the browser's own decision about who the gesture belongs to: without `touch-action: none` it decides the finger is panning and stops delivering moves, and a swipe aimed at one place lands at another. A dispatched `pointermove` sails past that and passes either way.
+7. **Touch is a gesture, not a narrow mouse.** Drive it through `touchDrag`, for the reason *Touch gestures* gives. A dispatched `pointermove` passes whether the gesture works or not.
 8. **Check an injection more than once.** A guard that fails on one run and passes on the next is flaky, not covered.
 9. **A test that cannot fail is worse than no test.** When one covers a guard rather than a feature, such as "a long press plays nothing" or "a desktop click does not play", delete the guard, watch it go red, and put the guard back.
 10. **A source file with a NUL byte in it is binary to `grep`, which matches nothing in it and exits non-zero.** A check built on `grep` reports success on a file it never read, so `.claude/hooks/check-style.sh` passes every line of one. `file` naming a `.ts` as `data` is the tell, and a separator written as the byte rather than as `\u0000` is how it gets in.

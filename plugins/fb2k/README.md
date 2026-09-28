@@ -14,7 +14,7 @@ A foobar2000 component that serves [Jean](https://github.com/enrique-ramirez/jea
 
 ## Building
 
-The component is Windows-only. Editing on one machine and building over SSH on a Windows one works well. On the build machine you need:
+The component is Windows-only. On the build machine you need:
 
 - **Visual Studio 2022 Build Tools** with the C++ workload **and the ATL component** (`Microsoft.VisualStudio.Component.VC.ATL`). `--includeRecommended` does not bring ATL, and the SDK's helpers include `atlbase.h`. The SDK ships MSBuild project files, so there is no CMake to write.
 - **The foobar2000 SDK**, fetched by `scripts/fetch-sdk.ps1` into `sdk/`. It is not vendored: its licence does not permit redistribution.
@@ -32,7 +32,7 @@ scripts\package.ps1                                # -> dist\foo_jean.fb2k-compo
 
 ### Build traps
 
-This build has several traps, each of which fails in a way that does not name its cause, and each is written down where it is enforced rather than listed here. `src/foo_jean.vcxproj`'s own header covers what the project file settles, `Directory.Build.targets` WTL's include path and the static C++ runtime, `scripts/build.ps1` the toolset, the compiler flags and its refusal of a DLL that imports the C++ runtime, `scripts/package.ps1` where an x64 payload goes in the archive, and `scripts/generate-sln.ps1` the per-project configuration. Read all five before debugging a link, a packaging or a resource-compiler error.
+This build has several traps, each of which fails in a way that does not name its cause, and each is written down where it is enforced rather than listed here. `src/foo_jean.vcxproj`'s own header covers what the project file settles, `Directory.Build.targets` WTL's include path, the static C++ runtime and a Release build's Control Flow Guard and CET compatibility, `scripts/build.ps1` the toolset, the compiler flags and its refusal of a DLL that imports the C++ runtime or lacks either hardening flag, `scripts/package.ps1` where an x64 payload goes in the archive, and `scripts/generate-sln.ps1` the per-project configuration. Read all five before debugging a link, a packaging or a resource-compiler error.
 
 Two things about the solutions, which no script says. **`scripts\generate-sln.ps1` exists to build the SDK's own `foo_sample`**, which is how you prove a new machine's toolchain before there is any of this code to blame. **`foo_jean.sln` in this directory is for opening the tree in Visual Studio** and is not used by the build.
 
@@ -46,7 +46,7 @@ foobar2000 must not be running, and `-StopPlayer` has the script ask it to exit 
 
 A hand installation has to reproduce what the script does, and `scripts/install.ps1`'s own header says what that is. One thing it does not: the profile is not always in `%APPDATA%`. A portable install keeps it beside the executable and announces itself with a `portable_mode_enabled` file, which the script tests for rather than assuming.
 
-The script never runs `foobar2000.exe` directly, and neither should anything else over SSH. See `plugins/fb2k/CLAUDE.md`, *Driving the player*.
+The script never runs `foobar2000.exe` directly: over SSH that starts a second instance in session 0, which then holds the single-instance IPC.
 
 `scripts/deploy.local.sh` does the whole round trip from an editing machine: run the tests, sync, build, package, install. It is gitignored, because the route to a player is personal to whoever has one. It reads `FOO_JEAN_SSH`, `FOO_JEAN_REMOTE` and `FOOBAR2000_DIR`.
 
@@ -64,6 +64,7 @@ Everything is a file. `<profile>/foo_jean/config.json` is written on first start
   "maxAutoPlaylists": 100,
   "writePlaylists": true,
   "controlPlayback": true,
+  "changeOutput": true,
   "streamingEnabled": true,
   "opusBitrate": 256000,
   "aacBitrate": 192000,
@@ -87,6 +88,7 @@ Every key is optional. An absent key keeps its default; a present but malformed 
 | `maxAutoPlaylists` | How many autoplaylists this component will keep at once, counting only the ones it created. `0` switches creation off. |
 | `writePlaylists` | `true` by default, so leaving it alone permits every playlist write this component can make: create, add, edit, delete, reorder, rename. Set it to `false` to make every playlist and autoplaylist read-only except the component's own scratch playlist, which stays writable because it is how Jean works rather than the user's music. |
 | `controlPlayback` | `true` by default. Set it to `false` and every playback command, seek, playback mode, volume, playing a row, and every queue and scratch write answers `403 playbackDisabled`; reading the queue and the state still answers. |
+| `changeOutput` | `true` by default. Set it to `false` and `POST /api/outputs/active` answers `403`, so no client can switch the player's output device; `GET /api/outputs` still lists them. |
 | `streamingEnabled` | `false`, or a `maxConcurrentStreams` of `0`, and the capture callback is never registered at all. `/api/capabilities` then reports `canStream: false`. |
 | `opusBitrate` | Bits per second for the Opus stream, between 32000 and 510000. One bitrate rather than a per-request choice: each distinct value would need its own encoder and buffer for as long as anybody listened to it. Opus is hard to tell from the source above 192000, and libopus can barely spend more than 256000. |
 | `aacBitrate` | Bits per second for the AAC stream, and **only one of four values**, which `src/core/settings.h` names beside the reason. A refusal would cost the ADTS format altogether, which is the only one older Safari can play, so a value off the list is reported and replaced rather than passed on. |
@@ -132,11 +134,11 @@ scripts/compile-commands.sh               # what an editor's clangd reads
 
 On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\test.ps1`. The `.ps1` and `.sh` fetchers are the same fetch for different shells; run whichever belongs to the machine the tests will run on.
 
-`plugins/fb2k/CONTRIBUTING.md` rule 11 is what a machine that runs the suite needs beyond this directory.
+`plugins/fb2k/CONTRIBUTING.md`, *Tests*, rule 11, is what a machine that runs the suite needs beyond this directory.
 
 `scripts/test.sh`'s own header has the rest of its arguments and what each one costs.
 
-The tests need **neither Windows nor the foobar2000 SDK nor a running player**: everything they cover lives in `src/core/`, which compiles standalone. They are feature tests rather than unit tests: `tests/` starts a real `HttpServer` on a real port and drives it with a real HTTP client, so an assertion about admission or a CORS header is about the bytes a browser would see. Run the suite more than once before believing it; `tests/support/test_server.cpp` retries a port race.
+The tests need **neither Windows nor the foobar2000 SDK nor a running player**: everything they cover lives in `src/core/`, which compiles standalone. They are feature tests rather than unit tests: `tests/` starts a real `HttpServer` on a real port and drives it with a real HTTP client, so an assertion about admission or a CORS header is about the bytes a browser would see.
 
 Covered: admission, CORS and preflight, every way a hand-edited `config.json` can be wrong including a reload while the listener runs, the listener and its port collision, the preferences page's decisions, tag-write permission and the tag route, autoplaylist requests and their routes, the rate limiter with time passed in, stream tickets, the stream route, the audience and the listener roster, the output hold, the PCM and broadcast rings, the Ogg Opus encoder (whose tests decode their own output), the timeline and its route, the artwork route and what it will and will not send, and every key set and status `contract/openapi.yaml` publishes.
 
@@ -151,6 +153,13 @@ The tree is two media library roots and a folder outside both, so one run reache
 ## Releasing
 
 `.github/workflows/release.yml` builds `ui/`, compiles it into `foo_jean.dll` and packages `foo_jean.fb2k-component` on `windows-2022`. Every push to `main` uploads that file as a workflow artifact. Pushing a tag matching `v*` also publishes it to a GitHub Release of that tag, once `scripts/release-tag.sh` has confirmed the tag is `v` followed by `kVersion` in `src/core/version.h`; a tag that does not match fails the workflow before anything is built.
+
+A release carries `SHA256SUMS` and a build provenance attestation. To check a downloaded component, in the folder holding both files:
+
+```bash
+sha256sum -c SHA256SUMS
+gh attestation verify foo_jean.fb2k-component --repo enrique-ramirez/jean
+```
 
 ## Layout
 
@@ -172,4 +181,4 @@ The HTTP contract is not in this tree. `contract/openapi.yaml` sits at the repos
 
 ## Licence
 
-TBD. The foobar2000 SDK has its own terms and is not redistributed here.
+The foobar2000 SDK has its own terms and is not redistributed here.

@@ -1,6 +1,6 @@
 # Architecture
 
-For someone about to build on Jean. Structure, boundaries and contracts: the things a file listing does not tell you. [CONTRIBUTING.md](./CONTRIBUTING.md) is how to write the code; [src/shared/api/README.md](src/shared/api/README.md) is what the player answers.
+For someone about to build on Jean. Structure, boundaries and contracts: the things a file listing does not tell you. [CONTRIBUTING.md](./CONTRIBUTING.md) is how to write the code, [src/shared/api/README.md](src/shared/api/README.md) is what the player answers, and [test/README.md](./test/README.md) is the suite and the fake player.
 
 Jean is a Vite single-page app with no backend of its own; [CONTRIBUTING.md](./CONTRIBUTING.md), *Stack*, is what it is built out of. **`foo_jean` serves Jean from its own origin**: the built page, its assets and every route Jean calls share one host and one port, so nothing Jean sends ever crosses an origin.
 
@@ -18,7 +18,7 @@ flowchart TB
 
   subgraph browser["The browser"]
     app["app/<br/>shell, hash routing, theme, media session"]
-    features["features/<br/>home · search · genres · library · playlist · now-playing · queue · settings"]
+    features["features/<br/>artist · home · search · genres · library · playlist · now-playing · queue · settings"]
     domain["domain/<br/>track · library · player"]
     shared["shared/<br/>api · ui · lib · hooks · keyboard · styles"]
     app --> features
@@ -50,8 +50,6 @@ A file whose home is unclear is usually in the wrong tier. Shared infrastructure
 
 ## Where state lives
 
-Two mechanisms, and the split is not arbitrary.
-
 **TanStack Query holds state whose authority lives outside Jean.** `useQuery` is a pure cache reader everywhere; what writes into a key is named per row below, through `setQueryData`.
 
 | Key | Holds | Written by |
@@ -70,8 +68,6 @@ Two mechanisms, and the split is not arbitrary.
 `["playlists"]` recovers the same way `["queue"]` and the timeline do, off the poll, not a push channel: a missed tick or a dropped connection leaves it stale until the poll's next successful response moves its revision, and a failed read leaves it stale only until the next tick retries the same one. `["player"]` carries the whole document and replaces what is stale; the other two reread only when their own revision has moved from the one already held, and so does the timeline, except that it also rereads once whenever a listening connection opens, whatever the revision. There is no reconnect protocol behind any of them; the next tick is the whole of the recovery.
 
 **Everything else is a hand-rolled `useSyncExternalStore` store over `src/shared/lib/store.ts`.** That module is the listener half and nothing else: a `Set` of callbacks, `subscribe`, `notify`, `size`. What each store *holds* stays its own business, and there is no shared reducer, no action type and no middleware. `notify()` iterates a copy, since a listener may unsubscribe from inside its own notification and mutating the set mid-iteration would skip its neighbour.
-
-Nine modules build on it: `playlistStore`, `ratingStore`, `listenerStore`, `audience`, `queueClock`, `toastStore`, `dnd`, `keyboardOwner` and `useStoredState`.
 
 **A stored setting is shared by its key, not copied per caller.** `useStoredState` reads through one map and one listener set, so every hook naming a key sees one value and every write. A `useState` per caller makes a live pair out of every key with two readers. Its snapshot returns the same reference until something writes. `useSyncExternalStore` requires that, and a fresh object each call is an infinite render loop rather than a stale value.
 
@@ -97,7 +93,9 @@ A playlist held already gets the same treatment once loaded: a `revision` move a
 
 **A cache across the rows is keyed on the generation, not on the origin.** `generationKey` is that key, and it is separate from the store's own, which stays put so a rebuild replaces one entry's rows rather than making a second entry. Dictionary ids are append-only within a generation and renumbered across one, so a fold cache keyed on the origin alone would answer the new snapshot from the old snapshot's ids.
 
-**Both sources are columnar, and nothing holds a row.** The playlist loader interns the rows `foo_jean` answers into the same dictionaries and id arrays the component's library snapshot arrives as, so the expensive consumers -- grouping, the entity indices, the search haystack, the heat and patina arrays -- are written once and run over integers. `rowAt()` builds a row on the way out for the few dozen a screen draws, and `TrackRows.at()` is the only thing that calls it.
+**Both sources are columnar, and nothing holds a row.** The playlist loader interns the rows `foo_jean` answers into the same dictionaries and id arrays the component's library snapshot arrives as, so the expensive consumers (grouping, the entity indices, the search haystack, the heat and patina arrays) are written once and run over integers. `rowAt()` builds a row on the way out for the few dozen a screen draws, and `TrackRows.at()` is the only thing that calls it.
+
+**`src/domain/track/librarySource.ts` is the one place that knows which source a list reads.** Addressing a row, filling a playlist from it, its artwork and adding rows differ between the media library and a playlist; everything else holds a `LibrarySource` and calls it.
 
 **Anything derived per row is keyed on `columns.load`.** That object lives exactly as long as one load's data and survives both the next chunk arriving and a delta being patched in, so an overlay keyed on it dies with the rows it patches and needs no invalidation.
 
@@ -117,20 +115,20 @@ A fact the player may spell two ways gets an *alternative* rather than a branch,
 
 ## The two seams
 
-`foo_jean` is required, and the library, the tag writes and the stream all come from it. What is still optional is whether an install permits a write or an encode at all: an empty allowlist switches writing off, and `streamingEnabled` switches listening off. Two interfaces absorb that, and **nothing outside them may ask which implementation it is holding.**
+`foo_jean` is required, and the library, the tag writes and the stream all come from it. What is still optional is whether an install permits a write or an encode at all: an empty allowlist switches writing off, and `streamingEnabled` switches listening off. Two interfaces absorb that, and **nothing outside them asks which implementation it is holding.**
 
 | Seam | Interface | Implementations |
 |---|---|---|
-| `src/domain/track/tagWriter.ts` | `{ kind, canWrite, allowedFields, allows, write }` | `NO_WRITER`, `agentWriter` |
+| `src/domain/track/tagWriter.ts` | `{ kind, canWrite, allowedFields, allows, write, read }` | `NO_WRITER`, `agentWriter` |
 | `src/domain/player/listener.ts` | `{ kind, canListen, formats, target }` | `NO_LISTENER`, the agent listener |
 
-Both answer rather than throw. `NO_WRITER.write` resolves to a refusal carrying a message, so a caller renders the same failure path whether writing is switched off at the player, the component is unreachable, or the write was declined. If anything outside these files has to branch on `kind`, the seam is in the wrong place.
+Both answer rather than throw. `NO_WRITER.write` resolves to a refusal carrying a message, so a caller renders the same failure path whether writing is switched off at the player, the component is unreachable, or the write was declined.
 
 **Every switch behind either seam is the player owner's**, held in `config.json` and reloaded live from the Permissions page; Jean neither grants nor stores one. **Playing a set is playback, not a playlist edit.** Filling the scratch playlist to play an arbitrary row follows `controlPlayback`, never `writePlaylists`, however much it looks like a playlist write from here.
 
 **`write` is handed an address, never a filesystem path.** A track is named by one of three forms. Where the media library holds it, by its library-relative path with the subsong inside the file it names, or by its ordinal in the snapshot with the generation that ordinal was read at. Where the library does not hold it, by a playlist GUID, a position and the structure generation those rows were read at. A source answers the forms for its own rows out of tables it already holds, so nothing between a star and the write resolves anything, and the component matches each of them against what the player itself produced. A row the media library holds takes a library form even where it was read from a playlist: a relative path survives a reorder and a rebuild, a position survives neither, and what stops a stale position writing to somebody else's file is the component comparing that generation and answering `409`. No filesystem path crosses the wire at all, which is what makes a library on a UNC share rateable.
 
-**A client refused an ambiguous address retries exactly once with a precise one, and nothing else in the rating path is ever sent twice.** Two media library roots can hold one library-relative path, which puts a track under each at one address, and the component refuses such an address rather than writing to whichever sorts first. So a source answers the relative path first and the address that names exactly one track behind it: the media library its ordinal and the snapshot's structure, a playlist row its GUID, position and generation, the now-playing screen where the player says it is playing from. A surface holding nothing behind the path says the rating did not land rather than failing quietly. The retry is safe where repeating a `504` is not, because an ambiguity refusal is decided before anything is written, and a timeout leaves it open whether the write landed.
+**A client refused an ambiguous address retries exactly once with a precise one, and nothing else in the rating path is ever sent twice.** Two media library roots can hold one library-relative path, which puts a track under each at one address, and the component refuses such an address rather than writing to whichever sorts first. So a source answers the relative path first and the address that names exactly one track behind it: the media library its ordinal and the snapshot's structure, a playlist row its GUID, position and generation, the now-playing screen where the player says it is playing from. A surface holding nothing behind the path says the rating did not land. The retry is safe because an ambiguity refusal is decided before anything is written.
 
 Both are fed by one discovery, in `src/shared/api/fooJean.ts`, deduped through `src/shared/hooks/useFooJean.ts`. Every caller names one query key, so the second component to mount reads the first one's result rather than probing again.
 
@@ -152,25 +150,11 @@ Jean has more sequential work than a player client suggests. Only the first chun
 
 ## The phrase catalogue
 
-Every string a person reads is a key in `src/shared/i18n/en.ts`, resolved by `t()` against whatever language is showing. The catalogue sits in `shared/` for the same reason `tokens.css` does: every tier draws from it, and the import direction only runs one way.
-
-```
-src/shared/i18n/
-  en.ts            every phrase, flat and sorted. Imports nothing
-  message.ts       what a message is, and the types that read its fields off the literal
-  locale.ts        the store: which language, what is loaded, and the module-level translate()
-  format.ts        memoised Intl constructors, keyed by locale
-  useTranslate.ts  the hooks a component uses
-  Trans.tsx        a sentence with elements inside it
-```
-
-Which languages exist, how one reaches the app, how a phrase is written and what `t()` demands of a key chosen at runtime are all in [src/shared/i18n/CLAUDE.md](src/shared/i18n/CLAUDE.md), which is the whole of it.
+Every string a person reads is a key in `src/shared/i18n/en.ts`, resolved by `t()` against whatever language is showing. The catalogue sits in `shared/` for the same reason `tokens.css` does: every tier draws from it, and the import direction only runs one way. [CONTRIBUTING.md](./CONTRIBUTING.md), *Phrases*, is how to write one.
 
 ## The `z-index` scale
 
-How to write a stylesheet at all is [CONTRIBUTING.md](./CONTRIBUTING.md), *Styling*. This is the one part of it that is shared rather than local, and therefore the one part that belongs here.
-
-App-level layers, lowest first. These share the root stacking context, so a new layer has to be placed against this list rather than picked.
+App-level layers, lowest first. These share the root stacking context, so a new layer is placed against this list rather than picked.
 
 | Layer | `z-index` |
 |---|---|
@@ -190,30 +174,34 @@ App-level layers, lowest first. These share the root stacking context, so a new 
 | Action menu and its scrim | 70 |
 | Drag ghost | 80 |
 
-The gaps are deliberate. Lyrics sit above the app chrome, the queue panel and the now-playing screen, and deliberately **under** toasts and menus, because a write that failed still has to be able to say so. The drag ghost is above everything, since a drag can start anywhere. The seek bar reaches above the status bar's top edge, so on desktop the status bar is lifted to the queue panel's layer and wins the tie by coming later in the document; its popovers stack inside it and so still clear the queue panel.
+Lyrics sit above the app chrome, the queue panel and the now-playing screen, and **under** toasts and menus, so a failed write can still say so. The drag ghost is above everything, since a drag can start anywhere. The seek bar reaches above the status bar's top edge, so on desktop the status bar is lifted to the queue panel's layer and wins the tie by coming later in the document; its popovers stack inside it and so still clear the queue panel.
 
-Values of `0`–`5` appear inside `AlbumCard`, `ShelfRow`, `GenreTile`, `TrackPanels`, `QueuePanel` rows, `ActionMenu` pages and the `Sidebar` row being dragged. Those are local to a stacking context their own component establishes and mean nothing outside it. Do not read them against this table.
+Values of `0`–`5` inside `AlbumCard`, `ShelfRow`, `GenreTile`, `TrackPanels`, `QueuePanel` rows, `ActionMenu` pages and the `Sidebar` row being dragged are local to a stacking context their own component establishes, and mean nothing against this table.
 
 ## Layout and viewport
 
 The shell is a fixed-height flex column rather than a scrolling document. That pins the status bar by construction instead of `position: sticky`, gives the virtualiser the explicit scroll element it needs, and leaves somewhere for safe-area insets to live.
 
-Below the compact breakpoint the sidebar becomes a drawer, menus become sheets, and several components are a *different component* rather than a narrower one. That is why the test suite runs every spec on both a desktop and a mobile project.
+Below the compact breakpoint the sidebar becomes a drawer, menus become sheets, and several components are a *different component* rather than a narrower one, which is why every spec runs on both a desktop and a mobile project.
 
-**An absolutely positioned grid item takes its containing block from an explicit `grid-column`, not from the grid as a whole.** That is how the now-playing screen tracks `.body`'s own column transition on a desktop, with no inset computed from `--sidebar-width`.
+## Listening on this device
 
-**A CSS size container query measures the content box, not the border box.** A threshold meant to read as the padded width has to subtract the padding, or it fires one padding-width late.
+The stream runs behind the player, so a listening device draws what it hears, not what the poll says. **`audible.ts` is the one branch**: nothing listening, it returns the live snapshot by identity; listening, only `activeItem` runs late, and every surface that draws time reads the audible position from `position.ts`.
 
-## The fake player
+`listener.ts` turns `foo_jean`'s stream clock into that position, `listenerStore.ts` fixes the anchor once per connection, and the poll corrects it. A track change or a seek lays a mark: `rememberSnapshot` notices either, `pollPlayerNow` follows it `MARK_FOLLOW_UP_MS` later, and `beginSeek` holds the display at the target until the audio arrives.
 
-`test/fake-api/` is an in-memory foobar2000: portable route tables with no host in them, plus the node sockets that serve them. `demo/sw.ts` hands the same tables a service worker `fetch` event, which is how the live demo runs a whole player in the browser. The seam is `Responder` in `test/fake-api/http.ts`.
+## Facts about the browser
 
-Two consequences before adding a route: anything reaching for a socket, a file or a `Buffer` belongs in the host files rather than the route tables, and fixtures are imported rather than read off disk, since one of the two hosts has no filesystem. [test/README.md](./test/README.md) is the rest of it.
+What a browser does that several files here depend on.
+
+- A grid or flex item is never sized below its min-content, and an `<input>` asserts a default width on every ancestor that `min-width: 0` on the input does not withdraw; `width: 0` does. One control that refuses to shrink widens the document, which on a phone scrolls sideways.
+- Pressing a control without `user-select: none` starts a text selection, and dragging a selection is a native drag of a snapshot of the control.
+- A `<button>` centres its text where an `<a>` does not. CSS `width` and `height` on an `svg` beat the attributes lucide writes.
+- Some touch browsers fire `dblclick` for a fast double tap.
+- A programmatic scroll fires the same `scroll` event as a finger, and `scrollend` is not in every browser.
 
 ## Absences that shape the code
 
-The code says what exists. These are load-bearing gaps anything built on Jean has to account for.
-
-- **No Web Worker and no IndexedDB persistence**, so a cold start re-fetches and re-indexes. Both are requirements for a very large library, not things already done.
+- **No Web Worker and no IndexedDB persistence**, so a cold start re-fetches and re-indexes.
 - **No folder tree.** The library browses as one flat list.
-- **Nothing Jean holds survives a reload**, artwork included. Covers persist in the browser's own HTTP cache, which is the component's to control through `Cache-Control` and `ETag`; Jean stores none of it.
+- **Nothing Jean holds survives a reload**, artwork included. Covers persist in the browser's own HTTP cache, which is the component's to control through `Cache-Control` and `ETag`.

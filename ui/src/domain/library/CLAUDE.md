@@ -1,96 +1,25 @@
 # The library
 
-Where "the library" comes from, what plays a set of tracks, and why search results are a view until you play them.
+## The scratch playlist
 
-## Browsing and playing are separate
+- `foo_jean` answers the library, and no playlist stands in for it. Playing a set fills the component's scratch playlist, found by the role `foo_jean` marks (`jeanPlaylists.ts`) and never by its `#Jean` title. A user's playlist titled `#Jean…` is shown like any other.
+- The scratch holds the last set played, not what is on screen. Filling it, asking whether it is a given set and reading the player's index in it share one key, bound once in `useViewPlayback`.
+- `Default Playlist` holds nothing of Jean's: selecting an album in foobar2000's library view replaces its contents.
+- Browsing and playing write nothing to a user's playlist; only an explicit edit does.
+- Row order is the snapshot's own. Re-sorting by a tag splits an album whose artist is spelt two ways.
+- `isAutoPlaylist` from `foo_jean` only ever removes an affordance.
 
-**The scratch playlist holds the last set you chose to play, not the thing you are looking at**, so you can start a shelf and wander elsewhere without touching it. The affordances that account for that, a temporary sidebar row named after the set and a "playing from" line in the status bar, name whatever the scratch is holding, and they ask one reader rather than deciding separately, so they cannot disagree. What that reader trusts is below, under *Search results are a view until you play them*.
+## Search
 
-**The accent on a sidebar icon means "this is playing" and nothing else.** Never tint it by selection.
-
-**A row is marked playing by comparing its id to `activeItem.playlistGuid`**, resolved through `useResolvedPlaylistId`, the same test for the scratch and for a user's own playlist. Nothing in `PlaylistInfo` says whether a playlist is playing.
-
-## Two sources, one seam
-
-`domain/track/librarySource.ts` is the seam and the only place that knows which source is in play. **If something outside that file has to ask which source it is, the seam is in the wrong place.**
-
-**A ref is an integer.** The playlist source's is a playlist index; the library source's is a position in its own paths table. That is what keeps the seam from leaking: selection, the search index and the whole virtualised list stay integer-keyed, and only the things that *act* on a row resolve the ref through the source. `Refs` is a typed array or a number array, so reaching for a playlist id to do anything but identify a playlist is a type error.
-
-### Where the library comes from
-
-`foo_jean` answers the whole library, and there is no second way to get it. **No playlist stands in for the library and none ever will.** A playlist's rows come from the playlist and a library view's from the library, never the other way about: Jean shows a playlist under its real name and reads it as one, and it cannot tell that somebody built one to mirror their collection.
-
-- **Never make `Default Playlist` hold anything of Jean's.** Selecting an album in foobar's library view replaces its entire contents, so a set parked there is gone the next time somebody clicks an album at the player. That is the player's own behaviour rather than a role read off the title: the playlist is shown, read and edited like any other, and Jean's own sets live under `#Jean…`.
-- **The scratch is hidden by its role, and nothing is hidden by title.** `foo_jean` marks the one playlist it keeps for itself; that is what Jean filters out of the sidebar, the command palette, the routing fallback and *Add to playlist*. A user's own playlist titled `#Jean…` carries no role and is shown like any other. `domain/track/jeanPlaylists.ts` owns the check.
-
-The all-music view is a *view over the library array*, projected through the source seam like a shelf or a set of results. It never pretends to be a playlist.
-
-Shapes and costs for every route are in [../../shared/api/README.md](../../shared/api/README.md).
-
-### Rules that are not obvious
-
-- **Search filters client-side, always**, and the set it finds is filled by library ordinal, against the `structure` the snapshot was read at.
-- **Row order is the snapshot's own**, which `contract/openapi.yaml` defines and bounds. A ref is an ordinal in it, and `positionOf` bisects on a set of refs ascending. **Never re-sort by a tag instead:** that is exact-string lexicographic, which splits an album whose artist is spelled two ways, the drift `sameTagValue()` exists to absorb but cannot fix once the order is wrong. A badly-foldered library gets more, smaller album groups; that is a degradation, not a requirement.
-- **`%path%` and `%subsong%` come off the poll's own document, for identity rather than display.** They are matched against a library row by suffix, for the reason `../../shared/api/README.md`, *Paths*, gives.
-
-### Filling a playlist from the library
-
-Playing a set means filling the scratch playlist through `foo_jean` and playing a position in it.
-
-- **The fill lands in library order because `foo_jean` does the filling.** The component resolves the ordinals a view already holds and inserts them itself, in the order the request form promises, so there is no order for Jean to predict or restore afterwards.
-- **Adding to a user's playlist does not sort.** That playlist is theirs and its order is theirs. Undo is unaffected either way: it removes the range that was appended, not particular rows.
-
-## Playing a view, and marking it
-
-Filling the scratch, deciding whether the scratch currently *is* a given set, and reading the player's index straight off it are three questions with one answer, and they are **keyed on the same triple**. A view wiring them up itself can pass three different answers to one question and mark the wrong row, so the triple is bound once in `useViewPlayback` and views take that. Playing a set you are not *showing* is the exception and reaches for the fill directly.
-
-## Never mutate playlists as a side effect
-
-**Browsing and playing MUST never create, clear, reorder or overwrite a user's playlist.**
-
-- **Play a track** in place. Nothing is written.
-- **Play a *set***: a playlist is the only mechanism the API has, since the play queue has no bulk form and the player has no other way to say "these tracks, in this order".
-- **Never sort a playlist to browse.** It mutates. It is for building derived playlists on explicit request only.
-
-This is about side effects, not capability. **Explicit user intent is different**: asked to add an album, reorder a playlist or delete tracks, do exactly that. What Jean legitimately changes on the player is playback state and the play queue. Note that even playing a track has downstream effects on the user's data. It scrobbles, increments play counts, and on some setups rewrites the file's mtime.
-
-## Showing playlists
-
-**Show playlists under their real names. Never relabel or reinterpret them.** The scratch is the one exception, and it is found by its role, never by the `#Jean` title it wears as a courtesy. **Never infer a role from a name the user chose.** `Default Playlist` is a volatile scratch buffer on one install and someone's primary working playlist on the next.
-
-### Playlist kinds: real, but undetectable
-
-A regular playlist is editable and only the user changes it. A smart playlist or autoplaylist accepts edits and does nothing with them, and the library drives its contents. `Default Playlist` is editable and foobar's own UI clobbers it.
-
-**The API cannot express any of that. There is no autoplaylist flag. Do not go looking for one again.** Every detection route is worse than not detecting: probing with a mutation is destructive, `itemCount` drift cannot separate a smart playlist from `Default Playlist` churn, and name heuristics only catch foobar's own `#Quicksearch` prefix. `foo_jean` is the only thing that can answer it, and Jean uses that answer only to *remove* affordances, so on an unpaired device every playlist looks exactly as it did before.
-
-So handle the split by design:
-
-- **Volatility mostly does not matter.** Only the library gets the expensive indexed treatment; every other playlist is small enough to read on demand.
-- **Editability is graceful failure.** A locked playlist and the read-only-playlists setting already have to be caught, so that path exists anyway. Attempt, catch, explain, then record the refusal so the affordance disappears for that playlist.
-- **Hierarchy belongs to the user.** Pinning, grouping and ordering playlists in Jean's sidebar is the third tier of the source-of-truth ladder, and legitimate precisely because foobar exposes no such concept.
-
-## Search results are a view until you play them
-
-Searching is a client-side filter over the in-memory index: **no request, no playlist created, nothing written to the player.** Do not render it as a playlist in the sidebar, because that invites the expectation that it persists.
-
-**Playing is the exception, and it has to be.** foobar2000 plays from playlists and knows nothing else, so playing a result in place leaves the player carrying on from *there*: the next track is the library's next track, and with shuffle on a random one out of everything. So the results materialise into a real playlist at the moment someone asks to hear them, and playback happens inside it.
-
-- **One playlist, reused, not one per search.** Its title carries the kind and the label of whatever it holds, so the thing is self-describing wherever it surfaces, including foobar's own sidebar. Reusing it avoids id churn and means never deleting something currently playing.
-- **Resolved by its role, never by title.** A stored id is tried first and *checked against the role before it is trusted*, falling back to whichever playlist in the list carries it. `foo_jean` marks the scratch itself, so a rename, an adoption or a delete-and-recreate at the player is still found.
-- **Hidden from Jean, visible in foobar.** foobar2000 has no hidden-playlist concept, so it is filtered out of the sidebar, the palette, the library and the routing fallback, the last because playing a set makes it the *current* playlist, and landing there on next open would show those results stripped of the search that made them. **Reordering still has to count the hidden row**: the player orders the real list, so a drop position among visible rows has to be translated through whichever playlist occupies it.
-- **Lazy.** Nothing is written while typing or refining, and a second play of the same set reuses what is there.
-- **The playlist is how a search survives a reload and reaches another device.** The query is in the title and every client can see the player's playlists, so reading it costs nothing and does not touch the library.
-- **Dismissing the search empties it, unless the player is on it.** The guard reads `playbackState` directly rather than trusting the resolved playlist id alone, since a resolved id says nothing about whether the player has actually stopped. **A GUID `useResolvedPlaylistId` has not yet resolved reads as still playing**: the guard cannot yet tell the scratch isn't the one on screen, so it leaves it alone until it can.
-- **Playing a library set asks whether `foo_jean` can be reached and lets Jean control playback, never whether it lets Jean write playlists.** The scratch playlist is the component's own and fills through its own route. A playlist route is unaffected either way: its rows are already in a playlist.
-- **A device trusts the title of its own last fill over the scratch's live title, for as long as the scratch's `structure` is the one that fill left.** The title is the user's to change at the player, and a rename moves no `structure`, so the name Jean gave the set survives it. Every client shares the one scratch, so a fill from any other device moves the `structure` and retires the remembered title, and from then on the live title is the only account there is. `useScratchPlaylist.ts` is where the pair is kept.
-
-Emptying a playing playlist leaves the track playing but detached, which is harmless only because a play always follows immediately.
-
-- **Saving results copies the rows into a new playlist rather than renaming the scratch.** `foo_jean` finds its own playlists by a marker it writes, never by matching a title, so a renamed scratch is still the scratch and the next library view would refill whatever had been saved out of it. The cost is that a saved search is a second copy of its rows on the player, and it is accepted.
+- Search filters client-side and writes nothing. In `useLibrarySearch` the draft reaches only the field and its dropdown, and `query` moves on a commitment; nothing outside the field reads the draft.
+- Playing results materialises them into the scratch, once per set, for the reason `ui/src/shared/api/README.md`, *What Jean does about playback*, gives.
+- The scratch is hidden from the sidebar, the palette, the library and the routing fallback, so a reorder among visible rows is translated through the hidden one.
+- Dismissing a search empties the scratch unless the player is on it, and a GUID `useResolvedPlaylistId` has not resolved yet counts as playing.
+- A device trusts the title of its own last fill over the scratch's live title while the scratch's `structure` is the one that fill left (`useScratchPlaylist.ts`).
+- Escape backs out one rung per press (panel, edit, caret) and never ends the search. The draft reverts on a press outside (`useDismissable`), never on blur. Space is a character.
 
 ## Genres
 
-**A genre view is a filter over rows Jean already holds**: no request, no playlist, nothing the player knows about. Matching is **whole and through `tagKey`**, exactly the way the counts are computed, so a figure and the view it opens are always the same set. **An empty key returns nothing rather than everything**, since an empty tag matches every untagged row, which on an install with no genre tags is the whole library. The route carries a tag somebody typed, so it is percent-encoded and decoded inside a `try`, since a hand-edited hash with a stray `%` throws.
-
-**Jean composes exactly one player query, in `genreQuery.ts`.** `foo_jean` passes queries through untouched and says so, because the player owns that language, so **quoting is Jean's responsibility**, and a tag pasted in unquoted can produce a query that parses and means something else. The component's preview route is the only check.
+- A genre view matches whole through `tagKey`, the matcher its count uses, and an empty key matches nothing. A genre is a route, never a search, which would tokenise the name and match titles.
+- `genreQuery.ts` composes the one player query and owns its quoting; the component's preview, the only check, runs on foobar2000's main thread and goes through react-query, since a bare effect fires twice under StrictMode.
+- A genre autoplaylist carries no `#Jean` prefix and no managed key, since a key makes it the component's to manage and a second one a `409`.

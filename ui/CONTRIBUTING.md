@@ -2,7 +2,7 @@
 
 How to write code in this repo. To *use* Jean, read the [README](../README.md).
 
-Four other documents, and they do not overlap: [ARCHITECTURE.md](./ARCHITECTURE.md) is how the pieces fit and why the boundaries sit where they do; [src/shared/api/README.md](src/shared/api/README.md) is what `foo_jean` returns; [test/README.md](./test/README.md) is the suite and the fake player; [CLAUDE.md](../CLAUDE.md) is what a coding agent cannot infer from the code, with one beside each part of the app for what is local to it.
+[ARCHITECTURE.md](./ARCHITECTURE.md) is how the pieces fit and why the boundaries sit where they do, [src/shared/api/README.md](src/shared/api/README.md) is what `foo_jean` returns, and [test/README.md](./test/README.md) is the suite and the fake player.
 
 ## 1. The development loop
 
@@ -56,29 +56,9 @@ pnpm sync-kit       # refresh .claude/ from the ai-engineering kit
 
 ## 3. Where things live
 
-```
-src/
-  shared/     knows nothing about Jean. api/ (`foo_jean` client + wire types), ui/,
-              lib/, hooks/, keyboard/, styles/
-  domain/     what Jean is about, as data and behaviour with no route of its own
-    track/    rows, refs, the source seam, the virtualised list machinery
-    library/  the library as one array, its search, and what plays a set
-    player/   player state, position interpolation, the volume curve, the listener
-  features/   one folder per thing a user can do: home, search, genres, library,
-              playlist, now-playing, queue, settings
-  app/        the shell: App, Sidebar, CommandPalette, theme, hash routing
-test/
-  unit/       node --test, for logic with no user-visible surface of its own
-  fake-api/   an in-memory foobar2000: portable route tables, plus the node
-              sockets that serve them
-  e2e/        the specs, in a real browser against that fake
-  live/       a small suite against a player that is actually running
-demo/         the live demo -- the same fake, in a service worker
-```
-
 **Imports run one way: `app → features → domain → shared`, and Biome fails the build on a violation.** [ARCHITECTURE.md](./ARCHITECTURE.md), *Tiers*, is what each tier may know about, the rest of the direction rules, and why the boundaries sit where they do; it also has where state lives and what the two optional-component seams are.
 
-That tree is `ui/`, and this file governs it. Three siblings share the repository: `site/` is the landing page, its own package, built by `pnpm site` and published to Pages with the demo underneath it; `contract/` is the API specification every plugin implements and the conformance suite that measures one; `plugins/fb2k/` is the foobar2000 component, which is C++ and has a `plugins/fb2k/CONTRIBUTING.md` of its own. Commands run from the repository root and the root `package.json` delegates them, so nothing here needs running from inside `ui/`.
+This file governs `ui/`. Three siblings share the repository: `site/` is the landing page, its own package, built by `pnpm site` and published to Pages with the demo underneath it; `contract/` is the API specification every plugin implements and the conformance suite that measures one; `plugins/fb2k/` is the foobar2000 component, which is C++ and has a `plugins/fb2k/CONTRIBUTING.md` of its own. Commands run from the repository root and the root `package.json` delegates them, so nothing here needs running from inside `ui/`.
 
 ## 4. Design
 
@@ -91,7 +71,7 @@ The standard is one thing: control complexity so a person can read the result. C
 5. **The second copy is the bug.** Two statements of one fact drift, silently. Name it once and let both callers reach it.
 6. **Do one thing well, and compose.** Prefer a small piece with a plain interface over a subsystem with options. Prefer passing a value in to reaching out for one. It is what makes a thing testable, and it is dependency inversion at the only scale that reliably pays.
 7. **Be pragmatic before dogmatic.** No pattern is owed an appearance. If a rule here would make a file harder to read, the rule is wrong for that file; say so in the change rather than obeying it quietly.
-8. **This app already has its one architectural boundary, and it is enough.** Imports run `app → features → domain → shared` and Biome fails the build on a violation, so the dependencies point inward without anyone policing it. Keep that direction exact; do not introduce a container, a service locator or a mediator to soften it.
+8. **The tier boundary is the one architectural boundary, and it is enough.** Keep its direction exact, with no container, service locator or mediator to soften it.
 
 ## 5. Naming
 
@@ -108,15 +88,23 @@ The standard is one thing: control complexity so a person can read the result. C
 4. Animate compositor properties only: `transform`, `scale`, `rotate`, `opacity`.
 5. **A new stacking layer goes in the table in `ARCHITECTURE.md` before it goes in a stylesheet.** The app-level scale is shared by everything, and picking a number without reading it is how a dialog ends up under a toolbar.
 
-## 7. Comments
+## 7. Phrases
+
+1. **Every phrase a person reads goes through `t()`**, keyed in `src/shared/i18n/en.ts`. Keys are flat, dotted and sorted, and the prefix names the area rather than the file.
+2. **A key chosen at runtime is typed narrower than `Phrase`**, through a template-literal `Extract` beside whatever holds it (`ShortcutName`, `ColumnLabel`, `DetailPhrase`). `t()` derives its arguments from the key, so the whole union demands every phrase's fields. A family that takes fields stays out of such a union.
+3. **A sentence with something drawn inside it is one phrase**, rendered through `<Trans>`, so word order stays the translator's.
+4. **Plurals come from the catalogue.** A value written as an object is selected by `Intl.PluralRules` on `count`, and `other` is the only form required.
+5. **Figures and dates go through `useFormats()`**, never `toLocaleString()` or a bare `Intl` constructor, which follow the browser rather than the language showing. Sorting and grouping go through `collatorIn`.
+
+## 8. Comments
 
 Write a comment when the code is correct **because of something outside this repository**, and name that thing: what foobar2000, `foo_jean`, a browser or a library actually does. Every other claim a reader can check by reading; that one they cannot.
 
-Everything else that seems to want a sentence is a name you have not found yet, a function you have not extracted, or a fact that belongs in a document.
+Everything else that seems to want a sentence is a name you have not found yet, or a function you have not extracted.
 
 1. **Why a value was chosen is a named constant.** A duration, a threshold, a breakpoint, a `staleTime`. A name says it at every use rather than once above one of them.
 2. **What the code does is the code.** If following it needs prose, the prose is a bug report against the structure. Fix the structure.
-3. **How the parts fit is `ARCHITECTURE.md`; what the player answers is `src/shared/api/README.md`.** An external fact that bites in several files is written there once, and the files depending on it say nothing, or point there in a clause.
+3. **An external fact sits beside the one line it constrains.** One that governs several files is written once, in `ARCHITECTURE.md` or, for what the player answers, `src/shared/api/README.md`, and the files depending on it say nothing.
 4. **Specs carry more.** A spec's name states the behaviour; a comment may state why the case exists at all and what breaks without it. That is documentation and it earns its place. Narrating the assertions is not.
 
 **The test, before you write one.** Strip the comment and hand the code to somebody competent who has not seen it:
@@ -124,16 +112,16 @@ Everything else that seems to want a sentence is a name you have not found yet, 
 | they get it right | verdict |
 |---|---|
 | from the code | it was never needed |
-| only because they happen to know foobar2000, or how Safari handles it | the fact is real; it belongs in the docs |
+| only because they happen to know foobar2000, or how Safari handles it | the fact is real: write the comment, naming the system |
 | they cannot get it at all | write the comment |
 
-`src/` should be near zero. An exception is allowed, and should be rare enough that meeting one is a surprise. `.claude/agents/comment-reaper.md` runs that test with an agent that has not seen the file.
+`.claude/agents/comment-reaper.md` runs that test with an agent that has not seen the file.
 
 **A lint suppression is code, not a comment, and carries its reason.** Read the `useExhaustiveDependencies` suppressions before running `lint:fix`, which would remove every one and break the feature silently; the root `CLAUDE.md` has the one shape they all take.
 
-## 8. Documentation
+## 9. Documentation
 
-Documentation states the current design and nothing else. No history: what something used to be, why it changed, or what was rejected belongs in git rather than in a file. The one exception is a trap a reader would actively revert into. Write that as an imperative rule, not as a story. No personal detail either: no names, machines, hostnames, addresses or real library paths, in prose, comments or test data. Use placeholders. Public repository URLs are fine.
+Documentation states the current design and nothing else. No history: what something used to be, why it changed, or what was rejected belongs in git rather than in a file. A sentence that exists to stop somebody undoing a decision is a test instead, or it goes; `.claude/doctrine/documentation.md` is the whole rule. No personal detail either: no names, machines, hostnames, addresses or real library paths, in prose, comments or test data. Use placeholders. Public repository URLs are fine.
 
 **No measurements.** A measured number ties Jean to one library on one machine and then ships to everyone. Record the constraint a measurement established, such as "under *Playback follows cursor* foobar2000 advances through the focused playlist, not the playing one" or "there is no way to ask for a thumbnail", and never the measurement itself.
 
@@ -149,7 +137,7 @@ Two reviewers cover that rest, over uncommitted changes and in this order: `styl
 
 `pnpm sync-kit` takes the kit's current version of those files. It reports anything under `.claude/` that was edited here rather than in the kit, and moves it to `<name>.local.bak` rather than dropping it. A rule worth keeping belongs in the kit, so every project gets it; `.claude/register.local.txt` is the place for something that is genuinely only true of Jean.
 
-## 9. Writing
+## 10. Writing
 
 Short sentences. RFC 2119 keywords for obligations. Commit messages take an imperative subject; add a body only for a fact the diff cannot show.
 
@@ -159,16 +147,16 @@ The words are the easy half. What actually gives an assistant away is shape: an 
 
 Plain words over elevated ones. No selling to a reader who is already here. No sentence whose only job is to introduce the next one.
 
-## 10. Tag hygiene is the library owner's business
+## 11. Tag hygiene is the library owner's business
 
 Jean reads tags. It never writes or normalises them to make its own life easier. A genre spelled two ways is two rows in a list; the fix belongs in the player, where it sticks for every other client too.
 
-## 11. Stack
+## 12. Stack
 
 React 19 · TypeScript 7 · Vite 8 · TanStack Query 5 · TanStack Virtual · TanStack Hotkeys · lucide-react · CSS Modules · Biome · pnpm · Playwright · `node --test`.
 
 TypeScript is strict, in three scopes: `tsconfig.app.json` (the browser), `tsconfig.node.json` (the fake player, run by node stripping types, so imports name `.ts` explicitly and `erasableSyntaxOnly` makes an enum a compile error), and `tsconfig.test.json` (the specs). `pnpm build` typechecks before it bundles; Vite never does.
 
-`noUncheckedIndexedAccess` is off, for the reason `src/domain/track/CLAUDE.md` gives.
+`noUncheckedIndexedAccess` is off: every read of a dictionary-encoded column is indexed by construction.
 
 The unit tests run under node's own type stripping rather than a bundler, which is what `test/alias.ts` is for; `test/README.md` has what it teaches node and why there is no jsdom anywhere.

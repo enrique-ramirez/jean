@@ -25,7 +25,10 @@ type WithBitrate = Album & { bitrate: number };
 type WithRating = Album & { rating: number };
 
 const LIMIT = 24;
-const YEAR_MS = 365.25 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const YEAR_MS = 365.25 * DAY_MS;
+const RECENT_WINDOW_MS = 30 * DAY_MS;
+const FORGOTTEN_AFTER_MS = 1.5 * YEAR_MS;
 
 const MINIMUM = 4;
 
@@ -51,7 +54,10 @@ export const SHELVES: Shelf[] = [
 		"recent",
 		"shelf.recent.title",
 		"shelf.recent.blurb",
-		(albums) => albums.filter((album) => album.lastPlayed > 0).sort(byRecent),
+		(albums) => {
+			const since = Date.now() - RECENT_WINDOW_MS;
+			return albums.filter((album) => album.lastPlayed > since).sort(byRecent);
+		},
 		(album, t, locale) =>
 			describeWhen(album.lastPlayed, locale, t("when.today")),
 	),
@@ -103,7 +109,7 @@ export const SHELVES: Shelf[] = [
 				played.map((album) => album.playsPerTrack),
 				0.75,
 			);
-			const silent = Date.now() - 1.5 * YEAR_MS;
+			const silent = Date.now() - FORGOTTEN_AFTER_MS;
 
 			return played
 				.filter(

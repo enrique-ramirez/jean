@@ -303,7 +303,27 @@ test.describe("all music", () => {
 	});
 });
 
+// The captured plays are months old, and Recently played only holds the last
+// thirty days, so one track of each played album is moved to two days ago.
+const twoDaysAgo = (() => {
+	const at = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+	const pad = (value: number) => String(value).padStart(2, "0");
+	return (
+		`${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ` +
+		`${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`
+	);
+})();
+
+const PLAYED_LATELY = Object.fromEntries(
+	["Los Calientes", "Tautou", "Nutshell", "Bloodhail"].map((title) => [
+		title,
+		{ "%lastfm_last_played%": twoDaysAgo },
+	]),
+);
+
 test.describe("opening a shelf from its heading", () => {
+	test.use({ retagged: PLAYED_LATELY });
+
 	test("Explore opens whichever tab is showing, and starts nothing", async ({
 		page,
 		player,

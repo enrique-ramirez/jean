@@ -9,7 +9,9 @@ import { buildShelves, refsOfShelf } from "../../src/features/home/shelves.ts";
 // `home.spec.ts` can see which tabs are drawn; it cannot reach the gates below
 // without a contrived library per shelf, and it cannot see `refsOfShelf` at all.
 
-const YEAR_MS = 365.25 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const YEAR_MS = 365.25 * DAY_MS;
+const MONTH_MS = YEAR_MS / 12;
 
 let next = 0;
 
@@ -80,8 +82,37 @@ test("Remember these? offers nothing played inside the last eighteen months", ()
 		...many(8, () => ({ plays: 4, playsPerTrack: 1, lastPlayed })),
 	];
 
-	assert.ok(!ids(library(now - 30 * 24 * 60 * 60 * 1000)).includes("loved"));
-	assert.ok(ids(library(now - 4 * YEAR_MS)).includes("loved"));
+	assert.ok(!ids(library(now - 17 * MONTH_MS)).includes("loved"));
+	assert.ok(ids(library(now - 19 * MONTH_MS)).includes("loved"));
+});
+
+test("Recently played holds only albums played within the last thirty days", () => {
+	const now = Date.now();
+	const inside = many(4, (at) => ({
+		plays: 5,
+		lastPlayed: now - 29 * DAY_MS + at,
+	}));
+	const outside = many(4, () => ({ plays: 5, lastPlayed: now - 31 * DAY_MS }));
+
+	const recent = buildShelves([...inside, ...outside]).find(
+		(shelf) => shelf.id === "recent",
+	);
+
+	assert.ok(recent);
+	assert.deepEqual(
+		recent.albums.map((entry) => entry.key).sort(),
+		inside.map((entry) => entry.key).sort(),
+	);
+});
+
+test("Recently played is left off, not drawn empty, when nothing was played in thirty days", () => {
+	const shelves = buildShelves(
+		many(6, () => ({ plays: 5, lastPlayed: Date.now() - 31 * DAY_MS })),
+	);
+
+	assert.ok(shelves.length > 0);
+	assert.ok(!shelves.some((shelf) => shelf.id === "recent"));
+	assert.ok(shelves.every((shelf) => shelf.albums.length > 0));
 });
 
 const SAVED_IDS = ["recent", "top", "rated", "loved", "upgrade", "unopened"];

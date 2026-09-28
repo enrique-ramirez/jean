@@ -283,7 +283,6 @@
 	"player.showVolume": "Mostrar el volumen",
 	"player.shuffle": "Aleatorio",
 	"player.unmute": "Quitar el silencio",
-	"player.unreachable": "No se puede llegar al reproductor — {message}",
 	"player.volume": "Volumen",
 	"player.volumeAt": "{label} {percent}%",
 	"player.volumeHere": "Volumen en este dispositivo",

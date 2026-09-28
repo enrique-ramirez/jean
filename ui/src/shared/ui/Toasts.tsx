@@ -1,14 +1,15 @@
 import { Check, TriangleAlert, X } from "lucide-react";
+import type { ReactNode } from "react";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import styles from "./Toasts.module.css";
 import { dismissToast, useToasts } from "./toastStore";
 
 const ICONS = { default: Check, error: TriangleAlert };
 
-export function Toasts() {
+export function Toasts({ pinned = null }: { pinned?: ReactNode }) {
 	const t = useTranslate();
 	const toasts = useToasts();
-	if (toasts.length === 0) return null;
+	if (toasts.length === 0 && pinned === null) return null;
 
 	return (
 		<div className={styles.layer} role="status" aria-live="polite">
@@ -49,6 +50,7 @@ export function Toasts() {
 					</div>
 				);
 			})}
+			{pinned}
 		</div>
 	);
 }

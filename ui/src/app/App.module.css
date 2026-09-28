@@ -5,6 +5,10 @@
 	min-height: 420px;
 }
 
+.app:not(:has(> footer)) {
+	--toast-inset-bottom: env(safe-area-inset-bottom);
+}
+
 .body {
 	/* Placed explicitly: the toast layer shares this cell, and auto-placement would push
 	 the body to row 3 and the status bar off the grid. */

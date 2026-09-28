@@ -1,0 +1,63 @@
+.notice {
+	composes: toast from "../shared/ui/Toasts.module.css";
+	align-items: flex-start;
+	gap: 12px;
+	padding: 11px 14px;
+}
+
+.pulse {
+	position: relative;
+	flex: 0 0 auto;
+	width: 8px;
+	height: 8px;
+	margin-top: 5px;
+	border-radius: 50%;
+	background: var(--caution);
+}
+
+.pulse::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: 50%;
+	background: var(--caution);
+	animation: ripple 1.6s var(--ease) infinite;
+}
+
+@keyframes ripple {
+	from {
+		opacity: 0.6;
+		transform: scale(1);
+	}
+	to {
+		opacity: 0;
+		transform: scale(2.6);
+	}
+}
+
+.text {
+	display: grid;
+	gap: 3px;
+	min-width: 0;
+}
+
+.headline {
+	margin: 0;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	line-height: 1.35;
+}
+
+.remedy {
+	margin: 0;
+	font-size: 0.75rem;
+	line-height: 1.4;
+	color: var(--muted);
+	text-wrap: pretty;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pulse::after {
+		animation: none;
+	}
+}

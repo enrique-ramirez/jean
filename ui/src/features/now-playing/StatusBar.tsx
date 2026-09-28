@@ -79,7 +79,7 @@ export function StatusBar({
 	onRevealNowPlaying: () => void;
 }) {
 	const t = useTranslate();
-	const { isPending, isError, error } = usePlayer();
+	const { isPending } = usePlayer();
 	const snapshot = useAudiblePlayer();
 	const { discovery } = useFooJean();
 	const canControlPlayback = permitsPlaybackControl(discovery);
@@ -107,14 +107,10 @@ export function StatusBar({
 	const origin = isFooJeanReady(discovery) ? discovery.origin : null;
 	const outputsQuery = useOutputs();
 
-	if (isPending || isError || !snapshot) {
+	if (isPending || !snapshot) {
 		return (
 			<footer className={styles.statusbar}>
-				<p className={styles.notice}>
-					{isError
-						? t("player.unreachable", { message: error.message })
-						: t("player.connecting")}
-				</p>
+				<p className={styles.notice}>{t("player.connecting")}</p>
 			</footer>
 		);
 	}

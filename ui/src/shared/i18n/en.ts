@@ -78,6 +78,9 @@ export const en = {
 	"columns.artwork": "Artwork",
 	"columns.unavailable": "{column} (not available)",
 	"columns.viewOptions": "View options",
+	"connection.reconnecting": "Reconnecting to the player…",
+	"connection.remedy":
+		"Still trying. Check that foobar2000 is running and that this device is on the same network.",
 	"details.album": "Album",
 	"details.albumArtist": "Album artist",
 	"details.albumGain": "Album gain",
@@ -351,7 +354,6 @@ export const en = {
 	"player.showVolume": "Show volume",
 	"player.shuffle": "Shuffle",
 	"player.unmute": "Unmute",
-	"player.unreachable": "Can’t reach the player — {message}",
 	"player.volume": "Volume",
 	"player.volumeAt": "{label} {percent}%",
 	"player.volumeHere": "Volume on this device",

@@ -37,6 +37,7 @@
 		"src/shared/i18n/format.ts",
 		"src/shared/i18n/locale.ts",
 		"src/shared/i18n/message.ts",
+		"src/domain/player/connection.ts",
 		"src/domain/track/fields.ts",
 		"src/domain/track/libraryColumns.ts",
 		"src/features/now-playing/nowPlayingFields.ts",

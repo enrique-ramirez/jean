@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
-import { useAudiblePlayer, usePlayer } from "@/domain/player/usePlayer";
+import { useConnection } from "@/domain/player/connection";
+import { useAudiblePlayer } from "@/domain/player/usePlayer";
 import { readTrack } from "@/shared/api/playerState";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { type PlaybackBadge, setFavicon } from "./favicon";
@@ -10,14 +11,14 @@ const NAME = "Jean";
 
 export function useDocumentIdentity() {
 	const t = useTranslate();
-	const { isError } = usePlayer();
+	const isDisconnected = useConnection() !== "connected";
 	const snapshot = useAudiblePlayer();
 
 	const player = snapshot?.player;
 	const track = readTrack(player);
 	const hasTrack = Boolean(track);
 
-	const badge: PlaybackBadge = isError
+	const badge: PlaybackBadge = isDisconnected
 		? "offline"
 		: player?.playbackState === "playing"
 			? "playing"
@@ -25,7 +26,7 @@ export function useDocumentIdentity() {
 				? "paused"
 				: "idle";
 
-	const title = isError
+	const title = isDisconnected
 		? `${t("player.disconnected")} · ${NAME}`
 		: hasTrack
 			? `${track?.title} — ${track?.artist} · ${NAME}`

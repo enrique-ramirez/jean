@@ -14,6 +14,7 @@ import { useLibrary } from "@/domain/library/useLibrary";
 import { useLibrarySearch } from "@/domain/library/useLibrarySearch";
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
 import { usePlaySet } from "@/domain/library/usePlaySet";
+import { useConnection } from "@/domain/player/connection";
 import { usePlayerPoll } from "@/domain/player/playerPoll";
 import { queueShown, useShowQueueAsked } from "@/domain/player/showQueue";
 import { useAudibleVolume } from "@/domain/player/useListener";
@@ -96,6 +97,7 @@ import { Tabs } from "@/shared/ui/Tabs";
 import { Toasts } from "@/shared/ui/Toasts";
 import styles from "./App.module.css";
 import { CommandPalette } from "./CommandPalette";
+import { ConnectionNotice } from "./ConnectionNotice";
 import {
 	ROUTE,
 	resolveRoute,
@@ -190,6 +192,7 @@ function Shell() {
 
 	const { discovery } = useFooJean();
 	const canControlPlayback = permitsPlaybackControl(discovery);
+	const connection = useConnection();
 	usePlayerPoll(
 		discovery.origin,
 		discovery.state.kind === "ready" ? discovery.state.capabilities : null,
@@ -972,7 +975,13 @@ function Shell() {
 				/>
 			</div>
 
-			<Toasts />
+			<Toasts
+				pinned={
+					connection === "connected" ? null : (
+						<ConnectionNotice state={connection} />
+					)
+				}
+			/>
 
 			{isCompactViewport && isNowPlaying ? null : (
 				<StatusBar

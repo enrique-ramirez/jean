@@ -20,6 +20,7 @@ import {
 import type { PlayerSnapshot, PlayerState } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { rememberSnapshot } from "./audible";
+import { notePlayerReached, notePlayerUnreached } from "./connection";
 import {
 	followTimeline,
 	isListening,
@@ -124,7 +125,11 @@ async function applyPoll(
 	const exportHeldWhenAsked = playlistSnapshot(
 		componentLibraryKey(origin),
 	).structure;
+	const askedAt = performance.now();
 	const result = await fetchState(origin, tag);
+	if (!result.ok && result.reason === "unreachable")
+		notePlayerUnreached(askedAt);
+	else notePlayerReached();
 	if (!result.ok) return { tag, revisions };
 
 	// Asked on every tick the player answers, not only on one that carries a change: a quiet player

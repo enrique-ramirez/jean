@@ -57,6 +57,13 @@ export function handleControl({
 		});
 	}
 
+	// Destroys every `/api/` connection rather than answering one, the way a closed foobar2000 or a
+	// player off the network looks to a browser, and admits them again once cleared.
+	if (action === "reachable") {
+		state.fooJean.reachable = input.reachable !== false;
+		return empty(response);
+	}
+
 	if (action === "play") {
 		state.playItem(input.playlistId, input.index);
 		return empty(response);

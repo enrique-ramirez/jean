@@ -188,10 +188,14 @@ bool Audience::awaitChangeFrom(bool applied) {
             state_->departures.begin(), state_->departures.end(),
             [](const Departure& a, const Departure& b) { return a.until < b.until; });
 
-        if (soonest != state_->departures.end())
-            state_->changed.wait_until(lock, soonest->until);
-        else
+        // A copy, because the wait releases the lock and a join or a departure may erase or move
+        // the entry, while std::condition_variable::wait_until reads its deadline again on waking.
+        if (soonest != state_->departures.end()) {
+            const Clock::time_point wakeAt = soonest->until;
+            state_->changed.wait_until(lock, wakeAt);
+        } else {
             state_->changed.wait(lock);
+        }
     }
 }
 

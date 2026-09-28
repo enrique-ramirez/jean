@@ -220,3 +220,34 @@ TEST_CASE("closing releases a waiter rather than leaving a thread to join foreve
     audience.close();
     waiter.join();
 }
+
+// The waiter sleeps until the soonest linger ends with the lock released, and a reconnect erases
+// that linger while it sleeps. Waiting on a reference into the list rather than on a copy of the
+// deadline reads freed memory as it wakes, which AddressSanitizer reports. Nothing here can say
+// when the waiter is inside its wait, so each round yields to give it the chance: a round whose
+// reconnect lands first proves less, and fails nothing.
+TEST_CASE("a reconnect ending the linger a waiter is sleeping out leaves that waiter waiting") {
+    constexpr int kRounds = 20;
+    constexpr int kYieldsBeforeReconnecting = 2000;
+
+    for (int round = 0; round < kRounds; ++round) {
+        Audience audience(8, 30s);
+        {
+            const auto dropped = audience.join(named("phone"), "opus", Audience::Clock::now());
+        }
+
+        std::promise<bool> changed;
+        auto waiter = std::thread(
+            [&audience, &changed] { changed.set_value(audience.awaitChangeFrom(true)); });
+
+        for (int yielded = 0; yielded < kYieldsBeforeReconnecting; ++yielded)
+            std::this_thread::yield();
+
+        const auto back = audience.join(named("phone"), "opus", Audience::Clock::now());
+        REQUIRE(back);
+
+        audience.close();
+        waiter.join();
+        CHECK_FALSE(changed.get_future().get());
+    }
+}

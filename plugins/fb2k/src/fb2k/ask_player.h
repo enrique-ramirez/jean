@@ -9,6 +9,7 @@
 #include <future>
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace jean {
 
@@ -32,15 +33,22 @@ private:
 template <typename T>
 using AnswerPtr = std::shared_ptr<Answer<T>>;
 
+enum class Attempt { waiting, started, abandoned };
+
 // `work` is handed the answer rather than returning one, because some of it finishes
 // inside a foobar2000 completion callback long after it returns.
 template <typename T>
 T askPlayer(MainThreadQueue& mainThread, const std::string& what,
             std::function<void(const AnswerPtr<T>&)> work, T whenTimedOut, T whenFailed) {
     const auto answer = std::make_shared<Answer<T>>();
+    const auto attempt = std::make_shared<std::atomic<Attempt>>(Attempt::waiting);
     auto finished = answer->future();
 
-    const auto run = [work, answer, what, whenFailed] {
+    auto run = [work = std::move(work), answer, attempt, what, whenFailed = std::move(whenFailed)] {
+        auto expected = Attempt::waiting;
+        if (!attempt->compare_exchange_strong(expected, Attempt::started))
+            return;
+
         try {
             work(answer);
         } catch (const std::exception& e) {
@@ -55,21 +63,29 @@ T askPlayer(MainThreadQueue& mainThread, const std::string& what,
     if (core_api::is_main_thread())
         run();
     else
-        mainThread.enqueue(run, [answer, whenTimedOut] { answer->set(whenTimedOut); });
+        mainThread.enqueue(std::move(run), [answer, whenTimedOut] { answer->set(whenTimedOut); });
 
-    if (finished.wait_for(kPlayerTimeout) != std::future_status::ready) {
-        logError("the player did not finish " + what + " in time");
+    if (finished.wait_for(kPlayerTimeout) == std::future_status::ready)
+        return finished.get();
+
+    auto expected = Attempt::waiting;
+    if (attempt->compare_exchange_strong(expected, Attempt::abandoned)) {
+        logError("the player did not start " + what + " in time, so it never will");
         return whenTimedOut;
     }
 
-    return finished.get();
+    if (finished.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        return finished.get();
+
+    logError("the player started " + what + " and did not finish it in time");
+    return whenTimedOut;
 }
 
 inline void tellPlayer(MainThreadQueue& mainThread, const std::string& what,
-                       const std::function<void()>& work) {
+                       std::function<void()> work) {
     askPlayer<bool>(
         mainThread, what,
-        [work](const AnswerPtr<bool>& answer) {
+        [work = std::move(work)](const AnswerPtr<bool>& answer) {
             work();
             answer->set(true);
         },

@@ -400,9 +400,29 @@ export const retryAfterMs = (response: Response) => {
 	return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
 };
 
-// foo_jean always sends `Retry-After: 1` when it refuses a preview; this is the fallback for
-// the header ever being missing.
-const PREVIEW_BUSY_WAIT_MS = 1_000;
+// foo_jean always sends `Retry-After: 1` when it refuses a preview or a one-track read; this is
+// the fallback for the header ever being missing.
+const TOO_FAST_WAIT_MS = 1_000;
+const TOO_FAST_RETRIES = 3;
+
+export class TooFast extends Error {
+	readonly retryInMs: number;
+
+	constructor(retryInMs: number) {
+		super("foo_jean refused a request as too fast");
+		this.retryInMs = retryInMs;
+	}
+}
+
+const tooFast = (response: Response) =>
+	new TooFast(retryAfterMs(response) ?? TOO_FAST_WAIT_MS);
+
+export const retryWhenTooFast = ({ otherFailures = 0 } = {}) => ({
+	retry: (count: number, error: Error) =>
+		count < (error instanceof TooFast ? TOO_FAST_RETRIES : otherFailures),
+	retryDelay: (_: number, error: Error) =>
+		error instanceof TooFast ? error.retryInMs : 0,
+});
 
 export type PreviewResult =
 	| { ok: true; preview: QueryPreview }
@@ -420,7 +440,7 @@ export async function previewQuery(
 	if (response?.status === 429)
 		return {
 			ok: false,
-			retryInMs: retryAfterMs(response) ?? PREVIEW_BUSY_WAIT_MS,
+			retryInMs: retryAfterMs(response) ?? TOO_FAST_WAIT_MS,
 		};
 	const preview = response?.ok
 		? ((await response.json().catch(() => null)) as QueryPreview | null)
@@ -547,6 +567,7 @@ export async function fetchLibraryTrack(
 			{ signal },
 		),
 	);
+	if (response.status === 429) throw tooFast(response);
 	if (!response.ok)
 		throw new Error(`GET library track failed: ${response.status}`, {
 			cause: response.status,
@@ -570,6 +591,7 @@ export async function fetchPlayingTrack(
 			}),
 		signal,
 	);
+	if (response.status === 429) throw tooFast(response);
 	if (!response.ok)
 		throw new Error(`GET playing track failed: ${response.status}`, {
 			cause: response.status,

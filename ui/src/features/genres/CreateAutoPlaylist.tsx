@@ -7,10 +7,11 @@ import { genreQuery } from "@/domain/library/genreQuery";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
 import {
 	createAutoPlaylist,
-	type PreviewResult,
 	previewQuery,
 	type QueryPreview,
 	requireFooJean,
+	retryWhenTooFast,
+	TooFast,
 } from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
@@ -19,24 +20,12 @@ import { Input } from "@/shared/ui/Input";
 import { Menu } from "@/shared/ui/Menu";
 import styles from "./CreateAutoPlaylist.module.css";
 
-const PREVIEW_BUSY_RETRIES = 3;
-
-class PreviewRefused extends Error {
-	readonly retryInMs: number | null;
-
-	constructor({ retryInMs }: Extract<PreviewResult, { ok: false }>) {
-		super("preview refused");
-		this.retryInMs = retryInMs;
-	}
-}
-
-const retryInMsOf = (error: Error) =>
-	error instanceof PreviewRefused ? error.retryInMs : null;
-
 async function askPreview(origin: string, query: string) {
 	const result = await previewQuery(origin, query);
-	if (!result.ok) throw new PreviewRefused(result);
-	return result.preview;
+	if (result.ok) return result.preview;
+	throw result.retryInMs === null
+		? new Error("preview refused")
+		: new TooFast(result.retryInMs);
 }
 
 function previewSays(
@@ -91,9 +80,7 @@ export function CreateAutoPlaylist({
 		enabled: isOpen && Boolean(origin),
 		staleTime: Number.POSITIVE_INFINITY,
 		refetchOnWindowFocus: false,
-		retry: (count, error) =>
-			retryInMsOf(error) !== null && count < PREVIEW_BUSY_RETRIES,
-		retryDelay: (_, error) => retryInMsOf(error) ?? 0,
+		...retryWhenTooFast(),
 	});
 
 	const create = useMutation({

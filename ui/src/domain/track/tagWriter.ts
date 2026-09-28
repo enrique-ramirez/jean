@@ -4,6 +4,7 @@ import {
 	type FooJeanState,
 	fetchLibraryTrack,
 	fetchPlaylistRows,
+	TooFast,
 	type WriteResult,
 	writeTags,
 } from "@/shared/api/fooJean";
@@ -74,7 +75,10 @@ const agentWriter = (origin: string, allowedFields: string[]): TagWriter => {
 				: fetchLibraryTrack(origin, address, [column]).then(
 						({ columns }) => columns[0],
 					)
-			).catch(() => undefined);
+			).catch((error: unknown) => {
+				if (error instanceof TooFast) throw error;
+				return undefined;
+			});
 
 			// README.md: `?` is foobar2000 saying the field is absent, never a null.
 			if (held === UNRESOLVED) return "";

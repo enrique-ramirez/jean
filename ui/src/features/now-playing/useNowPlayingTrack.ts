@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
 
 import { useAudiblePlayer, usePlaylists } from "@/domain/player/usePlayer";
-import { fetchPlayingTrack } from "@/shared/api/fooJean";
+import { fetchPlayingTrack, retryWhenTooFast } from "@/shared/api/fooJean";
 import { readTrack } from "@/shared/api/playerState";
 import type {
 	ActiveItem,
@@ -128,8 +128,7 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 		},
 		staleTime: Infinity,
 		refetchOnWindowFocus: false,
-		retry: (failureCount) => failureCount < 1,
-		retryDelay: 0,
+		...retryWhenTooFast({ otherFailures: 1 }),
 	});
 
 	useEffect(() => {

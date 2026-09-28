@@ -1,3 +1,4 @@
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import {
 	createContext,
 	type ReactNode,
@@ -9,7 +10,11 @@ import {
 } from "react";
 
 import { useExportHeldWhenLibraryUnbuilt } from "@/domain/player/playerPoll";
-import { libraryOrigin, type WriteFailure } from "@/shared/api/fooJean";
+import {
+	libraryOrigin,
+	retryWhenTooFast,
+	type WriteFailure,
+} from "@/shared/api/fooJean";
 import type { TrackAddress } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
@@ -116,13 +121,21 @@ const didNotLand = (label: string, raw: string) =>
 		: translate("rate.didNotLand", { track: label, count: Number(raw) });
 
 async function confirmTimedOutRating(
+	queryClient: QueryClient,
 	writer: TagWriter,
 	address: TrackAddress,
 	label: string,
 	raw: string,
 	paint: OptimisticValue,
 ) {
-	const held = await writer.read(address, RATING_COLUMN);
+	const held = await queryClient
+		.fetchQuery({
+			queryKey: ["ratingReadBack", addressKey(address)],
+			queryFn: () => writer.read(address, RATING_COLUMN),
+			gcTime: 0,
+			...retryWhenTooFast(),
+		})
+		.catch(() => null);
 	if (held === null) return;
 	if (held === raw) return paint.confirm(raw);
 
@@ -228,6 +241,7 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 
 	// Coalesced per address rather than through `useCoalescedWrite`, which holds one pending value and
 	// would lose an edit whenever two tracks are rated in turn.
+	const queryClient = useQueryClient();
 	const pending = useRef<PendingRating[]>([]);
 	const isWriting = useRef(false);
 	const writerRef = useRef(writer);
@@ -240,12 +254,12 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 
 		isWriting.current = true;
 		try {
-			await sendRating(write, writerRef.current, setRefused);
+			await sendRating(write, queryClient, writerRef.current, setRefused);
 		} finally {
 			isWriting.current = false;
 			drain();
 		}
-	}, []);
+	}, [queryClient]);
 
 	const queueRating = useCallback(
 		(write: PendingRating) => {
@@ -360,6 +374,7 @@ async function writeRating(
 
 async function sendRating(
 	{ address, retry, label, raw, paint }: PendingRating,
+	queryClient: QueryClient,
 	writer: TagWriter,
 	refuse: (update: (current: string[]) => string[]) => void,
 ) {
@@ -373,7 +388,14 @@ async function sendRating(
 		return paint.confirm(result.written.fields[RATING_FIELD] ?? raw);
 
 	if (result.reason === "timeout")
-		return confirmTimedOutRating(writer, sentTo, label, raw, paint);
+		return confirmTimedOutRating(
+			queryClient,
+			writer,
+			sentTo,
+			label,
+			raw,
+			paint,
+		);
 
 	paint.restore();
 

@@ -2,9 +2,12 @@
 
 #include "third_party/doctest.h"
 
+#include "support/log_capture.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -505,4 +508,65 @@ TEST_CASE("GET is not a way to write") {
     REQUIRE(response);
     CHECK(response->status == 404);
     CHECK(log.calls.empty());
+}
+
+// Rating a whole album, or a box set of one, is a burst of writes one after another, and every one
+// of them lands. What the budget bounds is a client stuck in a loop rewriting files.
+constexpr int kTagWriteBurst = 200;
+constexpr int kWritesPastTheBudget = 20;
+
+TEST_CASE("a client looping on tag writes stops reaching the player, and a box set's worth still lands") {
+    TestServer::WriterLog log;
+    const TestServer server(servingSettings(), TestServer::recordingWriter(&log));
+    clearLog();
+
+    std::vector<httplib::Result> replies;
+    std::generate_n(std::back_inserter(replies), kTagWriteBurst + kWritesPastTheBudget,
+                    [&server] { return write(server, ratingWrite(kTrackAddress)); });
+
+    CHECK(log.calls.size() == kTagWriteBurst);
+    CHECK(std::all_of(replies.begin(), replies.begin() + kTagWriteBurst,
+                      [](const httplib::Result& reply) { return reply && reply->status == 200; }));
+
+    for (auto reply = replies.begin() + kTagWriteBurst; reply != replies.end(); ++reply) {
+        REQUIRE(*reply);
+        CHECK((*reply)->status == 429);
+        CHECK((*reply)->get_header_value("Retry-After") == "1");
+        CHECK(json::parse((*reply)->body) ==
+              json{{"written", false}, {"error", "too many tag writes"}});
+    }
+
+    CHECK(errorLinesContaining("refusing tag writes") == 1);
+}
+
+TEST_CASE("a refused tag write is refused for what it asks before it is refused for how often") {
+    TestServer::WriterLog log;
+    const TestServer server(servingSettings(), TestServer::recordingWriter(&log));
+
+    for (int attempt = 0; attempt < kTagWriteBurst + kWritesPastTheBudget; ++attempt)
+        write(server, R"({"track": "a.flac", "fields": {"artist": "x"}})");
+
+    const auto allowed = write(server, ratingWrite(kTrackAddress));
+
+    REQUIRE(allowed);
+    CHECK(allowed->status == 200);
+    CHECK(log.calls.size() == 1);
+}
+
+TEST_CASE("the tag write budget earns writes back as time passes") {
+    TestServer::WriterLog log;
+    const TestServer server(servingSettings(), TestServer::recordingWriter(&log));
+
+    for (int attempt = 0; attempt < kTagWriteBurst; ++attempt)
+        write(server, ratingWrite(kTrackAddress));
+
+    const auto refused = write(server, ratingWrite(kTrackAddress));
+    REQUIRE(refused);
+    REQUIRE(refused->status == 429);
+
+    server.advanceRateLimits(std::chrono::seconds(1));
+
+    const auto earned = write(server, ratingWrite(kTrackAddress));
+    REQUIRE(earned);
+    CHECK(earned->status == 200);
 }

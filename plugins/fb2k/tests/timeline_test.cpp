@@ -73,10 +73,12 @@ TEST_CASE("a mark carries where the player was, not only which track") {
 TEST_CASE("whoever is told of a mark can already read it") {
     std::vector<StreamMark> seen;
     int told = 0;
-    Timeline timeline(8, [&timeline, &seen, &told] {
+    const Timeline* announcing = nullptr;
+    Timeline timeline(8, [&announcing, &seen, &told] {
         told++;
-        seen = timeline.marks();
+        seen = announcing->marks();
     });
+    announcing = &timeline;
 
     timeline.mark(markAt(1.0, "a.mp3"));
     REQUIRE(told == 1);

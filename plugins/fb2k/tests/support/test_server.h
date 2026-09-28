@@ -7,11 +7,28 @@
 #include "core/reload.h"
 #include "support/fixtures.h"
 
+#include <atomic>
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace jean::testing {
+
+// Moves only when a test moves it, so no rate limit refills behind a test's back on a machine slow
+// enough to take a token's worth of time between two requests.
+class ManualClock {
+public:
+    std::chrono::steady_clock::time_point now() const {
+        return std::chrono::steady_clock::time_point(
+            std::chrono::steady_clock::duration(ticks_.load()));
+    }
+
+    void advance(std::chrono::steady_clock::duration by) { ticks_ += by.count(); }
+
+private:
+    std::atomic<std::chrono::steady_clock::rep> ticks_{0};
+};
 
 class TestServer {
 public:
@@ -55,10 +72,18 @@ public:
     // one reads the audience the server is driving.
     Audience& audience() const { return *audience_; }
 
+    // Every rate limit this server keeps refills only when this is called.
+    void advanceRateLimits(std::chrono::steady_clock::duration by) const {
+        rateLimitClock_->advance(by);
+    }
+
     httplib::Client client() const;
 
 private:
     Settings settings_;
+
+    // Shared rather than held, so the server's reading of it survives this object being moved.
+    std::shared_ptr<ManualClock> rateLimitClock_ = std::make_shared<ManualClock>();
 
     // Before the server, which unwinds connections into it as it stops.
     std::unique_ptr<Audience> audience_;

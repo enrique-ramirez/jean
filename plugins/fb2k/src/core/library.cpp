@@ -455,6 +455,21 @@ Library::Changes Library::changes(uint64_t since) const {
     return {DeltaOutcome::ok, std::move(delta)};
 }
 
+std::string cappedColumnValue(std::string_view formatted) {
+    if (formatted.size() <= kMaxColumnValueBytes)
+        return std::string(formatted);
+
+    const auto continuesACharacter = [](char byte) {
+        return (static_cast<unsigned char>(byte) & 0xc0U) == 0x80U;
+    };
+
+    size_t cut = kMaxColumnValueBytes;
+    while (cut > 0 && continuesACharacter(formatted[cut]))
+        --cut;
+
+    return std::string(formatted.substr(0, cut));
+}
+
 LibraryRequest parseLibraryRequest(const std::vector<std::string>& columns,
                                    const std::string& since) {
     if (columns.size() > kMaxColumns) {

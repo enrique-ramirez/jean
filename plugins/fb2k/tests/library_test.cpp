@@ -647,6 +647,28 @@ TEST_CASE("a column expression is bounded, printable and not empty") {
     CHECK(request.detail.find("column 1") != std::string::npos);
 }
 
+// A few hundred characters of $puts doubling a variable format to gigabytes, and the snapshot holds
+// one value per column for every track in the library.
+TEST_CASE("a formatted value is held to the cap, and one under it is kept whole") {
+    const std::string lyrics(kMaxColumnValueBytes, 'l');
+    CHECK(cappedColumnValue(lyrics) == lyrics);
+
+    const std::string repeated(kMaxColumnValueBytes * 4, 'x');
+    CHECK(cappedColumnValue(repeated) == std::string(kMaxColumnValueBytes, 'x'));
+}
+
+// A value cut inside a character would reach the client as invalid UTF-8, which nlohmann::json
+// refuses to serialise at all.
+TEST_CASE("a formatted value is cut between characters, never inside one") {
+    const std::string twoBytes = "\xc3\xa9";
+    const std::string value = std::string(kMaxColumnValueBytes - 1, 'x') + twoBytes + "tail";
+
+    const auto capped = cappedColumnValue(value);
+
+    CHECK(capped == std::string(kMaxColumnValueBytes - 1, 'x'));
+    CHECK_NOTHROW(json(capped).dump());
+}
+
 TEST_CASE("a column asked for twice is refused rather than evaluated twice") {
     const auto request = parseLibraryRequest({"%artist%", "%title%", "%artist%"}, "");
 

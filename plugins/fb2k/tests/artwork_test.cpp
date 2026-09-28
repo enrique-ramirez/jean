@@ -12,6 +12,7 @@
 #include "third_party/json.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <iterator>
 #include <map>
@@ -337,8 +338,7 @@ TEST_CASE("a client looping on artwork stops reaching the player") {
     const TestServer server(servingSettings(), showing(&log));
     auto client = server.client();
 
-    // Twice the burst, so the bucket is exhausted however fast the loop runs: refilling past
-    // it would take fifteen seconds of the loop, which nothing sleeps waiting for.
+    // Twice the burst, and the server's clock stands still, so the second half is all refused.
     constexpr int kAttempts = 600;
     int refused = 0;
 
@@ -366,8 +366,8 @@ TEST_CASE("a client looping on artwork stops reaching the player") {
 }
 
 // The budget is deep because a screenful of covers is the ordinary case, so a refusal here is a
-// client stuck in a loop. It refills a cover every fiftieth of a second, which a loop this long
-// crosses several times, so the expectation is counted from the answers rather than fixed at one.
+// client stuck in a loop. The clock moves once, between two loops, and far enough to earn a cover
+// back, so the second loop starts with an allowed read and then refuses again.
 TEST_CASE("a burst of refused artwork reads writes one error line, and an allowed read starts a new burst") {
     ArtLog log{kJpeg};
     const TestServer server(servingSettings(), showing(&log));
@@ -375,16 +375,24 @@ TEST_CASE("a burst of refused artwork reads writes one error line, and an allowe
     clearLog();
 
     constexpr int kAttempts = 600;
+    constexpr auto kLongEnoughToEarnACover = std::chrono::seconds(1);
     std::vector<int> statuses;
 
-    for (int attempt = 0; attempt < kAttempts; ++attempt) {
-        const auto response = client.Get(kAddress);
-        statuses.push_back(response ? response->status : 0);
-    }
+    const auto loop = [&client, &statuses] {
+        for (int attempt = 0; attempt < kAttempts; ++attempt) {
+            const auto response = client.Get(kAddress);
+            statuses.push_back(response ? response->status : 0);
+        }
+    };
+
+    loop();
+    server.advanceRateLimits(kLongEnoughToEarnACover);
+    loop();
 
     const auto refused = std::count(statuses.begin(), statuses.end(), 429);
+    REQUIRE(refusalBursts(statuses) == 2);
     REQUIRE(static_cast<size_t>(refused) > refusalBursts(statuses));
-    CHECK(errorLinesContaining("refusing artwork reads") == refusalBursts(statuses));
+    CHECK(errorLinesContaining("refusing artwork reads") == 2);
 }
 
 // cpp-httplib's own compression list is somebody else's (third_party/README.md), so it is
@@ -871,8 +879,7 @@ TEST_CASE("a picture a position names is bounded and typed as one a track names 
 }
 
 // One budget for every cover, so a client cannot spend twice by asking two ways. A second
-// bucket refills at its own rate, which is what the batch at the end would find: the shared
-// one is empty by then and gains a token every fiftieth of a second at most.
+// bucket would be full when the batch at the end arrives, and the shared one is empty.
 TEST_CASE("a client looping on positions spends the budget a track address spends") {
     ArtLog byTrack{kJpeg};
     RowArtLog rows{kJpeg};
@@ -914,5 +921,5 @@ TEST_CASE("a client looping on positions spends the budget a track address spend
             deniedByTrack++;
     }
 
-    CHECK(deniedByTrack > 0);
+    CHECK(deniedByTrack == kThen);
 }

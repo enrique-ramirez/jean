@@ -56,7 +56,7 @@ using OrderedPtr = std::shared_ptr<const Ordered>;
 
 void formatRow(const metadb_v2::ptr& metadb, const metadb_handle_ptr& item,
                const metadb_v2::rec_t& rec, const std::string& relativePath,
-               const std::vector<titleformat_object::ptr>& scripts, pfc::string8& text,
+               const std::vector<titleformat_object::ptr>& scripts, CappedText& text,
                std::vector<std::string>& values) {
     RelativePathParts parts = splitRelativePath(relativePath);
 
@@ -67,7 +67,7 @@ void formatRow(const metadb_v2::ptr& metadb, const metadb_handle_ptr& item,
 
     for (size_t column = 0; column < scripts.size(); ++column) {
         metadb->formatTitle_v2(item, rec, nullptr, text, scripts[column], nullptr);
-        values[kSpineFieldCount + column] = toStd(text);
+        values[kSpineFieldCount + column] = text.value();
     }
 }
 
@@ -427,7 +427,7 @@ private:
         // One compiled titleformat_object runs on many threads at once; the hook and the
         // output string are what the SDK's own parallel sorts keep per thread.
         struct Worker {
-            pfc::string8 text;
+            CappedText text;
             LibraryBuilder::Sink* sink = nullptr;
             std::vector<std::string> values;
         };
@@ -495,7 +495,7 @@ private:
             return;
 
         std::vector<RowChange> changes(items.get_count());
-        pfc::string8 text;
+        CappedText text;
 
         metadb_->queryMulti_(items, [&](size_t index, const metadb_v2::rec_t& rec) {
             changes[index].ordinal = touched[index];

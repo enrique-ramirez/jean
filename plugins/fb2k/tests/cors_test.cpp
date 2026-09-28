@@ -214,3 +214,18 @@ TEST_CASE("a preflight never offers Authorization as a header a page may send") 
     CHECK(allowed.find("content-type") != std::string::npos);
     CHECK(allowed.find("authorization") == std::string::npos);
 }
+
+// Cross-Origin-Resource-Policy is what stops another site's <img> or <audio> reading an answer
+// that CORS never governs, because a no-cors request carries no Origin to refuse.
+TEST_CASE("every /api/ answer is for this origin's pages alone, refusals and unknown routes included") {
+    const TestServer server;
+
+    for (const auto& response :
+         {server.client().Get("/api/status"), server.client().Get("/api/no/such/thing"),
+          server.client().Post("/api/tags", "{}", "text/plain"),
+          server.client().Get("/api/status", httplib::Headers{{"Host", "evil.example"}})}) {
+        REQUIRE(response);
+        INFO("status: ", response->status);
+        CHECK(response->get_header_value("Cross-Origin-Resource-Policy") == "same-origin");
+    }
+}

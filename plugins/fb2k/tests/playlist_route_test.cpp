@@ -3244,17 +3244,96 @@ TEST_CASE("a client stuck in a loop is slowed down rather than obeyed") {
     CHECK(json::parse((*first429)->body)["error"].is_string());
 
     // A line for the burst rather than one per refusal, which would be the same flood written
-    // to a disk. Not pinned to exactly one: a slow machine can earn a token back mid-burst.
+    // to a disk.
     const auto lines = loggedLines();
     const auto complaints = std::count_if(lines.begin(), lines.end(), [](const std::string& line) {
         return line.find("refusing playlist changes") != std::string::npos;
     });
 
-    CHECK(complaints >= 1);
-    CHECK(complaints < refused);
+    CHECK(complaints == 1);
 
     // Reading changes nothing, so it is not limited and a different route cannot spend it.
     CHECK(server.client().Get("/api/playlists")->status == 200);
+}
+
+// Somebody typing a query into an editor that does not debounce asks for a preview per keystroke,
+// and never meets this. A client stuck in a loop runs a whole-library query on the player's main
+// thread each time, and does.
+constexpr int kPreviewBurst = 30;
+constexpr int kPreviewsPastTheBudget = 10;
+
+namespace {
+
+struct PreviewLog {
+    int previews = 0;
+};
+
+Player countingPreviews(PlayerLog* log, PreviewLog* previews) {
+    Player player = recordingPlayer(log);
+    player.previewQuery = [previews](const std::string&) {
+        previews->previews++;
+        PreviewResult preview;
+        preview.valid = true;
+        preview.matches = 412;
+        preview.libraryEnabled = true;
+        return preview;
+    };
+    return player;
+}
+
+httplib::Result previewRock(const TestServer& server) {
+    return post(server, "/api/autoplaylists/preview", R"({"query": "%genre% IS Rock"})");
+}
+
+}  // namespace
+
+TEST_CASE("a client looping on previews stops reaching the player") {
+    PlayerLog log;
+    PreviewLog previews;
+    const TestServer server(servingSettings(), countingPreviews(&log, &previews));
+    clearLog();
+
+    std::vector<httplib::Result> replies;
+    std::generate_n(std::back_inserter(replies), kPreviewBurst + kPreviewsPastTheBudget,
+                    [&server] { return previewRock(server); });
+
+    CHECK(previews.previews == kPreviewBurst);
+
+    for (auto reply = replies.begin() + kPreviewBurst; reply != replies.end(); ++reply) {
+        REQUIRE(*reply);
+        CHECK((*reply)->status == 429);
+        CHECK((*reply)->get_header_value("Retry-After") == "1");
+        CHECK(errorIn(**reply) == describe(PlaylistRefusal::tooFast));
+    }
+
+    CHECK(errorLinesContaining("refusing query previews") == 1);
+}
+
+// A preview changes nothing, so a client trying queries must not use up the budget a playlist
+// edit spends, nor be refused a preview because it has been editing.
+TEST_CASE("previewing and changing playlists spend separate budgets") {
+    PlayerLog log;
+    PreviewLog previews;
+    const TestServer server(servingSettings(), countingPreviews(&log, &previews));
+
+    SUBCASE("a client previewing past its budget can still make a playlist") {
+        for (int attempt = 0; attempt < kPreviewBurst + kPreviewsPastTheBudget; ++attempt)
+            previewRock(server);
+
+        const auto created = post(server, "/api/autoplaylists", kCreate);
+        REQUIRE(created);
+        CHECK(created->status == 200);
+    }
+
+    SUBCASE("a client changing playlists past its budget can still preview") {
+        constexpr int kPastThePlaylistBudget = 40;
+        for (int attempt = 0; attempt < kPastThePlaylistBudget; ++attempt)
+            post(server, "/api/autoplaylists", kCreate);
+
+        const auto previewed = previewRock(server);
+        REQUIRE(previewed);
+        CHECK(previewed->status == 200);
+    }
 }
 
 TEST_CASE("a client looping on playlist writes is logged once per burst, in the words it always was") {
@@ -3286,7 +3365,7 @@ TEST_CASE("a client looping on playlist writes is logged once per burst, in the 
 // one of them is refused. The create is the one that spent nothing: a loop on it made playlists
 // as fast as foobar2000 would take them.
 TEST_CASE("a client looping any of the six playlist writes is slowed down rather than obeyed") {
-    // Past kPlaylistBurst by enough that a token earned back mid-burst cannot hide the limit.
+    // Past kPlaylistBurst, and the server's clock stands still, so the last ten are refused.
     constexpr int kBurst = 40;
 
     for (const auto& write : theSixWrites()) {
@@ -3491,6 +3570,26 @@ TEST_CASE("a fill with nothing to resolve a set against names what is missing, n
 
     CHECK(log.roles.empty());
     CHECK(log.fills == 0);
+}
+
+TEST_CASE("a fill with no player behind it is a 503 naming what is missing, like every other write") {
+    Library library;
+    buildLibrary(library);
+    const TestServer server(servingSettings(), Player{}, &library);
+
+    const std::map<std::string, std::string> expected = {
+        {"the scratch role", "the component's own playlists are not available"},
+        {"a user's playlist", "playlist changes are not available"}};
+
+    for (const auto& target : targets(kHeldStructure)) {
+        INFO("target: ", target.name);
+
+        const auto response = post(server, target.path, target.body);
+
+        REQUIRE(response);
+        CHECK(response->status == 503);
+        CHECK(errorIn(*response) == expected.at(target.name));
+    }
 }
 
 TEST_CASE("a fill resolved against a generation the library has moved past inserts nothing") {

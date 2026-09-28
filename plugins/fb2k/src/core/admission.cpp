@@ -279,4 +279,16 @@ Admission admit(const std::string& sourceAddress, const std::string& host,
     return Admission{true, ""};
 }
 
+Admission admitFetchSite(const std::string& fetchSite, bool originListed) {
+    const bool fromAnotherSite =
+        equalsIgnoringCase(fetchSite, "cross-site") || equalsIgnoringCase(fetchSite, "same-site");
+
+    if (fromAnotherSite && !originListed)
+        return Admission{false,
+                         "a request from another site's page is refused unless its origin "
+                         "is in allowedOrigins"};
+
+    return Admission{true, ""};
+}
+
 }  // namespace jean

@@ -9,6 +9,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -29,6 +30,13 @@ constexpr char kUnresolved[] = "?";
 
 constexpr size_t kMaxColumns = 64;
 constexpr size_t kMaxColumnLength = 1024;
+
+// Room for a song's unsynced lyrics, which Jean reads as a column.
+constexpr size_t kMaxColumnValueBytes = size_t{64} * 1024;
+
+// The longest prefix of `formatted` within kMaxColumnValueBytes that ends between two UTF-8
+// characters.
+std::string cappedColumnValue(std::string_view formatted);
 
 constexpr size_t kRevisionsPerListeningHour = 40;
 constexpr size_t kRetainedListeningHours = 48;

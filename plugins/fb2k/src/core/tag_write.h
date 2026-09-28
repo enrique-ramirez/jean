@@ -91,6 +91,7 @@ enum class TagWriteOutcome {
     writeFailed,
     timedOut,
     unavailable,
+    tooFast,
 };
 
 std::string describe(TagWriteOutcome outcome);

@@ -340,3 +340,95 @@ TEST_CASE("a name listed in allowedHosts in config.json is admitted, and an unli
     REQUIRE(unlisted);
     CHECK(unlisted->status == 403);
 }
+
+// Sec-Fetch-Site is a browser's own account of who sent a request, which a page on another site
+// cannot forge. A browser sends it only to a secure origin, so over plain HTTP it is absent.
+TEST_CASE("a request another site sent is refused, and one this origin, a typed address or no browser sent is admitted") {
+    for (const char* site : {"cross-site", "same-site", "Cross-Site"}) {
+        INFO("Sec-Fetch-Site: ", std::string(site));
+        const auto refused = admitFetchSite(site, false);
+        CHECK_FALSE(refused.admitted);
+        CHECK(refused.refusal.find("allowedOrigins") != std::string::npos);
+    }
+
+    for (const char* site : {"same-origin", "none", ""}) {
+        INFO("Sec-Fetch-Site: ", std::string(site));
+        CHECK(admitFetchSite(site, false).admitted);
+    }
+}
+
+// allowedOrigins is the player owner naming another site's page as a client, and that page's
+// requests arrive marked as another site's.
+TEST_CASE("a request from another site is admitted when its origin is one allowedOrigins lists") {
+    CHECK(admitFetchSite("cross-site", true).admitted);
+    CHECK(admitFetchSite("same-site", true).admitted);
+}
+
+TEST_CASE("a cross-site request to /api/ is a 403 error document that never reaches the player") {
+    TestServer::WriterLog log;
+    const TestServer server(servingSettings(), TestServer::recordingWriter(&log));
+
+    for (const char* site : {"cross-site", "same-site"}) {
+        INFO("Sec-Fetch-Site: ", std::string(site));
+        const httplib::Headers headers{{"Sec-Fetch-Site", site},
+                                       {"Origin", "https://evil.example"}};
+
+        const auto write = server.client().Post(
+            "/api/tags", headers, R"({"path": "C:\\music\\a.flac", "fields": {"rating": "5"}})",
+            "application/json");
+        REQUIRE(write);
+        CHECK(write->status == 403);
+        CHECK(write->get_header_value("Content-Type").rfind("application/json", 0) == 0);
+        const auto body = json::parse(write->body, nullptr, false);
+        REQUIRE(body.is_object());
+        CHECK(body["error"].is_string());
+
+        const auto preflight = server.client().Options("/api/tags", headers);
+        REQUIRE(preflight);
+        CHECK(preflight->status == 403);
+    }
+
+    CHECK(log.calls.empty());
+}
+
+TEST_CASE("a request from this origin, a typed address or no browser reaches /api/") {
+    const TestServer server;
+
+    for (const char* site : {"same-origin", "none"}) {
+        INFO("Sec-Fetch-Site: ", std::string(site));
+        const auto response =
+            server.client().Get("/api/status", httplib::Headers{{"Sec-Fetch-Site", site}});
+        REQUIRE(response);
+        CHECK(response->status == 200);
+    }
+
+    const auto unmarked = server.client().Get("/api/status");
+    REQUIRE(unmarked);
+    CHECK(unmarked->status == 200);
+}
+
+TEST_CASE("a listed origin reaches /api/ from another site") {
+    Settings settings = servingSettings();
+    settings.allowedOrigins = {"https://jean.example"};
+    const TestServer server(settings);
+
+    const httplib::Headers headers{{"Sec-Fetch-Site", "cross-site"},
+                                   {"Origin", "https://jean.example"}};
+    const auto response = server.client().Get("/api/status", headers);
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
+    CHECK(response->get_header_value("Access-Control-Allow-Origin") == "https://jean.example");
+}
+
+// A link to the player from anywhere is how somebody reaches it at all.
+TEST_CASE("the page is served whichever site linked to it") {
+    int pagesRead = 0;
+    const TestServer server(servingSettings(), servingPage(&pagesRead));
+
+    const auto page = server.client().Get("/", httplib::Headers{{"Sec-Fetch-Site", "cross-site"}});
+
+    REQUIRE(page);
+    CHECK(page->status == 200);
+    CHECK(pagesRead == 1);
+}

@@ -273,6 +273,8 @@ std::string describe(TagWriteOutcome outcome) {
             return "the player did not answer in time";
         case TagWriteOutcome::unavailable:
             return "tag writing is not available";
+        case TagWriteOutcome::tooFast:
+            return "too many tag writes";
     }
     return "unknown";
 }

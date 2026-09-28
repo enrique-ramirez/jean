@@ -31,6 +31,8 @@ info:
 
     Every route, `OPTIONS` and `GET /status` included, requires a private source address (RFC1918, loopback and link-local, and their IPv6 equivalents) and a `Host` the component recognises: an IPv4 or IPv6 literal, `localhost`, a name with no dot, a name ending `.lan`, `.local` or `.home.arpa`, or a name listed in `allowedHosts` in `<profile>/foo_jean/config.json`. Either check failing is `403`, before anything else about the request is read.
 
+    A request under `/api/` that a browser marks `Sec-Fetch-Site: cross-site` or `same-site` is `403` as well, unless its `Origin` is one `allowedOrigins` lists. A browser sends that header only to a secure origin, so a request carrying none is admitted, as is one marked `same-origin` or `none`. Every answer under `/api/` carries `Cross-Origin-Resource-Policy: same-origin`, so a page on another origin cannot read one through an `<img>` or an `<audio>`, which CORS never governs.
+
     Every `POST` requires `Content-Type: application/json`, with or without a body; without it the answer is `415`. `DELETE` carries no such rule, since a browser preflights every cross-origin `DELETE` on its own.
 
     `GET /stream` requires one credential of its own beside admission: a ticket from `POST /stream/ticket`.
@@ -443,6 +445,19 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: |
+            Tag writes are arriving faster than this component will make them: a burst of 200, refilling one every 50 milliseconds, one budget however many clients are writing. Rating a whole album or a box set one track after another never meets it; a client stuck in a loop does. A request refused for what it asks is refused for that first and spends nothing. Nothing was written. `Retry-After` is sent in seconds.
+          headers:
+            Retry-After:
+              schema: { type: string }
+              description: Seconds to wait.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TagFailed" }
+              examples:
+                tooFast:
+                  value: { written: false, error: too many tag writes }
         "500":
           description: The player could not write the tags. No reason is given, because error text leaks filesystem paths.
           content:
@@ -651,6 +666,7 @@ paths:
                   summary: A valid query on an install with no Media Library.
                   value: { valid: true, error: "", matches: 0, libraryEnabled: false }
         "400": { $ref: "#/components/responses/PlaylistRefused" }
+        "429": { $ref: "#/components/responses/QueryPreviewedTooFast" }
         "503": { $ref: "#/components/responses/PlaylistUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
 
@@ -2786,7 +2802,7 @@ components:
       description: |
         Playlist changes or queue changes are arriving faster than this component will make them. The limit bounds how fast a client bug can flood the player with playlists or queue entries; it is not a security control.
 
-        A burst of thirty is allowed, refilling at one a second, one budget shared across creating, renaming, moving and deleting a playlist, copying rows into one and removing them, and across queueing, moving, removing and clearing the queue. Reading and previewing are not limited. `Retry-After` is sent in seconds.
+        A burst of thirty is allowed, refilling at one a second, one budget shared across creating, renaming, moving and deleting a playlist, copying rows into one and removing them, and across queueing, moving, removing and clearing the queue. Reading is not limited, and a query preview spends a budget of its own. `Retry-After` is sent in seconds.
       headers:
         Retry-After:
           schema: { type: string }
@@ -2840,7 +2856,7 @@ components:
 
     FillUnavailable:
       description: |
-        Either this install does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or no snapshot has been built yet. Both mean there is nothing to resolve the set against.
+        Either this install does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or no snapshot has been built yet. Both mean there is nothing to resolve the set against. The third is a component that cannot reach the playlist it would fill, which names the component's own playlists on `POST /playlists/own/{role}/items` and playlist changes on `POST /playlists/{id}/items`.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -2849,6 +2865,10 @@ components:
               value: { error: the media library is not available }
             nothingYet:
               value: { error: the library snapshot has not been built yet, detail: "" }
+            noOwnPlaylists:
+              value: { error: "the component's own playlists are not available" }
+            noPlaylistWrites:
+              value: { error: playlist changes are not available }
 
     PlaylistRowsMoved:
       description: |
@@ -2928,6 +2948,17 @@ components:
         Vary:
           schema: { type: string }
           description: "`Accept-Encoding`."
+
+    QueryPreviewedTooFast:
+      description: |
+        Query previews are arriving faster than this component will run them: a burst of 30, refilling one every 200 milliseconds, a budget apart from the one playlist changes spend. Each preview runs the query over the whole Media Library on foobar2000's main thread. Somebody typing into an editor that sends one per keystroke never meets it; a client stuck in a loop does. `Retry-After` is sent in seconds.
+      headers:
+        Retry-After:
+          schema: { type: string }
+          description: Seconds to wait.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PlaylistRefusal" }
 
     StatePolledTooFast:
       description: |
@@ -3714,6 +3745,7 @@ components:
             - the player could not write the tags
             - the player did not answer in time
             - tag writing is not available
+            - too many tag writes
 
     PlaylistAnnotation:
       description: |

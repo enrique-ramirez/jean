@@ -58,7 +58,8 @@ TestServer::TestServer(Settings settings, const Player& player, Library* library
     for (int attempt = 0; attempt < kAttempts; attempt++) {
         settings_.port = freePort();
         server_ = std::make_unique<HttpServer>(settings_, *audience_, player, mint, library,
-                                               playerState, nowPlayingArtwork);
+                                               playerState, nowPlayingArtwork,
+                                               [clock = rateLimitClock_] { return clock->now(); });
         status_ = server_->start();
 
         if (status_.listening || !status_.portInUse)

@@ -4,12 +4,14 @@
 
 #include "third_party/doctest.h"
 
+#include "core/text.h"
 #include "support/log_capture.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
 #include <algorithm>
 #include <cctype>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <set>
@@ -705,4 +707,83 @@ TEST_CASE("c13 every file of a folder interface is revalidated with an ETag, ass
         REQUIRE(again);
         CHECK(again->status == 304);
     }
+}
+
+namespace {
+
+// A policy a browser enforces is only as good as its weakest directive, so each is read on its own
+// rather than the header compared as one string that a reordering would break.
+std::map<std::string, std::set<std::string>> directivesOf(const std::string& policy) {
+    std::map<std::string, std::set<std::string>> directives;
+
+    for (const auto& directive : splitOn(policy, ';')) {
+        const auto words = splitOn(directive, ' ');
+        if (words.empty())
+            continue;
+
+        directives[words.front()] = std::set<std::string>(std::next(words.begin()), words.end());
+    }
+
+    return directives;
+}
+
+}  // namespace
+
+TEST_CASE("c14 Jean's page and a folder interface run only this origin's code, and nobody may frame them") {
+    FakePages pages = aBuild();
+    FakeDisk disk;
+    disk.files["mine/index.html"] = "<!doctype html><title>Mine</title>";
+    const TestServer server(servingSettings(), serving(&pages, &disk));
+
+    for (const char* path : {"/", "/assets/x.js", "/mine/"}) {
+        INFO("path: ", path);
+
+        const auto response = browse(server, path);
+
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+
+        auto policy = directivesOf(response->get_header_value("Content-Security-Policy"));
+        const std::set<std::string> self{"'self'"};
+
+        CHECK(policy["default-src"] == self);
+        CHECK(policy["script-src"] == self);
+        CHECK(policy["style-src"] == self);
+        CHECK(policy["font-src"] == self);
+        CHECK(policy["img-src"] == std::set<std::string>{"'self'", "blob:"});
+        CHECK(policy["media-src"] == std::set<std::string>{"'self'", "blob:"});
+        CHECK(policy["object-src"] == std::set<std::string>{"'none'"});
+        CHECK(policy["base-uri"] == self);
+        CHECK(policy["form-action"] == self);
+        CHECK(policy["frame-ancestors"] == std::set<std::string>{"'none'"});
+
+        CHECK(response->get_header_value("X-Frame-Options") == "DENY");
+        CHECK(response->get_header_value("Referrer-Policy") == "no-referrer");
+        CHECK(response->get_header_value("Cross-Origin-Opener-Policy") == "same-origin");
+    }
+}
+
+TEST_CASE("c14 the page may reach the player and the three artist-information services, and nothing else") {
+    FakePages pages = aBuild();
+    const TestServer server(servingSettings(), serving(&pages));
+
+    const auto response = browse(server, "/");
+
+    REQUIRE(response);
+    auto policy = directivesOf(response->get_header_value("Content-Security-Policy"));
+    CHECK(policy["connect-src"] ==
+          std::set<std::string>{"'self'", "https://musicbrainz.org", "https://www.wikidata.org",
+                                "https://en.wikipedia.org"});
+}
+
+TEST_CASE("c14 the page asks for no camera, microphone or location, and refuses them to anything it embeds") {
+    FakePages pages = aBuild();
+    const TestServer server(servingSettings(), serving(&pages));
+
+    const auto response = browse(server, "/");
+
+    REQUIRE(response);
+    const auto features = splitOn(response->get_header_value("Permissions-Policy"), ',');
+    const std::set<std::string> refused(features.begin(), features.end());
+    CHECK(refused == std::set<std::string>{"camera=()", "microphone=()", "geolocation=()"});
 }

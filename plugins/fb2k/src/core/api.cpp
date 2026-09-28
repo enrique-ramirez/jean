@@ -1280,6 +1280,8 @@ int httpStatusFor(TagWriteOutcome outcome) {
             return 504;
         case TagWriteOutcome::unavailable:
             return 503;
+        case TagWriteOutcome::tooFast:
+            return 429;
     }
     return 500;
 }

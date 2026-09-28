@@ -52,6 +52,16 @@ constexpr auto kArtworkRefill = std::chrono::milliseconds(50);
 constexpr int kPollBurst = 30;
 constexpr auto kPollRefill = std::chrono::milliseconds(100);
 
+// Rating a box set is a couple of hundred writes one after another, each rewriting a file, so
+// what this bounds is a client stuck in a loop.
+constexpr int kTagWriteBurst = 200;
+constexpr auto kTagWriteRefill = std::chrono::milliseconds(50);
+
+// A preview runs a query over the whole library on the player's main thread. Somebody typing
+// into an editor that does not debounce stays under this, and a client stuck in a loop does not.
+constexpr int kPreviewBurst = 30;
+constexpr auto kPreviewRefill = std::chrono::milliseconds(200);
+
 constexpr char kApiPrefix[] = "/api/";
 constexpr char kArtworkPath[] = "/api/artwork";
 constexpr char kPlayingArtworkPath[] = "/api/artwork/playing";
@@ -125,6 +135,8 @@ constexpr char kFetchingArtworkTooFast[] = "too many artwork requests";
 constexpr char kPlaylistChangesComplaint[] = "playlist-changes";
 constexpr char kLibraryRebuildsComplaint[] = "library-rebuilds";
 constexpr char kArtworkReadsComplaint[] = "artwork-reads";
+constexpr char kTagWritesComplaint[] = "tag-writes";
+constexpr char kQueryPreviewsComplaint[] = "query-previews";
 
 // The snapshot and the deltas. Opaque bytes with a magic number of their own, so nothing on
 // the way to the client sniffs, transcodes or reformats them; contract/openapi.yaml is the
@@ -364,6 +376,27 @@ constexpr char kAskEveryTime[] = "private, no-cache";
 constexpr char kPageRevalidate[] = "no-cache";
 constexpr char kPageForAYear[] = "public, max-age=31536000, immutable";
 
+// ui/src/features/now-playing/artistInfo.ts is what reaches the three hosts beyond this origin.
+constexpr char kPageContentPolicy[] =
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; "
+    "media-src 'self' blob:; font-src 'self'; "
+    "connect-src 'self' https://musicbrainz.org https://www.wikidata.org https://en.wikipedia.org; "
+    "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
+constexpr char kPagePermissions[] = "camera=(), microphone=(), geolocation=()";
+
+void guardPage(httplib::Response& res) {
+    res.set_header("Content-Security-Policy", kPageContentPolicy);
+    res.set_header("X-Frame-Options", "DENY");
+    res.set_header("Referrer-Policy", "no-referrer");
+    res.set_header("Cross-Origin-Opener-Policy", "same-origin");
+    res.set_header("Permissions-Policy", kPagePermissions);
+}
+
+bool isApiPath(const std::string& path) {
+    return path.rfind(kApiPrefix, 0) == 0;
+}
+
 void revalidateAlways(httplib::Response& res, const std::string& tag) {
     res.set_header("Cache-Control", kAskEveryTime);
     res.set_header("ETag", tag);
@@ -521,6 +554,11 @@ void applyLimits(httplib::Server& server) {
     server.set_read_timeout(10, 0);
     server.set_write_timeout(10, 0);
     server.set_payload_max_length(kMaxBodyBytes);
+
+    server.new_task_queue = [] {
+        const auto pool = connectionPoolFor(std::thread::hardware_concurrency());
+        return new httplib::ThreadPool(pool.threads, pool.maxThreads, pool.queued);
+    };
 }
 
 const char* reasonFor(int status) {
@@ -567,15 +605,27 @@ void reportFailuresWithoutLeaking(httplib::Server& server) {
 
 }  // namespace
 
+ConnectionPool connectionPoolFor(unsigned hardwareThreads) {
+    constexpr size_t kFewestThreads = 8;
+    constexpr size_t kGrowth = 4;
+
+    ConnectionPool pool;
+    pool.threads = std::max<size_t>(kFewestThreads, hardwareThreads > 0 ? hardwareThreads - 1 : 0);
+    pool.maxThreads = pool.threads * kGrowth;
+    pool.queued = pool.maxThreads;
+    return pool;
+}
+
 struct HttpServer::Impl {
     Impl(Settings s, Audience& a, Player p, TicketMint mint, Library* lib, PlayerStateStore* state,
-         NowPlayingArtwork* playing)
+         NowPlayingArtwork* playing, RateLimitClock clock)
         : settingsSnapshot(std::make_shared<const Settings>(std::move(s))),
           audience(a),
           player(std::move(p)),
           library(lib),
           playerState(state),
           nowPlayingArtwork(playing),
+          rateLimitClock(std::move(clock)),
           tickets(std::move(mint), std::chrono::seconds(settingsSnapshot->streamTicketTtlSeconds),
                   kMaxOutstandingTickets) {}
 
@@ -611,6 +661,7 @@ struct HttpServer::Impl {
     Library* const library;
     PlayerStateStore* const playerState;
     NowPlayingArtwork* const nowPlayingArtwork;
+    const RateLimitClock rateLimitClock;
 
     const uint64_t runId = freshRunId();
 
@@ -626,6 +677,10 @@ struct HttpServer::Impl {
     RateLimiter libraryRebuilds{kRefreshBurst, kRefreshRefill};
 
     RateLimiter artworkReads{kArtworkBurst, kArtworkRefill};
+
+    RateLimiter tagWrites{kTagWriteBurst, kTagWriteRefill};
+
+    RateLimiter queryPreviews{kPreviewBurst, kPreviewRefill};
 
     PerClientRateLimiter statePolls{kPollBurst, kPollRefill};
 
@@ -740,6 +795,8 @@ struct HttpServer::Impl {
     }
 
     void servePage(const httplib::Request& req, httplib::Response& res) const {
+        guardPage(res);
+
         const auto resolved = resolvePagePath(req.path);
         if (!resolved) {
             res.status = 404;
@@ -767,17 +824,30 @@ struct HttpServer::Impl {
                                             httplib::Response& res) const {
         using Routing = httplib::Server::HandlerResponse;
 
+        const bool api = isApiPath(req.path);
+        if (api)
+            res.set_header("Cross-Origin-Resource-Policy", "same-origin");
+
         const auto settings = currentSettings();
         const auto admission =
             admit(req.remote_addr, req.get_header_value("Host"), settings->allowedHosts);
         if (!admission.admitted) {
-            if (req.path.rfind(kApiPrefix, 0) == 0) {
+            if (api) {
                 respond(res, 403, errorDocument(admission.refusal));
             } else {
                 res.status = 403;
                 res.set_content(admission.refusal, "text/plain");
             }
             return Routing::Handled;
+        }
+
+        if (api) {
+            const auto site = admitFetchSite(req.get_header_value("Sec-Fetch-Site"),
+                                             originAllowed(req.get_header_value("Origin")));
+            if (!site.admitted) {
+                respond(res, 403, errorDocument(site.refusal));
+                return Routing::Handled;
+            }
         }
 
         applyCors(req, res);
@@ -788,7 +858,7 @@ struct HttpServer::Impl {
             return Routing::Handled;
         }
 
-        if (player.readPage && req.path.rfind(kApiPrefix, 0) != 0) {
+        if (player.readPage && !api) {
             if (req.method == "GET" || req.method == "HEAD") {
                 servePage(req, res);
                 return Routing::Handled;
@@ -797,7 +867,7 @@ struct HttpServer::Impl {
             return Routing::Unhandled;
         }
 
-        if (req.method == "POST" && req.path.rfind(kApiPrefix, 0) == 0 && !isJsonRequest(req)) {
+        if (req.method == "POST" && api && !isJsonRequest(req)) {
             respond(res, 415, errorDocument(kSendJson));
             return Routing::Handled;
         }
@@ -805,19 +875,34 @@ struct HttpServer::Impl {
         return Routing::Unhandled;
     }
 
-    bool changingTooFast() {
-        if (playlistChanges.allow(std::chrono::steady_clock::now())) {
-            complaints.allowed(kPlaylistChangesComplaint);
+    bool refusedByLimit(RateLimiter& limiter, const char* key, const char* complaint) {
+        if (limiter.allow(rateLimitClock())) {
+            complaints.allowed(key);
             return false;
         }
 
-        if (complaints.refused(kPlaylistChangesComplaint)) {
-            logError(
-                "refusing playlist changes: they are arriving faster than this component "
-                "will make them, which usually means a client is looping");
-        }
+        if (complaints.refused(key))
+            logError(complaint);
 
         return true;
+    }
+
+    bool changingTooFast() {
+        return refusedByLimit(playlistChanges, kPlaylistChangesComplaint,
+                              "refusing playlist changes: they are arriving faster than this "
+                              "component will make them, which usually means a client is looping");
+    }
+
+    bool writingTagsTooFast() {
+        return refusedByLimit(tagWrites, kTagWritesComplaint,
+                              "refusing tag writes: they are arriving faster than this component "
+                              "will make them, which usually means a client is looping");
+    }
+
+    bool previewingTooFast() {
+        return refusedByLimit(queryPreviews, kQueryPreviewsComplaint,
+                              "refusing query previews: they are arriving faster than this "
+                              "component will run them, which usually means a client is looping");
     }
 
     static bool readDeviceIdentity(const httplib::Request& req, httplib::Response& res,
@@ -991,16 +1076,10 @@ struct HttpServer::Impl {
 
     // Shared with POST /library/refresh, because a build is a build however it was asked for.
     bool rebuildingTooFast(httplib::Response& res) {
-        if (libraryRebuilds.allow(std::chrono::steady_clock::now())) {
-            complaints.allowed(kLibraryRebuildsComplaint);
+        if (!refusedByLimit(libraryRebuilds, kLibraryRebuildsComplaint,
+                            "refusing library rebuilds: they are arriving faster than this "
+                            "component will build them, which usually means a client is looping"))
             return false;
-        }
-
-        if (complaints.refused(kLibraryRebuildsComplaint)) {
-            logError(
-                "refusing library rebuilds: they are arriving faster than this component "
-                "will build them, which usually means a client is looping");
-        }
 
         res.set_header("Retry-After", std::to_string(kRefreshRefill.count()));
         respond(res, 429, errorDocument(kRefreshingTooFast));
@@ -1028,7 +1107,7 @@ struct HttpServer::Impl {
     }
 
     bool pollingTooFast(httplib::Response& res, const std::string& client) {
-        if (statePolls.allow(client, std::chrono::steady_clock::now())) {
+        if (statePolls.allow(client, rateLimitClock())) {
             complaints.allowed(client);
             return false;
         }
@@ -1251,16 +1330,10 @@ struct HttpServer::Impl {
     }
 
     bool fetchingArtworkTooFast(httplib::Response& res) {
-        if (artworkReads.allow(std::chrono::steady_clock::now())) {
-            complaints.allowed(kArtworkReadsComplaint);
+        if (!refusedByLimit(artworkReads, kArtworkReadsComplaint,
+                            "refusing artwork reads: they are arriving faster than this "
+                            "component will answer them, which usually means a client is looping"))
             return false;
-        }
-
-        if (complaints.refused(kArtworkReadsComplaint)) {
-            logError(
-                "refusing artwork reads: they are arriving faster than this component "
-                "will answer them, which usually means a client is looping");
-        }
 
         res.set_header("Retry-After", "1");
         respond(res, 429, errorDocument(kFetchingArtworkTooFast));
@@ -1402,6 +1475,13 @@ struct HttpServer::Impl {
             const auto request = parseTagWrite(req.body, *currentSettings());
             if (!request.ok()) {
                 respond(res, httpStatusFor(request.refusal), tagRefusedDocument(request));
+                return;
+            }
+
+            if (writingTagsTooFast()) {
+                res.set_header("Retry-After", "1");
+                respond(res, httpStatusFor(TagWriteOutcome::tooFast),
+                        tagFailedDocument(TagWriteOutcome::tooFast));
                 return;
             }
 
@@ -1725,7 +1805,13 @@ struct HttpServer::Impl {
 
         server.Post("/api/autoplaylists/preview", [this](const httplib::Request& req,
                                                          httplib::Response& res) {
-            const auto request = parseQueryPreview(req.body);
+            auto request = parseQueryPreview(req.body);
+            if (request.ok() && previewingTooFast()) {
+                request.refusal = PlaylistRefusal::tooFast;
+                request.detail = "query previews are arriving faster than they can be run";
+                res.set_header("Retry-After", "1");
+            }
+
             if (!request.ok()) {
                 respond(res, httpStatusFor(request.refusal), playlistRefusedDocument(request));
                 return;
@@ -1841,6 +1927,11 @@ struct HttpServer::Impl {
                 return;
             }
 
+            if (!player.ownPlaylist || !player.fill) {
+                respond(res, 503, errorDocument(kNoOwnPlaylists));
+                return;
+            }
+
             const auto titled = ownPlaylistTitle(title.value);
 
             const auto resolved = player.ownPlaylist(*role, titled);
@@ -1931,6 +2022,11 @@ struct HttpServer::Impl {
                 if (request.refusal == PlaylistRefusal::tooFast)
                     res.set_header("Retry-After", "1");
                 respond(res, httpStatusFor(request.refusal), fillRefusedDocument(request.refusal));
+                return;
+            }
+
+            if (!player.fill) {
+                respond(res, 503, errorDocument(kNoPlaylistWrites));
                 return;
             }
 
@@ -2564,9 +2660,10 @@ struct HttpServer::Impl {
 
 HttpServer::HttpServer(Settings settings, Audience& audience, Player player, TicketMint mint,
                        Library* library, PlayerStateStore* playerState,
-                       NowPlayingArtwork* nowPlayingArtwork)
+                       NowPlayingArtwork* nowPlayingArtwork, RateLimitClock rateLimitClock)
     : impl_(std::make_unique<Impl>(std::move(settings), audience, std::move(player),
-                                   std::move(mint), library, playerState, nowPlayingArtwork)) {}
+                                   std::move(mint), library, playerState, nowPlayingArtwork,
+                                   std::move(rateLimitClock))) {}
 
 HttpServer::~HttpServer() {
     stop();

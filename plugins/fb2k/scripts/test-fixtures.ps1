@@ -1,7 +1,8 @@
 # Builds the test corpus every live script writes to, and a playlist holding all of it.
 #
-# Never point a tag write at a real music library. The sources are files kept for the purpose, under -Corpus, and this
-# copies them into a tree of its own, so everything foo_jean writes goes to a copy.
+# Never point a tag write at a real music library. The sources are files kept for the purpose, under -Corpus, each pinned
+# to its SHA-256 so that nothing else saved under one of their names is copied, and this copies them into a tree of its
+# own, so everything foo_jean writes goes to a copy.
 #
 # One each of mp3, flac and m4a on purpose: a rating is an ID3v2 frame, a Vorbis comment and an MP4 atom respectively,
 # written by three different code paths inside foobar2000.
@@ -23,6 +24,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\lib\player.ps1"
+. "$PSScriptRoot\lib\download.ps1"
 
 if (-not $Foobar2000Dir) {
   throw "Set -Foobar2000Dir or the FOOBAR2000_DIR environment variable to the folder holding foobar2000.exe"
@@ -48,17 +50,22 @@ $accentedName = 'accent' + [char]0x00E9 + '.mp3'
 # vorbis-cue.flac is the fixture whose subsongs number from 1, and cue-99-subsongs.flac is the one that looks like a
 # cue sheet and is a single track, for the reason ARCHITECTURE.md, *Facts about the player*, gives.
 $layout = @(
-  [pscustomobject]@{ Source = 'mono.flac'; Target = Join-Path $rootOne $sharedRelativePath }
-  [pscustomobject]@{ Source = 'silence.flac'; Target = Join-Path $rootTwo $sharedRelativePath }
-  [pscustomobject]@{ Source = 'vorbis-cue.flac'; Target = Join-Path $rootOne 'vorbis-cue.flac' }
-  [pscustomobject]@{ Source = 'cue-99-subsongs.flac'; Target = Join-Path $rootOne 'cue-99-subsongs.flac' }
-  [pscustomobject]@{ Source = 'silence.m4a'; Target = Join-Path $rootOne 'silence.m4a' }
-  [pscustomobject]@{ Source = 'mono.mp3'; Target = Join-Path $rootOne $accentedName }
-  [pscustomobject]@{ Source = 'silence.mp3'; Target = Join-Path $outsideLibrary 'silence.mp3' }
+  [pscustomobject]@{ Source = 'mono.flac'; Sha256 = '20539FBBD6AE28CEA2B2182A4C60C6C70CBB710A136199FC83200C4E5FA00B1C'; Target = Join-Path $rootOne $sharedRelativePath }
+  [pscustomobject]@{ Source = 'silence.flac'; Sha256 = '1E5F07490CF857F7C726465B687C773BB0CC5C3EC4ECFDCF6AA85EB11F607CE7'; Target = Join-Path $rootTwo $sharedRelativePath }
+  [pscustomobject]@{ Source = 'vorbis-cue.flac'; Sha256 = '54B5247D5F06744A359F607851A9E16679F5B6DD9B71CFCFFB4518904DC2F9B3'; Target = Join-Path $rootOne 'vorbis-cue.flac' }
+  [pscustomobject]@{ Source = 'cue-99-subsongs.flac'; Sha256 = '513FAD18578F3225FAE5DE1BDA8F700415BE6FD8AA1E7AF533B5EB796ED2D461'; Target = Join-Path $rootOne 'cue-99-subsongs.flac' }
+  [pscustomobject]@{ Source = 'silence.m4a'; Sha256 = '9C9DD1312090304A693D1FDE554AF482F1804DF8926F6273CB481BAF746DA98C'; Target = Join-Path $rootOne 'silence.m4a' }
+  [pscustomobject]@{ Source = 'mono.mp3'; Sha256 = '092C62FEFDD637920F269C1695B18D1C752E3EBA2F69E0E5917CFF9ABAD11721'; Target = Join-Path $rootOne $accentedName }
+  [pscustomobject]@{ Source = 'silence.mp3'; Sha256 = 'E36C7E2C97371ADBBE93B3EDC39D99EE3B8B32F82A875A0B7E1ED31AAB6BAF87'; Target = Join-Path $outsideLibrary 'silence.mp3' }
 )
 
 $missing = @($layout.Source | Sort-Object -Unique | Where-Object { -not (Test-Path -LiteralPath (Join-Path $Corpus $_)) })
 if ($missing.Count -gt 0) { throw "The corpus at $Corpus is missing $($missing -join ', ')" }
+
+foreach ($fixture in $layout) {
+  Assert-Sha256 -Path (Join-Path $Corpus $fixture.Source) -Sha256 $fixture.Sha256 `
+    -Name "$($fixture.Source) in the corpus at $Corpus"
+}
 
 # foo_jean answers 'application/json' with no charset parameter, and PowerShell 5.1 then falls back to ISO-8859-1,
 # turning any accented filename into mojibake that no longer names a file on disk. Decode the raw bytes as UTF-8 by hand.

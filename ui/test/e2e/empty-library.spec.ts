@@ -151,12 +151,10 @@ test.describe("a component that does not serve the library", () => {
 		page,
 		isMobile,
 	}) => {
-		await page.goto("/");
+		await page.goto("/#/home");
 		await page.request.post("/__control/play", {
 			data: { playlistId: "p5", index: 0 },
 		});
-		// Opened only once Jean has the track: it follows playback to the set it
-		// is playing from, and that navigation would close a screen opened sooner.
 		await expect(page).toHaveTitle(/^Los Calientes/);
 		await openNowPlaying(page);
 

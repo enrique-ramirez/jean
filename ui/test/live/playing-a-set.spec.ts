@@ -8,7 +8,7 @@ import {
 	rowsOf,
 	state,
 } from "./component.ts";
-import { expect, refuseUnmuted, test } from "./fixtures.ts";
+import { expect, refuseUnmuted, reset, test } from "./fixtures.ts";
 
 // Starting a row is not the same as deciding where the track after it comes from, and only a real
 // player can tell the two apart: `POST /playlists/{id}/items/{index}/play` reaches
@@ -18,6 +18,7 @@ import { expect, refuseUnmuted, test } from "./fixtures.ts";
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(refuseUnmuted);
+test.afterAll(reset);
 
 const FOCUS_AWAY = "#live playing-a-set";
 
@@ -85,13 +86,15 @@ test("a set played from a library view leaves the player focused on that set", a
 	await expect(trackRow(page, 0)).toBeAttached();
 	await trackRow(page, 1).dblclick();
 
+	// foobar2000 moves the playlist focus when Jean fills the set, before the play
+	// request lands: only where the track plays from says the click landed.
+	const playingFrom = async () =>
+		(await state()).player.playingLocation?.playlistId;
 	await expect
-		.poll(async () => (await state()).player.playback)
-		.toBe("playing");
-	const scratch = (await playlists()).find((entry) => entry.role === "scratch");
-	expect(scratch).toBeDefined();
-	if (!scratch) return;
-
-	expect(await focused()).toBe(scratch.id);
-	expect((await state()).player.playingLocation?.playlistId).toBe(scratch.id);
+		.poll(async () => {
+			const id = await playingFrom();
+			return (await playlists()).find((entry) => entry.id === id)?.role;
+		})
+		.toBe("scratch");
+	expect(await focused()).toBe(await playingFrom());
 });

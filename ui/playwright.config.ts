@@ -5,6 +5,10 @@ import { defineConfig, devices } from "@playwright/test";
 // they run alone, in order, and against the build that is already deployed.
 const LIVE = process.env.LIVE;
 
+// Specs load `src/` modules outside Vite, which is what injects this; Playwright evaluates the
+// config in every worker before a spec.
+Object.assign(globalThis, { __SHIPPED_LOCALES__: [] });
+
 // Tests run against a production build served by the fake player, because that is the shape
 // the component itself deploys: one origin serving both the app and /api. A dev server with a
 // proxy in front of it would test an arrangement that only exists locally.

@@ -39,8 +39,8 @@ test("the same controls are all drawn once the setting is back on", async ({
 	await expect(newPlaylist).toHaveCount(1);
 
 	const grips = sidebar(page).locator('[class*="grip"]');
+	await expect(grips.first()).toBeAttached();
 	console.log(`[control] reorder grips in the sidebar: ${await grips.count()}`);
-	expect(await grips.count()).toBeGreaterThan(0);
 
 	const row = sidebar(page)
 		.locator("> div")

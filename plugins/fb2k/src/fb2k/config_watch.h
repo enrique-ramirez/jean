@@ -29,7 +29,7 @@ private:
     HttpServer& server_;
     Settings running_;
     std::filesystem::path nativeConfigPath_;
-    std::filesystem::file_time_type lastSeen_{};
+    std::filesystem::file_time_type lastSeen_;
 
     std::mutex mutex_;
     std::condition_variable wake_;

@@ -21,7 +21,7 @@ namespace {
 using std::chrono::milliseconds;
 using std::chrono::steady_clock;
 
-const steady_clock::time_point kStart{steady_clock::duration(0)};
+constexpr steady_clock::time_point kStart{steady_clock::duration(0)};
 
 constexpr auto kJustShort = kMainThreadStalledAfter - milliseconds(1);
 
@@ -147,8 +147,10 @@ TEST_CASE("checks asked from several threads while the main thread runs them agr
     MainThreadWatch watch(queue);
 
     constexpr int kPolls = 200;
+    constexpr int kPollers = 3;
     std::vector<std::thread> pollers;
-    for (int poller = 0; poller < 3; ++poller) {
+    pollers.reserve(kPollers);
+    for (int poller = 0; poller < kPollers; ++poller) {
         pollers.emplace_back([&watch] {
             for (int poll = 0; poll < kPolls; ++poll)
                 watch.check(kStart + kMainThreadCheckInterval * poll);

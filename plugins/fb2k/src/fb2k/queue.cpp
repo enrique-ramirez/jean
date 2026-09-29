@@ -33,7 +33,7 @@ struct CopiedQueue {
     std::vector<CopiedQueueItem> items;
 };
 
-CopiedQueue copyQueue(PlayerStateStore& store) {
+CopiedQueue copyQueue(const PlayerStateStore& store) {
     pfc::list_t<t_playback_queue_item> items;
     playlist_manager::get()->queue_get_contents(items);
 
@@ -76,7 +76,7 @@ QueuedTrack formatted(const CopiedQueueItem& item, const NameScripts& scripts,
 }
 
 // See ARCHITECTURE.md, *Threads, and what may block*, for the race this closes only half of.
-bool queueHasMoved(PlayerStateStore& store, uint64_t revision) {
+bool queueHasMoved(const PlayerStateStore& store, uint64_t revision) {
     return store.read().queueRevision != revision;
 }
 
@@ -118,8 +118,9 @@ void queueAt(const playlist_manager_v5::ptr& manager, std::optional<QueuePositio
 
 PlayerOutcome queueRowsOnMainThread(const std::string& playlistId,
                                     const std::vector<uint32_t>& positions,
-                                    std::optional<QueuePosition> at, PlayerStateStore& store) {
-    auto manager = playlist_manager_v5::get();
+                                    std::optional<QueuePosition> at,
+                                    const PlayerStateStore& store) {
+    const auto manager = playlist_manager_v5::get();
     const auto index = findPlaylist(playlistId);
 
     QueueEditFacts facts;
@@ -147,8 +148,8 @@ PlayerOutcome queueRowsOnMainThread(const std::string& playlistId,
 PlayerOutcome queueTracksOnMainThread(uint64_t structure, const std::vector<uint32_t>& ordinals,
                                       std::optional<QueuePosition> at,
                                       const OrdinalResolver& resolveOrdinals,
-                                      PlayerStateStore& store) {
-    auto manager = playlist_manager_v5::get();
+                                      const PlayerStateStore& store) {
+    const auto manager = playlist_manager_v5::get();
     const auto resolved = resolveOrdinals(structure, ordinals);
 
     QueueEditFacts facts;
@@ -171,8 +172,8 @@ PlayerOutcome queueTracksOnMainThread(uint64_t structure, const std::vector<uint
 // same, unchanged-length queue. Rebuilding from `min(from, to)` rather than just the affected
 // span reuses queueAt's own re-add loop instead of a second one for the shorter range.
 PlayerOutcome moveEntryOnMainThread(uint32_t from, uint32_t to, uint64_t revision,
-                                    PlayerStateStore& store) {
-    auto manager = playlist_manager_v5::get();
+                                    const PlayerStateStore& store) {
+    const auto manager = playlist_manager_v5::get();
 
     pfc::list_t<t_playback_queue_item> contents;
     manager->queue_get_contents(contents);
@@ -199,8 +200,9 @@ PlayerOutcome moveEntryOnMainThread(uint32_t from, uint32_t to, uint64_t revisio
     return PlayerOutcome::done;
 }
 
-PlayerOutcome removeEntryOnMainThread(uint32_t index, uint64_t revision, PlayerStateStore& store) {
-    auto manager = playlist_manager_v5::get();
+PlayerOutcome removeEntryOnMainThread(uint32_t index, uint64_t revision,
+                                      const PlayerStateStore& store) {
+    const auto manager = playlist_manager_v5::get();
 
     QueueEditFacts facts;
     facts.queueMoved = queueHasMoved(store, revision);

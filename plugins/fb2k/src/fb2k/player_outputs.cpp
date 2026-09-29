@@ -60,7 +60,7 @@ OutputCalls playerOutputsVia(MainThreadQueue& mainThread) {
     if (output_manager_v2::tryGet().is_empty())
         return outputs;
 
-    outputs.list = [&mainThread]() {
+    outputs.list = [&mainThread] {
         return askForOutcome<OutputsRead>(mainThread, "listing the output devices", [] {
             outputCoreConfig_t config{};
             output_manager_v2::get()->getCoreConfig(&config, sizeof(config));
@@ -122,7 +122,7 @@ struct OutputWatch::Callback : public output_config_change_callback {
         : store(store), manager(std::move(manager)) {}
 
     void outputConfigChanged() override {
-        auto id = currentDeviceId();
+        const auto id = currentDeviceId();
         if (id == lastSeen)
             return;
 
@@ -140,7 +140,7 @@ struct OutputWatch::Callback : public output_config_change_callback {
 };
 
 OutputWatch::OutputWatch(PlayerStateStore& store) {
-    auto manager = output_manager_v2::tryGet();
+    const auto manager = output_manager_v2::tryGet();
     if (manager.is_empty())
         return;
 

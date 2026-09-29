@@ -27,6 +27,7 @@ void write(const char* level, const std::string& message) {
     try {
         ensureComponentDir();
         appendTextFile(logPath(), std::string("[") + level + "] " + message + "\n", kMaxLogBytes);
+        // NOLINTNEXTLINE(bugprone-empty-catch)
     } catch (const std::exception&) {
         // Reporting a logging failure through the logger is how you get a loop, and the
         // console line has already gone out.

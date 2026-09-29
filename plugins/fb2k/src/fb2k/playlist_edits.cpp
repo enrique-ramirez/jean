@@ -118,7 +118,7 @@ PlaylistResult createOnMainThread(const std::string& title, const NewPlaylistRow
     if (gathered.outcome != PlayerOutcome::done)
         return playlistFailure(gathered.outcome);
 
-    auto manager = playlist_manager_v5::get();
+    const auto manager = playlist_manager_v5::get();
     const auto index = manager->create_playlist(title.c_str(), title.size(), pfc::infinite_size);
 
     if (index == pfc::infinite_size)
@@ -177,7 +177,7 @@ std::vector<t_size> listOrderMoving(size_t count, size_t from, size_t to) {
 
 PlaylistResult moveOnMainThread(const std::string& id, uint32_t index) {
     const auto from = findPlaylist(id);
-    auto manager = playlist_manager::get();
+    const auto manager = playlist_manager::get();
     const auto count = manager->get_playlist_count();
 
     auto facts = userPlaylistFacts(from, kNoLockCoversMoving);
@@ -208,7 +208,7 @@ RowsEdited copyRowsOnMainThread(const std::string& playlistId, const std::string
     if (gathered.outcome != PlayerOutcome::done)
         return failureOf<RowsEdited>(gathered.outcome);
 
-    auto manager = playlist_manager_v5::get();
+    const auto manager = playlist_manager_v5::get();
     const auto base = manager->playlist_get_item_count(index);
     manager->playlist_insert_items(index, base, gathered.items, bit_array_false());
 
@@ -222,7 +222,7 @@ RowsEdited removeRowsOnMainThread(const std::string& playlistId, uint64_t struct
                                   const std::vector<uint32_t>& positions,
                                   const PlaylistVersions& versions) {
     const auto index = findPlaylist(playlistId);
-    auto manager = playlist_manager_v5::get();
+    const auto manager = playlist_manager_v5::get();
 
     auto facts = userPlaylistFacts(index, playlist_lock::filter_remove);
     facts.rowsMoved = versions.of(playlistId).structure != structure;
@@ -260,7 +260,7 @@ FillResult fillOnMainThread(const std::string& playlistId, const std::string& ti
     if (!title.empty())
         playlist_manager::get()->playlist_rename(index, title.c_str(), title.size());
 
-    auto manager = playlist_manager_v5::get();
+    const auto manager = playlist_manager_v5::get();
 
     if (existing == ExistingRows::replaced)
         removeEveryItem(index);
@@ -277,7 +277,7 @@ PlaylistResult resolveOwnOnMainThread(OwnPlaylistRole role, const std::string& t
     auto index = findOwnPlaylist(role);
 
     if (index == pfc::infinite_size) {
-        auto manager = playlist_manager_v5::get();
+        const auto manager = playlist_manager_v5::get();
         index = manager->create_playlist(title.c_str(), title.size(), pfc::infinite_size);
 
         if (index == pfc::infinite_size)
@@ -305,8 +305,8 @@ PlaylistResult emptyOwnOnMainThread(OwnPlaylistRole role, const PlaylistVersions
 
 PlaylistCreator makePlaylistCreator(MainThreadQueue& mainThread, const PlaylistVersions& versions,
                                     OrdinalResolver resolveOrdinals) {
-    return [&mainThread, &versions, resolveOrdinals](const std::string& title,
-                                                     const NewPlaylistRows& rows) {
+    return [&mainThread, &versions, resolveOrdinals = std::move(resolveOrdinals)](
+               const std::string& title, const NewPlaylistRows& rows) {
         return askForOutcome<PlaylistResult>(
             mainThread, "creating a playlist", [title, rows, &versions, resolveOrdinals] {
                 return createOnMainThread(title, rows, versions, resolveOrdinals);
@@ -362,7 +362,7 @@ PlaylistRowRemover makePlaylistRowRemover(MainThreadQueue& mainThread,
 
 PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver resolveOrdinals,
                                   const PlaylistVersions& versions) {
-    return [&mainThread, resolveOrdinals, &versions](
+    return [&mainThread, resolveOrdinals = std::move(resolveOrdinals), &versions](
                const std::string& playlistId, const std::string& title, uint64_t structure,
                const std::vector<uint32_t>& ordinals, ExistingRows existing) {
         return askForOutcome<FillResult>(

@@ -44,7 +44,7 @@ public:
     constexpr ControlList() : first_(nullptr), last_(nullptr) {}
 
     template <size_t N>
-    constexpr ControlList(const Entry (&table)[N]) : first_(table), last_(table + N) {}
+    explicit constexpr ControlList(const Entry (&table)[N]) : first_(table), last_(table + N) {}
 
     constexpr const Entry* begin() const { return first_; }
     constexpr const Entry* end() const { return last_; }
@@ -81,9 +81,9 @@ struct Page {
     bool configPath;
 };
 
-constexpr Page kMainPage{kPageName, IDD_PREFERENCES, kMainControls, BoolControls(), true};
-constexpr Page kPermissionsPage{kPermissionsName, IDD_PERMISSIONS, kPermissionsControls,
-                                kPermissionsBoolControls, false};
+constexpr Page kMainPage{kPageName, IDD_PREFERENCES, Controls(kMainControls), BoolControls(), true};
+constexpr Page kPermissionsPage{kPermissionsName, IDD_PERMISSIONS, Controls(kPermissionsControls),
+                                BoolControls(kPermissionsBoolControls), false};
 
 std::string readControl(HWND dialog, int id) {
     auto* const control = GetDlgItem(dialog, id);

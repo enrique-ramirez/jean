@@ -51,8 +51,6 @@ void copyAs(const From* first, size_t count, std::vector<To>& out) {
                    [](From value) { return static_cast<To>(value); });
 }
 
-}  // namespace
-
 struct Format {
     Format(std::string name, std::string contentType, int bitrate, StreamEncoder& encoder)
         : name(std::move(name)),
@@ -68,6 +66,8 @@ struct Format {
     std::atomic<int> listeners{0};
     std::vector<std::uint8_t> preamble;
 };
+
+}  // namespace
 
 struct Streamer::State {
     PcmRing pcm;
@@ -216,7 +216,7 @@ private:
     }
 
     bool reconfigure(const AudioSpec& spec) {
-        auto resamplers = resampler_manager_v3::tryGet();
+        const auto resamplers = resampler_manager_v3::tryGet();
         if (resamplers.is_empty()) {
             if (!complained_) {
                 logError(

@@ -67,7 +67,7 @@ PlaylistResult createOnMainThread(const AutoPlaylistSpec& spec, const PlaylistVe
         return playlistFailure(PlayerOutcome::queryInvalid, e.what());
     }
 
-    auto manager = playlist_manager_v5::get();
+    const auto manager = playlist_manager_v5::get();
     const auto index =
         manager->create_playlist(spec.title.c_str(), spec.title.size(), pfc::infinite_size);
 
@@ -108,7 +108,7 @@ PlaylistResult updateOnMainThread(const std::string& id, const AutoPlaylistSpec&
         return playlistFailure(PlayerOutcome::queryInvalid, e.what());
     }
 
-    auto autoplaylists = autoplaylist_manager::get();
+    const auto autoplaylists = autoplaylist_manager::get();
 
     // There is no "change the query" call on autoplaylist_manager.
     if (autoplaylists->is_client_present(index))

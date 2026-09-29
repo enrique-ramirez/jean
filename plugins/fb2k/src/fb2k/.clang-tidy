@@ -1,0 +1,34 @@
+# The parent .clang-tidy, minus what the foobar2000 SDK, Win32 and MSVC's headers make every
+# file here trigger.
+#
+#   readability-named-parameter
+#     A foobar2000 callback override takes the SDK's whole signature and uses part of it.
+#
+#   bugprone-throwing-static-initialization, cert-err58-cpp (clang-tidy prints one as an alias of
+#   the other on the same diagnostics)
+#     A component registers each service as a namespace-scope factory object, which is how
+#     foobar2000 finds it at load. There is no other place to put one.
+#
+#   bugprone-signed-bitwise
+#     foobar2000 SDK flag constants (flag_on_playback_new_track and the like) are unscoped enums,
+#     ORed at each callback base.
+#
+#   misc-multiple-inheritance
+#     The SDK's *_impl_base callback classes are made to be mixed by multiple inheritance.
+#
+#   performance-no-int-to-ptr
+#     Win32 hands a dialog procedure its object back as an integer, GWLP_USERDATA, and the only
+#     way to reach it is the cast.
+#
+#   clang-analyzer-optin.core.EnumCastOutOfRange
+#     Reports at MSVC's own <filesystem> (xfilesystem_abi.h), on a cast the library makes.
+---
+InheritParentConfig: true
+Checks: >
+  -readability-named-parameter,
+  -bugprone-throwing-static-initialization,
+  -cert-err58-cpp,
+  -bugprone-signed-bitwise,
+  -misc-multiple-inheritance,
+  -performance-no-int-to-ptr,
+  -clang-analyzer-optin.core.EnumCastOutOfRange

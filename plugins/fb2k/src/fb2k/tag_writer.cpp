@@ -20,7 +20,7 @@ using TagFields = std::map<std::string, std::string>;
 // value.
 service_ptr_t<file_info_filter> makeFilter(TagFields fields) {
     return file_info_filter::create(
-        [fields = std::move(fields)](trackRef, t_filestats, file_info& info) {
+        [fields = std::move(fields)](const trackRef&, t_filestats, file_info& info) {
             std::for_each(fields.begin(), fields.end(), [&info](const auto& field) {
                 if (field.second.empty())
                     info.meta_remove_field(field.first.c_str());

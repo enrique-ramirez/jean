@@ -43,6 +43,7 @@ void ensureComponentDir() {
     try {
         if (!filesystem::g_exists(dir.c_str(), fb2k::noAbort))
             filesystem::g_create_directory(dir.c_str(), fb2k::noAbort);
+        // NOLINTNEXTLINE(bugprone-empty-catch)
     } catch (const std::exception&) {
     }
 }

@@ -8,7 +8,7 @@ Formats our own C++ to .clang-format. third_party/ is never touched.
   scripts/format.sh            rewrite in place
   scripts/format.sh --check    exit non-zero if anything is unformatted
 
-CLANG_FORMAT picks the binary, for a machine carrying more than one.
+CLANG_FORMAT picks the binary, for a machine carrying more than one. Only LLVM 23 is accepted.
 USAGE
 }
 
@@ -21,21 +21,9 @@ esac
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-if [ -n "${CLANG_FORMAT:-}" ]; then
-  if ! command -v "$CLANG_FORMAT" >/dev/null 2>&1; then
-    echo "CLANG_FORMAT names '$CLANG_FORMAT', which is not on PATH. A gate that asked for one" >&2
-    echo "version must not quietly settle for another." >&2
-    exit 127
-  fi
-  formatter="$CLANG_FORMAT"
-elif command -v clang-format >/dev/null 2>&1; then
-  formatter=clang-format
-elif xcrun -f clang-format >/dev/null 2>&1; then
-  formatter="xcrun clang-format"
-else
-  echo "clang-format not found. On macOS it comes with Xcode; otherwise install LLVM." >&2
-  exit 127
-fi
+# shellcheck source=lib/llvm.sh
+. "$root/scripts/lib/llvm.sh"
+formatter="$(find_llvm_tool clang-format CLANG_FORMAT)" || exit 127
 
 # macOS ships bash 3.2, which has no mapfile.
 files=()

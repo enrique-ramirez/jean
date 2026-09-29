@@ -33,7 +33,6 @@ public:
     NowPlayingArtworkWatch(const NowPlayingArtworkWatch&) = delete;
     NowPlayingArtworkWatch& operator=(const NowPlayingArtworkWatch&) = delete;
 
-private:
     // foobar2000 breaks the SDK's own album_art.h promise that this is never called with a
     // null object, for the reason ARCHITECTURE.md, *Facts about the player*, gives. bytesOf
     // answers an empty string for a null data, and NowPlayingArtwork::hold treats an empty
@@ -42,6 +41,7 @@ private:
     // ordinary track change.
     void on_album_art(album_art_data::ptr data) override;
 
+private:
     NowPlayingArtwork& store_;
     now_playing_album_art_notify_manager::ptr manager_;
 };

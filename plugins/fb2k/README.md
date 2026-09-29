@@ -131,9 +131,9 @@ scripts/compile-commands.sh               # what an editor's clangd reads
 
 `scripts/compile-commands.sh` writes `compile_commands.json`, and an editor is wrong without it. clangd finds no compilation database, falls back to compiling each file with no include paths and no `-std`, and reports the first `#include "core/..."` as a file-not-found followed by a hundred errors that are all cascade from it. The file holds absolute paths and is gitignored, so it is generated per machine. It covers `src/core/` and `tests/`; `src/fb2k/` resolves only where the foobar2000 SDK and the Windows SDK are, which is the build machine.
 
-`.github/workflows/plugin.yml` runs `scripts/test.sh`, `scripts/format.sh --check` and `scripts/lint.sh` on a Linux runner for every change under `plugins/fb2k/` or to `contract/openapi.yaml`. Both pin LLVM 23, and a local run matches CI only at that version. `scripts/lint.sh` refuses any other clang-tidy. `scripts/format.sh` takes whichever clang-format `CLANG_FORMAT` names or `PATH` finds first, and falls back to Apple's `xcrun clang-format`, a different version that can disagree with CI; `CLANG_FORMAT=clang-format-23` settles it.
+`.github/workflows/plugin.yml` runs `scripts/test.sh`, `scripts/format.sh --check` and `scripts/lint.sh` on a Linux runner for every change under `plugins/fb2k/` or to `contract/openapi.yaml`. It pins LLVM 23, and so do both scripts: each refuses any other clang-format or clang-tidy, since a local run matches CI only at that version. `CLANG_FORMAT` and `CLANG_TIDY` name the binary on a machine carrying more than one.
 
-On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\test.ps1`. The `.ps1` and `.sh` fetchers are the same fetch for different shells; run whichever belongs to the machine the tests will run on.
+On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\test.ps1`. `scripts\lint.ps1` is clang-tidy over `src/fb2k/`, which only the build machine can compile: LLVM 23 from `winget install LLVM.LLVM`, run with the vcxproj's own defines and include paths. The `.ps1` and `.sh` fetchers are the same fetch for different shells; run whichever belongs to the machine the tests will run on.
 
 `plugins/fb2k/CONTRIBUTING.md`, *Tests*, rule 11, is what a machine that runs the suite needs beyond this directory.
 

@@ -72,6 +72,7 @@
 		"src/domain/player/followRevision.ts",
 		"src/domain/player/listener.ts",
 		"src/domain/player/listenerStore.ts",
+		"src/domain/player/streamHealth.ts",
 		"src/domain/player/mseStream.ts",
 		"src/domain/player/oggDemux.ts",
 		"src/domain/player/playerPoll.ts",

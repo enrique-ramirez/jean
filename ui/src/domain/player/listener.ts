@@ -63,6 +63,23 @@ export function resolveListener({ state, origin }: FooJeanDiscovery): Listener {
 export const anchorOf = (streamTimeAtConnect: number, bufferedStart: number) =>
 	streamTimeAtConnect - bufferedStart;
 
+export interface StreamReading {
+	streamTime: number;
+	readAt: number;
+}
+
+export const streamTimeAt = (reading: StreamReading, at: number) =>
+	reading.streamTime + (at - reading.readAt) / 1000;
+
+// Wall time since connecting minus audio played, rather than a measured buffer depth: no browser
+// reports the bytes still in the socket.
+export const lagSeconds = (
+	reading: StreamReading,
+	anchor: number,
+	currentTime: number,
+	now: number,
+) => streamTimeAt(reading, now) - (anchor + currentTime);
+
 // A browser starts `currentTime` at zero or at the stream's granule position, and `buffered.start(0)`
 // is whichever it chose.
 export const bufferedStart = (audio: HTMLAudioElement) =>

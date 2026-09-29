@@ -24,29 +24,24 @@ import {
 	DEVICE_VOLUME_FLOOR_DB,
 	decibelsOf,
 	type ListenTarget,
+	lagSeconds,
 	playsNatively,
+	type StreamReading,
+	streamTimeAt,
 } from "./listener";
 import { canUseMse, type MseStream, openMseStream } from "./mseStream";
+import { countStall, formatToTry, stallVerdict } from "./streamHealth";
 
 const VOLUME_KEY = "jean.listenVolume";
 export const LOW_LATENCY_KEY = "jean.lowLatencyStream";
 
 const RECONNECT_MS = [500, 1000, 2000, 4000, 8000];
 const BUSY_RETRY_MS = 5000;
-// How long `currentTime` may stand still while the element believes it is playing. A dead live
-// stream fires `stalled` and `waiting`, never `error`, so nothing else notices.
-const STALL_MS = 6000;
-const START_MS = 25_000;
 const SEEK_WAIT_MS = 20_000;
 const WATCHDOG_MS = 1000;
-const STALLS_ALLOWED = 3;
-const STALL_WINDOW_MS = 30_000;
 // Firefox rebuffers more than once after a flush, where Chromium recovers in one.
 const AFTER_FLUSH_MS = 3000;
-const MSE_START_MS = 5000;
 
-// A stopped player and a broken stream look identical from the stream: headers arrive and then
-// nothing. Only the player's own state can say which, and the two need different sentences.
 export type ListenPhase =
 	| { kind: "off" }
 	| { kind: "connecting" }
@@ -87,8 +82,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let watchdogTimer: ReturnType<typeof setInterval> | null = null;
 
 let anchor: number | null = null;
-let timelineStreamTime: number | null = null;
-let timelineAt = 0;
+let reading: StreamReading | null = null;
 let connectAt = 0;
 let marks: StreamMark[] = [];
 let audiblePath: string | null = null;
@@ -160,8 +154,7 @@ const timelineFollower: FollowRevision = followRevision<TimelineRead>({
 	apply: ({ timeline, mine }) => {
 		if (mine !== generation || !element) return;
 		marks = timeline.marks;
-		timelineStreamTime = timeline.streamTime;
-		timelineAt = performance.now();
+		reading = { streamTime: timeline.streamTime, readAt: performance.now() };
 		deriveAnchor();
 	},
 	active: () => isListening(phase),
@@ -255,12 +248,9 @@ function onWaiting() {
 	stalledThisSession = true;
 	mse.stalled();
 
-	const now = performance.now();
-	stalls = stalls.filter((at) => now - at < STALL_WINDOW_MS);
-	stalls.push(now);
-	if (stalls.length < STALLS_ALLOWED) return;
-
-	retireLowLatency();
+	const counted = countStall(stalls, performance.now());
+	stalls = counted.stalls;
+	if (counted.isTooMany) retireLowLatency();
 }
 
 function markRendered(at: number) {
@@ -328,13 +318,11 @@ function setPhase(next: ListenPhase) {
 	publish();
 }
 
-function liveFormats() {
-	return (target?.formats ?? []).filter((name) => !dead.has(name));
-}
+const liveFormat = () => formatToTry(target?.formats ?? [], dead);
 
 function nextFormat() {
-	const remaining = liveFormats();
-	if (remaining.length === 0) {
+	const next = liveFormat();
+	if (next === null) {
 		stopStream();
 		// Deliberately vague: a refused ticket and an undecodable codec reach the element as the same
 		// `MEDIA_ERR`.
@@ -344,12 +332,12 @@ function nextFormat() {
 		});
 		return;
 	}
-	void open(remaining[0]);
+	void open(next);
 }
 
 function forgetStreamClock() {
 	anchor = null;
-	timelineStreamTime = null;
+	reading = null;
 	marks = [];
 	audiblePath = null;
 	pendingSeek = null;
@@ -456,8 +444,8 @@ function scheduleReconnect() {
 	const mine = generation;
 	reconnectTimer = setTimeout(() => {
 		if (mine !== generation) return;
-		const remaining = liveFormats();
-		if (remaining.length > 0) void open(format ?? remaining[0]);
+		const live = liveFormat();
+		if (live !== null) void open(format ?? live);
 	}, wait);
 }
 
@@ -478,37 +466,42 @@ function watch() {
 	if (!audio || !isListening(phase)) return;
 	if (phase.kind === "blocked" || phase.kind === "busy") return;
 
-	// Nothing has been heard and the short-buffer path had its chance. The stall counter cannot cover
-	// this: it needs a first sample to tell a stream running dry from one that never started.
-	if (mse && !hasRendered && performance.now() - connectAt > MSE_START_MS) {
-		retireLowLatency();
-		return;
+	const verdict = stallVerdict({
+		now: performance.now(),
+		currentTime: audio.currentTime,
+		lastTime,
+		lastAdvance,
+		connectAt,
+		hasRendered,
+		isLowLatency: mse !== null,
+		isPaused: audio.paused,
+		playerState: knownPlaybackState,
+	});
+
+	switch (verdict) {
+		case "retire low latency":
+			return retireLowLatency();
+		case "advanced":
+			markRendered(audio.currentTime);
+			if (phase.kind === "silent") setPhase({ kind: "playing" });
+			return;
+		case "player silent":
+			setPhase({ kind: "silent" });
+			lastAdvance = performance.now();
+			return;
+		case "reconnect":
+			return scheduleReconnect();
+		case "wait":
+			return;
+		default:
+			return verdict satisfies never;
 	}
-
-	if (audio.currentTime !== lastTime) {
-		markRendered(audio.currentTime);
-		if (phase.kind === "silent") setPhase({ kind: "playing" });
-		return;
-	}
-
-	if (audio.paused) return;
-	if (performance.now() - lastAdvance < STALL_MS) return;
-
-	if (knownPlaybackState !== null && knownPlaybackState !== "playing") {
-		setPhase({ kind: "silent" });
-		lastAdvance = performance.now();
-		return;
-	}
-
-	if (!hasRendered && performance.now() - lastAdvance < START_MS) return;
-
-	scheduleReconnect();
 }
 
 // Retried from `playing`, from every `timeupdate` and from every poll: the two terms arrive in
 // either order.
 function deriveAnchor() {
-	if (anchor !== null || timelineStreamTime === null || !element) return;
+	if (anchor !== null || reading === null || !element) return;
 
 	// On the low-latency path the muxer's own clock starts at zero on connect, so the origin is known
 	// rather than measured. Read from `buffered` it would be a race: the trim moves `start(0)`
@@ -516,8 +509,7 @@ function deriveAnchor() {
 	const origin = mse ? 0 : bufferedStart(element);
 	if (origin === null) return;
 
-	const atConnect = timelineStreamTime - (timelineAt - connectAt) / 1000;
-	anchor = anchorOf(atConnect, origin);
+	anchor = anchorOf(streamTimeAt(reading, connectAt), origin);
 }
 
 export function listeningPosition(
@@ -566,14 +558,9 @@ export { decibelsOf };
 
 export const listenTarget = () => target;
 
-// Wall time since connecting minus audio played, rather than a measured buffer depth: no browser
-// reports the bytes still in the socket.
 export function listeningLagSeconds(): number | null {
-	const audio = element;
-	if (anchor === null || !audio || timelineStreamTime === null) return null;
-
-	const liveNow = timelineStreamTime + (performance.now() - timelineAt) / 1000;
-	return liveNow - (anchor + audio.currentTime);
+	if (anchor === null || !element || reading === null) return null;
+	return lagSeconds(reading, anchor, element.currentTime, performance.now());
 }
 
 if (import.meta.env?.DEV) {
@@ -647,8 +634,7 @@ export function configureListening(next: ListenTarget | null) {
 // through this.
 export function restartListening() {
 	if (!isListening(phase)) return;
-	const wanted =
-		format && !dead.has(format) ? format : (liveFormats()[0] ?? null);
+	const wanted = format && !dead.has(format) ? format : liveFormat();
 	stopStream();
 	attempt = 0;
 	if (wanted) void open(wanted);

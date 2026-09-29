@@ -1,10 +1,10 @@
-import type { Route } from "@playwright/test";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	componentOrigin,
 	coversFromTheComponent,
 	expect,
 	guidOfPlaylist,
+	holdRequests,
 	nowPlayingScreen,
 	openAllMusic,
 	openLibrary,
@@ -247,10 +247,9 @@ test.describe("what a cover looks like before it arrives", () => {
 	const cover = (page: Page) => page.locator("main [data-artwork]");
 
 	const holdArtwork = (page: Page) =>
-		page.route("**/api/artwork**", async (route) => {
-			await new Promise((done) => setTimeout(done, 3000));
-			await route.continue();
-		});
+		holdRequests(page, (request) =>
+			new URL(request.url()).pathname.startsWith("/api/artwork"),
+		);
 
 	test("a hold with a sleeve on it, and no alt text anywhere", async ({
 		page,
@@ -763,17 +762,10 @@ test.describe("a cover the player did not have the first time", () => {
 		const ANSWERED_LATE = 2;
 		let record: string | null = null;
 		let released = false;
-		const held: Route[] = [];
 		await page.route("**/api/artwork?track=**", async (route) => {
 			const address = route.request().url();
-			const isFirst = record === null;
 			record ??= address;
-			if (released || address !== record) return route.continue();
-
-			if (!isFirst && held.length < ANSWERED_LATE) {
-				held.push(route);
-				return;
-			}
+			if (released || address !== record) return route.fallback();
 			return route.fulfill({
 				status: 404,
 				headers: { "cache-control": "no-store" },
@@ -781,14 +773,19 @@ test.describe("a cover the player did not have the first time", () => {
 				body: JSON.stringify({ error: "no artwork for that track" }),
 			});
 		});
+		const held = await holdRequests(
+			page,
+			(request) => record !== null && request.url() === record,
+			{ count: ANSWERED_LATE },
+		);
 
 		await openAllMusic(page);
 		const refused = page.locator('main [data-artwork="failed"]');
 		await expect(refused).not.toHaveCount(0);
-		await expect.poll(() => held.length).toBe(ANSWERED_LATE);
+		await held.untilHeld(ANSWERED_LATE);
 
 		released = true;
-		await Promise.all(held.map((route) => route.continue()));
+		held.releaseAll();
 
 		await expect(
 			page.locator('main [data-artwork="ok"]').first(),

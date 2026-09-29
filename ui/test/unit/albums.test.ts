@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { albumOfRoute, albumRoute } from "../../src/domain/track/albumRoute.ts";
 import {
 	albumIndex,
 	albumsOf,
@@ -13,6 +12,7 @@ import {
 } from "../../src/domain/track/libraryColumns.ts";
 import { trackRows } from "../../src/domain/track/project.ts";
 import { rankEntities } from "../../src/domain/track/rankEntities.ts";
+import { albumOfRoute, albumRoute } from "../../src/domain/track/routes.ts";
 import { TIER } from "../../src/shared/lib/text.ts";
 
 const LIBRARY: [artist: string, albumArtist: string, album: string][] = [

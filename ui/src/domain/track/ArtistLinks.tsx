@@ -1,6 +1,6 @@
-import { artistHref } from "./artistRoute";
 import { namesAnArtist } from "./artists";
 import { collapseRepeatedTag, isCreditSeparator, splitCredit } from "./fields";
+import { artistRoute, href } from "./routes";
 
 /**
  * A credit line drawn as links, one per name it credits. The tag's own text is preserved exactly --
@@ -29,7 +29,7 @@ export function ArtistLinks({
 						// biome-ignore lint/suspicious/noArrayIndexKey: as above
 						key={at}
 						className="tag-link"
-						href={artistHref(collapseRepeatedTag(part.trim()))}
+						href={href(artistRoute(collapseRepeatedTag(part.trim())))}
 						data-link=""
 					>
 						{part}

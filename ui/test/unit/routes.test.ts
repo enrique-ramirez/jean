@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { resolveRoute } from "../../src/app/routes.ts";
-import { genreRoute } from "../../src/domain/library/genreRoute.ts";
-import { searchRoute } from "../../src/domain/library/searchRoute.ts";
-import { albumRoute } from "../../src/domain/track/albumRoute.ts";
-import { artistRoute } from "../../src/domain/track/artistRoute.ts";
+import {
+	albumRoute,
+	artistRoute,
+	genreRoute,
+	searchRoute,
+} from "../../src/domain/track/routes.ts";
 
 test("an empty route and home are both the home screen", () => {
 	for (const route of ["", "home"]) {

@@ -1,19 +1,20 @@
-import {
-	GENRES_ROUTE,
-	genreOfRoute,
-	genreRoute,
-} from "@/domain/library/genreRoute";
-import { queryOfRoute, searchRoute } from "@/domain/library/searchRoute";
 import type { Suggestion } from "@/domain/library/useLibrarySearch";
-import { albumOfRoute, albumRoute } from "@/domain/track/albumRoute";
+import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import {
 	type ArtistTab,
+	albumOfRoute,
+	albumRoute,
 	artistOfRoute,
 	artistRoute,
-} from "@/domain/track/artistRoute";
-import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
+	genreOfRoute,
+	genreRoute,
+	queryOfRoute,
+	ROUTE,
+	searchRoute,
+	shelfOfRoute,
+	shelfRoute,
+} from "@/domain/track/routes";
 import { SHELVES, type Shelf } from "@/features/home/shelves";
-import { PLAYING_ROUTE } from "@/features/now-playing/panelRoute";
 import { en, type Phrase } from "@/shared/i18n/en";
 import { translate } from "@/shared/i18n/locale";
 
@@ -38,18 +39,6 @@ export const KIND_LABEL: Record<string, KindPhrase> = {
 	[SCRATCH_KIND.shelf]: "route.shelf",
 };
 
-export const ROUTE = {
-	home: "home",
-	all: "all",
-	genres: GENRES_ROUTE,
-	search: "search",
-	playing: PLAYING_ROUTE,
-} as const;
-
-const SHELF_PREFIX = "shelf/";
-
-const shelfRoute = (id: string) => `${SHELF_PREFIX}${id}`;
-
 export const routeOfSuggestion = (
 	suggestion: Exclude<Suggestion, { kind: "track" }>,
 ): string =>
@@ -73,9 +62,7 @@ export function resolveRoute(route: string): {
 	isHome: boolean;
 	isLibrary: boolean;
 } {
-	const shelfId = route.startsWith(SHELF_PREFIX)
-		? route.slice(SHELF_PREFIX.length)
-		: null;
+	const shelfId = shelfOfRoute(route);
 	const shelf = shelfId
 		? (SHELVES.find((entry) => entry.id === shelfId) ?? null)
 		: null;

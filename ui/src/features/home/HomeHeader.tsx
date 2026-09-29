@@ -1,5 +1,5 @@
 import { ChevronRight, Shuffle } from "lucide-react";
-import { GENRES_HREF } from "@/domain/library/genreRoute";
+import { href, ROUTE } from "@/domain/track/routes";
 import { spellDuration } from "@/domain/track/stats";
 import { permitsPlaybackControl } from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
@@ -60,7 +60,7 @@ export function HomeHeader({
 				id: "tracks",
 				label: "home.door.tracks",
 				count: stats.trackCount,
-				href: "#/all",
+				href: href(ROUTE.all),
 				hint: "home.hint.browse",
 				name: t("library.allMusic"),
 				cover: null,
@@ -90,7 +90,7 @@ export function HomeHeader({
 				id: "genres",
 				label: "home.door.genres",
 				count: stats.genreCount,
-				href: GENRES_HREF,
+				href: href(ROUTE.genres),
 				hint: "home.hint.browse",
 				name: t("home.allGenres"),
 				cover: null,

@@ -1,9 +1,8 @@
 import { DiscAlbum, Music2, User } from "lucide-react";
 import { useState } from "react";
-
-import { genreHref } from "@/domain/library/genreRoute";
 import type { Genre } from "@/domain/track/genres";
 import type { LibrarySource } from "@/domain/track/librarySource";
+import { genreRoute, href } from "@/domain/track/routes";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./GenreTile.module.css";
@@ -47,7 +46,11 @@ export function GenreTile({
 	].filter((figure) => figure.count > 0);
 
 	return (
-		<a className={styles.tile} href={genreHref(genre.name)} data-genre-tile="">
+		<a
+			className={styles.tile}
+			href={href(genreRoute(genre.name))}
+			data-genre-tile=""
+		>
 			<span className={styles.stack} data-ready={ready ? "" : undefined}>
 				{genre.coverRefs.length > 0 ? (
 					genre.coverRefs.map((ref) => (

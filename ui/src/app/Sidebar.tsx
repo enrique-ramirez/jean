@@ -24,7 +24,6 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { isSearchRoute } from "@/domain/library/searchRoute";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import { useAutoPlaylists } from "@/domain/player/useAutoPlaylists";
 import {
@@ -32,6 +31,7 @@ import {
 	usePlaylistActions,
 } from "@/domain/player/usePlayer";
 import { withoutScratchPlaylist } from "@/domain/track/jeanPlaylists";
+import { isSearchRoute, ROUTE } from "@/domain/track/routes";
 import { permitsPlaylistWrites } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
@@ -47,7 +47,7 @@ import { isRefusal } from "@/shared/lib/refusal";
 import { ActionMenu, type ActionNode } from "@/shared/ui/ActionMenu";
 import { useDragState } from "@/shared/ui/dnd";
 import { pushToast } from "@/shared/ui/toastStore";
-import { KIND_LABEL, type PlayingRoute, ROUTE } from "./routes";
+import { KIND_LABEL, type PlayingRoute } from "./routes";
 import styles from "./Sidebar.module.css";
 import { sidebarFocusAnswered, useSidebarFocusAsked } from "./sidebarFocus";
 

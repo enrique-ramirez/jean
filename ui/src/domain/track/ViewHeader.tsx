@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { genreHref } from "@/domain/library/genreRoute";
 import { Trans } from "@/shared/i18n/Trans";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { Chip } from "@/shared/ui/Chip";
+import { genreRoute, href } from "./routes";
 import { formatDuration, type TrackStats } from "./stats";
 import styles from "./ViewHeader.module.css";
 
@@ -99,7 +99,7 @@ export function ViewHeader({
 								key={genre.name}
 								label={genre.name}
 								value={`${genre.share}%`}
-								href={genreHref(genre.name)}
+								href={href(genreRoute(genre.name))}
 							/>
 						))}
 

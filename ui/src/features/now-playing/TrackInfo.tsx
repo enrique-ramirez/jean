@@ -1,12 +1,12 @@
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
+import type { PanelTab } from "@/domain/track/routes";
 
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";
-import type { PanelTab } from "./panelRoute";
 import styles from "./TrackInfo.module.css";
 import { TrackPanels } from "./TrackPanels";
 

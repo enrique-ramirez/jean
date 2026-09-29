@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, Mic2, MoreHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
 import { formatTime } from "@/domain/player/position";
 import { useAudibleVolume } from "@/domain/player/useListener";
@@ -17,7 +16,6 @@ import {
 	useTransport,
 } from "@/domain/player/usePlayer";
 import { ArtistLinks } from "@/domain/track/ArtistLinks";
-import { albumHref } from "@/domain/track/albumRoute";
 import { coverKey, readValue } from "@/domain/track/fields";
 import {
 	canonicalArtworkUrl,
@@ -25,6 +23,7 @@ import {
 } from "@/domain/track/librarySource";
 import { MAX_STARS, starsOf, toStars } from "@/domain/track/rating";
 import { setRatingLayer } from "@/domain/track/ratingTarget";
+import { albumRoute, href, type PanelTab } from "@/domain/track/routes";
 import {
 	fetchPlaylistRows,
 	isFooJeanReady,
@@ -50,7 +49,6 @@ import styles from "./NowPlaying.module.css";
 import { NOW_PLAYING_FIELD } from "./nowPlayingFields";
 import type { OutputPicker } from "./OutputDevices";
 import { PlayToggle } from "./PlayToggle";
-import type { PanelTab } from "./panelRoute";
 import { QueueButton } from "./QueueButton";
 import { SeekBar, useElapsedSeconds } from "./SeekBar";
 import { ShuffleToggle } from "./ShuffleToggle";
@@ -488,7 +486,7 @@ export function NowPlaying({
 							<p className={styles.album}>
 								<a
 									className="tag-link"
-									href={albumHref(albumArtist ?? track?.artist, album)}
+									href={href(albumRoute(albumArtist ?? track?.artist, album))}
 								>
 									{album}
 								</a>

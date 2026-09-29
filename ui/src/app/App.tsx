@@ -8,8 +8,6 @@ import {
 	Sun,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { GENRES_HREF } from "@/domain/library/genreRoute";
-import { searchRoute } from "@/domain/library/searchRoute";
 import { useLibrary } from "@/domain/library/useLibrary";
 import { useLibrarySearch } from "@/domain/library/useLibrarySearch";
 import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
@@ -34,7 +32,6 @@ import {
 } from "@/domain/player/usePlayer";
 import { AlbumCrumb } from "@/domain/track/AlbumCrumb";
 import { albumsOf, refsOfAlbum } from "@/domain/track/albums";
-import { type ArtistTab, artistRoute } from "@/domain/track/artistRoute";
 import { type ArtistTracks, refsOfArtist } from "@/domain/track/artists";
 import {
 	isScratchPlaylist,
@@ -50,6 +47,17 @@ import {
 	wholeLibrary,
 } from "@/domain/track/project";
 import { askToReveal } from "@/domain/track/revealTrack";
+import {
+	type ArtistTab,
+	artistRoute,
+	href,
+	isPlayingRoute,
+	type PanelTab,
+	panelOfRoute,
+	ROUTE,
+	playingRoute as routeOfPanel,
+	searchRoute,
+} from "@/domain/track/routes";
 import { useRateShortcut } from "@/domain/track/useRateShortcut";
 import { TagWriterProvider } from "@/domain/track/useTagWriter";
 import { ArtistView } from "@/features/artist/ArtistView";
@@ -59,12 +67,6 @@ import { buildShelves, refsOfShelf } from "@/features/home/shelves";
 import { useHomePlayback } from "@/features/home/useHomePlayback";
 import { LibraryListView } from "@/features/library/LibraryListView";
 import { NowPlaying } from "@/features/now-playing/NowPlaying";
-import {
-	isPlayingRoute,
-	type PanelTab,
-	panelOfRoute,
-	playingRoute as routeOfPanel,
-} from "@/features/now-playing/panelRoute";
 import { StatusBar } from "@/features/now-playing/StatusBar";
 import { useNowPlayingRating } from "@/features/now-playing/useNowPlayingRating";
 import { PlaylistView } from "@/features/playlist/PlaylistView";
@@ -98,12 +100,7 @@ import { Toasts } from "@/shared/ui/Toasts";
 import styles from "./App.module.css";
 import { CommandPalette } from "./CommandPalette";
 import { ConnectionNotice } from "./ConnectionNotice";
-import {
-	ROUTE,
-	resolveRoute,
-	routeOfPlayingSet,
-	routeOfSuggestion,
-} from "./routes";
+import { resolveRoute, routeOfPlayingSet, routeOfSuggestion } from "./routes";
 import { type PlayableRow, Sidebar } from "./Sidebar";
 import { askToFocusSidebar } from "./sidebarFocus";
 import { useDocumentIdentity } from "./useDocumentIdentity";
@@ -275,7 +272,9 @@ function Shell() {
 					view: genreView,
 					kind: SCRATCH_KIND.genre,
 					label: genre,
-					eyebrow: <Crumb href={GENRES_HREF}>{t("home.allGenres")}</Crumb>,
+					eyebrow: (
+						<Crumb href={href(ROUTE.genres)}>{t("home.allGenres")}</Crumb>
+					),
 					title: genre,
 				}
 			: albumTracks
@@ -733,7 +732,7 @@ function Shell() {
 				/>
 
 				{isBrandShown ? (
-					<a className={styles.brand} href={`#/${ROUTE.home}`}>
+					<a className={styles.brand} href={href(ROUTE.home)}>
 						je<span>a</span>n
 					</a>
 				) : null}

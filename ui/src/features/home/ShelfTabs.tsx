@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import type { CoveredAlbum } from "@/domain/track/albums";
+import { href, shelfRoute } from "@/domain/track/routes";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import styles from "./ShelfRow.module.css";
@@ -28,7 +29,7 @@ export function ShelfTabs({
 		<section className={styles.shelf} aria-labelledby="home-explore">
 			<header className={tabs.header}>
 				<h2 className={tabs.heading} id="home-explore">
-					<a className={styles.open} href={`#/shelf/${active.id}`}>
+					<a className={styles.open} href={href(shelfRoute(active.id))}>
 						{t("home.explore")}
 						<ChevronRight
 							className={styles.chevron}

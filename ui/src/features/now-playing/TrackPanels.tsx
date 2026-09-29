@@ -1,5 +1,6 @@
 import { Maximize2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { PANEL_TABS, type PanelTab } from "@/domain/track/routes";
 
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useSwipe } from "@/shared/hooks/useSwipe";
@@ -13,7 +14,6 @@ import { Artist } from "./Artist";
 import { Details } from "./Details";
 import { Lyrics } from "./Lyrics";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";
-import { PANEL_TABS, type PanelTab } from "./panelRoute";
 import styles from "./TrackPanels.module.css";
 import { useLyricsRecheck } from "./useLyricsRecheck";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";

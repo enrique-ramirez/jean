@@ -1,8 +1,6 @@
 import { ArrowDownAZ, ArrowDownWideNarrow } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useMemo, useRef, useState } from "react";
-
-import { genreRoute } from "@/domain/library/genreRoute";
 import { libraryNoticeFor } from "@/domain/library/LibraryNotice";
 import {
 	isLibraryReading,
@@ -11,6 +9,7 @@ import {
 import type { Library } from "@/domain/library/useLibrary";
 import { genresOf } from "@/domain/track/genres";
 import { trackRows } from "@/domain/track/project";
+import { genreRoute } from "@/domain/track/routes";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import type { Phrase } from "@/shared/i18n/en";
 import { useTranslate } from "@/shared/i18n/useTranslate";

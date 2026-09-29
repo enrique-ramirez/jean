@@ -1,7 +1,6 @@
-import { genreHref } from "@/domain/library/genreRoute";
 import { ArtistLinks } from "@/domain/track/ArtistLinks";
-import { albumHref } from "@/domain/track/albumRoute";
 import { readTimestamp, readValue } from "@/domain/track/fields";
+import { albumRoute, genreRoute, href } from "@/domain/track/routes";
 import type { TrackColumns } from "@/shared/api/types";
 import type { Phrase } from "@/shared/i18n/en";
 import {
@@ -59,7 +58,7 @@ interface Group {
 }
 
 const genreOf = (genre: string | null) =>
-	genre ? genreHref(genre) : undefined;
+	genre ? href(genreRoute(genre)) : undefined;
 
 function groupsOf(row: TrackColumns, format: Formats): Group[] {
 	const album = read(row, F.album);
@@ -78,7 +77,12 @@ function groupsOf(row: TrackColumns, format: Formats): Group[] {
 					// The pair the record is addressed by, the way the library groups them: the album
 					// artist where the file has one, and whoever it is by where it does not.
 					href: album
-						? albumHref(read(row, F.albumArtist) ?? read(row, F.artist), album)
+						? href(
+								albumRoute(
+									read(row, F.albumArtist) ?? read(row, F.artist),
+									album,
+								),
+							)
 						: undefined,
 				},
 				{

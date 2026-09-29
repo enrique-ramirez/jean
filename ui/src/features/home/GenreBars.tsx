@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import { GENRES_HREF, genreHref } from "@/domain/library/genreRoute";
+import { genreRoute, href, ROUTE } from "@/domain/track/routes";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import styles from "./GenreBars.module.css";
 
@@ -21,7 +21,7 @@ export function GenreBars({ genres }: { genres: GenreBar[] }) {
 	return (
 		<section className={styles.block} aria-labelledby="home-genres">
 			<h2 className={styles.heading} id="home-genres">
-				<a className={styles.open} href={GENRES_HREF}>
+				<a className={styles.open} href={href(ROUTE.genres)}>
 					{t("home.genres")}
 					<ChevronRight
 						className={styles.chevron}
@@ -37,7 +37,7 @@ export function GenreBars({ genres }: { genres: GenreBar[] }) {
 					<li key={genre.name}>
 						<a
 							className={styles.bar}
-							href={genreHref(genre.name)}
+							href={href(genreRoute(genre.name))}
 							title={t("home.genreShare", {
 								count: genre.count,
 								share: genre.share,

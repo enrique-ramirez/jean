@@ -1,6 +1,5 @@
 import type { ReactNode, RefObject } from "react";
 import { useEffect, useMemo, useRef } from "react";
-import { GENRES_HREF } from "@/domain/library/genreRoute";
 import { libraryNoticeFor } from "@/domain/library/LibraryNotice";
 import {
 	isLibraryReading,
@@ -16,6 +15,7 @@ import { Mosaic } from "@/domain/track/Mosaic";
 import { PlayActions } from "@/domain/track/PlayActions";
 import type { TrackView } from "@/domain/track/project";
 import { revealed, useRevealAsked } from "@/domain/track/revealTrack";
+import { href, ROUTE } from "@/domain/track/routes";
 import { summarise } from "@/domain/track/stats";
 import { TrackBrowser } from "@/domain/track/TrackBrowser";
 import { useFinder } from "@/domain/track/useFinder";
@@ -145,7 +145,9 @@ export function LibraryListView({
 					tabs={tabs}
 					stats={stats}
 					hasPlayCounts={hasPlayCounts}
-					allGenresHref={kind === SCRATCH_KIND.all ? GENRES_HREF : undefined}
+					allGenresHref={
+						kind === SCRATCH_KIND.all ? href(ROUTE.genres) : undefined
+					}
 					aside={
 						<Mosaic
 							source={library.source}

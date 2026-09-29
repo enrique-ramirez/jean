@@ -1,5 +1,4 @@
 import { Check, ListEnd, ListMusic, ListPlus, Star, User } from "lucide-react";
-import { artistHref } from "@/domain/track/artistRoute";
 import type { PlaylistInfo } from "@/shared/api/types";
 import type { Translate } from "@/shared/i18n/locale";
 import type { ActionNode } from "@/shared/ui/ActionMenu";
@@ -8,6 +7,7 @@ import { creditedArtists } from "./fields";
 import { withoutScratchPlaylist } from "./jeanPlaylists";
 import type { LibrarySource } from "./librarySource";
 import { MAX_STARS } from "./rating";
+import { artistRoute, href } from "./routes";
 import { QUEUE_LIMIT } from "./useQueueTracks";
 
 export const ratingItems = (
@@ -77,7 +77,7 @@ export function trackActions({
 	// Setting the hash is what a link elsewhere in the app does; there is nothing else to navigate with
 	// from inside a menu.
 	const goTo = (name: string) => () => {
-		window.location.hash = artistHref(name);
+		window.location.hash = href(artistRoute(name));
 	};
 
 	const { lead, guests } = creditedArtists(count === 1 ? credit : null);

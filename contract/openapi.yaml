@@ -1081,7 +1081,7 @@ paths:
                     structure: "9204739866101318924"
                     positions: [4, 5, 6]
         "400": { $ref: "#/components/responses/PlaylistRefused" }
-        "403": { $ref: "#/components/responses/WritesDisabled" }
+        "403": { $ref: "#/components/responses/OwnPlaylistAddressed" }
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
         "409": { $ref: "#/components/responses/FillConflict" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }

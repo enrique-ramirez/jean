@@ -3525,7 +3525,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["PlaylistRefused"];
-            403: components["responses"]["WritesDisabled"];
+            403: components["responses"]["OwnPlaylistAddressed"];
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["FillConflict"];
             413: components["responses"]["BodyTooLarge"];

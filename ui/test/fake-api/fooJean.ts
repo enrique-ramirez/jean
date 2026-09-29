@@ -3122,6 +3122,7 @@ export async function handleFooJean({
 				{ error: "unacceptable index", detail: "'index' is required" },
 				400,
 			);
+		if (ownRoleOf(fake, playlist.id)) return json(response, OWN_PLAYLIST, 403);
 		if (asked.index >= state.playlists.length)
 			return json(
 				response,
@@ -3268,6 +3269,7 @@ export async function handleFooJean({
 				},
 				400,
 			);
+		if (ownRoleOf(fake, target.id)) return json(response, OWN_PLAYLIST, 403);
 		const source = state.playlistByGuid(asked.source);
 		if (!source)
 			return json(response, { error: "no such playlist", detail: "" }, 404);
@@ -3320,6 +3322,7 @@ export async function handleFooJean({
 				{ error: "malformed request", detail: "'structure' is required" },
 				400,
 			);
+		if (ownRoleOf(fake, playlist.id)) return json(response, OWN_PLAYLIST, 403);
 		if (structure !== playlist.structure)
 			return json(response, STRUCTURE_MOVED, 409);
 
@@ -3446,6 +3449,7 @@ export async function handleFooJean({
 		const playlist = state.playlistByGuid(guid);
 		if (!playlist)
 			return json(response, { error: "no such playlist", detail: "" }, 404);
+		if (ownRoleOf(fake, playlist.id)) return json(response, OWN_PLAYLIST, 403);
 
 		if (
 			locksAgainstAdds(fake, playlist) ||

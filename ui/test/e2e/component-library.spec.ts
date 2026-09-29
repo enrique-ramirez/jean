@@ -599,6 +599,51 @@ test.describe("a view another device played over this one's", () => {
 	});
 });
 
+test.describe("the scratch playlist addressed by its id", () => {
+	test.use({ fooJean: {} });
+
+	test("refuses every edit to its rows or its place, as the player does", async ({
+		page,
+	}) => {
+		await page.goto("/#/all");
+		await expect(trackRow(page, 0)).toBeAttached();
+		const state = await (await page.request.get("/api/state")).json();
+		const filled = await page.request.post("/api/playlists/own/scratch/items", {
+			data: {
+				title: "#Jean [all music]",
+				structure: state.library.structure,
+				ordinals: [0],
+			},
+		});
+		expect(filled.ok()).toBe(true);
+		const { playlists } = await (
+			await page.request.get("/api/playlists")
+		).json();
+		const scratch = playlists.find(
+			(entry: { role: string | null }) => entry.role === "scratch",
+		);
+		const other = playlists.find(
+			(entry: { role: string | null; itemCount: number }) =>
+				entry.role === null && entry.itemCount > 0,
+		);
+
+		const edits = {
+			move: { index: 0 },
+			"items/copy": { source: other.id, runs: [[0, 1]] },
+			"items/remove": { structure: scratch.structure, runs: [[0, 1]] },
+			items: { structure: state.library.structure, runs: [[0, 1]] },
+		};
+		for (const [route, data] of Object.entries(edits)) {
+			const answer = await page.request.post(
+				`/api/playlists/${scratch.id}/${route}`,
+				{ data },
+			);
+			expect(answer.status(), route).toBe(403);
+			expect((await answer.json()).error, route).toContain("foo_jean's own");
+		}
+	});
+});
+
 test.describe("filing a library row into a playlist of your own", () => {
 	test.use({ fooJean: {} });
 

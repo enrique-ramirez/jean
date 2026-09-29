@@ -25,7 +25,7 @@ The rationale, the enforcement and what the seam buys are in `plugins/fb2k/ARCHI
 2. `const` by default, on locals as well as parameters.
 3. Prefer `std::transform`, `std::accumulate`, `std::any_of` and friends to a raw loop. A raw loop over an SDK count is usually a missing range; a second one is usually a missing shared function. `secureEquals` uses `std::inner_product` for a second reason: it has no early exit, which is the whole point of a constant-time compare.
 4. **No ATL, no WTL, no MFC in this component's own code.** The SDK needs them to build itself; a component that draws one dialog does not. `fb2k/preferences.cpp` is a plain `DLGPROC` rather than the SDK's WTL-based `preferences_page_impl<>`, and dark mode comes from `fb2k::CCoreDarkModeHooks`.
-5. Run `scripts/format.sh` and `scripts/lint.sh` before saying a change is ready, and `scripts\lint.ps1` on the build machine when `src/fb2k/` changed. All three want LLVM 23 and refuse another version; none touches `third_party/`.
+5. Run `scripts/format.sh` and `scripts/lint.sh` before saying a change is ready. `src/fb2k/` is linted by `scripts\build.ps1` itself, through `scripts\lint.ps1`, so a finding fails the build. All three want LLVM 23 and refuse another version; none touches `third_party/`.
 
 ## 4. Tests
 

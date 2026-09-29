@@ -68,6 +68,8 @@ if ((Split-Path -Leaf $proj) -eq 'foo_jean.vcxproj') {
     if (-not ($hardeningOutput | Select-String -SimpleMatch 'CET compatible')) { $missing += 'CET compatibility (/CETCOMPAT)' }
     if ($missing) { throw "foo_jean.dll was built without $($missing -join ' and '); see Directory.Build.targets." }
   }
+
+  & (Join-Path $PSScriptRoot 'lint.ps1')
 }
 
 Write-Output "Build succeeded."

@@ -1,0 +1,29 @@
+name: LLVM on Windows
+description: >
+  Unpacks one version-pinned LLVM beside whatever the runner image carries and points CLANG_TIDY
+  at its clang-tidy, for plugins/fb2k/scripts/lint.ps1.
+
+runs:
+  using: composite
+  steps:
+    - shell: pwsh
+      env:
+        LLVM_VERSION: '23.1.2'
+        # The checksum is the one winget's LLVM.LLVM manifest records for the same file.
+        LLVM_SHA256: 'E9D9141524F2C9FE4BF9F37012EFE34F0AA745617BE9E21FFACE9104703C55E5'
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $ProgressPreference = 'SilentlyContinue'
+        $msi = Join-Path $env:RUNNER_TEMP "LLVM-$env:LLVM_VERSION-win64.msi"
+        Invoke-WebRequest -OutFile $msi -Uri "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/LLVM-$env:LLVM_VERSION-win64.msi"
+        if ((Get-FileHash $msi -Algorithm SHA256).Hash -ne $env:LLVM_SHA256) { throw "LLVM-$env:LLVM_VERSION-win64.msi does not match its pinned checksum." }
+
+        # LLVM ships for Windows only as an MSI. msiexec /a unpacks it into a folder without installing
+        # it, so it cannot collide with the LLVM the runner image carries.
+        $target = Join-Path $env:RUNNER_TEMP "llvm-$env:LLVM_VERSION"
+        $unpack = Start-Process msiexec.exe -ArgumentList "/a `"$msi`" /qn TARGETDIR=`"$target`"" -Wait -PassThru
+        if ($unpack.ExitCode -ne 0) { throw "msiexec /a failed with exit code $($unpack.ExitCode)." }
+
+        $tidy = Get-ChildItem $target -Recurse -Filter clang-tidy.exe | Select-Object -First 1
+        if (-not $tidy) { throw "No clang-tidy.exe under $target." }
+        "CLANG_TIDY=$($tidy.FullName)" >> $env:GITHUB_ENV

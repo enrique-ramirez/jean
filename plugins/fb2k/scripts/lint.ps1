@@ -77,6 +77,7 @@ $arguments = @('--quiet', '--warnings-as-errors=*') +
 Set-Content -LiteralPath $responseFile -Value ($arguments | ForEach-Object { $_ -replace '\\', '/' }) -Encoding Ascii
 
 Write-Output "Linting $($Files.Count) file(s) with $tidy. This is slow: every file parses the whole SDK."
-cmd /c "`"$vcvars`" >nul && `"$tidy`" @`"$responseFile`""
+# clang-tidy reports progress on stderr, which Windows PowerShell turns into errors under a caller that redirects it.
+cmd /c "`"$vcvars`" >nul && `"$tidy`" @`"$responseFile`" 2>&1"
 if ($LASTEXITCODE -ne 0) { throw "clang-tidy reported findings (exit $LASTEXITCODE)." }
 Write-Output "clang-tidy is clean."

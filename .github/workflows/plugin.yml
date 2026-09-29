@@ -1,7 +1,7 @@
 # foo_jean's own suite, which nothing else here runs: `contract.yml` checks the generated types and
 # `site.yml` builds the page. src/core/ and tests/ compile on any machine, so a runner covers them.
-# src/fb2k/ does not: it needs the foobar2000 SDK and Windows, and `plugins/fb2k/CONTRIBUTING.md`
-# says a change there is reviewed rather than tested until scripts/build.ps1 has run.
+# src/fb2k/ does not: it needs the foobar2000 SDK and Windows, so the `windows` job builds it the
+# way release.yml does, and scripts/build.ps1 lints it with clang-tidy afterwards.
 
 name: plugin
 
@@ -12,11 +12,13 @@ on:
       - 'plugins/fb2k/**'
       - 'contract/openapi.yaml'
       - '.github/workflows/plugin.yml'
+      - '.github/actions/windows-llvm/**'
   pull_request:
     paths:
       - 'plugins/fb2k/**'
       - 'contract/openapi.yaml'
       - '.github/workflows/plugin.yml'
+      - '.github/actions/windows-llvm/**'
   workflow_dispatch:
 
 permissions:
@@ -64,3 +66,35 @@ jobs:
       - run: plugins/fb2k/scripts/fetch-opus.sh
 
       - run: plugins/fb2k/scripts/lint.sh
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 11
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --dir ui build
+
+      - run: .\scripts\fetch-sdk.ps1
+        working-directory: plugins/fb2k
+
+      - run: .\scripts\fetch-wtl.ps1
+        working-directory: plugins/fb2k
+
+      - run: .\scripts\fetch-opus.ps1
+        working-directory: plugins/fb2k
+
+      - uses: ./.github/actions/windows-llvm
+
+      - run: .\scripts\build.ps1 -Project src\foo_jean.vcxproj
+        working-directory: plugins/fb2k

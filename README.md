@@ -121,3 +121,7 @@ Everything is reachable from the keyboard on desktop, and `?` shows you what is 
 ## Working on Jean
 
 [CONTRIBUTING.md](./CONTRIBUTING.md) is where to start.
+
+## Licence
+
+MIT. See [LICENSE](./LICENSE).

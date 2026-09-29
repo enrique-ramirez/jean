@@ -160,6 +160,25 @@ test.describe("two views of one artist", () => {
 		await expect(tab(page, "Overview")).toHaveAttribute("aria-current", "true");
 	});
 
+	test("a tab slides in from the side it was asked for, and a history step moves nothing", async ({
+		page,
+	}) => {
+		const body = page.locator("main > [data-direction]");
+		await openArtist(page, ARTIST);
+
+		await tab(page, "Tracks").click();
+		await expect(trackRow(page, 0)).toBeAttached();
+		await expect(body).toHaveAttribute("data-direction", "1");
+
+		await page.goBack();
+		await expect(tab(page, "Overview")).toHaveAttribute("aria-current", "true");
+		await expect(body).toHaveAttribute("data-direction", "0");
+
+		await page.goForward();
+		await expect(tab(page, "Tracks")).toHaveAttribute("aria-current", "true");
+		await expect(body).toHaveAttribute("data-direction", "0");
+	});
+
 	test("choosing a record opens the tracks and lands on it", async ({
 		page,
 	}) => {

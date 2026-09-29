@@ -36,6 +36,11 @@ const ARTIST_TABS = [
 	{ value: "tracks", label: "artist.tracks" },
 ] as const satisfies readonly { value: ArtistTab; label: Phrase }[];
 
+interface TabMotion {
+	tab: ArtistTab;
+	direction: number;
+}
+
 interface MainViewProps {
 	route: RouteView;
 	page: ReturnType<typeof useRouteView>;
@@ -73,12 +78,23 @@ export function MainView({
 	const { allMusic, list, artist } = page;
 	const artistName = artist?.name ?? null;
 	const artistTab = artist?.tab ?? "overview";
-	const [tabDirection, setTabDirection] = useState(0);
+	const [swipe, setSwipe] = useState<TabMotion | null>(null);
+	const [shownTab, setShownTab] = useState<TabMotion>({
+		tab: artistTab,
+		direction: 0,
+	});
+	if (shownTab.tab !== artistTab) {
+		setShownTab({
+			tab: artistTab,
+			direction: swipe?.tab === artistTab ? swipe.direction : 0,
+		});
+		setSwipe(null);
+	}
 
 	const showArtistTab = useCallback(
 		(tab: ArtistTab) => {
 			if (!artistName) return;
-			setTabDirection(tab === "tracks" ? 1 : -1);
+			setSwipe({ tab, direction: tab === "tracks" ? 1 : -1 });
 			onOpenRoute(artistRoute(artistName, tab));
 		},
 		[artistName, onOpenRoute],
@@ -219,7 +235,7 @@ export function MainView({
 				<div
 					key={artist.tab}
 					className={styles.artistTab}
-					data-direction={tabDirection}
+					data-direction={shownTab.direction}
 				>
 					{artistContent(artist)}
 				</div>

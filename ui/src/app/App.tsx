@@ -10,14 +10,13 @@ import { useConnection } from "@/domain/player/connection";
 import { usePlayerPoll } from "@/domain/player/playerPoll";
 import { queueShown, useShowQueueAsked } from "@/domain/player/showQueue";
 import { useOutputs } from "@/domain/player/useOutputs";
+import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
+import { useIsPlaying, usePlayer } from "@/domain/player/usePlayer";
 import {
-	useIsPlaying,
-	usePlaybackOrder,
-	usePlayer,
-	usePlayItem,
 	usePlaylists,
 	useResolvedPlaylistId,
-} from "@/domain/player/usePlayer";
+} from "@/domain/player/usePlaylists";
+import { usePlayItem } from "@/domain/player/useTransport";
 import {
 	isScratchPlaylist,
 	SCRATCH_KIND,

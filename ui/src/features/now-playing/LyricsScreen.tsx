@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 
-import { KEY_SEEK_SECONDS, useSeekBy } from "@/domain/player/usePlayer";
+import { KEY_SEEK_SECONDS, useSeekBy } from "@/domain/player/useTransport";
 import { permitsPlaybackControl } from "@/shared/api/discovery";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";

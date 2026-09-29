@@ -5,16 +5,15 @@ import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
 import { formatTime } from "@/domain/player/position";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
+import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
+import { useAudiblePlayer, usePlayer } from "@/domain/player/usePlayer";
+import { useResolvedPlaylistId } from "@/domain/player/usePlaylists";
 import {
-	useAudiblePlayer,
-	usePlaybackOrder,
-	usePlayer,
 	usePlayPause,
 	usePrevious,
-	useResolvedPlaylistId,
 	useSeek,
 	useTransport,
-} from "@/domain/player/usePlayer";
+} from "@/domain/player/useTransport";
 import { ArtistLinks } from "@/domain/track/ArtistLinks";
 import { coverKey, readValue } from "@/domain/track/fields";
 import {

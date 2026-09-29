@@ -21,7 +21,7 @@ import {
 	subscribeListening,
 	toggleListeningMute,
 } from "./listenerStore";
-import { useVolume } from "./usePlayer";
+import { useVolume } from "./useVolume";
 
 const deviceVolume = (value: number, isMuted: boolean): Volume => ({
 	type: "db",

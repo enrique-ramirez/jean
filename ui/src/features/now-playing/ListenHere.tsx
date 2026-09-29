@@ -9,7 +9,8 @@ import {
 } from "@/domain/player/audience";
 import { type ListenPhase, useListener } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
-import { useIsPlaying, usePlayer, useVolume } from "@/domain/player/usePlayer";
+import { useIsPlaying, usePlayer } from "@/domain/player/usePlayer";
+import { useVolume } from "@/domain/player/useVolume";
 import { permitsPlaybackControl } from "@/shared/api/discovery";
 import type { PlayerInfo } from "@/shared/api/types";
 import { useDismissable } from "@/shared/hooks/useDismissable";

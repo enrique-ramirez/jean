@@ -1,9 +1,9 @@
 import { useMemo } from "react";
+import { useAudiblePlayer } from "@/domain/player/usePlayer";
 import {
-	useAudiblePlayer,
 	usePlaylists,
 	useResolvedPlaylistId,
-} from "@/domain/player/usePlayer";
+} from "@/domain/player/usePlaylists";
 import {
 	isScratchPlaylist,
 	scratchContentsOf,

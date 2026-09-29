@@ -1,13 +1,9 @@
-import {
-	type QueryClient,
-	skipToken,
-	useQuery,
-	useQueryClient,
-} from "@tanstack/react-query";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import type { FooJeanCapabilities } from "@/shared/api/discovery";
 import { fetchState, type StateDocument } from "@/shared/api/state";
 import type { PlayerSnapshot, PlayerState } from "@/shared/api/types";
+import { useCacheOnly } from "@/shared/hooks/useCacheOnly";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { rememberSnapshot } from "./audible";
 import {
@@ -22,7 +18,7 @@ import {
 	notePlaybackState,
 } from "./listenerStore";
 import { followQueue } from "./queue";
-import { followPlaylists } from "./usePlayer";
+import { followPlaylists } from "./usePlaylists";
 
 export const PLAYER_KEY = ["player"];
 
@@ -74,13 +70,7 @@ function mergePlayer(
 export const LIBRARY_UNBUILT_KEY = ["library", "unbuilt"];
 
 export function useExportHeldWhenLibraryUnbuilt(): number | null {
-	const { data = null } = useQuery<number | null>({
-		queryKey: LIBRARY_UNBUILT_KEY,
-		queryFn: skipToken,
-		staleTime: Infinity,
-		refetchOnWindowFocus: false,
-	});
-	return data;
+	return useCacheOnly<number | null>(LIBRARY_UNBUILT_KEY).data ?? null;
 }
 
 interface AnnouncedRevisions {

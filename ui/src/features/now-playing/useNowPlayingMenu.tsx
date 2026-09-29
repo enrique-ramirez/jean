@@ -1,10 +1,10 @@
 import { Music, Star } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useAudiblePlayer } from "@/domain/player/usePlayer";
 import {
-	useAudiblePlayer,
 	usePlaylists,
 	useResolvedPlaylistId,
-} from "@/domain/player/usePlayer";
+} from "@/domain/player/usePlaylists";
 import { librarySourceOf } from "@/domain/track/librarySource";
 import { starsOf } from "@/domain/track/rating";
 import { ratingItems, trackActions } from "@/domain/track/trackActions";

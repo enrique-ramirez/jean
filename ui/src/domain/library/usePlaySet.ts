@@ -1,5 +1,6 @@
 import { useCallback } from "react";
-import { reportPlaybackRefusal, usePlayItem } from "@/domain/player/usePlayer";
+import { reportPlaybackRefusal } from "@/domain/player/playerWrite";
+import { usePlayItem } from "@/domain/player/useTransport";
 import type { Refs } from "@/domain/track/project";
 import { isFooJeanReady, permitsPlaybackControl } from "@/shared/api/discovery";
 import type { PlaylistInfo } from "@/shared/api/types";

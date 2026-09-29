@@ -1,12 +1,12 @@
 import { useAudibleVolume } from "@/domain/player/useListener";
+import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import {
 	KEY_SEEK_SECONDS,
-	usePlaybackOrder,
 	usePlayPause,
 	usePrevious,
 	useSeekBy,
 	useTransport,
-} from "@/domain/player/usePlayer";
+} from "@/domain/player/useTransport";
 import { useRateShortcut } from "@/domain/track/useRateShortcut";
 import { useNowPlayingRating } from "@/features/now-playing/useNowPlayingRating";
 import { SETTINGS_KEYBOARD } from "@/features/settings/SettingsDialog";

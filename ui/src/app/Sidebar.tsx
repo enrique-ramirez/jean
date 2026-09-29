@@ -29,7 +29,7 @@ import { useAutoPlaylists } from "@/domain/player/useAutoPlaylists";
 import {
 	untitledPlaylistName,
 	usePlaylistActions,
-} from "@/domain/player/usePlayer";
+} from "@/domain/player/usePlaylists";
 import { withoutScratchPlaylist } from "@/domain/track/jeanPlaylists";
 import { isSearchRoute, ROUTE } from "@/domain/track/routes";
 import { permitsPlaylistWrites } from "@/shared/api/discovery";

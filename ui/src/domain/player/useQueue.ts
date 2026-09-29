@@ -1,4 +1,4 @@
-import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { switchRefusalOf } from "@/shared/api/client";
 import { isFooJeanReady, permitsPlaybackControl } from "@/shared/api/discovery";
@@ -13,21 +13,19 @@ import {
 	removeQueueEntry,
 	clearQueue as writeClearQueue,
 } from "@/shared/api/queue";
+import { useCacheOnly } from "@/shared/hooks/useCacheOnly";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
+import { moved } from "@/shared/lib/moved";
+import { type CachePatch, patchCache } from "@/shared/lib/patchCache";
 import { pushToast } from "@/shared/ui/toastStore";
 import { pollPlayerNow } from "./playerPoll";
+import { announcePlaybackRefusal } from "./playerWrite";
 import { guidOf, QUEUE_KEY, type QueueSource, readQueue } from "./queue";
 import { askToShowQueue } from "./showQueue";
-import { announcePlaybackRefusal } from "./usePlayer";
 
 export function useQueue() {
-	const { data } = useQuery<QueueRead>({
-		queryKey: QUEUE_KEY,
-		queryFn: skipToken,
-		staleTime: Infinity,
-		refetchOnWindowFocus: false,
-	});
+	const { data } = useCacheOnly<QueueRead>(QUEUE_KEY);
 
 	return useMemo(() => {
 		const entries = readQueue(data);
@@ -43,30 +41,26 @@ export function useQueueActions() {
 	const { origin } = discovery;
 
 	const patchEntries = useCallback(
-		(next: (entries: QueueRead["entries"]) => QueueRead["entries"]) => {
-			let previous: QueueRead | undefined;
-			queryClient.setQueryData<QueueRead>(QUEUE_KEY, (current) => {
-				previous = current;
-				return current
-					? { ...current, entries: next(current.entries) }
-					: current;
-			});
-			return previous;
-		},
+		(next: (entries: QueueRead["entries"]) => QueueRead["entries"]) =>
+			patchCache<QueueRead>(
+				queryClient,
+				QUEUE_KEY,
+				(current) => ({ ...current, entries: next(current.entries) }),
+				() => queryClient.getQueryData<QueueRead>(QUEUE_KEY)?.revision,
+			),
 		[queryClient],
 	);
 
 	const settle = useCallback(
 		async (
 			result: QueueMutationResult,
-			{ previous, drag = false }: { previous?: QueueRead; drag?: boolean } = {},
+			{
+				written,
+				drag = false,
+			}: { written?: CachePatch<QueueRead>; drag?: boolean } = {},
 		) => {
 			if (!result.ok) {
-				if (result.reason !== "stale" && previous) {
-					const current = queryClient.getQueryData<QueueRead>(QUEUE_KEY);
-					if (current?.revision === previous.revision)
-						patchEntries(() => previous.entries);
-				}
+				if (result.reason !== "stale") written?.rollBack();
 				const refused =
 					result.reason !== "stale" &&
 					switchRefusalOf(result) === "playbackDisabled";
@@ -88,7 +82,7 @@ export function useQueueActions() {
 			if (origin) await pollPlayerNow(queryClient, origin);
 			return result.ok;
 		},
-		[queryClient, origin, patchEntries, recheck],
+		[queryClient, origin, recheck],
 	);
 
 	const queue = useCallback(
@@ -139,11 +133,11 @@ export function useQueueActions() {
 		(at: number) => {
 			if (!canQueue || !origin) return Promise.resolve(false);
 
-			const previous = patchEntries((entries) =>
+			const written = patchEntries((entries) =>
 				entries.filter((_, index) => index !== at),
 			);
-			return removeQueueEntry(origin, at, previous?.revision ?? 0).then(
-				(result) => settle(result, { previous }),
+			return removeQueueEntry(origin, at, written.previous?.revision ?? 0).then(
+				(result) => settle(result, { written }),
 			);
 		},
 		[canQueue, origin, patchEntries, settle],
@@ -152,9 +146,9 @@ export function useQueueActions() {
 	const clear = useCallback(() => {
 		if (!canQueue || !origin) return Promise.resolve(false);
 
-		const previous = patchEntries(() => []);
+		const written = patchEntries(() => []);
 		return writeClearQueue(origin).then((result) =>
-			settle(result, { previous }),
+			settle(result, { written }),
 		);
 	}, [canQueue, origin, patchEntries, settle]);
 
@@ -162,17 +156,12 @@ export function useQueueActions() {
 		(from: number, to: number) => {
 			if (!canQueue || from === to || !origin) return Promise.resolve(false);
 
-			const previous = patchEntries((entries) => {
-				const next = [...entries];
-				const [item] = next.splice(from, 1);
-				next.splice(to, 0, item);
-				return next;
-			});
+			const written = patchEntries((entries) => moved(entries, from, to));
 			return moveQueueEntry(origin, {
 				from,
 				to,
-				revision: previous?.revision ?? 0,
-			}).then((result) => settle(result, { previous, drag: true }));
+				revision: written.previous?.revision ?? 0,
+			}).then((result) => settle(result, { written, drag: true }));
 		},
 		[canQueue, origin, patchEntries, settle],
 	);

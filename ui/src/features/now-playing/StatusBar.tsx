@@ -1,16 +1,15 @@
 import { formatTime } from "@/domain/player/position";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
+import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
+import { useAudiblePlayer, usePlayer } from "@/domain/player/usePlayer";
+import { useResolvedPlaylistId } from "@/domain/player/usePlaylists";
 import {
-	useAudiblePlayer,
-	usePlaybackOrder,
-	usePlayer,
 	usePlayPause,
 	usePrevious,
-	useResolvedPlaylistId,
 	useSeek,
 	useTransport,
-} from "@/domain/player/usePlayer";
+} from "@/domain/player/useTransport";
 import { coverKey } from "@/domain/track/fields";
 import { canonicalPlayingArtworkUrl } from "@/domain/track/librarySource";
 import { playingArtworkUrl } from "@/shared/api/artwork";

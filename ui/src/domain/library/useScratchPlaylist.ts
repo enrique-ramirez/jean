@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
-import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
+import { PLAYLISTS_KEY } from "@/domain/player/usePlaylists";
 import { isScratchPlaylist, scratchTitle } from "@/domain/track/jeanPlaylists";
 import type { LibrarySource } from "@/domain/track/librarySource";
 import type { Refs } from "@/domain/track/project";

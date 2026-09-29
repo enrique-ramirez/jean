@@ -11,7 +11,7 @@ import { setActiveOutput } from "@/shared/api/playback";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
 import { pushToast } from "@/shared/ui/toastStore";
-import { usePlayerPatch } from "./usePlayer";
+import { usePlayerPatch } from "./playerWrite";
 
 export const OUTPUTS_KEY = ["outputs"];
 

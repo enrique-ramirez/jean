@@ -4,7 +4,7 @@ import type { FormEvent as ReactFormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 
 import { genreQuery } from "@/domain/library/genreQuery";
-import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
+import { PLAYLISTS_KEY } from "@/domain/player/usePlaylists";
 import { orThrow, retryWhenTooFast } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
 import {

@@ -1,8 +1,6 @@
 import { useMemo } from "react";
-import {
-	useAudiblePlayer,
-	useResolvedPlaylistId,
-} from "@/domain/player/usePlayer";
+import { useAudiblePlayer } from "@/domain/player/usePlayer";
+import { useResolvedPlaylistId } from "@/domain/player/usePlaylists";
 import type { LibrarySource } from "@/domain/track/librarySource";
 import type { Refs } from "@/domain/track/project";
 import { readTrack } from "@/shared/api/playerState";

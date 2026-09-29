@@ -5,7 +5,7 @@ import {
 	useMemo,
 	useState,
 } from "react";
-import { usePlaylists } from "@/domain/player/usePlayer";
+import { usePlaylists } from "@/domain/player/usePlaylists";
 import { permitsPlaylistWrites } from "@/shared/api/discovery";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
 import { useFooJean } from "@/shared/hooks/useFooJean";

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import type { useScratchPlaylist } from "@/domain/library/useScratchPlaylist";
-import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
+import { PLAYLISTS_KEY } from "@/domain/player/usePlaylists";
 import { orThrow } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
 import { encodeFill } from "@/shared/api/fillEncoding";

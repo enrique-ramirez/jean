@@ -6,7 +6,7 @@ import {
 	type PlaylistAnnotation,
 } from "@/shared/api/playlists";
 import { useFooJean } from "@/shared/hooks/useFooJean";
-import { usePlaylists } from "./usePlayer";
+import { usePlaylists } from "./usePlaylists";
 
 const KEY = "fooJeanPlaylists";
 

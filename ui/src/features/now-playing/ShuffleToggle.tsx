@@ -1,6 +1,6 @@
 import { Shuffle } from "lucide-react";
 
-import type { usePlaybackOrder } from "@/domain/player/usePlayer";
+import type { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 
 export function ShuffleToggle({

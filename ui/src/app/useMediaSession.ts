@@ -7,7 +7,7 @@ import {
 	useSeek,
 	useSeekBy,
 	useTransport,
-} from "@/domain/player/usePlayer";
+} from "@/domain/player/useTransport";
 import { coverKey } from "@/domain/track/fields";
 import { canonicalPlayingArtworkUrl } from "@/domain/track/librarySource";
 import { playingArtworkUrl } from "@/shared/api/artwork";

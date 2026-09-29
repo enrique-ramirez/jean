@@ -8,7 +8,7 @@ import {
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import type { usePlaySet } from "@/domain/library/usePlaySet";
-import type { usePlaybackOrder } from "@/domain/player/usePlayer";
+import type { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { Refs } from "@/domain/track/project";
 import { askToReveal } from "@/domain/track/revealTrack";

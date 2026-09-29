@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { resolvedPlaylistId } from "../../src/domain/player/usePlayer.ts";
+import { resolvedPlaylistId } from "../../src/domain/player/usePlaylists.ts";
 import type { PlaylistInfo } from "../../src/shared/api/types.ts";
 
 // The e2e suite covers what this is for: the playing row highlighted in the

@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
+import { PLAYLISTS_KEY } from "@/domain/player/usePlaylists";
 import { refusedStatusOf } from "@/shared/api/client";
 import { runsOf } from "@/shared/api/fillEncoding";
 import { removePlaylistRows } from "@/shared/api/playlists";

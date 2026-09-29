@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { usePlayer, usePlaylists } from "@/domain/player/usePlayer";
+import { usePlayer } from "@/domain/player/usePlayer";
+import { usePlaylists } from "@/domain/player/usePlaylists";
 import { ROUTE } from "@/domain/track/routes";
 
 export function useFrontDoor({

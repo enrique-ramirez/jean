@@ -1,7 +1,7 @@
 import { Shuffle } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
 
-import { usePlaybackOrder } from "@/domain/player/usePlayer";
+import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import { permitsPlaybackControl } from "@/shared/api/discovery";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";

@@ -1,9 +1,6 @@
 import { type RefObject, useMemo, useRef } from "react";
-import {
-	useActiveItem,
-	useIsPlaying,
-	usePlayItem,
-} from "@/domain/player/usePlayer";
+import { useActiveItem, useIsPlaying } from "@/domain/player/usePlayer";
+import { usePlayItem } from "@/domain/player/useTransport";
 import { useAvailableFields } from "@/domain/track/fieldAvailability";
 import { librarySourceOf } from "@/domain/track/librarySource";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";

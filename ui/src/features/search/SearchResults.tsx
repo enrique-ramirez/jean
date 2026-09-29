@@ -2,19 +2,17 @@ import { Search } from "lucide-react";
 import type { RefObject } from "react";
 import { useMemo, useRef, useState } from "react";
 import { libraryNoticeFor } from "@/domain/library/LibraryNotice";
-import { isLibraryReading } from "@/domain/library/libraryStatus";
+import {
+	isLibraryReading,
+	readingNotice,
+} from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import { useViewPlayback } from "@/domain/library/useViewPlayback";
-import { useIsPlaying } from "@/domain/player/usePlayer";
-import { useAvailableFields } from "@/domain/track/fieldAvailability";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
-import { Mosaic } from "@/domain/track/Mosaic";
-import { PlayActions } from "@/domain/track/PlayActions";
 import { summarise } from "@/domain/track/stats";
-import { TrackBrowser } from "@/domain/track/TrackBrowser";
-import { ViewHeader } from "@/domain/track/ViewHeader";
+import { TrackPage } from "@/domain/track/TrackPage";
 import { permitsPlaylistWrites } from "@/shared/api/discovery";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
@@ -44,13 +42,11 @@ export function SearchResults({
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
 	const [isSaving, setIsSaving] = useState(false);
 
-	const isPlaying = useIsPlaying();
 	const { discovery } = useFooJean();
 	const canWritePlaylists = permitsPlaylistWrites(discovery);
 
 	const results = search.results;
 	const { indices, heat, patina, playedCount } = results;
-	const { hasPlayCounts } = useAvailableFields();
 	const stats = useMemo(
 		() => summarise(results, playedCount),
 		[results, playedCount],
@@ -76,10 +72,12 @@ export function SearchResults({
 
 	const { status } = library;
 	const isReading = isLibraryReading(status);
-	const readingText =
-		status.kind === "reading" && status.loaded > 0
-			? t("search.reading", { loaded: status.loaded, total: status.total })
-			: t("library.reading");
+	const readingText = readingNotice(
+		status,
+		"library.reading",
+		t,
+		"search.reading",
+	);
 
 	if (!search.hasQuery) {
 		return (
@@ -97,15 +95,14 @@ export function SearchResults({
 	}
 
 	return (
-		<TrackBrowser
-			ref={browserRef}
+		<TrackPage
+			browserRef={browserRef}
 			rows={results}
 			source={library.source}
 			viewKey={search.viewKey}
 			heat={heat}
 			patina={patina}
 			activeIndex={activeIndex}
-			isPlaying={isPlaying}
 			isLoading={library.isLoading}
 			loaded={library.loaded}
 			total={library.total}
@@ -117,37 +114,21 @@ export function SearchResults({
 			emptyNotice={t("search.noMatch")}
 			loadingNotice={isReading ? "" : undefined}
 			progressLabel={isReading ? readingText : undefined}
-			header={
-				<ViewHeader
-					eyebrow={t("search.resultsEyebrow")}
-					title={search.query}
-					stats={stats}
-					hasPlayCounts={hasPlayCounts}
-					aside={
-						<Mosaic
-							source={library.source}
-							rows={results}
-							seed={search.viewKey}
-						/>
-					}
-					actions={
-						<PlayActions
-							browserRef={browserRef}
-							trackCount={results.length}
-							canPlaySets={canPlaySets}
-						>
-							<SavePlaylistButton
-								search={search}
-								library={library}
-								scratch={scratch}
-								holdsResults={holdsThisView}
-								canWritePlaylists={canWritePlaylists}
-								isOpen={isSaving}
-								onOpenChange={setIsSaving}
-								onOpenPlaylist={onOpenPlaylist}
-							/>
-						</PlayActions>
-					}
+			eyebrow={t("search.resultsEyebrow")}
+			title={search.query}
+			stats={stats}
+			mosaicSeed={search.viewKey}
+			canPlaySets={canPlaySets}
+			actions={
+				<SavePlaylistButton
+					search={search}
+					library={library}
+					scratch={scratch}
+					holdsResults={holdsThisView}
+					canWritePlaylists={canWritePlaylists}
+					isOpen={isSaving}
+					onOpenChange={setIsSaving}
+					onOpenPlaylist={onOpenPlaylist}
 				/>
 			}
 			toolbarLeading={

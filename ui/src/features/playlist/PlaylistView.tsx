@@ -1,17 +1,13 @@
 import { type RefObject, useMemo, useRef } from "react";
-import { useActiveItem, useIsPlaying } from "@/domain/player/usePlayer";
+import { useActiveItem } from "@/domain/player/usePlayer";
 import { usePlayItem } from "@/domain/player/useTransport";
-import { useAvailableFields } from "@/domain/track/fieldAvailability";
 import { librarySourceOf } from "@/domain/track/librarySource";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
-import { Mosaic } from "@/domain/track/Mosaic";
-import { PlayActions } from "@/domain/track/PlayActions";
 import { trackRows } from "@/domain/track/project";
 import { summarise } from "@/domain/track/stats";
-import { TrackBrowser } from "@/domain/track/TrackBrowser";
+import { TrackPage } from "@/domain/track/TrackPage";
 import { useFinder } from "@/domain/track/useFinder";
 import { usePlaylistItems } from "@/domain/track/usePlaylistItems";
-import { ViewHeader } from "@/domain/track/ViewHeader";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
@@ -64,10 +60,8 @@ export function PlaylistView({
 	}, [playlist?.id, playlist?.structure, origin, paths, subsongs]);
 
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
-	const isPlaying = useIsPlaying();
 	const activeItem = useActiveItem(playlist?.id);
 	const playItem = usePlayItem();
-	const { hasPlayCounts } = useAvailableFields();
 
 	const finder = useFinder({
 		rows,
@@ -95,15 +89,14 @@ export function PlaylistView({
 	}
 
 	return (
-		<TrackBrowser
-			ref={browserRef}
+		<TrackPage
+			browserRef={browserRef}
 			rows={rows}
 			source={source}
 			viewKey={`playlist:${playlist.id}`}
 			heat={heat}
 			patina={patina}
 			activeIndex={activeItem?.index ?? -1}
-			isPlaying={isPlaying}
 			matches={finder.matches}
 			isLoading={isLoading}
 			loaded={loaded}
@@ -115,18 +108,10 @@ export function PlaylistView({
 			onPlay={(index) => playItem.mutate({ playlistId: playlist.id, index })}
 			onOpenFinder={finder.open}
 			emptyNotice={t("playlist.empty")}
-			header={
-				<ViewHeader
-					eyebrow={t(activeItem ? "playlist.playingFrom" : "playlist.eyebrow")}
-					title={playlist.title}
-					stats={stats}
-					hasPlayCounts={hasPlayCounts}
-					aside={<Mosaic source={source} rows={rows} seed={playlist.id} />}
-					actions={
-						<PlayActions browserRef={browserRef} trackCount={rows.length} />
-					}
-				/>
-			}
+			eyebrow={t(activeItem ? "playlist.playingFrom" : "playlist.eyebrow")}
+			title={playlist.title}
+			stats={stats}
+			mosaicSeed={playlist.id}
 			toolbarLeading={finder.toolbarLeading}
 		/>
 	);

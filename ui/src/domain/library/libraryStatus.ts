@@ -17,11 +17,11 @@ export function readingNotice(
 	status: LibraryStatus,
 	base: Extract<Phrase, "library.reading" | "home.reading">,
 	t: Translate,
+	counting: "library.readingCount" | "search.reading" = "library.readingCount",
 ): string {
 	if (status.kind !== "reading" || status.loaded <= 0) return t(base);
-	return t("library.readingCount", {
-		loaded: status.loaded,
-		total: status.total,
-		count: status.total,
-	});
+	const { loaded, total } = status;
+	return counting === "search.reading"
+		? t(counting, { loaded, total })
+		: t(counting, { loaded, total, count: total });
 }

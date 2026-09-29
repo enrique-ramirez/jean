@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-
+import { artistIndex } from "../../src/domain/artist/artists.ts";
 import { albumIndex } from "../../src/domain/track/albums.ts";
-import { artistIndex } from "../../src/domain/track/artists.ts";
 import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import { genreIndex } from "../../src/domain/track/genres.ts";
 import { INTENSITY_FIELDS } from "../../src/domain/track/intensity.ts";

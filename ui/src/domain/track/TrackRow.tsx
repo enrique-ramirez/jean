@@ -3,8 +3,8 @@ import {
 	memo,
 	type PointerEvent as ReactPointerEvent,
 } from "react";
-import { formatTime } from "@/domain/player/position";
 import type { TrackColumns } from "@/shared/api/types";
+import { formatTime } from "@/shared/i18n/format";
 import {
 	type Formats,
 	useFormats,

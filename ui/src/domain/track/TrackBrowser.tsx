@@ -1,8 +1,6 @@
-import { ArrowDown, ArrowUp, Flame, LayoutList, ListMusic } from "lucide-react";
 import {
 	type MouseEvent as ReactMouseEvent,
 	type ReactNode,
-	type PointerEvent as ReactPointerEvent,
 	type Ref,
 	type RefObject,
 	useCallback,
@@ -14,26 +12,13 @@ import {
 } from "react";
 import { permitsPlaybackControl } from "@/shared/api/discovery";
 import { useFooJean } from "@/shared/hooks/useFooJean";
-import { useStoredState } from "@/shared/hooks/useStoredState";
-import type { Phrase } from "@/shared/i18n/en";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { mergeHandlers } from "@/shared/lib/mergeHandlers";
-import { Button } from "@/shared/ui/Button";
-import type { IconComponent } from "@/shared/ui/icons";
-import { Menu } from "@/shared/ui/Menu";
-import { Segmented } from "@/shared/ui/Segmented";
-import { ColumnsMenu } from "./ColumnsMenu";
-import { DEFAULT_COLUMN_IDS, resolveColumns } from "./columns";
+import { resolveColumns } from "./columns";
 import { useAvailableFields } from "./fieldAvailability";
-import {
-	useCursorFollowsPlayback,
-	usePlaybackFollowsCursor,
-} from "./followSettings";
 import { groupByAlbum } from "./grouping";
-import { HeatLegend } from "./HeatLegend";
-import { jumpAnswered, useJumpAsked } from "./jumpToPlaying";
 import type { LibrarySource } from "./librarySource";
 import type {
 	ActiveDirection,
@@ -41,29 +26,20 @@ import type {
 	TrackBrowserHandle,
 	TrackListHandle,
 } from "./listTypes";
+import { NowPlayingPill } from "./NowPlayingPill";
 import type { TrackRows } from "./project";
 import { setRatingTarget } from "./ratingTarget";
 import styles from "./TrackBrowser.module.css";
 import { TrackList } from "./TrackList";
-import { targetsFrom } from "./trackTargets";
+import { TrackToolbar } from "./TrackToolbar";
+import { useFollowPlayback } from "./useFollowPlayback";
+import { useListPreferences } from "./useListPreferences";
+import { useRowPointer } from "./useRowPointer";
 import { useTrackContextMenu } from "./useTrackContextMenu";
 import { useTrackDragSource } from "./useTrackDragSource";
 import { useTrackSelection } from "./useTrackSelection";
 
-type Layout = "compact" | "album";
-
-const LAYOUTS = [
-	{ value: "compact", label: "layout.list", icon: LayoutList },
-	{ value: "album", label: "layout.albums", icon: ListMusic },
-] as const satisfies readonly {
-	value: Layout;
-	label: Phrase;
-	icon: IconComponent;
-}[];
-
 const PAGE = 12;
-
-const isRepeatClick = (event: ReactMouseEvent) => event.detail > 1;
 
 export interface TrackBrowserProps {
 	rows: TrackRows;
@@ -121,39 +97,12 @@ export function TrackBrowser({
 	const { discovery } = useFooJean();
 	const canControlPlayback = permitsPlaybackControl(discovery);
 
-	const layouts = useMemo(
-		() => LAYOUTS.map((option) => ({ ...option, label: t(option.label) })),
-		[t],
-	);
-
-	const [layout, setLayout] = useStoredState<Layout>("jean.layout", "compact");
-	const [showHeat, setShowHeat] = useStoredState("jean.heat", true);
-	const [showArtwork, setShowArtwork] = useStoredState("jean.artwork", true);
-	const [enabledIds, setEnabledIds] = useStoredState<string[]>(
-		"jean.columns",
-		DEFAULT_COLUMN_IDS,
-	);
-	const [cursorFollowsPlayback] = useCursorFollowsPlayback();
-	const [playbackFollowsCursor] = usePlaybackFollowsCursor();
-	const [isColumnsOpen, setIsColumnsOpen] = useState(false);
-	const [isHeatInfoOpen, setIsHeatInfoOpen] = useState(false);
-	const [heatIntroSeen, setHeatIntroSeen] = useStoredState(
-		"jean.heatIntroSeen",
-		false,
-	);
+	const preferences = useListPreferences();
+	const { layout, showHeat, showArtwork, enabledIds } = preferences;
 	const [activeDirection, setActiveDirection] = useState<ActiveDirection>(null);
-	const lastDirection = useRef<"up" | "down">("down");
 
 	const selection = useTrackSelection(rows.length, viewKey);
 	const { isAvailable, hasPlayCounts } = useAvailableFields();
-
-	const dismissHeatInfo = useCallback(() => {
-		setIsHeatInfoOpen(false);
-		setHeatIntroSeen(true);
-	}, [setHeatIntroSeen]);
-
-	if (!isHeatInfoOpen && !heatIntroSeen && hasPlayCounts && showHeat)
-		setIsHeatInfoOpen(true);
 
 	const groups = useMemo(() => groupByAlbum(rows, t), [rows, t]);
 	const hasDiscs = useMemo(() => groups.some((group) => group.discs), [groups]);
@@ -215,60 +164,12 @@ export function TrackBrowser({
 		selection: selection.selection,
 	});
 
-	// Collapsing a multi-track selection on the way down would kill a drag of all of them, so the
-	// collapse waits for the pointer to come up.
-	const pendingCollapse = useRef<number | null>(null);
-
-	const selectFromPointer = useCallback(
-		(index: number, event: ReactPointerEvent) => {
-			const plain = !event.shiftKey && !event.metaKey && !event.ctrlKey;
-			if (
-				plain &&
-				selection.selection.has(index) &&
-				selection.selection.size > 1
-			) {
-				pendingCollapse.current = index;
-				return;
-			}
-			selection.selectFromEvent(index, event);
-		},
-		[selection],
-	);
-
-	const resolveCollapse = useCallback(() => {
-		const pending = pendingCollapse.current;
-		pendingCollapse.current = null;
-		if (pending !== null && !trackDrag.didDrag()) moveCursorTo(pending);
-	}, [moveCursorTo, trackDrag]);
-
-	// Recorded on the way down rather than read off the click: `click` is a PointerEvent in Chromium
-	// and Safari but a plain MouseEvent in Firefox, where every desktop click would read as a tap.
-	const pointerType = useRef("mouse");
-
-	const playFromPointer = useCallback(
-		(event: ReactMouseEvent) => {
-			const aimed = targetsFrom(event, rows.length, selection.selection);
-			if (aimed) play(aimed.index);
-		},
-		[rows.length, selection.selection, play],
-	);
-
-	// `click` rather than `pointerup`: the browser withholds it when the gesture turns out to be a scroll.
-	const onRowsClick = useCallback(
-		(event: ReactMouseEvent) => {
-			if (pointerType.current === "mouse" || isRepeatClick(event)) return;
-			playFromPointer(event);
-		},
-		[playFromPointer],
-	);
-
-	const onRowsDoubleClick = useCallback(
-		(event: ReactMouseEvent) => {
-			if (pointerType.current !== "mouse") return;
-			playFromPointer(event);
-		},
-		[playFromPointer],
-	);
+	const { selectFromPointer, rowHandlers } = useRowPointer({
+		rows,
+		selection,
+		trackDrag,
+		play,
+	});
 
 	const clearSelection = selection.clear;
 	const onViewClick = useCallback(
@@ -317,70 +218,16 @@ export function TrackBrowser({
 		return () => setRatingTarget(null);
 	}, [source, rows, selection.cursor]);
 
-	const jumpAsked = useJumpAsked();
-	useEffect(() => {
-		if (!jumpAsked) return;
-		if (activeIndex < 0 || activeIndex >= rows.length) return;
-		jumpAnswered();
-		moveCursorTo(activeIndex);
-		scrollToTrack(activeIndex, {
-			align: "center",
-			animate: jumpAsked.animate,
-		});
-	}, [jumpAsked, activeIndex, rows.length, moveCursorTo, scrollToTrack]);
-
-	const cursorAt = useRef(selection.cursor);
-	cursorAt.current = selection.cursor;
-
-	const followedIndex = useRef(-1);
-	const followedView = useRef<string | null>(null);
-
-	useEffect(() => {
-		if (!canFollowPlayback) return;
-		if (activeIndex < 0 || activeIndex >= rows.length) return;
-
-		const arrived = followedView.current !== viewKey;
-		followedView.current = viewKey;
-		if (!arrived && followedIndex.current === activeIndex) return;
-
-		const wasPlaying = followedIndex.current;
-		followedIndex.current = activeIndex;
-
-		// Must run before the cursor moves below, or there is nothing left to compare. Excluding
-		// `wasPlaying` stops the two follow settings looping, since with both on the cursor sits on the
-		// track that just ended; excluding `arrived` stops navigation reading as a track change.
-		const cursor = cursorAt.current;
-		if (
-			playbackFollowsCursor &&
-			!arrived &&
-			cursor !== activeIndex &&
-			cursor !== wasPlaying &&
-			cursor >= 0 &&
-			cursor < rows.length
-		) {
-			play(cursor);
-			return;
-		}
-
-		if (!cursorFollowsPlayback) return;
-		moveCursorTo(activeIndex);
-
-		scrollToTrack(activeIndex, {
-			align: "center",
-			animate: true,
-			ifNeeded: true,
-		});
-	}, [
-		activeIndex,
-		rows.length,
+	useFollowPlayback({
+		rowCount: rows.length,
 		viewKey,
+		activeIndex,
 		canFollowPlayback,
-		cursorFollowsPlayback,
-		playbackFollowsCursor,
+		cursor: selection.cursor,
 		play,
 		moveCursorTo,
 		scrollToTrack,
-	]);
+	});
 
 	// Registered apart from the rest and deliberately not behind `keysEnabled`, which is false while
 	// the finder is open -- exactly when `/` has to mean "back to the field".
@@ -404,15 +251,11 @@ export function TrackBrowser({
 			extendUp: () => keyMove(-1, { extend: true }),
 			selectAll: selection.selectAll,
 			clearSelection: selection.clear,
-			toggleLayout: () =>
-				setLayout((current) => (current === "compact" ? "album" : "compact")),
-			toggleHeat: () => setShowHeat((current) => !current),
+			toggleLayout: preferences.toggleLayout,
+			toggleHeat: preferences.toggleHeat,
 		},
 		{ enabled: keysEnabled && rows.length > 0 },
 	);
-
-	if (activeDirection) lastDirection.current = activeDirection;
-	const shownDirection = activeDirection ?? lastDirection.current;
 
 	return (
 		// biome-ignore lint/a11y/noStaticElementInteractions: the background behind the list, whose only job is to notice that a click missed every row
@@ -420,65 +263,12 @@ export function TrackBrowser({
 		<div className={styles.view} onClick={onViewClick}>
 			{header}
 
-			<div className={styles.toolbar}>
-				{toolbarLeading}
-
-				<span className={styles.spacer} />
-
-				{hasPlayCounts ? (
-					<Menu
-						isOpen={isHeatInfoOpen}
-						onDismiss={dismissHeatInfo}
-						role="dialog"
-						className={styles.heatInfo}
-						trigger={
-							<Button
-								icon={Flame}
-								aria-pressed={showHeat}
-								aria-label={t("heat.show")}
-								title={t("heat.title")}
-								onClick={() => {
-									setShowHeat((current) => !current);
-									if (isHeatInfoOpen) dismissHeatInfo();
-								}}
-							/>
-						}
-					>
-						<HeatLegend onDismiss={dismissHeatInfo} />
-					</Menu>
-				) : null}
-
-				<Segmented
-					value={layout}
-					onChange={setLayout}
-					options={layouts}
-					label={t("layout.label")}
-				/>
-
-				<ColumnsMenu
-					isOpen={isColumnsOpen}
-					onOpenChange={setIsColumnsOpen}
-					enabledIds={enabledIds}
-					isAvailable={isAvailable}
-					onExplainHeat={
-						hasPlayCounts
-							? () => {
-									setIsColumnsOpen(false);
-									setIsHeatInfoOpen(true);
-								}
-							: undefined
-					}
-					showArtwork={showArtwork}
-					onToggleArtwork={() => setShowArtwork((current) => !current)}
-					onToggleColumn={(id: string) =>
-						setEnabledIds((current) =>
-							current.includes(id)
-								? current.filter((entry) => entry !== id)
-								: [...current, id],
-						)
-					}
-				/>
-			</div>
+			<TrackToolbar
+				leading={toolbarLeading}
+				preferences={preferences}
+				isAvailable={isAvailable}
+				hasPlayCounts={hasPlayCounts}
+			/>
 
 			{isLoading ? (
 				<div
@@ -503,14 +293,11 @@ export function TrackBrowser({
 			) : (
 				<div
 					className={styles.rows}
-					{...mergeHandlers(trackMenu.triggerProps, trackDrag.dragProps, {
-						onPointerDown: (event: ReactPointerEvent) => {
-							pointerType.current = event.pointerType;
-						},
-						onPointerUp: resolveCollapse,
-						onClick: onRowsClick,
-						onDoubleClick: onRowsDoubleClick,
-					})}
+					{...mergeHandlers(
+						trackMenu.triggerProps,
+						trackDrag.dragProps,
+						rowHandlers,
+					)}
 				>
 					<TrackList
 						ref={listRef}
@@ -541,25 +328,12 @@ export function TrackBrowser({
 			{trackMenu.element}
 
 			{activeIndex >= 0 ? (
-				<div className={styles.pillSlot} aria-hidden={!activeDirection}>
-					<button
-						type="button"
-						className={styles.pill}
-						data-visible={Boolean(activeDirection)}
-						data-direction={shownDirection}
-						tabIndex={activeDirection ? 0 : -1}
-						onClick={() =>
-							scrollToTrack(activeIndex, { align: "center", animate: true })
-						}
-					>
-						{shownDirection === "up" ? (
-							<ArrowUp size={14} />
-						) : (
-							<ArrowDown size={14} />
-						)}
-						{t("player.nowPlaying")}
-					</button>
-				</div>
+				<NowPlayingPill
+					direction={activeDirection}
+					onClick={() =>
+						scrollToTrack(activeIndex, { align: "center", animate: true })
+					}
+				/>
 			) : null}
 		</div>
 	);

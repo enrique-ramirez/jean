@@ -3,6 +3,7 @@ import {
 	type RefObject,
 	useLayoutEffect,
 } from "react";
+import { rovedIndex } from "@/shared/lib/rove";
 
 type BeyondHandler = (context: {
 	event: ReactKeyboardEvent;
@@ -16,13 +17,6 @@ const ITEMS =
 const itemsIn = (container: HTMLElement | null | undefined): HTMLElement[] => [
 	...(container?.querySelectorAll<HTMLElement>(ITEMS) ?? []),
 ];
-
-const ROVE: Record<string, (at: number) => number> = {
-	ArrowDown: (at) => at + 1,
-	ArrowUp: (at) => (at < 0 ? -1 : at - 1),
-	Home: () => 0,
-	End: () => -1,
-};
 
 // `isReady` is load-bearing: a popover is invisible for the frame it is measured in, and focusing an
 // invisible element puts focus nowhere. A layout effect, so the cleanup runs while the panel is
@@ -71,8 +65,6 @@ export function handleMenuKeys(
 
 	const items = itemsIn(container);
 	const at = items.indexOf(document.activeElement as HTMLElement);
-	const focus = (index: number) =>
-		items[(index + items.length) % items.length]?.focus();
 
 	if (beyond?.({ event, items, at })) {
 		event.preventDefault();
@@ -81,9 +73,12 @@ export function handleMenuKeys(
 
 	if (event.target instanceof HTMLInputElement) return;
 
-	const rove = ROVE[event.key];
-	if (!rove) return;
+	const next = rovedIndex(event.key, at, items.length, {
+		wrap: true,
+		ends: true,
+	});
+	if (next === null) return;
 
-	focus(rove(at));
+	items[next]?.focus();
 	event.preventDefault();
 }

@@ -2,23 +2,14 @@ import {
 	collapseRepeatedTag,
 	creditedArtists,
 	FIELD,
+	namesAnArtist,
 	readValue,
 	tagKey,
 } from "@/domain/track/fields";
+import { growingIndex } from "@/domain/track/growingIndex";
+import { byValue, type LibraryColumns } from "@/domain/track/libraryColumns";
+import type { TrackRows } from "@/domain/track/project";
 import { type FuzzyKey, fuzzyKey } from "@/shared/lib/text";
-import { growingIndex } from "./growingIndex";
-import { byValue, type LibraryColumns } from "./libraryColumns";
-import type { TrackRows } from "./project";
-
-// Not an artist, and a page for it would be every compilation track in the library. Asked wherever a
-// name is about to become somewhere you can go -- the index, a credit drawn as links, the track menu
-// -- since leaving it to the index alone still offers the trip from everywhere else.
-const NOT_AN_ARTIST = new Set(["various artists", "various", "va"]);
-
-export const namesAnArtist = (name: string | null | undefined) => {
-	const key = tagKey(name);
-	return key.length > 0 && !NOT_AN_ARTIST.has(key);
-};
 
 export interface Artist {
 	name: string;

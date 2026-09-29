@@ -15,10 +15,10 @@ import { href, ROUTE } from "@/domain/track/routes";
 import { summarise } from "@/domain/track/stats";
 import { TrackPage } from "@/domain/track/TrackPage";
 import { useFinder } from "@/domain/track/useFinder";
-import { CreateAutoPlaylist } from "@/features/genres/CreateAutoPlaylist";
 import type { PlaylistInfo } from "@/shared/api/types";
 import type { Phrase } from "@/shared/i18n/en";
 import { useTranslate } from "@/shared/i18n/useTranslate";
+import { CreateAutoPlaylist } from "./CreateAutoPlaylist";
 
 type FinderPhrase = Extract<Phrase, `finder.in${string}`>;
 

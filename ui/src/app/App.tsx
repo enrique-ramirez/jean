@@ -127,7 +127,10 @@ function Shell() {
 	const page = useRouteView(view, library);
 
 	const playing = usePlayingFrom();
-	const playingFrom = useMemo(() => routeOfPlayingSet(playing), [playing]);
+	const playingFrom = useMemo(
+		() => routeOfPlayingSet(playing, t),
+		[playing, t],
+	);
 
 	const browsable = useMemo(
 		() => withoutScratchPlaylist(playlists),

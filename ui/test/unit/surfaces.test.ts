@@ -32,7 +32,7 @@ const MODAL_WITHOUT_ROUTE = [
 	"src/app/CommandPalette.tsx",
 	"src/features/settings/SettingsDialog.tsx",
 	"src/shared/keyboard/ShortcutSheet.tsx",
-	"src/shared/ui/ActionMenu.tsx",
+	"src/shared/ui/ActionSheet.tsx",
 ];
 
 const DECLARED = {

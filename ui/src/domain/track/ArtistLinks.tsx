@@ -1,5 +1,9 @@
-import { namesAnArtist } from "./artists";
-import { collapseRepeatedTag, isCreditSeparator, splitCredit } from "./fields";
+import {
+	collapseRepeatedTag,
+	isCreditSeparator,
+	namesAnArtist,
+	splitCredit,
+} from "./fields";
 import { artistRoute, href } from "./routes";
 
 /**

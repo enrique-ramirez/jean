@@ -1,8 +1,8 @@
 import { type ReactNode, useMemo } from "react";
+import { type ArtistTracks, refsOfArtist } from "@/domain/artist/artists";
 import type { Library } from "@/domain/library/useLibrary";
 import { AlbumCrumb } from "@/domain/track/AlbumCrumb";
 import { albumsOf, refsOfAlbum } from "@/domain/track/albums";
-import { type ArtistTracks, refsOfArtist } from "@/domain/track/artists";
 import { SCRATCH_KIND, type ScratchKind } from "@/domain/track/jeanPlaylists";
 import {
 	EMPTY_VIEW,

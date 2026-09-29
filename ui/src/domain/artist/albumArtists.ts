@@ -20,7 +20,7 @@ const blank = <A extends Album>(key: string, album: A): AlbumArtist<A> => ({
 });
 
 // Keyed on an album's own artist tag, not the artist index: a doubled tag like `Foo Fighters, Foo
-// Fighters` becomes two entries here. `domain/track/artists.ts` reads credits per track instead;
+// Fighters` becomes two entries here. `artists.ts` reads credits per track instead;
 // use that one where the count has to be right about who an artist is.
 export function albumArtistsOf<A extends Album>(albums: A[]): AlbumArtist<A>[] {
 	const byKey = albums.reduce((into, album) => {

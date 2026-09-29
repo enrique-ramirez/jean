@@ -15,6 +15,7 @@ import type { Phrase } from "@/shared/i18n/en";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
+import { rovedIndex } from "@/shared/lib/rove";
 import { completionFor, fuzzyScore, squash } from "@/shared/lib/text";
 import type { IconComponent } from "@/shared/ui/icons";
 import { Segmented } from "@/shared/ui/Segmented";
@@ -77,7 +78,6 @@ export function GenresView({
 	const completion = completionFor(query, best?.name ?? null);
 
 	const onGridKeyDown = (event: ReactKeyboardEvent) => {
-		const steps: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1 };
 		const grid = gridRef.current;
 		if (!grid) return;
 
@@ -96,18 +96,15 @@ export function GenresView({
 			return;
 		}
 
-		const step =
-			steps[event.key] ??
-			(event.key === "ArrowDown"
-				? columns
-				: event.key === "ArrowUp"
-					? -columns
-					: 0);
-		if (step === 0) return;
+		const next = rovedIndex(event.key, at, tiles.length, {
+			columns,
+			horizontal: true,
+		});
+		if (next === null) return;
 
 		event.preventDefault();
 		event.stopPropagation();
-		tiles[Math.min(Math.max(at + step, 0), tiles.length - 1)]?.focus();
+		tiles[next]?.focus();
 	};
 
 	const onPageKeyDown = useCallback((event: ReactKeyboardEvent) => {

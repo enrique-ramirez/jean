@@ -5,11 +5,11 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { type Artist, artistIndex } from "@/domain/artist/artists";
 import { announcePlaybackRefusal } from "@/domain/player/playerWrite";
 import { usePlayer } from "@/domain/player/usePlayer";
 import { useResolvedPlaylistId } from "@/domain/player/usePlaylists";
 import { type Album, albumIndex } from "@/domain/track/albums";
-import { type Artist, artistIndex } from "@/domain/track/artists";
 import { type Genre, genreIndex } from "@/domain/track/genres";
 import {
 	isScratchPlaylist,

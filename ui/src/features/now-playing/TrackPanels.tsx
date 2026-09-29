@@ -1,6 +1,6 @@
 import { Maximize2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-
+import { Artist } from "@/domain/artist/Artist";
 import { PANEL_TABS, type PanelTab } from "@/domain/track/routes";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useSwipe } from "@/shared/hooks/useSwipe";
@@ -10,7 +10,6 @@ import { type BindingId, SCOPE } from "@/shared/keyboard/keymap";
 import { mnemonicOf } from "@/shared/keyboard/mnemonic";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Tabs } from "@/shared/ui/Tabs";
-import { Artist } from "./Artist";
 import { Details } from "./Details";
 import { Lyrics } from "./Lyrics";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";

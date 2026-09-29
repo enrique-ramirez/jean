@@ -1,7 +1,11 @@
+import {
+	type AlbumArtist,
+	albumArtistsOf,
+	mostPlayed,
+} from "@/domain/artist/albumArtists";
 import type { CoveredAlbum } from "@/domain/track/albums";
 import type { TrackRows } from "@/domain/track/project";
 import { summarise } from "@/domain/track/stats";
-import { type AlbumArtist, albumArtistsOf, mostPlayed } from "./artists";
 
 const GENRE_BARS = 14;
 

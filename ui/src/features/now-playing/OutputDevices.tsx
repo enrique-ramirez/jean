@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { OutputDevice } from "@/shared/api/outputs";
 import { useTranslate } from "@/shared/i18n/useTranslate";
+import { rovedIndex } from "@/shared/lib/rove";
 import { MenuItem } from "@/shared/ui/Menu";
 import styles from "./OutputDevices.module.css";
 
@@ -164,10 +165,9 @@ export function OutputDeviceList({
 		event: ReactKeyboardEvent<HTMLButtonElement>,
 		index: number,
 	) => {
-		if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+		const next = rovedIndex(event.key, index, devices.length, { wrap: true });
+		if (next === null) return;
 		event.preventDefault();
-		const delta = event.key === "ArrowDown" ? 1 : -1;
-		const next = (index + delta + devices.length) % devices.length;
 		setTabStop(next);
 		rowRefs.current[next]?.focus();
 	};

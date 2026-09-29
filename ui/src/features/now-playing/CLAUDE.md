@@ -20,11 +20,6 @@
 - Every value goes through `readValue()`; read raw, a missing field is the string `?`.
 - LRC in real files carries `\r\n` or a lone `\r`, several timestamps on one line, an `[offset:…]` in milliseconds to subtract, and fractions of one to three digits. `SYNCED_MIN_SPAN` calls a lyric synced by the span of its timing.
 
-## Artist information
-
-- MusicBrainz `ws/2` and Wikipedia's REST summary answer `Access-Control-Allow-Origin: *` with no key. Deezer does not, so there are no artist images.
-- MusicBrainz links Wikidata, and the Wikidata REST path is `v1`. MusicBrainz refuses only a bare `Mozilla/5.0` user agent, which a browser never sends.
-
 ## Rating
 
 - `useNowPlayingRating` serves the stars, the menu and the digits, and offers nothing until the track's rating has arrived. `isLocalFile` gates ahead of `canWrite`, because `%rating%` answers `?` for a stream and an unrated file alike.

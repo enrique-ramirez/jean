@@ -1,4 +1,3 @@
-import { formatTime } from "@/domain/player/position";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
 import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
@@ -20,6 +19,7 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useSwipe } from "@/shared/hooks/useSwipe";
+import { formatTime } from "@/shared/i18n/format";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";

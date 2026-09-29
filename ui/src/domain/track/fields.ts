@@ -311,3 +311,13 @@ export function featuring(
 
 	return artist.slice(match[0].length).replace(/^[\s,;/&]+/, "") || null;
 }
+
+// Not an artist, and a page for it would be every compilation track in the library. Asked wherever a
+// name is about to become somewhere you can go -- the index, a credit drawn as links, the track menu
+// -- since leaving it to the index alone still offers the trip from everywhere else.
+const NOT_AN_ARTIST = new Set(["various artists", "various", "va"]);
+
+export const namesAnArtist = (name: string | null | undefined) => {
+	const key = tagKey(name);
+	return key.length > 0 && !NOT_AN_ARTIST.has(key);
+};

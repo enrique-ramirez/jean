@@ -1,35 +1,15 @@
-import type { LucideIcon } from "lucide-react";
-import {
-	Disc3,
-	GripVertical,
-	Home,
-	ListMusic,
-	Pencil,
-	Plus,
-	Search,
-	Shapes,
-	Trash2,
-	Undo2,
-	Volume2,
-	WandSparkles,
-} from "lucide-react";
+import { Disc3, Home, ListMusic, Plus, Search, Shapes } from "lucide-react";
 import {
 	type KeyboardEvent as ReactKeyboardEvent,
 	type MouseEvent as ReactMouseEvent,
-	type ReactNode,
 	type PointerEvent as ReactPointerEvent,
 	useCallback,
 	useEffect,
 	useMemo,
-	useRef,
 	useState,
 } from "react";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import { useAutoPlaylists } from "@/domain/player/useAutoPlaylists";
-import {
-	untitledPlaylistName,
-	usePlaylistActions,
-} from "@/domain/player/usePlaylists";
 import { withoutScratchPlaylist } from "@/domain/track/jeanPlaylists";
 import { isSearchRoute, ROUTE } from "@/domain/track/routes";
 import { permitsPlaylistWrites } from "@/shared/api/discovery";
@@ -39,16 +19,16 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useSortableList } from "@/shared/hooks/useSortableList";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
-import { hintFor, matchesBinding, SCOPE } from "@/shared/keyboard/keymap";
+import { hintFor, SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
-import { mergeHandlers, type PropBag } from "@/shared/lib/mergeHandlers";
-import { randomId } from "@/shared/lib/randomId";
-import { ActionMenu, type ActionNode } from "@/shared/ui/ActionMenu";
+import { rovedIndex } from "@/shared/lib/rove";
+import { ActionMenu } from "@/shared/ui/ActionMenu";
 import { useDragState } from "@/shared/ui/dnd";
-import { pushToast } from "@/shared/ui/toastStore";
 import { KIND_LABEL, type PlayingRoute } from "./routes";
 import styles from "./Sidebar.module.css";
+import { NavRow, PlaylistRow } from "./SidebarRows";
 import { sidebarFocusAnswered, useSidebarFocusAsked } from "./sidebarFocus";
+import { usePlaylistEditing } from "./usePlaylistEditing";
 
 const PALETTE_HINT = hintFor("openPalette");
 
@@ -57,77 +37,6 @@ export type PlayableRow =
 	| { kind: "search" }
 	| { kind: "playingFrom" }
 	| { kind: "playlist"; id: string };
-
-const hasFinePointer = () => window.matchMedia("(pointer: fine)").matches;
-
-function NavRow({
-	icon: Icon,
-	label,
-	count,
-	isPlaying,
-	isCurrent,
-	onClick,
-	onPlay,
-	rowProps,
-	itemProps,
-	children,
-}: {
-	icon: LucideIcon;
-	label: ReactNode;
-	count?: ReactNode;
-	isPlaying?: boolean;
-	isCurrent?: boolean;
-	onClick?: () => void;
-	onPlay?: () => void;
-	rowProps?: PropBag;
-	itemProps?: PropBag;
-	children?: ReactNode;
-}) {
-	const t = useTranslate();
-	return (
-		<div className={styles.row} {...rowProps}>
-			<button
-				type="button"
-				className={styles.item}
-				aria-current={isCurrent}
-				onClick={onClick}
-				onDoubleClick={
-					onPlay
-						? () => {
-								if (hasFinePointer()) onPlay();
-							}
-						: undefined
-				}
-				onKeyDown={
-					onPlay
-						? (event) => {
-								if (!matchesBinding(event.nativeEvent, "playAll")) return;
-								event.preventDefault();
-								event.stopPropagation();
-								onPlay();
-							}
-						: undefined
-				}
-				data-nav-row=""
-				{...itemProps}
-			>
-				{isPlaying ? (
-					<Volume2
-						size={15}
-						strokeWidth={2}
-						className={styles.playing}
-						aria-label={t("sidebar.playingFromHere")}
-					/>
-				) : (
-					<Icon size={15} strokeWidth={2} aria-hidden="true" />
-				)}
-				<span className={styles.label}>{label}</span>
-				{count == null ? null : <span className={styles.count}>{count}</span>}
-			</button>
-			{children}
-		</div>
-	);
-}
 
 export function Sidebar({
 	playlists,
@@ -164,18 +73,13 @@ export function Sidebar({
 	const format = useFormats();
 	const { discovery } = useFooJean();
 	const canEdit = permitsPlaylistWrites(discovery);
-	const { create, rename, remove, move } = usePlaylistActions();
 	const drag = useDragState();
 	const autoPlaylists = useAutoPlaylists();
 
 	const menu = useContextMenu({ disabled: !canEdit });
 	const swipe = useSwipe({ onLeft: onDismiss });
 	const [targetId, setTargetId] = useState<string | null>(null);
-	const [renamingId, setRenamingId] = useState<string | null>(null);
 	const [focusedId, setFocusedId] = useState<string | null>(null);
-	const [pendingCreates, setPendingCreates] = useState(
-		new Map<string, Promise<string | null>>(),
-	);
 
 	const shown = useMemo(() => withoutScratchPlaylist(playlists), [playlists]);
 
@@ -187,14 +91,15 @@ export function Sidebar({
 	const target = shown.find((entry) => entry.id === targetId) ?? null;
 	const focusedIndex = shown.findIndex((entry) => entry.id === focusedId);
 
-	const playerIndexOf = (position: number) =>
-		playlists.findIndex((entry) => entry.id === shown[position].id);
-
-	const reorder = (from: number, to: number) =>
-		move.mutate(
-			{ id: shown[from].id, index: playerIndexOf(to) },
-			{ onError: refused(t("playlist.reorderRefused")) },
-		);
+	const {
+		renamingId,
+		pendingCreates,
+		isCreating,
+		newPlaylist,
+		reorder,
+		commitRename,
+		actions,
+	} = usePlaylistEditing({ playlists, shown, target, selectedId, onSelect });
 
 	const sortable = useSortableList({
 		keys: shown.map((entry) => entry.id),
@@ -247,99 +152,18 @@ export function Sidebar({
 			return;
 		}
 
-		const delta =
-			event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
-		if (delta === 0) return;
+		const rows = navRows();
+		const next = rovedIndex(
+			event.key,
+			rows.indexOf(document.activeElement as HTMLElement),
+			rows.length,
+		);
+		if (next === null) return;
 
 		event.preventDefault();
 		event.stopPropagation();
-
-		const rows = navRows();
-		const at = rows.indexOf(document.activeElement as HTMLElement);
-		const next = at < 0 ? (delta > 0 ? 0 : rows.length - 1) : at + delta;
-		rows[Math.min(Math.max(next, 0), rows.length - 1)]?.focus();
+		rows[next]?.focus();
 	};
-
-	const refused = (message: string) => () =>
-		pushToast({ tone: "error", message });
-
-	const newPlaylist = () => {
-		const id = `pending:${randomId()}`;
-		const title = untitledPlaylistName(shown);
-		setRenamingId(id);
-
-		const landed = create.mutateAsync({ id, title }).then(
-			(playlist) => {
-				setRenamingId((current) => (current === id ? playlist.id : current));
-				return playlist.id;
-			},
-			() => {
-				refused(t("playlist.createRefused"))();
-				return null;
-			},
-		);
-
-		setPendingCreates((current) => new Map(current).set(id, landed));
-		landed.finally(() =>
-			setPendingCreates((current) => {
-				if (!current.has(id)) return current;
-				const next = new Map(current);
-				next.delete(id);
-				return next;
-			}),
-		);
-	};
-
-	const deletePlaylist = (playlist: PlaylistInfo) => {
-		if (playlist.id === selectedId) {
-			const at = shown.findIndex((entry) => entry.id === playlist.id);
-			const next = shown[at + 1] ?? shown[at - 1];
-			if (next) onSelect(next.id);
-		}
-		remove.mutate(playlist.id, {
-			onError: refused(
-				t("playlist.deleteFailed", { playlist: playlist.title }),
-			),
-		});
-	};
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: deletePlaylist's own captures, listed instead of it
-	const actions = useMemo((): ActionNode[] => {
-		if (!target) return [];
-
-		return [
-			{
-				id: "rename",
-				label: t("action.rename"),
-				icon: Pencil,
-				onSelect: () => setRenamingId(target.id),
-			},
-			{ type: "separator" },
-			{
-				id: "delete",
-				label: t("action.delete"),
-				icon: Trash2,
-				danger: true,
-				items: [
-					{
-						type: "message",
-						text: t("playlist.deleteWarning", {
-							playlist: target.title,
-							count: target.itemCount,
-						}),
-					},
-					{
-						id: "confirm",
-						label: t("playlist.delete"),
-						icon: Trash2,
-						danger: true,
-						onSelect: () => deletePlaylist(target),
-					},
-					{ id: "cancel", label: t("playlist.keepIt"), icon: Undo2 },
-				],
-			},
-		];
-	}, [target, shown, selectedId, t]);
 
 	return (
 		<>
@@ -433,7 +257,7 @@ export function Sidebar({
 							type="button"
 							className={styles.add}
 							aria-label={t("playlist.new")}
-							disabled={create.isPending}
+							disabled={isCreating}
 							onClick={newPlaylist}
 						>
 							<Plus size={15} strokeWidth={2.4} aria-hidden="true" />
@@ -480,38 +304,7 @@ export function Sidebar({
 								current === playlist.id ? null : current,
 							)
 						}
-						onRename={(title) => {
-							setRenamingId(null);
-
-							const pending = pendingCreates.get(playlist.id);
-							if (pending) {
-								if (title) {
-									pending.then((id) => {
-										if (id && title !== playlist.title)
-											rename.mutate(
-												{ id, title },
-												{
-													onError: refused(
-														t("playlist.renameFailed", { playlist: title }),
-													),
-												},
-											);
-									});
-								}
-								return;
-							}
-
-							if (title && title !== playlist.title) {
-								rename.mutate(
-									{ id: playlist.id, title },
-									{
-										onError: refused(
-											t("playlist.renameFailed", { playlist: playlist.title }),
-										),
-									},
-								);
-							}
-						}}
+						onRename={(title) => commitRename(playlist, title)}
 					/>
 				))}
 			</nav>
@@ -535,147 +328,5 @@ export function Sidebar({
 				onDismiss={menu.close}
 			/>
 		</>
-	);
-}
-
-function PlaylistRow({
-	playlist,
-	isPlaying,
-	isSelected,
-	isRenaming,
-	isPending,
-	isAuto,
-	isDropTarget,
-	isDropOver,
-	canEdit,
-	rowProps,
-	dragProps,
-	handleProps,
-	menuProps,
-	onSelect,
-	onPlay,
-	onFocus,
-	onBlur,
-	onRename,
-}: {
-	playlist: PlaylistInfo;
-	isPlaying: boolean;
-	isSelected: boolean;
-	isRenaming: boolean;
-	isPending: boolean;
-	isAuto: boolean;
-	isDropTarget: boolean;
-	isDropOver: boolean;
-	canEdit: boolean;
-	rowProps: PropBag;
-	dragProps: PropBag;
-	handleProps: PropBag;
-	menuProps: PropBag;
-	onSelect?: () => void;
-	onPlay?: () => void;
-	onFocus: () => void;
-	onBlur: () => void;
-	onRename: (title: string | null) => void;
-}) {
-	const t = useTranslate();
-	const format = useFormats();
-	const { style: pressableStyle, ...gestures } = menuProps;
-	const { style: dragStyle, ref, ...rowState } = rowProps;
-
-	if (isRenaming) {
-		return (
-			<div className={styles.row} ref={ref} style={dragStyle} {...rowState}>
-				<RenameField title={playlist.title} onCommit={onRename} />
-			</div>
-		);
-	}
-
-	if (isPending) {
-		return (
-			<NavRow
-				icon={isAuto ? WandSparkles : ListMusic}
-				label={playlist.title}
-				count={format.number(playlist.itemCount)}
-				rowProps={{ ref, style: dragStyle, ...rowState }}
-			/>
-		);
-	}
-
-	return (
-		<NavRow
-			icon={isAuto ? WandSparkles : ListMusic}
-			label={playlist.title}
-			count={format.number(playlist.itemCount)}
-			isPlaying={isPlaying}
-			isCurrent={isSelected}
-			onClick={onSelect}
-			onPlay={onPlay}
-			itemProps={{ onFocus, onBlur }}
-			rowProps={{
-				ref,
-				style: { ...pressableStyle, ...dragStyle },
-				"data-drop-target": isDropTarget ? playlist.id : undefined,
-				"data-drop-over": isDropOver ? "true" : undefined,
-				"data-drop-refuses": isAuto ? t("playlist.autoRefuses") : undefined,
-				...rowState,
-				...mergeHandlers(gestures, dragProps),
-			}}
-		>
-			{canEdit ? (
-				<span
-					className={styles.grip}
-					aria-hidden="true"
-					onPointerDown={(event) => {
-						event.stopPropagation();
-						handleProps.onPointerDown?.(event);
-					}}
-				>
-					<GripVertical size={15} strokeWidth={2} />
-				</span>
-			) : null}
-		</NavRow>
-	);
-}
-
-function RenameField({
-	title,
-	onCommit,
-}: {
-	title: string;
-	onCommit: (title: string | null) => void;
-}) {
-	const t = useTranslate();
-	const [value, setValue] = useState(title);
-	const cancelled = useRef(false);
-
-	return (
-		<form
-			className={styles.renameForm}
-			onSubmit={(event) => {
-				event.preventDefault();
-				onCommit(value.trim());
-			}}
-		>
-			<input
-				className={styles.renameInput}
-				value={value}
-				aria-label={t("playlist.renameOne", { playlist: title })}
-				spellCheck="false"
-				autoComplete="off"
-				// biome-ignore lint/a11y/noAutofocus: rename is the state
-				autoFocus
-				onFocus={(event) => event.target.select()}
-				onChange={(event) => setValue(event.target.value)}
-				onBlur={() =>
-					cancelled.current ? onCommit(null) : onCommit(value.trim())
-				}
-				onKeyDown={(event) => {
-					if (event.key !== "Escape") return;
-					cancelled.current = true;
-					event.stopPropagation();
-					event.currentTarget.blur();
-				}}
-			/>
-		</form>
 	);
 }

@@ -1,4 +1,4 @@
-import { useArtistInfoEnabled } from "@/features/now-playing/artistInfo";
+import { useArtistInfoEnabled } from "@/domain/artist/artistInfo";
 import { Trans } from "@/shared/i18n/Trans";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { HelpHint } from "@/shared/ui/HelpHint";

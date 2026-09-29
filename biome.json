@@ -199,6 +199,10 @@
 										"message": "features/ is below app/. The shell composes features, never the other way round."
 									},
 									{
+										"group": ["@/features/**"],
+										"message": "A feature does not import another feature. Move what both need down into domain/ or shared/, and import a feature's own files relatively."
+									},
+									{
 										"group": [
 											"@tanstack/react-hotkeys",
 											"@tanstack/react-hotkeys/**",

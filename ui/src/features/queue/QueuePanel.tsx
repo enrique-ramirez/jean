@@ -1,6 +1,6 @@
 import { GripVertical, X } from "lucide-react";
 import { type CSSProperties, memo, useMemo } from "react";
-import { formatTime, positionAt } from "@/domain/player/position";
+import { positionAt } from "@/domain/player/position";
 import type { QueueEntry } from "@/domain/player/queue";
 import { queueDropAt, queuedSeconds, startsIn } from "@/domain/player/queue";
 import { usePlayer } from "@/domain/player/usePlayer";
@@ -15,6 +15,7 @@ import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useSortableList } from "@/shared/hooks/useSortableList";
 import { useSwipe } from "@/shared/hooks/useSwipe";
+import { formatTime } from "@/shared/i18n/format";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useKeyboardOwner } from "@/shared/keyboard/keyboardOwner";
 import { mergeHandlers, type PropBag } from "@/shared/lib/mergeHandlers";

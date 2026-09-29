@@ -16,7 +16,7 @@ import {
 } from "@/domain/track/routes";
 import { SHELVES, type Shelf } from "@/features/home/shelves";
 import { en, type Phrase } from "@/shared/i18n/en";
-import { translate } from "@/shared/i18n/locale";
+import type { Translate } from "@/shared/i18n/useTranslate";
 
 export interface PlayingSet {
 	kind: ScratchKind;
@@ -94,6 +94,7 @@ export function resolveRoute(route: string): RouteView {
 
 export function routeOfPlayingSet(
 	playing: PlayingSet | null | undefined,
+	t: Translate,
 ): PlayingRoute | null {
 	if (!playing) return null;
 	if (playing.kind === SCRATCH_KIND.all)
@@ -115,8 +116,7 @@ export function routeOfPlayingSet(
 	// makes it the one other spelling worth trying.
 	const shelf = SHELVES.find(
 		(entry) =>
-			playing.label === translate(entry.title) ||
-			playing.label === en[entry.title],
+			playing.label === t(entry.title) || playing.label === en[entry.title],
 	);
 	return shelf
 		? { ...playing, route: shelfRoute(shelf.id), temporaryRow: true }

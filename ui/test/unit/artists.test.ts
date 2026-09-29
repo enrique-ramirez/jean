@@ -3,10 +3,13 @@ import test from "node:test";
 import {
 	artistIndex,
 	artistsOf,
-	namesAnArtist,
 	refsOfArtist,
-} from "../../src/domain/track/artists.ts";
-import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
+} from "../../src/domain/artist/artists.ts";
+import {
+	FIELD,
+	namesAnArtist,
+	TRACK_EXPRESSIONS,
+} from "../../src/domain/track/fields.ts";
 import {
 	columnCollector,
 	libraryColumnsOf,

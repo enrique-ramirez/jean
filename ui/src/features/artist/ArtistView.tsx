@@ -1,6 +1,8 @@
 import { Play, Shuffle } from "lucide-react";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
+import { Artist } from "@/domain/artist/Artist";
+import type { ArtistTracks } from "@/domain/artist/artists";
 import { libraryNoticeFor } from "@/domain/library/LibraryNotice";
 import {
 	isLibraryReading,
@@ -8,7 +10,6 @@ import {
 } from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
 import { albumsOf } from "@/domain/track/albums";
-import type { ArtistTracks } from "@/domain/track/artists";
 import { useAvailableFields } from "@/domain/track/fieldAvailability";
 import {
 	columnReader,
@@ -27,7 +28,6 @@ import {
 } from "@/domain/track/project";
 import { summarise } from "@/domain/track/stats";
 import { ViewHeader } from "@/domain/track/ViewHeader";
-import { Artist } from "@/features/now-playing/Artist";
 import { permitsPlaybackControl } from "@/shared/api/discovery";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { Trans } from "@/shared/i18n/Trans";

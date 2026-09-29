@@ -19,7 +19,7 @@ flowchart TB
   subgraph browser["The browser"]
     app["app/<br/>shell, hash routing, theme, media session"]
     features["features/<br/>artist · home · search · genres · library · playlist · now-playing · queue · settings"]
-    domain["domain/<br/>track · library · player"]
+    domain["domain/<br/>library · artist · track · player"]
     shared["shared/<br/>api · ui · lib · hooks · keyboard · styles"]
     app --> features
     features --> domain
@@ -40,9 +40,9 @@ Arrows inside the browser are import direction, and they point one way only.
 | `features/` | one folder per thing a user can do, each owning its own views |
 | `app/` | the shell that composes features: `App`, `Sidebar`, `CommandPalette`, theme, hash routing |
 
-**Biome enforces the direction, so a violation fails `pnpm lint`.** `biome.json` carries one `noRestrictedImports` override per tier: `shared/` may not import `@/domain`, `@/features` or `@/app`; `domain/` may not import `@/features` or `@/app`; `features/` may not import `@/app`. Each refusal carries the sentence that says what to do instead.
+**Biome enforces the direction, so a violation fails `pnpm lint`.** `biome.json` carries one `noRestrictedImports` override per tier: `shared/` may not import `@/domain`, `@/features` or `@/app`; `domain/` may not import `@/features` or `@/app`; `features/` may not import `@/app` or another feature, so what two features share lives in `domain/` or `shared/`. Each refusal carries the sentence that says what to do instead.
 
-Within `domain` the slices form a DAG: `library → track → player`. Sideways is allowed; a cycle is not.
+Within `domain` the slices form a DAG: `library → artist → track → player`. Sideways is allowed; a cycle is not.
 
 Import anything outside its own folder through the `@/` alias. Same-folder imports stay relative.
 

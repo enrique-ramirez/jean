@@ -348,7 +348,7 @@ const swipeToThePrevious = async (page: Page) => {
 	);
 };
 
-test("shows what the player is actually doing on the next tick after several were refused", async ({
+test("shows what the player is actually doing on the next tick after several were dropped", async ({
 	page,
 	player,
 }) => {
@@ -362,8 +362,8 @@ test("shows what the player is actually doing on the next tick after several wer
 	// the validator it holds through the outage is a real one.
 	await expect.poll(() => ticksTaken(player)).toBeGreaterThanOrEqual(2);
 
-	player.fooJean.failState = 503;
-	const refusedFrom = ticksTaken(player);
+	player.fooJean.dropState = true;
+	const droppedFrom = ticksTaken(player);
 
 	// Driven at the desktop while the client is blind: a different track and a
 	// different transport state, so following one of the two cannot pass by luck.
@@ -372,11 +372,11 @@ test("shows what the player is actually doing on the next tick after several wer
 
 	await expect
 		.poll(() => ticksTaken(player))
-		.toBeGreaterThanOrEqual(refusedFrom + 2);
+		.toBeGreaterThanOrEqual(droppedFrom + 2);
 	await expect(playToggle(page, "Pause")).toBeVisible();
 	await expect(seekBar(page)).toHaveAttribute("aria-valuemax", LOS_CALIENTES);
 
-	player.fooJean.failState = null;
+	player.fooJean.dropState = false;
 
 	await expect(playToggle(page, "Play")).toBeVisible();
 	await expect(seekBar(page)).toHaveAttribute("aria-valuemax", FIZZ);

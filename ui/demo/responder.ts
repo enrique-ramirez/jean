@@ -12,6 +12,7 @@ export interface Answer {
 export function answer(): Answer {
 	let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
 	let settle: (response: Response) => void = () => {};
+	let fail: (reason: Error) => void = () => {};
 	const headers = new Headers();
 	const closers = new Set<() => void>();
 	let ended = false;
@@ -44,8 +45,10 @@ export function answer(): Answer {
 		},
 	});
 
-	const ready = new Promise<Response>((resolve) => {
+	// A service worker's `respondWith` given a rejection is a network error to the page.
+	const ready = new Promise<Response>((resolve, reject) => {
 		settle = resolve;
+		fail = reject;
 	});
 
 	const response: Responder = {
@@ -79,6 +82,10 @@ export function answer(): Answer {
 			if (ended) listener();
 			else closers.add(listener);
 			return response;
+		},
+		destroy() {
+			fail(new Error("dropped"));
+			return response.end();
 		},
 		get writableEnded() {
 			return ended;

@@ -16,14 +16,14 @@ test.describe("a poll cut off mid-flight", () => {
 		await openLibrary(page);
 		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "54");
 
-		player.fooJean.failState = 503;
+		player.fooJean.dropState = true;
 		const droppedAt = player.requests.length;
 		await expect.poll(() => player.requests.length).toBeGreaterThan(droppedAt);
 
 		player.copyItems("p5", "p7", [0]);
 		player.notifyPlaylists();
 
-		player.fooJean.failState = null;
+		player.fooJean.dropState = false;
 
 		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "55");
 	});
@@ -40,14 +40,14 @@ test.describe("a poll cut off mid-flight", () => {
 		});
 		await expect(queue).toHaveAccessibleName("Queue");
 
-		player.fooJean.failState = 503;
+		player.fooJean.dropState = true;
 		const droppedAt = player.requests.length;
 		await expect.poll(() => player.requests.length).toBeGreaterThan(droppedAt);
 
 		// Queued at the desktop, so nothing Jean did can be what brings it back.
 		expect(player.queueAdd("p7", 3)).toBe(true);
 
-		player.fooJean.failState = null;
+		player.fooJean.dropState = false;
 
 		await expect(queue).toHaveAccessibleName("Queue, 1 track");
 	});

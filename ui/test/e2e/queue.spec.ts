@@ -1332,12 +1332,12 @@ test.describe("the queue is the component's", () => {
 
 		// The poll is what carries a queue change back, so cutting it off is what
 		// leaves a drag planned against a queue the player has already moved past.
-		player.fooJean.failState = 503;
+		player.fooJean.dropState = true;
 		const queuedFirst = rowQueuedAtThePlayer(player, "p2", 0, 0);
 
 		await dragRow(page, 2, 0);
 
-		player.fooJean.failState = null;
+		player.fooJean.dropState = false;
 
 		await expectSettlesAt(player, () => queuedAtThePlayer(player).length, 4);
 		expect(queuedAtThePlayer(player).map((entry) => entry.title)).toEqual([
@@ -1365,7 +1365,7 @@ test.describe("the queue is the component's", () => {
 		await expect(queueRows(page)).toHaveCount(2);
 		const before = queuedAtThePlayer(player);
 
-		player.fooJean.failState = 503;
+		player.fooJean.dropState = true;
 		const queuedFirst = rowQueuedAtThePlayer(player, "p2", 0, 0);
 
 		await queueRows(page)
@@ -1373,7 +1373,7 @@ test.describe("the queue is the component's", () => {
 			.getByRole("button", { name: /^Remove/ })
 			.click();
 
-		player.fooJean.failState = null;
+		player.fooJean.dropState = false;
 
 		await expectSettlesAt(player, () => queuedAtThePlayer(player).length, 3);
 		expect(queuedAtThePlayer(player).map((entry) => entry.title)).toEqual([

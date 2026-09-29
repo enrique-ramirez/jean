@@ -40,7 +40,7 @@ export function handleControl({
 		if (method === "POST") {
 			// Switches GET /api/state's refusal mid-test, unlike `failWrites`,
 			// which only takes effect at fixture construction. Omitting the field
-			// (or sending it null) turns the refusal back off, and the hang with it.
+			// (or sending it null) turns the refusal back off, and the drop and the hang with it.
 			try {
 				state.fooJean.failState =
 					typeof input.failState === "number"
@@ -49,6 +49,7 @@ export function handleControl({
 			} catch (refused) {
 				return json(response, { error: String(refused) }, 400);
 			}
+			state.fooJean.dropState = input.dropState === true;
 			state.fooJean.hangState = input.hangState === true;
 			return empty(response);
 		}

@@ -186,7 +186,7 @@ const libraryGuid = (player: FakePlayer) =>
 	});
 });
 
-// The poll is refused as well, or its next answer would put the control back
+// The poll is dropped as well, or its next answer would put the control back
 // whether or not the failed command did, and the case would pass either way.
 test.describe("a component that hangs up on every command", () => {
 	test.skip(
@@ -199,7 +199,7 @@ test.describe("a component that hangs up on every command", () => {
 		player: FakePlayer,
 		drawsThePress: () => Promise<unknown>,
 	) => {
-		player.fooJean.failState = 503;
+		player.fooJean.dropState = true;
 		const origin = await componentOrigin(page.request);
 		const hungUp: string[] = [];
 		await page.route(

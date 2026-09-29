@@ -4,6 +4,7 @@ export interface Responder {
 	write(chunk: string | Uint8Array): unknown;
 	end(body?: string | Uint8Array): unknown;
 	on(event: "close", listener: () => void): unknown;
+	destroy(): unknown;
 	// Node sets this; the browser shim keeps it in step.
 	readonly writableEnded?: boolean;
 }

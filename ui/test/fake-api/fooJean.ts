@@ -77,6 +77,8 @@ export interface FooJeanOptions {
 	// mid-test rather than one refused from the start.
 	failState?: Refusal<"failState"> | null;
 
+	dropState?: boolean;
+
 	// Holds GET /api/state open and never answers it, switched like `failState`.
 	// `foo_jean` answers this route from its own store and never waits on the
 	// player, so this is the network losing the answer rather than the player
@@ -275,6 +277,7 @@ const DEFAULTS: FooJeanFake = {
 	playingTrackKnobsFor: null,
 	storesRatingAs: null,
 	failState: null,
+	dropState: false,
 	hangState: false,
 	mainThreadStalled: false,
 	failArtwork: null,
@@ -330,7 +333,7 @@ const DEFAULTS: FooJeanFake = {
 // `foo_jean`'s route handlers. A knob asked for anything else is a state the
 // player never reaches, and a spec green against it proves nothing.
 const ANSWERABLE = {
-	failState: { route: "GET /api/state", statuses: [429, 503] },
+	failState: { route: "GET /api/state", statuses: [429] },
 	failArtwork: {
 		route: "GET /api/artwork",
 		statuses: [400, 404, 413, 429, 503],
@@ -620,6 +623,7 @@ const reporting = (
 			return response.end(body);
 		},
 		on: (event, listener) => response.on(event, listener),
+		destroy: () => response.destroy(),
 		get writableEnded() {
 			return response.writableEnded;
 		},
@@ -771,6 +775,7 @@ const deliveredAfter = (response: Responder, ms: number): Responder => {
 			return later(() => response.end(body));
 		},
 		on: (event, listener) => response.on(event, listener),
+		destroy: () => response.destroy(),
 		get writableEnded() {
 			return ended || Boolean(response.writableEnded);
 		},
@@ -2114,6 +2119,10 @@ async function handleState({
 			{ error: "the state route is not answering", detail: "" },
 			fake.failState,
 		);
+	}
+	if (fake.dropState) {
+		response.destroy();
+		return true;
 	}
 	if (fake.hangState) {
 		await abandoned(response, STALLED_READ_MS);

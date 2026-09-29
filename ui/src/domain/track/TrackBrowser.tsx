@@ -1,6 +1,5 @@
 import { ArrowDown, ArrowUp, Flame, LayoutList, ListMusic } from "lucide-react";
 import {
-	forwardRef,
 	type MouseEvent as ReactMouseEvent,
 	type ReactNode,
 	type PointerEvent as ReactPointerEvent,
@@ -66,56 +65,55 @@ const PAGE = 12;
 
 const isRepeatClick = (event: ReactMouseEvent) => event.detail > 1;
 
-export const TrackBrowser = forwardRef(function TrackBrowser(
-	{
-		rows,
-		source,
-		viewKey,
-		heat,
-		patina,
-		activeIndex = -1,
-		isPlaying,
-		matches = null,
-		isLoading,
-		loaded,
-		total,
-		scrollRef,
-		isCompactViewport,
-		header,
-		toolbarLeading,
-		emptyNotice,
-		loadingNotice,
-		progressLabel,
-		keysEnabled = true,
-		canFollowPlayback = false,
-		onPlay,
-		onOpenFinder,
-	}: {
-		rows: TrackRows;
-		source: LibrarySource;
-		viewKey: string;
-		heat: Float32Array;
-		patina: Float32Array;
-		activeIndex?: number;
-		isPlaying: boolean;
-		matches?: Set<number> | null;
-		isLoading: boolean;
-		loaded: number;
-		total: number;
-		scrollRef: RefObject<HTMLElement | null>;
-		isCompactViewport: boolean;
-		header?: ReactNode;
-		toolbarLeading?: ReactNode;
-		emptyNotice?: ReactNode;
-		loadingNotice?: ReactNode;
-		progressLabel?: string;
-		keysEnabled?: boolean;
-		canFollowPlayback?: boolean;
-		onPlay: (position: number) => void;
-		onOpenFinder?: () => void;
-	},
-	ref: Ref<TrackBrowserHandle>,
-) {
+export function TrackBrowser({
+	ref,
+	rows,
+	source,
+	viewKey,
+	heat,
+	patina,
+	activeIndex = -1,
+	isPlaying,
+	matches = null,
+	isLoading,
+	loaded,
+	total,
+	scrollRef,
+	isCompactViewport,
+	header,
+	toolbarLeading,
+	emptyNotice,
+	loadingNotice,
+	progressLabel,
+	keysEnabled = true,
+	canFollowPlayback = false,
+	onPlay,
+	onOpenFinder,
+}: {
+	rows: TrackRows;
+	source: LibrarySource;
+	viewKey: string;
+	heat: Float32Array;
+	patina: Float32Array;
+	activeIndex?: number;
+	isPlaying: boolean;
+	matches?: Set<number> | null;
+	isLoading: boolean;
+	loaded: number;
+	total: number;
+	scrollRef: RefObject<HTMLElement | null>;
+	isCompactViewport: boolean;
+	header?: ReactNode;
+	toolbarLeading?: ReactNode;
+	emptyNotice?: ReactNode;
+	loadingNotice?: ReactNode;
+	progressLabel?: string;
+	keysEnabled?: boolean;
+	canFollowPlayback?: boolean;
+	onPlay: (position: number) => void;
+	onOpenFinder?: () => void;
+	ref?: Ref<TrackBrowserHandle>;
+}) {
 	const t = useTranslate();
 	const listRef = useRef<TrackListHandle | null>(null);
 	const { discovery } = useFooJean();
@@ -563,4 +561,4 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 			) : null}
 		</div>
 	);
-});
+}

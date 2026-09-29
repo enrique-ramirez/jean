@@ -1,5 +1,11 @@
 import { Search, X } from "lucide-react";
-import { type RefObject, useEffect, useLayoutEffect, useRef } from "react";
+import {
+	type RefObject,
+	useEffect,
+	useEffectEvent,
+	useLayoutEffect,
+	useRef,
+} from "react";
 import { useDebounced } from "@/shared/hooks/useDebounced";
 import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
 import { useResettingState } from "@/shared/hooks/useResettingState";
@@ -39,10 +45,7 @@ export function Finder({
 	const [active, setActive] = useResettingState(0, [query]);
 	const debouncedActive = useDebounced(active, 90);
 
-	// Held in a ref: the parent passes a new closure every render, and depending on it directly would
-	// make previewing re-run itself forever.
-	const previewRef = useRef(onPreview);
-	previewRef.current = onPreview;
+	const preview = useEffectEvent((index: number) => onPreview(index));
 
 	const navigatedFor = useRef<string | null>(null);
 
@@ -55,7 +58,7 @@ export function Finder({
 
 	useEffect(() => {
 		if (navigatedFor.current !== query) return;
-		if (previewIndex !== undefined) previewRef.current(previewIndex);
+		if (previewIndex !== undefined) preview(previewIndex);
 	}, [previewIndex, query]);
 
 	const revealActive = useRef(false);

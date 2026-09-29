@@ -1,9 +1,9 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
-	forwardRef,
 	type Ref,
 	type RefObject,
 	useEffect,
+	useEffectEvent,
 	useImperativeHandle,
 	useLayoutEffect,
 	useMemo,
@@ -51,39 +51,38 @@ const estimateGroupHeight = (group: AlbumRun, isCompactViewport: boolean) => {
 	);
 };
 
-export const TrackList = forwardRef(function TrackList(
-	{
-		rows,
-		groups,
-		source,
-		scrollRef,
-		layout,
-		columns,
-		template,
-		albumTemplate,
-		showArtwork,
-		heat,
-		patina,
-		showHeat,
-		activeIndex,
-		isPlaying,
-		cursor,
-		selection,
-		matches,
-		onSelect,
-		onActiveDirectionChange,
-		isCompactViewport,
-	}: TrackRenderProps & {
-		groups: AlbumRun[];
-		scrollRef: RefObject<HTMLElement | null>;
-		layout: string;
-		albumTemplate: string;
-		showArtwork: boolean;
-		showHeat: boolean;
-		onActiveDirectionChange?: (direction: ActiveDirection) => void;
-	},
-	ref: Ref<TrackListHandle>,
-) {
+export function TrackList({
+	ref,
+	rows,
+	groups,
+	source,
+	scrollRef,
+	layout,
+	columns,
+	template,
+	albumTemplate,
+	showArtwork,
+	heat,
+	patina,
+	showHeat,
+	activeIndex,
+	isPlaying,
+	cursor,
+	selection,
+	matches,
+	onSelect,
+	onActiveDirectionChange,
+	isCompactViewport,
+}: TrackRenderProps & {
+	groups: AlbumRun[];
+	scrollRef: RefObject<HTMLElement | null>;
+	layout: string;
+	albumTemplate: string;
+	showArtwork: boolean;
+	showHeat: boolean;
+	onActiveDirectionChange?: (direction: ActiveDirection) => void;
+	ref?: Ref<TrackListHandle>;
+}) {
 	const isAlbumLayout = layout === "album";
 
 	const discPrefixed = useMemo(
@@ -226,12 +225,11 @@ export const TrackList = forwardRef(function TrackList(
 
 	useEffect(() => () => cancelScroll.current?.(), []);
 
-	const virtualizerRef = useRef(virtualizer);
-	virtualizerRef.current = virtualizer;
+	const remeasure = useEffectEvent(() => virtualizer.measure());
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: the switches fire the effect rather than being read in it -- row 4 in list mode is not album 4, so every cached height is invalid across either
 	useEffect(() => {
-		virtualizerRef.current.measure();
+		remeasure();
 	}, [isAlbumLayout, isCompactViewport]);
 
 	const virtualItems = virtualizer.getVirtualItems();
@@ -335,4 +333,4 @@ export const TrackList = forwardRef(function TrackList(
 			))}
 		</div>
 	);
-});
+}

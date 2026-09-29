@@ -151,10 +151,11 @@ export function Artwork({
 		setState(outcome);
 	};
 
-	const settledRef = useRef(onSettled);
-	settledRef.current = onSettled;
+	const settled = useEffectEvent((outcome: "ok" | "failed") =>
+		onSettled?.(outcome),
+	);
 	useEffect(() => {
-		if (state === "ok" || state === "failed") settledRef.current?.(state);
+		if (state === "ok" || state === "failed") settled(state);
 	}, [state]);
 
 	const classes = classNames(styles.artwork, className);

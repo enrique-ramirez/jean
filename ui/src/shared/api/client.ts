@@ -5,7 +5,8 @@ import type { components, paths } from "./fooJeanSchema";
 export type Schema = components["schemas"];
 
 export const PROBE_TIMEOUT_MS = 4000;
-export const WRITE_TIMEOUT_MS = 35_000;
+// Outlasts foo_jean's own 30-second wait on foobar2000, so even its timeout reaches the caller.
+export const PATIENT_TIMEOUT_MS = 35_000;
 // A read behind a visible panel is not sized for foobar2000 writing tags to disk.
 export const READ_TIMEOUT_MS = 8_000;
 

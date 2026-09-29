@@ -3,10 +3,10 @@ import {
 	askResult,
 	BODYLESS_POST,
 	type Call,
+	PATIENT_TIMEOUT_MS,
 	PROBE_TIMEOUT_MS,
 	type Result,
 	type Schema,
-	WRITE_TIMEOUT_MS,
 } from "./client";
 
 export type PlaylistAnnotation = Schema["PlaylistAnnotation"];
@@ -32,7 +32,7 @@ const patient = <T>(
 	origin: string,
 	call: Call<Answer<T>>,
 	signal?: AbortSignal,
-) => askResult(origin, WRITE_TIMEOUT_MS, call, signal);
+) => askResult(origin, PATIENT_TIMEOUT_MS, call, signal);
 
 const byId = (id: string) => ({ path: { id } });
 

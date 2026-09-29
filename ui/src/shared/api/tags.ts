@@ -1,10 +1,10 @@
 import {
 	ask,
+	PATIENT_TIMEOUT_MS,
 	reach,
 	refusalOf,
 	type Schema,
 	unreachable,
-	WRITE_TIMEOUT_MS,
 } from "./client";
 
 export type TagWriteRequest = Schema["TagWriteRequest"];
@@ -65,6 +65,6 @@ export async function writeTags(
 }
 
 const askWrite = (origin: string, request: TagWriteRequest) =>
-	ask(origin, WRITE_TIMEOUT_MS, (api, init) =>
+	ask(origin, PATIENT_TIMEOUT_MS, (api, init) =>
 		api.POST("/tags", { ...init, body: request }),
 	);

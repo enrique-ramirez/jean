@@ -1,8 +1,8 @@
 import {
 	askResult,
+	PATIENT_TIMEOUT_MS,
 	READ_TIMEOUT_MS,
 	type Schema,
-	WRITE_TIMEOUT_MS,
 } from "./client";
 import type { TrackAddress } from "./types";
 
@@ -26,7 +26,7 @@ export const fetchLibraryTrack = (
 	address: LibraryTrackAddress,
 	columns: readonly string[],
 ) =>
-	askResult(origin, WRITE_TIMEOUT_MS, (api, init) =>
+	askResult(origin, PATIENT_TIMEOUT_MS, (api, init) =>
 		api.GET("/track/library", {
 			...init,
 			params: { query: { ...addressQuery(address), columns: [...columns] } },

@@ -3,12 +3,12 @@ import {
 	askResult,
 	BODYLESS_POST,
 	type Call,
-	WRITE_TIMEOUT_MS,
+	PATIENT_TIMEOUT_MS,
 } from "./client";
 import type { PlaybackMode } from "./types";
 
 const command = (origin: string, call: Call<Answer<unknown>>) =>
-	askResult(origin, WRITE_TIMEOUT_MS, call);
+	askResult(origin, PATIENT_TIMEOUT_MS, call);
 
 export const playPause = (origin: string) =>
 	command(origin, (api, init) =>

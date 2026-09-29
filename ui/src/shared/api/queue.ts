@@ -2,10 +2,10 @@ import {
 	type Answer,
 	askResult,
 	type Call,
+	PATIENT_TIMEOUT_MS,
 	PROBE_TIMEOUT_MS,
 	type Result,
 	type Schema,
-	WRITE_TIMEOUT_MS,
 } from "./client";
 
 export type QueueRead = Schema["QueueRead"];
@@ -22,7 +22,7 @@ async function queueMutation(
 	origin: string,
 	call: Call<Answer<unknown>>,
 ): Promise<QueueMutationResult> {
-	const written = await askResult(origin, WRITE_TIMEOUT_MS, call);
+	const written = await askResult(origin, PATIENT_TIMEOUT_MS, call);
 	return !written.ok && written.reason === "refused" && written.status === 409
 		? { ok: false, reason: "stale" }
 		: written;

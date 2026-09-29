@@ -5,17 +5,21 @@ import test, { mock, type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
-import { librarySourceOf } from "../../src/domain/track/librarySource.ts";
-import * as store from "../../src/domain/track/playlistStore.ts";
+import * as store from "../../src/domain/track/libraryLoader.ts";
 import {
 	loadComponentLibrary,
-	loadPlaylist,
+	recheckComponentLibrary,
+} from "../../src/domain/track/libraryLoader.ts";
+import { librarySourceOf } from "../../src/domain/track/librarySource.ts";
+import {
 	type PlaylistSnapshot,
 	playlistSnapshot,
-	recheckComponentLibrary,
-	recheckPlaylist,
 	subscribePlaylist,
-} from "../../src/domain/track/playlistStore.ts";
+} from "../../src/domain/track/playlistEntries.ts";
+import {
+	loadPlaylist,
+	recheckPlaylist,
+} from "../../src/domain/track/playlistLoader.ts";
 import type {
 	PlaylistChanges,
 	PlaylistPage,

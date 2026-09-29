@@ -28,7 +28,7 @@ import {
 	componentLibraryKey,
 	type PlaylistSnapshot,
 	playlistSnapshot,
-} from "./playlistStore";
+} from "./playlistEntries";
 import type { Refs } from "./project";
 
 export interface AddedRows {

@@ -5,7 +5,7 @@ import {
 	componentLibraryKey,
 	EMPTY_PLAYLIST,
 	generationKey,
-} from "@/domain/track/playlistStore";
+} from "@/domain/track/playlistEntries";
 import { useComponentLibraryItems } from "@/domain/track/usePlaylistItems";
 import { libraryOrigin } from "@/shared/api/discovery";
 import { useFooJean } from "@/shared/hooks/useFooJean";

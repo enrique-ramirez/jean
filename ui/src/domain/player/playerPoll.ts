@@ -5,13 +5,6 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import {
-	componentLibraryKey,
-	playlistSnapshot,
-	recheckComponentLibrary,
-	retryFailedLibraryRead,
-	retryFailedPlaylistReads,
-} from "@/domain/track/playlistStore";
 import type { FooJeanCapabilities } from "@/shared/api/discovery";
 import { fetchState, type StateDocument } from "@/shared/api/state";
 import type { PlayerSnapshot, PlayerState } from "@/shared/api/types";
@@ -130,6 +123,24 @@ function scheduleMarkFollowUp(client: QueryClient, origin: string) {
 	pendingMarkFollowUps.set(client, timer);
 }
 
+export interface PollFollower {
+	heldLibraryStructure: (origin: string) => number;
+	answered: (origin: string) => void;
+	libraryAnnounced: (origin: string, library: StateDocument["library"]) => void;
+}
+
+const UNFOLLOWED: PollFollower = {
+	heldLibraryStructure: () => 0,
+	answered: () => {},
+	libraryAnnounced: () => {},
+};
+
+let follower = UNFOLLOWED;
+
+export function followPollWith(next: PollFollower) {
+	follower = next;
+}
+
 async function applyPoll(
 	client: QueryClient,
 	origin: string,
@@ -141,9 +152,7 @@ async function applyPoll(
 	drawn.asked += 1;
 	const ask = drawn.asked;
 	const tag = read === "conditional" ? drawn.tag : null;
-	const exportHeldWhenAsked = playlistSnapshot(
-		componentLibraryKey(origin),
-	).structure;
+	const exportHeldWhenAsked = follower.heldLibraryStructure(origin);
 	const askedAt = performance.now();
 	const result = await fetchState(origin, tag);
 	if (!result.ok && result.reason === "unreachable")
@@ -153,8 +162,7 @@ async function applyPoll(
 
 	// Asked on every tick the player answers, not only on one that carries a change: a quiet player
 	// answers `304` forever, and a read lost under it has nothing else coming to carry its value.
-	void retryFailedPlaylistReads(origin);
-	void retryFailedLibraryRead(origin);
+	follower.answered(origin);
 	const answersNewerAsk = ask > drawn.drawn;
 	if (result.kind === "unchanged") {
 		if (answersNewerAsk && tag === drawn.tag) drawn.drawn = ask;
@@ -187,7 +195,7 @@ async function applyPoll(
 		result.state.library.ready ? null : exportHeldWhenAsked,
 	);
 
-	void recheckComponentLibrary(origin, result.state.library);
+	follower.libraryAnnounced(origin, result.state.library);
 	const revisions: AnnouncedRevisions = {
 		queueRevision: result.state.player.queueRevision,
 		playlistsRevision: result.state.player.playlistsRevision,

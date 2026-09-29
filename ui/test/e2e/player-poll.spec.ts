@@ -1166,7 +1166,7 @@ test("goes on patching small changes into a playlist, and reads its rows whole a
 });
 
 // The cap the client reads the playlist whole at, from `MAX_APPENDED_CHARS` in
-// `domain/track/playlistStore.ts`.
+// `domain/track/playlistPatch.ts`.
 const APPEND_CAP = 256 * 1024;
 
 // A bulk retag reaches many rows with one value. Whether that value arrives once
@@ -1446,7 +1446,7 @@ test("a changes read the network drops leaves the rows catching up on the next e
 	await expectSettlesAt(player, () => uncaught, []);
 });
 
-// `FIRST_CHUNK` and `CHUNK_SIZE` in `domain/track/playlistStore.ts`: a playlist
+// `FIRST_CHUNK` and `CHUNK_SIZE` in `domain/track/playlistLoader.ts`: a playlist
 // arrives one page at a time, and a third page is what leaves a prefix on screen
 // long enough for a restart to shorten it visibly.
 const FIRST_PAGE = 2500;

@@ -1,7 +1,7 @@
 import type { TrackColumns } from "@/shared/api/types";
 import { EMPTY_COLUMNS, FIELD, tagGroups, tagKey } from "./fields";
 import { type LibraryColumns, rowAt } from "./libraryColumns";
-import type { PlaylistSnapshot } from "./playlistStore";
+import type { PlaylistSnapshot } from "./playlistEntries";
 
 // A ref is an integer: a playlist index on one source, a position in the paths array on the other.
 export type Refs = Int32Array | number[];

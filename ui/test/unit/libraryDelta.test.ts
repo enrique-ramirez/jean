@@ -15,7 +15,7 @@ import {
 	librarySnapshotOf,
 	patchedColumns,
 } from "../../src/domain/track/librarySnapshot.ts";
-import { generationKey } from "../../src/domain/track/playlistStore.ts";
+import { generationKey } from "../../src/domain/track/playlistEntries.ts";
 import { decodeJlib } from "../../src/shared/api/jlib.ts";
 import { createState } from "../fake-api/state.ts";
 

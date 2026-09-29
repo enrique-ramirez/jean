@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { loadComponentLibrary } from "./libraryLoader";
 import {
 	componentLibraryKey,
 	EMPTY_PLAYLIST,
-	loadComponentLibrary,
-	loadPlaylist,
 	type PlaylistSnapshot,
 	playlistKey,
 	playlistSnapshot,
-	recheckPlaylist,
 	subscribePlaylist,
-} from "./playlistStore";
+} from "./playlistEntries";
+import { loadPlaylist, recheckPlaylist } from "./playlistLoader";
 
 const stayUnsubscribed = () => () => {};
 

@@ -56,7 +56,6 @@ export const ask = <T>(
 		outer,
 	);
 
-/** `null` where nothing answered, unless the caller's own signal is why. */
 export async function reach<T>(
 	answer: Promise<T>,
 	signal?: AbortSignal,
@@ -100,10 +99,6 @@ export function refusalOf(response: Response, body: unknown): Refusal {
 	};
 }
 
-/**
- * Throws on anything but a success, with the status on the error's `cause` and the body's `error` in
- * its message, for the callers whose refusals are read off a thrown error.
- */
 export async function demand<T>(answer: Promise<Answer<T>>): Promise<T> {
 	const { data, error, response } = await answer;
 	if (response.ok) return data as T;
@@ -120,7 +115,7 @@ export async function orNull<T>(answer: Promise<Answer<T>>): Promise<T | null> {
 
 export type SwitchRefusal = "playbackDisabled" | "writesDisabled";
 
-// Word for word what the component's `core/playlists.cpp` answers for each switch.
+// Word for word what the component's `core/failures.cpp` answers for each switch.
 const REFUSAL_MESSAGE = {
 	playbackDisabled:
 		"this install has playback control turned off; turn on controlPlayback in config.json to allow it",

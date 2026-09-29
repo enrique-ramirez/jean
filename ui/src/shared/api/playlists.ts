@@ -33,7 +33,7 @@ export type OwnPlaylistRole = "scratch";
 export const playlistPath = (id: string) =>
 	`playlists/${encodeURIComponent(id)}`;
 
-const write = <T>(origin: string, call: Call<T>, signal?: AbortSignal) =>
+const patient = <T>(origin: string, call: Call<T>, signal?: AbortSignal) =>
 	ask(origin, WRITE_TIMEOUT_MS, call, signal);
 
 const byId = (id: string) => ({ path: { id } });
@@ -53,7 +53,7 @@ export const fillOwnPlaylist = (
 	request: FillOwnPlaylistRequest,
 ) =>
 	demand(
-		write(origin, (api, init) =>
+		patient(origin, (api, init) =>
 			api.POST("/playlists/own/{role}/items", {
 				...init,
 				params: { path: { role } },
@@ -64,7 +64,7 @@ export const fillOwnPlaylist = (
 
 export const emptyOwnPlaylist = (origin: string, role: OwnPlaylistRole) =>
 	demand(
-		write(origin, (api, init) =>
+		patient(origin, (api, init) =>
 			api.DELETE("/playlists/own/{role}/items", {
 				...init,
 				params: { path: { role } },
@@ -81,7 +81,7 @@ export const fillPlaylist = (
 	request: FillPlaylistRequest,
 ) =>
 	demand(
-		write(origin, (api, init) =>
+		patient(origin, (api, init) =>
 			api.POST("/playlists/{id}/items", {
 				...init,
 				params: byId(guid),
@@ -99,7 +99,7 @@ export const fetchPlaylistRows = (
 	{ signal }: { signal?: AbortSignal } = {},
 ) =>
 	demand(
-		write(
+		patient(
 			origin,
 			(api, init) =>
 				api.GET("/playlists/{id}/items", {
@@ -126,7 +126,7 @@ export async function fetchPlaylistItemChanges(
 	columns: readonly string[],
 	{ signal }: { signal?: AbortSignal } = {},
 ): Promise<PlaylistChangesResult> {
-	const answer = write(
+	const answer = patient(
 		origin,
 		(api, init) =>
 			api.GET("/playlists/{id}/items/changes", {
@@ -149,14 +149,14 @@ export const createPlaylist = (
 	request: CreatePlaylistRequest,
 ) =>
 	demand(
-		write(origin, (api, init) =>
+		patient(origin, (api, init) =>
 			api.POST("/playlists", { ...init, body: request }),
 		),
 	);
 
 export const renamePlaylist = (origin: string, id: string, title: string) =>
 	demand(
-		write(origin, (api, init) =>
+		patient(origin, (api, init) =>
 			api.POST("/playlists/{id}", {
 				...init,
 				params: byId(id),
@@ -167,14 +167,14 @@ export const renamePlaylist = (origin: string, id: string, title: string) =>
 
 export const removePlaylist = (origin: string, id: string) =>
 	demand(
-		write(origin, (api, init) =>
+		patient(origin, (api, init) =>
 			api.DELETE("/playlists/{id}", { ...init, params: byId(id) }),
 		),
 	);
 
 export const movePlaylist = (origin: string, id: string, index: number) =>
 	demand(
-		write(origin, (api, init) =>
+		patient(origin, (api, init) =>
 			api.POST("/playlists/{id}/move", {
 				...init,
 				params: byId(id),
@@ -185,7 +185,7 @@ export const movePlaylist = (origin: string, id: string, index: number) =>
 
 export const playPlaylistItem = (origin: string, id: string, index: number) =>
 	demand(
-		write(origin, (api, init) =>
+		patient(origin, (api, init) =>
 			api.POST("/playlists/{id}/items/{index}/play", {
 				...init,
 				headers: BODYLESS_POST,
@@ -200,7 +200,7 @@ export const copyPlaylistRows = (
 	request: CopyPlaylistRowsRequest,
 ) =>
 	demand(
-		write(origin, (api, init) =>
+		patient(origin, (api, init) =>
 			api.POST("/playlists/{id}/items/copy", {
 				...init,
 				params: byId(id),
@@ -215,7 +215,7 @@ export const removePlaylistRows = (
 	request: RemovePlaylistRowsRequest,
 ) =>
 	demand(
-		write(origin, (api, init) =>
+		patient(origin, (api, init) =>
 			api.POST("/playlists/{id}/items/remove", {
 				...init,
 				params: byId(id),
@@ -258,7 +258,7 @@ export async function createAutoPlaylist(
 	request: AutoPlaylistRequest,
 ): Promise<CreatedAutoPlaylist> {
 	const answer = await reach(
-		write(origin, (api, init) =>
+		patient(origin, (api, init) =>
 			api.POST("/autoplaylists", { ...init, body: request }),
 		),
 	);

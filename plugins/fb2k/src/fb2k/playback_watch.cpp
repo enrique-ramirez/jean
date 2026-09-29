@@ -8,6 +8,7 @@
 #include "fb2k/columns.h"
 #include "fb2k/main_thread.h"
 #include "fb2k/playlists.h"
+#include "fb2k/queue.h"
 #include "fb2k/strings.h"
 #include "fb2k/tracks.h"
 
@@ -86,26 +87,6 @@ void publishLocation(PlayerStateStore& store, PlaylistVersions& versions,
                      const std::optional<PlayingLocation>& location) {
     store.playingLocationChanged(location);
     versions.playingRowChanged(location);
-}
-
-QueueEntry queueEntryOf(const t_playback_queue_item& item) {
-    QueueEntry entry;
-    entry.path = displayPathOf(item.m_handle);
-    entry.subsong = item.m_handle.is_valid() ? item.m_handle->get_subsong_index() : 0;
-    entry.location = queuedLocationOf(item);
-    return entry;
-}
-
-std::vector<QueueEntry> currentQueue() {
-    pfc::list_t<t_playback_queue_item> items;
-    playlist_manager::get()->queue_get_contents(items);
-
-    std::vector<QueueEntry> entries;
-    entries.reserve(items.get_count());
-    for (t_size at = 0; at < items.get_count(); ++at)
-        entries.push_back(queueEntryOf(items[at]));
-
-    return entries;
 }
 
 std::mutex g_queueTargetMutex;

@@ -48,17 +48,13 @@ export const seedPlayback = async () => {
 		return;
 
 	const playlists = await fetchPlaylistAnnotations(origin);
-	const from = playlists?.find(
+	const from = (playlists.ok ? playlists.value : []).find(
 		(playlist) => playlist.title === SEED_PLAYLIST && playlist.itemCount > 0,
 	);
 	if (!from) return;
 
-	try {
-		await playPlaylistItem(origin, from.id, 0);
-		await seekTo(origin, SEED_POSITION_SECONDS);
-	} catch {
-		// A frame opens on a stopped player rather than not opening at all.
-	}
+	const played = await playPlaylistItem(origin, from.id, 0);
+	if (played.ok) await seekTo(origin, SEED_POSITION_SECONDS);
 };
 
 export const focusSearch = () => {

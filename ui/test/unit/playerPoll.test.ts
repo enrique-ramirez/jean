@@ -105,6 +105,19 @@ interface Call {
 
 type Answer = (ifNoneMatch: string | null, url: string) => Promise<Response>;
 
+// The reads a tick's revisions set off, answered the way an install with an empty queue and no
+// playlists would, for a test whose subject is the state poll alone.
+const stateOnly =
+	(answer: Answer): Answer =>
+	(ifNoneMatch, url) => {
+		const path = new URL(url).pathname;
+		if (path === "/api/playlists")
+			return Promise.resolve(Response.json({ playlists: [] }));
+		if (path === "/api/queue")
+			return Promise.resolve(Response.json({ revision: 0, entries: [] }));
+		return answer(ifNoneMatch, url);
+	};
+
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 const STEP_MS = 10;
@@ -257,8 +270,8 @@ const harness = (
 		client,
 		calls,
 		atTeardown: (teardown: () => void) => teardowns.push(teardown),
-		answers: (next: Answer) => {
-			answer = next;
+		answersState: (next: Answer) => {
+			answer = stateOnly(next);
 		},
 		hide: () => change("hidden"),
 		show: () => change("visible"),
@@ -282,13 +295,16 @@ const harness = (
 };
 
 test("a tick writes what the component says the player is doing into the player key", async (t) => {
-	const poll = harness(t, () => document200("paused"));
+	const poll = harness(
+		t,
+		stateOnly(() => document200("paused")),
+	);
 	await poll.settle();
 	await poll.ticks(1);
 
 	assert.equal(playbackIn(poll.client), "paused");
 
-	poll.answers(() => document200("playing", LATER_TAG));
+	poll.answersState(() => document200("playing", LATER_TAG));
 	await poll.ticks(1);
 
 	assert.equal(playbackIn(poll.client), "playing");
@@ -297,12 +313,13 @@ test("a tick writes what the component says the player is doing into the player 
 test("the playing track's name, path and subsong all come from the tick's document", async (t) => {
 	const poll = harness(
 		t,
-		() =>
+		stateOnly(() =>
 			document200("playing", TAG, {
 				...NAME,
 				path: DISC_IMAGE,
 				subsong: DISC_SUBSONG,
 			}),
+		),
 		CAPABILITIES,
 	);
 	await poll.settle();
@@ -325,7 +342,7 @@ test("a tick naming nothing does not draw the previous track's name on the new p
 	// component staying silent about the one it already gave.
 	const poll = harness(
 		t,
-		() => document200("playing", TAG, { ...NAME, path: DISC_IMAGE }),
+		stateOnly(() => document200("playing", TAG, { ...NAME, path: DISC_IMAGE })),
 		CAPABILITIES,
 	);
 	await poll.settle();
@@ -333,7 +350,7 @@ test("a tick naming nothing does not draw the previous track's name on the new p
 
 	assert.equal(readTrack(playerIn(poll.client))?.artist, NAME.artist);
 
-	poll.answers(() =>
+	poll.answersState(() =>
 		document200("playing", LATER_TAG, {
 			path: "/music/Other/Album/03 Three.flac",
 		}),
@@ -347,7 +364,10 @@ test("a tick naming nothing does not draw the previous track's name on the new p
 });
 
 test("a reader of the player key is fed by the poll and never refetches for itself", async (t) => {
-	const poll = harness(t, () => document200("paused"));
+	const poll = harness(
+		t,
+		stateOnly(() => document200("paused")),
+	);
 	await poll.settle();
 	await poll.ticks(1);
 
@@ -367,7 +387,7 @@ test("a reader of the player key is fed by the poll and never refetches for itse
 	});
 	t.after(unsubscribe);
 
-	poll.answers(() => document200("playing", LATER_TAG));
+	poll.answersState(() => document200("playing", LATER_TAG));
 	await poll.ticks(3);
 
 	assert.equal(readerFetched, 0);
@@ -386,7 +406,7 @@ test("a reader of the player key is fed by the poll and never refetches for itse
 test("a tick that has not answered does not start a second request", async (t) => {
 	// One request per tick against a player answering on one work queue is the
 	// budget; wifi at the edge of a house is where a tick outlives its interval.
-	const poll = harness(t, never);
+	const poll = harness(t, stateOnly(never));
 	await poll.settle();
 	await poll.ticks(3);
 
@@ -403,11 +423,14 @@ test("the poll interval is shorter than the volume settle window", () => {
 });
 
 test("the poll holds the validator between ticks, and a 304 leaves the cache alone", async (t) => {
-	const poll = harness(t, () => document200("playing"));
+	const poll = harness(
+		t,
+		stateOnly(() => document200("playing")),
+	);
 	await poll.settle();
 	await poll.ticks(1);
 
-	poll.answers((ifNoneMatch) =>
+	poll.answersState((ifNoneMatch) =>
 		ifNoneMatch === TAG ? unchanged() : document200("stopped", null),
 	);
 	await poll.ticks(2);
@@ -418,7 +441,10 @@ test("the poll holds the validator between ticks, and a 304 leaves the cache alo
 });
 
 test("no read of the player's state, tagged or not, can be answered from the browser's own cache", async (t) => {
-	const poll = harness(t, () => document200("playing"));
+	const poll = harness(
+		t,
+		stateOnly(() => document200("playing")),
+	);
 	await poll.settle();
 	await poll.ticks(1);
 	await pollPlayerNow(poll.client, ORIGIN);
@@ -446,7 +472,10 @@ test("no read of the player's state, tagged or not, can be answered from the bro
 });
 
 test("a hidden tab that is not listening stops asking, and asks again when it comes back", async (t) => {
-	const poll = harness(t, () => document200("playing"));
+	const poll = harness(
+		t,
+		stateOnly(() => document200("playing")),
+	);
 	await poll.settle();
 	await poll.ticks(1);
 
@@ -467,7 +496,10 @@ test("a hidden tab that is not listening stops asking, and asks again when it co
 });
 
 test("a tab coming back asks at once, rather than on the next tick", async (t) => {
-	const poll = harness(t, () => document200("playing"));
+	const poll = harness(
+		t,
+		stateOnly(() => document200("playing")),
+	);
 	await poll.settle();
 
 	poll.hide();
@@ -483,7 +515,7 @@ test("a tab coming back asks at once, rather than on the next tick", async (t) =
 test("a tick draws the player's name, the fader's range and what the install permits from capabilities", async (t) => {
 	const poll = harness(
 		t,
-		() => document200("playing", TAG, { volume: -6 }),
+		stateOnly(() => document200("playing", TAG, { volume: -6 })),
 		CAPABILITIES,
 	);
 	await poll.settle();
@@ -507,12 +539,16 @@ test("a tick overwrites everything its document speaks for, whoever put the prev
 	// value in it that no document fed is a guess the next tick settles. A field
 	// that outlives a tick is a second writer's, and reconciling two of them is
 	// what this poll stopped doing.
-	const poll = harness(t, () => document200("stopped"), CAPABILITIES);
+	const poll = harness(
+		t,
+		stateOnly(() => document200("stopped")),
+		CAPABILITIES,
+	);
 	await poll.settle();
 
 	putInKey(poll.client, held());
 
-	poll.answers(() =>
+	poll.answersState(() =>
 		document200("playing", LATER_TAG, {
 			...NAME,
 			path: DISC_IMAGE,
@@ -545,11 +581,15 @@ test("a tick overwrites everything its document speaks for, whoever put the prev
 });
 
 test("a tick writes a name its document leaves empty, rather than holding the last one", async (t) => {
-	const poll = harness(t, () => document200("playing"), CAPABILITIES);
+	const poll = harness(
+		t,
+		stateOnly(() => document200("playing")),
+		CAPABILITIES,
+	);
 	await poll.settle();
 	putInKey(poll.client, held());
 
-	poll.answers(() =>
+	poll.answersState(() =>
 		document200("paused", TAG, { position: { seconds: 30, ageSeconds: 0 } }),
 	);
 	await poll.ticks(1);
@@ -569,7 +609,9 @@ test("a tick reporting no place drops the place, rather than leaving the last on
 	// whatever row slid into that index, under the name of a playlist the track has left.
 	const poll = harness(
 		t,
-		() => document200("playing", TAG, { playingLocation: PLAYING_FROM }),
+		stateOnly(() =>
+			document200("playing", TAG, { playingLocation: PLAYING_FROM }),
+		),
 		CAPABILITIES,
 	);
 	await poll.settle();
@@ -580,7 +622,7 @@ test("a tick reporting no place drops the place, rather than leaving the last on
 	assert.equal(playing?.index, PLAYING_FROM.index);
 	assert.equal(playing?.playlistGuid, PLAYING_FROM.playlistId);
 
-	poll.answers(() => document200("playing", LATER_TAG));
+	poll.answersState(() => document200("playing", LATER_TAG));
 	await poll.ticks(1);
 
 	const player = playerIn(poll.client);
@@ -600,7 +642,10 @@ test("a tick reporting no place drops the place, rather than leaving the last on
 test("a tick before capabilities have landed reports the level with no range to draw it in", async (t) => {
 	// `GET /api/capabilities` is read once and the poll may tick first. A guessed range
 	// puts the thumb in the wrong place along the fader's whole length.
-	const poll = harness(t, () => document200("playing", TAG, { volume: -6 }));
+	const poll = harness(
+		t,
+		stateOnly(() => document200("playing", TAG, { volume: -6 })),
+	);
 	await poll.settle();
 	await poll.ticks(1);
 
@@ -613,7 +658,7 @@ test("a tick before capabilities have landed reports the level with no range to 
 test("criterion 11: a tick carries the output device the player is set to, and the next tick moves it", async (t) => {
 	const poll = harness(
 		t,
-		() => document200("playing", TAG, { outputDeviceId: SPEAKERS }),
+		stateOnly(() => document200("playing", TAG, { outputDeviceId: SPEAKERS })),
 		CAPABILITIES,
 	);
 	await poll.settle();
@@ -622,7 +667,7 @@ test("criterion 11: a tick carries the output device the player is set to, and t
 
 	assert.equal(playerIn(poll.client)?.outputDeviceId, SPEAKERS);
 
-	poll.answers(() =>
+	poll.answersState(() =>
 		document200("playing", LATER_TAG, { outputDeviceId: HEADPHONES }),
 	);
 	await poll.ticks(1);
@@ -635,14 +680,14 @@ test("criterion 11: a tick naming no output device writes null, rather than keep
 	// cannot ask. Holding the last id instead ticks a device the player has left.
 	const poll = harness(
 		t,
-		() => document200("playing", TAG, { outputDeviceId: SPEAKERS }),
+		stateOnly(() => document200("playing", TAG, { outputDeviceId: SPEAKERS })),
 		CAPABILITIES,
 	);
 	await poll.settle();
 	await poll.ticks(1);
 	assert.equal(playerIn(poll.client)?.outputDeviceId, SPEAKERS);
 
-	poll.answers(() =>
+	poll.answersState(() =>
 		document200("playing", LATER_TAG, { outputDeviceId: null }),
 	);
 	await poll.ticks(1);
@@ -651,8 +696,9 @@ test("criterion 11: a tick naming no output device writes null, rather than keep
 });
 
 test("criterion 11: a tick before capabilities have landed still carries the output device", async (t) => {
-	const poll = harness(t, () =>
-		document200("playing", TAG, { outputDeviceId: SPEAKERS }),
+	const poll = harness(
+		t,
+		stateOnly(() => document200("playing", TAG, { outputDeviceId: SPEAKERS })),
 	);
 	await poll.settle();
 	await poll.ticks(1);

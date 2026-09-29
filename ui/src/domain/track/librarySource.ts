@@ -1,5 +1,6 @@
 import type { QueueSource } from "@/domain/player/queue";
 import { libraryArtworkUrl, playlistRowArtworkUrl } from "@/shared/api/artwork";
+import { orThrow } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
 import { encodeFill, runsOf } from "@/shared/api/fillEncoding";
 import { libraryPathMatcher } from "@/shared/api/playerState";
@@ -100,7 +101,7 @@ const fillScratch =
 			...encodeFill(refs, { structure, trackCount: paths.length }),
 		};
 
-		const result = await fillOwnPlaylist(origin, "scratch", request);
+		const result = orThrow(await fillOwnPlaylist(origin, "scratch", request));
 		return { id: result.playlistId, structure: result.structure };
 	};
 
@@ -114,7 +115,7 @@ const addToPlaylist =
 			trackCount: paths.length,
 		});
 
-		const result = await fillPlaylist(required, targetId, request);
+		const result = orThrow(await fillPlaylist(required, targetId, request));
 		return { positions: result.positions, structure: result.structure };
 	};
 
@@ -332,10 +333,12 @@ const fromPlaylist = (
 		}),
 		addTo: async (targetId: string, refs: Refs): Promise<AddedRows> => {
 			const required = requireFooJean(origin);
-			return copyPlaylistRows(required, targetId, {
-				source: playlistId,
-				runs: runsOf(refs),
-			});
+			return orThrow(
+				await copyPlaylistRows(required, targetId, {
+					source: playlistId,
+					runs: runsOf(refs),
+				}),
+			);
 		},
 
 		// Index is identity in a playlist, so this can only answer while the player is inside the

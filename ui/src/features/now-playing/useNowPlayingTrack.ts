@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
 
 import { useAudiblePlayer, usePlaylists } from "@/domain/player/usePlayer";
-import { retryWhenTooFast } from "@/shared/api/client";
+import { orThrow, retryWhenTooFast } from "@/shared/api/client";
 import { readTrack } from "@/shared/api/playerState";
 import { fetchPlayingTrack } from "@/shared/api/tracks";
 import type {
@@ -106,9 +106,9 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 		queryFn: async ({ signal }): Promise<NowPlayingDetails> => {
 			if (!origin) throw new Error("foo_jean is not ready");
 
-			const answer = await fetchPlayingTrack(origin, NOW_PLAYING_EXPRESSIONS, {
-				signal,
-			});
+			const answer = orThrow(
+				await fetchPlayingTrack(origin, NOW_PLAYING_EXPRESSIONS, { signal }),
+			);
 			if (answer.path !== path || answer.subsong !== subsong)
 				throw new Error("the playing track answered for another track");
 

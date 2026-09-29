@@ -25,6 +25,7 @@ import { MAX_STARS, starsOf, toStars } from "@/domain/track/rating";
 import { setRatingLayer } from "@/domain/track/ratingTarget";
 import { albumRoute, href, type PanelTab } from "@/domain/track/routes";
 import { playingArtworkUrl, playlistRowArtworkUrl } from "@/shared/api/artwork";
+import { orThrow } from "@/shared/api/client";
 import { isFooJeanReady, permitsPlaybackControl } from "@/shared/api/discovery";
 import { fetchPlaylistRows } from "@/shared/api/playlists";
 import type { PlayerSnapshot } from "@/shared/api/types";
@@ -118,13 +119,15 @@ async function fetchRowWindow(
 	index: number,
 ): Promise<RowWindow> {
 	const offset = Math.max(0, index - 1);
-	const { items } = await fetchPlaylistRows(origin, playlistId, offset, 3, [
-		"%path%",
-		"%album%",
-		"%album artist%",
-		"%artist%",
-		"%title%",
-	]);
+	const { items } = orThrow(
+		await fetchPlaylistRows(origin, playlistId, offset, 3, [
+			"%path%",
+			"%album%",
+			"%album artist%",
+			"%artist%",
+			"%title%",
+		]),
+	);
 	return items.map((row, at) => {
 		const [, album, albumArtist, artist, title] = row.columns.map(readValue);
 		const credited = albumArtist || artist;

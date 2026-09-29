@@ -1,6 +1,8 @@
+import type { Result } from "@/shared/api/client";
+
 export interface FollowRevisionOptions<T> {
 	resource: string;
-	read: (origin: string) => Promise<T | null>;
+	read: (origin: string) => Promise<Result<T>>;
 	apply: (value: T, revision: number) => void;
 	active?: () => boolean;
 }
@@ -30,14 +32,14 @@ export function followRevision<T>({
 		if (target === null || readOrigin === null) return;
 
 		reading = true;
-		const value = await read(readOrigin);
+		const answer = await read(readOrigin);
 		if (startedAt !== generation) return;
 		reading = false;
 
-		if (value === null) {
+		if (!answer.ok) {
 			if (!failing) {
 				console.error(
-					`foo_jean did not answer a read of the ${resource} from ${readOrigin}`,
+					`foo_jean did not answer a read of the ${resource} from ${readOrigin}: ${answer.message}`,
 				);
 				failing = true;
 			}
@@ -46,7 +48,7 @@ export function followRevision<T>({
 
 		failing = false;
 		held = target;
-		apply(value, target);
+		apply(answer.value, target);
 		if (desired !== held) void readOnce();
 	}
 

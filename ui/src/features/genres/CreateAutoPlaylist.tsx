@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { genreQuery } from "@/domain/library/genreQuery";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
-import { retryWhenTooFast, TooFast } from "@/shared/api/client";
+import { orThrow, retryWhenTooFast } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
 import {
 	createAutoPlaylist,
@@ -19,13 +19,8 @@ import { Input } from "@/shared/ui/Input";
 import { Menu } from "@/shared/ui/Menu";
 import styles from "./CreateAutoPlaylist.module.css";
 
-async function askPreview(origin: string, query: string) {
-	const result = await previewQuery(origin, query);
-	if (result.ok) return result.preview;
-	throw result.retryInMs === null
-		? new Error("preview refused")
-		: new TooFast(result.retryInMs);
-}
+const askPreview = async (origin: string, query: string) =>
+	orThrow(await previewQuery(origin, query));
 
 function previewSays(
 	t: Translate,
@@ -85,14 +80,11 @@ export function CreateAutoPlaylist({
 	const create = useMutation({
 		mutationFn: async () => {
 			const required = requireFooJean(origin);
-			const made = await createAutoPlaylist(required, {
-				title: title.trim(),
-				query,
-			});
-			if (!made.ok) throw new Error(made.message);
-
+			const made = orThrow(
+				await createAutoPlaylist(required, { title: title.trim(), query }),
+			);
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
-			return made.playlist;
+			return made;
 		},
 		onSuccess: (playlist) => {
 			setIsOpen(false);

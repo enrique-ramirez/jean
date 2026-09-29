@@ -1,3 +1,4 @@
+import { orThrow } from "@/shared/api/client";
 import {
 	fetchLibrary,
 	fetchLibraryChanges,
@@ -10,7 +11,6 @@ import {
 	fetchPlaylistItemChanges,
 	fetchPlaylistRows,
 	type PlaylistChanges,
-	type PlaylistChangesResult,
 } from "@/shared/api/playlists";
 import { fetchState, type StateDocument } from "@/shared/api/state";
 import type { TrackColumns } from "@/shared/api/types";
@@ -138,13 +138,15 @@ const fetchChunk = async (
 	count: number,
 	signal: AbortSignal,
 ): Promise<Chunk> => {
-	const page = await fetchPlaylistRows(
-		origin,
-		playlistId,
-		offset,
-		count,
-		TRACK_EXPRESSIONS,
-		{ signal },
+	const page = orThrow(
+		await fetchPlaylistRows(
+			origin,
+			playlistId,
+			offset,
+			count,
+			TRACK_EXPRESSIONS,
+			{ signal },
+		),
 	);
 	return {
 		rows: page.items.map((item) => item.columns),
@@ -570,25 +572,6 @@ export const loadPlaylist = (
 		load(entry, origin, playlistId),
 	);
 
-async function fetchChangesOrNull(
-	origin: string,
-	playlistId: string,
-	structure: string,
-	revision: string,
-): Promise<PlaylistChangesResult | null> {
-	try {
-		return await fetchPlaylistItemChanges(
-			origin,
-			playlistId,
-			structure,
-			revision,
-			TRACK_EXPRESSIONS,
-		);
-	} catch {
-		return null;
-	}
-}
-
 export async function retryFailedLibraryRead(origin: string) {
 	const entry = entries.get(componentLibraryKey(origin));
 	if (!entry) return;
@@ -657,13 +640,14 @@ export async function recheckPlaylist(
 
 	feed.isChecking = true;
 	try {
-		const result = await fetchChangesOrNull(
+		const result = await fetchPlaylistItemChanges(
 			origin,
 			playlistId,
 			feed.structure,
 			feed.revision,
+			TRACK_EXPRESSIONS,
 		);
-		if (!result) {
+		if (!result.ok && result.reason !== "moved" && result.reason !== "gone") {
 			entry.unreadPlaylist = { playlistId, generation };
 			return;
 		}
@@ -684,7 +668,7 @@ export async function recheckPlaylist(
 			return;
 		}
 
-		if (!applyPlaylistChanges(entry, feed, result.changes))
+		if (!applyPlaylistChanges(entry, feed, result.value))
 			return void (await reloadPlaylist(entry, origin, playlistId));
 	} finally {
 		if (entry.feed === feed) feed.isChecking = false;

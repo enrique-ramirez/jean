@@ -1,23 +1,11 @@
-import { ask, orNull, PROBE_TIMEOUT_MS, type Schema } from "./client";
+import { askResult, PROBE_TIMEOUT_MS, type Schema } from "./client";
 
 export type FooJeanCapabilities = Schema["Capabilities"];
 
-export type CapabilitiesResult =
-	| { ok: true; capabilities: FooJeanCapabilities }
-	| { ok: false; reason: "unreachable" };
-
-export async function fetchCapabilities(
-	origin: string,
-): Promise<CapabilitiesResult> {
-	const capabilities = await orNull(
-		ask(origin, PROBE_TIMEOUT_MS, (api, init) =>
-			api.GET("/capabilities", init),
-		),
+export const fetchCapabilities = (origin: string) =>
+	askResult(origin, PROBE_TIMEOUT_MS, (api, init) =>
+		api.GET("/capabilities", init),
 	);
-	return capabilities
-		? { ok: true, capabilities }
-		: { ok: false, reason: "unreachable" };
-}
 
 export type FooJeanState =
 	| { kind: "unreachable" }
@@ -69,7 +57,7 @@ export async function discoverFooJean(): Promise<FooJeanDiscovery> {
 		return { state: { kind: "unreachable" }, origin, retryable: true };
 
 	return {
-		state: { kind: "ready", capabilities: capabilities.capabilities },
+		state: { kind: "ready", capabilities: capabilities.value },
 		origin,
 		retryable: false,
 	};

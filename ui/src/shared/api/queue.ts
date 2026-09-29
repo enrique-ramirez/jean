@@ -1,14 +1,10 @@
 import {
 	type Answer,
-	ask,
-	orNull,
+	askResult,
+	type Call,
 	PROBE_TIMEOUT_MS,
-	reach,
-	refusalOf,
+	type Result,
 	type Schema,
-	type SwitchRefusal,
-	switchRefusalIn,
-	UNREACHABLE,
 	WRITE_TIMEOUT_MS,
 } from "./client";
 
@@ -19,56 +15,36 @@ export type QueueLibraryTracksRequest = Schema["QueueLibraryTracksRequest"];
 export type MoveQueueRequest = Schema["MoveQueueRequest"];
 
 export type QueueMutationResult =
-	| { ok: true }
-	| { ok: false; reason: "stale" }
-	| {
-			ok: false;
-			reason: "failed";
-			message: string;
-			refusal: SwitchRefusal | null;
-	  };
+	| Result<unknown>
+	| { ok: false; reason: "stale" };
 
 async function queueMutation(
-	answer: Promise<Answer<unknown>>,
+	origin: string,
+	call: Call<Answer<unknown>>,
 ): Promise<QueueMutationResult> {
-	const answered = await reach(answer);
-	if (!answered)
-		return { ok: false, reason: "failed", message: UNREACHABLE, refusal: null };
-	const { error, response } = answered;
-	if (response.ok) return { ok: true };
-	if (response.status === 409) return { ok: false, reason: "stale" };
-	const refusal = refusalOf(response, error);
-	return {
-		ok: false,
-		reason: "failed",
-		message: refusal.message,
-		refusal: response.status === 403 ? switchRefusalIn(refusal.error) : null,
-	};
+	const written = await askResult(origin, WRITE_TIMEOUT_MS, call);
+	return !written.ok && written.reason === "refused" && written.status === 409
+		? { ok: false, reason: "stale" }
+		: written;
 }
 
 export const fetchQueue = (origin: string) =>
-	orNull(ask(origin, PROBE_TIMEOUT_MS, (api, init) => api.GET("/queue", init)));
+	askResult(origin, PROBE_TIMEOUT_MS, (api, init) => api.GET("/queue", init));
 
 export const postQueue = (
 	origin: string,
-	request: QueuePlaylistRowsRequest | QueueLibraryTracksRequest,
+	addition: QueuePlaylistRowsRequest | QueueLibraryTracksRequest,
 ) =>
-	queueMutation(
-		ask(origin, WRITE_TIMEOUT_MS, (api, init) =>
-			api.POST("/queue", { ...init, body: request }),
-		),
+	queueMutation(origin, (api, init) =>
+		api.POST("/queue", { ...init, body: addition }),
 	);
 
 export const clearQueue = (origin: string) =>
-	queueMutation(
-		ask(origin, WRITE_TIMEOUT_MS, (api, init) => api.DELETE("/queue", init)),
-	);
+	queueMutation(origin, (api, init) => api.DELETE("/queue", init));
 
-export const moveQueueEntry = (origin: string, request: MoveQueueRequest) =>
-	queueMutation(
-		ask(origin, WRITE_TIMEOUT_MS, (api, init) =>
-			api.POST("/queue/move", { ...init, body: request }),
-		),
+export const moveQueueEntry = (origin: string, move: MoveQueueRequest) =>
+	queueMutation(origin, (api, init) =>
+		api.POST("/queue/move", { ...init, body: move }),
 	);
 
 export const removeQueueEntry = (
@@ -76,11 +52,9 @@ export const removeQueueEntry = (
 	index: number,
 	revision: number,
 ) =>
-	queueMutation(
-		ask(origin, WRITE_TIMEOUT_MS, (api, init) =>
-			api.DELETE("/queue/{index}", {
-				...init,
-				params: { path: { index }, query: { revision } },
-			}),
-		),
+	queueMutation(origin, (api, init) =>
+		api.DELETE("/queue/{index}", {
+			...init,
+			params: { path: { index }, query: { revision } },
+		}),
 	);

@@ -27,14 +27,14 @@ export function useLyricsRecheck() {
 		let isCancelled = false;
 
 		const read = async () => {
-			const answer = await fetchPlayingTrack(origin, LYRICS_EXPRESSIONS).catch(
-				() => null,
-			);
+			const answer = await fetchPlayingTrack(origin, LYRICS_EXPRESSIONS);
 			if (isCancelled) return;
 
 			const found =
-				answer && answer.path === path && answer.subsong === subsong
-					? readValue(answer.columns[0])
+				answer.ok &&
+				answer.value.path === path &&
+				answer.value.subsong === subsong
+					? readValue(answer.value.columns[0])
 					: null;
 
 			if (found === null) schedule();

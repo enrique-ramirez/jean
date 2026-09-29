@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
+import { orThrow, refusedStatusOf } from "@/shared/api/client";
 import {
 	isFooJeanReady,
 	permitsOutputChange,
@@ -36,16 +37,12 @@ export function useOutputs() {
 		// Coming back online is not one of the four moments criterion 18 names, and react-query
 		// reads every stale query again on it unless told not to.
 		refetchOnReconnect: false,
-		// `fetchOutputs` answers `null` for any failure, indistinguishable here from an install with
-		// no devices; thrown instead, react-query leaves `data` holding the last good list rather
-		// than replacing it with the empty one criterion 24 says must stay drawn. No retry: a retry
-		// would read the route again on its own schedule, which is a fifth moment nobody asked for.
+		// Thrown, react-query leaves `data` holding the last good list rather than replacing it with
+		// an empty one, which criterion 24 says must stay drawn. No retry: a retry would read the route
+		// again on its own schedule, which is a fifth moment nobody asked for.
 		retry: false,
-		queryFn: async () => {
-			const outputs = await fetchOutputs(requireFooJean(discovery.origin));
-			if (!outputs) throw new Error("could not read the output device list");
-			return outputs;
-		},
+		queryFn: async () =>
+			orThrow(await fetchOutputs(requireFooJean(discovery.origin))),
 	});
 
 	const devices: OutputDevice[] = query.data?.devices ?? [];
@@ -58,7 +55,7 @@ export function useOutputs() {
 	const mutation = usePlayerPatch(
 		async (deviceId: string) => {
 			const origin = requireFooJean(discovery.origin);
-			await setActiveOutput(origin, deviceId);
+			orThrow(await setActiveOutput(origin, deviceId));
 		},
 		(_player, deviceId: string) => ({ outputDeviceId: deviceId }),
 	);
@@ -69,11 +66,10 @@ export function useOutputs() {
 		(deviceId: string) => {
 			mutate(deviceId, {
 				onError: (error: unknown) => {
-					const status = error instanceof Error ? error.cause : undefined;
 					pushToast({
 						tone: "error",
 						message: translate(
-							status === 409
+							refusedStatusOf(error) === 409
 								? "player.outputDeviceGone"
 								: "player.outputSwitchFailed",
 						),

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 
 import { followRevision } from "../../src/domain/player/followRevision.ts";
+import type { Result } from "../../src/shared/api/client.ts";
 
 const ORIGIN = "http://player.invalid:8881";
 
@@ -35,11 +36,15 @@ const follower = (
 	const { announce, forget } = followRevision<string>({
 		resource,
 		read: (origin) =>
-			new Promise<string | null>((resolve) => {
+			new Promise<Result<string>>((resolve) => {
 				reads.push({
 					origin,
 					answer: async (value) => {
-						resolve(value);
+						resolve(
+							value === null
+								? { ok: false, reason: "unreachable", message: "" }
+								: { ok: true, value },
+						);
 						await settle();
 					},
 				});

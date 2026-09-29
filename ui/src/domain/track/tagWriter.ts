@@ -1,4 +1,4 @@
-import { TooFast } from "@/shared/api/client";
+import { FooJeanFailed } from "@/shared/api/client";
 import {
 	discoverFooJean,
 	type FooJeanDiscovery,
@@ -67,17 +67,25 @@ const agentWriter = (origin: string, allowedFields: string[]): TagWriter => {
 		write: async (address, fields) =>
 			writeTags(origin, { ...addressFields(address), fields }),
 		read: async (address, column) => {
-			const held = await (address.kind === "playlist"
-				? fetchPlaylistRows(origin, address.playlist, address.index, 1, [
-						column,
-					]).then(({ items }) => items[0]?.columns[0])
-				: fetchLibraryTrack(origin, address, [column]).then(
-						({ columns }) => columns[0],
-					)
-			).catch((error: unknown) => {
-				if (error instanceof TooFast) throw error;
-				return undefined;
-			});
+			const answer =
+				address.kind === "playlist"
+					? await fetchPlaylistRows(
+							origin,
+							address.playlist,
+							address.index,
+							1,
+							[column],
+						)
+					: await fetchLibraryTrack(origin, address, [column]);
+			if (!answer.ok) {
+				if (answer.reason === "refused" && answer.retryInMs !== null)
+					throw new FooJeanFailed(answer);
+				return null;
+			}
+			const held =
+				"items" in answer.value
+					? answer.value.items[0]?.columns[0]
+					: answer.value.columns[0];
 
 			// README.md: `?` is foobar2000 saying the field is absent, never a null.
 			if (held === UNRESOLVED) return "";

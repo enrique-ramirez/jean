@@ -4,6 +4,7 @@ import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
 import { isScratchPlaylist, scratchTitle } from "@/domain/track/jeanPlaylists";
 import type { LibrarySource } from "@/domain/track/librarySource";
 import type { Refs } from "@/domain/track/project";
+import { orThrow } from "@/shared/api/client";
 import { createPlaylist } from "@/shared/api/playlists";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
@@ -119,7 +120,7 @@ export function useScratchPlaylist({
 				title,
 				...(count > 0 ? { source: playlist.id, runs: [[0, count]] } : {}),
 			});
-			return created.id;
+			return orThrow(created).id;
 		},
 		[playlist, origin, landed],
 	);

@@ -50,7 +50,10 @@ async function poll() {
 	inFlight = true;
 	try {
 		const listeners = await fetchStreamListeners(target.origin);
-		publish({ listeners, lagSeconds: listeningLagSeconds() });
+		publish({
+			listeners: listeners.ok ? listeners.value : null,
+			lagSeconds: listeningLagSeconds(),
+		});
 	} finally {
 		inFlight = false;
 	}

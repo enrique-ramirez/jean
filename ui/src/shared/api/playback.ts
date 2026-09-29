@@ -1,16 +1,14 @@
 import {
 	type Answer,
-	ask,
+	askResult,
 	BODYLESS_POST,
 	type Call,
-	demand,
 	WRITE_TIMEOUT_MS,
 } from "./client";
 import type { PlaybackMode } from "./types";
 
-async function command(origin: string, call: Call<Answer<unknown>>) {
-	await demand(ask(origin, WRITE_TIMEOUT_MS, call));
-}
+const command = (origin: string, call: Call<Answer<unknown>>) =>
+	askResult(origin, WRITE_TIMEOUT_MS, call);
 
 export const playPause = (origin: string) =>
 	command(origin, (api, init) =>

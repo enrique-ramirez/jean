@@ -1,6 +1,6 @@
 import {
 	ask,
-	orNull,
+	askResult,
 	PROBE_TIMEOUT_MS,
 	reach,
 	refusalOf,
@@ -54,17 +54,13 @@ export const streamUrl = (origin: string, ticket: string, format: string) =>
 	`${origin}/api/stream?ticket=${encodeURIComponent(ticket)}&format=${encodeURIComponent(format)}`;
 
 export const fetchStreamTimeline = (origin: string) =>
-	orNull(
-		ask(origin, PROBE_TIMEOUT_MS, (api, init) =>
-			api.GET("/stream/timeline", init),
-		),
+	askResult(origin, PROBE_TIMEOUT_MS, (api, init) =>
+		api.GET("/stream/timeline", init),
 	);
 
 export const fetchStreamListeners = (origin: string) =>
-	orNull(
-		ask(origin, PROBE_TIMEOUT_MS, (api, init) =>
-			api.GET("/stream/listeners", init),
-		),
+	askResult(origin, PROBE_TIMEOUT_MS, (api, init) =>
+		api.GET("/stream/listeners", init),
 	);
 
 // Tells a deliberate stop from a dropped connection: both close the socket, and only this one gives

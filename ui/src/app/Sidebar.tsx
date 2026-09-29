@@ -43,7 +43,6 @@ import { hintFor, matchesBinding, SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { mergeHandlers, type PropBag } from "@/shared/lib/mergeHandlers";
 import { randomId } from "@/shared/lib/randomId";
-import { isRefusal } from "@/shared/lib/refusal";
 import { ActionMenu, type ActionNode } from "@/shared/ui/ActionMenu";
 import { useDragState } from "@/shared/ui/dnd";
 import { pushToast } from "@/shared/ui/toastStore";
@@ -261,11 +260,8 @@ export function Sidebar({
 		rows[Math.min(Math.max(next, 0), rows.length - 1)]?.focus();
 	};
 
-	const refused = (message: string) => (error: unknown) =>
-		pushToast({
-			tone: "error",
-			message: isRefusal(error) ? error.message : message,
-		});
+	const refused = (message: string) => () =>
+		pushToast({ tone: "error", message });
 
 	const newPlaylist = () => {
 		const id = `pending:${randomId()}`;
@@ -277,8 +273,8 @@ export function Sidebar({
 				setRenamingId((current) => (current === id ? playlist.id : current));
 				return playlist.id;
 			},
-			(error) => {
-				refused(t("playlist.createRefused"))(error);
+			() => {
+				refused(t("playlist.createRefused"))();
 				return null;
 			},
 		);

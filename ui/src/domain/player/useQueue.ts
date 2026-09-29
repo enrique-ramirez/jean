@@ -1,5 +1,6 @@
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
+import { switchRefusalOf } from "@/shared/api/client";
 import { isFooJeanReady, permitsPlaybackControl } from "@/shared/api/discovery";
 import { fetchPlaylistAnnotations } from "@/shared/api/playlists";
 import {
@@ -61,13 +62,14 @@ export function useQueueActions() {
 			{ previous, drag = false }: { previous?: QueueRead; drag?: boolean } = {},
 		) => {
 			if (!result.ok) {
-				if (result.reason === "failed" && previous) {
+				if (result.reason !== "stale" && previous) {
 					const current = queryClient.getQueryData<QueueRead>(QUEUE_KEY);
 					if (current?.revision === previous.revision)
 						patchEntries(() => previous.entries);
 				}
 				const refused =
-					result.reason === "failed" && result.refusal === "playbackDisabled";
+					result.reason !== "stale" &&
+					switchRefusalOf(result) === "playbackDisabled";
 				if (refused) {
 					announcePlaybackRefusal(recheck);
 				} else {
@@ -110,7 +112,10 @@ export function useQueueActions() {
 				const annotations = await fetchPlaylistAnnotations(origin);
 				let playlistId: string;
 				try {
-					playlistId = guidOf(source.targets[0].playlistId, annotations);
+					playlistId = guidOf(
+						source.targets[0].playlistId,
+						annotations.ok ? annotations.value : null,
+					);
 				} catch {
 					pushToast({ tone: "error", message: translate("queue.noSource") });
 					return;

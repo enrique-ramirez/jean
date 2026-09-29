@@ -6,6 +6,7 @@ import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import type { useScratchPlaylist } from "@/domain/library/useScratchPlaylist";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
+import { orThrow } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
 import { encodeFill } from "@/shared/api/fillEncoding";
 import { createPlaylist } from "@/shared/api/playlists";
@@ -63,13 +64,15 @@ export function SavePlaylistButton({
 			}
 
 			const origin = requireFooJean(discovery.origin);
-			const playlist = await createPlaylist(origin, {
-				title: name,
-				...encodeFill(indices, {
-					structure: library.structure,
-					trackCount: library.paths?.length ?? 0,
+			const playlist = orThrow(
+				await createPlaylist(origin, {
+					title: name,
+					...encodeFill(indices, {
+						structure: library.structure,
+						trackCount: library.paths?.length ?? 0,
+					}),
 				}),
-			});
+			);
 			// Refetched rather than invalidated: the route that follows resolves against this list, and an id it has not
 			// seen yet lands on the old view.
 			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });

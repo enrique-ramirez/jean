@@ -6,7 +6,7 @@ import {
 	useState,
 } from "react";
 import {
-	reportPlaybackRefusal,
+	announcePlaybackRefusal,
 	usePlayer,
 	useResolvedPlaylistId,
 } from "@/domain/player/usePlayer";
@@ -21,6 +21,7 @@ import { libraryIndex, searchLibrary } from "@/domain/track/libraryIndex";
 import { EMPTY_VIEW, project } from "@/domain/track/project";
 import { rankEntities } from "@/domain/track/rankEntities";
 import { bestMatches } from "@/domain/track/rankTracks";
+import { switchRefusalOf } from "@/shared/api/client";
 import { permitsPlaybackControl } from "@/shared/api/discovery";
 import { emptyOwnPlaylist } from "@/shared/api/playlists";
 import type { PlaylistInfo } from "@/shared/api/types";
@@ -115,9 +116,10 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 
 		const { origin } = discovery;
 		if (origin)
-			emptyOwnPlaylist(origin, "scratch").catch((error) =>
-				reportPlaybackRefusal(error, recheck),
-			);
+			void emptyOwnPlaylist(origin, "scratch").then((emptied) => {
+				if (!emptied.ok && switchRefusalOf(emptied) === "playbackDisabled")
+					announcePlaybackRefusal(recheck);
+			});
 	}, [
 		playlists,
 		canEmptyScratch,

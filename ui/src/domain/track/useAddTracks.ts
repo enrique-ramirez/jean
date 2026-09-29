@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
+import { refusedStatusOf } from "@/shared/api/client";
 import { runsOf } from "@/shared/api/fillEncoding";
 import { removePlaylistRows } from "@/shared/api/playlists";
 import type { PlaylistInfo } from "@/shared/api/types";
@@ -11,7 +12,7 @@ import type { AddedRows, LibrarySource } from "./librarySource";
 import type { Refs } from "./project";
 
 const causeOf = (
-	status: unknown,
+	status: number | null,
 	target: PlaylistInfo,
 ):
 	| "add.writePlaylistsOff"
@@ -49,8 +50,7 @@ export function useAddTracks() {
 			try {
 				added = await source.addTo(target.id, itemIndices);
 			} catch (error) {
-				const status = error instanceof Error ? error.cause : undefined;
-				const cause = causeOf(status, target);
+				const cause = causeOf(refusedStatusOf(error), target);
 				pushToast({
 					tone: "error",
 					message: translate(cause, { playlist: target.title }),
@@ -67,19 +67,19 @@ export function useAddTracks() {
 					return;
 				}
 
-				try {
-					await removePlaylistRows(origin, target.id, {
-						structure: added.structure,
-						runs,
-					});
-					await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
-				} catch (error) {
+				const removed = await removePlaylistRows(origin, target.id, {
+					structure: added.structure,
+					runs,
+				});
+				if (!removed.ok) {
 					const message =
-						error instanceof Error && error.cause === 409
+						removed.reason === "refused" && removed.status === 409
 							? translate("add.undoStale", { playlist: target.title })
 							: translate("add.undoFailed");
 					pushToast({ tone: "error", message });
+					return;
 				}
+				await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 			};
 
 			pushToast({

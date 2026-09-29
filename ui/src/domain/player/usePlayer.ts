@@ -7,7 +7,7 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { switchRefusalOf } from "@/shared/api/client";
+import { orThrow, type Result, switchRefusalThrown } from "@/shared/api/client";
 import { type FooJeanDiscovery, requireFooJean } from "@/shared/api/discovery";
 import {
 	nextTrack,
@@ -165,20 +165,13 @@ export function useResolvedPlaylistId(
 	);
 }
 
-// The one place the toast and the recheck for a `playbackDisabled` refusal are spelled, so
-// `useQueue`'s `settle`, which already holds the refusal as data rather than a thrown error, reaches
-// this rather than repeating the pair.
 export function announcePlaybackRefusal(recheck: () => void) {
 	pushToast({ tone: "error", message: translate("player.controlOffToast") });
 	recheck();
 }
 
-// The one place every playback-affecting write's `403` is read, so a caller does not parse the
-// refusal again per command, whether the command is a mutation here or a plain throw a caller
-// elsewhere in `domain/` awaits directly. `writePlaylists` off is not this function's concern:
-// `useAddTracks` is the write path that switch refuses.
 export function reportPlaybackRefusal(error: unknown, recheck: () => void) {
-	if (switchRefusalOf(error) !== "playbackDisabled") return;
+	if (switchRefusalThrown(error) !== "playbackDisabled") return;
 	announcePlaybackRefusal(recheck);
 }
 
@@ -258,13 +251,13 @@ export const usePlayerPatch = <TInput>(
 
 const useCommand = (
 	discovery: FooJeanDiscovery,
-	command: (origin: string) => Promise<void>,
+	command: (origin: string) => Promise<Result<unknown>>,
 ) => {
 	const { recheck } = useFooJean();
 	return useMutation({
 		mutationFn: async () => {
 			const origin = requireFooJean(discovery.origin);
-			await command(origin);
+			orThrow(await command(origin));
 		},
 		onError: (error: unknown) => reportPlaybackRefusal(error, recheck),
 	});
@@ -273,13 +266,15 @@ const useCommand = (
 // `shared/api/README.md`, *What Jean does about playback*, has why.
 const SKIP_APPLY_DELAY_MS = 250;
 
-const useSkip = (command: (origin: string) => Promise<void>) => {
+const useSkip = (command: (origin: string) => Promise<Result<unknown>>) => {
 	const queryClient = useQueryClient();
 	const { discovery } = useFooJean();
 	return useCommand(discovery, async (origin) => {
-		await command(origin);
+		const skipped = await command(origin);
+		if (!skipped.ok) return skipped;
 		await sleep(SKIP_APPLY_DELAY_MS);
 		await pollPlayerNow(queryClient, origin);
+		return skipped;
 	});
 };
 
@@ -312,7 +307,7 @@ export function usePlaylistActions() {
 	const create = usePlaylistPatch<{ id: string; title: string }, PlaylistInfo>(
 		async ({ title }) => {
 			const origin = requireFooJean(discovery.origin);
-			return playlistInfoOf(await createPlaylist(origin, { title }));
+			return playlistInfoOf(orThrow(await createPlaylist(origin, { title })));
 		},
 		(playlists, { id, title }) => [
 			...playlists,
@@ -335,9 +330,9 @@ export function usePlaylistActions() {
 		create,
 
 		rename: usePlaylistPatch(
-			({ id, title }: { id: string; title: string }) => {
+			async ({ id, title }: { id: string; title: string }) => {
 				const origin = requireFooJean(discovery.origin);
-				return renamePlaylist(origin, id, title);
+				orThrow(await renamePlaylist(origin, id, title));
 			},
 			(playlists, { id, title }) =>
 				playlists.map((entry) =>
@@ -346,17 +341,17 @@ export function usePlaylistActions() {
 		),
 
 		remove: usePlaylistPatch(
-			(id: string) => {
+			async (id: string) => {
 				const origin = requireFooJean(discovery.origin);
-				return removePlaylist(origin, id);
+				orThrow(await removePlaylist(origin, id));
 			},
 			(playlists, id) => playlists.filter((entry) => entry.id !== id),
 		),
 
 		move: usePlaylistPatch(
-			({ id, index }: { id: string; index: number }) => {
+			async ({ id, index }: { id: string; index: number }) => {
 				const origin = requireFooJean(discovery.origin);
-				return movePlaylist(origin, id, index);
+				orThrow(await movePlaylist(origin, id, index));
 			},
 			(playlists, { id, index }) => {
 				const from = playlists.findIndex((entry) => entry.id === id);
@@ -413,7 +408,7 @@ export const usePlayItem = () => {
 	return usePlayerPatch(
 		async ({ playlistId, index }: { playlistId: string; index: number }) => {
 			const origin = requireFooJean(discovery.origin);
-			await playPlaylistItem(origin, playlistId, index);
+			orThrow(await playPlaylistItem(origin, playlistId, index));
 			await pollPlayerNow(queryClient, origin);
 		},
 		() => ({ playbackState: "playing" }),
@@ -425,7 +420,7 @@ export const usePlayPause = () => {
 	return usePlayerPatch<void>(
 		async () => {
 			const origin = requireFooJean(discovery.origin);
-			await playPause(origin);
+			orThrow(await playPause(origin));
 		},
 		(player, _input, previous) => ({
 			playbackState: player.playbackState === "playing" ? "paused" : "playing",
@@ -444,7 +439,7 @@ export const useSeek = () => {
 	return usePlayerPatch(
 		async (position: number) => {
 			const origin = requireFooJean(discovery.origin);
-			await seekTo(origin, position);
+			orThrow(await seekTo(origin, position));
 		},
 		(player, position: number) => {
 			if (!player.activeItem) return null;
@@ -461,7 +456,7 @@ export const useSeekBy = () => {
 	return usePlayerPatch(
 		async (offset: number) => {
 			const origin = requireFooJean(discovery.origin);
-			await seekBy(origin, offset);
+			orThrow(await seekBy(origin, offset));
 		},
 		(player, offset: number, previous) => {
 			const item = player.activeItem;
@@ -527,7 +522,7 @@ export function usePlaybackOrder() {
 	const mutation = usePlayerPatch(
 		async (next: PlaybackMode) => {
 			const origin = requireFooJean(discovery.origin);
-			await setPlaybackOrder(origin, next);
+			orThrow(await setPlaybackOrder(origin, next));
 		},
 		(_player, next: PlaybackMode) => ({ playbackMode: next }),
 	);
@@ -560,16 +555,16 @@ export function useVolume() {
 	const { data } = usePlayer();
 	const { discovery, recheck } = useFooJean();
 	const send = useCoalescedWrite(
-		(value: number) => {
+		async (value: number) => {
 			const origin = requireFooJean(discovery.origin);
-			return setVolume(origin, value);
+			orThrow(await setVolume(origin, value));
 		},
 		(error) => reportPlaybackRefusal(error, recheck),
 	);
 	const mute = usePlayerPatch(
 		async (isMuted: boolean) => {
 			const origin = requireFooJean(discovery.origin);
-			await setMuted(origin, isMuted);
+			orThrow(await setMuted(origin, isMuted));
 		},
 		(player, isMuted: boolean) => ({
 			volume: { ...player.volume, isMuted },

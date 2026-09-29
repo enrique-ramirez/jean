@@ -155,7 +155,9 @@ const timelineFollower: FollowRevision = followRevision<TimelineRead>({
 	read: async (origin) => {
 		const mine = generation;
 		const timeline = await fetchStreamTimeline(origin);
-		return timeline ? { timeline, mine } : null;
+		return timeline.ok
+			? { ok: true, value: { timeline: timeline.value, mine } }
+			: timeline;
 	},
 	apply: ({ timeline, mine }) => {
 		if (mine !== generation || !element) return;

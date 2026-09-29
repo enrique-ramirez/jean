@@ -23,7 +23,11 @@ export function usePlaylistAnnotations(): PlaylistAnnotations {
 
 	const { data, status, isFetching, refetch } = useQuery({
 		queryKey: [KEY, origin],
-		queryFn: () => (origin ? fetchPlaylistAnnotations(origin) : null),
+		queryFn: async () => {
+			if (!origin) return null;
+			const annotations = await fetchPlaylistAnnotations(origin);
+			return annotations.ok ? annotations.value : null;
+		},
 		enabled: Boolean(origin && playlists),
 		staleTime: Number.POSITIVE_INFINITY,
 		refetchOnWindowFocus: false,

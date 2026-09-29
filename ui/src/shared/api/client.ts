@@ -99,19 +99,70 @@ export function refusalOf(response: Response, body: unknown): Refusal {
 	};
 }
 
-export async function demand<T>(answer: Promise<Answer<T>>): Promise<T> {
-	const { data, error, response } = await answer;
-	if (response.ok) return data as T;
-	const { message } = refusalOf(response, error);
-	throw new Error(`${response.url} failed: ${response.status}: ${message}`, {
-		cause: response.status,
-	});
+// Seconds, per RFC 9110. The date form is legal and foo_jean does not send it.
+export const retryAfterMs = (response: Response) => {
+	const seconds = Number(response.headers.get("Retry-After"));
+	return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
+};
+
+// foo_jean always sends `Retry-After: 1` when it refuses a preview or a one-track read; this is
+// the fallback for the header ever being missing.
+const TOO_FAST_WAIT_MS = 1_000;
+const TOO_FAST_RETRIES = 3;
+
+export type Failure =
+	| { ok: false; reason: "unreachable"; message: string }
+	| ({ ok: false; reason: "refused"; retryInMs: number | null } & Refusal);
+
+export type Result<T> = { ok: true; value: T } | Failure;
+
+export async function settle<T>(
+	answer: Promise<Answer<T>>,
+	signal?: AbortSignal,
+): Promise<Result<T>> {
+	const answered = await reach(answer, signal);
+	if (!answered)
+		return { ok: false, reason: "unreachable", message: UNREACHABLE };
+
+	const { data, error, response } = answered;
+	if (response.ok) return { ok: true, value: data as T };
+	return {
+		ok: false,
+		reason: "refused",
+		...refusalOf(response, error),
+		retryInMs:
+			response.status === 429
+				? (retryAfterMs(response) ?? TOO_FAST_WAIT_MS)
+				: null,
+	};
 }
 
-export async function orNull<T>(answer: Promise<Answer<T>>): Promise<T | null> {
-	const answered = await reach(answer);
-	return answered?.response.ok ? (answered.data ?? null) : null;
+export const askResult = <T>(
+	origin: string,
+	timeoutMs: number,
+	call: Call<Answer<T>>,
+	signal?: AbortSignal,
+) => settle(ask(origin, timeoutMs, call, signal), signal);
+
+export class FooJeanFailed extends Error {
+	readonly failure: Failure;
+
+	constructor(failure: Failure) {
+		super(failure.message);
+		this.failure = failure;
+	}
 }
+
+/** How a caller that has to throw, such as a React Query function, turns a failure into one. */
+export function orThrow<T>(result: Result<T>): T {
+	if (result.ok) return result.value;
+	throw new FooJeanFailed(result);
+}
+
+export const refusedStatusOf = (error: unknown) =>
+	error instanceof FooJeanFailed && error.failure.reason === "refused"
+		? error.failure.status
+		: null;
 
 export type SwitchRefusal = "playbackDisabled" | "writesDisabled";
 
@@ -123,42 +174,26 @@ const REFUSAL_MESSAGE = {
 		"this install has playlist writes turned off; turn on writePlaylists in config.json to allow them",
 } satisfies Record<SwitchRefusal, Schema["PlaylistFailed"]["error"]>;
 
-export const switchRefusalIn = (message: string): SwitchRefusal | null =>
-	(Object.keys(REFUSAL_MESSAGE) as SwitchRefusal[]).find((refusal) =>
-		message.includes(REFUSAL_MESSAGE[refusal]),
+export const switchRefusalIn = (said: string): SwitchRefusal | null =>
+	(Object.keys(REFUSAL_MESSAGE) as SwitchRefusal[]).find(
+		(refusal) => said === REFUSAL_MESSAGE[refusal],
 	) ?? null;
 
-export function switchRefusalOf(error: unknown): SwitchRefusal | null {
-	if (!(error instanceof Error) || error.cause !== 403) return null;
-	return switchRefusalIn(error.message);
+export function switchRefusalOf(failure: Failure): SwitchRefusal | null {
+	if (failure.reason !== "refused" || failure.status !== 403) return null;
+	return switchRefusalIn(failure.error);
 }
 
-// Seconds, per RFC 9110. The date form is legal and foo_jean does not send it.
-export const retryAfterMs = (response: Response) => {
-	const seconds = Number(response.headers.get("Retry-After"));
-	return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
-};
+export const switchRefusalThrown = (error: unknown) =>
+	error instanceof FooJeanFailed ? switchRefusalOf(error.failure) : null;
 
-// foo_jean always sends `Retry-After: 1` when it refuses a preview or a one-track read; this is
-// the fallback for the header ever being missing.
-export const TOO_FAST_WAIT_MS = 1_000;
-const TOO_FAST_RETRIES = 3;
-
-export class TooFast extends Error {
-	readonly retryInMs: number;
-
-	constructor(retryInMs: number) {
-		super("foo_jean refused a request as too fast");
-		this.retryInMs = retryInMs;
-	}
-}
-
-export const tooFast = (response: Response) =>
-	new TooFast(retryAfterMs(response) ?? TOO_FAST_WAIT_MS);
+const tooFastWaitOf = (error: Error) =>
+	error instanceof FooJeanFailed && error.failure.reason === "refused"
+		? error.failure.retryInMs
+		: null;
 
 export const retryWhenTooFast = ({ otherFailures = 0 } = {}) => ({
 	retry: (count: number, error: Error) =>
-		count < (error instanceof TooFast ? TOO_FAST_RETRIES : otherFailures),
-	retryDelay: (_: number, error: Error) =>
-		error instanceof TooFast ? error.retryInMs : 0,
+		count < (tooFastWaitOf(error) === null ? otherFailures : TOO_FAST_RETRIES),
+	retryDelay: (_: number, error: Error) => tooFastWaitOf(error) ?? 0,
 });

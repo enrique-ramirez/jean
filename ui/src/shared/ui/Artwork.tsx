@@ -84,8 +84,8 @@ export function Artwork({
 		};
 
 		// A 404 is the only refusal that says anything about the cover rather than about the
-		// moment: `foo_jean` rate-limits covers and answers 503 while the library is rebuilding,
-		// and either of those remembered would leave a sleeve blank until the tab is reloaded.
+		// moment: `foo_jean` also rate-limits covers, and a 429 remembered would leave a sleeve
+		// blank until the tab is reloaded.
 		let settled: ArtworkOutcome | undefined;
 
 		const read = async () => {

@@ -41,8 +41,14 @@ export function handleControl({
 			// Switches GET /api/state's refusal mid-test, unlike `failWrites`,
 			// which only takes effect at fixture construction. Omitting the field
 			// (or sending it null) turns the refusal back off, and the hang with it.
-			state.fooJean.failState =
-				typeof input.failState === "number" ? input.failState : null;
+			try {
+				state.fooJean.failState =
+					typeof input.failState === "number"
+						? (input.failState as FakeState["fooJean"]["failState"])
+						: null;
+			} catch (refused) {
+				return json(response, { error: String(refused) }, 400);
+			}
 			state.fooJean.hangState = input.hangState === true;
 			return empty(response);
 		}

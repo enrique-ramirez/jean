@@ -81,6 +81,9 @@ export const en = {
 	"connection.reconnecting": "Reconnecting to the player…",
 	"connection.remedy":
 		"Still trying. Check that foobar2000 is running and that this device is on the same network.",
+	"connection.unresponsive": "foobar2000 isn't responding",
+	"connection.unresponsiveRemedy":
+		"It may be busy, or showing a dialog on its own screen.",
 	"details.album": "Album",
 	"details.albumArtist": "Album artist",
 	"details.albumGain": "Album gain",
@@ -354,6 +357,7 @@ export const en = {
 	"player.showVolume": "Show volume",
 	"player.shuffle": "Shuffle",
 	"player.unmute": "Unmute",
+	"player.unresponsive": "Not responding",
 	"player.volume": "Volume",
 	"player.volumeAt": "{label} {percent}%",
 	"player.volumeHere": "Volume on this device",

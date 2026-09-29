@@ -56,6 +56,7 @@ const stateDocument = (
 		build: null,
 	},
 	configGeneration: 0,
+	mainThread: { answering: true, unansweredSeconds: null },
 	player: {
 		playback,
 		path: "Artist/Album/01 One.flac",

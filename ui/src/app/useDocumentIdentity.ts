@@ -11,7 +11,8 @@ const NAME = "Jean";
 
 export function useDocumentIdentity() {
 	const t = useTranslate();
-	const isDisconnected = useConnection() !== "connected";
+	const connection = useConnection();
+	const isDisconnected = connection !== "connected";
 	const snapshot = useAudiblePlayer();
 
 	const player = snapshot?.player;
@@ -27,7 +28,7 @@ export function useDocumentIdentity() {
 				: "idle";
 
 	const title = isDisconnected
-		? `${t("player.disconnected")} · ${NAME}`
+		? `${t(connection === "playerUnresponsive" ? "player.unresponsive" : "player.disconnected")} · ${NAME}`
 		: hasTrack
 			? `${track?.title} — ${track?.artist} · ${NAME}`
 			: NAME;

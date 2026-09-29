@@ -75,15 +75,27 @@ export interface FooJeanOptions {
 	// `failWrites`. Unlike it, a spec switches this one at runtime through
 	// `POST /__control/state`, because the case it exists for is a poll cut off
 	// mid-test rather than one refused from the start.
-	failState?: number | null;
+	failState?: Refusal<"failState"> | null;
 
-	// Holds GET /api/state open and never answers it, shaped like `hangLibraryTrack`
-	// and switched like `failState`.
+	// Holds GET /api/state open and never answers it, switched like `failState`.
+	// `foo_jean` answers this route from its own store and never waits on the
+	// player, so this is the network losing the answer rather than the player
+	// withholding one.
 	hangState?: boolean;
 
-	// Refuses all three artwork routes with this status, or holds them open without
-	// answering, after the rate limit has been spent the way the component spends it.
-	failArtwork?: number | null;
+	// foobar2000's main thread no longer running what the component posts to it:
+	// `GET /api/state` goes on answering, and says so under `mainThread`.
+	mainThreadStalled?: boolean;
+
+	// Refuse each artwork route with a status only that route can answer, after
+	// the rate limit has been spent the way the component spends it.
+	failArtwork?: Refusal<"failArtwork"> | null;
+	failPlayingArtwork?: Refusal<"failPlayingArtwork"> | null;
+	failRowArtwork?: Refusal<"failRowArtwork"> | null;
+
+	// Holds GET /api/artwork open without answering. `foo_jean` reads that cover
+	// from disk on the connection thread with no timeout; the playing cover is
+	// held in memory and the positional one times out as a 504, so neither hangs.
 	hangArtwork?: boolean;
 
 	// The component's token buckets, sized as `COMPONENT_RATE_LIMITS`. Off unless
@@ -208,6 +220,9 @@ export interface FooJeanFake extends Required<FooJeanOptions> {
 	// `GET /api/state`'s `configGeneration`. `/__control/controlPlayback` and
 	// `/__control/writePlaylists` are the only two that touch it.
 	configGeneration: number;
+	// When a state poll first saw `mainThreadStalled`, so `unansweredSeconds` grows the way the
+	// component's does.
+	mainThreadStalledAt: number | null;
 	limiter: Limiter;
 	// The specification of every autoplaylist `POST /api/autoplaylists` made, by the
 	// fake's own key: the only playlists the two `/api/autoplaylists/{id}` routes touch.
@@ -261,7 +276,10 @@ const DEFAULTS: FooJeanFake = {
 	storesRatingAs: null,
 	failState: null,
 	hangState: false,
+	mainThreadStalled: false,
 	failArtwork: null,
+	failPlayingArtwork: null,
+	failRowArtwork: null,
 	hangArtwork: false,
 	rateLimits: null,
 	expectRateLimited: [],
@@ -303,23 +321,74 @@ const DEFAULTS: FooJeanFake = {
 	outputSwitchRefusal: null,
 	lockedPlaylists: new Set(),
 	configGeneration: 1,
+	mainThreadStalledAt: null,
 	limiter: new Map(),
 	managedAutoPlaylists: new Map(),
 };
 
-export const fooJeanState = (options: FooJeanOptions): FooJeanFake => ({
-	...DEFAULTS,
-	...options,
-	// Copied, since a route or a spec mutates each of these in place and `DEFAULTS`
-	// outlives every test on a worker.
-	autoPlaylists: [...(options.autoPlaylists ?? [])],
-	expectRateLimited: [...(options.expectRateLimited ?? [])],
-	routeLatency: { ...options.routeLatency },
-	ownPlaylists: {},
-	lockedPlaylists: new Set(),
-	limiter: new Map(),
-	managedAutoPlaylists: new Map(),
-});
+// The refusals each route can really answer, read off `contract/openapi.yaml` and
+// `foo_jean`'s route handlers. A knob asked for anything else is a state the
+// player never reaches, and a spec green against it proves nothing.
+const ANSWERABLE = {
+	failState: { route: "GET /api/state", statuses: [429, 503] },
+	failArtwork: {
+		route: "GET /api/artwork",
+		statuses: [400, 404, 413, 429, 503],
+	},
+	failPlayingArtwork: {
+		route: "GET /api/artwork/playing",
+		statuses: [404, 413, 429],
+	},
+	failRowArtwork: {
+		route: "GET /api/artwork/playlists/{id}/{row}",
+		statuses: [400, 404, 413, 429, 500, 503, 504],
+	},
+} as const;
+
+type Knob = keyof typeof ANSWERABLE;
+type Refusal<K extends Knob> = (typeof ANSWERABLE)[K]["statuses"][number];
+
+const refuseUnanswerable = (knob: Knob, status: unknown) => {
+	const { route, statuses } = ANSWERABLE[knob];
+	if (status === null || status === undefined) return;
+	if (!(statuses as readonly unknown[]).includes(status))
+		throw new Error(
+			`fake fooJean: ${knob} = ${String(status)} is a state the player never reaches; ${route} answers ${statuses.join(", ")}`,
+		);
+};
+
+// Each knob in `ANSWERABLE` becomes an accessor that checks what it is set to,
+// since specs switch them mid-test by plain assignment.
+const guardRefusals = (fake: FooJeanFake): FooJeanFake => {
+	for (const knob of Object.keys(ANSWERABLE) as Knob[]) {
+		let held = fake[knob];
+		refuseUnanswerable(knob, held);
+		Object.defineProperty(fake, knob, {
+			enumerable: true,
+			get: () => held,
+			set: (next: typeof held) => {
+				refuseUnanswerable(knob, next);
+				held = next;
+			},
+		});
+	}
+	return fake;
+};
+
+export const fooJeanState = (options: FooJeanOptions): FooJeanFake =>
+	guardRefusals({
+		...DEFAULTS,
+		...options,
+		// Copied, since a route or a spec mutates each of these in place and `DEFAULTS`
+		// outlives every test on a worker.
+		autoPlaylists: [...(options.autoPlaylists ?? [])],
+		expectRateLimited: [...(options.expectRateLimited ?? [])],
+		routeLatency: { ...options.routeLatency },
+		ownPlaylists: {},
+		lockedPlaylists: new Set(),
+		limiter: new Map(),
+		managedAutoPlaylists: new Map(),
+	});
 
 export type Bucket =
 	| "playlistChanges"
@@ -709,9 +778,18 @@ const deliveredAfter = (response: Responder, ms: number): Responder => {
 };
 
 const ARTWORK_FAILURES: Record<number, { error: string }> = {
+	400: { error: "unacceptable track address" },
+	404: NO_ARTWORK,
+	413: { error: "that artwork is larger than this component sends" },
+	429: { error: "too many artwork requests" },
 	500: { error: "the player could not do that" },
 	503: { error: "artwork is not available" },
 	504: { error: "the player did not answer in time" },
+};
+
+const refuseArtwork = (response: Responder, status: number) => {
+	if (status === 429) response.setHeader("Retry-After", "1");
+	return json(response, ARTWORK_FAILURES[status], status);
 };
 
 // The device an <audio> element belongs to, remembered from the request that
@@ -1732,7 +1810,29 @@ const buildTagOf = (build: components["schemas"]["LibraryBuild"] | null) =>
 const stateTagOf = (state: FakeState, fake: FooJeanFake, coding: string) =>
 	`"s${state.libraryFeed.structure}-r${state.libraryFeed.revision}-b${buildTagOf(
 		libraryBuildOf(state, fake),
-	)}-p${state.playerVersion}-g${state.fooJean.configGeneration}-${coding}"`;
+	)}-p${state.playerVersion}-g${state.fooJean.configGeneration}${
+		fake.mainThreadStalled ? "-stalled" : ""
+	}-${coding}"`;
+
+// `kMainThreadStalledAfter` in `plugins/fb2k/src/core/main_thread_watch.h`: the component calls
+// the main thread stalled only once a check has waited this long.
+const COMPONENT_STALLED_AFTER_MS = 5000;
+
+const mainThreadSectionOf = (
+	fake: FooJeanFake,
+): components["schemas"]["MainThread"] => {
+	if (!fake.mainThreadStalled) {
+		fake.mainThreadStalledAt = null;
+		return { answering: true, unansweredSeconds: null };
+	}
+	fake.mainThreadStalledAt ??= Date.now();
+	return {
+		answering: false,
+		unansweredSeconds:
+			(Date.now() - fake.mainThreadStalledAt + COMPONENT_STALLED_AFTER_MS) /
+			1000,
+	};
+};
 
 const sendBlob = async (
 	response: Responder,
@@ -2043,6 +2143,7 @@ async function handleState({
 		configGeneration: fake.configGeneration,
 		library: libraryStateOf(state, fake),
 		player: playerSectionOf(state, fake),
+		mainThread: mainThreadSectionOf(fake),
 	});
 }
 
@@ -2773,20 +2874,13 @@ export async function handleAgent({
 		});
 	}
 
-	if (method === "GET" && path.startsWith("/api/artwork")) {
-		if (fake.failArtwork)
-			return json(
-				response,
-				ARTWORK_FAILURES[fake.failArtwork] ?? { error: "request failed" },
-				fake.failArtwork,
-			);
+	if (path === "/api/artwork") {
+		if (fake.failArtwork) return refuseArtwork(response, fake.failArtwork);
 		if (fake.hangArtwork) {
 			await abandoned(response, STALLED_READ_MS);
 			return true;
 		}
-	}
 
-	if (path === "/api/artwork") {
 		const track = url.searchParams.get("track") ?? "";
 		if (!track || track.length > MAX_TRACK_ADDRESS)
 			return json(response, { error: "unacceptable track address" }, 400);
@@ -2809,6 +2903,9 @@ export async function handleAgent({
 	// track changes, so every outcome here revalidates rather than holding.
 	if (path === "/api/artwork/playing") {
 		response.setHeader("Cache-Control", ASK_EVERY_TIME);
+		if (fake.failPlayingArtwork)
+			return refuseArtwork(response, fake.failPlayingArtwork);
+
 		const file = state.playingArtwork();
 		if (!file) return json(response, NO_ARTWORK, 404);
 
@@ -2824,6 +2921,9 @@ export async function handleAgent({
 		/^\/api\/artwork\/playlists\/([^/]+)\/(\d+)$/.exec(path);
 	if (positionalArtworkMatch) {
 		response.setHeader("Cache-Control", ASK_EVERY_TIME);
+		if (fake.failRowArtwork)
+			return refuseArtwork(response, fake.failRowArtwork);
+
 		const [, guid, rowText] = positionalArtworkMatch;
 		const playlist = state.playlistByGuid(guid);
 		if (!playlist) return json(response, { error: "no such playlist" }, 404);

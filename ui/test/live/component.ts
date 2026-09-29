@@ -111,8 +111,13 @@ export const fixtureRows = async () => {
 	return { playlist: found, rows };
 };
 
+// The player's paths are its own platform's, so this compares them as text with either separator,
+// never through Node's `path`, which reads a Windows path as relative on a Mac.
+const withForwardSlashes = (path: string) =>
+	path.replaceAll("\\", "/").replace(/\/+$/, "");
+
 export const underRoot = (path: string, root: string): boolean =>
-	path.startsWith(root);
+	withForwardSlashes(path).startsWith(`${withForwardSlashes(root)}/`);
 
 export const writeRating = async (
 	target: { track: string; subsong?: number; path: string },

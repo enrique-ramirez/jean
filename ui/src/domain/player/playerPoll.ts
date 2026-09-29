@@ -20,7 +20,11 @@ import {
 import type { PlayerSnapshot, PlayerState } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { rememberSnapshot } from "./audible";
-import { notePlayerReached, notePlayerUnreached } from "./connection";
+import {
+	notePlayerAnswering,
+	notePlayerReached,
+	notePlayerUnreached,
+} from "./connection";
 import {
 	followTimeline,
 	isListening,
@@ -168,6 +172,7 @@ async function applyPoll(
 	if (!answersNewerAsk) return;
 
 	onConfigGeneration?.(result.state.configGeneration);
+	notePlayerAnswering(result.state.mainThread.answering, askedAt);
 
 	const previous = client.getQueryData<PlayerSnapshot>(PLAYER_KEY);
 	const snapshot: PlayerSnapshot = {

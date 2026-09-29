@@ -8,6 +8,7 @@ import {
 	type Playlist,
 	player,
 	playlists,
+	rowsOf,
 	send,
 	underRoot,
 } from "./component.ts";
@@ -123,32 +124,86 @@ const bounded = (items: string[]): string => {
 	return rest > 0 ? `${shown.join(", ")}, and ${rest} more` : shown.join(", ");
 };
 
+interface PlaylistContents {
+	playlist: Playlist;
+	rows: string[];
+}
+
 interface Snapshot {
-	playlists: Playlist[];
+	playlists: PlaylistContents[];
 	tracks: LiveTrack[];
 }
 
+// `foo_jean`'s own maximum for a playlist read's `count`; `contract/openapi.yaml` refuses anything larger.
+const EVERY_ROW = 4294967295;
+
+// foobar2000 numbers a cue sheet's or another multi-track file's subsongs from 1, sharing one %path%
+// among rows that can carry independent ratings; a plain file reports subsong 0.
+const rowName = (path: string, subsong: string) =>
+	subsong === "0" ? path : `${path}#${subsong}`;
+
+const readPlaylists = async (): Promise<PlaylistContents[]> =>
+	Promise.all(
+		(await playlists())
+			.filter((entry) => entry.role === null)
+			.map(async (playlist) => {
+				const { items } = await rowsOf(playlist.id, 0, EVERY_ROW, [
+					"%path%",
+					"%subsong%",
+				]);
+				return {
+					playlist,
+					rows: items.map(({ columns: [path, subsong] }) =>
+						rowName(path, subsong),
+					),
+				};
+			}),
+	);
+
+const describeRows = (before: string[], after: string[]): string | null => {
+	if (before.length !== after.length)
+		return `${before.length} rows -> ${after.length} rows`;
+	const row = before.findIndex((name, index) => name !== after[index]);
+	return row === -1 ? null : `row ${row}: ${before[row]} -> ${after[row]}`;
+};
+
 const describeDrift = (before: Snapshot, after: Snapshot): string | null => {
 	const diffs: string[] = [];
+	const label = ({ playlist }: PlaylistContents) =>
+		`${playlist.title} (${playlist.id})`;
 
-	const beforeIds = new Set(before.playlists.map((entry) => entry.id));
-	const afterIds = new Set(after.playlists.map((entry) => entry.id));
-	const added = after.playlists.filter((entry) => !beforeIds.has(entry.id));
-	const removed = before.playlists.filter((entry) => !afterIds.has(entry.id));
+	const beforeById = new Map(
+		before.playlists.map((entry) => [entry.playlist.id, entry]),
+	);
+	const afterById = new Map(
+		after.playlists.map((entry) => [entry.playlist.id, entry]),
+	);
+	const added = after.playlists.filter(
+		(entry) => !beforeById.has(entry.playlist.id),
+	);
+	const removed = before.playlists.filter(
+		(entry) => !afterById.has(entry.playlist.id),
+	);
 	if (added.length)
-		diffs.push(
-			`playlist(s) added: ${bounded(added.map((entry) => `${entry.title} (${entry.id})`))}`,
-		);
+		diffs.push(`playlist(s) added: ${bounded(added.map(label))}`);
 	if (removed.length)
-		diffs.push(
-			`playlist(s) removed: ${bounded(removed.map((entry) => `${entry.title} (${entry.id})`))}`,
-		);
+		diffs.push(`playlist(s) removed: ${bounded(removed.map(label))}`);
 
-	// foobar2000 numbers a cue sheet's or another multi-track file's subsongs from 1, sharing one
-	// %path% among rows that can carry independent ratings; a plain file reports subsong 0.
+	const kept = before.playlists.flatMap((entry) => {
+		const found = afterById.get(entry.playlist.id);
+		return found ? [[entry, found] as const] : [];
+	});
+	const renamed = kept
+		.filter(([was, now]) => was.playlist.title !== now.playlist.title)
+		.map(([was, now]) => `${label(was)} -> ${now.playlist.title}`);
+	if (renamed.length) diffs.push(`playlist(s) renamed: ${bounded(renamed)}`);
+	const edited = kept.flatMap(([was, now]) => {
+		const change = describeRows(was.rows, now.rows);
+		return change ? [`${label(was)}, ${change}`] : [];
+	});
+	if (edited.length) diffs.push(`playlist rows changed: ${bounded(edited)}`);
+
 	const key = (track: LiveTrack) => `${track.path}\u0000${track.subsong}`;
-	const name = (track: LiveTrack) =>
-		track.subsong === "0" ? track.path : `${track.path}#${track.subsong}`;
 
 	const afterRatingByKey = new Map(
 		after.tracks.map((track) => [key(track), track.rating]),
@@ -160,7 +215,7 @@ const describeDrift = (before: Snapshot, after: Snapshot): string | null => {
 		})
 		.map(
 			(track) =>
-				`${name(track)}: ${track.rating} -> ${afterRatingByKey.get(key(track))}`,
+				`${rowName(track.path, track.subsong)}: ${track.rating} -> ${afterRatingByKey.get(key(track))}`,
 		);
 	if (moved.length)
 		diffs.push(
@@ -171,6 +226,40 @@ const describeDrift = (before: Snapshot, after: Snapshot): string | null => {
 		? `the run did not leave the player as found: ${diffs.join("; ")}`
 		: null;
 };
+
+interface QueuedEntry {
+	title: string;
+	libraryPath: string | null;
+	location: { playlistId: string; index: number } | null;
+}
+
+type QueueRequest =
+	| { playlistId: string; positions: number[] }
+	| { structure: number; ordinals: number[] };
+
+const requeue = (entry: QueuedEntry, install: Install): QueueRequest => {
+	if (entry.location)
+		return {
+			playlistId: entry.location.playlistId,
+			positions: [entry.location.index],
+		};
+	const ordinals = install.tracks.flatMap((track, ordinal) =>
+		track.libraryPath === entry.libraryPath ? [ordinal] : [],
+	);
+	if (entry.libraryPath && ordinals.length === 1)
+		return { structure: install.structure, ordinals };
+	throw new Error(
+		`the play queue holds ${entry.title}, which reset() could not queue again: it has no playlist row, and ${ordinals.length} library tracks answer its path. Empty the queue at the player first.`,
+	);
+};
+
+const readQueue = async (install: Install) =>
+	(await component<{ entries: QueuedEntry[] }>("/api/queue")).entries.map(
+		(entry) => requeue(entry, install),
+	);
+
+// What `reset()` puts back, read by the worker fixture before any spec reaches the player.
+let recordedQueue: QueueRequest[] | null = null;
 
 const SEEDED_SETTINGS = {
 	"jean.heatIntroSeen": true,
@@ -185,14 +274,12 @@ export const test = base.extend<Record<never, never>, LiveFixtures>({
 		// biome-ignore lint/correctness/noEmptyPattern: playwright reads dependencies off this pattern
 		async ({}, use) => {
 			const install = await readInstall();
-			const before = (await playlists()).filter((entry) => entry.role === null);
+			const before = await readPlaylists();
+			recordedQueue = await readQueue(install);
 			await use(install);
 			const drift = describeDrift(
 				{ playlists: before, tracks: install.tracks },
-				{
-					playlists: (await playlists()).filter((entry) => entry.role === null),
-					tracks: await readTracks(),
-				},
+				{ playlists: await readPlaylists(), tracks: await readTracks() },
 			);
 			if (drift) throw new Error(drift);
 		},
@@ -220,9 +307,12 @@ export const refuseUnmuted = async () => {
 		throw new Error("Mute the player first: these specs play real audio.");
 };
 
-// Restores the player to stopped and the queue to empty. Every spec that starts something owns
-// putting it back, because the next one reads the same single player.
+// Restores the player to stopped and the queue to what it held when the run began. Every spec that
+// starts something owns putting it back, because the next one reads the same single player.
 export const reset = async () => {
+	if (!recordedQueue)
+		throw new Error("reset() ran before the install fixture read the queue");
 	await send("/api/playback/stop");
 	await component<void>("/api/queue", { method: "DELETE" });
+	for (const request of recordedQueue) await send("/api/queue", request);
 };

@@ -463,7 +463,9 @@ test("a skip the player applies a moment after answering reaches the screen well
 				const sent = send(input, init);
 				if (
 					clock.pressedAt === undefined &&
-					String(input).includes("/api/state")
+					(input instanceof Request ? input.url : String(input)).includes(
+						"/api/state",
+					)
 				) {
 					clock.pressedAt = performance.now();
 					(button as HTMLElement).click();

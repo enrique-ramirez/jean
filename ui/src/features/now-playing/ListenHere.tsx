@@ -10,7 +10,7 @@ import {
 import { type ListenPhase, useListener } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
 import { useIsPlaying, usePlayer, useVolume } from "@/domain/player/usePlayer";
-import { permitsPlaybackControl } from "@/shared/api/fooJean";
+import { permitsPlaybackControl } from "@/shared/api/discovery";
 import type { PlayerInfo } from "@/shared/api/types";
 import { useDismissable } from "@/shared/hooks/useDismissable";
 import { useFooJean } from "@/shared/hooks/useFooJean";

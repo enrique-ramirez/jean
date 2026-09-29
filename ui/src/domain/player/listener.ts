@@ -1,4 +1,5 @@
-import type { FooJeanDiscovery, StreamMark } from "@/shared/api/fooJean";
+import type { FooJeanDiscovery } from "@/shared/api/discovery";
+import type { StreamMark } from "@/shared/api/stream";
 import { clamp } from "@/shared/lib/math";
 
 import { canUseMse } from "./mseStream";

@@ -77,7 +77,7 @@ import {
 	SETTINGS_KEYBOARD,
 	SettingsDialog,
 } from "@/features/settings/SettingsDialog";
-import { permitsPlaybackControl } from "@/shared/api/fooJean";
+import { permitsPlaybackControl } from "@/shared/api/discovery";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";

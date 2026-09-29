@@ -2,8 +2,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
 
 import { useAudiblePlayer, usePlaylists } from "@/domain/player/usePlayer";
-import { fetchPlayingTrack, retryWhenTooFast } from "@/shared/api/fooJean";
+import { retryWhenTooFast } from "@/shared/api/client";
 import { readTrack } from "@/shared/api/playerState";
+import { fetchPlayingTrack } from "@/shared/api/tracks";
 import type {
 	ActiveItem,
 	PlaylistInfo,

@@ -1046,7 +1046,7 @@ const closePicker = async (page: Page, isMobile: boolean) => {
 test.describe("criterion 24: a list read that fails", () => {
 	test.use({ fooJean: THREE_DEVICES });
 
-	// `fetchJson` answers null for any failure. Stored as the list, that null
+	// `orNull` answers null for any failure. Stored as the list, that null
 	// empties the devices and takes the picker away until the next good read.
 	test("criterion 24: a failed read keeps the last list Jean read, and the next opening reads again", async ({
 		page,

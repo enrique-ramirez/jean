@@ -1002,7 +1002,7 @@ test.describe("an edit the component refuses", () => {
 		]);
 	});
 
-	// A refusal is allowed to take its time: `WRITE_TIMEOUT_MS` in `fooJean.ts`
+	// A refusal is allowed to take its time: `WRITE_TIMEOUT_MS` in `client.ts`
 	// leaves a playlist write in the air for thirty-five seconds, and every poll
 	// inside that window can bring news of somebody working at the player. So the
 	// list a rollback puts back is not the list on screen, and putting the whole

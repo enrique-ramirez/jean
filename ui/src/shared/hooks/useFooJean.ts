@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
-import { discoverFooJean, type FooJeanDiscovery } from "@/shared/api/fooJean";
+import { discoverFooJean, type FooJeanDiscovery } from "@/shared/api/discovery";
 
 const KEY = "fooJean";
 

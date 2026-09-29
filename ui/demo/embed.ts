@@ -1,9 +1,9 @@
+import { seekTo } from "../src/shared/api/playback";
 import {
 	fetchPlaylistAnnotations,
-	fetchState,
 	playPlaylistItem,
-} from "../src/shared/api/fooJean";
-import { seekTo } from "../src/shared/api/playback";
+} from "../src/shared/api/playlists";
+import { fetchState } from "../src/shared/api/state";
 
 export const isEmbed = (params: URLSearchParams) => params.has("embed");
 

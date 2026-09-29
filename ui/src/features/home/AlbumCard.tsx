@@ -1,5 +1,5 @@
 import type { CoveredAlbum } from "@/domain/track/albums";
-import { permitsPlaybackControl } from "@/shared/api/fooJean";
+import { permitsPlaybackControl } from "@/shared/api/discovery";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";

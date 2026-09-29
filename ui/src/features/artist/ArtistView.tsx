@@ -28,7 +28,7 @@ import {
 import { summarise } from "@/domain/track/stats";
 import { ViewHeader } from "@/domain/track/ViewHeader";
 import { Artist } from "@/features/now-playing/Artist";
-import { permitsPlaybackControl } from "@/shared/api/fooJean";
+import { permitsPlaybackControl } from "@/shared/api/discovery";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { Trans } from "@/shared/i18n/Trans";
 import {

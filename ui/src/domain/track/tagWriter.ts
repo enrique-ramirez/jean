@@ -1,13 +1,12 @@
+import { TooFast } from "@/shared/api/client";
 import {
 	discoverFooJean,
 	type FooJeanDiscovery,
 	type FooJeanState,
-	fetchLibraryTrack,
-	fetchPlaylistRows,
-	TooFast,
-	type WriteResult,
-	writeTags,
-} from "@/shared/api/fooJean";
+} from "@/shared/api/discovery";
+import { fetchPlaylistRows } from "@/shared/api/playlists";
+import { type WriteResult, writeTags } from "@/shared/api/tags";
+import { fetchLibraryTrack } from "@/shared/api/tracks";
 import type { TrackAddress } from "@/shared/api/types";
 import { translate } from "@/shared/i18n/locale";
 import { UNRESOLVED } from "./libraryColumns";

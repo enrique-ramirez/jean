@@ -1,11 +1,10 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-import {
-	type FillPlaylistRequest,
-	fetchQueue,
-	type PlaylistAnnotation,
-	type QueueRead,
-} from "@/shared/api/fooJean";
+import type {
+	FillPlaylistRequest,
+	PlaylistAnnotation,
+} from "@/shared/api/playlists";
+import { fetchQueue, type QueueRead } from "@/shared/api/queue";
 import { type FollowRevision, followRevision } from "./followRevision";
 
 export const QUEUE_KEY = ["queue"];

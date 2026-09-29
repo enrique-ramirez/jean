@@ -1,18 +1,15 @@
 import type { QueueSource } from "@/domain/player/queue";
+import { libraryArtworkUrl, playlistRowArtworkUrl } from "@/shared/api/artwork";
+import { requireFooJean } from "@/shared/api/discovery";
 import { encodeFill, runsOf } from "@/shared/api/fillEncoding";
-import type {
-	FillOwnPlaylistRequest,
-	FillPlaylistRequest,
-} from "@/shared/api/fooJean";
+import { libraryPathMatcher } from "@/shared/api/playerState";
 import {
 	copyPlaylistRows,
+	type FillOwnPlaylistRequest,
+	type FillPlaylistRequest,
 	fillOwnPlaylist,
 	fillPlaylist,
-	libraryArtworkUrl,
-	playlistRowArtworkUrl,
-	requireFooJean,
-} from "@/shared/api/fooJean";
-import { libraryPathMatcher } from "@/shared/api/playerState";
+} from "@/shared/api/playlists";
 import type {
 	PlaybackPosition,
 	TrackAddress,

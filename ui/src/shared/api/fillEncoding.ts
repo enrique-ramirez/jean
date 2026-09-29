@@ -1,4 +1,4 @@
-import type { FillPlaylistRequest } from "./fooJean";
+import type { FillPlaylistRequest } from "./playlists";
 
 export type Run = [start: number, count: number];
 

@@ -19,8 +19,8 @@ import {
 import type {
 	PlaylistChanges,
 	PlaylistPage,
-	StateDocument,
-} from "../../src/shared/api/fooJean.ts";
+} from "../../src/shared/api/playlists.ts";
+import type { StateDocument } from "../../src/shared/api/state.ts";
 import type { TrackColumns } from "../../src/shared/api/types.ts";
 import { en } from "../../src/shared/i18n/en.ts";
 
@@ -104,8 +104,8 @@ const playerHolding = (t: TestContext, rows: Row[]): FakePlayer => {
 			headers: { "Content-Type": "application/json" },
 		});
 
-	globalThis.fetch = ((input: RequestInfo | URL) => {
-		const url = String(input);
+	globalThis.fetch = ((request: Request) => {
+		const url = request.url;
 		if (url.includes("/items/changes?")) {
 			assert.ok(player.changes, `no change to answer: ${url}`);
 			return Promise.resolve(answer(player.changes));
@@ -303,8 +303,8 @@ const libraryPlayer = (t: TestContext, exports: Export[]): LibraryPlayer => {
 		globalThis.fetch = realFetch;
 	});
 
-	globalThis.fetch = ((input: RequestInfo | URL) => {
-		const { pathname } = new URL(String(input));
+	globalThis.fetch = ((request: Request) => {
+		const { pathname } = new URL(request.url);
 		if (pathname === "/api/library/export") {
 			const at = Math.min(player.exportsAsked, player.exports.length - 1);
 			player.exportsAsked += 1;

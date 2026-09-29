@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
 
 import { KEY_SEEK_SECONDS, useSeekBy } from "@/domain/player/usePlayer";
-import { permitsPlaybackControl } from "@/shared/api/fooJean";
+import { permitsPlaybackControl } from "@/shared/api/discovery";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useFooJean } from "@/shared/hooks/useFooJean";

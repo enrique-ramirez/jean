@@ -5,11 +5,11 @@ import test, { mock, type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
-import type { StateDocument } from "../../src/shared/api/fooJean.ts";
 import {
 	fetchLibrary,
 	type LibraryResult,
 } from "../../src/shared/api/fooJeanLibrary.ts";
+import type { StateDocument } from "../../src/shared/api/state.ts";
 import { en } from "../../src/shared/i18n/en.ts";
 
 const ORIGIN = "http://player.invalid:8881";
@@ -79,8 +79,8 @@ interface Run {
 const start = (t: TestContext, player: Player): Run => {
 	const realFetch = globalThis.fetch;
 	mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
-	globalThis.fetch = ((input: RequestInfo | URL) =>
-		Promise.resolve(answer(player, String(input)))) as typeof fetch;
+	globalThis.fetch = ((request: Request) =>
+		Promise.resolve(answer(player, request.url))) as typeof fetch;
 
 	const stop = new AbortController();
 	t.after(() => {

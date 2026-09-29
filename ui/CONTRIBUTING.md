@@ -64,7 +64,7 @@ Commands run from the repository root and the root `package.json` delegates them
 ## 4. Naming
 
 1. **Never name a store, a parser or a helper after the component beside it.** A case-insensitive filesystem cannot tell `toasts.ts` from `Toasts.tsx`, so TypeScript resolves `'./Toasts'` to the wrong file silently. Hence `toastStore.ts`, `lyricsFormat.ts`, `volumeScale.ts`.
-2. **Never name a declaration file after the module beside it.** `fooJean.d.ts` next to `fooJean.ts` is read as that file's own declarations. The generated component types are `fooJeanSchema.d.ts`.
+2. **Never name a declaration file after the module beside it.** `playlists.d.ts` next to `playlists.ts` is read as that file's own declarations. The generated component types are `fooJeanSchema.d.ts`.
 3. Components are `PascalCase.tsx`, hooks are `useThing.ts`, everything else is `camelCase.ts`.
 4. Stylesheets are `Component.module.css`, beside the component.
 

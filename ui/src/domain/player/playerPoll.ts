@@ -12,11 +12,8 @@ import {
 	retryFailedLibraryRead,
 	retryFailedPlaylistReads,
 } from "@/domain/track/playlistStore";
-import {
-	type FooJeanCapabilities,
-	fetchState,
-	type StateDocument,
-} from "@/shared/api/fooJean";
+import type { FooJeanCapabilities } from "@/shared/api/discovery";
+import { fetchState, type StateDocument } from "@/shared/api/state";
 import type { PlayerSnapshot, PlayerState } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { rememberSnapshot } from "./audible";

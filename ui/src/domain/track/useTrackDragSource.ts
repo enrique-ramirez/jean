@@ -1,6 +1,6 @@
 import { QUEUE_DROP_TARGET, queueDropIndex } from "@/domain/player/queue";
 import { usePlaylists } from "@/domain/player/usePlayer";
-import { permitsPlaylistWrites } from "@/shared/api/fooJean";
+import { permitsPlaylistWrites } from "@/shared/api/discovery";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useDragSource } from "@/shared/ui/dnd";

@@ -6,7 +6,7 @@ import {
 	useState,
 } from "react";
 import { usePlaylists } from "@/domain/player/usePlayer";
-import { permitsPlaylistWrites } from "@/shared/api/fooJean";
+import { permitsPlaylistWrites } from "@/shared/api/discovery";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";

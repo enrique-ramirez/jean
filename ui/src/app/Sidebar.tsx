@@ -32,7 +32,7 @@ import {
 } from "@/domain/player/usePlayer";
 import { withoutScratchPlaylist } from "@/domain/track/jeanPlaylists";
 import { isSearchRoute, ROUTE } from "@/domain/track/routes";
-import { permitsPlaylistWrites } from "@/shared/api/fooJean";
+import { permitsPlaylistWrites } from "@/shared/api/discovery";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
 import { useFooJean } from "@/shared/hooks/useFooJean";

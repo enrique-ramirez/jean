@@ -7,7 +7,7 @@ import {
 	generationKey,
 } from "@/domain/track/playlistStore";
 import { useComponentLibraryItems } from "@/domain/track/usePlaylistItems";
-import { libraryOrigin } from "@/shared/api/fooJean";
+import { libraryOrigin } from "@/shared/api/discovery";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { LibraryStatus } from "./libraryStatus";
 

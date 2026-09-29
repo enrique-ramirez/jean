@@ -1,12 +1,4 @@
 import {
-	fetchPlaylistItemChanges,
-	fetchPlaylistRows,
-	fetchState,
-	type PlaylistChanges,
-	type PlaylistChangesResult,
-	type StateDocument,
-} from "@/shared/api/fooJean";
-import {
 	fetchLibrary,
 	fetchLibraryChanges,
 	type LibraryFailure,
@@ -14,6 +6,13 @@ import {
 	TRANSIENT,
 } from "@/shared/api/fooJeanLibrary";
 import { type JlibDelta, patchColumn } from "@/shared/api/jlib";
+import {
+	fetchPlaylistItemChanges,
+	fetchPlaylistRows,
+	type PlaylistChanges,
+	type PlaylistChangesResult,
+} from "@/shared/api/playlists";
+import { fetchState, type StateDocument } from "@/shared/api/state";
 import type { TrackColumns } from "@/shared/api/types";
 import type { Phrase } from "@/shared/i18n/en";
 import { type Subscribers, subscribers } from "@/shared/lib/store";

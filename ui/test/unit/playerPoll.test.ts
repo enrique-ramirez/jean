@@ -16,11 +16,9 @@ import {
 	VOLUME_SETTLE_MS,
 } from "../../src/domain/player/playerPoll.ts";
 import { volumePercent } from "../../src/domain/player/volumeScale.ts";
-import type {
-	FooJeanCapabilities,
-	StateDocument,
-} from "../../src/shared/api/fooJean.ts";
+import type { FooJeanCapabilities } from "../../src/shared/api/discovery.ts";
 import { readTrack } from "../../src/shared/api/playerState.ts";
+import type { StateDocument } from "../../src/shared/api/state.ts";
 import type {
 	PlayerSnapshot,
 	PlayerState,
@@ -204,15 +202,15 @@ const harness = (
 	const calls: Call[] = [];
 	let answer = first;
 
-	globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-		const ifNoneMatch = new Headers(init?.headers).get("If-None-Match");
+	globalThis.fetch = ((request: Request) => {
+		const ifNoneMatch = request.headers.get("If-None-Match");
 		calls.push({
-			url: String(input),
+			url: request.url,
 			ifNoneMatch,
-			cache: init?.cache,
+			cache: request.cache,
 			at: Date.now(),
 		});
-		return answer(ifNoneMatch, String(input));
+		return answer(ifNoneMatch, request.url);
 	}) as typeof fetch;
 
 	const watchers = new Set<() => void>();

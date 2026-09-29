@@ -1,7 +1,7 @@
 import { ChevronRight, Shuffle } from "lucide-react";
 import { href, ROUTE } from "@/domain/track/routes";
 import { spellDuration } from "@/domain/track/stats";
-import { permitsPlaybackControl } from "@/shared/api/fooJean";
+import { permitsPlaybackControl } from "@/shared/api/discovery";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Phrase } from "@/shared/i18n/en";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";

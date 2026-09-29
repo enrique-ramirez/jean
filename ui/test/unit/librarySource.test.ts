@@ -77,9 +77,9 @@ const playlistSource = ({
 	});
 
 const stallEveryRequest = () => {
-	globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
+	globalThis.fetch = ((request: Request) =>
 		new Promise<Response>((_resolve, reject) => {
-			const signal = init?.signal;
+			const signal = request.signal;
 			if (!signal) return;
 			if (signal.aborted) reject(signal.reason);
 			else signal.addEventListener("abort", () => reject(signal.reason));
@@ -197,8 +197,8 @@ test("a playlist source given no generation has no address for a row the media l
 test("addressing a row asks the player nothing", (t) => {
 	const realFetch = globalThis.fetch;
 	const asked: string[] = [];
-	globalThis.fetch = ((input: RequestInfo | URL) => {
-		asked.push(String(input));
+	globalThis.fetch = ((request: Request) => {
+		asked.push(request.url);
 		return new Promise<Response>(() => undefined);
 	}) as typeof fetch;
 	t.after(() => {

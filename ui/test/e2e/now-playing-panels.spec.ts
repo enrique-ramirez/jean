@@ -507,7 +507,12 @@ const stampReadsSent = (page: Page) =>
 		Object.assign(window, { readsSentAt: sent });
 		const send = window.fetch.bind(window);
 		window.fetch = (input, init) => {
-			if (String(input).includes("/api/track/playing")) sent.push(Date.now());
+			if (
+				(input instanceof Request ? input.url : String(input)).includes(
+					"/api/track/playing",
+				)
+			)
+				sent.push(Date.now());
 			return send(input, init);
 		};
 	});

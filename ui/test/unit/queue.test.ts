@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { guidOf } from "../../src/domain/player/queue.ts";
-import type { PlaylistAnnotation } from "../../src/shared/api/fooJean.ts";
+import type { PlaylistAnnotation } from "../../src/shared/api/playlists.ts";
 
 const PLAYING_GUID = "45837d74-fa4f-415c-bba9-bf2db8f0dc04";
 const OTHER_GUID = "9f2a1c60-0b7e-4f21-8f0a-3a6d6c5e1f44";

@@ -130,11 +130,15 @@ Both answer rather than throw. `NO_WRITER.write` resolves to a refusal carrying 
 
 **A client refused an ambiguous address retries exactly once with a precise one, and nothing else in the rating path is ever sent twice.** Two media library roots can hold one library-relative path, which puts a track under each at one address, and the component refuses such an address rather than writing to whichever sorts first. So a source answers the relative path first and the address that names exactly one track behind it: the media library its ordinal and the snapshot's structure, a playlist row its GUID, position and generation, the now-playing screen where the player says it is playing from. A surface holding nothing behind the path says the rating did not land. The retry is safe because an ambiguity refusal is decided before anything is written.
 
-Both are fed by one discovery, in `src/shared/api/fooJean.ts`, deduped through `src/shared/hooks/useFooJean.ts`. Every caller names one query key, so the second component to mount reads the first one's result rather than probing again.
+Both are fed by one discovery, in `src/shared/api/discovery.ts`, deduped through `src/shared/hooks/useFooJean.ts`. Every caller names one query key, so the second component to mount reads the first one's result rather than probing again.
+
+## Requests
+
+Every request to `foo_jean` goes through `ask` in `src/shared/api/client.ts`: one `openapi-fetch` client typed from `fooJeanSchema.d.ts`, a deadline, and the caller's own signal. It resolves with whatever status the component answered and throws only when nothing answered. Each resource module beside it (`state.ts`, `playlists.ts`, `queue.ts` and the rest) turns a status into what its callers read: `demand` throws with the status on the error's `cause`, `orNull` answers `null` for any failure, and the rest name each refusal in an `ok: false` union. What a browser loads by itself, artwork and the stream, is built as a URL and never requested here.
 
 ## The `foo_jean` security model
 
-`discoverFooJean()` in `fooJean.ts` takes the component's origin straight off `window.location.origin` and asks `GET /api/capabilities` with no credential to attach; nothing Jean sends needs one. What decides whether the request lands at all is the component's own admission rule, a private source address behind a `Host` it recognises, run ahead of anything Jean does; `plugins/fb2k/ARCHITECTURE.md` has the rule itself.
+`discoverFooJean()` in `discovery.ts` takes the component's origin straight off `window.location.origin` and asks `GET /api/capabilities` with no credential to attach; nothing Jean sends needs one. What decides whether the request lands at all is the component's own admission rule, a private source address behind a `Host` it recognises, run ahead of anything Jean does; `plugins/fb2k/ARCHITECTURE.md` has the rule itself.
 
 **Every route follows the same CORS rule.** With `allowedOrigins` empty the component reflects no origin, so only a page it served itself, same-origin, can reach any of them.
 

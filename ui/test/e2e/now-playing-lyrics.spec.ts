@@ -36,7 +36,10 @@ const recordPlayingReads = (page: Page) =>
 		Object.assign(window, { playingReads: reads });
 		const send = window.fetch.bind(window);
 		window.fetch = (input, init) => {
-			const asked = new URL(String(input), location.href);
+			const asked = new URL(
+				input instanceof Request ? input.url : String(input),
+				location.href,
+			);
 			if (asked.pathname !== "/api/track/playing") return send(input, init);
 			const read: { sentAt: number; answeredAt?: number; columns: number } = {
 				sentAt: Date.now(),

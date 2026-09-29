@@ -1,13 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
-
 import {
-	fetchOutputs,
 	isFooJeanReady,
-	type OutputDevice,
 	permitsOutputChange,
 	requireFooJean,
-} from "@/shared/api/fooJean";
+} from "@/shared/api/discovery";
+import { fetchOutputs, type OutputDevice } from "@/shared/api/outputs";
 import { setActiveOutput } from "@/shared/api/playback";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";

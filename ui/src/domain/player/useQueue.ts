@@ -1,11 +1,9 @@
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
-
+import { isFooJeanReady, permitsPlaybackControl } from "@/shared/api/discovery";
+import { fetchPlaylistAnnotations } from "@/shared/api/playlists";
 import {
-	fetchPlaylistAnnotations,
-	isFooJeanReady,
 	moveQueueEntry,
-	permitsPlaybackControl,
 	postQueue,
 	type QueueLibraryTracksRequest,
 	type QueueMutationResult,
@@ -13,7 +11,7 @@ import {
 	type QueueRead,
 	removeQueueEntry,
 	clearQueue as writeClearQueue,
-} from "@/shared/api/fooJean";
+} from "@/shared/api/queue";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
 import { pushToast } from "@/shared/ui/toastStore";

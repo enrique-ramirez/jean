@@ -24,13 +24,9 @@ import {
 import { MAX_STARS, starsOf, toStars } from "@/domain/track/rating";
 import { setRatingLayer } from "@/domain/track/ratingTarget";
 import { albumRoute, href, type PanelTab } from "@/domain/track/routes";
-import {
-	fetchPlaylistRows,
-	isFooJeanReady,
-	permitsPlaybackControl,
-	playingArtworkUrl,
-	playlistRowArtworkUrl,
-} from "@/shared/api/fooJean";
+import { playingArtworkUrl, playlistRowArtworkUrl } from "@/shared/api/artwork";
+import { isFooJeanReady, permitsPlaybackControl } from "@/shared/api/discovery";
+import { fetchPlaylistRows } from "@/shared/api/playlists";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useFooJean } from "@/shared/hooks/useFooJean";

@@ -5,7 +5,7 @@ import {
 	type StreamMark,
 	type StreamTimeline,
 	streamUrl,
-} from "@/shared/api/fooJean";
+} from "@/shared/api/stream";
 import type { PlaybackState } from "@/shared/api/types";
 import { translate } from "@/shared/i18n/locale";
 import { subscribers } from "@/shared/lib/store";

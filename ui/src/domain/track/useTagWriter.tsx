@@ -10,11 +10,9 @@ import {
 } from "react";
 
 import { useExportHeldWhenLibraryUnbuilt } from "@/domain/player/playerPoll";
-import {
-	libraryOrigin,
-	retryWhenTooFast,
-	type WriteFailure,
-} from "@/shared/api/fooJean";
+import { retryWhenTooFast } from "@/shared/api/client";
+import { libraryOrigin } from "@/shared/api/discovery";
+import type { WriteFailure } from "@/shared/api/tags";
 import type { TrackAddress } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";

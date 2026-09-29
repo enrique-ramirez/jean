@@ -5,14 +5,13 @@ import { useEffect, useRef, useState } from "react";
 
 import { genreQuery } from "@/domain/library/genreQuery";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
+import { retryWhenTooFast, TooFast } from "@/shared/api/client";
+import { requireFooJean } from "@/shared/api/discovery";
 import {
 	createAutoPlaylist,
 	previewQuery,
 	type QueryPreview,
-	requireFooJean,
-	retryWhenTooFast,
-	TooFast,
-} from "@/shared/api/fooJean";
+} from "@/shared/api/playlists";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";

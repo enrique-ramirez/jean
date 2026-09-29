@@ -2,14 +2,13 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, beforeEach, test } from "node:test";
-
-import { playPlaylistItem } from "../../src/shared/api/fooJean.ts";
 import {
 	nextTrack,
 	playPause,
 	previousTrack,
 	stop,
 } from "../../src/shared/api/playback.ts";
+import { playPlaylistItem } from "../../src/shared/api/playlists.ts";
 
 let received: { path: string; contentType: string | null }[] = [];
 let origin = "";

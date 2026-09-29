@@ -1,7 +1,15 @@
 import { sleep } from "@/shared/lib/sleep";
-import { fetchState, retryAfterMs, withTimeout } from "./fooJean";
+import {
+	type Answer,
+	ask,
+	type Call,
+	reach,
+	refusalOf as refusalIn,
+	retryAfterMs,
+} from "./client";
 import type { components } from "./fooJeanSchema";
 import { decodeJlib, type JlibDelta, type JlibSnapshot } from "./jlib";
+import { fetchState } from "./state";
 
 type LibraryBuild = components["schemas"]["LibraryBuild"];
 
@@ -47,23 +55,8 @@ const failure = (
 	detail = "",
 ): LibraryFailure => ({ ok: false, reason, detail });
 
-const detailOf = async (response: Response) => {
-	const body = (await response.json().catch(() => null)) as {
-		error?: string;
-		detail?: string;
-	} | null;
-	if (!body?.error) return "";
-	return body.detail ? `${body.error}: ${body.detail}` : body.error;
-};
-
 const retryAfterOf = (response: Response) =>
 	Math.min(retryAfterMs(response) ?? BUSY_WAIT_MS, BUSY_WAIT_MAX_MS);
-
-const exportUrl = (origin: string, columns: readonly string[]) => {
-	const asked = new URLSearchParams();
-	for (const column of columns) asked.append("columns", column);
-	return `${origin}/api/library/export?${asked}`;
-};
 
 const sameColumns = (held: readonly string[], asked: readonly string[]) => {
 	const built = new Set(held);
@@ -91,33 +84,27 @@ const REFUSALS: Partial<Record<number, LibraryFailureReason>> = {
 	503: "unavailable",
 };
 
-type Asked = { ok: true; response: Response } | LibraryFailure;
+type Asked = { ok: true; answer: Answer<ArrayBuffer> } | LibraryFailure;
 
-const ask = async (
-	url: string,
+const askBytes = async (
+	origin: string,
 	timeoutMs: number,
+	call: Call<Answer<ArrayBuffer>>,
 	signal: AbortSignal | undefined,
 ): Promise<Asked> => {
-	try {
-		return {
-			ok: true,
-			response: await withTimeout(
-				timeoutMs,
-				(inner) => fetch(url, { signal: inner }),
-				signal,
-			),
-		};
-	} catch (error) {
-		if (signal?.aborted) throw error;
-		return failure("unreachable");
-	}
+	const answer = await reach(ask(origin, timeoutMs, call, signal), signal);
+	return answer ? { ok: true, answer } : failure("unreachable");
 };
 
-const refusalOf = async (
-	response: Response,
-): Promise<LibraryFailure | null> => {
+const refusalOf = ({
+	error,
+	response,
+}: Answer<ArrayBuffer>): LibraryFailure | null => {
 	const refused = REFUSALS[response.status];
-	if (refused) return failure(refused, await detailOf(response));
+	if (refused) {
+		const said = refusalIn(response, error);
+		return failure(refused, said.error ? said.message : "");
+	}
 	return response.ok ? null : failure("failed", `HTTP ${response.status}`);
 };
 
@@ -138,22 +125,28 @@ async function attemptExport(
 	columns: readonly string[],
 	signal: AbortSignal | undefined,
 ): Promise<Attempt> {
-	const asked = await ask(
-		exportUrl(origin, columns),
+	const asked = await askBytes(
+		origin,
 		EXPORT_TIMEOUT_MS,
+		(api, init) =>
+			api.GET("/library/export", {
+				...init,
+				params: { query: { columns: [...columns] } },
+				parseAs: "arrayBuffer",
+			}),
 		signal,
 	);
 	if (!asked.ok) return { kind: "done", result: asked };
 
-	const { response } = asked;
+	const { response, data } = asked.answer;
 	if (response.status === 202) return { kind: "building" };
 	if (response.status === 429)
 		return { kind: "wait", ms: retryAfterOf(response) };
 
-	const refused = await refusalOf(response);
+	const refused = refusalOf(asked.answer);
 	if (refused) return { kind: "done", result: refused };
 
-	const bytes = await response.arrayBuffer();
+	const bytes = data ?? new ArrayBuffer(0);
 	const read = decoded(() => {
 		const library = decodeJlib(bytes);
 		if (library.kind !== "snapshot") throw new Error("not a snapshot");
@@ -179,20 +172,26 @@ export async function fetchLibraryChanges(
 	since: number,
 	signal?: AbortSignal,
 ): Promise<LibraryChanges> {
-	const asked = await ask(
-		`${origin}/api/library/changes?since=${since}`,
+	const asked = await askBytes(
+		origin,
 		CHANGES_TIMEOUT_MS,
+		(api, init) =>
+			api.GET("/library/changes", {
+				...init,
+				params: { query: { since } },
+				parseAs: "arrayBuffer",
+			}),
 		signal,
 	);
 	if (!asked.ok) return asked;
 
-	const { response } = asked;
+	const { response, data } = asked.answer;
 	if (RESTARTS.has(response.status)) return { ok: true, kind: "restart" };
 
-	const refused = await refusalOf(response);
+	const refused = refusalOf(asked.answer);
 	if (refused) return refused;
 
-	const bytes = await response.arrayBuffer();
+	const bytes = data ?? new ArrayBuffer(0);
 	const read = decoded(() => {
 		const delta = decodeJlib(bytes);
 		if (delta.kind !== "delta") throw new Error("not a delta");

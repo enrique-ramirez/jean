@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-
-import {
-	fillPlaylist,
-	playlistRowArtworkUrl,
-} from "../../src/shared/api/fooJean.ts";
+import { playlistRowArtworkUrl } from "../../src/shared/api/artwork.ts";
+import { fillPlaylist } from "../../src/shared/api/playlists.ts";
 
 // A playlist id is the player's to choose. Every route naming one has to escape it the same way,
 // or an id carrying a reserved character reaches a different path than the one it names.
@@ -26,8 +23,8 @@ test("filling a playlist names the playlist escaped", async (t) => {
 		globalThis.fetch = realFetch;
 	});
 	const sent: string[] = [];
-	globalThis.fetch = (async (input: RequestInfo | URL) => {
-		sent.push(String(input));
+	globalThis.fetch = (async (request: Request) => {
+		sent.push(request.url);
 		return Response.json({});
 	}) as typeof fetch;
 

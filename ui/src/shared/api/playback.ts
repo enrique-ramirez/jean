@@ -1,8 +1,21 @@
-import { postFooJeanCommand as post } from "./fooJean";
+import {
+	type Answer,
+	ask,
+	BODYLESS_POST,
+	type Call,
+	demand,
+	WRITE_TIMEOUT_MS,
+} from "./client";
 import type { PlaybackMode } from "./types";
 
+async function command(origin: string, call: Call<Answer<unknown>>) {
+	await demand(ask(origin, WRITE_TIMEOUT_MS, call));
+}
+
 export const playPause = (origin: string) =>
-	post(origin, "/api/playback/play-pause");
+	command(origin, (api, init) =>
+		api.POST("/playback/play-pause", { ...init, headers: BODYLESS_POST }),
+	);
 
 export const ASKED_MS = 4000;
 let asked: { by: number; at: number } | null = null;
@@ -19,36 +32,59 @@ const skipping = (by: number) => {
 
 export const nextTrack = (origin: string) => {
 	skipping(1);
-	return post(origin, "/api/playback/next");
+	return command(origin, (api, init) =>
+		api.POST("/playback/next", { ...init, headers: BODYLESS_POST }),
+	);
 };
 
 export const previousTrack = (origin: string) => {
 	skipping(-1);
-	return post(origin, "/api/playback/previous");
+	return command(origin, (api, init) =>
+		api.POST("/playback/previous", { ...init, headers: BODYLESS_POST }),
+	);
 };
 
-export const stop = (origin: string) => post(origin, "/api/playback/stop");
+export const stop = (origin: string) =>
+	command(origin, (api, init) =>
+		api.POST("/playback/stop", { ...init, headers: BODYLESS_POST }),
+	);
 
 export const seekTo = (origin: string, position: number) =>
-	post(origin, "/api/playback/seek", { seconds: position });
+	command(origin, (api, init) =>
+		api.POST("/playback/seek", { ...init, body: { seconds: position } }),
+	);
 
 export const seekBy = (origin: string, offset: number) =>
-	post(origin, "/api/playback/seek", { relativeSeconds: offset });
+	command(origin, (api, init) =>
+		api.POST("/playback/seek", { ...init, body: { relativeSeconds: offset } }),
+	);
 
 export const setVolume = (origin: string, volume: number) =>
-	post(origin, "/api/volume", { value: volume });
+	command(origin, (api, init) =>
+		api.POST("/volume", { ...init, body: { value: volume } }),
+	);
 
 export const setMuted = (origin: string, isMuted: boolean) =>
-	post(origin, "/api/volume", { muted: isMuted });
+	command(origin, (api, init) =>
+		api.POST("/volume", { ...init, body: { muted: isMuted } }),
+	);
 
 export const volumeUp = (origin: string) =>
-	post(origin, "/api/volume", { step: "up" });
+	command(origin, (api, init) =>
+		api.POST("/volume", { ...init, body: { step: "up" } }),
+	);
 
 export const volumeDown = (origin: string) =>
-	post(origin, "/api/volume", { step: "down" });
+	command(origin, (api, init) =>
+		api.POST("/volume", { ...init, body: { step: "down" } }),
+	);
 
 export const setPlaybackOrder = (origin: string, mode: PlaybackMode) =>
-	post(origin, "/api/playback/mode", { mode });
+	command(origin, (api, init) =>
+		api.POST("/playback/mode", { ...init, body: { mode } }),
+	);
 
 export const setActiveOutput = (origin: string, deviceId: string) =>
-	post(origin, "/api/outputs/active", { deviceId });
+	command(origin, (api, init) =>
+		api.POST("/outputs/active", { ...init, body: { deviceId } }),
+	);

@@ -67,7 +67,7 @@ const recordingFetch = (t: { after: (fn: () => void) => void }) => {
 	const realRoot = process.env.LIVE_LIBRARY_ROOT;
 	const sent: string[] = [];
 	globalThis.fetch = (async (input: RequestInfo | URL) => {
-		sent.push(String(input));
+		sent.push(input instanceof Request ? input.url : String(input));
 		return new Response("", { status: 200 });
 	}) as typeof fetch;
 	process.env.LIVE = "http://127.0.0.1:9";

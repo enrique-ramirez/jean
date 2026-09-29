@@ -13,11 +13,8 @@ import {
 } from "@/domain/player/usePlayer";
 import { coverKey } from "@/domain/track/fields";
 import { canonicalPlayingArtworkUrl } from "@/domain/track/librarySource";
-import {
-	isFooJeanReady,
-	permitsPlaybackControl,
-	playingArtworkUrl,
-} from "@/shared/api/fooJean";
+import { playingArtworkUrl } from "@/shared/api/artwork";
+import { isFooJeanReady, permitsPlaybackControl } from "@/shared/api/discovery";
 import { readTrack } from "@/shared/api/playerState";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";

@@ -10,7 +10,7 @@ import { starsOf } from "@/domain/track/rating";
 import { ratingItems, trackActions } from "@/domain/track/trackActions";
 import { useAddTracks } from "@/domain/track/useAddTracks";
 import { useQueueTracks } from "@/domain/track/useQueueTracks";
-import { permitsPlaylistWrites } from "@/shared/api/fooJean";
+import { permitsPlaylistWrites } from "@/shared/api/discovery";
 import { readTrack } from "@/shared/api/playerState";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";

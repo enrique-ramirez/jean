@@ -15,7 +15,7 @@ import { PlayActions } from "@/domain/track/PlayActions";
 import { summarise } from "@/domain/track/stats";
 import { TrackBrowser } from "@/domain/track/TrackBrowser";
 import { ViewHeader } from "@/domain/track/ViewHeader";
-import { permitsPlaylistWrites } from "@/shared/api/fooJean";
+import { permitsPlaylistWrites } from "@/shared/api/discovery";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";

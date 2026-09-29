@@ -7,7 +7,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import type { OutputDevice } from "@/shared/api/fooJean";
+import type { OutputDevice } from "@/shared/api/outputs";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { MenuItem } from "@/shared/ui/Menu";
 import styles from "./OutputDevices.module.css";

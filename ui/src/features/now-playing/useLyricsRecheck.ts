@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 import { readValue } from "@/domain/track/fields";
-import { fetchPlayingTrack } from "@/shared/api/fooJean";
+import { fetchPlayingTrack } from "@/shared/api/tracks";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { LYRICS_EXPRESSIONS, NOW_PLAYING_FIELD } from "./nowPlayingFields";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";

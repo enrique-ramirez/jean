@@ -4,7 +4,7 @@ import {
 	fetchStreamListeners,
 	type StreamListener,
 	type StreamListeners,
-} from "@/shared/api/fooJean";
+} from "@/shared/api/stream";
 import { translate } from "@/shared/i18n/locale";
 import { subscribers } from "@/shared/lib/store";
 import { deviceId } from "./device";

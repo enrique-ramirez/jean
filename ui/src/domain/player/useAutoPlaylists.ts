@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import {
 	fetchPlaylistAnnotations,
 	type PlaylistAnnotation,
-} from "@/shared/api/fooJean";
+} from "@/shared/api/playlists";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { usePlaylists } from "./usePlayer";
 

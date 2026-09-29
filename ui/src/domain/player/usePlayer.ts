@@ -7,19 +7,8 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
-import {
-	createPlaylist,
-	type FooJeanDiscovery,
-	fetchPlaylistAnnotations,
-	movePlaylist,
-	type PlaylistAnnotation,
-	playPlaylistItem,
-	removePlaylist,
-	renamePlaylist,
-	requireFooJean,
-	switchRefusalOf,
-} from "@/shared/api/fooJean";
+import { switchRefusalOf } from "@/shared/api/client";
+import { type FooJeanDiscovery, requireFooJean } from "@/shared/api/discovery";
 import {
 	nextTrack,
 	playPause,
@@ -33,6 +22,15 @@ import {
 	volumeDown,
 	volumeUp,
 } from "@/shared/api/playback";
+import {
+	createPlaylist,
+	fetchPlaylistAnnotations,
+	movePlaylist,
+	type PlaylistAnnotation,
+	playPlaylistItem,
+	removePlaylist,
+	renamePlaylist,
+} from "@/shared/api/playlists";
 import type {
 	ActiveItem,
 	PlaybackMode,

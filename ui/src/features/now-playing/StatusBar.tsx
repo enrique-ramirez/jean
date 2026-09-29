@@ -87,6 +87,7 @@ export function StatusBar({
 		setValue: changeVolume,
 		toggleMute,
 		hasFader,
+		canMove,
 	} = useAudibleVolume();
 
 	const swipeUp = useSwipe({ onUp: onRevealNowPlaying });
@@ -213,7 +214,7 @@ export function StatusBar({
 									volume={shownVolume}
 									onChange={changeVolume}
 									label={t(isHere ? "player.volumeHere" : "player.volume")}
-									disabled={!canControlPlayback}
+									disabled={!canMove}
 									outputs={outputs}
 								/>
 							) : null}
@@ -255,7 +256,7 @@ export function StatusBar({
 								onChange={changeVolume}
 								onToggleMute={toggleMute}
 								label={t(isHere ? "player.volumeHere" : "player.volume")}
-								disabled={!canControlPlayback}
+								disabled={!canMove}
 								outputs={outputs}
 							/>
 						) : null}

@@ -92,7 +92,7 @@ export function NowPlaying({
 	const transport = useTransport();
 	const previous = usePrevious();
 	const order = usePlaybackOrder();
-	const { isHere, volume, setValue, hasFader } = useAudibleVolume();
+	const { isHere, canMove, volume, setValue, hasFader } = useAudibleVolume();
 	const menu = useNowPlayingMenu();
 
 	const [isLyricsFull, setIsLyricsFull] = useState(false);
@@ -419,7 +419,7 @@ export function NowPlaying({
 										volume={volume}
 										onChange={setValue}
 										label={t(isHere ? "player.volumeHere" : "player.volume")}
-										disabled={!canControlPlayback}
+										disabled={!canMove}
 										outputs={outputs}
 									/>
 								) : null}

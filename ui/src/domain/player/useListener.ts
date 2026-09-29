@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 
+import { permitsPlaybackControl } from "@/shared/api/discovery";
 import type { Volume } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import {
@@ -73,6 +74,7 @@ export function useListener() {
 export function useAudibleVolume() {
 	const listener = useListener();
 	const player = useVolume();
+	const { discovery } = useFooJean();
 
 	const isHere = listener.isOn;
 	const volume = isHere ? listener.volume : player.volume;
@@ -89,6 +91,7 @@ export function useAudibleVolume() {
 
 	return {
 		isHere,
+		canMove: isHere || permitsPlaybackControl(discovery),
 		volume,
 		setValue,
 		hasFader: !isHere || Boolean(listener.volume),

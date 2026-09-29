@@ -50,14 +50,21 @@ function usePlaybackShortcuts() {
 			stop: () => transport.stop.mutate(),
 			seekBack: () => seekBy.mutate(-KEY_SEEK_SECONDS),
 			seekForward: () => seekBy.mutate(KEY_SEEK_SECONDS),
-			volumeUp: () => volume.up(),
-			volumeDown: () => volume.down(),
-			toggleMute: () => volume.toggleMute(),
 			toggleShuffle: () => {
 				if (playbackMode.canShuffle) playbackMode.toggleShuffle();
 			},
 		},
 		{ enabled: permitsPlaybackControl(discovery) },
+	);
+
+	useKeymap(
+		SCOPE.global,
+		{
+			volumeUp: () => volume.up(),
+			volumeDown: () => volume.down(),
+			toggleMute: () => volume.toggleMute(),
+		},
+		{ enabled: volume.canMove },
 	);
 }
 

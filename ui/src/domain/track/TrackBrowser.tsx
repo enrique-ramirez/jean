@@ -152,10 +152,8 @@ export const TrackBrowser = forwardRef(function TrackBrowser(
 		setHeatIntroSeen(true);
 	}, [setHeatIntroSeen]);
 
-	useEffect(() => {
-		if (heatIntroSeen || !hasPlayCounts || !showHeat) return;
+	if (!isHeatInfoOpen && !heatIntroSeen && hasPlayCounts && showHeat)
 		setIsHeatInfoOpen(true);
-	}, [heatIntroSeen, hasPlayCounts, showHeat]);
 
 	const groups = useMemo(() => groupByAlbum(rows, t), [rows, t]);
 	const hasDiscs = useMemo(() => groups.some((group) => group.discs), [groups]);

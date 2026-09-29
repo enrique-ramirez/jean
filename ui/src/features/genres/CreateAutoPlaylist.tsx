@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 import type { FormEvent as ReactFormEvent } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { genreQuery } from "@/domain/library/genreQuery";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlaylists";
@@ -13,6 +13,7 @@ import {
 	type QueryPreview,
 } from "@/shared/api/playlists";
 import { useFooJean } from "@/shared/hooks/useFooJean";
+import { useResettingState } from "@/shared/hooks/useResettingState";
 import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
 import { Input } from "@/shared/ui/Input";
@@ -54,14 +55,10 @@ export function CreateAutoPlaylist({
 		state.kind === "ready" && state.capabilities.canCreateAutoPlaylists;
 
 	const [isOpen, setIsOpen] = useState(false);
-	const [title, setTitle] = useState(genre);
+	const [title, setTitle] = useResettingState(genre, [isOpen]);
 	const inputRef = useRef<HTMLInputElement | null>(null);
 
 	const query = genreQuery(genre);
-
-	useEffect(() => {
-		if (!isOpen) setTitle(genre);
-	}, [isOpen, genre]);
 
 	const {
 		data: preview,

@@ -100,6 +100,8 @@ function Shell() {
 
 	const isNowPlaying = isPlayingRoute(route);
 	const [openedFrom, setOpenedFrom] = useState("");
+	// `history.back()` is wrong: a reload can land straight on `#/playing` with no entry behind it, and back would leave Jean.
+	if (!isNowPlaying && openedFrom !== route) setOpenedFrom(route);
 	const shellRoute = isNowPlaying ? openedFrom : route;
 	const view = useMemo(() => resolveRoute(shellRoute), [shellRoute]);
 	const isLibrary = view.kind !== "playlist";
@@ -324,11 +326,6 @@ function Shell() {
 		if (refs && position >= 0)
 			void playSet({ kind: SCRATCH_KIND.search, label: query, refs, position });
 	};
-
-	// `history.back()` is wrong: a reload can land straight on `#/playing` with no entry behind it, and back would leave Jean.
-	useEffect(() => {
-		if (!isNowPlaying) setOpenedFrom(route);
-	}, [isNowPlaying, route]);
 
 	const arriveFrom = useCallback(
 		(from: string) => {

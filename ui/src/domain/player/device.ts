@@ -1,4 +1,7 @@
-import { readStoredState } from "@/shared/hooks/useStoredState";
+import {
+	readStoredState,
+	writeStoredState,
+} from "@/shared/hooks/useStoredState";
 import { translate } from "@/shared/i18n/locale";
 import { randomId } from "@/shared/lib/randomId";
 
@@ -10,16 +13,11 @@ let id: string | null = null;
 export function deviceId(): string {
 	if (id) return id;
 
-	try {
-		id = localStorage.getItem(DEVICE_ID_KEY);
-		if (!id) {
-			id = randomId();
-			localStorage.setItem(DEVICE_ID_KEY, id);
-		}
-	} catch {
-		id ??= randomId();
+	id = readStoredState<string | null>(DEVICE_ID_KEY, null);
+	if (!id) {
+		id = randomId();
+		writeStoredState(DEVICE_ID_KEY, id);
 	}
-
 	return id;
 }
 

@@ -1,3 +1,7 @@
+import {
+	readStoredState,
+	writeStoredState,
+} from "@/shared/hooks/useStoredState";
 import { subscribers } from "@/shared/lib/store";
 import { en, type Phrase } from "./en";
 import { numbersIn, pluralsIn } from "./format";
@@ -53,26 +57,12 @@ const publish = (next: Partial<LocaleState>) => {
 export const localeState = () => state;
 export const subscribeToLocale = listeners.subscribe;
 
-// JSON, like every other `jean.` key, so moving this to `useStoredState` and then to the player's
-// own client config is a change of home rather than a change of format.
 const readChoice = (): string | null => {
-	try {
-		const stored = localStorage.getItem(CHOICE_KEY);
-		const parsed: unknown = stored === null ? null : JSON.parse(stored);
-		return typeof parsed === "string" ? parsed : null;
-	} catch {
-		return null;
-	}
+	const stored = readStoredState<unknown>(CHOICE_KEY, null);
+	return typeof stored === "string" ? stored : null;
 };
 
-const writeChoice = (code: string | null) => {
-	try {
-		if (code === null) localStorage.removeItem(CHOICE_KEY);
-		else localStorage.setItem(CHOICE_KEY, JSON.stringify(code));
-	} catch {
-		// Private mode, quota: the choice just does not survive the tab.
-	}
-};
+const writeChoice = (code: string | null) => writeStoredState(CHOICE_KEY, code);
 
 const isMessage = (value: unknown): value is Message =>
 	typeof value === "string" ||

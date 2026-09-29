@@ -1,13 +1,8 @@
 import { Search, X } from "lucide-react";
-import {
-	type RefObject,
-	useEffect,
-	useLayoutEffect,
-	useRef,
-	useState,
-} from "react";
+import { type RefObject, useEffect, useLayoutEffect, useRef } from "react";
 import { useDebounced } from "@/shared/hooks/useDebounced";
 import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
+import { useResettingState } from "@/shared/hooks/useResettingState";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
@@ -41,7 +36,7 @@ export function Finder({
 }) {
 	const t = useTranslate();
 	const listRef = useRef<HTMLDivElement | null>(null);
-	const [active, setActive] = useState(0);
+	const [active, setActive] = useResettingState(0, [query]);
 	const debouncedActive = useDebounced(active, 90);
 
 	// Held in a ref: the parent passes a new closure every render, and depending on it directly would
@@ -49,13 +44,7 @@ export function Finder({
 	const previewRef = useRef(onPreview);
 	previewRef.current = onPreview;
 
-	const navigated = useRef(false);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: a new query resets the cursor, not a read
-	useEffect(() => {
-		setActive(0);
-		navigated.current = false;
-	}, [query]);
+	const navigatedFor = useRef<string | null>(null);
 
 	const aimedAt = useEarnedHover(results);
 
@@ -65,9 +54,9 @@ export function Finder({
 	const previewIndex = results[debouncedActive];
 
 	useEffect(() => {
-		if (!navigated.current) return;
+		if (navigatedFor.current !== query) return;
 		if (previewIndex !== undefined) previewRef.current(previewIndex);
-	}, [previewIndex]);
+	}, [previewIndex, query]);
 
 	const revealActive = useRef(false);
 
@@ -87,7 +76,7 @@ export function Finder({
 
 	const step = (delta: number) => {
 		if (results.length === 0) return;
-		navigated.current = true;
+		navigatedFor.current = query;
 		// Only a key scrolls: scrolling under a stationary pointer fires mouseenter, which moves the
 		// cursor, which scrolls again.
 		revealActive.current = true;
@@ -152,7 +141,7 @@ export function Finder({
 								onClick={() => onConfirm(index)}
 								onMouseEnter={(event) => {
 									if (!aimedAt(event)) return;
-									navigated.current = true;
+									navigatedFor.current = query;
 									setActive(position);
 								}}
 							>

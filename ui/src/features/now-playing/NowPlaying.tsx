@@ -31,6 +31,7 @@ import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { usePresence } from "@/shared/hooks/usePresence";
+import { useResettingState } from "@/shared/hooks/useResettingState";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useKeyboardOwner } from "@/shared/keyboard/keyboardOwner";
@@ -178,12 +179,11 @@ export function NowPlaying({
 }) {
 	const t = useTranslate();
 	const isPresent = usePresence(isOpen, SLIDE_MS);
-	const [isInfoOpen, setIsInfoOpen] = useState(false);
+	const [isInfoOpen, setIsInfoOpen] = useResettingState(false, [
+		isOpen,
+		isCompactViewport,
+	]);
 	const isInfoPresent = usePresence(isInfoOpen, INFO_EXIT_MS);
-
-	useEffect(() => {
-		if (!isOpen) setIsInfoOpen(false);
-	}, [isOpen]);
 
 	const snapshot = useAudiblePlayer();
 	const { data: live } = usePlayer();
@@ -212,10 +212,6 @@ export function NowPlaying({
 		!menu.isOpen &&
 		keyboardOwner === null;
 	useEscapeCapture(ownsEscape ? onDismiss : null);
-
-	useEffect(() => {
-		if (!isCompactViewport) setIsInfoOpen(false);
-	}, [isCompactViewport]);
 
 	const lyrics = useMemo(
 		() => parseLyrics(readValue(details?.row[NOW_PLAYING_FIELD.lyrics])),

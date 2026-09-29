@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
+import { useResettingState } from "@/shared/hooks/useResettingState";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
 import { Input } from "@/shared/ui/Input";
@@ -34,7 +35,7 @@ export function CommandPalette({
 	const format = useFormats();
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const [query, setQuery] = useState("");
-	const [active, setActive] = useState(0);
+	const [active, setActive] = useResettingState(0, [query]);
 
 	const { matchedViews, matchedPlaylists, results } = useMemo(() => {
 		const tokens = tokenize(query);
@@ -57,11 +58,6 @@ export function CommandPalette({
 	useEffect(() => {
 		inputRef.current?.focus();
 	}, []);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: a new query resets the cursor, not a read
-	useEffect(() => {
-		setActive(0);
-	}, [query]);
 
 	const onKeyDown = (event: ReactKeyboardEvent) => {
 		if (event.key === "ArrowDown") {

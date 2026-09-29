@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ListPlus } from "lucide-react";
 import type { FormEvent as ReactFormEvent } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import type { useScratchPlaylist } from "@/domain/library/useScratchPlaylist";
@@ -11,6 +11,7 @@ import { requireFooJean } from "@/shared/api/discovery";
 import { encodeFill } from "@/shared/api/fillEncoding";
 import { createPlaylist } from "@/shared/api/playlists";
 import { useFooJean } from "@/shared/hooks/useFooJean";
+import { useResettingState } from "@/shared/hooks/useResettingState";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
 import { Input } from "@/shared/ui/Input";
@@ -39,15 +40,11 @@ export function SavePlaylistButton({
 	const t = useTranslate();
 	const queryClient = useQueryClient();
 	const { discovery } = useFooJean();
-	const [title, setTitle] = useState(search.query);
+	const [title, setTitle] = useResettingState(search.query, [isOpen]);
 	const inputRef = useRef<HTMLInputElement | null>(null);
 
 	const { indices } = search.results;
 	const trackCount = indices.length;
-
-	useEffect(() => {
-		if (!isOpen) setTitle(search.query);
-	}, [isOpen, search.query]);
 
 	useEffect(() => {
 		if (isOpen) inputRef.current?.select();

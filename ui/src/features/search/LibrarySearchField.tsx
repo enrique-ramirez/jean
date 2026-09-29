@@ -1,12 +1,12 @@
 import { Search, X } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useEffect, useState } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import type {
 	LibrarySearch,
 	Suggestion,
 } from "@/domain/library/useLibrarySearch";
 import { useDismissable } from "@/shared/hooks/useDismissable";
+import { useResettingState } from "@/shared/hooks/useResettingState";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { Input } from "@/shared/ui/Input";
 import styles from "./LibrarySearchField.module.css";
@@ -46,7 +46,10 @@ export function LibrarySearchField({
 		close,
 		revert,
 	} = search;
-	const [active, setActive] = useState(-1);
+	const [active, setActive] = useResettingState(preselect, [
+		suggestions,
+		preselect,
+	]);
 
 	const isShowing = isOpen && hasDraft;
 	const hasOptions = isShowing && suggestions.length > 0;
@@ -58,11 +61,6 @@ export function LibrarySearchField({
 		},
 		{ onEscape: false },
 	);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: the results changing is what fires this, not anything read from them
-	useEffect(() => {
-		setActive(preselect);
-	}, [suggestions, preselect]);
 
 	// Both take the caret with them: a panel left under an open software keyboard leaves the keyboard
 	// covering whatever the panel was hiding.

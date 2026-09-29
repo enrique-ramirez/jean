@@ -7,6 +7,10 @@ import {
 	streamUrl,
 } from "@/shared/api/stream";
 import type { PlaybackState } from "@/shared/api/types";
+import {
+	readStoredState,
+	writeStoredState,
+} from "@/shared/hooks/useStoredState";
 import { translate } from "@/shared/i18n/locale";
 import { subscribers } from "@/shared/lib/store";
 import { deviceId, deviceIdentity } from "./device";
@@ -124,12 +128,7 @@ function publish() {
 }
 
 function readStoredVolume() {
-	try {
-		const stored = localStorage.getItem(VOLUME_KEY);
-		return stored === null ? 0 : (JSON.parse(stored) as number);
-	} catch {
-		return 0;
-	}
+	return readStoredState<number>(VOLUME_KEY, 0);
 }
 
 export const subscribeListening = listeners.subscribe;
@@ -207,11 +206,7 @@ function ensureElement() {
 // Opus packets in WebM. AAC has no such path, which is why the format decides too.
 function wantsLowLatency(forFormat: string) {
 	if (forFormat !== "opus" || !canUseMse() || lowLatencyFellBack) return false;
-	try {
-		return localStorage.getItem(LOW_LATENCY_KEY) !== "false";
-	} catch {
-		return false;
-	}
+	return readStoredState<boolean>(LOW_LATENCY_KEY, true);
 }
 
 // An orphan keeps its reader loop and its object URL, goes on pulling the live stream at 1x, still
@@ -556,11 +551,7 @@ export function setListeningVolume(db: number) {
 		element.volume = amplitudeOf(volumeDb);
 		element.muted = false;
 	}
-	try {
-		localStorage.setItem(VOLUME_KEY, JSON.stringify(volumeDb));
-	} catch {
-		// Private mode or quota; the level does not survive a reload.
-	}
+	writeStoredState(VOLUME_KEY, volumeDb);
 	publish();
 }
 

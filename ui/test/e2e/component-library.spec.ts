@@ -644,6 +644,38 @@ test.describe("the scratch playlist addressed by its id", () => {
 	});
 });
 
+test.describe("a playlist edit refused two ways", () => {
+	test.use({ fooJean: {} });
+
+	const ABSENT_PLAYLIST_GUID = "45837d74-fa4f-415c-bba9-bf2db8f0dc04";
+
+	test("gets the refusal the player weighs first", async ({ page, player }) => {
+		await page.goto("/#/all");
+		await expect(trackRow(page, 0)).toBeAttached();
+		const locked = player.playlists.find(
+			(entry) => !entry.isAuto && entry.items.length > 0,
+		)!;
+		player.fooJean.lockedPlaylists.add(locked.id);
+
+		const copied = await page.request.post(
+			`/api/playlists/${locked.guid}/items/copy`,
+			{
+				data: {
+					source: ABSENT_PLAYLIST_GUID,
+					runs: [[0, 1]],
+				},
+			},
+		);
+		expect(copied.status(), "a copy into it from nowhere").toBe(409);
+
+		const filled = await page.request.post(
+			`/api/playlists/${locked.guid}/items`,
+			{ data: { runs: [[0, 1]] } },
+		);
+		expect(filled.status(), "a fill into it with no structure").toBe(400);
+	});
+});
+
 test.describe("filing a library row into a playlist of your own", () => {
 	test.use({ fooJean: {} });
 

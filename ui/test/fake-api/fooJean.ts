@@ -3255,10 +3255,6 @@ export async function handleFooJean({
 		if (fake.canWritePlaylists === false)
 			return json(response, WRITES_DISABLED, 403);
 
-		const target = state.playlistByGuid(guid);
-		if (!target)
-			return json(response, { error: "no such playlist", detail: "" }, 404);
-
 		const asked = body as { source?: unknown; runs?: unknown } | null;
 		if (typeof asked?.source !== "string" || !GUID_PATTERN.test(asked.source))
 			return json(
@@ -3269,7 +3265,14 @@ export async function handleFooJean({
 				},
 				400,
 			);
+
+		const target = state.playlistByGuid(guid);
+		if (!target)
+			return json(response, { error: "no such playlist", detail: "" }, 404);
 		if (ownRoleOf(fake, target.id)) return json(response, OWN_PLAYLIST, 403);
+		if (locksAgainstAdds(fake, target) || fake.lockedPlaylists.has(target.id))
+			return json(response, PLAYLIST_LOCKED, 409);
+
 		const source = state.playlistByGuid(asked.source);
 		if (!source)
 			return json(response, { error: "no such playlist", detail: "" }, 404);
@@ -3279,9 +3282,6 @@ export async function handleFooJean({
 			source.items.length,
 		);
 		if (!selection.ok) return json(response, selection.body, selection.status);
-
-		if (locksAgainstAdds(fake, target) || fake.lockedPlaylists.has(target.id))
-			return json(response, PLAYLIST_LOCKED, 409);
 
 		const before = target.items.length;
 		state.editItems(target, () => {
@@ -3427,6 +3427,15 @@ export async function handleFooJean({
 		if (fake.canWritePlaylists === false)
 			return json(response, WRITES_DISABLED, 403);
 
+		if (!fake.canReadLibrary)
+			return json(
+				response,
+				{ error: "the media library is not available" },
+				503,
+			);
+		if (state.libraryFeed.columns.length === 0)
+			return json(response, NOT_BUILT, 503);
+
 		if (!GUID_PATTERN.test(guid))
 			return json(
 				response,
@@ -3437,14 +3446,11 @@ export async function handleFooJean({
 				400,
 			);
 
-		if (!fake.canReadLibrary)
-			return json(
-				response,
-				{ error: "the media library is not available" },
-				503,
-			);
-		if (state.libraryFeed.columns.length === 0)
-			return json(response, NOT_BUILT, 503);
+		const parsed = parseFill(body, {
+			requireTitle: false,
+			trackCount: state.libraryTracks.length,
+		});
+		if (!parsed.ok) return json(response, parsed.body, parsed.status);
 
 		const playlist = state.playlistByGuid(guid);
 		if (!playlist)
@@ -3456,12 +3462,6 @@ export async function handleFooJean({
 			fake.lockedPlaylists.has(playlist.id)
 		)
 			return json(response, PLAYLIST_LOCKED, 409);
-
-		const parsed = parseFill(body, {
-			requireTitle: false,
-			trackCount: state.libraryTracks.length,
-		});
-		if (!parsed.ok) return json(response, parsed.body, parsed.status);
 
 		if (parsed.structure !== state.libraryFeed.structure)
 			return json(response, STRUCTURE_MOVED, 409);

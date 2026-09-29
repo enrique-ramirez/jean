@@ -1,7 +1,7 @@
 import { Maximize2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { PANEL_TABS, type PanelTab } from "@/domain/track/routes";
 
+import { PANEL_TABS, type PanelTab } from "@/domain/track/routes";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import type { Phrase } from "@/shared/i18n/en";

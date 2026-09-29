@@ -1,7 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
-import type { PanelTab } from "@/domain/track/routes";
 
+import type { PanelTab } from "@/domain/track/routes";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useSwipe } from "@/shared/hooks/useSwipe";

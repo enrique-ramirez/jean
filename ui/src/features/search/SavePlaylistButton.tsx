@@ -6,11 +6,8 @@ import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import type { useScratchPlaylist } from "@/domain/library/useScratchPlaylist";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
-import {
-	createPlaylist,
-	encodeFill,
-	requireFooJean,
-} from "@/shared/api/fooJean";
+import { encodeFill } from "@/shared/api/fillEncoding";
+import { createPlaylist, requireFooJean } from "@/shared/api/fooJean";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";

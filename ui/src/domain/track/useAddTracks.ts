@@ -1,7 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlayer";
-import { removePlaylistRows, runsOf } from "@/shared/api/fooJean";
+import { runsOf } from "@/shared/api/fillEncoding";
+import { removePlaylistRows } from "@/shared/api/fooJean";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";

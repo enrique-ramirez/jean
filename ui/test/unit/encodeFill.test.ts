@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { encodeFill } from "../../src/shared/api/fooJean.ts";
+import { encodeFill } from "../../src/shared/api/fillEncoding.ts";
 import type { components } from "../../src/shared/api/fooJeanSchema";
 
 type Fill = components["schemas"]["FillPlaylistRequest"];

@@ -43,6 +43,7 @@
 		"src/domain/track/libraryColumns.ts",
 		"src/features/now-playing/nowPlayingFields.ts",
 		"src/shared/api/jlib.ts",
+		"src/shared/api/fillEncoding.ts",
 		"src/shared/api/fooJean.ts",
 		"src/shared/api/fooJeanLibrary.ts",
 		"demo/albums.ts",

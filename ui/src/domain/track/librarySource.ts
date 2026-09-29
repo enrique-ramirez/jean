@@ -1,17 +1,16 @@
 import type { QueueSource } from "@/domain/player/queue";
+import { encodeFill, runsOf } from "@/shared/api/fillEncoding";
 import type {
 	FillOwnPlaylistRequest,
 	FillPlaylistRequest,
 } from "@/shared/api/fooJean";
 import {
 	copyPlaylistRows,
-	encodeFill,
 	fillOwnPlaylist,
 	fillPlaylist,
 	libraryArtworkUrl,
 	playlistRowArtworkUrl,
 	requireFooJean,
-	runsOf,
 } from "@/shared/api/fooJean";
 import { libraryPathMatcher } from "@/shared/api/playerState";
 import type {

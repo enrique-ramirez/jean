@@ -23,7 +23,7 @@ What `foo_jean` answers, as Jean uses it, and the foobar2000 behaviour behind it
 
 `discoverFooJean()` in `discovery.ts` takes the origin straight off `window.location.origin` and asks `GET /api/capabilities`, with no credential to attach. `ui/ARCHITECTURE.md`, *The `foo_jean` security model*, has the states that call resolves to.
 
-A failure that might clear is marked `retryable`, and `shared/hooks/useFooJean.ts` widens the interval between attempts while it stays that way, so a player started after the page still turns up without a reload. The widening happens inside the query function, since react-query may consult `refetchInterval` more than once per cycle.
+An unreachable component might yet turn up, and `shared/hooks/useFooJean.ts` widens the interval between attempts while it stays that way, so a player started after the page still turns up without a reload. The widening happens inside the query function, since react-query may consult `refetchInterval` more than once per cycle.
 
 ## Types
 

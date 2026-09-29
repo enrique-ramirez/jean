@@ -34,14 +34,12 @@ export interface ListenTarget {
 }
 
 export interface Listener {
-	kind: "none" | "agent";
 	canListen: boolean;
 	formats: string[];
 	target: ListenTarget | null;
 }
 
 export const NO_LISTENER: Listener = {
-	kind: "none",
 	canListen: false,
 	formats: [],
 	target: null,
@@ -56,7 +54,6 @@ export function resolveListener({ state, origin }: FooJeanDiscovery): Listener {
 	if (formats.length === 0) return NO_LISTENER;
 
 	return {
-		kind: "agent",
 		canListen: true,
 		formats,
 		target: { origin, formats },

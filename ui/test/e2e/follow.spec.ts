@@ -126,7 +126,7 @@ test.describe("following playback", () => {
 		expect(await isRowOnScreen(page, FAR.index)).toBe(false);
 
 		// Driven on the player rather than through the UI: nothing is clicked here,
-		// so the only thing that can move the view is the SSE push.
+		// so the only thing that can move the view is the next poll.
 		player.playItem("p7", FAR.index);
 
 		await expect.poll(() => isRowOnScreen(page, FAR.index)).toBe(true);

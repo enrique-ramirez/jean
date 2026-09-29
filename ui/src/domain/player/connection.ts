@@ -83,4 +83,4 @@ export function notePlayerAnswering(answering: boolean, askedAt: number) {
 }
 
 export const useConnection = () =>
-	useSyncExternalStore(listeners.subscribe, current, current);
+	useSyncExternalStore(listeners.subscribe, current);

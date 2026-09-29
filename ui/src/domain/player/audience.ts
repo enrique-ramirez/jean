@@ -86,7 +86,7 @@ export function useAudience(watching: Watching): Audience {
 		() => (watching === "off" ? undefined : watch(watching)),
 		[watching],
 	);
-	return useSyncExternalStore(store.subscribe, read, read);
+	return useSyncExternalStore(store.subscribe, read);
 }
 
 export interface LabelledListener extends StreamListener {

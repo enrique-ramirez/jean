@@ -54,7 +54,7 @@ const libraryGuid = (player: FakePlayer) =>
 				.toEqual({ id: libraryGuid(player), index: THIRD_TRACK.index });
 
 			// Nothing below is written by the click: the app learns it played from
-			// the SSE snapshot the fake pushes afterwards.
+			// the state the next poll reads afterwards.
 			await expect(statusBar(page)).toContainText(THIRD_TRACK.title);
 			await expect(statusBar(page)).toContainText(THIRD_TRACK.artist);
 			await expect(

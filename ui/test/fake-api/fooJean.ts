@@ -2359,7 +2359,7 @@ async function handleLibrary({
 	return json(response, { error: "not found" }, 404);
 }
 
-export async function handleAgent({
+export async function handleFooJean({
 	state,
 	method,
 	url,

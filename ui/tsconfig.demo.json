@@ -12,8 +12,8 @@
 		"tsBuildInfoFile": "./node_modules/.tmp/tsconfig.demo.tsbuildinfo"
 	},
 	// The app, because the demo mounts it, and the *portable* half of the fake --
-	// the half with no node in it. `server.ts`, `agentServer.ts` and `capture.ts`
-	// are deliberately absent: if one of them is ever imported from here, this is
+	// the half with no node in it. `server.ts` and `capture.ts` are deliberately
+	// absent: if one of them is ever imported from here, this is
 	// where it should fail.
 	"include": [
 		"demo",

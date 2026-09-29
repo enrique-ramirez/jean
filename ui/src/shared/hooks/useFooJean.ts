@@ -8,7 +8,6 @@ const KEY = "fooJean";
 const UNCHECKED: FooJeanDiscovery = {
 	state: { kind: "unreachable" },
 	origin: null,
-	retryable: false,
 };
 
 const MIN_RETRY_MS = 500;
@@ -17,7 +16,7 @@ const MAX_RETRY_MS = 60_000;
 let retryMs = MIN_RETRY_MS;
 
 const isRetryable = (discovery: FooJeanDiscovery | undefined) =>
-	discovery?.retryable ?? false;
+	discovery?.state.kind === "unreachable";
 
 export function useFooJean() {
 	const queryClient = useQueryClient();
@@ -28,7 +27,7 @@ export function useFooJean() {
 		// once per cycle.
 		queryFn: async () => {
 			const discovery = await discoverFooJean();
-			retryMs = discovery.retryable
+			retryMs = isRetryable(discovery)
 				? Math.min(retryMs * 2, MAX_RETRY_MS)
 				: MIN_RETRY_MS;
 			return discovery;

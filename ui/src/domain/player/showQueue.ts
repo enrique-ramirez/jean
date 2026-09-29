@@ -1,7 +1,7 @@
 import { createAsk } from "@/shared/lib/ask";
 
-export const {
-	ask: askToShowQueue,
-	answered: queueShown,
-	useAsked: useShowQueueAsked,
-} = createAsk();
+const show = createAsk<true>();
+
+export const askToShowQueue = () => show.ask(true);
+
+export const { answered: queueShown, useAsked: useShowQueueAsked } = show;

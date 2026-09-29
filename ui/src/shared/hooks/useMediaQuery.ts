@@ -23,7 +23,7 @@ const storeFor = (query: string): QueryStore => {
 
 export function useMediaQuery(query: string): boolean {
 	const store = storeFor(query);
-	return useSyncExternalStore(store.subscribe, store.matches, () => false);
+	return useSyncExternalStore(store.subscribe, store.matches);
 }
 
 export const useIsCompactViewport = () => useMediaQuery("(max-width: 860px)");

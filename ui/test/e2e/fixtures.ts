@@ -10,11 +10,11 @@ import type {
 	Route,
 } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
-import { createServer, type FakeServer } from "../fake-api/agentServer.ts";
 import {
 	COMPONENT_RATE_LIMITS,
 	type FooJeanOptions,
 } from "../fake-api/fooJean.ts";
+import { createServer, type FakeServer } from "../fake-api/server.ts";
 import {
 	createState,
 	DEFAULT_PLAYLISTS,

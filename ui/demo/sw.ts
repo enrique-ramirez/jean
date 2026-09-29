@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import { handleAgent } from "../test/fake-api/fooJean.ts";
+import { handleFooJean } from "../test/fake-api/fooJean.ts";
 import type { RequestHeaders } from "../test/fake-api/http.ts";
 import type { ArtworkServer } from "../test/fake-api/routes.ts";
 import { createState } from "../test/fake-api/state.ts";
@@ -108,7 +108,7 @@ const dispatch = async (
 	url: URL,
 ) => {
 	const { response } = answer();
-	await handleAgent({
+	await handleFooJean({
 		state: player,
 		method: entry.method,
 		url,
@@ -159,7 +159,7 @@ async function serve(request: Request, url: URL): Promise<Response> {
 
 	const { response, ready } = answer();
 
-	await handleAgent({
+	await handleFooJean({
 		state: player,
 		method,
 		url,

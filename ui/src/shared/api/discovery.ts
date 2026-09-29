@@ -14,7 +14,6 @@ export type FooJeanState =
 export interface FooJeanDiscovery {
 	state: FooJeanState;
 	origin: string | null;
-	retryable: boolean;
 }
 
 export const libraryOrigin = (discovery: FooJeanDiscovery) =>
@@ -53,12 +52,10 @@ export async function discoverFooJean(): Promise<FooJeanDiscovery> {
 	const origin = window.location.origin;
 
 	const capabilities = await fetchCapabilities(origin);
-	if (!capabilities.ok)
-		return { state: { kind: "unreachable" }, origin, retryable: true };
+	if (!capabilities.ok) return { state: { kind: "unreachable" }, origin };
 
 	return {
 		state: { kind: "ready", capabilities: capabilities.value },
 		origin,
-		retryable: false,
 	};
 }

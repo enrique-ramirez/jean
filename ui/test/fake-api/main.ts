@@ -1,4 +1,4 @@
-import { createServer } from "./agentServer.ts";
+import { createServer } from "./server.ts";
 import { createState } from "./state.ts";
 
 const args = process.argv.slice(2);

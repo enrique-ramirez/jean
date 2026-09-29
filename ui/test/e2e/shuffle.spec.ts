@@ -44,7 +44,7 @@ const headerShuffle = (page: Page) =>
 
 // One switch in one of two places: the status bar on a desktop, the now-playing
 // screen on a phone. Chosen by the viewport rather than by counting what has
-// rendered -- the desktop transport arrives with the first SSE snapshot, and a
+// rendered -- the desktop transport arrives with the first poll, and a
 // count taken before it lands reads zero and quietly sends the whole test to
 // the other surface.
 const modeShuffle = async (page: Page, isMobile: boolean) => {

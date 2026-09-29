@@ -57,7 +57,7 @@ const publish = (next: DragState) => {
 const snapshot = () => state;
 
 export const useDragState = () =>
-	useSyncExternalStore(listeners.subscribe, snapshot, snapshot);
+	useSyncExternalStore(listeners.subscribe, snapshot);
 
 export const setGhostElement = (element: HTMLElement | null) => {
 	ghostElement = element;

@@ -70,4 +70,4 @@ export function pushToast({
 const snapshot = () => toasts;
 
 export const useToasts = () =>
-	useSyncExternalStore(listeners.subscribe, snapshot, snapshot);
+	useSyncExternalStore(listeners.subscribe, snapshot);

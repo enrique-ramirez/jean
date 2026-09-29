@@ -119,8 +119,8 @@ A fact the player may spell two ways gets an *alternative* rather than a branch,
 
 | Seam | Interface | Implementations |
 |---|---|---|
-| `src/domain/track/tagWriter.ts` | `{ kind, canWrite, allowedFields, allows, write, read }` | `NO_WRITER`, `agentWriter` |
-| `src/domain/player/listener.ts` | `{ kind, canListen, formats, target }` | `NO_LISTENER`, the agent listener |
+| `src/domain/track/tagWriter.ts` | `{ canWrite, allowedFields, allows, write, read }` | `NO_WRITER`, `fooJeanWriter` |
+| `src/domain/player/listener.ts` | `{ canListen, formats, target }` | `NO_LISTENER`, the one `resolveListener` builds |
 
 Both answer rather than throw. `NO_WRITER.write` resolves to a refusal carrying a message, so a caller renders the same failure path whether writing is switched off at the player, the component is unreachable, or the write was declined.
 

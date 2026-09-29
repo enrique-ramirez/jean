@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { after, before, beforeEach, test } from "node:test";
 
-import { createFooJeanServer } from "../fake-api/agentServer.ts";
+import { createFooJeanServer } from "../fake-api/server.ts";
 import { createState } from "../fake-api/state.ts";
 
 const PLAYING_AT_SECONDS = 30;

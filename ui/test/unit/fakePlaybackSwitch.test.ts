@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 
-import { createServer } from "../fake-api/agentServer.ts";
+import { createServer } from "../fake-api/server.ts";
 import { createState } from "../fake-api/state.ts";
 
 // Word for word what `describe()` in the component's `core/playlists.cpp` answers.

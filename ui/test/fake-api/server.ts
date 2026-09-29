@@ -5,7 +5,7 @@ import { createServer as createHttpServer } from "node:http";
 import { dirname, extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { handleAgent } from "./fooJean.ts";
+import { handleFooJean } from "./fooJean.ts";
 import { empty, MIME } from "./http.ts";
 import { type ArtworkServer, handleControl } from "./routes.ts";
 import { createState } from "./state.ts";
@@ -74,8 +74,6 @@ const serveArtwork: ArtworkServer = (
 	return true;
 };
 
-// The component's own API, on its own server: used directly by a unit test that has no need of
-// the static build or the `/__control/` routes the suite's `createServer` below also answers.
 export function createFooJeanServer(
 	current: () => FakeState,
 	artwork: ArtworkServer,
@@ -87,7 +85,7 @@ export function createFooJeanServer(
 		const { body, bytes } =
 			method === "POST" ? await readBody(request) : NO_BODY;
 
-		await handleAgent({
+		await handleFooJean({
 			state,
 			method,
 			url,
@@ -130,8 +128,6 @@ function serveFile(file: string, response: ServerResponse) {
 	return true;
 }
 
-// The suite's one server: Jean's build, `/api/` and `/__control/`, on one port, the way
-// `foo_jean` itself answers all three.
 export function createServer({
 	state = createState(),
 	serveDir = null,
@@ -157,7 +153,7 @@ export function createServer({
 			}
 			const { body, bytes } =
 				method === "POST" ? await readBody(request) : NO_BODY;
-			await handleAgent({
+			await handleFooJean({
 				state,
 				method,
 				url,

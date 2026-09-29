@@ -13,7 +13,6 @@ import {
 	disconnect,
 	isListening,
 	type ListenPhase,
-	listeningServerSnapshot,
 	listeningSnapshot,
 	resume,
 	retry,
@@ -41,11 +40,7 @@ export function useListener() {
 		configureListening(target);
 	}, [target]);
 
-	const live = useSyncExternalStore(
-		subscribeListening,
-		listeningSnapshot,
-		listeningServerSnapshot,
-	);
+	const live = useSyncExternalStore(subscribeListening, listeningSnapshot);
 
 	const isOn = isListening(live.phase);
 

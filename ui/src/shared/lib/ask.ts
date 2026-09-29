@@ -1,24 +1,21 @@
 import { useSyncExternalStore } from "react";
 import { subscribers } from "./store";
 
-export function createAsk() {
+export function createAsk<T>() {
 	const listeners = subscribers();
-	let asked = false;
-
-	const set = (next: boolean) => {
-		if (asked === next) return;
-		asked = next;
-		listeners.notify();
-	};
+	let asked: T | null = null;
+	const read = () => asked;
 
 	return {
-		ask: () => set(true),
-		answered: () => set(false),
-		useAsked: () =>
-			useSyncExternalStore(
-				listeners.subscribe,
-				() => asked,
-				() => asked,
-			),
+		ask: (value: T) => {
+			asked = value;
+			listeners.notify();
+		},
+		answered: () => {
+			if (asked === null) return;
+			asked = null;
+			listeners.notify();
+		},
+		useAsked: () => useSyncExternalStore(listeners.subscribe, read),
 	};
 }

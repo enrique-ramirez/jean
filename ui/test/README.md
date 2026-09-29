@@ -47,7 +47,7 @@ pnpm build && node test/fake-api/main.ts --serve dist   # page and API together,
 
 ### The routes run in two places
 
-`routes.ts` and `fooJean.ts`'s `handleAgent` have no host in them, and neither does `state.ts`, and there is no `node:` import in any of the three. `agentServer.ts` gives them a node socket for the suite; `demo/sw.ts` gives the same tables a `fetch` event. The seam is `Responder` in `http.ts`: `writeHead`, `setHeader`, `write`, `end` and `on("close")`, plus an optional readonly `writableEnded`. `ServerResponse` satisfies all of it as it stands, and the last two are what SSE and the audio pump stop on when a client leaves.
+`routes.ts` and `fooJean.ts`'s `handleFooJean` have no host in them, and neither does `state.ts`, and there is no `node:` import in any of the three. `server.ts` gives them a node socket for the suite; `demo/sw.ts` gives the same tables a `fetch` event. The seam is `Responder` in `http.ts`: `writeHead`, `setHeader`, `write`, `end` and `on("close")`, plus an optional readonly `writableEnded`. `ServerResponse` satisfies all of it as it stands, and the last two are what the audio pump stops on when a client leaves.
 
 Two consequences before adding a route. **Anything reaching for a socket, a file or a `Buffer` belongs in the host files**, not the route tables; the artwork routes are the worked example and take a function instead of a path. And **fixtures are imported rather than read off disk**, since one of the two hosts has no filesystem.
 
@@ -140,7 +140,7 @@ The routes model the declaration the contract describes rather than answering fr
 
 **There is one play queue**, since the player has only one. An entry is a track with the playlist row it was queued from, and a track queued by handle has no row at all: `player.queueInsert([{ playlistId: null, track }])` is the desktop queueing one, which the component's read can only report as `-1`. `player.queueRevision` moves when the contents, the order or a queued row's position moves, and never otherwise, and it carries the player's own version with it so `GET /api/state`'s validator moves too.
 
-**Playback and volume are driven and read through the one host.** `fooJean.ts`'s `handleAgent` answers `POST /api/playback/play-pause`, `/next`, `/previous`, `/stop`, `/seek` and `/mode`, plus `POST /api/volume`, by calling the same state methods a desktop press would: `playPause`, `next`, `previous`, `stop`, `patchPlayer` and `nudgeVolume`; `GET /api/state` reads `state.player` back.
+**Playback and volume are driven and read through the one host.** `fooJean.ts`'s `handleFooJean` answers `POST /api/playback/play-pause`, `/next`, `/previous`, `/stop`, `/seek` and `/mode`, plus `POST /api/volume`, by calling the same state methods a desktop press would: `playPause`, `next`, `previous`, `stop`, `patchPlayer` and `nudgeVolume`; `GET /api/state` reads `state.player` back.
 
 ### What the fake gets wrong on purpose
 

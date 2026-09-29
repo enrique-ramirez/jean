@@ -20,8 +20,4 @@ export function useKeyboardOwnership(id: string) {
 }
 
 export const useKeyboardOwner = () =>
-	useSyncExternalStore(
-		listeners.subscribe,
-		() => owner,
-		() => null,
-	);
+	useSyncExternalStore(listeners.subscribe, () => owner);

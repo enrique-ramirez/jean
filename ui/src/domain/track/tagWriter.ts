@@ -1,9 +1,5 @@
 import { FooJeanFailed } from "@/shared/api/client";
-import {
-	discoverFooJean,
-	type FooJeanDiscovery,
-	type FooJeanState,
-} from "@/shared/api/discovery";
+import type { FooJeanDiscovery, FooJeanState } from "@/shared/api/discovery";
 import { fetchPlaylistRows } from "@/shared/api/playlists";
 import { type WriteResult, writeTags } from "@/shared/api/tags";
 import { fetchLibraryTrack } from "@/shared/api/tracks";
@@ -11,9 +7,7 @@ import type { TrackAddress } from "@/shared/api/types";
 import { translate } from "@/shared/i18n/locale";
 import { UNRESOLVED } from "./libraryColumns";
 
-// Nothing outside this file may ask which implementation it is holding.
 export interface TagWriter {
-	kind: "none" | "agent";
 	canWrite: boolean;
 	// Compared case-insensitively, so callers ask `allows()` rather than reading this directly.
 	allowedFields: string[];
@@ -26,7 +20,6 @@ export interface TagWriter {
 }
 
 export const NO_WRITER: TagWriter = {
-	kind: "none",
 	canWrite: false,
 	allowedFields: [],
 	allows: () => false,
@@ -56,11 +49,10 @@ const addressFields = (address: TrackAddress) => {
 	};
 };
 
-const agentWriter = (origin: string, allowedFields: string[]): TagWriter => {
+const fooJeanWriter = (origin: string, allowedFields: string[]): TagWriter => {
 	const allowed = new Set(allowedFields.map((field) => field.toLowerCase()));
 
 	return {
-		kind: "agent",
 		canWrite: allowed.size > 0,
 		allowedFields,
 		allows: (field) => allowed.has(field.toLowerCase()),
@@ -99,7 +91,6 @@ export const withoutField = (writer: TagWriter, field: string): TagWriter => {
 		(name) => name.toLowerCase() !== field.toLowerCase(),
 	);
 	if (remaining.length === writer.allowedFields.length) return writer;
-	if (writer.kind !== "agent") return writer;
 
 	const allowed = new Set(remaining.map((name) => name.toLowerCase()));
 	return {
@@ -124,9 +115,6 @@ export function tagWriterOf({
 	if (state.kind !== "ready" || !origin) return { state, writer: NO_WRITER };
 	return {
 		state,
-		writer: agentWriter(origin, state.capabilities.allowedFields),
+		writer: fooJeanWriter(origin, state.capabilities.allowedFields),
 	};
 }
-
-export const resolveTagWriter = async () =>
-	tagWriterOf(await discoverFooJean());

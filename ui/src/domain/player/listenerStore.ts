@@ -134,7 +134,6 @@ function readStoredVolume() {
 
 export const subscribeListening = listeners.subscribe;
 export const listeningSnapshot = () => snapshot;
-export const listeningServerSnapshot = () => snapshot;
 
 export const notePlaybackState = (state: PlaybackState) => {
 	knownPlaybackState = state;
@@ -572,7 +571,6 @@ export function toggleListeningMute() {
 	publish();
 }
 
-export const listeningVolumeFloor = DEVICE_VOLUME_FLOOR_DB;
 export { decibelsOf };
 
 export const listenTarget = () => target;

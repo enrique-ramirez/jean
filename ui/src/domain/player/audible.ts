@@ -5,7 +5,6 @@ import type { PlayerSnapshot } from "@/shared/api/types";
 import { samePlayerPath } from "./listener";
 import {
 	beginSeek,
-	listeningServerSnapshot,
 	listeningSnapshot,
 	subscribeListening,
 } from "./listenerStore";
@@ -49,7 +48,6 @@ export function useAudibleSnapshot(live: PlayerSnapshot | null | undefined) {
 	const audiblePath = useSyncExternalStore(
 		subscribeListening,
 		() => listeningSnapshot().audiblePath,
-		() => listeningServerSnapshot().audiblePath,
 	);
 
 	return useMemo(() => {

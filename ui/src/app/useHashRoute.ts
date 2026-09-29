@@ -15,11 +15,7 @@ export function useHashRoute(): [
 	string,
 	(next: string, options?: { replace?: boolean }) => void,
 ] {
-	const hash = useSyncExternalStore(
-		subscribe,
-		() => window.location.hash,
-		() => "",
-	);
+	const hash = useSyncExternalStore(subscribe, () => window.location.hash);
 
 	const navigate = useCallback(
 		(next: string, options?: { replace?: boolean }) => {

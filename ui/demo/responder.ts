@@ -1,7 +1,7 @@
 import type { Responder } from "../test/fake-api/http.ts";
 
-// The `Response` resolves at `writeHead` rather than at `end`: the update stream
-// is answered and then written to for as long as the page is open.
+// The `Response` resolves at `writeHead` rather than at `end`: the audio stream
+// is answered and then written to for as long as it plays.
 export interface Answer {
 	response: Responder;
 	// A route that answers nothing never settles this, which is what
@@ -35,7 +35,7 @@ export function answer(): Answer {
 			queued = [];
 			if (ended) controller.close();
 		},
-		// The page navigated away, or the `EventSource` was closed. Node calls this
+		// The page navigated away, or the element stopped reading. Node calls this
 		// "close" and so does everything subscribed to it.
 		cancel() {
 			ended = true;

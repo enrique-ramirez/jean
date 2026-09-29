@@ -1,25 +1,11 @@
-import { useSyncExternalStore } from "react";
-import { subscribers } from "@/shared/lib/store";
+import { createAsk } from "@/shared/lib/ask";
 
 interface Jump {
 	animate: boolean;
 }
 
-const listeners = subscribers();
-let asked: Jump | null = null;
+const jump = createAsk<Jump>();
 
-export function askToJump(jump: Jump = { animate: false }) {
-	asked = jump;
-	listeners.notify();
-}
+export const askToJump = (asked: Jump = { animate: false }) => jump.ask(asked);
 
-export function jumpAnswered() {
-	if (asked === null) return;
-	asked = null;
-	listeners.notify();
-}
-
-const read = () => asked;
-
-export const useJumpAsked = () =>
-	useSyncExternalStore(listeners.subscribe, read, read);
+export const { answered: jumpAnswered, useAsked: useJumpAsked } = jump;

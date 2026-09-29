@@ -57,6 +57,7 @@
 		"demo/albums.ts",
 		"demo/library.ts",
 		"src/app/routes.ts",
+		"src/app/surfaces.ts",
 		"src/app/useMediaSession.ts",
 		"src/domain/library/genreQuery.ts",
 		"src/domain/library/libraryStatus.ts",

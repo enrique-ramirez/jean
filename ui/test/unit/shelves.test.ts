@@ -119,7 +119,10 @@ const SAVED_IDS = ["recent", "top", "rated", "loved", "upgrade", "unopened"];
 
 test("every shelf id a user may have saved still opens that shelf", () => {
 	assert.deepEqual(
-		SAVED_IDS.map((id) => resolveRoute(`shelf/${id}`).shelf?.id ?? null),
+		SAVED_IDS.map((id) => {
+			const view = resolveRoute(`shelf/${id}`);
+			return view.kind === "shelf" ? view.shelf.id : null;
+		}),
 		SAVED_IDS,
 	);
 });

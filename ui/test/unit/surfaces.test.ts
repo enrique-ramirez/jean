@@ -4,6 +4,8 @@ import { dirname, join, relative } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { SURFACES } from "../../src/app/surfaces.ts";
+
 // What the app draws over itself. Each is a decision about what a user can
 // link to, reload onto and reach from every input, so a new one is made on
 // purpose rather than arriving with a feature.
@@ -24,8 +26,8 @@ const source = filesUnder(SRC, /\.(tsx?|css)$/);
 // survives a reload, and Back means something. A place is a route, the way now
 // playing is. What opens from state alone cannot be linked to or reloaded onto,
 // which is right for a drawer opened over your work and shut, and wrong for
-// anything something else needs to point at. These are the ones that exist; a
-// fifth kind of surface that anything points at is a route instead.
+// anything something else needs to point at. These are the modals that exist,
+// and `SURFACES` the rest; a new one that anything points at is a route instead.
 const MODAL_WITHOUT_ROUTE = [
 	"src/app/CommandPalette.tsx",
 	"src/features/settings/SettingsDialog.tsx",
@@ -33,15 +35,15 @@ const MODAL_WITHOUT_ROUTE = [
 	"src/shared/ui/ActionMenu.tsx",
 ];
 
-const PANEL_WITHOUT_ROUTE = [
-	"isPaletteOpen",
-	"isQueueDocked",
-	"isQueueDrawerOpen",
-	"isSearchOpen",
-	"isSettingsOpen",
-	"isSheetOpen",
-	"isSidebarOpen",
-];
+const DECLARED = {
+	sidebar: "panel",
+	queue: "panel",
+	search: "bar",
+	palette: "modal",
+	shortcuts: "modal",
+	settings: "modal",
+	nowPlaying: "route",
+};
 
 test("nothing opens over the app without a route unless it is one of the known surfaces", () => {
 	const modal = source
@@ -49,13 +51,12 @@ test("nothing opens over the app without a route unless it is one of the known s
 		.map((file) => relative(UI, file))
 		.sort();
 
-	const shell = readFileSync(join(SRC, "app/App.tsx"), "utf8");
-	const panels = [...shell.matchAll(/const \[(is\w+(?:Open|Docked)),/g)].map(
-		(match) => match[1],
+	const declared = Object.fromEntries(
+		Object.entries(SURFACES).map(([name, surface]) => [name, surface.kind]),
 	);
 
 	assert.deepEqual(modal, MODAL_WITHOUT_ROUTE);
-	assert.deepEqual(panels.sort(), PANEL_WITHOUT_ROUTE);
+	assert.deepEqual(declared, DECLARED);
 });
 
 // Blanks out a comment's characters while keeping every newline, so a match

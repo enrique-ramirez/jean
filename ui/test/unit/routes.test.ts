@@ -10,62 +10,60 @@ import {
 } from "../../src/domain/track/routes.ts";
 
 test("an empty route and home are both the home screen", () => {
-	for (const route of ["", "home"]) {
-		const resolved = resolveRoute(route);
-		assert.equal(resolved.isHome, true, route);
-		assert.equal(resolved.isLibrary, true, route);
-	}
+	for (const route of ["", "home"])
+		assert.equal(resolveRoute(route).kind, "home", route);
 });
 
 test("each fixed route names only itself", () => {
-	assert.equal(resolveRoute("all").isAll, true);
-	assert.equal(resolveRoute("genres").isGenres, true);
-	assert.equal(resolveRoute("search").isSearch, true);
-	assert.equal(resolveRoute("all").isHome, false);
-	assert.equal(resolveRoute("genres").isSearch, false);
+	assert.equal(resolveRoute("all").kind, "all");
+	assert.equal(resolveRoute("genres").kind, "genres");
+	assert.deepEqual(resolveRoute("search"), { kind: "search", query: null });
+	assert.equal(resolveRoute("playing").kind, "playing");
 });
 
 test("a search carries its query, decoded", () => {
-	const resolved = resolveRoute(searchRoute("heavy metal"));
-	assert.equal(resolved.searchQuery, "heavy metal");
-	assert.equal(resolved.isSearch, true);
+	assert.deepEqual(resolveRoute(searchRoute("heavy metal")), {
+		kind: "search",
+		query: "heavy metal",
+	});
 });
 
 test("a genre, an album and an artist carry what they name, accents included", () => {
-	assert.equal(resolveRoute(genreRoute("Heavy Metal")).genre, "Heavy Metal");
+	assert.deepEqual(resolveRoute(genreRoute("Heavy Metal")), {
+		kind: "genre",
+		genre: "Heavy Metal",
+	});
 
 	const album = resolveRoute(albumRoute("Babasónicos", "Jessico"));
-	assert.ok(album.album);
-	assert.equal(album.album.toLowerCase(), "jessico");
-	assert.equal(album.albumArtist?.toLowerCase(), "babasónicos");
+	assert.equal(album.kind, "album");
+	assert.equal(album.kind === "album" && album.album.toLowerCase(), "jessico");
+	assert.equal(
+		album.kind === "album" && album.artist.toLowerCase(),
+		"babasónicos",
+	);
 
-	assert.equal(resolveRoute(artistRoute("Babasónicos")).artist, "Babasónicos");
+	const artist = resolveRoute(artistRoute("Babasónicos"));
+	assert.equal(artist.kind === "artist" && artist.artist, "Babasónicos");
 });
 
 test("an artist opens on the overview unless the route asks for the tracks", () => {
-	assert.equal(resolveRoute(artistRoute("Babasónicos")).artistTab, "overview");
-	assert.equal(
-		resolveRoute(artistRoute("Babasónicos", "tracks")).artistTab,
-		"tracks",
-	);
+	const tabOf = (route: string) => {
+		const view = resolveRoute(route);
+		return view.kind === "artist" ? view.tab : null;
+	};
+	assert.equal(tabOf(artistRoute("Babasónicos")), "overview");
+	assert.equal(tabOf(artistRoute("Babasónicos", "tracks")), "tracks");
 });
 
-test("a shelf resolves by its id, and an id no shelf has is not a shelf", () => {
-	assert.equal(resolveRoute("shelf/recent").shelf?.id, "recent");
-	assert.equal(resolveRoute("shelf/nope").shelf, null);
-	assert.equal(resolveRoute("shelf/nope").isLibrary, false);
+test("a shelf resolves by its id, and an id no shelf has is a playlist's route", () => {
+	const shelf = resolveRoute("shelf/recent");
+	assert.equal(shelf.kind === "shelf" && shelf.shelf.id, "recent");
+	assert.equal(resolveRoute("shelf/nope").kind, "playlist");
 });
 
 // Every route that is not one of these is a playlist's, which is how the shell
 // decides what to draw.
 test("a playlist's route is not the library's, and neither is one that does not decode", () => {
-	for (const route of ["p7", genreRoute("x").replace("x", "%E0%A4%A")]) {
-		const resolved = resolveRoute(route);
-		assert.equal(resolved.isLibrary, false, route);
-		assert.equal(resolved.genre, null, route);
-	}
-});
-
-test("the now-playing route is the library's", () => {
-	assert.equal(resolveRoute("playing").isLibrary, true);
+	for (const route of ["p7", genreRoute("x").replace("x", "%E0%A4%A")])
+		assert.deepEqual(resolveRoute(route), { kind: "playlist", id: route });
 });

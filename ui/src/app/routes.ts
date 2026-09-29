@@ -48,55 +48,48 @@ export const routeOfSuggestion = (
 			? albumRoute(suggestion.album.artistTag, suggestion.album.album)
 			: genreRoute(suggestion.genre.name);
 
-export function resolveRoute(route: string): {
-	shelf: Shelf | null;
-	searchQuery: string | null;
-	genre: string | null;
-	album: string | null;
-	albumArtist: string | null;
-	artist: string | null;
-	artistTab: ArtistTab;
-	isGenres: boolean;
-	isSearch: boolean;
-	isAll: boolean;
-	isHome: boolean;
-	isLibrary: boolean;
-} {
+export type RouteView =
+	| { kind: "home" }
+	| { kind: "all" }
+	| { kind: "genres" }
+	| { kind: "playing" }
+	| { kind: "search"; query: string | null }
+	| { kind: "shelf"; shelf: Shelf }
+	| { kind: "genre"; genre: string }
+	| { kind: "album"; artist: string; album: string }
+	| { kind: "artist"; artist: string; tab: ArtistTab }
+	| { kind: "playlist"; id: string };
+
+const FIXED: Partial<Record<string, RouteView>> = {
+	"": { kind: "home" },
+	[ROUTE.home]: { kind: "home" },
+	[ROUTE.all]: { kind: "all" },
+	[ROUTE.genres]: { kind: "genres" },
+	[ROUTE.playing]: { kind: "playing" },
+	[ROUTE.search]: { kind: "search", query: null },
+};
+
+export function resolveRoute(route: string): RouteView {
+	const fixed = FIXED[route];
+	if (fixed) return fixed;
+
+	const query = queryOfRoute(route);
+	if (query !== null) return { kind: "search", query };
+
 	const shelfId = shelfOfRoute(route);
-	const shelf = shelfId
-		? (SHELVES.find((entry) => entry.id === shelfId) ?? null)
-		: null;
+	const shelf = SHELVES.find((entry) => entry.id === shelfId);
+	if (shelf) return { kind: "shelf", shelf };
 
 	const genre = genreOfRoute(route);
-	const searchQuery = queryOfRoute(route);
-	const album = albumOfRoute(route);
-	const artist = artistOfRoute(route);
+	if (genre !== null) return { kind: "genre", genre };
 
-	return {
-		shelf,
-		searchQuery,
-		genre,
-		album: album?.album ?? null,
-		albumArtist: album?.artist ?? null,
-		artist: artist?.name ?? null,
-		artistTab: artist?.tab ?? "overview",
-		isGenres: route === ROUTE.genres,
-		isSearch: route === ROUTE.search || searchQuery !== null,
-		isAll: route === ROUTE.all,
-		isHome: route === "" || route === ROUTE.home,
-		isLibrary:
-			route === "" ||
-			route === ROUTE.home ||
-			route === ROUTE.all ||
-			route === ROUTE.genres ||
-			route === ROUTE.search ||
-			searchQuery !== null ||
-			route === ROUTE.playing ||
-			shelf !== null ||
-			genre !== null ||
-			album !== null ||
-			artist !== null,
-	};
+	const album = albumOfRoute(route);
+	if (album) return { kind: "album", ...album };
+
+	const artist = artistOfRoute(route);
+	if (artist) return { kind: "artist", artist: artist.name, tab: artist.tab };
+
+	return { kind: "playlist", id: route };
 }
 
 export function routeOfPlayingSet(

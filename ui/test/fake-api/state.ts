@@ -18,6 +18,7 @@ import {
 } from "./jlib.ts";
 import capturedLibrary from "./library.json" with { type: "json" };
 import capturedPlayer from "./player.json" with { type: "json" };
+import { compareText, pathKey } from "./playerOrder.ts";
 
 export type Track = Record<string, string>;
 
@@ -327,22 +328,8 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 export const evaluate = (track: Track, expression: string) =>
 	track[expression] ?? "?";
 
-const pathKey = (value: unknown) => String(value).replace(/\\/g, "/");
-
 const trackKey = (track: Track) =>
 	`${track["%path%"]}\u0000${Number(track["%subsong%"]) || 0}`;
-
-// foobar2000 orders paths with Windows' `StrCmpLogicalW`: a run of digits compares as a number, case
-// does not count, and an accent folds to its base letter. The fake being self-consistent is not
-// enough -- it has to agree with the player about which track sits at which position, or an ordinal
-// read here addresses a different track there.
-const likeThePlayer = new Intl.Collator("en", {
-	numeric: true,
-	sensitivity: "base",
-});
-
-export const compareText = (a: unknown, b: unknown) =>
-	likeThePlayer.compare(String(a), String(b));
 
 const byLibraryPath = (a: LibraryEntry, b: LibraryEntry) =>
 	compareText(pathKey(a.path), pathKey(b.path)) || a.subsong - b.subsong;
@@ -1237,7 +1224,7 @@ export function createState({
 					return;
 				}
 				playlist.items = [...playlist.items].sort((a, b) =>
-					compareText(pathKey(evaluate(a, by)), pathKey(evaluate(b, by))),
+					compareText(evaluate(a, by), evaluate(b, by)),
 				);
 				if (desc) playlist.items.reverse();
 			});

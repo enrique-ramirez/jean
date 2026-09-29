@@ -21,6 +21,7 @@
 		"test/fake-api/http.ts",
 		"test/fake-api/routes.ts",
 		"test/fake-api/state.ts",
+		"test/fake-api/playerOrder.ts",
 		"test/fake-api/fooJean.ts",
 		"test/fake-api/jlib.ts"
 	],

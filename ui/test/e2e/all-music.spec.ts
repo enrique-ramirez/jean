@@ -1,5 +1,5 @@
 import { en } from "../../src/shared/i18n/en.ts";
-import { compareText } from "../fake-api/state.ts";
+import { compareText, pathKey } from "../fake-api/playerOrder.ts";
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
@@ -101,7 +101,7 @@ test.describe("the order a set is played in", () => {
 		await expect.poll(() => scratchOf(player)?.items.length ?? 0).toBe(4000);
 
 		const held = scratchOf(player)!.items.map((track) =>
-			track["%path%"].replace(/\\/g, "/"),
+			pathKey(track["%path%"]),
 		);
 		expect(held).toEqual([...held].sort(compareText));
 	});

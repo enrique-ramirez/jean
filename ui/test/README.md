@@ -85,7 +85,7 @@ The library is **derived from the captured tracks rather than invented**: the ca
 
 ### Ordering
 
-**The fake's most load-bearing approximation.** foobar2000 orders paths with Windows' `StrCmpLogicalW`, so `compareText` in `state.ts` is an `Intl.Collator` with `numeric` on and `sensitivity: "base"`, and every sort in the fake goes through it. A spec asserting on order MUST use it too rather than writing a comparator of its own: a fake that is self-consistent and wrong in the same direction as its specs is a fake that ships an ordering bug.
+**The fake's most load-bearing approximation.** foobar2000 orders paths with Windows' `StrCmpLogicalW`, so `compareText` in `fake-api/playerOrder.ts` reproduces its word sort, and every sort in the fake goes through it, on paths written with `\` as the player writes them (`pathKey`). `test/unit/playerOrder.test.ts` holds it to a table captured from a player. A spec asserting on order MUST use it too rather than writing a comparator of its own: a fake that is self-consistent and wrong in the same direction as its specs is a fake that ships an ordering bug.
 
 ### The library as `foo_jean` serves it
 

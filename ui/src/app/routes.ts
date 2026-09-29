@@ -1,5 +1,5 @@
 import type { Suggestion } from "@/domain/library/useLibrarySearch";
-import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
+import { SCRATCH_KIND, type ScratchKind } from "@/domain/track/jeanPlaylists";
 import {
 	type ArtistTab,
 	albumOfRoute,
@@ -19,7 +19,7 @@ import { en, type Phrase } from "@/shared/i18n/en";
 import { translate } from "@/shared/i18n/locale";
 
 export interface PlayingSet {
-	kind: string;
+	kind: ScratchKind;
 	label: string | null;
 	name: string;
 	itemCount: number;
@@ -33,7 +33,7 @@ export interface PlayingRoute extends PlayingSet {
 
 type KindPhrase = Extract<Phrase, `route.${string}`>;
 
-export const KIND_LABEL: Record<string, KindPhrase> = {
+export const KIND_LABEL: Partial<Record<ScratchKind, KindPhrase>> = {
 	[SCRATCH_KIND.artist]: "route.artist",
 	[SCRATCH_KIND.genre]: "route.genre",
 	[SCRATCH_KIND.shelf]: "route.shelf",

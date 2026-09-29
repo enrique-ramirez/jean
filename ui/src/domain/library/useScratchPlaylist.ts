@@ -1,7 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { PLAYLISTS_KEY } from "@/domain/player/usePlaylists";
-import { isScratchPlaylist, scratchTitle } from "@/domain/track/jeanPlaylists";
+import {
+	isScratchPlaylist,
+	type ScratchKind,
+	scratchTitle,
+} from "@/domain/track/jeanPlaylists";
 import type { LibrarySource } from "@/domain/track/librarySource";
 import type { Refs } from "@/domain/track/project";
 import { orThrow } from "@/shared/api/client";
@@ -61,7 +65,7 @@ export function useScratchPlaylist({
 	const landed = landedOn(playlist, stored);
 
 	const holdsView = useCallback(
-		(kind: string, label: string | null, count: number) =>
+		(kind: ScratchKind, label: string | null, count: number) =>
 			playlist !== null &&
 			landed?.title === scratchTitle(kind, label) &&
 			playlist.itemCount === count,
@@ -75,7 +79,7 @@ export function useScratchPlaylist({
 			refs,
 			source,
 		}: {
-			kind: string;
+			kind: ScratchKind;
 			label: string | null;
 			refs: Refs;
 			source: Extract<LibrarySource, { kind: "library" }>;

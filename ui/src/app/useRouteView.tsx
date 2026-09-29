@@ -3,7 +3,7 @@ import type { Library } from "@/domain/library/useLibrary";
 import { AlbumCrumb } from "@/domain/track/AlbumCrumb";
 import { albumsOf, refsOfAlbum } from "@/domain/track/albums";
 import { type ArtistTracks, refsOfArtist } from "@/domain/track/artists";
-import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
+import { SCRATCH_KIND, type ScratchKind } from "@/domain/track/jeanPlaylists";
 import {
 	EMPTY_VIEW,
 	project,
@@ -19,7 +19,7 @@ import type { RouteView } from "./routes";
 
 export interface ListPage {
 	view: TrackView;
-	kind: string;
+	kind: ScratchKind;
 	label: string;
 	eyebrow: ReactNode;
 	title: string;

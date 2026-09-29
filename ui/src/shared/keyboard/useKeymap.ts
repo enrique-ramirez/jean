@@ -2,13 +2,13 @@ import { useHotkeys } from "@tanstack/react-hotkeys";
 import { useMemo, useRef } from "react";
 
 import { useKeyboardOwner } from "./keyboardOwner";
-import { KEYMAP } from "./keymap";
+import { type BindingIdIn, KEYMAP, type Scope } from "./keymap";
 
 type HotkeyHandler = (event: KeyboardEvent, context: unknown) => void;
 
-export function useKeymap(
-	scope: string,
-	handlers: Record<string, HotkeyHandler | undefined>,
+export function useKeymap<S extends Scope>(
+	scope: S,
+	handlers: Partial<Record<BindingIdIn<S>, HotkeyHandler>>,
 	{ enabled = true, owner }: { enabled?: boolean; owner?: string } = {},
 ) {
 	const handlersRef = useRef(handlers);
@@ -28,7 +28,9 @@ export function useKeymap(
 			binding.keys.map((hotkey) => ({
 				hotkey,
 				callback: (event: KeyboardEvent, context: unknown) =>
-					handlersRef.current[binding.id]?.(event, context),
+					(handlersRef.current as Record<string, HotkeyHandler | undefined>)[
+						binding.id
+					]?.(event, context),
 				options: {
 					...binding.options,
 					enabled: live,

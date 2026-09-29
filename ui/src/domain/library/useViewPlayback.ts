@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import type { ScratchKind } from "@/domain/track/jeanPlaylists";
 import type { Refs } from "@/domain/track/project";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useActivePosition } from "./useActivePosition";
@@ -14,7 +15,7 @@ export function useViewPlayback({
 }: {
 	library: Library;
 	playlists: PlaylistInfo[];
-	kind: string;
+	kind: ScratchKind;
 	label: string | null;
 	indices: Refs;
 }): {

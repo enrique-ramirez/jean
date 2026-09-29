@@ -6,7 +6,7 @@ import type { PlayerSnapshot } from "@/shared/api/types";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import type { Phrase } from "@/shared/i18n/en";
 import { useTranslate } from "@/shared/i18n/useTranslate";
-import { SCOPE } from "@/shared/keyboard/keymap";
+import { type BindingId, SCOPE } from "@/shared/keyboard/keymap";
 import { mnemonicOf } from "@/shared/keyboard/mnemonic";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Tabs } from "@/shared/ui/Tabs";
@@ -21,7 +21,7 @@ import { usePanelScroll } from "./usePanelScroll";
 
 type PanelPhrase = Extract<Phrase, `panel.${string}`>;
 
-const TABS: { id: PanelTab; label: PanelPhrase; binding: string }[] = [
+const TABS: { id: PanelTab; label: PanelPhrase; binding: BindingId }[] = [
 	{ id: "lyrics", label: "panel.lyrics", binding: "showLyrics" },
 	{ id: "details", label: "panel.details", binding: "showDetails" },
 	{ id: "artist", label: "panel.artist", binding: "showArtist" },

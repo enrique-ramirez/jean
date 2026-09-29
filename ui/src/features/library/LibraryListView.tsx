@@ -9,7 +9,7 @@ import type { Library } from "@/domain/library/useLibrary";
 import { useViewPlayback } from "@/domain/library/useViewPlayback";
 import { useIsPlaying } from "@/domain/player/usePlayer";
 import { useAvailableFields } from "@/domain/track/fieldAvailability";
-import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
+import { SCRATCH_KIND, type ScratchKind } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
 import { Mosaic } from "@/domain/track/Mosaic";
 import { PlayActions } from "@/domain/track/PlayActions";
@@ -51,7 +51,7 @@ export function LibraryListView({
 }: {
 	library: Library;
 	view: TrackView;
-	kind: string;
+	kind: ScratchKind;
 	label: string | null;
 	title: ReactNode;
 	eyebrow?: ReactNode;

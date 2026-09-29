@@ -12,17 +12,6 @@ export type ShortcutGroup = Extract<Phrase, `shortcutGroup.${string}`>;
 
 const shifted = (key: string) => `Shift+${key}` as RegisterableHotkey;
 
-export interface Binding {
-	id: string;
-	scope: string;
-	group: ShortcutGroup;
-	name: ShortcutName;
-	keys: RegisterableHotkey[];
-	shown?: string[];
-	hidden?: boolean;
-	options?: { ignoreInputs?: boolean };
-}
-
 export const SCOPE = {
 	global: "global",
 	nowPlaying: "now playing",
@@ -32,9 +21,22 @@ export const SCOPE = {
 	artist: "artist",
 	finder: "finder",
 	search: "search",
-};
+} as const;
 
-export const KEYMAP: Binding[] = [
+export type Scope = (typeof SCOPE)[keyof typeof SCOPE];
+
+export interface Binding {
+	id: string;
+	scope: Scope;
+	group: ShortcutGroup;
+	name: ShortcutName;
+	keys: readonly RegisterableHotkey[];
+	shown?: readonly string[];
+	hidden?: boolean;
+	options?: { ignoreInputs?: boolean };
+}
+
+const DECLARED = [
 	{
 		id: "playPause",
 		scope: SCOPE.global,
@@ -480,9 +482,17 @@ export const KEYMAP: Binding[] = [
 		keys: ["Escape"],
 		options: { ignoreInputs: false },
 	},
-];
+] as const satisfies readonly Binding[];
 
-export const matchesBinding = (event: KeyboardEvent, id: string) =>
+export const KEYMAP: readonly Binding[] = DECLARED;
+
+type Bound = (typeof DECLARED)[number];
+
+export type BindingId = Bound["id"];
+
+export type BindingIdIn<S extends Scope> = Extract<Bound, { scope: S }>["id"];
+
+export const matchesBinding = (event: KeyboardEvent, id: BindingId) =>
 	KEYMAP.find((binding) => binding.id === id)?.keys.some((key) =>
 		matchesKeyboardEvent(event, key as Hotkey),
 	) ?? false;
@@ -498,7 +508,7 @@ export const bindingsIn = (group: ShortcutGroup) =>
 
 // What to print on a keycap drawn beside the thing a binding opens, so a hint cannot come to
 // advertise a key the keymap no longer answers to.
-export function hintFor(id: string): string | null {
+export function hintFor(id: BindingId): string | null {
 	const binding = KEYMAP.find((entry) => entry.id === id);
 	if (!binding) return null;
 	return binding.shown?.[0] ?? formatForDisplay(binding.keys[0]);

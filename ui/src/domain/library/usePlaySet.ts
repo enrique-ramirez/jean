@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { reportPlaybackRefusal } from "@/domain/player/playerWrite";
 import { usePlayItem } from "@/domain/player/useTransport";
+import type { ScratchKind } from "@/domain/track/jeanPlaylists";
 import type { Refs } from "@/domain/track/project";
 import { isFooJeanReady, permitsPlaybackControl } from "@/shared/api/discovery";
 import type { PlaylistInfo } from "@/shared/api/types";
@@ -31,7 +32,7 @@ export function usePlaySet({
 			refs,
 			position,
 		}: {
-			kind: string;
+			kind: ScratchKind;
 			label: string | null;
 			refs: Refs;
 			position: number;

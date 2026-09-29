@@ -35,7 +35,28 @@
 			},
 			"style": {
 				"noNonNullAssertion": "off",
-				"useNamingConvention": "off"
+				"useNamingConvention": {
+					"level": "error",
+					"options": {
+						"strictCase": false,
+						"requireAscii": false,
+						"conventions": [
+							{
+								"selector": { "kind": "const" },
+								"formats": ["camelCase", "PascalCase", "CONSTANT_CASE"]
+							},
+							{
+								"selector": { "kind": "objectLiteralProperty" },
+								"match": ".*"
+							},
+							{
+								"selector": { "kind": "typeProperty" },
+								"match": ".*"
+							}
+						]
+					}
+				},
+				"noParameterAssign": "error"
 			},
 			"suspicious": {
 				"noConsole": {

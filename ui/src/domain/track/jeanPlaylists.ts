@@ -15,8 +15,15 @@ export const SCRATCH_KIND = {
 	all: "all music",
 } as const;
 
+export type ScratchKind = (typeof SCRATCH_KIND)[keyof typeof SCRATCH_KIND];
+
+const SCRATCH_KINDS: ReadonlySet<string> = new Set(Object.values(SCRATCH_KIND));
+
+const isScratchKind = (kind: string): kind is ScratchKind =>
+	SCRATCH_KINDS.has(kind);
+
 export interface ScratchContents {
-	kind: string;
+	kind: ScratchKind;
 	label: string;
 }
 
@@ -26,15 +33,13 @@ export const scratchName = (
 ) =>
 	held?.kind === SCRATCH_KIND.all ? t("library.allMusic") : held?.label || null;
 
-export const scratchTitle = (kind: string, label?: string | null) =>
+export const scratchTitle = (kind: ScratchKind, label?: string | null) =>
 	`${SCRATCH_PREFIX}${label ? `${kind}: ${label}` : kind}${SCRATCH_SUFFIX}`;
 
 export const isScratchPlaylist = (
 	playlist: PlaylistInfo | null | undefined,
 ): playlist is PlaylistInfo => playlist != null && playlist.role === "scratch";
 
-// Assumes the caller has already found the scratch by role: this only decodes what a fill wrote into
-// the title, and does not check `role` itself.
 export function scratchContentsOf(
 	playlist: PlaylistInfo | null | undefined,
 ): ScratchContents | null {
@@ -43,9 +48,9 @@ export function scratchContentsOf(
 		return null;
 	const body = title.slice(SCRATCH_PREFIX.length, -SCRATCH_SUFFIX.length);
 	const at = body.indexOf(": ");
-	return at === -1
-		? { kind: body, label: "" }
-		: { kind: body.slice(0, at), label: body.slice(at + 2) };
+	const kind = at === -1 ? body : body.slice(0, at);
+	if (!isScratchKind(kind)) return null;
+	return { kind, label: at === -1 ? "" : body.slice(at + 2) };
 }
 
 export function queryOfScratchPlaylist(

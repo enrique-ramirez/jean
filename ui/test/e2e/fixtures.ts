@@ -309,14 +309,27 @@ export async function globalControls(page: Page, isCompact: boolean) {
 	return nowPlayingScreen(page);
 }
 
+export const choosePlayer = (page: Page) =>
+	statusBar(page).getByRole("button", {
+		name: /Choose where to play|Playing on this device/,
+	});
+
+export const playingOn = (page: Page) =>
+	page.getByRole("group", { name: "Playing on" });
+
+export const deviceAudio = async (page: Page) => {
+	const audio = await page.evaluate(() => {
+		const element = document.querySelector("audio");
+		return element ? { volume: element.volume, isMuted: element.muted } : null;
+	});
+	if (!audio) throw new Error("no <audio> on the page");
+	return audio;
+};
+
 // `listeningPosition` answers null until audio is rendering, so the element's
 // own clock is the only proof the stream arrived.
 export const listenHere = async (page: Page) => {
-	await statusBar(page)
-		.getByRole("button", {
-			name: /Choose where to play|Playing on this device/,
-		})
-		.click();
+	await choosePlayer(page).click();
 	await page.getByRole("button", { name: "Listen here" }).click();
 	await page.waitForFunction(
 		() => {
@@ -327,6 +340,66 @@ export const listenHere = async (page: Page) => {
 		{ timeout: 60_000 },
 	);
 };
+
+type MediaSessionHandlers = Partial<
+	Record<MediaSessionAction, MediaSessionActionHandler | null>
+>;
+
+declare global {
+	interface Window {
+		__mediaSessionHandlers?: MediaSessionHandlers;
+	}
+}
+
+// A browser's `navigator.mediaSession` has no getter for a handler, so the
+// latest one per action is kept on the page as it is set. Installed before any
+// page script runs, or the app has registered before the wrapper exists.
+export const recordMediaSessionHandlers = (page: Page) =>
+	page.addInitScript(() => {
+		const handlers: MediaSessionHandlers = {};
+		window.__mediaSessionHandlers = handlers;
+		const session = navigator.mediaSession;
+		const set = session.setActionHandler.bind(session);
+		session.setActionHandler = (action, handler) => {
+			set(action, handler);
+			handlers[action] = handler;
+		};
+	});
+
+export const MEDIA_SESSION_ACTIONS_WITH_CONTROL = [
+	"nexttrack",
+	"pause",
+	"play",
+	"previoustrack",
+	"seekbackward",
+	"seekforward",
+	"seekto",
+	"stop",
+];
+
+export const mediaSessionActions = (page: Page): Promise<string[]> =>
+	page.evaluate(() => {
+		const handlers = window.__mediaSessionHandlers;
+		if (!handlers) throw new Error("recordMediaSessionHandlers was not called");
+		return Object.entries(handlers)
+			.filter(([, handler]) => handler)
+			.map(([action]) => action)
+			.sort();
+	});
+
+export const callMediaSessionAction = (
+	page: Page,
+	action: MediaSessionAction,
+	details: Omit<MediaSessionActionDetails, "action"> = {},
+) =>
+	page.evaluate(
+		({ action, details }) => {
+			const handler = window.__mediaSessionHandlers?.[action];
+			if (!handler) throw new Error(`no media session handler for ${action}`);
+			handler({ ...details, action });
+		},
+		{ action, details },
+	);
 
 export const settingsDialog = (page: Page) =>
 	page.getByRole("dialog", { name: "Settings" });
@@ -452,6 +525,11 @@ export const refusePlaylistWrites = async (page: Page) => {
 
 export const requestsTo = (player: FakePlayer, pattern: string) =>
 	player.requests.filter((entry) => entry.path.includes(pattern));
+
+export const countPostsTo = (player: FakePlayer, route: string) =>
+	player.requests.filter(
+		(entry) => entry.method === "POST" && entry.path.split("?")[0] === route,
+	).length;
 
 const QUIET_MS = 250;
 

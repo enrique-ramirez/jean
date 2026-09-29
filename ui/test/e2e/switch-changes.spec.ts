@@ -1,11 +1,17 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
+	choosePlayer,
 	expect,
 	expectSettlesAt,
 	holdThePoll,
+	listenHere,
+	MEDIA_SESSION_ACTIONS_WITH_CONTROL,
+	mediaSessionActions,
 	openLibrary,
+	playingOn,
 	pressAndHold,
 	REASON,
+	recordMediaSessionHandlers,
 	refusePlaylistWrites,
 	searchFor,
 	statusBar,
@@ -81,6 +87,57 @@ test.describe("a switch changed at the player while Jean is open", () => {
 		await expect(control).not.toHaveAttribute("aria-disabled", "true");
 		await expect(control).not.toHaveAccessibleName(REASON);
 		await expect(statusBar(page).getByText(REASON)).toHaveCount(0);
+
+		await expectSameLoad(page);
+	});
+
+	// A capabilities read follows the flip, and a listener rebuilt from it would
+	// drop the stream, so each side also asks that this device is still listening.
+	test("turning playback control off while listening here keeps this device's fader and narrows the media session to stop and pause on the next poll, and turning it on widens it again, with no reload", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await recordMediaSessionHandlers(page);
+		await playingAtThePlayer(page, player);
+		await listenHere(page);
+		await page.keyboard.press("Escape");
+		await expect(playingOn(page)).toBeHidden();
+		await expect
+			.poll(() => mediaSessionActions(page))
+			.toEqual(MEDIA_SESSION_ACTIONS_WITH_CONTROL);
+		await markThisLoad(page);
+
+		const bar = statusBar(page);
+		const fader = bar.getByRole("slider", { name: /^Volume\b/ });
+		const expectListeningWithItsFader = async () => {
+			await expect(choosePlayer(page)).toHaveAccessibleName(
+				/Playing on this device/,
+			);
+			if (isMobile && !(await fader.isVisible()))
+				await bar.getByRole("button", { name: "Show volume" }).click();
+			await expect(fader).not.toHaveAttribute("aria-disabled", "true");
+			await expect(fader).toHaveAccessibleName("Volume on this device");
+		};
+		await expectListeningWithItsFader();
+
+		const poll = await holdThePoll(page);
+
+		await allowPlayback(page, false);
+		poll.letOneThrough();
+		await expect(playPause(page)).toHaveAttribute("aria-disabled", "true");
+		await expect
+			.poll(() => mediaSessionActions(page))
+			.toEqual(["pause", "stop"]);
+		await expectListeningWithItsFader();
+
+		await allowPlayback(page, true);
+		poll.letOneThrough();
+		await expect(playPause(page)).not.toHaveAttribute("aria-disabled", "true");
+		await expect
+			.poll(() => mediaSessionActions(page))
+			.toEqual(MEDIA_SESSION_ACTIONS_WITH_CONTROL);
+		await expectListeningWithItsFader();
 
 		await expectSameLoad(page);
 	});

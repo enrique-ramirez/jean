@@ -1,5 +1,8 @@
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
+	choosePlayer,
+	countPostsTo,
+	deviceAudio,
 	dragFrom,
 	dragTo,
 	expect,
@@ -11,6 +14,7 @@ import {
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
+	playingOn,
 	REASON,
 	refusedAsks,
 	revealSearch,
@@ -25,12 +29,6 @@ import {
 	viewHeader,
 } from "./fixtures.ts";
 import { openPanels, panelTab, TAGGED } from "./nowPlaying.ts";
-
-const volumeWrites = (player: FakePlayer) =>
-	player.requests.filter(
-		(entry) =>
-			entry.method === "POST" && entry.path.split("?")[0] === "/api/volume",
-	).length;
 
 const allowPlayback = async (page: Page, canControl: boolean) => {
 	const answered = await page.request.post("/__control/controlPlayback", {
@@ -232,20 +230,16 @@ test.describe("with playback control off at the player", () => {
 		isMobile,
 	}) => {
 		await page.goto("/");
-		await statusBar(page)
-			.getByRole("button", {
-				name: /Choose where to play|Playing on this device/,
-			})
-			.click();
-		const fader = page
-			.getByRole("group", { name: "Playing on" })
-			.getByRole("slider", { name: /^Volume on foobar2000\b/ });
+		await choosePlayer(page).click();
+		const fader = playingOn(page).getByRole("slider", {
+			name: /^Volume on foobar2000\b/,
+		});
 
 		await expectDisabledWithReason(fader);
 
 		await fader.click({ force: true });
 		if (!isMobile) await dragTo(page, fader, 0.6);
-		await expectSettlesAt(player, () => volumeWrites(player), 0);
+		await expectSettlesAt(player, () => countPostsTo(player, "/api/volume"), 0);
 	});
 
 	test("a track dragged over the open queue panel is refused with the reason, and nothing is queued", async ({
@@ -297,33 +291,12 @@ test.describe("with playback control off at the player", () => {
 test.describe("listening on this device with playback control off at the player", () => {
 	test.use({ fooJean: { canControlPlayback: false } });
 
-	const playingOn = (page: Page) =>
-		page.getByRole("group", { name: "Playing on" });
-
-	const choosePlayer = (page: Page) =>
-		statusBar(page).getByRole("button", {
-			name: /Choose where to play|Playing on this device/,
-		});
-
 	const showVolume = (scope: Locator) =>
 		scope.getByRole("button", { name: "Show volume" });
 
 	const faderIn = (scope: Locator) =>
 		scope.getByRole("slider", { name: /^Volume\b/ });
 
-	const deviceAudio = async (page: Page) => {
-		const audio = await page.evaluate(() => {
-			const element = document.querySelector("audio");
-			return element
-				? { volume: element.volume, isMuted: element.muted }
-				: null;
-		});
-		if (!audio) throw new Error("no <audio> on the page");
-		return audio;
-	};
-
-	// Answers where the requests sent after listening began start, so a case
-	// judges what it did rather than what connecting did.
 	const listeningHere = async (page: Page, player: FakePlayer) => {
 		await playingAtThePlayer(page, player);
 		await listenHere(page);
@@ -365,7 +338,6 @@ test.describe("listening on this device with playback control off at the player"
 		await page.mouse.up();
 	};
 
-	// Read off the element, since a fader drawn enabled can still drop the drag.
 	const expectTurnsThisDevice = async (
 		page: Page,
 		isMobile: boolean,
@@ -403,7 +375,7 @@ test.describe("listening on this device with playback control off at the player"
 			await expectTurnsThisDevice(page, isMobile, faderIn(screen), 0.2, 0.9);
 		}
 
-		await expectSettlesAt(player, () => volumeWrites(player), 0);
+		await expectSettlesAt(player, () => countPostsTo(player, "/api/volume"), 0);
 	});
 
 	test("the player's own fader under Listen here stays disabled with the reason, and moving it sends no volume", async ({
@@ -421,7 +393,7 @@ test.describe("listening on this device with playback control off at the player"
 
 		await fader.click({ force: true });
 		if (!isMobile) await dragTo(page, fader, 0.6);
-		await expectSettlesAt(player, () => volumeWrites(player), 0);
+		await expectSettlesAt(player, () => countPostsTo(player, "/api/volume"), 0);
 	});
 
 	test("the volume keys turn and mute this device, and send nothing the player would refuse", async ({
@@ -435,7 +407,6 @@ test.describe("listening on this device with playback control off at the player"
 		const volume = async () => (await deviceAudio(page)).volume;
 		const isMuted = async () => (await deviceAudio(page)).isMuted;
 
-		// Down first: a device already at full volume has nowhere to go up.
 		const full = await volume();
 		await pressFromTheBody(page, ["-"]);
 		await expect.poll(volume).toBeLessThan(full);
@@ -524,7 +495,7 @@ test.describe("the phone's volume faders with playback control off at the player
 		await expectDisabledWithReason(screenFader);
 		await screenFader.click({ force: true });
 
-		await expectSettlesAt(player, () => volumeWrites(player), 0);
+		await expectSettlesAt(player, () => countPostsTo(player, "/api/volume"), 0);
 	});
 });
 
@@ -549,21 +520,23 @@ test.describe("playback control turned off while Jean is open", () => {
 		await page.mouse.move(box.x + box.width * 0.2, y);
 		await page.mouse.down();
 		await page.mouse.move(box.x + box.width * 0.4, y, { steps: 5 });
-		await expect.poll(() => volumeWrites(player)).toBeGreaterThan(0);
+		await expect
+			.poll(() => countPostsTo(player, "/api/volume"))
+			.toBeGreaterThan(0);
 		await untilQuiet(player);
 
 		await allowPlayback(page, false);
 		poll.letOneThrough();
 		await expect(fader).toHaveAttribute("aria-disabled", "true");
 		await untilQuiet(player);
-		const sentBeforeJeanKnew = volumeWrites(player);
+		const sentBeforeJeanKnew = countPostsTo(player, "/api/volume");
 
 		await page.mouse.move(box.x + box.width * 0.9, y, { steps: 10 });
 		await page.mouse.up();
 
 		await expectSettlesAt(
 			player,
-			() => volumeWrites(player),
+			() => countPostsTo(player, "/api/volume"),
 			sentBeforeJeanKnew,
 		);
 	});

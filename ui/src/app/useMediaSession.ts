@@ -207,9 +207,14 @@ export function useMediaSession(
 	}, [live, snapshot, item?.duration]);
 
 	useEffect(() => {
-		if (!live || !canControlPlayback) {
+		if (!live) {
 			setHandlers({});
 			return;
+		}
+
+		if (!canControlPlayback) {
+			setHandlers({ pause: () => disconnect(), stop: () => disconnect() });
+			return () => setHandlers({});
 		}
 
 		setHandlers({

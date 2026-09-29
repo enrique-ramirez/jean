@@ -1,9 +1,18 @@
 import {
+	callMediaSessionAction,
+	choosePlayer,
+	countPostsTo,
 	expect,
+	expectNothingRefusedSent,
+	expectSettlesAt,
 	type FakePlayer,
 	listenHere,
+	MEDIA_SESSION_ACTIONS_WITH_CONTROL,
+	mediaSessionActions,
 	openLibrary,
 	type Page,
+	playingOn,
+	recordMediaSessionHandlers,
 	statusBar,
 	test,
 	trackRow,
@@ -22,9 +31,7 @@ const ANOTHER_ARTIST = { row: 12, title: "Tautou", artist: "Brand New" };
 // By its name rather than by its role: the row is a button only where pressing it
 // would do something, which here it does -- this device is the only listener.
 const thePlayer = (page: Page) =>
-	page
-		.getByRole("group", { name: "Playing on" })
-		.getByText("foobar2000", { exact: true });
+	playingOn(page).getByText("foobar2000", { exact: true });
 
 const session = (page: Page) =>
 	page.evaluate(() => {
@@ -96,6 +103,21 @@ const mediaPlays = (page: Page) =>
 	page.evaluate(
 		() => (window as unknown as { __mediaPlays: MediaPlay[] }).__mediaPlays,
 	);
+
+const listening = async (page: Page) => {
+	await listenHere(page);
+	await expect
+		.poll(() => session(page).then((live) => live.state))
+		.toBe("playing");
+};
+
+const expectListeningEnded = async (page: Page, player: FakePlayer) => {
+	await expect
+		.poll(() => session(page))
+		.toMatchObject({ state: "none", title: null });
+	await expect(choosePlayer(page)).toHaveAccessibleName(/Choose where to play/);
+	await expect.poll(() => countPostsTo(player, "/api/stream/leave")).toBe(1);
+};
 
 const settledMediaPlays = async (page: Page, player: FakePlayer) => {
 	await untilQuiet(player);
@@ -241,6 +263,66 @@ test.describe("the media session", () => {
 			.toBe("paused");
 	});
 
+	test("while listening, holds a handler for every action, and stop stops the player and ends listening", async ({
+		page,
+		player,
+	}) => {
+		await recordMediaSessionHandlers(page);
+		await page.goto("/");
+		await play(page);
+		await listening(page);
+		await expect
+			.poll(() => mediaSessionActions(page))
+			.toEqual(MEDIA_SESSION_ACTIONS_WITH_CONTROL);
+
+		await callMediaSessionAction(page, "stop");
+
+		await expectListeningEnded(page, player);
+		await expect.poll(() => countPostsTo(player, "/api/playback/stop")).toBe(1);
+	});
+
+	test("while listening, every handler but stop drives the player", async ({
+		page,
+		player,
+	}) => {
+		await recordMediaSessionHandlers(page);
+		await page.goto("/");
+		await play(page);
+		await listening(page);
+		await expect.poll(() => mediaSessionActions(page)).toContain("pause");
+
+		await callMediaSessionAction(page, "pause");
+		await expect.poll(() => player.player.playbackState).toBe("paused");
+		await expect
+			.poll(() => session(page).then((live) => live.state))
+			.toBe("paused");
+
+		await callMediaSessionAction(page, "play");
+		await expect.poll(() => player.player.playbackState).toBe("playing");
+
+		await callMediaSessionAction(page, "nexttrack");
+		await expect.poll(() => countPostsTo(player, "/api/playback/next")).toBe(1);
+
+		await callMediaSessionAction(page, "previoustrack");
+		await expect
+			.poll(() => countPostsTo(player, "/api/playback/previous"))
+			.toBe(1);
+
+		for (const [action, details] of [
+			["seekforward", {}],
+			["seekbackward", {}],
+			["seekto", { seekTime: 30 }],
+		] as const)
+			await callMediaSessionAction(page, action, details);
+		await expect.poll(() => countPostsTo(player, "/api/playback/seek")).toBe(3);
+
+		expect(countPostsTo(player, "/api/playback/stop")).toBe(0);
+		expect(countPostsTo(player, "/api/stream/leave")).toBe(0);
+		await expect(choosePlayer(page)).toHaveAccessibleName(
+			/Playing on this device/,
+		);
+	});
+
 	test("is given back when the sound goes", async ({ page }) => {
 		await page.goto("/");
 		await play(page);
@@ -257,4 +339,41 @@ test.describe("the media session", () => {
 			.poll(() => session(page))
 			.toMatchObject({ state: "none", title: null });
 	});
+});
+
+test.describe("the media session with playback control off at the player", () => {
+	test.use({ fooJean: { canControlPlayback: false } });
+
+	const listeningWithoutControl = async (page: Page, player: FakePlayer) => {
+		await recordMediaSessionHandlers(page);
+		player.playItem("p7", 0);
+		await openLibrary(page);
+		await listening(page);
+	};
+
+	test("while listening, holds stop and pause and nothing else", async ({
+		page,
+		player,
+	}) => {
+		await listeningWithoutControl(page, player);
+
+		await expectSettlesAt(player, () => mediaSessionActions(page), [
+			"pause",
+			"stop",
+		]);
+	});
+
+	for (const action of ["stop", "pause"] as const)
+		test(`${action} ends listening here and sends the player nothing it would refuse`, async ({
+			page,
+			player,
+		}) => {
+			await listeningWithoutControl(page, player);
+			await expect.poll(() => mediaSessionActions(page)).toContain(action);
+
+			await callMediaSessionAction(page, action);
+
+			await expectListeningEnded(page, player);
+			await expectNothingRefusedSent(player);
+		});
 });

@@ -25,7 +25,7 @@
 
 ## The media session
 
-- It exists only in a secure context and only while this device is audible; an install over plain HTTP has none.
-- The handlers drive the player, never the element. `play` and `pause` check the state before sending `foo_jean`'s single `POST /api/playback/play-pause`. Stop ends the listening session too.
+- It exists only in a secure context and only while this device is audible.
+- The handlers drive the player, never the element; with playback control off, `pause` and `stop` only end listening. `play` and `pause` check state first, since `foo_jean` has a single `POST /api/playback/play-pause`.
 - The cover is the one Jean already fetched, redrawn into a `data:` URL by `shrinkForLockScreen()` for every platform.
 - Album and album artist come off `PlayerState.activeItem`, never `useNowPlayingTrack`.

@@ -145,10 +145,24 @@ function negotiate(available: readonly string[]): string {
 	return ENGLISH;
 }
 
+const SHIPPED = [ENGLISH, ...__SHIPPED_LOCALES__];
+
+const languageOf = (code: string) => code.toLowerCase().split("-")[0];
+
+const shipsFirstLanguage = () => {
+	const first = (
+		navigator.languages?.[0] ??
+		navigator.language ??
+		ENGLISH
+	).toLowerCase();
+	return (
+		languageOf(first) === ENGLISH ||
+		SHIPPED.some((code) => code.toLowerCase() === first)
+	);
+};
+
 /**
  * Awaited before the first render, so nothing paints in English and then changes under the reader.
- * A returning visitor costs one request and a first-time English one costs none: the custom list is
- * only worth fetching when there is no choice on this device to honour.
  */
 export async function startLocale(): Promise<void> {
 	const chosen = readChoice();
@@ -156,6 +170,12 @@ export async function startLocale(): Promise<void> {
 	if (chosen !== null) {
 		publish({ chosen });
 		await adopt(chosen);
+		return;
+	}
+
+	if (shipsFirstLanguage()) {
+		publish({ available: SHIPPED });
+		await adopt(negotiate(SHIPPED));
 		return;
 	}
 
@@ -172,7 +192,7 @@ export async function setLocale(code: string | null): Promise<void> {
 
 /** What Settings needs and the boot path skips when it has a stored choice: the hand-added codes too. */
 export async function discover(): Promise<void> {
-	const found = [ENGLISH, ...__SHIPPED_LOCALES__, ...(await fetchCustom())];
+	const found = [...SHIPPED, ...(await fetchCustom())];
 	publish({ available: [...new Set(found)] });
 }
 

@@ -11,7 +11,6 @@
 
 - Following playback measures the row against the scroll container, since overscan mounts rows past the fold. The virtualiser's `align: "auto"` is minimal scrolling, not centring.
 - `jumpToPlaying.ts` is raised when the route lands, never at the click.
-- *Playback follows cursor* skips arrival, never replays the track that just ended, runs before the cursor moves, and reads the cursor through a ref.
 - Undo removes the range that landed, and a `409` on the removal says the playlist changed underneath.
 
 ## Holding a library

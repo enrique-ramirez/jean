@@ -113,6 +113,11 @@ for (const theme of ["dark", "light"] as const) {
 			await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
 			await expect(stars(page, 0)).toHaveAccessibleName("5 of 5 stars");
 
+			// A colour mid-transition computes to `oklab()` in Chromium, so the read waits for the
+			// theme's transition to land before measuring it.
+			await expect
+				.poll(async () => (await filledStarColours(page, 0))[0])
+				.toMatch(OKLCH);
 			const colours = await filledStarColours(page, 0);
 			expect(colours).toHaveLength(5);
 			expect(new Set(colours).size).toBe(1);

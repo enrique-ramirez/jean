@@ -298,6 +298,7 @@
 	"playlist.empty": "Esta lista está vacía.",
 	"playlist.eyebrow": "Lista",
 	"playlist.keepIt": "Conservarla",
+	"playlist.loadFailed": "No se pudo cargar esta lista — {message}",
 	"playlist.name": "Nombre de la lista",
 	"playlist.new": "Lista nueva",
 	"playlist.newName": "Lista nueva",

@@ -83,7 +83,7 @@ export function PlaylistView({
 	if (error) {
 		return (
 			<p className={styles.notice}>
-				Could not load this playlist -- {error.message}
+				{t("playlist.loadFailed", { message: error.message })}
 			</p>
 		);
 	}

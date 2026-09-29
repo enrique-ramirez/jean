@@ -29,7 +29,8 @@ import {
 	type StreamReading,
 	streamTimeAt,
 } from "./listener";
-import { canUseMse, type MseStream, openMseStream } from "./mseStream";
+import type { MseStream } from "./mseStream";
+import { canUseMse } from "./mseSupport";
 import { countStall, formatToTry, stallVerdict } from "./streamHealth";
 
 const VOLUME_KEY = "jean.listenVolume";
@@ -209,14 +210,18 @@ function releaseStream() {
 	mse = null;
 }
 
-function sourceFor(
+async function sourceFor(
 	audio: HTMLAudioElement,
 	origin: string,
 	ticket: string,
 	forFormat: string,
-) {
+	mine: number,
+): Promise<string | null> {
 	const url = streamUrl(origin, ticket, forFormat);
 	if (!wantsLowLatency(forFormat)) return url;
+
+	const { openMseStream } = await import("./mseStream");
+	if (mine !== generation) return null;
 
 	mse = openMseStream(url, audio, {
 		afterStall: stalledThisSession,
@@ -392,7 +397,15 @@ async function open(next: string) {
 
 	const audio = ensureElement();
 	connectAt = performance.now();
-	audio.src = sourceFor(audio, target.origin, issued.ticket.ticket, next);
+	const src = await sourceFor(
+		audio,
+		target.origin,
+		issued.ticket.ticket,
+		next,
+		mine,
+	);
+	if (src === null) return;
+	audio.src = src;
 	audio.volume = amplitudeOf(volumeDb);
 
 	timelineFollower.forget();

@@ -1,8 +1,7 @@
 import { Cushion } from "./cushion";
+import { MSE_MIME } from "./mseSupport";
 import { OggDemuxer } from "./oggDemux";
 import { initSegment, WebmMuxer } from "./webmMux";
-
-const MIME = 'audio/webm; codecs="opus"';
 
 const KEEP_BEHIND = 10;
 const TRIM_EVERY_MS = 5000;
@@ -10,9 +9,6 @@ const TRIM_EVERY_MS = 5000;
 // How much of a stream to read before concluding it is not Ogg at all. The component sends the
 // headers first, so this is generous rather than marginal.
 const NOT_OGG_BYTES = 16 * 1024;
-
-export const canUseMse = () =>
-	typeof MediaSource !== "undefined" && MediaSource.isTypeSupported(MIME);
 
 export interface MseStream {
 	src: string;
@@ -92,7 +88,7 @@ export function openMseStream(
 	media.addEventListener("sourceopen", () => {
 		if (stopped) return;
 		try {
-			buffer = media.addSourceBuffer(MIME);
+			buffer = media.addSourceBuffer(MSE_MIME);
 		} catch {
 			onUnusable();
 			return;

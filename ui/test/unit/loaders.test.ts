@@ -260,6 +260,7 @@ type Build = NonNullable<StateDocument["library"]["build"]>;
 
 type Export =
 	| { kind: "snapshot" }
+	| { kind: "held"; until: Promise<void> }
 	| { kind: "building" }
 	| { kind: "unreachable" }
 	| { kind: "refused"; status: number; body?: unknown };
@@ -278,12 +279,16 @@ interface LibraryPlayer {
 	exports: Export[];
 	exportsAsked: number;
 	build: Build | null;
+	structure: number;
+	stateFailures: number;
 }
 
 const answerExport = (answer: Export) => {
 	switch (answer.kind) {
 		case "snapshot":
 			return Promise.resolve(new Response(SNAPSHOT));
+		case "held":
+			return answer.until.then(() => new Response(SNAPSHOT));
 		case "building":
 			return Promise.resolve(new Response(null, { status: 202 }));
 		case "unreachable":
@@ -298,7 +303,13 @@ const answerExport = (answer: Export) => {
 };
 
 const libraryPlayer = (t: TestContext, exports: Export[]): LibraryPlayer => {
-	const player: LibraryPlayer = { exports, exportsAsked: 0, build: null };
+	const player: LibraryPlayer = {
+		exports,
+		exportsAsked: 0,
+		build: null,
+		structure: 0,
+		stateFailures: 0,
+	};
 
 	const realFetch = globalThis.fetch;
 	mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
@@ -314,12 +325,16 @@ const libraryPlayer = (t: TestContext, exports: Export[]): LibraryPlayer => {
 			player.exportsAsked += 1;
 			return answerExport(player.exports[at]);
 		}
+		if (pathname === "/api/state" && player.stateFailures > 0) {
+			player.stateFailures -= 1;
+			return Promise.reject(new TypeError("fetch failed"));
+		}
 		if (pathname === "/api/state")
 			return Promise.resolve(
 				Response.json({
 					library: {
 						ready: false,
-						structure: 0,
+						structure: player.structure,
 						revision: 0,
 						trackCount: 0,
 						columns: [],
@@ -548,4 +563,29 @@ test("Try again after a failure that is not transient asks nothing", async (t) =
 
 	assert.equal(player.exportsAsked, 1);
 	assert.equal(playlistSnapshot(key).failure?.reason, "too-large");
+});
+
+// `GET /api/state` answers `304` once the player settles, so a rebuild noticed while the first read
+// was still in flight has no later poll to announce it again: the look back after that read is the
+// only one there will be, and a failed one has to be asked again.
+test("a rebuild noticed mid-read is looked for again on a later tick when the first look back fails", async (t) => {
+	const origin = libraryOrigin();
+	let release = () => {};
+	const until = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const player = libraryPlayer(t, [{ kind: "held", until }, SNAPSHOT_EXPORT]);
+	await readLibrary(t, origin);
+
+	const rebuilt = { structure: 424_242, revision: 0 };
+	player.structure = rebuilt.structure;
+	player.stateFailures = 1;
+	await recheckComponentLibrary(origin, rebuilt);
+	release();
+	await settle();
+	assert.equal(player.exportsAsked, 1);
+
+	store.libraryPollFollower.answered(origin);
+	await settle();
+	assert.equal(player.exportsAsked, 2, "the rebuild was never read");
 });

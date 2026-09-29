@@ -3,11 +3,9 @@ import { formatForDisplay } from "@tanstack/react-hotkeys";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { Trans } from "@/shared/i18n/Trans";
 import { useTranslate } from "@/shared/i18n/useTranslate";
-import { useKeyboardOwnership } from "./keyboardOwner";
+import { SHORTCUTS_KEYBOARD, useKeyboardOwnership } from "./keyboardOwner";
 import { type Binding, bindingsIn, KEYMAP_GROUPS } from "./keymap";
 import styles from "./ShortcutSheet.module.css";
-
-export const SHORTCUTS_KEYBOARD = "shortcuts";
 
 const capsOf = (binding: Binding) =>
 	(binding.shown ?? binding.keys.map((key) => formatForDisplay(key))).map(

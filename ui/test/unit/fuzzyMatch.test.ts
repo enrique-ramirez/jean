@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { fuzzyKey, fuzzyScore, squash } from "../../src/shared/lib/text.ts";
+import {
+	fuzzyKey,
+	fuzzyScore,
+	squash,
+	TIER,
+} from "../../src/shared/lib/text.ts";
 
 const GENRES = [
 	"Heavy Metal",
@@ -87,4 +92,14 @@ test("an empty query keeps every candidate", () => {
 
 test("a query nothing answers scores nothing", () => {
 	assert.deepEqual(ranked("zzzzqqqq"), []);
+});
+
+test("a floor above a rung answers nothing rather than trying it", () => {
+	const misspelt = fuzzyKey("Radiohead");
+	assert.ok(fuzzyScore(misspelt, squash("radiohaed")) >= TIER.typo);
+	assert.equal(fuzzyScore(misspelt, squash("radiohaed"), TIER.word), 0);
+	assert.ok(
+		fuzzyScore(misspelt, squash("radio"), TIER.word) >= TIER.word,
+		"a rung the floor reaches is still scored",
+	);
 });

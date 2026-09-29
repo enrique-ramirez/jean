@@ -5,7 +5,7 @@ import {
 	reach,
 	refusalOf,
 	type Schema,
-	UNREACHABLE,
+	unreachable,
 } from "./client";
 
 export type StreamTicket = Schema["StreamTicket"];
@@ -35,7 +35,7 @@ export async function issueStreamTicket(
 		),
 	);
 	if (!answer)
-		return { ok: false, reason: "unreachable", message: UNREACHABLE };
+		return { ok: false, reason: "unreachable", message: unreachable() };
 
 	const { data, error, response } = answer;
 	if (data) return { ok: true, ticket: data };

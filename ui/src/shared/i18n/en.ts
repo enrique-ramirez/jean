@@ -374,6 +374,7 @@ export const en = {
 	"playlist.empty": "This playlist is empty.",
 	"playlist.eyebrow": "Playlist",
 	"playlist.keepIt": "Keep it",
+	"playlist.loadFailed": "Could not load this playlist — {message}",
 	"playlist.name": "Playlist name",
 	"playlist.new": "New playlist",
 	"playlist.newName": "New playlist",

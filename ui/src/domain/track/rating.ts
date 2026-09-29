@@ -1,4 +1,5 @@
 import type { TrackColumns } from "@/shared/api/types";
+import type { Translate } from "@/shared/i18n/locale";
 import { FIELD, numberOf, readNumber } from "./fields";
 
 export const MAX_STARS = 5;
@@ -34,3 +35,16 @@ export const isWritableScale = (raw: number | null) =>
 	raw === null || raw <= MAX_STARS;
 
 export const toStars = (rating: number) => Math.round(rating * 2) / 2;
+
+export function ratingDisplayOf(
+	raw: number | null,
+	t: Translate,
+): { stars: number; label: string } {
+	const rating = starsOf(raw);
+	const stars = rating === null ? 0 : toStars(rating);
+	const label =
+		rating === null
+			? t("rating.unrated")
+			: t("rating.outOf", { stars, max: MAX_STARS });
+	return { stars, label };
+}

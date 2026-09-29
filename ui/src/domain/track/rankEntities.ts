@@ -26,7 +26,10 @@ export function rankEntities<T extends Entity>(
 
 	return (
 		entities
-			.map((entity) => ({ entity, score: fuzzyScore(entity.match, squashed) }))
+			.map((entity) => ({
+				entity,
+				score: fuzzyScore(entity.match, squashed, floor),
+			}))
 			.filter((scored) => scored.score >= floor)
 			// Then by how much of them the library holds: at the same rung, the one you own more of is
 			// more likely the one meant.

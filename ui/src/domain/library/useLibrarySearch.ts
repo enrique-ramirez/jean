@@ -1,6 +1,7 @@
 import {
 	useCallback,
 	useDeferredValue,
+	useEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -15,7 +16,11 @@ import {
 	isScratchPlaylist,
 	queryOfScratchPlaylist,
 } from "@/domain/track/jeanPlaylists";
-import { libraryIndex, searchLibrary } from "@/domain/track/libraryIndex";
+import {
+	libraryIndex,
+	searchLibrary,
+	warmLibraryIndex,
+} from "@/domain/track/libraryIndex";
 import { EMPTY_VIEW, project } from "@/domain/track/project";
 import { rankEntities } from "@/domain/track/rankEntities";
 import { bestMatches } from "@/domain/track/rankTracks";
@@ -140,6 +145,14 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		[library.key, columns],
 	);
 
+	useEffect(
+		() =>
+			library.key && columns.trackCount > 0
+				? warmLibraryIndex(library.key, columns)
+				: undefined,
+		[library.key, columns],
+	);
+
 	// The dropdown never projects: eight rows are read straight off the snapshot, where the page needs
 	// the heat and patina arrays a whole view carries.
 	const draftMatched = useMemo(
@@ -237,7 +250,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 
 		const query = squash(wanted);
 		const exact = [...named.artists, ...named.albums, ...named.genres].filter(
-			(entity) => fuzzyScore(entity.match, query) >= TIER.exact,
+			(entity) => fuzzyScore(entity.match, query, TIER.exact) >= TIER.exact,
 		);
 		if (exact.length !== 1) return -1;
 

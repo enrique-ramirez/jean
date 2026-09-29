@@ -32,10 +32,14 @@ export interface SearchIndex {
 
 export interface FoldCache {
 	over: (columns: LibraryColumns) => SearchIndex;
+	warm: (columns: LibraryColumns, hasTime: () => boolean) => boolean;
 }
+
+const WARM_CHECK_EVERY = 256;
 
 export function foldCache(): FoldCache {
 	const held = SEARCHED.map((): string[] => []);
+	const warmed = SEARCHED.map(() => 0);
 	let last: { of: readonly JlibColumn[]; index: SearchIndex } | null = null;
 
 	return {
@@ -69,6 +73,22 @@ export function foldCache(): FoldCache {
 			const index = { fields, title: fields[TITLE_AT] };
 			last = { of: searched, index };
 			return index;
+		},
+
+		warm: (columns, hasTime) => {
+			for (let at = 0; at < SEARCHED.length; at += 1) {
+				const { distinct, value } = columns.fields[SEARCHED[at].field];
+				const folded = held[at];
+				for (let id = warmed[at]; id < distinct; id += 1) {
+					if (id % WARM_CHECK_EVERY === 0 && !hasTime()) {
+						warmed[at] = id;
+						return false;
+					}
+					if (folded[id] === undefined) folded[id] = fold(value(id));
+				}
+				warmed[at] = distinct;
+			}
+			return true;
 		},
 	};
 }

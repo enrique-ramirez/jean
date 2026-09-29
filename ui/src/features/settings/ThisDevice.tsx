@@ -3,7 +3,7 @@ import {
 	LOW_LATENCY_KEY,
 	restartListening,
 } from "@/domain/player/listenerStore";
-import { canUseMse } from "@/domain/player/mseStream";
+import { canUseMse } from "@/domain/player/mseSupport";
 import { useListener } from "@/domain/player/useListener";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { Trans } from "@/shared/i18n/Trans";

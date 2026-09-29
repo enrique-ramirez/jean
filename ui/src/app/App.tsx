@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	lazy,
+	Suspense,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useLibrary } from "@/domain/library/useLibrary";
 import {
 	type Suggestion,
@@ -33,22 +41,19 @@ import {
 } from "@/domain/track/routes";
 import { TagWriterProvider } from "@/domain/track/useTagWriter";
 import { useHomePlayback } from "@/features/home/useHomePlayback";
-import { NowPlaying } from "@/features/now-playing/NowPlaying";
 import { StatusBar } from "@/features/now-playing/StatusBar";
 import { QueuePanel } from "@/features/queue/QueuePanel";
-import { SettingsDialog } from "@/features/settings/SettingsDialog";
 import { permitsPlaybackControl } from "@/shared/api/discovery";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useTheme } from "@/shared/hooks/useTheme";
 import { useTranslate } from "@/shared/i18n/useTranslate";
-import { ShortcutSheet } from "@/shared/keyboard/ShortcutSheet";
+import { workWhenIdle } from "@/shared/lib/idle";
 import { animateScrollTo } from "@/shared/ui/animateScroll";
 import { DragGhost } from "@/shared/ui/DragGhost";
 import { Toasts } from "@/shared/ui/Toasts";
 import styles from "./App.module.css";
-import { CommandPalette } from "./CommandPalette";
 import { ConnectionNotice } from "./ConnectionNotice";
 import { MainView } from "./MainView";
 import { resolveRoute, routeOfPlayingSet, routeOfSuggestion } from "./routes";
@@ -66,6 +71,32 @@ import { useRouteView } from "./useRouteView";
 import { useScrollMemory } from "./useScrollMemory";
 import { useSearchBar } from "./useSearchBar";
 import { useSelectedPlaylist } from "./useSelectedPlaylist";
+
+const loadNowPlaying = () => import("@/features/now-playing/NowPlaying");
+const loadSettings = () => import("@/features/settings/SettingsDialog");
+const loadShortcuts = () => import("@/shared/keyboard/ShortcutSheet");
+const loadPalette = () => import("./CommandPalette");
+
+const NowPlaying = lazy(() =>
+	loadNowPlaying().then((module) => ({ default: module.NowPlaying })),
+);
+const SettingsDialog = lazy(() =>
+	loadSettings().then((module) => ({ default: module.SettingsDialog })),
+);
+const ShortcutSheet = lazy(() =>
+	loadShortcuts().then((module) => ({ default: module.ShortcutSheet })),
+);
+const CommandPalette = lazy(() =>
+	loadPalette().then((module) => ({ default: module.CommandPalette })),
+);
+
+const preloadLayers = () => {
+	void loadNowPlaying();
+	void loadSettings();
+	void loadShortcuts();
+	void loadPalette();
+	return true;
+};
 
 export function App() {
 	return (
@@ -98,7 +129,11 @@ function Shell() {
 
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 
+	useEffect(() => workWhenIdle(preloadLayers), []);
+
 	const isNowPlaying = isPlayingRoute(route);
+	const [hasOpenedNowPlaying, setHasOpenedNowPlaying] = useState(isNowPlaying);
+	if (isNowPlaying && !hasOpenedNowPlaying) setHasOpenedNowPlaying(true);
 	const [openedFrom, setOpenedFrom] = useState("");
 	// `history.back()` is wrong: a reload can land straight on `#/playing` with no entry behind it, and back would leave Jean.
 	if (!isNowPlaying && openedFrom !== route) setOpenedFrom(route);
@@ -465,18 +500,22 @@ function Shell() {
 					onSearch={searchFor}
 				/>
 
-				<NowPlaying
-					isOpen={isNowPlaying}
-					tab={panelOfRoute(route)}
-					onSelectTab={selectPanel}
-					isCompactViewport={isCompactViewport}
-					isQueueOpen={queue.isOpen}
-					onToggleQueue={queue.toggle}
-					onOpenPlayingFrom={
-						playingRoute ? () => openPlayingFrom(playingRoute) : undefined
-					}
-					onDismiss={closeNowPlaying}
-				/>
+				{hasOpenedNowPlaying ? (
+					<Suspense fallback={null}>
+						<NowPlaying
+							isOpen={isNowPlaying}
+							tab={panelOfRoute(route)}
+							onSelectTab={selectPanel}
+							isCompactViewport={isCompactViewport}
+							isQueueOpen={queue.isOpen}
+							onToggleQueue={queue.toggle}
+							onOpenPlayingFrom={
+								playingRoute ? () => openPlayingFrom(playingRoute) : undefined
+							}
+							onDismiss={closeNowPlaying}
+						/>
+					</Suspense>
+				) : null}
 
 				<QueuePanel
 					isOpen={queue.isOpen}
@@ -505,20 +544,26 @@ function Shell() {
 			<DragGhost />
 
 			{modals.isOpen.palette ? (
-				<CommandPalette
-					views={paletteViews}
-					playlists={palettePlaylists}
-					onSelect={openFromPalette}
-					onDismiss={() => modals.close("palette")}
-				/>
+				<Suspense fallback={null}>
+					<CommandPalette
+						views={paletteViews}
+						playlists={palettePlaylists}
+						onSelect={openFromPalette}
+						onDismiss={() => modals.close("palette")}
+					/>
+				</Suspense>
 			) : null}
 
 			{modals.isOpen.shortcuts ? (
-				<ShortcutSheet onDismiss={() => modals.close("shortcuts")} />
+				<Suspense fallback={null}>
+					<ShortcutSheet onDismiss={() => modals.close("shortcuts")} />
+				</Suspense>
 			) : null}
 
 			{modals.isOpen.settings ? (
-				<SettingsDialog onDismiss={() => modals.close("settings")} />
+				<Suspense fallback={null}>
+					<SettingsDialog onDismiss={() => modals.close("settings")} />
+				</Suspense>
 			) : null}
 
 			<span className="visually-hidden" aria-live="polite">

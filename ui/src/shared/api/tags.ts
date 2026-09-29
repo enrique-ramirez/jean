@@ -3,7 +3,7 @@ import {
 	reach,
 	refusalOf,
 	type Schema,
-	UNREACHABLE,
+	unreachable,
 	WRITE_TIMEOUT_MS,
 } from "./client";
 
@@ -39,7 +39,7 @@ export async function writeTags(
 ): Promise<WriteResult> {
 	const answer = await reach(askWrite(origin, request));
 	if (!answer)
-		return { ok: false, reason: "unreachable", message: UNREACHABLE };
+		return { ok: false, reason: "unreachable", message: unreachable() };
 	const { data, error, response } = answer;
 	if (data) return { ok: true, written: data };
 

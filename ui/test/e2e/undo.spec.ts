@@ -575,7 +575,11 @@ test.describe("undoing an add made from a library view", () => {
 		player,
 		isMobile,
 	}) => {
+		await expectSettlesAt(player, () => listReads(player).length > 0, true);
 		await addTo(page, 0, isMobile, FAVORITES.title);
+		await expect(toast(page)).toContainText(
+			`Added 1 track to ${FAVORITES.title}`,
+		);
 		await expect(
 			toast(page).getByRole("button", { name: "Undo" }),
 		).toBeVisible();

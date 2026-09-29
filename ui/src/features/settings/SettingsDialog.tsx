@@ -2,7 +2,10 @@ import { X } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { useTranslate } from "@/shared/i18n/useTranslate";
-import { useKeyboardOwnership } from "@/shared/keyboard/keyboardOwner";
+import {
+	SETTINGS_KEYBOARD,
+	useKeyboardOwnership,
+} from "@/shared/keyboard/keyboardOwner";
 import { Appearance } from "./Appearance";
 import { ArtistInformation } from "./ArtistInformation";
 import { Language } from "./Language";
@@ -10,8 +13,6 @@ import { Playback } from "./Playback";
 import styles from "./Settings.module.css";
 import { TagWriting } from "./TagWriting";
 import { ThisDevice } from "./ThisDevice";
-
-export const SETTINGS_KEYBOARD = "settings";
 
 export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 	const t = useTranslate();

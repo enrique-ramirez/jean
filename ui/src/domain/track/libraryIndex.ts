@@ -1,3 +1,4 @@
+import { workWhenIdle } from "@/shared/lib/idle";
 import { tokenize } from "@/shared/lib/text";
 import type { LibraryColumns } from "./libraryColumns";
 import type { Refs } from "./project";
@@ -16,6 +17,15 @@ export function libraryIndex(
 ): SearchIndex {
 	if (held?.key !== key) held = { key, cache: foldCache() };
 	return held.cache.over(columns);
+}
+
+export function warmLibraryIndex(
+	key: string,
+	columns: LibraryColumns,
+): () => void {
+	if (held?.key !== key) held = { key, cache: foldCache() };
+	const { cache } = held;
+	return workWhenIdle((hasTime) => cache.warm(columns, hasTime));
 }
 
 export function searchLibrary(

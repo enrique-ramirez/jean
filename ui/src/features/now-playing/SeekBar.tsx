@@ -9,17 +9,32 @@ const useTickingPosition = (
 	snapshot: PlayerSnapshot | null | undefined,
 	resolution: (at: number) => number,
 ) => {
-	const [elapsed, setElapsed] = useState(() => resolution(audibleAt(snapshot)));
+	const [held, setHeld] = useState(() => ({
+		snapshot,
+		value: resolution(audibleAt(snapshot)),
+	}));
+
+	let { value } = held;
+	if (held.snapshot !== snapshot) {
+		value = resolution(audibleAt(snapshot));
+		setHeld({ snapshot, value });
+	}
+
+	const isPlaying = snapshot?.player?.playbackState === "playing";
 
 	useEffect(() => {
+		if (!isPlaying) return undefined;
 		let frame = requestAnimationFrame(function tick() {
-			setElapsed(resolution(audibleAt(snapshot)));
+			const next = resolution(audibleAt(snapshot));
+			setHeld((current) =>
+				current.value === next ? current : { snapshot, value: next },
+			);
 			frame = requestAnimationFrame(tick);
 		});
 		return () => cancelAnimationFrame(frame);
-	}, [snapshot, resolution]);
+	}, [snapshot, resolution, isPlaying]);
 
-	return elapsed;
+	return value;
 };
 
 const exactly = (at: number) => at;
@@ -78,7 +93,10 @@ export function SeekBar({
 				className={styles.fill}
 				style={{ transform: `scaleX(${progress})` }}
 			/>
-			<span className={styles.thumb} style={{ left: `${progress * 100}%` }} />
+			<span
+				className={styles.thumb}
+				style={{ transform: `translateX(${progress * 100}cqw)` }}
+			/>
 		</div>
 	);
 }

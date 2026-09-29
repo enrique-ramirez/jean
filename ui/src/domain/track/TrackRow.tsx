@@ -4,12 +4,12 @@ import {
 	type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { TrackColumns } from "@/shared/api/types";
-import { formatTime } from "@/shared/i18n/format";
 import {
 	type Formats,
 	useFormats,
 	useTranslate,
 } from "@/shared/i18n/useTranslate";
+import { formatTime } from "@/shared/lib/time";
 import { Artwork } from "@/shared/ui/Artwork";
 import { Equalizer } from "@/shared/ui/Equalizer";
 import { Stars, StarsInput } from "@/shared/ui/Stars";
@@ -28,13 +28,7 @@ import { discNumber } from "./grouping";
 import type { LibraryColumns } from "./libraryColumns";
 import type { LibrarySource } from "./librarySource";
 import type { TrackRows } from "./project";
-import {
-	isWritableScale,
-	MAX_STARS,
-	rawRatingWith,
-	starsOf,
-	toStars,
-} from "./rating";
+import { isWritableScale, ratingDisplayOf, rawRatingWith } from "./rating";
 import { useWrittenRating } from "./ratingStore";
 import styles from "./TrackRow.module.css";
 import { RATING_FIELD, useTagWriting } from "./useTagWriter";
@@ -55,12 +49,7 @@ function Rating({
 	const written = useWrittenRating(columns, itemIndex);
 
 	const raw = rawRatingWith(row, written);
-	const rating = starsOf(raw);
-	const stars = rating === null ? 0 : toStars(rating);
-	const label =
-		rating === null
-			? t("rating.unrated")
-			: t("rating.outOf", { stars, max: MAX_STARS });
+	const { stars, label } = ratingDisplayOf(raw, t);
 
 	if (
 		!canRateInline ||

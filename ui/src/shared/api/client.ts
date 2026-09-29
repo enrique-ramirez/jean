@@ -1,4 +1,5 @@
 import createClient from "openapi-fetch";
+import { translate } from "@/shared/i18n/locale";
 import type { components, paths } from "./fooJeanSchema";
 
 export type Schema = components["schemas"];
@@ -8,7 +9,7 @@ export const WRITE_TIMEOUT_MS = 35_000;
 // A read behind a visible panel is not sized for foobar2000 writing tags to disk.
 export const READ_TIMEOUT_MS = 8_000;
 
-export const UNREACHABLE = "Could not reach foo_jean.";
+export const unreachable = () => translate("fooJean.unreachable.summary");
 
 export const withTimeout = async <T>(
 	ms: number,
@@ -122,7 +123,7 @@ export async function settle<T>(
 ): Promise<Result<T>> {
 	const answered = await reach(answer, signal);
 	if (!answered)
-		return { ok: false, reason: "unreachable", message: UNREACHABLE };
+		return { ok: false, reason: "unreachable", message: unreachable() };
 
 	const { data, error, response } = answered;
 	if (response.ok) return { ok: true, value: data as T };

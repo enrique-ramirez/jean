@@ -1,5 +1,5 @@
 import type { PlayerSnapshot } from "@/shared/api/types";
-import { formatTime } from "@/shared/i18n/format";
+import { formatTime } from "@/shared/lib/time";
 import styles from "./NowPlaying.module.css";
 import { useElapsedSeconds } from "./SeekBar";
 

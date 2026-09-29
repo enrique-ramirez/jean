@@ -145,6 +145,15 @@ async function recheckMissed(entry: Entry, origin: string) {
 	const result = await fetchState(origin, null);
 	if (result.ok && result.kind === "state")
 		await recheckComponentLibrary(origin, result.state.library);
+	else entry.missedLibrary ??= missed;
+}
+
+export async function retryMissedLibraryRead(origin: string) {
+	const entry = heldEntry(componentLibraryKey(origin));
+	const feed = entry?.feed;
+	if (!entry || feed?.kind !== "library") return;
+	if (feed.isChecking || entry.snapshot.isLoading) return;
+	await recheckMissed(entry, origin);
 }
 
 export async function recheckComponentLibrary(
@@ -222,6 +231,7 @@ export const libraryPollFollower: PollFollower = {
 	answered: (origin) => {
 		void retryFailedPlaylistReads(origin);
 		void retryFailedLibraryRead(origin);
+		void retryMissedLibraryRead(origin);
 	},
 	libraryAnnounced: (origin, library) =>
 		void recheckComponentLibrary(origin, library),

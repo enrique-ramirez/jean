@@ -6,6 +6,7 @@
 	height: 14px;
 	margin-top: -7px;
 	touch-action: none;
+	container-type: inline-size;
 }
 
 .bar[data-seekable="true"] {
@@ -36,6 +37,7 @@
 
 .thumb {
 	position: absolute;
+	inset-inline-start: 0;
 	width: 11px;
 	height: 11px;
 	border-radius: 50%;

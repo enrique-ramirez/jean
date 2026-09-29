@@ -2,7 +2,7 @@ import type { FooJeanDiscovery } from "@/shared/api/discovery";
 import type { StreamMark } from "@/shared/api/stream";
 import { clamp } from "@/shared/lib/math";
 
-import { canUseMse } from "./mseStream";
+import { canUseMse } from "./mseSupport";
 
 // A browser's `canPlayType` answers `''`, `'maybe'` or `'probably'`, only `''` is definite, and it can
 // be wrong either way. Bare `audio/ogg` can answer for Vorbis alone, so the codec is named.

@@ -56,8 +56,10 @@ export const fuzzyKey = (text: string): FuzzyKey => ({
 
 const budgetFor = (length: number) => (length < 5 ? 0 : length < 9 ? 1 : 2);
 
+const MAX_CLOSENESS = 999;
+
 export const closenessTo = (text: string, query: string) =>
-	Math.max(0, 999 - Math.abs(text.length - query.length));
+	Math.max(0, MAX_CLOSENESS - Math.abs(text.length - query.length));
 
 function within(query: string, candidate: string, budget: number): boolean {
 	if (Math.abs(query.length - candidate.length) > budget) return false;
@@ -114,7 +116,7 @@ function isSubsequence(query: string, text: string): boolean {
 }
 
 // `query` must already be `squash`ed, once by the caller rather than once per candidate.
-export function fuzzyScore(key: FuzzyKey, query: string): number {
+export function fuzzyScore(key: FuzzyKey, query: string, floor = 0): number {
 	if (query.length === 0) return EXACT;
 
 	const { squashed, words } = key;
@@ -124,11 +126,12 @@ export function fuzzyScore(key: FuzzyKey, query: string): number {
 	if (squashed.startsWith(query)) return PREFIX + closeness;
 	if (words.some((word) => word.startsWith(query))) return WORD + closeness;
 	if (squashed.includes(query)) return SUBSTRING + closeness;
+	if (SUBSEQUENCE + MAX_CLOSENESS < floor) return 0;
 	if (query.length >= 3 && isSubsequence(query, squashed))
 		return SUBSEQUENCE + closeness;
 
 	const budget = budgetFor(query.length);
-	if (budget === 0) return 0;
+	if (budget === 0 || TYPO + MAX_CLOSENESS < floor) return 0;
 
 	const misspelt =
 		within(query, squashed, budget) ||

@@ -9,11 +9,13 @@ import {
 } from "@/domain/player/useTransport";
 import { useRateShortcut } from "@/domain/track/useRateShortcut";
 import { useNowPlayingRating } from "@/features/now-playing/useNowPlayingRating";
-import { SETTINGS_KEYBOARD } from "@/features/settings/SettingsDialog";
 import { permitsPlaybackControl } from "@/shared/api/discovery";
 import { useFooJean } from "@/shared/hooks/useFooJean";
+import {
+	SETTINGS_KEYBOARD,
+	SHORTCUTS_KEYBOARD,
+} from "@/shared/keyboard/keyboardOwner";
 import { SCOPE } from "@/shared/keyboard/keymap";
-import { SHORTCUTS_KEYBOARD } from "@/shared/keyboard/ShortcutSheet";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 
 interface ShellShortcuts {

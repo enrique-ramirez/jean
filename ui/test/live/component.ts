@@ -154,6 +154,23 @@ export const copyToNewPlaylist = (
 		body: JSON.stringify({ title, source, runs: [[0, rows]] }),
 	});
 
+export const copyRowsInto = async (
+	id: string,
+	source: string,
+	rows: number,
+) => {
+	const response = await fetchPatiently(
+		`${COMPONENT()}/api/playlists/${id}/items/copy`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ source, runs: [[0, rows]] }),
+		},
+	);
+	await response.body?.cancel();
+	return response.status;
+};
+
 export const removePlaylist = (id: string) =>
 	component<void>(`/api/playlists/${id}`, { method: "DELETE" });
 

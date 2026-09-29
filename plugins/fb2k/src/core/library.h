@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/shared_bytes.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -67,15 +69,6 @@ struct Column {
     std::vector<uint32_t> ids;
 };
 
-// What the client would otherwise learn by sampling rows and guessing.
-struct ColumnFacts {
-    size_t distinct = 0;
-    bool hasUnresolved = false;
-    bool allUnresolved = false;
-};
-
-ColumnFacts factsOf(const Column& column);
-
 struct Snapshot {
     uint64_t structure = 0;
     uint64_t revision = 0;
@@ -142,7 +135,6 @@ public:
 
     // kSpineFields and the asked-for columns, in the order a row's values must arrive in.
     std::vector<std::string> fields() const;
-    size_t fieldCount() const;
 
     // Once, after every sink has finished.
     Snapshot finish();
@@ -246,7 +238,7 @@ public:
     struct Export {
         uint64_t structure = 0;
         uint64_t revision = 0;
-        std::shared_ptr<const std::string> bytes;
+        SharedBytes bytes;
     };
 
     // Serialised once per revision and handed to every caller after that. The serialising

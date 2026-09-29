@@ -87,14 +87,14 @@ ReloadDecision decideReload(const Settings& running, const std::string& fileText
         auto value = key.value(parsed.settings);
         if (value != key.value(running)) {
             key.apply(decision.next, parsed.settings);
-            decision.changedKeys.push_back(key.name);
+            decision.changedKeys.emplace_back(key.name);
             changed.emplace_back(key.name, std::move(value));
         }
     }
 
     for (const auto& key : restartKeys()) {
         if (key.value(parsed.settings) != key.value(running))
-            decision.restartKeys.push_back(key.name);
+            decision.restartKeys.emplace_back(key.name);
     }
 
     decision.logLines.push_back(changed.empty() ? "config: reload: no settings changed"

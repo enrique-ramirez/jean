@@ -4,6 +4,7 @@
 #include "core/playlists.h"
 #include "core/reload.h"
 #include "core/settings.h"
+#include "support/fake_player.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
@@ -20,13 +21,15 @@ using nlohmann::json;
 
 namespace {
 
-const std::vector<std::string> kLiveKeys{
-    "allowedFields",  "allowedHosts",     "allowedOrigins",   "changeOutput",
-    "controlPlayback", "maxAutoPlaylists", "streamingEnabled", "writePlaylists"};
+std::vector<std::string> expectedLiveKeys() {
+    return {"allowedFields",   "allowedHosts",     "allowedOrigins",   "changeOutput",
+            "controlPlayback", "maxAutoPlaylists", "streamingEnabled", "writePlaylists"};
+}
 
-const std::vector<std::string> kRestartKeys{
-    "aacBitrate",  "bindAddress", "maxConcurrentStreams", "muteWhileStreaming",
-    "opusBitrate", "port",        "streamTicketTtlSeconds"};
+std::vector<std::string> expectedRestartKeys() {
+    return {"aacBitrate",  "bindAddress", "maxConcurrentStreams",  "muteWhileStreaming",
+            "opusBitrate", "port",        "streamTicketTtlSeconds"};
+}
 
 std::vector<std::string> sorted(std::vector<std::string> keys) {
     std::sort(keys.begin(), keys.end());
@@ -102,7 +105,7 @@ TEST_CASE("a reload applies every live key the file moves, and reports each as c
     CHECK(decision.next.allowedHosts == std::vector<std::string>{"jukebox.example"});
     CHECK(decision.next.allowedOrigins == std::vector<std::string>{"https://jean.example"});
 
-    CHECK(sorted(decision.changedKeys) == kLiveKeys);
+    CHECK(sorted(decision.changedKeys) == expectedLiveKeys());
     CHECK(decision.restartKeys.empty());
 }
 
@@ -114,7 +117,8 @@ TEST_CASE("a reload moving one switch reports that switch and no other") {
     CHECK(decision.restartKeys.empty());
 }
 
-TEST_CASE("a reload keeps every restart-only key at its running value and reports each that differs") {
+TEST_CASE(
+    "a reload keeps every restart-only key at its running value and reports each that differs") {
     const auto running = runningAwayFromDefaults();
 
     auto file = running;
@@ -130,12 +134,14 @@ TEST_CASE("a reload keeps every restart-only key at its running value and report
 
     CHECK(decision.next == running);
     CHECK(decision.changedKeys.empty());
-    CHECK(sorted(decision.restartKeys) == kRestartKeys);
+    CHECK(sorted(decision.restartKeys) == expectedRestartKeys());
 }
 
 // The preferences page says a restart is needed only while a restart-only key differs from what
 // is running, so the report compares against the running value, never against the previous file.
-TEST_CASE("a restart-only key is reported on every reload while it differs, and not once the file agrees") {
+TEST_CASE(
+    "a restart-only key is reported on every reload while it differs, and not once the file "
+    "agrees") {
     const auto running = runningAwayFromDefaults();
 
     auto moved = running;
@@ -194,7 +200,8 @@ TEST_CASE("documentValid tells a watcher whether the file it just read is worth 
     CHECK(decideReload(running, fileOf(running).dump()).documentValid);
 }
 
-TEST_CASE("a malformed switch on a reload takes its default rather than the running value, and says so") {
+TEST_CASE(
+    "a malformed switch on a reload takes its default rather than the running value, and says so") {
     const auto running = runningAwayFromDefaults();
     REQUIRE_FALSE(running.writePlaylists);
 
@@ -256,8 +263,9 @@ TEST_CASE("a reload that changes keys logs one line naming each once with its ne
 TEST_CASE("a reload that changes nothing says so and names no key") {
     const auto running = runningAwayFromDefaults();
 
-    for (const auto& text : {serialiseSettings(running),
-                             std::string(R"({"muteWhileStreaming": false, "streamTicketTtlSeconds": 300,
+    for (const auto& text :
+         {serialiseSettings(running),
+          std::string(R"({"muteWhileStreaming": false, "streamTicketTtlSeconds": 300,
                                  "maxConcurrentStreams": 3, "streamingEnabled": false,
                                  "aacBitrate": 128000, "opusBitrate": 320000,
                                  "changeOutput": false, "controlPlayback": false,
@@ -273,7 +281,7 @@ TEST_CASE("a reload that changes nothing says so and names no key") {
         CHECK(decision.restartKeys.empty());
         CHECK_FALSE(decision.logLines.empty());
 
-        for (const auto& key : kLiveKeys) {
+        for (const auto& key : expectedLiveKeys()) {
             INFO(key);
             CHECK(mentions(decision.logLines, key) == 0);
         }
@@ -293,33 +301,9 @@ Player countingTransport(std::atomic<size_t>* sent) {
     return player;
 }
 
-Player countingCreates(std::atomic<size_t>* created) {
-    Player player = servingPlayer();
-    player.playlists.create = [created](const std::string& title, const NewPlaylistRows&) {
-        ++*created;
-        PlaylistResult made;
-        made.playlist.id = "6f1c0b8a-2d4e-4f7a-9c31-0ab5e8d24f60";
-        made.playlist.title = title;
-        return made;
-    };
-    return player;
-}
-
-json capabilitiesOf(const TestServer& server) {
-    const auto response = get(server, "/api/capabilities");
-    REQUIRE(response);
-    REQUIRE(response->status == 200);
-    return json::parse(response->body);
-}
-
-std::string errorOf(const httplib::Response& response) {
-    const auto body = json::parse(response.body, nullptr, false);
-    return body.is_object() ? body.value("error", "") : "";
-}
-
 httplib::Result statusNamed(const TestServer& server, const std::string& host) {
-    return server.client().Get("/api/status",
-                               httplib::Headers{{"Host", host + ":" + std::to_string(server.port())}});
+    return server.client().Get(
+        "/api/status", httplib::Headers{{"Host", host + ":" + std::to_string(server.port())}});
 }
 
 httplib::Result statusFrom(const TestServer& server, const std::string& origin) {
@@ -328,7 +312,9 @@ httplib::Result statusFrom(const TestServer& server, const std::string& origin) 
 
 }  // namespace
 
-TEST_CASE("a reload turning controlPlayback off refuses the next playback command, and capabilities says so") {
+TEST_CASE(
+    "a reload turning controlPlayback off refuses the next playback command, and capabilities says "
+    "so") {
     std::atomic<size_t> sent{0};
     TestServer server(servingSettings(), countingTransport(&sent));
 
@@ -355,9 +341,11 @@ TEST_CASE("a reload turning controlPlayback off refuses the next playback comman
     CHECK(capabilitiesOf(server)["canControlPlayback"] == true);
 }
 
-TEST_CASE("a reload turning writePlaylists off refuses the next playlist write, and capabilities says so") {
-    std::atomic<size_t> created{0};
-    TestServer server(servingSettings(), countingCreates(&created));
+TEST_CASE(
+    "a reload turning writePlaylists off refuses the next playlist write, and capabilities says "
+    "so") {
+    FakePlayer foobar;
+    TestServer server(servingSettings(), foobar.player());
 
     const auto before = post(server, "/api/playlists", R"({"title": "Evening"})");
     REQUIRE(before);
@@ -370,11 +358,14 @@ TEST_CASE("a reload turning writePlaylists off refuses the next playlist write, 
     REQUIRE(refused);
     CHECK(refused->status == 403);
     CHECK(errorOf(*refused) == describe(PlayerOutcome::writesDisabled));
-    CHECK(created == 1);
+    CHECK(foobar.count(Call::createPlaylist) == 1);
+    CHECK(foobar.playlists().size() == 1);
     CHECK(capabilitiesOf(server)["canWritePlaylists"] == false);
 }
 
-TEST_CASE("a name added to allowedHosts by a reload is admitted on the next request, and refused once removed") {
+TEST_CASE(
+    "a name added to allowedHosts by a reload is admitted on the next request, and refused once "
+    "removed") {
     TestServer server;
 
     const auto before = statusNamed(server, "jukebox.example");
@@ -394,7 +385,9 @@ TEST_CASE("a name added to allowedHosts by a reload is admitted on the next requ
     CHECK(removed->status == 403);
 }
 
-TEST_CASE("an origin added to allowedOrigins by a reload is reflected on the next request, and not once removed") {
+TEST_CASE(
+    "an origin added to allowedOrigins by a reload is reflected on the next request, and not once "
+    "removed") {
     TestServer server;
 
     const auto before = statusFrom(server, "https://jean.example");
@@ -433,7 +426,9 @@ TEST_CASE("capabilities after a reload describes every live switch as the file n
 
 // A handler that read the switches twice could answer from two reloads at once. Both switches
 // flip together here, so an answer carrying one old and one new is a torn read.
-TEST_CASE("requests in flight on several threads each see one whole set of switches while reloads swap them") {
+TEST_CASE(
+    "requests in flight on several threads each see one whole set of switches while reloads swap "
+    "them") {
     constexpr int kClients = 4;
     constexpr int kRequestsEach = 40;
 
@@ -441,6 +436,7 @@ TEST_CASE("requests in flight on several threads each see one whole set of switc
     TestServer server(servingSettings(), countingTransport(&sent));
 
     std::vector<httplib::Client> clients;
+    clients.reserve(kClients);
     for (int each = 0; each < kClients; ++each)
         clients.push_back(server.client());
 
@@ -448,8 +444,8 @@ TEST_CASE("requests in flight on several threads each see one whole set of switc
     std::atomic<size_t> reloads{0};
     std::thread reloader([&server, &finished, &reloads] {
         while (!finished) {
-            server.reload(reloads % 2 == 0 ? R"({"controlPlayback": false, "writePlaylists": false})"
-                                           : "{}");
+            server.reload(
+                reloads % 2 == 0 ? R"({"controlPlayback": false, "writePlaylists": false})" : "{}");
             ++reloads;
         }
     });
@@ -457,6 +453,7 @@ TEST_CASE("requests in flight on several threads each see one whole set of switc
     std::atomic<int> torn{0};
     std::atomic<int> unexpected{0};
     std::vector<std::thread> requesters;
+    requesters.reserve(clients.size());
     for (auto& client : clients) {
         requesters.emplace_back([&client, &torn, &unexpected] {
             for (int request = 0; request < kRequestsEach; ++request) {

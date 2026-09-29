@@ -45,16 +45,16 @@ void QueueRoutes::queuePlaylistRows(const JsonObject& body, httplib::Response& r
         return;
     }
 
+    if (!queue_.addPlaylistRows) {
+        respondUnavailable(res, kNoQueue);
+        return;
+    }
+
     if (changingTooFast(changes_, res))
         return;
 
     if (request.at && queueMoved(request.at->revision, res))
         return;
-
-    if (!queue_.addPlaylistRows) {
-        respondUnavailable(res, kNoQueue);
-        return;
-    }
 
     respondCommand(res, queue_.addPlaylistRows(request.playlistId, request.positions, request.at));
 }
@@ -70,16 +70,16 @@ void QueueRoutes::queueLibraryTracks(const JsonObject& body, httplib::Response& 
         return;
     }
 
+    if (!queue_.addLibraryTracks) {
+        respondUnavailable(res, kNoQueue);
+        return;
+    }
+
     if (changingTooFast(changes_, res))
         return;
 
     if (request.at && queueMoved(request.at->revision, res))
         return;
-
-    if (!queue_.addLibraryTracks) {
-        respondUnavailable(res, kNoQueue);
-        return;
-    }
 
     respondCommand(res, queue_.addLibraryTracks(request.structure, request.ordinals, request.at));
 }
@@ -122,13 +122,13 @@ void QueueRoutes::addTo(httplib::Server& server) {
         if (playbackRefused(*settings_.current(), res))
             return;
 
-        if (changingTooFast(changes_, res))
-            return;
-
         if (!queue_.clear) {
             respondUnavailable(res, kNoQueue);
             return;
         }
+
+        if (changingTooFast(changes_, res))
+            return;
 
         respondCommand(res, queue_.clear());
     });
@@ -143,16 +143,16 @@ void QueueRoutes::addTo(httplib::Server& server) {
             return;
         }
 
+        if (!queue_.moveEntry) {
+            respondUnavailable(res, kNoQueue);
+            return;
+        }
+
         if (changingTooFast(changes_, res))
             return;
 
         if (queueMoved(request.revision, res))
             return;
-
-        if (!queue_.moveEntry) {
-            respondUnavailable(res, kNoQueue);
-            return;
-        }
 
         respondCommand(res, queue_.moveEntry(request.from, request.to, request.revision));
     });
@@ -168,16 +168,16 @@ void QueueRoutes::addTo(httplib::Server& server) {
             return;
         }
 
+        if (!queue_.removeEntry) {
+            respondUnavailable(res, kNoQueue);
+            return;
+        }
+
         if (changingTooFast(changes_, res))
             return;
 
         if (queueMoved(request.revision, res))
             return;
-
-        if (!queue_.removeEntry) {
-            respondUnavailable(res, kNoQueue);
-            return;
-        }
 
         respondCommand(res, queue_.removeEntry(request.index, request.revision));
     });

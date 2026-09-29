@@ -80,9 +80,9 @@ bool queueHasMoved(PlayerStateStore& store, uint64_t revision) {
     return store.read().queueRevision != revision;
 }
 
-// See ARCHITECTURE.md, *Facts about the player*, for why a dead entry is re-added by handle
-// rather than by position.
-void readdEntries(playlist_manager_v5::ptr manager,
+// A dead entry is re-added by handle rather than by position, the choice foo_queuecontents
+// (github.com/ssalonen/foo_queuecontents) makes for the entries it treats as dead.
+void readdEntries(const playlist_manager_v5::ptr& manager,
                   const pfc::list_t<t_playback_queue_item>& entries) {
     for (t_size item = 0; item < entries.get_count(); ++item) {
         const auto& entry = entries[item];
@@ -93,10 +93,10 @@ void readdEntries(playlist_manager_v5::ptr manager,
     }
 }
 
-// See ARCHITECTURE.md, *Facts about the player*, for why an `at` drains the queue and
-// replays the tail.
-void queueAt(playlist_manager_v5::ptr manager, std::optional<QueuePosition> at,
-             const std::function<void(playlist_manager_v5::ptr)>& addNewEntries) {
+// The foobar2000 SDK has no queue insert: queue_add_item and queue_add_item_playlist only
+// append. So an `at` drains the queue from there, appends, and replays the tail.
+void queueAt(const playlist_manager_v5::ptr& manager, std::optional<QueuePosition> at,
+             const std::function<void(const playlist_manager_v5::ptr&)>& addNewEntries) {
     pfc::list_t<t_playback_queue_item> tail;
     if (at) {
         const auto queueCount = manager->queue_get_count();
@@ -136,7 +136,7 @@ PlayerOutcome queueRowsOnMainThread(const std::string& playlistId,
     if (const auto refusal = queueEditRefusal(facts); refusal != PlayerOutcome::done)
         return refusal;
 
-    queueAt(manager, at, [&positions, index](playlist_manager_v5::ptr manager) {
+    queueAt(manager, at, [&positions, index](const playlist_manager_v5::ptr& manager) {
         for (const auto position : positions)
             manager->queue_add_item_playlist(index, position);
     });
@@ -159,7 +159,7 @@ PlayerOutcome queueTracksOnMainThread(uint64_t structure, const std::vector<uint
     if (const auto refusal = queueEditRefusal(facts); refusal != PlayerOutcome::done)
         return refusal;
 
-    queueAt(manager, at, [&resolved](playlist_manager_v5::ptr manager) {
+    queueAt(manager, at, [&resolved](const playlist_manager_v5::ptr& manager) {
         for (t_size item = 0; item < resolved.items.get_count(); ++item)
             manager->queue_add_item(resolved.items[item]);
     });
@@ -251,9 +251,9 @@ PlaylistRowQueuer makePlaylistRowQueuer(MainThreadQueue& mainThread, PlayerState
 LibraryTrackQueuer makeLibraryTrackQueuer(MainThreadQueue& mainThread,
                                           OrdinalResolver resolveOrdinals,
                                           PlayerStateStore& store) {
-    return [&mainThread, resolveOrdinals, &store](uint64_t structure,
-                                                  const std::vector<uint32_t>& ordinals,
-                                                  std::optional<QueuePosition> at) {
+    return [&mainThread, resolveOrdinals = std::move(resolveOrdinals), &store](
+               uint64_t structure, const std::vector<uint32_t>& ordinals,
+               std::optional<QueuePosition> at) {
         return askForOutcome<PlayerOutcome>(
             mainThread, "queueing library tracks",
             [structure, ordinals, at, resolveOrdinals, &store] {

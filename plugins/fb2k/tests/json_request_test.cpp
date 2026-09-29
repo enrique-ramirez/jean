@@ -21,6 +21,8 @@ constexpr char kJsonRequired[] = "send application/json";
 // Whatever a callback would answer. A refused request never asks for one.
 struct Anything {
     template <typename T>
+    // Converting into any callback's answer without being asked is the point.
+    // NOLINTNEXTLINE(misc-explicit-constructor)
     operator T() const {
         return T{};
     }
@@ -90,8 +92,7 @@ TicketMint countingMint(const std::shared_ptr<int>& calls) {
 }
 
 std::string dialable(std::string path) {
-    for (const auto& [placeholder, value] :
-         std::vector<std::pair<std::string, std::string>>{
+    for (const auto& [placeholder, value] : std::vector<std::pair<std::string, std::string>>{
              {"{id}", kPlaylistId}, {"{role}", "scratch"}, {"{index}", "0"}}) {
         const auto at = path.find(placeholder);
         if (at != std::string::npos)
@@ -135,9 +136,7 @@ void checkEveryPostRefuses(const Refusable& request) {
         REQUIRE(response);
         CHECK(response->status == 415);
 
-        const auto body = json::parse(response->body, nullptr, false);
-        CHECK(body.is_object());
-        CHECK(body.value("error", "") == kJsonRequired);
+        CHECK(errorOf(*response) == kJsonRequired);
 
         CHECK(*calls == 0);
         CHECK(*minted == 0);
@@ -152,7 +151,8 @@ TEST_CASE("every POST the contract publishes refuses text/plain with 415 send ap
 
 // What a body-less command sends when nobody sets the header, and a browser lets it cross
 // origins without a preflight.
-TEST_CASE("every POST the contract publishes refuses no Content-Type with 415 send application/json") {
+TEST_CASE(
+    "every POST the contract publishes refuses no Content-Type with 415 send application/json") {
     checkEveryPostRefuses({"", ""});
 }
 

@@ -5,6 +5,7 @@
 #include "core/ask_player.h"
 #include "core/library.h"
 #include "fb2k/columns.h"
+#include "fb2k/playlist_properties.h"
 #include "fb2k/playlists.h"
 #include "fb2k/tracks.h"
 
@@ -94,6 +95,16 @@ CopiedChanges copyChangedRowsOnMainThread(const std::string& playlistId, uint64_
     return copied;
 }
 
+PlaylistRoleRead roleOnMainThread(const std::string& playlistId) {
+    PlaylistRoleRead read;
+
+    const auto index = findPlaylist(playlistId);
+    if (index != pfc::infinite_size)
+        read.role = roleOf(index);
+
+    return read;
+}
+
 struct RowHandle {
     PlayerOutcome outcome = PlayerOutcome::done;
     metadb_handle_ptr handle;
@@ -137,6 +148,14 @@ PlaylistLister makePlaylistLister(MainThreadQueue& mainThread, const PlaylistVer
         return askForOutcome<PlaylistsResult>(mainThread, "listing playlists", [&versions] {
             return PlaylistsResult{PlayerOutcome::done, everyPlaylist(versions)};
         });
+    };
+}
+
+PlaylistRoleReader makePlaylistRoleReader(MainThreadQueue& mainThread) {
+    return [&mainThread](const std::string& playlistId) {
+        return askForOutcome<PlaylistRoleRead>(
+            mainThread, "reading a playlist's role",
+            [playlistId] { return roleOnMainThread(playlistId); });
     };
 }
 

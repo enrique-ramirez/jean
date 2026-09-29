@@ -7,6 +7,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace jean;
@@ -26,9 +27,9 @@ Admission fromLan(const std::string& host, const std::vector<std::string>& allow
 // The pointer must outlive the server.
 Player servingPage(int* pagesRead) {
     Player player = servingPlayer();
-    player.page.read = [pagesRead](const std::string&) -> std::optional<std::string> {
+    player.page.read = [pagesRead](const std::string&) -> std::optional<std::string_view> {
         ++*pagesRead;
-        return std::string(kIndex);
+        return std::string_view(kIndex);
     };
     return player;
 }
@@ -142,37 +143,35 @@ TEST_CASE("a caller outside the private network is refused whatever host it name
 }
 
 TEST_CASE("a private caller naming a local host is admitted from every private spelling") {
-    for (const char* source : {"10.0.0.1", "172.16.0.1", "192.168.1.40", "127.0.0.1",
-                               "169.254.1.1", "::1", "fd00::1", "fe80::1%en0",
-                               "::ffff:192.168.1.5"}) {
+    for (const char* source : {"10.0.0.1", "172.16.0.1", "192.168.1.40", "127.0.0.1", "169.254.1.1",
+                               "::1", "fd00::1", "fe80::1%en0", "::ffff:192.168.1.5"}) {
         INFO("source: ", std::string(source));
         CHECK(admit(source, "player.lan", {}).admitted);
     }
 }
 
 TEST_CASE("every host form the allowlist names is admitted, with or without a port") {
-    for (const char* host : {"192.168.1.40", "192.168.1.40:8881", "127.0.0.1", "203.0.113.7:8881",
-                             "[::1]", "[::1]:8881", "[fe80::1]:8881", "[2001:db8::1]",
-                             "localhost", "localhost:8881", "player", "player:8881",
-                             "player.lan", "player.lan:8881", "player.local",
-                             "player.local:8881", "player.home.arpa", "player.home.arpa:8881",
-                             "deep.sub.player.lan"}) {
+    for (const char* host :
+         {"192.168.1.40", "192.168.1.40:8881", "127.0.0.1", "203.0.113.7:8881", "[::1]",
+          "[::1]:8881", "[fe80::1]:8881", "[2001:db8::1]", "localhost", "localhost:8881", "player",
+          "player:8881", "player.lan", "player.lan:8881", "player.local", "player.local:8881",
+          "player.home.arpa", "player.home.arpa:8881", "deep.sub.player.lan"}) {
         INFO("host: ", std::string(host));
         CHECK(fromLan(host).admitted);
     }
 }
 
 TEST_CASE("host matching ignores case") {
-    for (const char* host : {"LOCALHOST", "Player.LAN", "player.Local:8881", "PLAYER.HOME.ARPA",
-                             "[FE80::1]"}) {
+    for (const char* host :
+         {"LOCALHOST", "Player.LAN", "player.Local:8881", "PLAYER.HOME.ARPA", "[FE80::1]"}) {
         INFO("host: ", std::string(host));
         CHECK(fromLan(host).admitted);
     }
 }
 
 TEST_CASE("one trailing dot is stripped before the host is matched") {
-    for (const char* host : {"player.lan.", "player.lan.:8881", "localhost.", "player.local.",
-                             "player.home.arpa."}) {
+    for (const char* host :
+         {"player.lan.", "player.lan.:8881", "localhost.", "player.local.", "player.home.arpa."}) {
         INFO("host: ", std::string(host));
         CHECK(fromLan(host).admitted);
     }
@@ -184,11 +183,11 @@ TEST_CASE("one trailing dot is stripped before the host is matched") {
 // DNS rebinding sends the attacker's own name in Host, and none of these is a name a
 // public registry can hand out inside the allowlist.
 TEST_CASE("a public name is refused, including one that merely contains a local suffix") {
-    for (const char* host : {"evil.example", "evil.example:8881", "EVIL.EXAMPLE",
-                             "player.lan.evil.example", "player.local.evil.example",
-                             "localhost.evil.example", "evil.xlan", "evil.notlocal",
-                             "evil.example.arpa", "192.168.1.40.evil.example",
-                             "[evil.example]", "[evil.example]:8881"}) {
+    for (const char* host :
+         {"evil.example", "evil.example:8881", "EVIL.EXAMPLE", "player.lan.evil.example",
+          "player.local.evil.example", "localhost.evil.example", "evil.xlan", "evil.notlocal",
+          "evil.example.arpa", "192.168.1.40.evil.example", "[evil.example]",
+          "[evil.example]:8881"}) {
         INFO("host: ", std::string(host));
         CHECK_FALSE(fromLan(host).admitted);
     }
@@ -208,8 +207,8 @@ TEST_CASE("a name listed in allowedHosts is admitted, matched whole and ignoring
         CHECK(fromLan(host, allowedHosts).admitted);
     }
 
-    for (const char* host : {"sub.music.example", "music.example.evil.example", "evil.example",
-                             "xmusic.example"}) {
+    for (const char* host :
+         {"sub.music.example", "music.example.evil.example", "evil.example", "xmusic.example"}) {
         INFO("host: ", std::string(host));
         CHECK_FALSE(fromLan(host, allowedHosts).admitted);
     }
@@ -296,10 +295,7 @@ TEST_CASE("a refused /api/ request is a JSON error naming the host and allowedHo
     REQUIRE(response->status == 403);
     CHECK(response->get_header_value("Content-Type").rfind("application/json", 0) == 0);
 
-    const auto body = json::parse(response->body, nullptr, false);
-    REQUIRE(body.is_object());
-    REQUIRE(body["error"].is_string());
-    const auto error = body["error"].get<std::string>();
+    const auto error = errorOf(*response);
     CHECK(error.find("evil.example") != std::string::npos);
     CHECK(error.find("allowedHosts") != std::string::npos);
 }
@@ -343,7 +339,9 @@ TEST_CASE("a name listed in allowedHosts in config.json is admitted, and an unli
 
 // Sec-Fetch-Site is a browser's own account of who sent a request, which a page on another site
 // cannot forge. A browser sends it only to a secure origin, so over plain HTTP it is absent.
-TEST_CASE("a request another site sent is refused, and one this origin, a typed address or no browser sent is admitted") {
+TEST_CASE(
+    "a request another site sent is refused, and one this origin, a typed address or no browser "
+    "sent is admitted") {
     for (const char* site : {"cross-site", "same-site", "Cross-Site"}) {
         INFO("Sec-Fetch-Site: ", std::string(site));
         const auto refused = admitFetchSite(site, false);

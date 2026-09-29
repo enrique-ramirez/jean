@@ -71,7 +71,8 @@ unsigned preSkipOf(const std::vector<std::uint8_t>& headers) {
     const std::string text(headers.begin(), headers.end());
     const size_t head = text.find("OpusHead");
     REQUIRE(head != std::string::npos);
-    return headers[head + 10] | (headers[head + 11] << 8);
+    return static_cast<unsigned>(headers[head + 10]) |
+           (static_cast<unsigned>(headers[head + 11]) << 8U);
 }
 
 // Every audio packet decoded in order, interleaved, the way a player would hand it on before
@@ -326,7 +327,7 @@ TEST_CASE("once the pre-skip is dropped, a sound is heard where it was played") 
 
     CHECK(preSkip > 0);
 
-    const auto loud = std::find_if(decoded.begin() + static_cast<std::ptrdiff_t>(preSkip * 2),
+    const auto loud = std::find_if(decoded.begin() + (static_cast<std::ptrdiff_t>(preSkip) * 2),
                                    decoded.end(), [](float s) { return std::fabs(s) > 0.05F; });
     REQUIRE(loud != decoded.end());
 
@@ -341,6 +342,8 @@ TEST_CASE("the bitrate follows the music rather than the clock") {
     const size_t frames = size_t{OpusStream::kSampleRate} * 2;
 
     std::vector<float> noise(frames * 2);
+    // The same noise on every run.
+    // NOLINTNEXTLINE(bugprone-random-generator-seed,cert-msc32-c,cert-msc51-cpp)
     std::mt19937 generator(7);
     std::uniform_real_distribution<float> level(-0.5F, 0.5F);
     std::generate(noise.begin(), noise.end(), [&] { return level(generator); });

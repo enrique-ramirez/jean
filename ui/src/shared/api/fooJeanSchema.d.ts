@@ -726,6 +726,8 @@ export interface paths {
          *
          *     This route never answers `503`: a player with no library is still a player, so it answers `200` with `library.ready` false and a populated `player` section. The three routes under `/library` keep their own `503` when there is no library to serve.
          *
+         *     This route never waits on foobar2000's main thread either, so it answers while every command is waiting on that thread and headed for a `504`. `mainThread` is how a client tells the two apart: see `MainThread`.
+         *
          *     Its `ETag` names the content coding, exactly as the two binary routes do. See *Compression*.
          */
         get: operations["getState"];
@@ -1832,11 +1834,26 @@ export interface components {
         State: {
             library: components["schemas"]["Library"];
             player: components["schemas"]["PlayerState"];
+            mainThread: components["schemas"]["MainThread"];
             /**
              * @description Moves when a reload changes a key `GET /capabilities` reflects, and stands still on every other reload, including one that changed nothing or changed only a key that needs foobar2000 restarted. A client polls this to learn a switch moved without asking for capabilities on every tick.
              * @example 3
              */
             configGeneration: number;
+        };
+        /**
+         * @description Whether foobar2000's main thread is running what the component hands it. Every command, every playlist read and write, the queue, tag writes and the outputs run on that thread, so while it is not answering each of them waits and then answers `504`, and `player` goes on describing the last thing the player said. A modal dialog on the player's own screen, a long scan, a hung DSP or an expensive title-formatting script can each hold it.
+         *
+         *     The component checks by handing the thread a trivial job, at most one every two seconds and only while something polls this route, and calls it not answering once a check has waited five seconds. `answering` turns back to `true` on the first poll after the thread runs the check, whether or not a command ever went through. The `ETag` moves as a stall starts and again as it ends, and stands still while one goes on.
+         */
+        MainThread: {
+            /** @description `false` while a check has waited five seconds or more without the main thread running it. */
+            answering: boolean;
+            /**
+             * @description How long the check the thread has not run had waited when this document was built, and `null` exactly while `answering` is `true`. A `304` answers a document built earlier, so a client holding one adds the time since it arrived, as it does for `position.ageSeconds`.
+             * @example 7.1
+             */
+            unansweredSeconds: number | null;
         };
         /** @description What rides under `library` in `GET /state`'s `200`, and what `GET /library/export` and `POST /library/refresh` hand back on a `202`. Small on purpose: it is polled. */
         Library: {
@@ -2413,6 +2430,15 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description The request did not carry `Content-Type: application/json`. Every `POST` needs it, one with no body included: a transport command, `POST /stream/ticket` for an anonymous listener and `POST /library/refresh` all send the header and nothing else. It is checked once admission has passed and before the route reads anything, so nothing about the request reached the player. */
+        JsonRequired: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
         PlayerRefused: {
             headers: {
@@ -2951,6 +2977,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            415: components["responses"]["JsonRequired"];
             /** @description Tag writes are arriving faster than this component will make them: a burst of 200, refilling one every 50 milliseconds, one budget however many clients are writing. Rating a whole album or a box set one track after another never meets it; a client stuck in a loop does. A request refused for what it asks is refused for that first and spends nothing. Nothing was written. `Retry-After` is sent in seconds. */
             429: {
                 headers: {
@@ -3050,6 +3077,7 @@ export interface operations {
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["StructureMoved"];
             413: components["responses"]["BodyTooLarge"];
+            415: components["responses"]["JsonRequired"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
             /** @description A set of media library tracks arrived and this install either does not serve the media library, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or has built no snapshot yet to resolve it against. A create carrying no such set is answered `503` only where the component cannot reach the player's playlists at all, which `PlaylistWritesUnavailable` describes. */
@@ -3089,6 +3117,7 @@ export interface operations {
             400: components["responses"]["PlaylistRefused"];
             403: components["responses"]["WritesDisabled"];
             409: components["responses"]["PlaylistConflict"];
+            415: components["responses"]["JsonRequired"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaylistUnavailable"];
@@ -3121,6 +3150,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["PlaylistRefused"];
+            415: components["responses"]["JsonRequired"];
             429: components["responses"]["QueryPreviewedTooFast"];
             503: components["responses"]["PlaylistUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
@@ -3158,6 +3188,7 @@ export interface operations {
             403: components["responses"]["NotOurs"];
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["PlaylistConflict"];
+            415: components["responses"]["JsonRequired"];
             429: components["responses"]["TooManyRequests"];
             /** @description The player refused. If the new query compiles but the core then declines to attach it, the playlist is left as an ordinary playlist that this component still recognises as its own; sending the request again with a query the player accepts restores it. */
             500: {
@@ -3241,6 +3272,7 @@ export interface operations {
             403: components["responses"]["PlaybackDisabled"];
             409: components["responses"]["FillConflict"];
             413: components["responses"]["BodyTooLarge"];
+            415: components["responses"]["JsonRequired"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["FillUnavailable"];
@@ -3316,6 +3348,7 @@ export interface operations {
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["PlaylistLocked"];
             413: components["responses"]["BodyTooLarge"];
+            415: components["responses"]["JsonRequired"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaylistWritesUnavailable"];
@@ -3400,6 +3433,7 @@ export interface operations {
             403: components["responses"]["OwnPlaylistAddressed"];
             404: components["responses"]["NoSuchPlaylist"];
             413: components["responses"]["BodyTooLarge"];
+            415: components["responses"]["JsonRequired"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaylistWritesUnavailable"];
@@ -3495,6 +3529,7 @@ export interface operations {
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["FillConflict"];
             413: components["responses"]["BodyTooLarge"];
+            415: components["responses"]["JsonRequired"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["FillUnavailable"];
@@ -3606,6 +3641,7 @@ export interface operations {
             };
             409: components["responses"]["PlaylistLocked"];
             413: components["responses"]["BodyTooLarge"];
+            415: components["responses"]["JsonRequired"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaylistRowsUnavailable"];
@@ -3661,6 +3697,7 @@ export interface operations {
                 };
             };
             413: components["responses"]["BodyTooLarge"];
+            415: components["responses"]["JsonRequired"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaylistRowsUnavailable"];
@@ -3705,6 +3742,7 @@ export interface operations {
             };
             403: components["responses"]["PlaybackDisabled"];
             404: components["responses"]["NoSuchPlaylist"];
+            415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaylistRowsUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
@@ -3727,6 +3765,7 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["PlaybackDisabled"];
+            415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
             504: components["responses"]["PlaybackTooSlow"];
@@ -3749,6 +3788,7 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["PlaybackDisabled"];
+            415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
             504: components["responses"]["PlaybackTooSlow"];
@@ -3771,6 +3811,7 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["PlaybackDisabled"];
+            415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
             504: components["responses"]["PlaybackTooSlow"];
@@ -3793,6 +3834,7 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["PlaybackDisabled"];
+            415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
             504: components["responses"]["PlaybackTooSlow"];
@@ -3828,6 +3870,7 @@ export interface operations {
                 };
             };
             403: components["responses"]["PlaybackDisabled"];
+            415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
             504: components["responses"]["PlaybackTooSlow"];
@@ -3864,6 +3907,7 @@ export interface operations {
             };
             403: components["responses"]["PlaybackDisabled"];
             409: components["responses"]["PlaybackModeUnavailable"];
+            415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
             504: components["responses"]["PlaybackTooSlow"];
@@ -3923,15 +3967,7 @@ export interface operations {
             };
             403: components["responses"]["OutputChangeDisabled"];
             409: components["responses"]["OutputDeviceNotListed"];
-            /** @description The body was not `application/json`. */
-            415: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["OutputsUnavailable"];
             504: components["responses"]["PlaybackTooSlow"];
@@ -3967,6 +4003,7 @@ export interface operations {
                 };
             };
             403: components["responses"]["PlaybackDisabled"];
+            415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["VolumeUnavailable"];
             504: components["responses"]["PlaybackTooSlow"];
@@ -4087,6 +4124,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistFailed"];
                 };
             };
+            415: components["responses"]["JsonRequired"];
             429: components["responses"]["TooManyRequests"];
             /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
             500: {
@@ -4203,6 +4241,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistFailed"];
                 };
             };
+            415: components["responses"]["JsonRequired"];
             429: components["responses"]["TooManyRequests"];
             /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
             500: {
@@ -4417,6 +4456,7 @@ export interface operations {
                     "application/json": components["schemas"]["Library"];
                 };
             };
+            415: components["responses"]["JsonRequired"];
             429: components["responses"]["LibraryRefreshedTooFast"];
             503: components["responses"]["LibraryUnavailable"];
         };
@@ -4707,15 +4747,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description A body was sent and was not `application/json`. */
-            415: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            415: components["responses"]["JsonRequired"];
             503: components["responses"]["StreamUnavailable"];
         };
     };
@@ -4795,15 +4827,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description The body was not `application/json`. */
-            415: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            415: components["responses"]["JsonRequired"];
         };
     };
     getStreamTimeline: {

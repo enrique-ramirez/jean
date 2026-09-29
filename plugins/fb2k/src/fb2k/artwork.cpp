@@ -4,6 +4,7 @@
 
 #include "core/log.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -55,7 +56,7 @@ ArtworkSource AlbumArt::of(const metadb_handle_ptr& item) const {
 
         ArtworkSource source;
         source.tag = artworkTag(picture);
-        source.picture = std::move(picture);
+        source.picture = std::make_shared<const std::string>(std::move(picture));
         return source;
     } catch (const std::exception&) {
         return {};

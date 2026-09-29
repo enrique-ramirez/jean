@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <string_view>
 #include <system_error>
 #include <unordered_map>
 
@@ -43,14 +44,16 @@ bool isWithin(const std::filesystem::path& root, const std::filesystem::path& ca
 
 }  // namespace
 
-std::optional<std::string> readEmbeddedPage(const std::string& path) {
+// The view is over the resource section of this component's own DLL, which LockResource maps
+// for as long as the module is loaded, so it outlives every response that sends it.
+std::optional<std::string_view> readEmbeddedPage(const std::string& path) {
     const auto& ids = uiAssetIds();
     const auto found = ids.find(path);
     if (found == ids.end())
         return std::nullopt;
 
-    const auto self = core_api::get_my_instance();
-    const HRSRC resource =
+    auto* const self = core_api::get_my_instance();
+    auto* const resource =
         FindResourceW(self, MAKEINTRESOURCEW(found->second), generated::kUiAssetResourceType);
     if (!resource)
         return std::nullopt;
@@ -63,7 +66,7 @@ std::optional<std::string> readEmbeddedPage(const std::string& path) {
     if (!data)
         return std::nullopt;
 
-    return std::string(static_cast<const char*>(data), SizeofResource(self, resource));
+    return std::string_view(static_cast<const char*>(data), SizeofResource(self, resource));
 }
 
 std::vector<std::string> embeddedPageNames() {
@@ -85,7 +88,7 @@ DiskPage readWwwPage(const std::string& path) {
 
     std::error_code statEc;
     if (fs::is_directory(resolved, statEc))
-        return {DiskPage::Kind::Directory, {}};
+        return {DiskPage::Kind::directory, {}};
 
     if (!fs::is_regular_file(resolved, statEc))
         return {};
@@ -94,8 +97,8 @@ DiskPage readWwwPage(const std::string& path) {
     if (!file)
         return {};
 
-    return {DiskPage::Kind::File,
-        std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>())};
+    return {DiskPage::Kind::file,
+            std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>())};
 }
 
 }  // namespace jean

@@ -353,6 +353,7 @@ TEST_CASE("a malformed key at startup logs the key, the value it refused and the
     CHECK(parseFresh(R"({"port": "eight thousand"})").port == Settings().port);
     CHECK(lineWith({"port", "eight thousand", "8881"}));
 
-    CHECK(parseFresh(R"({"maxAutoPlaylists": -7})").maxAutoPlaylists == Settings().maxAutoPlaylists);
+    CHECK(parseFresh(R"({"maxAutoPlaylists": -7})").maxAutoPlaylists ==
+          Settings().maxAutoPlaylists);
     CHECK(lineWith({"maxAutoPlaylists", "-7", "100"}));
 }

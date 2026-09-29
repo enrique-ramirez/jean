@@ -44,8 +44,6 @@ public:
     // ticket is dropped as it is refused, so a refusal cannot keep one alive.
     Admission admits(const std::string& ticket, Clock::time_point now);
 
-    size_t outstanding(Clock::time_point now) const;
-
     TicketStore(const TicketStore&) = delete;
     TicketStore& operator=(const TicketStore&) = delete;
 
@@ -56,7 +54,7 @@ private:
         DeviceIdentity device;
     };
 
-    mutable std::mutex mutex_;
+    std::mutex mutex_;
     std::vector<Entry> entries_;
     const TicketMint mint_;
     const std::chrono::seconds ttl_;

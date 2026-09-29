@@ -21,6 +21,7 @@ private:
     void addTransportRoute(httplib::Server& server, const char* path, Transport command);
     void addVolumeRoute(httplib::Server& server);
     void addPlayingTrackRoute(httplib::Server& server);
+    bool readingPlayingTrackTooFast(httplib::Response& res);
 
     void setMode(const httplib::Request& req, httplib::Response& res);
 

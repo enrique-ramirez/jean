@@ -8,11 +8,12 @@ namespace jean {
 
 class AlbumArt {
 public:
-    // Main thread only, resolved once here and used from anywhere afterwards, for the reason
-    // ARCHITECTURE.md, *Facts about the player*, gives.
+    // Main thread only, resolved once here and used from anywhere afterwards: whether
+    // fb2k::std_api_get is safe off the main thread is undocumented.
     AlbumArt();
 
-    // Any thread, and never the main one, for the same reason.
+    // Any thread, and never the main one. foobar2000's album_art.h names no thread for its
+    // calls, but open and query both take an abort_callback, the SDK's mark of blocking I/O.
     ArtworkSource of(const metadb_handle_ptr& item) const;
 
 private:
@@ -22,8 +23,8 @@ private:
 // Registers with the core's own now-playing loader rather than resolving a cover itself, so
 // GET /api/artwork/playing answers a stream and a CD track exactly as it answers a library
 // file. Construction and destruction are main thread only, for the reason registering with any
-// player service is; which thread `on_album_art` arrives on is not this file's to assume, and
-// ARCHITECTURE.md, *Facts about the player*, has what is known about it.
+// player service is. album_art.h names no thread for `on_album_art`; on foobar2000 2.25.3 it
+// arrives on the main thread.
 class NowPlayingArtworkWatch : public now_playing_album_art_notify {
 public:
     explicit NowPlayingArtworkWatch(NowPlayingArtwork& store);

@@ -9,10 +9,8 @@
 #include "core/rate_limit.h"
 
 #include <optional>
-#include <string>
 
-// Every playlist the player holds: the listing, a playlist's rows and the edits to them, and the
-// component's own playlists, addressed by role.
+// The player's list of playlists: reading it, and creating, renaming, removing and moving one.
 namespace jean {
 
 class PlaylistRoutes {
@@ -24,18 +22,10 @@ public:
     void addTo(httplib::Server& server);
 
 private:
-    void addListRoutes(httplib::Server& server);
-    void addRowRoutes(httplib::Server& server);
-    void addOwnPlaylistRoutes(httplib::Server& server);
-
     void create(const httplib::Request& req, httplib::Response& res);
-    void fill(const httplib::Request& req, httplib::Response& res);
-    void fillOwn(const httplib::Request& req, httplib::Response& res);
 
     std::optional<NewPlaylistRows> newPlaylistRows(const JsonObject& body,
                                                    httplib::Response& res) const;
-
-    bool ownPlaylistRefused(const std::string& id, httplib::Response& res) const;
 
     const PlaylistCalls& playlists_;
     const Library* const library_;

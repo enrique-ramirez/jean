@@ -50,9 +50,10 @@ TestServer::TestServer(Settings settings, const Player& player, Library* library
       audience_(std::make_unique<Audience>(settings_.maxConcurrentStreams,
                                            std::chrono::seconds(kMuteLingerSeconds))) {
     // freePort() has to close its probe before we bind, so something else occasionally takes the
-    // port in between. Retry that rather than fail somewhere unrelated; a refusal the component
-    // made on purpose, such as a missing token, is the answer the test asked for and is kept.
-    // Because of the retry, the suite is only green once it has been run more than once.
+    // port in between. Retry that rather than fail somewhere unrelated; a failure to listen for
+    // any other reason, such as an address the settings name that no interface carries, is the
+    // answer the test asked for and is kept. Because of the retry, the suite is only green once
+    // it has been run more than once.
     constexpr int kAttempts = 5;
 
     for (int attempt = 0; attempt < kAttempts; attempt++) {
@@ -80,6 +81,27 @@ httplib::Result get(const TestServer& server, const std::string& path) {
 
 httplib::Result post(const TestServer& server, const std::string& path, const std::string& body) {
     return server.client().Post(path, body, "application/json");
+}
+
+bool accepted(const httplib::Result& response) {
+    constexpr int kRedirected = 300;
+    return response && response->status >= 200 && response->status < kRedirected;
+}
+
+std::string errorOf(const httplib::Response& response) {
+    const auto body = nlohmann::json::parse(response.body, nullptr, false);
+    if (!body.is_object())
+        return {};
+
+    const auto error = body.find("error");
+    return error != body.end() && error->is_string() ? error->get<std::string>() : std::string();
+}
+
+nlohmann::json capabilitiesOf(const TestServer& server) {
+    const auto response = get(server, "/api/capabilities");
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+    return nlohmann::json::parse(response->body);
 }
 
 httplib::Client undecoding(const TestServer& server) {

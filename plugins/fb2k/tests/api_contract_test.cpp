@@ -8,7 +8,6 @@
 
 #include "core/documents.h"
 #include "core/outputs.h"
-#include "core/version.h"
 #include "support/fixtures.h"
 #include "support/keys.h"
 #include "support/spec.h"
@@ -95,15 +94,6 @@ std::set<std::string> everyDescribed() {
     }
 }
 
-std::string unsendable(const std::string& schema, const std::set<std::string>& described) {
-    std::vector<std::string> missing;
-    for (const auto& published : publishedEnum(schema, "error"))
-        if (described.count(published) == 0)
-            missing.push_back(published);
-
-    return listed(missing);
-}
-
 template <typename Enum>
 int statusAnswered(const std::string& error) {
     for (int raw = 0;; ++raw) {
@@ -141,6 +131,68 @@ bool publishesError(const std::string& schema, const std::string& error) {
     return std::count_if(values.begin(), values.end(), [&error](const std::string& published) {
                return unquoted(published) == error;
            }) == 1;
+}
+
+std::string unsendable(const std::string& schema, const std::set<std::string>& described) {
+    std::vector<std::string> missing;
+    for (const auto& published : publishedEnum(schema, "error"))
+        if (described.count(unquoted(published)) == 0)
+            missing.push_back(published);
+
+    return listed(missing);
+}
+
+constexpr int kFirstErrorStatus = 400;
+
+// Every refusal `Enum` can make, against the statuses contract/openapi.yaml publishes it under:
+// those of each of `schemas` whose `error` enumerates it, and those an example of it is shown
+// under. The examples count because a route may send a sentence under a status of its own, as
+// the artwork routes send a missing row as a 404 rather than the 400 a playlist route sends.
+template <typename Enum>
+void checkPublishedAsSent(const std::vector<std::string>& schemas) {
+    const auto underSchema = publishedSchemaStatuses();
+    const auto shown = publishedErrorExamples();
+
+    for (int raw = 0;; ++raw) {
+        const auto outcome = static_cast<Enum>(raw);
+        const auto sentence = describe(outcome);
+        if (sentence == "unknown")
+            return;
+
+        const auto status = httpStatusFor(outcome);
+        if (status < kFirstErrorStatus)
+            continue;
+
+        INFO("error: ", sentence, ", sent with ", status);
+
+        std::set<int> published;
+        bool enumerated = false;
+        for (const auto& schema : schemas) {
+            if (!publishesError(schema, sentence))
+                continue;
+
+            enumerated = true;
+            if (const auto found = underSchema.find(schema); found != underSchema.end())
+                published.insert(found->second.begin(), found->second.end());
+        }
+
+        if (const auto found = shown.find(sentence); found != shown.end())
+            published.insert(found->second.begin(), found->second.end());
+
+        CHECK_MESSAGE(enumerated, "publish it as an error of ", listed(schemas));
+        CHECK_MESSAGE(published.count(status) == 1, "contract/openapi.yaml publishes it under ",
+                      listed(published));
+    }
+}
+
+std::string dialable(const std::string& path) {
+    std::string filled = "/api" + path;
+    for (auto open = filled.find('{'); open != std::string::npos; open = filled.find('{')) {
+        const auto close = filled.find('}', open);
+        const auto name = filled.substr(open, close - open + 1);
+        filled.replace(open, name.size(), name == "{id}" ? kPlaylistId : "0");
+    }
+    return filled;
 }
 
 bool publishes(const std::string& method, const std::string& path, int status) {
@@ -250,8 +302,8 @@ TEST_CASE("a successful write is the shape contract/openapi.yaml publishes") {
 TEST_CASE("a refusal is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
-    const auto refused = parseTagWrite(R"({"track": "a/b.flac", "fields": {"artist": "x"}})",
-                                       servingSettings());
+    const auto refused =
+        parseTagWrite(R"({"track": "a/b.flac", "fields": {"artist": "x"}})", servingSettings());
     REQUIRE_FALSE(refused.ok());
 
     // `field` is present only for a rejected field, which is the difference a client branches on.
@@ -391,35 +443,31 @@ TEST_CASE("the other playlist answers are the shapes contract/openapi.yaml publi
           Keys{"valid", "error", "matches", "libraryEnabled"});
 }
 
-TEST_CASE("the playlist statuses contract/openapi.yaml documents are the ones we answer with") {
-    INFO(kUpdateSpec);
-
-    CHECK(httpStatusFor(PlaylistRefusal::malformedBody) == 400);
-    CHECK(httpStatusFor(PlaylistRefusal::badTitle) == 400);
-    CHECK(httpStatusFor(PlaylistRefusal::badKey) == 400);
-    CHECK(httpStatusFor(PlaylistRefusal::badQuery) == 400);
-    CHECK(httpStatusFor(PlaylistRefusal::badSort) == 400);
-    CHECK(httpStatusFor(PlaylistRefusal::badId) == 400);
-    CHECK(httpStatusFor(PlaylistRefusal::badOrdinals) == 400);
-    CHECK(httpStatusFor(PlaylistRefusal::tooFast) == 429);
-
-    CHECK(httpStatusFor(PlayerOutcome::done) == 200);
-    CHECK(httpStatusFor(PlayerOutcome::queryInvalid) == 400);
-    CHECK(httpStatusFor(PlayerOutcome::positionPastEnd) == 400);
-    CHECK(httpStatusFor(PlayerOutcome::notOurs) == 403);
-    CHECK(httpStatusFor(PlayerOutcome::noSuchPlaylist) == 404);
-    CHECK(httpStatusFor(PlayerOutcome::keyInUse) == 409);
-    CHECK(httpStatusFor(PlayerOutcome::tooMany) == 409);
-    CHECK(httpStatusFor(PlayerOutcome::structureMoved) == 409);
-    CHECK(httpStatusFor(PlayerOutcome::queueMoved) == 409);
-    CHECK(httpStatusFor(PlayerOutcome::rowsMoved) == 409);
-    CHECK(httpStatusFor(PlayerOutcome::playlistLocked) == 409);
-    CHECK(httpStatusFor(PlayerOutcome::rowsRevisionTooOld) == 410);
-    CHECK(httpStatusFor(PlayerOutcome::playerRefused) == 500);
-    CHECK(httpStatusFor(PlayerOutcome::timedOut) == 504);
-    CHECK(httpStatusFor(PlayerOutcome::unavailable) == 503);
-    CHECK(httpStatusFor(PlayerOutcome::writesDisabled) == 403);
-    CHECK(httpStatusFor(PlayerOutcome::ownPlaylist) == 403);
+// Driven from the enumerations and read against the contract, so a refusal added to either side,
+// or a status moved on one, turns this red without anybody copying a number into it.
+TEST_CASE("every refusal is sent with a status contract/openapi.yaml publishes for it") {
+    SUBCASE("PlayerOutcome") {
+        checkPublishedAsSent<PlayerOutcome>({"PlaylistFailed"});
+    }
+    SUBCASE("PlaylistRefusal") {
+        checkPublishedAsSent<PlaylistRefusal>({"PlaylistRefusal"});
+    }
+    SUBCASE("PlaybackRefusal") {
+        checkPublishedAsSent<PlaybackRefusal>(
+            {"PlaybackSeekRefusal", "PlaybackModeRefusal", "VolumeRefusal"});
+    }
+    SUBCASE("TagWriteRefusal") {
+        checkPublishedAsSent<TagWriteRefusal>({"TagRefused"});
+    }
+    SUBCASE("TagWriteOutcome") {
+        checkPublishedAsSent<TagWriteOutcome>({"TagFailed"});
+    }
+    SUBCASE("LibraryRefusal") {
+        checkPublishedAsSent<LibraryRefusal>({"LibraryRefusal"});
+    }
+    SUBCASE("DeltaOutcome") {
+        checkPublishedAsSent<DeltaOutcome>({"LibraryFailed"});
+    }
 }
 
 TEST_CASE("the library answers are the shapes contract/openapi.yaml publishes") {
@@ -522,12 +570,16 @@ TEST_CASE("GET /outputs is the shape contract/openapi.yaml publishes") {
 TEST_CASE("GET /state's documented examples are the shape PlayerState declares") {
     INFO(kUpdateSpec);
 
-    const auto required =
-        Keys{"playback",          "path",              "subsong",           "libraryPath",
-             "position",          "duration",          "volume",            "muted",
-             "title",             "artist",            "album",             "albumArtist",
-             "playbackMode",      "outputDeviceId",    "playingLocation",   "currentPlaylistId",
-             "queueRevision",     "playlistsRevision", "timelineRevision"};
+    const auto required = Keys{"playback",        "path",
+                               "subsong",         "libraryPath",
+                               "position",        "duration",
+                               "volume",          "muted",
+                               "title",           "artist",
+                               "album",           "albumArtist",
+                               "playbackMode",    "outputDeviceId",
+                               "playingLocation", "currentPlaylistId",
+                               "queueRevision",   "playlistsRevision",
+                               "timelineRevision"};
 
     PlayerState playing;
     playing.playback = PlaybackState::playing;
@@ -620,80 +672,9 @@ TEST_CASE("a delta is the shape contract/openapi.yaml publishes") {
     CHECK(keysOf(moved["dict"]) == Keys{"text", "ends", "base"});
 }
 
-TEST_CASE("the library statuses contract/openapi.yaml documents are the ones we answer with") {
-    INFO(kUpdateSpec);
-
-    CHECK(httpStatusFor(LibraryRefusal::tooManyColumns) == 400);
-    CHECK(httpStatusFor(LibraryRefusal::badColumn) == 400);
-    CHECK(httpStatusFor(LibraryRefusal::duplicateColumn) == 400);
-    CHECK(httpStatusFor(LibraryRefusal::badSince) == 400);
-
-    CHECK(httpStatusFor(DeltaOutcome::ok) == 200);
-    CHECK(httpStatusFor(DeltaOutcome::structureChanged) == 409);
-    CHECK(httpStatusFor(DeltaOutcome::revisionTooOld) == 410);
-    CHECK(httpStatusFor(DeltaOutcome::revisionUnknown) == 410);
-    CHECK(httpStatusFor(DeltaOutcome::notBuilt) == 503);
-}
-
-// The spec enumerates these, so a client may switch on them: renaming one moves kApiVersion.
-TEST_CASE("the error strings contract/openapi.yaml enumerates are the ones we send") {
-    INFO(kUpdateSpec);
-
-    CHECK(describe(TagWriteRefusal::malformedBody) == "malformed request");
-    CHECK(describe(TagWriteRefusal::badAddress) == "unacceptable address");
-    CHECK(describe(TagWriteRefusal::noFields) == "no fields to write");
-    CHECK(describe(TagWriteRefusal::fieldNotAllowed) == "field not allowed");
-
-    CHECK(describe(TagWriteOutcome::trackNotKnown) == "foobar2000 does not know that track");
-    CHECK(describe(TagWriteOutcome::rowsMoved) ==
-          "the playlist's rows were added, removed or reordered; read them again");
-    CHECK(describe(TagWriteOutcome::writeFailed) == "the player could not write the tags");
-    CHECK(describe(TagWriteOutcome::timedOut) == "the player did not answer in time");
-    CHECK(describe(TagWriteOutcome::unavailable) == "tag writing is not available");
-
-    CHECK(describe(PlaylistRefusal::malformedBody) == "malformed request");
-    CHECK(describe(PlaylistRefusal::badTitle) == "unacceptable title");
-    CHECK(describe(PlaylistRefusal::badKey) == "unacceptable key");
-    CHECK(describe(PlaylistRefusal::badQuery) == "unacceptable query");
-    CHECK(describe(PlaylistRefusal::badSort) == "unacceptable sort");
-    CHECK(describe(PlaylistRefusal::badId) == "unacceptable playlist id");
-    CHECK(describe(PlaylistRefusal::badOrdinals) == "unacceptable ordinal set");
-    CHECK(describe(PlaylistRefusal::tooFast) == "too many requests");
-
-    CHECK(describe(PlayerOutcome::queryInvalid) == "foobar2000 could not read that query");
-    CHECK(describe(PlayerOutcome::noSuchPlaylist) == "no such playlist");
-    CHECK(describe(PlayerOutcome::notOurs) == "that playlist was not created by foo_jean");
-    CHECK(describe(PlayerOutcome::keyInUse) == "another playlist already has that key");
-    CHECK(describe(PlayerOutcome::tooMany) == "this install's autoplaylist limit is reached");
-    CHECK(describe(PlayerOutcome::structureMoved) ==
-          "tracks were added or removed; export the library again");
-    CHECK(describe(PlayerOutcome::rowsMoved) ==
-          "the playlist's rows were added, removed or reordered; read them again");
-    CHECK(describe(PlayerOutcome::rowsRevisionTooOld) ==
-          "that revision is not one this playlist can catch up from; read its rows again");
-    CHECK(describe(PlayerOutcome::playerRefused) == "the player could not do that");
-    CHECK(describe(PlayerOutcome::timedOut) == "the player did not answer in time");
-    CHECK(describe(PlayerOutcome::unavailable) == "autoplaylists are not available");
-    CHECK(describe(PlayerOutcome::writesDisabled) ==
-          "this install has playlist writes turned off; turn on writePlaylists in config.json to "
-          "allow them");
-    CHECK(describe(PlayerOutcome::ownPlaylist) ==
-          "that playlist is foo_jean's own; address it by its role rather than by its id");
-
-    CHECK(describe(LibraryRefusal::tooManyColumns) == "too many columns");
-    CHECK(describe(LibraryRefusal::badColumn) == "unacceptable column");
-    CHECK(describe(LibraryRefusal::duplicateColumn) == "duplicate column");
-    CHECK(describe(LibraryRefusal::badSince) == "unacceptable revision");
-
-    CHECK(describe(DeltaOutcome::notBuilt) == "the library snapshot has not been built yet");
-    CHECK(describe(DeltaOutcome::structureChanged) ==
-          "tracks were added or removed; export the library again");
-    CHECK(describe(DeltaOutcome::revisionTooOld) ==
-          "that revision is older than the retained window; export the library again");
-    CHECK(describe(DeltaOutcome::revisionUnknown) == "no such revision");
-}
-
-TEST_CASE("every playlist error contract/openapi.yaml publishes is one this component can send") {
+// The other half of the case above: a client switches on these sentences, so one the contract
+// enumerates and the component never sends is a branch that cannot be reached.
+TEST_CASE("every error contract/openapi.yaml publishes is one this component can send") {
     SUBCASE("PlaylistRefusal") {
         INFO("add the value to PlaylistRefusal in core/playlists.h, or take it out of the spec");
         CHECK(unsendable("PlaylistRefusal", everyDescribed<PlaylistRefusal>()) == std::string());
@@ -706,10 +687,34 @@ TEST_CASE("every playlist error contract/openapi.yaml publishes is one this comp
             "core/player_outcome.h");
         CHECK(unsendable("PlaylistFailed", everyDescribed<PlayerOutcome>()) == std::string());
     }
+
+    SUBCASE("the playback refusals") {
+        for (const char* schema : {"PlaybackSeekRefusal", "PlaybackModeRefusal", "VolumeRefusal"}) {
+            INFO("schema: ", schema);
+            CHECK(unsendable(schema, everyDescribed<PlaybackRefusal>()) == std::string());
+        }
+    }
+
+    SUBCASE("TagRefused") {
+        CHECK(unsendable("TagRefused", everyDescribed<TagWriteRefusal>()) == std::string());
+    }
+
+    SUBCASE("TagFailed") {
+        CHECK(unsendable("TagFailed", everyDescribed<TagWriteOutcome>()) == std::string());
+    }
+
+    SUBCASE("LibraryRefusal") {
+        CHECK(unsendable("LibraryRefusal", everyDescribed<LibraryRefusal>()) == std::string());
+    }
+
+    SUBCASE("LibraryFailed") {
+        CHECK(unsendable("LibraryFailed", everyDescribed<DeltaOutcome>()) == std::string());
+    }
 }
 
-TEST_CASE("every refusal POST /outputs/active answers is published, under the status it is sent "
-          "with") {
+TEST_CASE(
+    "every refusal POST /outputs/active answers is published, under the status it is sent "
+    "with") {
     INFO(kUpdateSpec);
 
     for (const auto outcome : {PlayerOutcome::changeDisabled, PlayerOutcome::notListed,
@@ -791,26 +796,21 @@ TEST_CASE("a write against a rebuilt library is a 409 distinct from a moved play
     CHECK(publishesError("TagFailed", rebuilt.front()));
 }
 
-TEST_CASE("the statuses contract/openapi.yaml documents are the ones we answer with") {
+// A client branches on these two, read off GET /status, so the example the contract shows that
+// route answering with is the one a client was written against.
+TEST_CASE("GET /status reports the versions contract/openapi.yaml shows it answering with") {
     INFO(kUpdateSpec);
 
-    CHECK(httpStatusFor(TagWriteRefusal::malformedBody) == 400);
-    CHECK(httpStatusFor(TagWriteRefusal::badAddress) == 400);
-    CHECK(httpStatusFor(TagWriteRefusal::noFields) == 400);
-    CHECK(httpStatusFor(TagWriteRefusal::fieldNotAllowed) == 403);
+    const TestServer server;
+    const auto response = get(server, "/api/status");
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
 
-    CHECK(httpStatusFor(TagWriteOutcome::written) == 200);
-    CHECK(httpStatusFor(TagWriteOutcome::trackNotKnown) == 404);
-    CHECK(httpStatusFor(TagWriteOutcome::rowsMoved) == 409);
-    CHECK(httpStatusFor(TagWriteOutcome::writeFailed) == 500);
-    CHECK(httpStatusFor(TagWriteOutcome::timedOut) == 504);
-    CHECK(httpStatusFor(TagWriteOutcome::unavailable) == 503);
-}
+    const auto body = json::parse(response->body);
+    const auto example = publishedStatusExample();
 
-TEST_CASE("the versions contract/openapi.yaml states are the versions we report") {
-    INFO(kUpdateSpec);
-    CHECK(std::string(kVersion) == "0.4.0");
-    CHECK(kApiVersion == 1);
+    CHECK(body.at("version") == example.at("version"));
+    CHECK(std::to_string(body.at("apiVersion").get<int>()) == example.at("apiVersion"));
 }
 
 // api_contract_test.cpp pins documents; nothing pins statuses per route, and the stream routes
@@ -855,17 +855,14 @@ TEST_CASE("no stream route answers a status contract/openapi.yaml does not docum
     note(seen, "GET /stream/listeners", serving.client().Get("/api/stream/listeners"));
 
     note(seen, "GET /stream/timeline", serving.client().Get("/api/stream/timeline"));
-    note(seen, "GET /stream/timeline",
-         bare.client().Get("/api/stream/timeline"));
+    note(seen, "GET /stream/timeline", bare.client().Get("/api/stream/timeline"));
 
     note(seen, "DELETE /stream/hold", serving.client().Delete("/api/stream/hold"));
-    note(seen, "DELETE /stream/hold",
-         bare.client().Delete("/api/stream/hold"));
+    note(seen, "DELETE /stream/hold", bare.client().Delete("/api/stream/hold"));
 
     note(seen, "POST /stream/leave", post(serving, "/api/stream/leave", R"({"deviceId":"a"})"));
     note(seen, "POST /stream/leave", post(serving, "/api/stream/leave", "[]"));
-    note(seen, "POST /stream/leave",
-         serving.client().Post("/api/stream/leave", "a", "text/plain"));
+    note(seen, "POST /stream/leave", serving.client().Post("/api/stream/leave", "a", "text/plain"));
 
     for (const auto& route : publishedRoutes()) {
         if (route.path.rfind("/stream", 0) != 0)
@@ -899,16 +896,6 @@ TEST_CASE("every operation contract/openapi.yaml publishes has a route behind it
             return client.Delete(path);
 
         return client.Post(path, "{}", "application/json");
-    };
-
-    const auto dialable = [](const std::string& path) {
-        std::string filled = "/api" + path;
-        for (auto open = filled.find('{'); open != std::string::npos; open = filled.find('{')) {
-            const auto close = filled.find('}', open);
-            const auto name = filled.substr(open, close - open + 1);
-            filled.replace(open, name.size(), name == "{id}" ? kPlaylistId : "0");
-        }
-        return filled;
     };
 
     for (const auto& route : publishedRoutes()) {
@@ -957,9 +944,9 @@ TEST_CASE("the playback refusal is a sentence contract/openapi.yaml publishes as
     REQUIRE(response);
     REQUIRE(response->status == 403);
 
-    const auto error = json::parse(response->body, nullptr, false).value("error", json());
-    REQUIRE(error.is_string());
-    CHECK(publishesError("PlaylistFailed", error.get<std::string>()));
+    const auto error = errorOf(*response);
+    REQUIRE_FALSE(error.empty());
+    CHECK(publishesError("PlaylistFailed", error));
 }
 
 TEST_CASE("contract/openapi.yaml publishes a 403 on every route controlPlayback refuses") {
@@ -985,4 +972,39 @@ TEST_CASE("contract/openapi.yaml publishes a 403 on every route controlPlayback 
         INFO("route: ", name);
         CHECK(publishes(name.substr(0, name.find(' ')), name.substr(name.find(' ') + 1), 403));
     }
+}
+
+// The 415 is answered before routing, so no route's own code can drift from it; the contract
+// can, and clients generate their types from it. A transport command, an anonymous stream ticket
+// and a rebuild carry no body at all, which is the case a client author is likeliest to send
+// without the header.
+TEST_CASE(
+    "every POST contract/openapi.yaml publishes refuses a request that is not JSON, and "
+    "lists the 415") {
+    INFO(kUpdateSpec);
+
+    const TestServer server;
+
+    const auto refusedAsNotJson = [](const httplib::Result& response) {
+        REQUIRE(response);
+        CHECK(response->status == 415);
+        CHECK(errorOf(*response) == "send application/json");
+    };
+
+    size_t posts = 0;
+    for (const auto& route : publishedRoutes()) {
+        if (route.method != "POST")
+            continue;
+
+        ++posts;
+        INFO("route: POST ", route.path);
+
+        CHECK(route.statuses.count(415) == 1);
+
+        const auto path = dialable(route.path);
+        refusedAsNotJson(server.client().Post(path));
+        refusedAsNotJson(server.client().Post(path, "{}", "text/plain"));
+    }
+
+    CHECK(posts >= 25);
 }

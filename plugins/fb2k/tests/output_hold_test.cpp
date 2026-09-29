@@ -13,6 +13,7 @@
 #include "core/audience.h"
 #include "core/output_hold.h"
 
+#include "support/eventually.h"
 #include "support/fixtures.h"
 
 #include <atomic>
@@ -23,6 +24,7 @@
 #include <thread>
 
 using namespace jean;
+using namespace jean::testing;
 using namespace std::chrono_literals;
 
 namespace {
@@ -75,12 +77,7 @@ struct FakePlayer {
 // The hold works on a thread of its own, so a test waits for the state it is about to
 // assert rather than sleeping for a guessed interval.
 bool becomes(const std::atomic<bool>& flag, bool wanted) {
-    for (int attempt = 0; attempt < 200; ++attempt) {
-        if (flag.load() == wanted)
-            return true;
-        std::this_thread::sleep_for(5ms);
-    }
-    return false;
+    return eventually([&flag, wanted] { return flag.load() == wanted; });
 }
 
 DeviceIdentity phone() {

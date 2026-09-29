@@ -13,8 +13,8 @@ inline std::string toStd(const pfc::string8& text) {
     return std::string(text.c_str(), text.length());
 }
 
-// The separator library_manager::get_relative_path writes is undocumented; see
-// ARCHITECTURE.md, *Facts about the player*.
+// The separator foobar2000's library_manager::get_relative_path writes is undocumented, so a
+// backslash becomes '/' whatever the platform.
 inline std::string forwardSlashed(std::string path) {
     std::replace(path.begin(), path.end(), '\\', '/');
     return path;

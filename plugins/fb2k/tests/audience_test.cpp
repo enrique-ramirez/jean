@@ -6,14 +6,16 @@
 
 #include "core/audience.h"
 
+#include "support/eventually.h"
 #include "support/fixtures.h"
 
+#include <atomic>
 #include <chrono>
-#include <future>
 #include <string>
 #include <thread>
 
 using namespace jean;
+using namespace jean::testing;
 using namespace std::chrono_literals;
 
 namespace {
@@ -191,63 +193,69 @@ TEST_CASE("a device naming itself after this component's numbering is still its 
 TEST_CASE("waiting ends when somebody joins, and again when the linger runs out") {
     Audience audience(8, 50ms);
 
-    auto waiter = std::thread([&audience] {
-        REQUIRE(audience.awaitChangeFrom(false));
-        REQUIRE(audience.awaitChangeFrom(true));
+    std::atomic<bool> finished{false};
+    bool joined = false;
+    bool lingeredOut = false;
+    auto waiter = std::thread([&] {
+        joined = audience.awaitChangeFrom(false);
+        lingeredOut = audience.awaitChangeFrom(true);
+        finished = true;
     });
 
+    const bool waiting = eventually([&audience] { return audience.waitingForAChange() == 1; });
     {
         const auto held = audience.join(named("phone"), "opus", Audience::Clock::now());
     }
 
-    waiter.join();
+    joinOnceFinished(waiter, finished, "a join and then the end of its linger");
+
+    CHECK(waiting);
+    CHECK(joined);
+    CHECK(lingeredOut);
     CHECK_FALSE(audience.anyListening(Audience::Clock::now() + 1s));
 }
 
 TEST_CASE("closing releases a waiter rather than leaving a thread to join forever") {
     Audience audience(8, 30s);
 
-    std::promise<void> started;
-    auto waiter = std::thread([&audience, &started] {
-        started.set_value();
-        CHECK_FALSE(audience.awaitChangeFrom(false));
+    std::atomic<bool> finished{false};
+    bool changed = true;
+    auto waiter = std::thread([&] {
+        changed = audience.awaitChangeFrom(false);
+        finished = true;
     });
 
-    // The thread is running, which is all a fixed wait here could ever guess at. Whether it
-    // is already inside the wait or has yet to reach it, closing has to release it either
-    // way, and the proof of that is that this joins at all.
-    started.get_future().wait();
+    const bool waiting = eventually([&audience] { return audience.waitingForAChange() == 1; });
     audience.close();
-    waiter.join();
+    joinOnceFinished(waiter, finished, "a close");
+
+    CHECK(waiting);
+    CHECK_FALSE(changed);
 }
 
 // The waiter sleeps until the soonest linger ends with the lock released, and a reconnect erases
 // that linger while it sleeps. Waiting on a reference into the list rather than on a copy of the
-// deadline reads freed memory as it wakes, which AddressSanitizer reports. Nothing here can say
-// when the waiter is inside its wait, so each round yields to give it the chance: a round whose
-// reconnect lands first proves less, and fails nothing.
+// deadline reads freed memory as it wakes, which AddressSanitizer reports.
 TEST_CASE("a reconnect ending the linger a waiter is sleeping out leaves that waiter waiting") {
-    constexpr int kRounds = 20;
-    constexpr int kYieldsBeforeReconnecting = 2000;
-
-    for (int round = 0; round < kRounds; ++round) {
-        Audience audience(8, 30s);
-        {
-            const auto dropped = audience.join(named("phone"), "opus", Audience::Clock::now());
-        }
-
-        std::promise<bool> changed;
-        auto waiter = std::thread(
-            [&audience, &changed] { changed.set_value(audience.awaitChangeFrom(true)); });
-
-        for (int yielded = 0; yielded < kYieldsBeforeReconnecting; ++yielded)
-            std::this_thread::yield();
-
-        const auto back = audience.join(named("phone"), "opus", Audience::Clock::now());
-        REQUIRE(back);
-
-        audience.close();
-        waiter.join();
-        CHECK_FALSE(changed.get_future().get());
+    Audience audience(8, 30s);
+    {
+        const auto dropped = audience.join(named("phone"), "opus", Audience::Clock::now());
     }
+
+    std::atomic<bool> finished{false};
+    bool changed = true;
+    auto waiter = std::thread([&] {
+        changed = audience.awaitChangeFrom(true);
+        finished = true;
+    });
+
+    const bool waiting = eventually([&audience] { return audience.waitingForAChange() == 1; });
+    const auto back = audience.join(named("phone"), "opus", Audience::Clock::now());
+
+    audience.close();
+    joinOnceFinished(waiter, finished, "a close");
+
+    CHECK(waiting);
+    CHECK(back);
+    CHECK_FALSE(changed);
 }

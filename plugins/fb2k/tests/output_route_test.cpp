@@ -75,7 +75,7 @@ struct Outputs {
 Player switching(Outputs* outputs) {
     Player player = servingPlayer();
 
-    player.outputs.list = [outputs]() {
+    player.outputs.list = [outputs] {
         ++outputs->lists;
 
         OutputsRead read;
@@ -94,11 +94,6 @@ Player switching(Outputs* outputs) {
 
 std::string switchTo(const std::string& deviceId) {
     return json{{"deviceId", deviceId}}.dump();
-}
-
-json errorOf(const httplib::Response& response) {
-    const auto document = json::parse(response.body, nullptr, false);
-    return document.is_object() ? document.value("error", json()) : json();
 }
 
 json outputsOf(const TestServer& server) {
@@ -131,8 +126,9 @@ void checkRefusedSaying(const httplib::Result& response, int status, const std::
 
 }  // namespace
 
-TEST_CASE("GET /api/outputs answers every device the player lists, in its order, and the active "
-          "one") {
+TEST_CASE(
+    "GET /api/outputs answers every device the player lists, in its order, and the active "
+    "one") {
     Outputs outputs;
     const TestServer server(servingSettings(), switching(&outputs));
 
@@ -140,9 +136,10 @@ TEST_CASE("GET /api/outputs answers every device the player lists, in its order,
 
     CHECK(keysOf(body) == Keys{"devices", "active"});
     CHECK(body["devices"] ==
-          json::array({{{"id", kSpeakers}, {"name", "Speakers (Fictional Audio)"}},
-                       {{"id", kHeadphones}, {"name", "Headphones (Fictional Audio)"}},
-                       {{"id", kDisplay}, {"name", "Haut-parleurs de l'écran (Fictional Display)"}}}));
+          json::array(
+              {{{"id", kSpeakers}, {"name", "Speakers (Fictional Audio)"}},
+               {{"id", kHeadphones}, {"name", "Headphones (Fictional Audio)"}},
+               {{"id", kDisplay}, {"name", "Haut-parleurs de l'écran (Fictional Display)"}}}));
     CHECK(body["active"] == kHeadphones);
     CHECK(outputs.switched.empty());
 }
@@ -173,8 +170,9 @@ TEST_CASE("a player listing no devices answers an empty list and no active one")
     CHECK(body["active"] == nullptr);
 }
 
-TEST_CASE("switching to a listed device is a 204 with no body, and reaches the player once as "
-          "that id") {
+TEST_CASE(
+    "switching to a listed device is a 204 with no body, and reaches the player once as "
+    "that id") {
     Outputs outputs;
     const TestServer server(servingSettings(), switching(&outputs));
 
@@ -186,8 +184,9 @@ TEST_CASE("switching to a listed device is a 204 with no body, and reaches the p
 // The id is opaque to every client, so the only promise is that what GET handed out is what
 // the player is asked for. A route that parsed, trimmed or re-cased it would still pass a test
 // written with a plain word for an id.
-TEST_CASE("an id read from GET /api/outputs switches the player to exactly that id, byte for "
-          "byte") {
+TEST_CASE(
+    "an id read from GET /api/outputs switches the player to exactly that id, byte for "
+    "byte") {
     Outputs outputs;
     const TestServer server(servingSettings(), switching(&outputs));
 
@@ -231,8 +230,9 @@ TEST_CASE("a device the player listed a moment ago and lists no longer is a 409"
     CHECK(outputs.switched == std::vector<std::string>{kUnissued});
 }
 
-TEST_CASE("a switch whose body is not an object naming a deviceId string is a 400 and reaches "
-          "nothing") {
+TEST_CASE(
+    "a switch whose body is not an object naming a deviceId string is a 400 and reaches "
+    "nothing") {
     Outputs outputs;
     const TestServer server(servingSettings(), switching(&outputs));
 
@@ -245,7 +245,7 @@ TEST_CASE("a switch whose body is not an object naming a deviceId string is a 40
         const auto response = post(server, kActive, body);
         REQUIRE(response);
         CHECK(response->status == 400);
-        CHECK(errorOf(*response).is_string());
+        CHECK_FALSE(errorOf(*response).empty());
     }
 
     CHECK(outputs.lists == 0);
@@ -271,8 +271,9 @@ TEST_CASE("a switch carrying a field the route does not publish is a 400, a list
     CHECK(outputs.switched.empty());
 }
 
-TEST_CASE("with changeOutput off, a switch is a 403 naming the key and the file, and reaches "
-          "nothing") {
+TEST_CASE(
+    "with changeOutput off, a switch is a 403 naming the key and the file, and reaches "
+    "nothing") {
     Outputs outputs;
     const TestServer server(parseSettings(R"({"changeOutput": false})"), switching(&outputs));
 
@@ -284,8 +285,9 @@ TEST_CASE("with changeOutput off, a switch is a 403 naming the key and the file,
 
 // Refuse before doing: a client learns nothing about a request the switch was always going to
 // refuse, so neither a malformed body nor a missing seam may answer first.
-TEST_CASE("with changeOutput off, a malformed switch and a switch to a player with no seams are "
-          "both 403") {
+TEST_CASE(
+    "with changeOutput off, a malformed switch and a switch to a player with no seams are "
+    "both 403") {
     SUBCASE("a body that would be a 400") {
         Outputs outputs;
         const TestServer server(parseSettings(R"({"changeOutput": false})"), switching(&outputs));
@@ -325,8 +327,9 @@ TEST_CASE("with changeOutput off, GET /api/outputs still answers the list") {
     CHECK(body["active"] == kHeadphones);
 }
 
-TEST_CASE("with controlPlayback off and changeOutput on, both routes answer as they otherwise "
-          "would") {
+TEST_CASE(
+    "with controlPlayback off and changeOutput on, both routes answer as they otherwise "
+    "would") {
     Outputs outputs;
     const TestServer server(parseSettings(R"({"controlPlayback": false, "changeOutput": true})"),
                             switching(&outputs));
@@ -337,8 +340,9 @@ TEST_CASE("with controlPlayback off and changeOutput on, both routes answer as t
     CHECK(outputs.switched == std::vector<std::string>{kSpeakers});
 }
 
-TEST_CASE("a reload turning changeOutput off refuses the next switch, and turning it back on "
-          "allows one") {
+TEST_CASE(
+    "a reload turning changeOutput off refuses the next switch, and turning it back on "
+    "allows one") {
     Outputs outputs;
     TestServer server(servingSettings(), switching(&outputs));
 
@@ -398,8 +402,9 @@ TEST_CASE("a switch to a player missing either output seam is a 503, and reaches
     }
 }
 
-TEST_CASE("a player that could not answer, or did not in time, is a 500 or a 504 on either "
-          "route") {
+TEST_CASE(
+    "a player that could not answer, or did not in time, is a 500 or a 504 on either "
+    "route") {
     for (const auto outcome : {PlayerOutcome::playerRefused, PlayerOutcome::timedOut}) {
         const int status = httpStatusFor(outcome);
         const std::string sentence = describe(outcome);
@@ -476,7 +481,8 @@ TEST_CASE("every answer either route gives asks again each time and carries no v
         Outputs outputs;
         const TestServer server(servingSettings(), switching(&outputs));
 
-        const auto response = server.client().Get(kOutputs, httplib::Headers{{"If-None-Match", "*"}});
+        const auto response =
+            server.client().Get(kOutputs, httplib::Headers{{"If-None-Match", "*"}});
         REQUIRE(response);
         CHECK(response->status == 200);
         checkAsksEveryTime(response);

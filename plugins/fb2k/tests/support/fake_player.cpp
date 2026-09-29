@@ -1,0 +1,905 @@
+#include "support/fake_player.h"
+
+#include "core/refusal_order.h"
+#include "support/fixtures.h"
+
+#include <algorithm>
+#include <functional>
+#include <iterator>
+#include <numeric>
+#include <set>
+#include <utility>
+
+namespace jean::testing {
+
+namespace {
+
+using Lock = std::lock_guard<std::mutex>;
+
+PlaylistRow formatted(const FakeRow& row, const std::vector<std::string>& columns) {
+    PlaylistRow answer;
+    answer.libraryPath = row.libraryPath;
+    answer.subsong = row.subsong;
+
+    std::transform(columns.begin(), columns.end(), std::back_inserter(answer.columns),
+                   [&row](const std::string& column) {
+                       const auto found = row.fields.find(column);
+                       return found == row.fields.end() ? std::string(kUnresolved) : found->second;
+                   });
+
+    return answer;
+}
+
+FakeRow libraryTrack(uint32_t ordinal) {
+    FakeRow row = titled(builtTrackTitle(ordinal));
+    row.libraryPath = builtTrackPath(ordinal);
+    return row;
+}
+
+QueuedTrack queuedFrom(const FakeRow& row) {
+    QueuedTrack queued;
+    const auto field = [&row](const char* name) {
+        const auto found = row.fields.find(name);
+        return found == row.fields.end() ? std::string() : found->second;
+    };
+
+    queued.title = field("%title%");
+    queued.artist = field("%artist%");
+    queued.album = field("%album%");
+    queued.libraryPath = row.libraryPath;
+    return queued;
+}
+
+bool anyPastEnd(const std::vector<uint32_t>& positions, size_t count) {
+    return std::any_of(positions.begin(), positions.end(),
+                       [count](uint32_t position) { return position >= count; });
+}
+
+std::vector<size_t> positionsFrom(size_t base, size_t count) {
+    std::vector<size_t> positions(count);
+    std::iota(positions.begin(), positions.end(), base);
+    return positions;
+}
+
+template <typename Result>
+Result failed(PlayerOutcome outcome) {
+    Result result;
+    result.outcome = outcome;
+    return result;
+}
+
+}  // namespace
+
+FakeRow titled(const std::string& title) {
+    FakeRow row;
+    row.fields = {{"%title%", title}};
+    return row;
+}
+
+std::vector<FakeRow> titledRows(const std::vector<std::string>& titles) {
+    std::vector<FakeRow> rows;
+    std::transform(titles.begin(), titles.end(), std::back_inserter(rows), titled);
+    return rows;
+}
+
+FakePlayer::FakePlayer(Library* library, PlayerStateStore* store)
+    : library_(library), store_(store) {}
+
+std::string FakePlayer::madeId(size_t nth) {
+    const auto digits = std::to_string(nth + 1);
+    return "00000000-0000-4000-8000-" + std::string(12 - digits.size(), '0') + digits;
+}
+
+std::vector<FakePlayer::Held>::iterator FakePlayer::find(const std::string& id) {
+    return std::find_if(playlists_.begin(), playlists_.end(),
+                        [&id](const Held& held) { return held.entry.id == id; });
+}
+
+std::vector<FakePlayer::Held>::const_iterator FakePlayer::find(const std::string& id) const {
+    return std::find_if(playlists_.begin(), playlists_.end(),
+                        [&id](const Held& held) { return held.entry.id == id; });
+}
+
+PlaylistAnnotation FakePlayer::annotate(size_t position) const {
+    auto entry = playlists_[position].entry;
+    entry.index = static_cast<int>(position);
+    entry.itemCount = playlists_[position].rows.size();
+    return entry;
+}
+
+std::vector<PlaylistAnnotation> FakePlayer::listing() const {
+    std::vector<PlaylistAnnotation> entries;
+    entries.reserve(playlists_.size());
+    for (size_t position = 0; position < playlists_.size(); ++position)
+        entries.push_back(annotate(position));
+    return entries;
+}
+
+void FakePlayer::ask(Call call, const std::string& playlistId) {
+    asked_.push_back({call, playlistId});
+}
+
+std::optional<PlayerOutcome> FakePlayer::refusal(Call call) const {
+    const auto found = refusals_.find(call);
+    if (found == refusals_.end())
+        return std::nullopt;
+    return found->second;
+}
+
+bool FakePlayer::libraryAt(uint64_t structure) {
+    if (!library_)
+        return false;
+
+    if (libraryRebuildsFirst_)
+        buildLibrary(*library_, library_->state().trackCount);
+
+    return library_->state().structure == structure;
+}
+
+FakePlayer::Held& FakePlayer::make(const std::string& title) {
+    Held held;
+    held.entry.id = madeId(made_++);
+    held.entry.title = title;
+    held.entry.structure = kMadeVersion;
+    held.entry.revision = kMadeVersion;
+    playlists_.push_back(std::move(held));
+    return playlists_.back();
+}
+
+void FakePlayer::landed(Held& held) {
+    held.entry.structure++;
+}
+
+uint64_t FakePlayer::queueRevision() const {
+    return store_ ? store_->read().queueRevision : queueRevision_;
+}
+
+void FakePlayer::queueChanged() {
+    if (!store_) {
+        ++queueRevision_;
+        return;
+    }
+
+    std::vector<QueueEntry> entries;
+    std::transform(queue_.begin(), queue_.end(), std::back_inserter(entries),
+                   [](const QueuedTrack& track) {
+                       QueueEntry entry;
+                       entry.path = track.libraryPath.value_or(track.title);
+                       entry.location = track.location;
+                       return entry;
+                   });
+    store_->queueChanged(std::move(entries));
+}
+
+void FakePlayer::changeTheQueueIfAsked() {
+    if (!queueChangesFirst_)
+        return;
+
+    queue_.push_back(queuedFrom(titled("Queued at the player " + std::to_string(queue_.size()))));
+    queueChanged();
+}
+
+std::optional<PlayerOutcome> FakePlayer::queueRefusal(Call call, std::optional<uint64_t> revision,
+                                                      bool positionPastEnd) {
+    if (const auto refused = refusal(call))
+        return refused;
+
+    QueueEditFacts facts;
+    facts.queueMoved = revision && *revision != queueRevision();
+    facts.positionPastEnd = positionPastEnd;
+
+    const auto outcome = queueEditRefusal(facts);
+    if (outcome == PlayerOutcome::done)
+        return std::nullopt;
+    return outcome;
+}
+
+void FakePlayer::insertIntoQueue(std::vector<QueuedTrack> entries,
+                                 std::optional<QueuePosition> at) {
+    const auto where = at ? queue_.begin() + static_cast<std::ptrdiff_t>(at->index) : queue_.end();
+    queue_.insert(where, entries.begin(), entries.end());
+    queueChanged();
+}
+
+void FakePlayer::add(PlaylistAnnotation entry, std::vector<FakeRow> rows) {
+    const Lock guard(mutex_);
+
+    Held held;
+    held.entry = std::move(entry);
+    held.rows = std::move(rows);
+    playlists_.push_back(std::move(held));
+}
+
+void FakePlayer::queue(std::vector<QueuedTrack> entries) {
+    const Lock guard(mutex_);
+    queue_ = std::move(entries);
+    queueChanged();
+}
+
+void FakePlayer::retag(const std::string& id, const std::map<uint32_t, FakeRow>& rows) {
+    const Lock guard(mutex_);
+
+    auto& held = *find(id);
+    held.entry.revision++;
+
+    for (const auto& [position, row] : rows) {
+        held.rows.at(position) = row;
+        held.changedAt[position] = held.entry.revision;
+    }
+}
+
+void FakePlayer::retainRevisionsFrom(const std::string& id, uint64_t revision) {
+    const Lock guard(mutex_);
+    find(id)->oldestRetained = revision;
+}
+
+void FakePlayer::answerPreview(const std::string& query, PreviewResult answer) {
+    const Lock guard(mutex_);
+    previews_[query] = std::move(answer);
+}
+
+void FakePlayer::refuse(Call call, PlayerOutcome outcome) {
+    const Lock guard(mutex_);
+    refusals_[call] = outcome;
+}
+
+void FakePlayer::lock(const std::string& id) {
+    const Lock guard(mutex_);
+    find(id)->locked = true;
+}
+
+void FakePlayer::removeAtThePlayer(const std::string& id) {
+    const Lock guard(mutex_);
+    playlists_.erase(find(id));
+}
+
+void FakePlayer::changeTheQueueBeforeEachEdit() {
+    const Lock guard(mutex_);
+    queueChangesFirst_ = true;
+}
+
+void FakePlayer::rebuildTheLibraryBeforeEachJob() {
+    const Lock guard(mutex_);
+    libraryRebuildsFirst_ = true;
+}
+
+std::vector<PlaylistAnnotation> FakePlayer::playlists() const {
+    const Lock guard(mutex_);
+    return listing();
+}
+
+std::optional<PlaylistAnnotation> FakePlayer::playlist(const std::string& id) const {
+    const Lock guard(mutex_);
+
+    const auto found = find(id);
+    if (found == playlists_.end())
+        return std::nullopt;
+    return annotate(static_cast<size_t>(found - playlists_.begin()));
+}
+
+std::vector<FakeRow> FakePlayer::rowsOf(const std::string& id) const {
+    const Lock guard(mutex_);
+
+    const auto found = find(id);
+    return found == playlists_.end() ? std::vector<FakeRow>{} : found->rows;
+}
+
+std::vector<std::string> FakePlayer::titlesOf(const std::string& id) const {
+    const auto rows = rowsOf(id);
+
+    std::vector<std::string> titles;
+    std::transform(rows.begin(), rows.end(), std::back_inserter(titles), [](const FakeRow& row) {
+        const auto found = row.fields.find("%title%");
+        return found == row.fields.end() ? std::string() : found->second;
+    });
+    return titles;
+}
+
+std::vector<QueuedTrack> FakePlayer::queued() const {
+    const Lock guard(mutex_);
+    return queue_;
+}
+
+std::optional<PlayingLocation> FakePlayer::playing() const {
+    const Lock guard(mutex_);
+    return playing_;
+}
+
+int FakePlayer::count(Call call) const {
+    const Lock guard(mutex_);
+    return static_cast<int>(std::count_if(
+        asked_.begin(), asked_.end(), [call](const Asked& asked) { return asked.call == call; }));
+}
+
+int FakePlayer::writes() const {
+    static const std::set<Call> reads{Call::listPlaylists,   Call::readRole,     Call::readRows,
+                                      Call::readChangedRows, Call::previewQuery, Call::readQueue};
+
+    const Lock guard(mutex_);
+    return static_cast<int>(std::count_if(asked_.begin(), asked_.end(), [](const Asked& asked) {
+        return reads.count(asked.call) == 0;
+    }));
+}
+
+int FakePlayer::total() const {
+    const Lock guard(mutex_);
+    return static_cast<int>(asked_.size());
+}
+
+std::vector<std::string> FakePlayer::askedAbout(Call call) const {
+    const Lock guard(mutex_);
+
+    std::vector<std::string> ids;
+    for (const auto& asked : asked_)
+        if (asked.call == call)
+            ids.push_back(asked.playlistId);
+    return ids;
+}
+
+Player FakePlayer::player() {
+    Player player = servingPlayer();
+
+    player.playlists.list = [this] {
+        const Lock guard(mutex_);
+        ask(Call::listPlaylists);
+
+        if (const auto refused = refusal(Call::listPlaylists))
+            return PlaylistsResult{*refused, {}};
+
+        return PlaylistsResult{PlayerOutcome::done, listing()};
+    };
+
+    player.playlists.readRole = [this](const std::string& id) {
+        const Lock guard(mutex_);
+        ask(Call::readRole, id);
+
+        if (const auto refused = refusal(Call::readRole))
+            return PlaylistRoleRead{*refused, std::nullopt};
+
+        const auto found = find(id);
+        return PlaylistRoleRead{PlayerOutcome::done,
+                                found == playlists_.end() ? std::nullopt : found->entry.role};
+    };
+
+    player.playlists.readRows = [this](const std::string& id, size_t offset, size_t count,
+                                       const std::vector<std::string>& columns) {
+        const Lock guard(mutex_);
+        ask(Call::readRows, id);
+
+        if (const auto refused = refusal(Call::readRows))
+            return failed<PlaylistRowsRead>(*refused);
+
+        const auto found = find(id);
+        if (found == playlists_.end())
+            return failed<PlaylistRowsRead>(PlayerOutcome::noSuchPlaylist);
+
+        PlaylistRowsRead read;
+        read.structure = found->entry.structure;
+        read.revision = found->entry.revision;
+        read.totalCount = found->rows.size();
+
+        const auto first = std::min(offset, found->rows.size());
+        const auto last = std::min(first + count, found->rows.size());
+        std::transform(found->rows.begin() + static_cast<std::ptrdiff_t>(first),
+                       found->rows.begin() + static_cast<std::ptrdiff_t>(last),
+                       std::back_inserter(read.rows),
+                       [&columns](const FakeRow& row) { return formatted(row, columns); });
+        return read;
+    };
+
+    player.playlists.readChangedRows = [this](const std::string& id, uint64_t structure,
+                                              uint64_t since,
+                                              const std::vector<std::string>& columns) {
+        const Lock guard(mutex_);
+        ask(Call::readChangedRows, id);
+
+        if (const auto refused = refusal(Call::readChangedRows))
+            return failed<PlaylistChangesRead>(*refused);
+
+        const auto found = find(id);
+        if (found == playlists_.end())
+            return failed<PlaylistChangesRead>(PlayerOutcome::noSuchPlaylist);
+
+        PlaylistChangesRead read;
+        if (structure != found->entry.structure) {
+            read.catchUp = DeltaOutcome::structureChanged;
+            return read;
+        }
+
+        if (since < found->oldestRetained) {
+            read.catchUp = DeltaOutcome::revisionTooOld;
+            return read;
+        }
+
+        read.revision = found->entry.revision;
+        for (const auto& [position, revision] : found->changedAt)
+            if (revision > since)
+                read.rows.push_back({position, formatted(found->rows.at(position), columns)});
+        return read;
+    };
+
+    player.playlists.create = [this](const std::string& title, const NewPlaylistRows& rows) {
+        const Lock guard(mutex_);
+        ask(Call::createPlaylist, rows.sourcePlaylistId);
+
+        if (const auto refused = refusal(Call::createPlaylist))
+            return playlistFailure(*refused);
+
+        std::vector<FakeRow> gathered;
+        if (!rows.sourcePlaylistId.empty()) {
+            const auto source = find(rows.sourcePlaylistId);
+
+            PlaylistEditFacts facts;
+            facts.noSuchPlaylist = source == playlists_.end();
+            facts.positionPastEnd =
+                !facts.noSuchPlaylist && anyPastEnd(rows.positions, source->rows.size());
+            if (const auto outcome = playlistEditRefusal(facts); outcome != PlayerOutcome::done)
+                return playlistFailure(outcome);
+
+            std::transform(rows.positions.begin(), rows.positions.end(),
+                           std::back_inserter(gathered),
+                           [&source](uint32_t position) { return source->rows[position]; });
+        } else if (!rows.ordinals.empty()) {
+            PlaylistEditFacts facts;
+            facts.libraryMoved = !libraryAt(rows.structure);
+            if (const auto outcome = playlistEditRefusal(facts); outcome != PlayerOutcome::done)
+                return playlistFailure(outcome);
+
+            std::transform(rows.ordinals.begin(), rows.ordinals.end(), std::back_inserter(gathered),
+                           libraryTrack);
+        }
+
+        make(title).rows = std::move(gathered);
+
+        PlaylistResult result;
+        result.playlist = annotate(playlists_.size() - 1);
+        return result;
+    };
+
+    player.playlists.rename = [this](const std::string& id, const std::string& title) {
+        const Lock guard(mutex_);
+        ask(Call::renamePlaylist, id);
+
+        if (const auto refused = refusal(Call::renamePlaylist))
+            return playlistFailure(*refused);
+
+        const auto found = find(id);
+
+        PlaylistEditFacts facts;
+        facts.noSuchPlaylist = found == playlists_.end();
+        facts.ownPlaylist = !facts.noSuchPlaylist && found->entry.role.has_value();
+        facts.locked = !facts.noSuchPlaylist && found->locked;
+        if (const auto outcome = playlistEditRefusal(facts); outcome != PlayerOutcome::done)
+            return playlistFailure(outcome);
+
+        found->entry.title = title;
+        return PlaylistResult{};
+    };
+
+    player.playlists.remove = [this](const std::string& id) {
+        const Lock guard(mutex_);
+        ask(Call::removePlaylist, id);
+
+        if (const auto refused = refusal(Call::removePlaylist))
+            return playlistFailure(*refused);
+
+        const auto found = find(id);
+
+        PlaylistEditFacts facts;
+        facts.noSuchPlaylist = found == playlists_.end();
+        facts.ownPlaylist = !facts.noSuchPlaylist && found->entry.role.has_value();
+        facts.locked = !facts.noSuchPlaylist && found->locked;
+        if (const auto outcome = playlistEditRefusal(facts); outcome != PlayerOutcome::done)
+            return playlistFailure(outcome);
+
+        playlists_.erase(found);
+        return PlaylistResult{};
+    };
+
+    player.playlists.move = [this](const std::string& id, uint32_t index) {
+        const Lock guard(mutex_);
+        ask(Call::movePlaylist, id);
+
+        if (const auto refused = refusal(Call::movePlaylist))
+            return playlistFailure(*refused);
+
+        const auto found = find(id);
+
+        PlaylistEditFacts facts;
+        facts.noSuchPlaylist = found == playlists_.end();
+        facts.ownPlaylist = !facts.noSuchPlaylist && found->entry.role.has_value();
+        facts.positionPastEnd = index >= playlists_.size();
+        if (const auto outcome = playlistEditRefusal(facts); outcome != PlayerOutcome::done)
+            return playlistFailure(outcome);
+
+        auto moved = std::move(*found);
+        playlists_.erase(found);
+        playlists_.insert(playlists_.begin() + static_cast<std::ptrdiff_t>(index),
+                          std::move(moved));
+        return PlaylistResult{};
+    };
+
+    // The target alone is checked for a role and a lock: a source is read rather than changed.
+    player.playlists.copyRows = [this](const std::string& id, const std::string& sourceId,
+                                       const std::vector<uint32_t>& positions) {
+        const Lock guard(mutex_);
+        ask(Call::copyRows, id);
+
+        const auto target = find(id);
+
+        if (const auto refused = refusal(Call::copyRows)) {
+            const auto base = target == playlists_.end() ? 0 : target->rows.size();
+            return RowsEdited{*refused, 0, positionsFrom(base, positions.size())};
+        }
+
+        PlaylistEditFacts facts;
+        facts.noSuchPlaylist = target == playlists_.end();
+        facts.ownPlaylist = !facts.noSuchPlaylist && target->entry.role.has_value();
+        facts.locked = !facts.noSuchPlaylist && target->locked;
+        if (const auto outcome = playlistEditRefusal(facts); outcome != PlayerOutcome::done)
+            return failed<RowsEdited>(outcome);
+
+        const auto source = find(sourceId);
+
+        PlaylistEditFacts read;
+        read.noSuchPlaylist = source == playlists_.end();
+        read.positionPastEnd = !read.noSuchPlaylist && anyPastEnd(positions, source->rows.size());
+        if (const auto outcome = playlistEditRefusal(read); outcome != PlayerOutcome::done)
+            return failed<RowsEdited>(outcome);
+
+        std::vector<FakeRow> copied;
+        std::transform(positions.begin(), positions.end(), std::back_inserter(copied),
+                       [&source](uint32_t position) { return source->rows[position]; });
+
+        RowsEdited edited;
+        edited.positions = positionsFrom(target->rows.size(), copied.size());
+        target->rows.insert(target->rows.end(), copied.begin(), copied.end());
+        if (!copied.empty())
+            landed(*target);
+
+        edited.structure = target->entry.structure;
+        return edited;
+    };
+
+    player.playlists.removeRows = [this](const std::string& id, uint64_t structure,
+                                         const std::vector<uint32_t>& positions) {
+        const Lock guard(mutex_);
+        ask(Call::removeRows, id);
+
+        if (const auto refused = refusal(Call::removeRows))
+            return failed<RowsEdited>(*refused);
+
+        const auto found = find(id);
+
+        PlaylistEditFacts facts;
+        facts.noSuchPlaylist = found == playlists_.end();
+        if (!facts.noSuchPlaylist) {
+            facts.ownPlaylist = found->entry.role.has_value();
+            facts.locked = found->locked;
+            facts.rowsMoved = structure != found->entry.structure;
+            facts.positionPastEnd = anyPastEnd(positions, found->rows.size());
+        }
+        if (const auto outcome = playlistEditRefusal(facts); outcome != PlayerOutcome::done)
+            return RowsEdited{outcome, facts.noSuchPlaylist ? 0 : found->entry.structure, {}};
+
+        auto descending = positions;
+        std::sort(descending.begin(), descending.end(), std::greater<>());
+        descending.erase(std::unique(descending.begin(), descending.end()), descending.end());
+
+        for (const uint32_t position : descending)
+            found->rows.erase(found->rows.begin() + static_cast<std::ptrdiff_t>(position));
+
+        if (!descending.empty())
+            landed(*found);
+
+        return RowsEdited{PlayerOutcome::done, found->entry.structure, {}};
+    };
+
+    // No role check, as fb2k/playlist_edits.cpp has none: a fill is how the scratch gets its rows.
+    player.playlists.fill = [this](const std::string& id, const std::string& title,
+                                   uint64_t structure, const std::vector<uint32_t>& ordinals,
+                                   ExistingRows existing) {
+        const Lock guard(mutex_);
+        ask(Call::fill, id);
+
+        const auto found = find(id);
+
+        if (const auto refused = refusal(Call::fill)) {
+            const auto base = found == playlists_.end() ? 0 : found->rows.size();
+            return FillResult{*refused, positionsFrom(base, ordinals.size()), 0};
+        }
+
+        PlaylistEditFacts facts;
+        facts.noSuchPlaylist = found == playlists_.end();
+        facts.locked = !facts.noSuchPlaylist && found->locked;
+        facts.libraryMoved = !libraryAt(structure);
+        if (const auto outcome = playlistEditRefusal(facts); outcome != PlayerOutcome::done)
+            return failed<FillResult>(outcome);
+
+        if (!title.empty())
+            found->entry.title = title;
+
+        const bool emptied = existing == ExistingRows::replaced && !found->rows.empty();
+        if (existing == ExistingRows::replaced)
+            found->rows.clear();
+
+        const auto base = found->rows.size();
+        std::transform(ordinals.begin(), ordinals.end(), std::back_inserter(found->rows),
+                       libraryTrack);
+
+        if (emptied || !ordinals.empty())
+            landed(*found);
+
+        return FillResult{PlayerOutcome::done, positionsFrom(base, ordinals.size()),
+                          found->entry.structure};
+    };
+
+    player.playlists.resolveOwn = [this](OwnPlaylistRole role, const std::string& title) {
+        const Lock guard(mutex_);
+        ask(Call::resolveOwn);
+
+        if (const auto refused = refusal(Call::resolveOwn))
+            return playlistFailure(*refused);
+
+        auto found = std::find_if(playlists_.begin(), playlists_.end(),
+                                  [role](const Held& held) { return held.entry.role == role; });
+
+        if (found == playlists_.end()) {
+            make(title).entry.role = role;
+            found = playlists_.end() - 1;
+        }
+
+        PlaylistResult result;
+        result.playlist = annotate(static_cast<size_t>(found - playlists_.begin()));
+        return result;
+    };
+
+    player.playlists.emptyOwn = [this](OwnPlaylistRole role) {
+        const Lock guard(mutex_);
+        ask(Call::emptyOwn);
+
+        if (const auto refused = refusal(Call::emptyOwn))
+            return playlistFailure(*refused);
+
+        const auto found =
+            std::find_if(playlists_.begin(), playlists_.end(),
+                         [role](const Held& held) { return held.entry.role == role; });
+        if (found == playlists_.end())
+            return PlaylistResult{};
+
+        if (!found->rows.empty()) {
+            found->rows.clear();
+            landed(*found);
+        }
+
+        PlaylistResult result;
+        result.playlist = annotate(static_cast<size_t>(found - playlists_.begin()));
+        return result;
+    };
+
+    player.autoPlaylists.create = [this](const AutoPlaylistSpec& spec, int maxAutoPlaylists) {
+        const Lock guard(mutex_);
+        ask(Call::createAutoPlaylist);
+
+        if (const auto refused = refusal(Call::createAutoPlaylist))
+            return playlistFailure(*refused);
+
+        const auto existing = listing();
+
+        if (auto room = roomForAnotherAutoPlaylist(existing, maxAutoPlaylists);
+            room.outcome != PlayerOutcome::done)
+            return room;
+
+        if (keyTaken(existing, spec.key, {}))
+            return playlistFailure(PlayerOutcome::keyInUse, spec.key);
+
+        if (const auto preview = previews_.find(spec.query);
+            preview != previews_.end() && !preview->second.valid)
+            return playlistFailure(PlayerOutcome::queryInvalid, preview->second.error);
+
+        auto& made = make(spec.title);
+        made.entry.isAutoPlaylist = true;
+        made.entry.managed = spec;
+
+        PlaylistResult result;
+        result.playlist = annotate(playlists_.size() - 1);
+        return result;
+    };
+
+    player.autoPlaylists.update = [this](const std::string& id, const AutoPlaylistSpec& spec) {
+        const Lock guard(mutex_);
+        ask(Call::updateAutoPlaylist, id);
+
+        if (const auto refused = refusal(Call::updateAutoPlaylist))
+            return playlistFailure(*refused);
+
+        const auto found = find(id);
+        if (found == playlists_.end())
+            return playlistFailure(PlayerOutcome::noSuchPlaylist);
+        if (!found->entry.managed)
+            return playlistFailure(PlayerOutcome::notOurs);
+
+        const auto existing = listing();
+
+        if (keyTaken(existing, spec.key, id))
+            return playlistFailure(PlayerOutcome::keyInUse, spec.key);
+
+        found->entry.managed = spec;
+        if (!spec.title.empty())
+            found->entry.title = spec.title;
+
+        PlaylistResult result;
+        result.playlist = annotate(static_cast<size_t>(found - playlists_.begin()));
+        return result;
+    };
+
+    player.autoPlaylists.remove = [this](const std::string& id) {
+        const Lock guard(mutex_);
+        ask(Call::removeAutoPlaylist, id);
+
+        if (const auto refused = refusal(Call::removeAutoPlaylist))
+            return playlistFailure(*refused);
+
+        const auto found = find(id);
+        if (found == playlists_.end())
+            return playlistFailure(PlayerOutcome::noSuchPlaylist);
+        if (!found->entry.managed)
+            return playlistFailure(PlayerOutcome::notOurs);
+
+        playlists_.erase(found);
+
+        PlaylistResult result;
+        result.playlist.id = id;
+        return result;
+    };
+
+    player.autoPlaylists.preview = [this](const std::string& query) {
+        const Lock guard(mutex_);
+        ask(Call::previewQuery);
+
+        if (const auto refused = refusal(Call::previewQuery))
+            return failed<PreviewResult>(*refused);
+
+        const auto found = previews_.find(query);
+        if (found != previews_.end())
+            return found->second;
+
+        PreviewResult answer;
+        answer.valid = true;
+        answer.libraryEnabled = true;
+        return answer;
+    };
+
+    player.queue.read = [this] {
+        const Lock guard(mutex_);
+        ask(Call::readQueue);
+
+        if (const auto refused = refusal(Call::readQueue))
+            return failed<QueueRead>(*refused);
+
+        QueueRead read;
+        read.revision = queueRevision();
+        read.entries = queue_;
+        return read;
+    };
+
+    player.queue.addPlaylistRows = [this](const std::string& id,
+                                          const std::vector<uint32_t>& positions,
+                                          std::optional<QueuePosition> at) {
+        const Lock guard(mutex_);
+        ask(Call::queueRows, id);
+        changeTheQueueIfAsked();
+
+        const auto found = find(id);
+
+        if (const auto refused = refusal(Call::queueRows))
+            return *refused;
+
+        QueueEditFacts facts;
+        facts.queueMoved = at && at->revision != queueRevision();
+        facts.noSuchPlaylist = found == playlists_.end();
+        facts.positionPastEnd =
+            !facts.noSuchPlaylist &&
+            (anyPastEnd(positions, found->rows.size()) || (at && at->index > queue_.size()));
+        if (const auto outcome = queueEditRefusal(facts); outcome != PlayerOutcome::done)
+            return outcome;
+
+        std::vector<QueuedTrack> entries;
+        for (const uint32_t position : positions) {
+            auto entry = queuedFrom(found->rows[position]);
+            entry.location = PlayingLocation{id, position};
+            entries.push_back(std::move(entry));
+        }
+
+        insertIntoQueue(std::move(entries), at);
+        return PlayerOutcome::done;
+    };
+
+    player.queue.addLibraryTracks = [this](uint64_t structure,
+                                           const std::vector<uint32_t>& ordinals,
+                                           std::optional<QueuePosition> at) {
+        const Lock guard(mutex_);
+        ask(Call::queueTracks);
+        changeTheQueueIfAsked();
+
+        if (const auto refused = refusal(Call::queueTracks))
+            return *refused;
+
+        QueueEditFacts facts;
+        facts.queueMoved = at && at->revision != queueRevision();
+        facts.libraryMoved = !libraryAt(structure);
+        facts.positionPastEnd = at && at->index > queue_.size();
+        if (const auto outcome = queueEditRefusal(facts); outcome != PlayerOutcome::done)
+            return outcome;
+
+        std::vector<QueuedTrack> entries;
+        std::transform(ordinals.begin(), ordinals.end(), std::back_inserter(entries),
+                       [](uint32_t ordinal) { return queuedFrom(libraryTrack(ordinal)); });
+
+        insertIntoQueue(std::move(entries), at);
+        return PlayerOutcome::done;
+    };
+
+    player.queue.moveEntry = [this](uint32_t from, uint32_t to, uint64_t revision) {
+        const Lock guard(mutex_);
+        ask(Call::moveQueueEntry);
+        changeTheQueueIfAsked();
+
+        if (const auto refused = queueRefusal(Call::moveQueueEntry, revision,
+                                              from >= queue_.size() || to >= queue_.size()))
+            return *refused;
+
+        auto entry = queue_[from];
+        queue_.erase(queue_.begin() + from);
+        queue_.insert(queue_.begin() + to, std::move(entry));
+        queueChanged();
+        return PlayerOutcome::done;
+    };
+
+    player.queue.removeEntry = [this](uint32_t index, uint64_t revision) {
+        const Lock guard(mutex_);
+        ask(Call::removeQueueEntry);
+        changeTheQueueIfAsked();
+
+        if (const auto refused =
+                queueRefusal(Call::removeQueueEntry, revision, index >= queue_.size()))
+            return *refused;
+
+        queue_.erase(queue_.begin() + index);
+        queueChanged();
+        return PlayerOutcome::done;
+    };
+
+    player.queue.clear = [this] {
+        const Lock guard(mutex_);
+        ask(Call::clearQueue);
+
+        if (const auto refused = refusal(Call::clearQueue))
+            return *refused;
+
+        queue_.clear();
+        queueChanged();
+        return PlayerOutcome::done;
+    };
+
+    player.playback.playPlaylistRow = [this](const std::string& id, uint32_t index) {
+        const Lock guard(mutex_);
+        ask(Call::playRow, id);
+
+        if (const auto refused = refusal(Call::playRow))
+            return *refused;
+
+        const auto found = find(id);
+        if (found == playlists_.end())
+            return PlayerOutcome::noSuchPlaylist;
+        if (index >= found->rows.size())
+            return PlayerOutcome::positionPastEnd;
+
+        playing_ = PlayingLocation{id, index};
+        return PlayerOutcome::done;
+    };
+
+    return player;
+}
+
+}  // namespace jean::testing

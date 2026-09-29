@@ -54,14 +54,14 @@ PlayRowRequest parsePlayRow(const std::string& id, const std::string& indexText)
 }
 
 FillRequest parseFill(const JsonObject& body, size_t trackCount,
-                      std::optional<uint64_t> expectedStructure, bool allowsTitle) {
+                      std::optional<uint64_t> expectedStructure, TitleField title) {
     if (!body.ok())
         return refused<FillRequest>(PlaylistRefusal::malformedBody);
 
     const auto& root = body.value;
 
     std::vector<const char*> fields(kFillFields.begin(), kFillFields.end());
-    if (allowsTitle)
+    if (title == TitleField::allowed)
         fields.push_back(kTitleField);
     if (!declaresOnly(root, fields))
         return refused<FillRequest>(PlaylistRefusal::malformedBody);
@@ -128,14 +128,14 @@ NewPlaylistSet newPlaylistSetOf(const JsonObject& body) {
     return namesTracks ? NewPlaylistSet::libraryTracks : NewPlaylistSet::none;
 }
 
-SourceRowsRequest parseSourceRows(const JsonObject& body, bool allowsTitle) {
+SourceRowsRequest parseSourceRows(const JsonObject& body, TitleField title) {
     if (!body.ok())
         return refused<SourceRowsRequest>(PlaylistRefusal::malformedBody);
 
     const auto& root = body.value;
 
     std::vector<const char*> fields(kSourceRowsFields.begin(), kSourceRowsFields.end());
-    if (allowsTitle)
+    if (title == TitleField::allowed)
         fields.push_back(kTitleField);
     if (!declaresOnly(root, fields))
         return refused<SourceRowsRequest>(PlaylistRefusal::malformedBody);
@@ -172,12 +172,12 @@ MovePlaylistRequest parseMovePlaylist(const JsonObject& body) {
     return request;
 }
 
-TitleRequest parseTitle(const JsonObject& body, bool onlyTitle) {
+TitleRequest parseTitle(const JsonObject& body, OtherFields others) {
     if (!body.ok())
         return refused<TitleRequest>(PlaylistRefusal::malformedBody);
 
     const std::array<const char*, 1> onlyTheTitle{kTitleField};
-    if (onlyTitle && !declaresOnly(body.value, onlyTheTitle))
+    if (others == OtherFields::refused && !declaresOnly(body.value, onlyTheTitle))
         return refused<TitleRequest>(PlaylistRefusal::malformedBody);
 
     const auto title = readText(body.value, kTitleField, kMaxTitle, Need::required);

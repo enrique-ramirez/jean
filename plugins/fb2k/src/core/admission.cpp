@@ -202,10 +202,9 @@ bool hasSuffix(const std::string& text, const std::string& suffix) {
 }
 
 bool isListedHost(const std::vector<std::string>& allowedHosts, const std::string& lowered) {
-    return std::any_of(allowedHosts.begin(), allowedHosts.end(),
-                        [&lowered](const std::string& allowed) {
-                            return equalsIgnoringCase(lowered, allowed);
-                        });
+    return std::any_of(
+        allowedHosts.begin(), allowedHosts.end(),
+        [&lowered](const std::string& allowed) { return equalsIgnoringCase(lowered, allowed); });
 }
 
 // A bracketed literal is the only unambiguous way to carry an IPv6 address in a Host
@@ -269,7 +268,7 @@ bool isPrivateAddress(const std::string& address) {
 }
 
 Admission admit(const std::string& sourceAddress, const std::string& host,
-                 const std::vector<std::string>& allowedHosts) {
+                const std::vector<std::string>& allowedHosts) {
     if (!isPrivateAddress(sourceAddress))
         return Admission{false, "the request did not come from a private address"};
 

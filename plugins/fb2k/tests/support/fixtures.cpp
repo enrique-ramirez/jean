@@ -7,6 +7,12 @@
 
 namespace jean::testing {
 
+namespace {
+
+constexpr char kBuiltFolder[] = "Artist/Album/";
+
+}  // namespace
+
 std::string ratingWrite(const std::string& track, std::optional<uint32_t> subsong) {
     const auto within = subsong ? R"(, "subsong": )" + std::to_string(*subsong) : std::string();
 
@@ -18,6 +24,25 @@ std::string ratingWriteAtRow(const std::string& playlist, uint32_t index, uint64
     return R"({"playlist": ")" + playlist + R"(", "index": )" + std::to_string(index) +
            R"(, "structure": ")" + std::to_string(structure) + R"(", "fields": {"rating": ")" +
            kRating + R"("}})";
+}
+
+void buildLibrary(Library& library, size_t trackCount) {
+    LibraryBuilder builder({"%title%"}, trackCount);
+    auto& sink = builder.sink();
+
+    for (size_t index = 0; index < trackCount; ++index)
+        sink.row(index,
+                 {kBuiltFolder, std::to_string(index) + ".flac", "0", builtTrackTitle(index)});
+
+    library.replace(builder.finish());
+}
+
+std::string builtTrackPath(size_t ordinal) {
+    return kBuiltFolder + std::to_string(ordinal) + ".flac";
+}
+
+std::string builtTrackTitle(size_t ordinal) {
+    return "Track " + std::to_string(ordinal);
 }
 
 Settings servingSettings() {

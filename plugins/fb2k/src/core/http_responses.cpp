@@ -17,6 +17,11 @@ std::string quoted(const std::string& tag) {
     return "\"" + tag + "\"";
 }
 
+void revalidateAlways(httplib::Response& res, const std::string& tag) {
+    res.set_header("Cache-Control", kAskEveryTime);
+    res.set_header("ETag", tag);
+}
+
 void revalidatePerEncoding(httplib::Response& res, const std::string& tag) {
     revalidateAlways(res, tag);
     res.set_header("Vary", "Accept-Encoding");
@@ -46,13 +51,9 @@ bool acceptsGzip(const httplib::Request& req) {
     return false;
 }
 
-// The same zlib compressor cpp-httplib would have used, driven by hand because
-// can_compress_content_type admits neither of the two types these routes answer with. Setting
-// Content-Encoding is also what stops cpp-httplib compressing the result a second time.
-std::optional<std::string> gzipped(const std::string& body) {
+std::optional<std::string> compressedWith(httplib::detail::compressor& compressor,
+                                          std::string_view body) {
     std::string packed;
-    httplib::detail::gzip_compressor compressor;
-
     const bool done = compressor.compress(body.data(), body.size(), true,
                                           [&packed](const char* data, size_t length) {
                                               packed.append(data, length);
@@ -63,6 +64,14 @@ std::optional<std::string> gzipped(const std::string& body) {
         return std::nullopt;
 
     return packed;
+}
+
+// The same zlib compressor cpp-httplib would have used, driven by hand because
+// can_compress_content_type admits neither of the two types these routes answer with. Setting
+// Content-Encoding is also what stops cpp-httplib compressing the result a second time.
+std::optional<std::string> gzipped(const std::string& body) {
+    httplib::detail::gzip_compressor compressor;
+    return compressedWith(compressor, body);
 }
 
 }  // namespace
@@ -141,6 +150,40 @@ bool outputChangeRefused(const Settings& settings, httplib::Response& res) {
     return refusedBySwitch(settings.changeOutput, PlayerOutcome::changeDisabled, res);
 }
 
+bool playlistIdRefused(const std::string& id, httplib::Response& res) {
+    if (isPlaylistId(id))
+        return false;
+
+    respondRefusal(res, PlaylistRefusal::badId);
+    return true;
+}
+
+void sendHeld(httplib::Response& res, const SharedBytes& bytes, const std::string& contentType) {
+    res.set_content_provider(bytes->size(), contentType,
+                             [bytes](size_t offset, size_t length, httplib::DataSink& sink) {
+                                 return sink.write(bytes->data() + offset, length);
+                             });
+}
+
+void sendLongLived(const httplib::Request& req, httplib::Response& res, std::string_view bytes,
+                   const std::string& contentType) {
+    const auto coding = httplib::detail::encoding_type(req, res, contentType);
+    const auto compressor = httplib::detail::make_compressor(coding);
+    auto packed = compressor ? compressedWith(*compressor, bytes) : std::nullopt;
+
+    if (packed) {
+        res.set_header("Content-Encoding", httplib::detail::encoding_name(coding));
+        res.set_header("Vary", "Accept-Encoding");
+        res.set_content(std::move(*packed), contentType);
+        return;
+    }
+
+    res.set_content_provider(bytes.size(), contentType,
+                             [bytes](size_t offset, size_t length, httplib::DataSink& sink) {
+                                 return sink.write(bytes.data() + offset, length);
+                             });
+}
+
 std::optional<Library::State> readyLibrary(const Library* library, httplib::Response& res) {
     if (!library) {
         respondUnavailable(res, kNoLibrary);
@@ -161,11 +204,11 @@ void respondTooFast(httplib::Response& res, const Throttle& throttle, std::strin
     respond(res, 429, std::move(body));
 }
 
-bool changingTooFast(Throttle& changes, httplib::Response& res) {
+bool changingTooFast(Throttle& changes, httplib::Response& res, const std::string& detail) {
     if (!changes.refuses())
         return false;
 
-    respondTooFast(res, changes, refusalDocument(PlaylistRefusal::tooFast));
+    respondTooFast(res, changes, refusalDocument(PlaylistRefusal::tooFast, detail));
     return true;
 }
 
@@ -187,25 +230,12 @@ bool alreadyHolds(const httplib::Request& req, const std::string& tag) {
     });
 }
 
-void revalidateAlways(httplib::Response& res, const std::string& tag) {
-    res.set_header("Cache-Control", kAskEveryTime);
-    res.set_header("ETag", tag);
-}
-
 std::string snapshotTag(const Library::State& state, uint64_t runId, uint64_t playerVersion) {
     return "s" + std::to_string(state.structure) + "-r" + std::to_string(state.revision) + "-i" +
            std::to_string(runId) + "-p" + std::to_string(playerVersion);
 }
 
 namespace {
-
-// Hands cpp-httplib a view of bytes this component keeps rather than a copy of them.
-void sendHeld(httplib::Response& res, const SharedBytes& bytes, const char* contentType) {
-    res.set_content_provider(bytes->size(), contentType,
-                             [bytes](size_t offset, size_t length, httplib::DataSink& sink) {
-                                 return sink.write(bytes->data() + offset, length);
-                             });
-}
 
 void sendBodyIfChanged(const httplib::Request& req, httplib::Response& res, const std::string& name,
                        const char* contentType, const std::function<SharedBytes()>& produce,

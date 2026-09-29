@@ -16,6 +16,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace jean;
@@ -33,7 +34,9 @@ constexpr char kRevalidate[] = "no-cache";
 constexpr char kForAYear[] = "public, max-age=31536000, immutable";
 
 // A font carries NULs, so a body cut at the first one is a truncated file rather than a match.
-const std::string kFont("wOF2\0\1\0\0\0\0\x0b\x2c", 12);
+std::string fontBytes() {
+    return {"wOF2\0\1\0\0\0\0\x0b\x2c", 12};
+}
 
 struct FakePages {
     std::map<std::string, std::string> files;
@@ -47,7 +50,7 @@ FakePages aBuild() {
         {"favicon.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"/>"},
         {"assets/x.js", kScript},
         {"assets/x.css", "body{margin:0}"},
-        {"assets/rethink-sans-latin.woff2", kFont},
+        {"assets/rethink-sans-latin.woff2", fontBytes()},
         {"locales/es.json", kLocale},
     };
 
@@ -57,7 +60,7 @@ FakePages aBuild() {
 // The pointer must outlive the server.
 Player serving(FakePages* pages) {
     Player player = servingPlayer();
-    player.page.read = [pages](const std::string& path) -> std::optional<std::string> {
+    player.page.read = [pages](const std::string& path) -> std::optional<std::string_view> {
         pages->asked.push_back(path);
 
         const auto found = pages->files.find(path);
@@ -86,21 +89,23 @@ struct FakeDisk {
     }
 };
 
-const std::vector<std::string> kJeanRoot{"index.html", "assets", "locales", "favicon.svg"};
+std::vector<std::string> jeanRoot() {
+    return {"index.html", "assets", "locales", "favicon.svg"};
+}
 
 Player serving(FakePages* pages, FakeDisk* disk) {
     Player player = serving(pages);
-    player.page.names = kJeanRoot;
+    player.page.names = jeanRoot();
     player.page.readDisk = [disk](const std::string& path) -> DiskPage {
         disk->asked.push_back(path);
 
         DiskPage page;
         const auto found = disk->files.find(path);
         if (found != disk->files.end()) {
-            page.kind = DiskPage::Kind::File;
+            page.kind = DiskPage::Kind::file;
             page.bytes = found->second;
         } else if (disk->holdsDirectory(path)) {
-            page.kind = DiskPage::Kind::Directory;
+            page.kind = DiskPage::Kind::directory;
         }
 
         return page;
@@ -111,10 +116,9 @@ Player serving(FakePages* pages, FakeDisk* disk) {
 
 size_t linesNaming(const std::string& name) {
     const auto lines = loggedLines();
-    return static_cast<size_t>(
-        std::count_if(lines.begin(), lines.end(), [&name](const std::string& line) {
-            return line.find(name) != std::string::npos;
-        }));
+    return static_cast<size_t>(std::count_if(
+        lines.begin(), lines.end(),
+        [&name](const std::string& line) { return line.find(name) != std::string::npos; }));
 }
 
 // A browser loading a page sends no Authorization header.
@@ -135,7 +139,9 @@ std::string mediaType(const std::string& contentType) {
     return type;
 }
 
-const json kNotFound = json{{"error", "not found"}};
+json notFound() {
+    return json{{"error", "not found"}};
+}
 
 }  // namespace
 
@@ -196,7 +202,7 @@ TEST_CASE("c2 a file the build holds under an extension outside the table is a 4
         INFO("path: ", path);
         REQUIRE(response);
         CHECK(response->status == 404);
-        CHECK(json::parse(response->body) == kNotFound);
+        CHECK(json::parse(response->body) == notFound());
     }
 }
 
@@ -249,15 +255,15 @@ TEST_CASE("c4 a path the build does not hold is the JSON 404") {
     REQUIRE(unknownApiPath);
     REQUIRE(unknownApiPath->status == 404);
 
-    for (const char* path : {"/nothing", "/nothing.js", "/assets/gone.js", "/locales/xx.json",
-                             "/library/some/view"}) {
+    for (const char* path :
+         {"/nothing", "/nothing.js", "/assets/gone.js", "/locales/xx.json", "/library/some/view"}) {
         INFO("path: ", path);
 
         const auto response = server.client().Get(path);
 
         REQUIRE(response);
         CHECK(response->status == 404);
-        CHECK(json::parse(response->body) == kNotFound);
+        CHECK(json::parse(response->body) == notFound());
         CHECK(response->body == unknownApiPath->body);
     }
 }
@@ -267,8 +273,8 @@ TEST_CASE("c4 a path the build does not hold is the JSON 404") {
 // reading a folder would resolve each of these to a file outside the build.
 TEST_CASE("c5 a path carrying .., a backslash or a NUL in any spelling is refused unread") {
     FakePages pages = aBuild();
-    for (const char* held : {"../index.html", "assets/../index.html", "assets\\x.js",
-                             "assets\\..\\index.html"})
+    for (const char* held :
+         {"../index.html", "assets/../index.html", "assets\\x.js", "assets\\..\\index.html"})
         pages.files[held] = kIndex;
     pages.files[std::string("index.html\0.js", 14)] = kIndex;
     pages.files[std::string("index.html\0", 11)] = kIndex;
@@ -298,7 +304,7 @@ TEST_CASE("c5 a path carrying .., a backslash or a NUL in any spelling is refuse
 
         REQUIRE(response);
         CHECK(response->status == 404);
-        CHECK(json::parse(response->body) == kNotFound);
+        CHECK(json::parse(response->body) == notFound());
     }
 
     CHECK(pages.asked.empty());
@@ -307,26 +313,23 @@ TEST_CASE("c5 a path carrying .., a backslash or a NUL in any spelling is refuse
 // Win32 path normalisation drops a trailing dot or space from every path segment, so on Windows
 // `www\assets.\x.js` opens `www\assets\x.js` and `www\api.\` opens `www\api\`. Both seams hold a
 // file under each decoded spelling, so a check that let one through is answered with its bytes.
-TEST_CASE("c5 a path segment ending in a dot or a space is refused unread, in a folder or a file name") {
+TEST_CASE(
+    "c5 a path segment ending in a dot or a space is refused unread, in a folder or a file name") {
     FakePages pages = aBuild();
     FakeDisk disk;
-    for (const char* held : {"assets./x.js", "api./index.html", "api./status", "locales./x.json",
-                             "mine./index.html", "mine /index.html", "index.html.",
-                             "index.html "}) {
+    for (const char* held :
+         {"assets./x.js", "api./index.html", "api./status", "locales./x.json", "mine./index.html",
+          "mine /index.html", "index.html.", "index.html "}) {
         pages.files[held] = kIndex;
         disk.files[held] = kIndex;
     }
     const TestServer server(servingSettings(), serving(&pages, &disk));
 
     const std::vector<std::string> refused{
-        "/assets./x.js",
-        "/api./",
-        "/api./status",
-        "/locales./x.json",
-        "/mine./index.html",
-        "/mine%20/index.html",
-        "/index.html.",
-        "/index.html%20",
+        "/assets./x.js",     "/api./",
+        "/api./status",      "/locales./x.json",
+        "/mine./index.html", "/mine%20/index.html",
+        "/index.html.",      "/index.html%20",
     };
 
     for (const auto& path : refused) {
@@ -336,7 +339,7 @@ TEST_CASE("c5 a path segment ending in a dot or a space is refused unread, in a 
 
         REQUIRE(response);
         CHECK(response->status == 404);
-        CHECK(json::parse(response->body) == kNotFound);
+        CHECK(json::parse(response->body) == notFound());
     }
 
     CHECK(pages.asked.empty());
@@ -404,6 +407,45 @@ TEST_CASE("c6 a file under assets/ is cached for a year without revalidating") {
     }
 }
 
+// The build is written straight from the component's own resources rather than copied into each
+// response, and cpp-httplib compresses only a body it holds. So what it would have compressed is
+// compressed before it is handed over, and the rest must still arrive whole.
+TEST_CASE("c6 a text file is gzipped for a client that asks, and a font is sent whole") {
+    FakePages pages = aBuild();
+    const TestServer server(servingSettings(), serving(&pages));
+    auto wire = undecoding(server);
+
+    const auto variesByEncoding = [](const httplib::Response& response) {
+        const auto named = response.headers.equal_range("Vary");
+        return std::any_of(named.first, named.second, [](const auto& header) {
+            return header.second.find("Accept-Encoding") != std::string::npos;
+        });
+    };
+
+    for (const std::string path : {"/", "/assets/x.js", "/locales/es.json"}) {
+        INFO("path: ", path);
+        const auto file = path == "/" ? std::string("index.html") : path.substr(1);
+
+        const auto packed = wire.Get(path, accepting("gzip"));
+        REQUIRE(packed);
+        CHECK(packed->status == 200);
+        CHECK(packed->get_header_value("Content-Encoding") == "gzip");
+        CHECK(variesByEncoding(*packed));
+        CHECK(isGzip(packed->body));
+
+        const auto plain = wire.Get(path, accepting("identity"));
+        REQUIRE(plain);
+        CHECK(plain->get_header_value("Content-Encoding").empty());
+        CHECK(plain->body == pages.files.at(file));
+    }
+
+    const auto font = wire.Get("/assets/rethink-sans-latin.woff2", accepting("gzip"));
+    REQUIRE(font);
+    CHECK(font->status == 200);
+    CHECK(font->get_header_value("Content-Encoding").empty());
+    CHECK(font->body == fontBytes());
+}
+
 TEST_CASE("c7 HEAD / answers what GET / would, with no body") {
     FakePages pages = aBuild();
     const TestServer server(servingSettings(), serving(&pages));
@@ -424,7 +466,7 @@ TEST_CASE("c7 POST / is a 404, and no other method reaches a page file") {
 
     REQUIRE(posted);
     CHECK(posted->status == 404);
-    CHECK(json::parse(posted->body) == kNotFound);
+    CHECK(json::parse(posted->body) == notFound());
 
     auto client = server.client();
     std::vector<httplib::Result> others;
@@ -467,7 +509,8 @@ TEST_CASE("c9 a path the build holds is answered from the build, and disk is nev
     }
 }
 
-TEST_CASE("c10 a locale the build lacks is answered from www/locales/ and revalidated on every load") {
+TEST_CASE(
+    "c10 a locale the build lacks is answered from www/locales/ and revalidated on every load") {
     FakePages pages = aBuild();
     FakeDisk disk;
     disk.files["locales/custom.json"] = "{\"Play\":\"Tocar\"}";
@@ -508,11 +551,12 @@ TEST_CASE("c10 a file on disk outside www/locales/ never fills a gap in Jean's o
         INFO("path: ", path);
         REQUIRE(response);
         CHECK(response->status == 404);
-        CHECK(json::parse(response->body) == kNotFound);
+        CHECK(json::parse(response->body) == notFound());
     }
 }
 
-TEST_CASE("c11 /<name>/ answers the folder's index.html, and a directory inside it answers its own") {
+TEST_CASE(
+    "c11 /<name>/ answers the folder's index.html, and a directory inside it answers its own") {
     FakePages pages = aBuild();
     FakeDisk disk;
     disk.files["mine/index.html"] = "<!doctype html><title>Mine</title>";
@@ -558,11 +602,12 @@ TEST_CASE("c11 a path naming no folder in www/ is the JSON 404") {
         INFO("path: ", path);
         REQUIRE(response);
         CHECK(response->status == 404);
-        CHECK(json::parse(response->body) == kNotFound);
+        CHECK(json::parse(response->body) == notFound());
     }
 }
 
-TEST_CASE("c11 a folder added while running is served on the next request, and one removed is gone") {
+TEST_CASE(
+    "c11 a folder added while running is served on the next request, and one removed is gone") {
     FakePages pages = aBuild();
     FakeDisk disk;
     const TestServer server(servingSettings(), serving(&pages, &disk));
@@ -588,7 +633,9 @@ TEST_CASE("c11 a folder added while running is served on the next request, and o
     CHECK(removed->status == 404);
 }
 
-TEST_CASE("c12 a folder named as one of Jean's roots or api, in any case, is never read and is logged once") {
+TEST_CASE(
+    "c12 a folder named as one of Jean's roots or api, in any case, is never read and is logged "
+    "once") {
     FakePages pages = aBuild();
     FakeDisk disk;
     disk.files["Assets/x.js"] = kScript;
@@ -610,7 +657,7 @@ TEST_CASE("c12 a folder named as one of Jean's roots or api, in any case, is nev
             INFO("path: ", path, ", round ", round);
             REQUIRE(response);
             CHECK(response->status == 404);
-            CHECK(json::parse(response->body) == kNotFound);
+            CHECK(json::parse(response->body) == notFound());
         }
     }
 
@@ -679,7 +726,7 @@ TEST_CASE("c13 a folder interface's file outside the table is a 404") {
         INFO("path: ", path);
         REQUIRE(response);
         CHECK(response->status == 404);
-        CHECK(json::parse(response->body) == kNotFound);
+        CHECK(json::parse(response->body) == notFound());
     }
 }
 
@@ -729,7 +776,9 @@ std::map<std::string, std::set<std::string>> directivesOf(const std::string& pol
 
 }  // namespace
 
-TEST_CASE("c14 Jean's page and a folder interface run only this origin's code, and nobody may frame them") {
+TEST_CASE(
+    "c14 Jean's page and a folder interface run only this origin's code, and nobody may frame "
+    "them") {
     FakePages pages = aBuild();
     FakeDisk disk;
     disk.files["mine/index.html"] = "<!doctype html><title>Mine</title>";
@@ -763,7 +812,9 @@ TEST_CASE("c14 Jean's page and a folder interface run only this origin's code, a
     }
 }
 
-TEST_CASE("c14 the page may reach the player and the three artist-information services, and nothing else") {
+TEST_CASE(
+    "c14 the page may reach the player and the three artist-information services, and nothing "
+    "else") {
     FakePages pages = aBuild();
     const TestServer server(servingSettings(), serving(&pages));
 
@@ -771,12 +822,14 @@ TEST_CASE("c14 the page may reach the player and the three artist-information se
 
     REQUIRE(response);
     auto policy = directivesOf(response->get_header_value("Content-Security-Policy"));
-    CHECK(policy["connect-src"] ==
-          std::set<std::string>{"'self'", "https://musicbrainz.org", "https://www.wikidata.org",
-                                "https://en.wikipedia.org"});
+    CHECK(policy["connect-src"] == std::set<std::string>{"'self'", "https://musicbrainz.org",
+                                                         "https://www.wikidata.org",
+                                                         "https://en.wikipedia.org"});
 }
 
-TEST_CASE("c14 the page asks for no camera, microphone or location, and refuses them to anything it embeds") {
+TEST_CASE(
+    "c14 the page asks for no camera, microphone or location, and refuses them to anything it "
+    "embeds") {
     FakePages pages = aBuild();
     const TestServer server(servingSettings(), serving(&pages));
 

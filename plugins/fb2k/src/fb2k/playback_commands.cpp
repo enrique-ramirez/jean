@@ -21,9 +21,10 @@ PlayerOutcome askCommand(MainThreadQueue& mainThread, const std::string& what,
     });
 }
 
-// plugins/fb2k/ARCHITECTURE.md, "Facts about the player": why this ignores the bool
-// playlist_execute_default_action returns, and why the row it starts is not enough on its own to
-// say which playlist the track after it comes from.
+// The foobar2000 SDK does not say what playlist_execute_default_action's bool means when a
+// playlist lock takes the action over, so it is not read, and the playlist and row are checked
+// beforehand instead. Why the playlist is activated first is ARCHITECTURE.md, *Facts about the
+// player*.
 PlayerOutcome playRowOnMainThread(const std::string& playlistId, uint32_t index) {
     const auto playlist = findPlaylist(playlistId);
     if (playlist == pfc::infinite_size)
@@ -51,16 +52,16 @@ PlaylistRowPlayer makePlaylistRowPlayer(MainThreadQueue& mainThread) {
 TransportCommander makeTransportCommander(MainThreadQueue& mainThread) {
     return [&mainThread](Transport command) {
         switch (command) {
-            case Transport::PlayPause:
+            case Transport::playPause:
                 return askCommand(mainThread, "toggling play/pause",
                                   [] { playback_control::get()->play_or_pause(); });
-            case Transport::Next:
+            case Transport::next:
                 return askCommand(mainThread, "advancing to the next track",
                                   [] { playback_control::get()->next(); });
-            case Transport::Previous:
+            case Transport::previous:
                 return askCommand(mainThread, "moving to the previous track",
                                   [] { playback_control::get()->previous(); });
-            case Transport::Stop:
+            case Transport::stop:
                 return askCommand(mainThread, "stopping playback",
                                   [] { playback_control::get()->stop(); });
         }
@@ -98,11 +99,11 @@ VolumeSetter makeVolumeSetter(MainThreadQueue& mainThread) {
 VolumeStepper makeVolumeStepper(MainThreadQueue& mainThread) {
     return [&mainThread](VolumeStep step) {
         return askCommand(mainThread,
-                          step == VolumeStep::Up ? "stepping the player's level up"
-                                                : "stepping the player's level down",
+                          step == VolumeStep::up ? "stepping the player's level up"
+                                                 : "stepping the player's level down",
                           [step] {
                               const auto playback = playback_control::get();
-                              if (step == VolumeStep::Up)
+                              if (step == VolumeStep::up)
                                   playback->volume_up();
                               else
                                   playback->volume_down();

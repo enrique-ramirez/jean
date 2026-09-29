@@ -3,6 +3,7 @@
 #include "third_party/httplib.h"
 
 #include "core/library.h"
+#include "core/player.h"
 #include "core/player_state.h"
 #include "core/rate_limit.h"
 
@@ -16,10 +17,12 @@ namespace jean {
 
 class StateRoute {
 public:
-    // A null `library` is answered as a library not built, and a null `playerState` as a
-    // stopped player: GET /state carries a player report on every 200 it gives.
+    // A null `library` is answered as a library not built, a null `playerState` as a stopped
+    // player, and a null `checkMainThread` as a main thread answering: GET /state carries a
+    // player report on every 200 it gives.
     StateRoute(const Library* library, const PlayerStateStore* playerState,
-               const std::atomic<uint64_t>& configGeneration, uint64_t runId, RateLimitClock clock);
+               const std::atomic<uint64_t>& configGeneration, uint64_t runId, RateLimitClock clock,
+               MainThreadCheck checkMainThread);
 
     void addTo(httplib::Server& server);
 
@@ -31,6 +34,7 @@ private:
     const std::atomic<uint64_t>& configGeneration_;
     const uint64_t runId_;
     const RateLimitClock clock_;
+    const MainThreadCheck checkMainThread_;
 
     PerClientRateLimiter polls_;
     OncePerBurst complaints_;

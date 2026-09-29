@@ -35,6 +35,8 @@ private:
     void readTrack(const httplib::Request& req, httplib::Response& res);
     bool readingTooFast(httplib::Response& res);
 
+    bool writingTagsTooFast(httplib::Response& res);
+
     void declare(std::vector<std::string> columns);
     std::vector<std::string> declaration() const;
 

@@ -197,7 +197,7 @@ TEST_CASE("rows arriving from many threads at once land where they belong") {
     }
 
     LibraryBuilder builder({"%artist%", "%title%"}, kRows);
-    REQUIRE(builder.fieldCount() == kSpineFieldCount + 2);
+    REQUIRE(builder.fields().size() == kSpineFieldCount + 2);
 
     std::vector<std::thread> workers;
     for (size_t worker = 0; worker < kThreads; ++worker) {
@@ -265,7 +265,7 @@ TEST_CASE("installing a snapshot moves both generations and reports the columns 
 }
 
 TEST_CASE("a library nobody is building carries no build progress") {
-    Library library;
+    const Library library;
 
     CHECK_FALSE(library.state().build.has_value());
 }

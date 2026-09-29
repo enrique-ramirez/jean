@@ -3,8 +3,8 @@
 
 #include "third_party/doctest.h"
 
-#include "core/documents.h"
 #include "core/artwork.h"
+#include "core/documents.h"
 #include "core/tag_write.h"
 #include "support/fixtures.h"
 
@@ -278,8 +278,7 @@ TEST_CASE("a case collision is caught even when other fields sort between them")
     Settings wider;
     wider.allowedFields = {"rating", "album"};
 
-    const auto request =
-        parse(writing(R"({"album": "X", "RATING": "5", "rating": "4"})"), wider);
+    const auto request = parse(writing(R"({"album": "X", "RATING": "5", "rating": "4"})"), wider);
 
     CHECK_FALSE(request.ok());
     CHECK(request.refusal == TagWriteRefusal::malformedBody);
@@ -323,12 +322,9 @@ TEST_CASE("booleans and nulls are not values, however tempting") {
 // case that provokes it instead of by somebody remembering to extend a list.
 TEST_CASE("every refusal has something to say for itself") {
     const std::string bodies[] = {
-        "not json at all {{{",
-        R"({"fields": {"rating": "4"}})",
-        addressing(""),
-        addressingRow(quoted("not-a-guid"), "4", quoted("7")),
-        writing("{}"),
-        writing(R"({"artist": "Someone Else"})"),
+        "not json at all {{{", R"({"fields": {"rating": "4"}})",
+        addressing(""),        addressingRow(quoted("not-a-guid"), "4", quoted("7")),
+        writing("{}"),         writing(R"({"artist": "Someone Else"})"),
     };
 
     for (const auto& body : bodies) {

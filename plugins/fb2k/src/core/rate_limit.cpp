@@ -35,9 +35,8 @@ bool PerClientRateLimiter::allow(const std::string& client,
                                  std::chrono::steady_clock::time_point now) {
     const std::lock_guard<std::mutex> held(mutex_);
 
-    auto& entry = entries_.entryFor(client, now, [this] {
-        return std::make_unique<RateLimiter>(burst_, perToken_);
-    });
+    auto& entry = entries_.entryFor(
+        client, now, [this] { return std::make_unique<RateLimiter>(burst_, perToken_); });
     return entry.payload->allow(now);
 }
 

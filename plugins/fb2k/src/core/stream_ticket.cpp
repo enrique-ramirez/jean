@@ -48,12 +48,4 @@ TicketStore::Admission TicketStore::admits(const std::string& ticket, Clock::tim
     return {};
 }
 
-size_t TicketStore::outstanding(Clock::time_point now) const {
-    const std::lock_guard<std::mutex> held(mutex_);
-
-    return static_cast<size_t>(
-        std::count_if(entries_.begin(), entries_.end(),
-                      [now](const Entry& entry) { return entry.expiresAt > now; }));
-}
-
 }  // namespace jean

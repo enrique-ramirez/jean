@@ -150,6 +150,14 @@ bool LibraryRoutes::readingTooFast(httplib::Response& res) {
     return true;
 }
 
+bool LibraryRoutes::writingTagsTooFast(httplib::Response& res) {
+    if (!tagWrites_.refuses())
+        return false;
+
+    respondTooFast(res, tagWrites_, tagFailureDocument(TagWriteOutcome::tooFast));
+    return true;
+}
+
 // The set asked for is not the one that is ready. Say what is ready, start building what was
 // asked for, and let the client poll GET /state.
 void LibraryRoutes::startBuilding(httplib::Response& res, const std::vector<std::string>& columns,
@@ -323,13 +331,15 @@ void LibraryRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (tagWrites_.refuses()) {
-            respondTooFast(res, tagWrites_, tagFailureDocument(TagWriteOutcome::tooFast));
+        if (!calls_.writeTags) {
+            respondOutcome(res, TagWriteOutcome::unavailable);
             return;
         }
 
-        const auto outcome =
-            askIfAvailable(calls_.writeTags, TagWriteOutcome::unavailable, request.write);
+        if (writingTagsTooFast(res))
+            return;
+
+        const auto outcome = calls_.writeTags(request.write);
         if (outcome != TagWriteOutcome::written) {
             respondOutcome(res, outcome);
             return;

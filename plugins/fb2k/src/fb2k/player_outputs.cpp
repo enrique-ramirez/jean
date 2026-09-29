@@ -100,6 +100,10 @@ OutputCalls playerOutputsVia(MainThreadQueue& mainThread) {
             if (!listed)
                 return PlayerOutcome::notListed;
 
+            // On foobar2000 2.25.10 a switch neither stops nor restarts the playing track, and
+            // brings volume and mute to wherever the new device was last left, since both are
+            // kept per device. So a player OutputHold has silenced comes up audible on the new
+            // device, and the old one keeps the hold's mute after the listener leaves.
             output_manager_v2::get()->setCoreConfigDevice(parsed.module, parsed.device);
             return PlayerOutcome::done;
         });

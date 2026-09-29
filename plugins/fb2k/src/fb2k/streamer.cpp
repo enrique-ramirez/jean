@@ -2,8 +2,8 @@
 
 #include "fb2k/streamer.h"
 
-#include "core/documents.h"
 #include "core/broadcast_ring.h"
+#include "core/documents.h"
 #include "core/log.h"
 #include "core/opus_stream.h"
 #include "core/pcm_ring.h"
@@ -29,6 +29,8 @@ namespace {
 
 constexpr unsigned kOutputChannels = 2;
 
+// Passed explicitly: foobar2000's capture chunk size varies on one player, and the -1 default
+// leaves the interval to it.
 constexpr double kCaptureInterval = 0.05;
 
 constexpr size_t kTimelineMarks = 8;
@@ -264,8 +266,8 @@ public:
         out.clear();
 
         switch (format_->broadcast.read(cursor_, out, kIdlePatience)) {
-            case BroadcastRing::Read::Ok:
-            case BroadcastRing::Read::Idle:
+            case BroadcastRing::Read::ok:
+            case BroadcastRing::Read::idle:
                 return true;
             default:
                 return false;
@@ -279,6 +281,7 @@ private:
     bool sentPreamble_ = false;
 };
 
+// Media Foundation needs COM initialised on the encoder thread itself.
 struct ComOnThisThread {
     ComOnThisThread() { CoInitializeEx(nullptr, COINIT_MULTITHREADED); }
     ~ComOnThisThread() { CoUninitialize(); }

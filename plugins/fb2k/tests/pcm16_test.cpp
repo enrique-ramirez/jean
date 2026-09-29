@@ -31,7 +31,9 @@ std::vector<std::int16_t> convertedConstant(float level, size_t count) {
 // Resampling a loud master and a positive ReplayGain both produce samples past full scale.
 TEST_CASE("a sample above full scale comes out below the 16-bit ceiling") {
     std::vector<float> overs;
-    for (float level = 1.0F; level <= 2.0F; level += 0.01F) {
+    constexpr int kSteps = 100;
+    for (int step = 0; step <= kSteps; ++step) {
+        const float level = 1.0F + (static_cast<float>(step) / kSteps);
         overs.push_back(level);
         overs.push_back(-level);
     }
@@ -47,7 +49,9 @@ TEST_CASE("a sample above full scale comes out below the 16-bit ceiling") {
 
 TEST_CASE("a louder over still comes out louder, so its top is rounded rather than flat") {
     float previous = softLimit(1.0F);
-    for (float level = 1.05F; level <= 4.0F; level += 0.05F) {
+    constexpr int kSteps = 60;
+    for (int step = 1; step <= kSteps; ++step) {
+        const float level = 1.0F + (static_cast<float>(step) * 0.05F);
         const float limited = softLimit(level);
         CHECK(limited > previous);
         CHECK(limited < 1.0F);

@@ -11,6 +11,7 @@
 namespace jean {
 
 PlaylistLister makePlaylistLister(MainThreadQueue& mainThread, const PlaylistVersions& versions);
+PlaylistRoleReader makePlaylistRoleReader(MainThreadQueue& mainThread);
 PlaylistRowReader makePlaylistRowReader(MainThreadQueue& mainThread,
                                         const PlaylistVersions& versions);
 PlaylistChangeReader makeChangedPlaylistRowReader(MainThreadQueue& mainThread,

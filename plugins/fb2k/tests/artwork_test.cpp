@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -72,7 +73,7 @@ Player showing(ArtLog* log) {
             return source;
 
         source.tag = log->tag;
-        source.picture = log->picture;
+        source.picture = std::make_shared<const std::string>(log->picture);
         return source;
     });
 }
@@ -127,7 +128,7 @@ PlaylistRowArtworkReader rowReader(RowArtLog* log) {
 
         if (row != kCoverlessRow) {
             read.source.tag = artworkTag(log->picture);
-            read.source.picture = log->picture;
+            read.source.picture = std::make_shared<const std::string>(log->picture);
         }
 
         return read;
@@ -138,6 +139,20 @@ Player showingRows(RowArtLog* rows, ArtLog* byTrack = nullptr) {
     Player player = byTrack ? showing(byTrack) : Player{};
     player.playlists.readRowArtwork = rowReader(rows);
     return player;
+}
+
+std::set<int> undocumentedOf(const std::string& path, const std::set<int>& seen) {
+    const auto published = publishedRoutes();
+    const auto route =
+        std::find_if(published.begin(), published.end(),
+                     [&path](const SpecRoute& r) { return r.method == "GET" && r.path == path; });
+
+    REQUIRE(route != published.end());
+
+    std::set<int> undocumented;
+    std::set_difference(seen.begin(), seen.end(), route->statuses.begin(), route->statuses.end(),
+                        std::inserter(undocumented, undocumented.end()));
+    return undocumented;
 }
 
 }  // namespace
@@ -168,8 +183,7 @@ TEST_CASE("only pictures a browser draws are given a type") {
 }
 
 // The validator is the picture rather than a stat of the file the picture came from because
-// the player names that file only once it has loaded the picture anyway (ARCHITECTURE.md, *Facts
-// about the player*).
+// the player names that file only once it has loaded the picture anyway (`core/artwork.h`).
 TEST_CASE("a validator is the picture, so it moves when and only when the picture does") {
     const auto tag = artworkTag(kJpeg);
 
@@ -368,7 +382,9 @@ TEST_CASE("a client looping on artwork stops reaching the player") {
 // The budget is deep because a screenful of covers is the ordinary case, so a refusal here is a
 // client stuck in a loop. The clock moves once, between two loops, and far enough to earn a cover
 // back, so the second loop starts with an allowed read and then refuses again.
-TEST_CASE("a burst of refused artwork reads writes one error line, and an allowed read starts a new burst") {
+TEST_CASE(
+    "a burst of refused artwork reads writes one error line, and an allowed read starts a new "
+    "burst") {
     ArtLog log{kJpeg};
     const TestServer server(servingSettings(), showing(&log));
     auto client = server.client();
@@ -474,18 +490,78 @@ TEST_CASE("artwork answers no status contract/openapi.yaml does not document") {
     for (int attempt = 0; attempt < 600; ++attempt)
         note(client.Get(kAddress));
 
-    const auto published = publishedRoutes();
-    const auto artwork = std::find_if(published.begin(), published.end(), [](const SpecRoute& r) {
-        return r.method == "GET" && r.path == "/artwork";
-    });
+    CHECK(undocumentedOf("/artwork", seen).empty());
+}
 
-    REQUIRE(artwork != published.end());
+// The playing cover is held rather than read, so nothing about answering it can time out, throw
+// on the main thread or find the feature switched off: no cover to hold is a 404 like any other.
+TEST_CASE("the playing cover answers no status contract/openapi.yaml does not document") {
+    INFO("shape changed -- update contract/openapi.yaml to match");
 
-    std::set<int> undocumented;
-    std::set_difference(seen.begin(), seen.end(), artwork->statuses.begin(),
-                        artwork->statuses.end(), std::inserter(undocumented, undocumented.end()));
+    ArtLog log{kJpeg};
+    NowPlayingArtwork playing;
+    const TestServer server(servingPlaying(&playing, &log));
+    const TestServer nothingHeld;
 
-    CHECK(undocumented.empty());
+    std::set<int> seen;
+    const auto note = [&seen](const httplib::Result& response) {
+        REQUIRE_MESSAGE(response, "no answer from GET /artwork/playing");
+        seen.insert(response->status);
+    };
+
+    note(get(server, kPlayingAddress));
+    note(get(nothingHeld, kPlayingAddress));
+
+    playing.hold(kJpeg);
+    const auto sent = get(server, kPlayingAddress);
+    note(sent);
+    REQUIRE(sent);
+    note(getHolding(server, kPlayingAddress, sent->get_header_value("ETag")));
+
+    playing.hold("not a picture at all");
+    note(get(server, kPlayingAddress));
+
+    playing.hold(std::string(kMaxArtworkBytes + 1, 'x'));
+    note(get(server, kPlayingAddress));
+
+    auto client = server.client();
+    for (int attempt = 0; attempt < 600; ++attempt)
+        note(client.Get(kPlayingAddress));
+
+    CHECK(seen == std::set<int>{200, 304, 404, 413, 429});
+    CHECK(undocumentedOf("/artwork/playing", seen).empty());
+}
+
+// cpp-httplib's set_header adds a header rather than replacing one, so a route and the helper it
+// calls both setting Cache-Control send two, and which of the two a cache obeys is its own choice.
+TEST_CASE("every artwork answer carries one Cache-Control") {
+    ArtLog log{kJpeg};
+    NowPlayingArtwork playing;
+    RowArtLog rows{kJpeg};
+    const Player player = showingRows(&rows, &log);
+    const TestServer server(servingSettings(), player, nullptr, countingMint(), nullptr, &playing);
+
+    const auto once = [](const httplib::Result& response) {
+        REQUIRE(response);
+        INFO("status: ", response->status);
+        CHECK(response->get_header_value_count("Cache-Control") == 1);
+        return response->get_header_value("ETag");
+    };
+
+    for (const auto& address : {std::string(kAddress), std::string(kPlayingAddress),
+                                rowAddress(kPlaylistId, kOffLibraryRow)}) {
+        INFO("address: ", address);
+        playing.hold(kJpeg);
+
+        const auto tag = once(get(server, address));
+        once(getHolding(server, address, tag));
+    }
+
+    playing.clear();
+    once(get(server, kPlayingAddress));
+    once(get(server, "/api/artwork?track=Artist%2FAlbum%2Fgone.flac"));
+    once(get(server, rowAddress(kPlaylistId, kCoverlessRow)));
+    once(get(server, rowAddress(kPlaylistId, kInLibraryRow)));
 }
 
 // foobar2000 calls its now-playing album art notification with nothing to show, against the
@@ -498,7 +574,7 @@ TEST_CASE("an empty cover held leaves nothing to serve, the same as a cover let 
     playing.hold("");
     const auto held = playing.current();
 
-    CHECK(held.picture.empty());
+    CHECK_FALSE(held.picture);
     CHECK(held.tag.empty());
 
     playing.clear();
@@ -508,12 +584,24 @@ TEST_CASE("an empty cover held leaves nothing to serve, the same as a cover let 
     CHECK(held.tag == gone.tag);
 }
 
-// foobar2000's own now-playing loader takes no path, no index and no handle
-// (plugins/fb2k/ARCHITECTURE.md, *Facts about the player*), and this is the whole of what
-// separates this route from the one addressed by a track: a request with nothing in it is
-// answered, so a stream, a CD track and a file the media library has never seen all have a
-// cover. Where the picture came from, a folder beside the file or the file's own tags, is
-// the player's answer and never this component's.
+// Every client drawing the playing cover asks for it on every poll, and a picture is megabytes.
+TEST_CASE("the playing cover is handed to every reader without a copy of its own") {
+    NowPlayingArtwork playing;
+    playing.hold(kJpeg);
+
+    const auto first = playing.current();
+    const auto second = playing.current();
+
+    REQUIRE(first.picture);
+    CHECK(*first.picture == kJpeg);
+    CHECK(first.picture == second.picture);
+}
+
+// foobar2000's own now-playing album art loader takes no path, no index and no handle, and this is
+// the whole of what separates this route from the one addressed by a track: a request with nothing
+// in it is answered, so a stream, a CD track and a file the media library has never seen all have a
+// cover. Where the picture came from, a folder beside the file or the file's own tags, is the
+// player's answer and never this component's.
 TEST_CASE("the cover of whatever is playing is answered to a request that addresses nothing") {
     ArtLog log{kJpeg};
     NowPlayingArtwork playing;
@@ -704,7 +792,7 @@ TEST_CASE("a cover let go is not answered for the track that follows it") {
     SUBCASE("the picture goes with the validator, so there is nothing left to answer with") {
         const auto held = playing.current();
 
-        CHECK(held.picture.empty());
+        CHECK_FALSE(held.picture);
         CHECK(held.tag.empty());
     }
 
@@ -790,9 +878,13 @@ TEST_CASE("a position with no cover of its own to send is refused, and four thin
     uint32_t row = kOffLibraryRow;
     std::string refusal;
 
-    SUBCASE("a playlist the player does not have") { playlistId = kAbsentPlaylistId; }
+    SUBCASE("a playlist the player does not have") {
+        playlistId = kAbsentPlaylistId;
+    }
 
-    SUBCASE("a position past the end of the playlist") { row = kRowsInPlaylist; }
+    SUBCASE("a position past the end of the playlist") {
+        row = kRowsInPlaylist;
+    }
 
     SUBCASE("a row the media library holds a path for") {
         row = kInLibraryRow;

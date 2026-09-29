@@ -201,8 +201,7 @@ TEST_CASE("an address the snapshot holds under two roots is a 409 saying so, and
 
     REQUIRE(response);
     CHECK(response->status == 409);
-    CHECK(json::parse(response->body) ==
-          json{{"written", false}, {"error", describe(*ambiguous)}});
+    CHECK(json::parse(response->body) == json{{"written", false}, {"error", describe(*ambiguous)}});
 
     // Only the player can tell, so the route hands the address over rather than refusing it.
     CHECK(player.asked.size() == 1);
@@ -499,6 +498,109 @@ TEST_CASE("an oversized write body is refused before it is parsed") {
     }
 }
 
+namespace {
+
+std::string gzipped(const std::string& text) {
+    httplib::detail::gzip_compressor compressor;
+
+    std::string compressed;
+    const bool done = compressor.compress(text.data(), text.size(), true,
+                                          [&compressed](const char* data, size_t size) {
+                                              compressed.append(data, size);
+                                              return true;
+                                          });
+    REQUIRE(done);
+    return compressed;
+}
+
+httplib::Result writeGzipped(const TestServer& server, const std::string& body) {
+    return server.client().Post("/api/tags", httplib::Headers{{"Content-Encoding", "gzip"}},
+                                gzipped(body), "application/json");
+}
+
+// A run of one byte, which is what compresses best: the smallest request that inflates past
+// the limit.
+std::string inflatingPast(size_t limit) {
+    return writingField("rating", std::string(limit, '4'));
+}
+
+constexpr size_t kChunk = 4096;
+
+// Sent with no Content-Length, so the server learns the size only by reading it.
+httplib::Result writeChunked(const TestServer& server, const std::string& body) {
+    return server.client().Post(
+        "/api/tags",
+        [&body](size_t offset, httplib::DataSink& sink) {
+            if (offset >= body.size()) {
+                sink.done();
+                return true;
+            }
+            return sink.write(body.data() + offset, std::min(kChunk, body.size() - offset));
+        },
+        "application/json");
+}
+
+}  // namespace
+
+// cpp-httplib inflates a request body sent with Content-Encoding: gzip before a route reads it,
+// so a request's size on the wire says nothing about the body a route is handed. The first case
+// is what keeps the second honest: a server that refused gzip outright would pass the second.
+TEST_CASE("a gzip body is held to the limit by what it inflates to, not by what it arrived as") {
+    TestServer::WriterLog log;
+    const TestServer server(servingSettings(), TestServer::recordingWriter(&log));
+
+    SUBCASE("a body inside the limit is read as the JSON it inflates to") {
+        const auto response = writeGzipped(server, ratingWrite(kTrackAddress));
+
+        REQUIRE(response);
+        CHECK(response->status == 200);
+        REQUIRE(log.calls.size() == 1);
+        CHECK(log.calls.front().fields.at("rating") == kRating);
+    }
+
+    SUBCASE("a body inflating past the limit is refused, however few bytes it arrived in") {
+        const auto body = inflatingPast(kMaxBodyBytes);
+        REQUIRE(gzipped(body).size() < kMaxBodyBytes / 100);
+
+        const auto response = writeGzipped(server, body);
+
+        REQUIRE(response);
+        CHECK(response->status == 413);
+        CHECK(log.calls.empty());
+    }
+}
+
+// Without a Content-Length there is nothing to refuse the body from before it is read, so the
+// limit has to be applied to the bytes as they arrive rather than to a declared size.
+TEST_CASE("a chunked body past the limit is refused, with no Content-Length to go by") {
+    TestServer::WriterLog log;
+    const TestServer server(servingSettings(), TestServer::recordingWriter(&log));
+
+    SUBCASE("a chunked body inside the limit is read like any other") {
+        const auto response = writeChunked(server, ratingWrite(kTrackAddress));
+
+        REQUIRE(response);
+        CHECK(response->status == 200);
+        CHECK(log.calls.size() == 1);
+    }
+
+    SUBCASE("a chunked body one byte past the limit never reaches the player") {
+        const auto body = inflatingPast(kMaxBodyBytes);
+        REQUIRE(body.size() > kMaxBodyBytes);
+
+        const auto response = writeChunked(server, body);
+
+        // A server that stops reading may close the socket under a client still sending, and
+        // the client may then see no answer at all. Either way nothing is written.
+        CHECK((!response || response->status == 413));
+        CHECK(log.calls.empty());
+
+        const auto afterwards = server.client().Get("/api/status");
+        REQUIRE(afterwards);
+        CHECK(afterwards->status == 200);
+    }
+}
+
 TEST_CASE("GET is not a way to write") {
     TestServer::WriterLog log;
     const TestServer server(servingSettings(), TestServer::recordingWriter(&log));
@@ -515,7 +617,8 @@ TEST_CASE("GET is not a way to write") {
 constexpr int kTagWriteBurst = 200;
 constexpr int kWritesPastTheBudget = 20;
 
-TEST_CASE("a client looping on tag writes stops reaching the player, and a box set's worth still lands") {
+TEST_CASE(
+    "a client looping on tag writes stops reaching the player, and a box set's worth still lands") {
     TestServer::WriterLog log;
     const TestServer server(servingSettings(), TestServer::recordingWriter(&log));
     clearLog();

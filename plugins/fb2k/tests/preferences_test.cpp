@@ -396,15 +396,41 @@ TEST_CASE("two forms differ if any one Permissions control does") {
     const auto base = toForm(Settings());
 
     const std::vector<std::pair<const char*, SettingsForm>> oneControlChanged{
-        {"controlPlayback", [&] { auto f = base; f.controlPlayback = false; return f; }()},
-        {"changeOutput", [&] { auto f = base; f.changeOutput = false; return f; }()},
-        {"streamingEnabled", [&] { auto f = base; f.streamingEnabled = false; return f; }()},
-        {"maxAutoPlaylists", [&] { auto f = base; f.maxAutoPlaylists = "7"; return f; }()},
-        {"allowedHosts", [&] { auto f = base; f.allowedHosts = "music.example"; return f; }()},
+        {"controlPlayback",
+         [&] {
+             auto f = base;
+             f.controlPlayback = false;
+             return f;
+         }()},
+        {"changeOutput",
+         [&] {
+             auto f = base;
+             f.changeOutput = false;
+             return f;
+         }()},
+        {"streamingEnabled",
+         [&] {
+             auto f = base;
+             f.streamingEnabled = false;
+             return f;
+         }()},
+        {"maxAutoPlaylists",
+         [&] {
+             auto f = base;
+             f.maxAutoPlaylists = "7";
+             return f;
+         }()},
+        {"allowedHosts",
+         [&] {
+             auto f = base;
+             f.allowedHosts = "music.example";
+             return f;
+         }()},
     };
 
     for (const auto& [control, altered] : oneControlChanged) {
-        INFO("control: ", std::string(control));
+        const std::string name(control);
+        INFO("control: ", name);
         CHECK(altered != base);
     }
 }
@@ -436,8 +462,8 @@ TEST_CASE("an autoplaylist limit of zero is accepted, because zero is how creati
 // so an entry carrying a scheme, a port, a path or a space admits nobody, and the person who
 // typed it would be left wondering why the page still refuses them.
 TEST_CASE("a host that could never match a request is refused, and the sentence names it") {
-    for (const auto* typed : {"http://music.example", "music.example:8881", "music.example/jean",
-                              "music example"}) {
+    for (const auto* typed :
+         {"http://music.example", "music.example:8881", "music.example/jean", "music example"}) {
         INFO("typed: ", std::string(typed));
         auto form = toForm(Settings());
         form.allowedHosts = std::string("jukebox.example\r\n") + typed;
@@ -471,17 +497,53 @@ TEST_CASE("each restart-only key that differs from what is running needs a resta
     const Settings running;
 
     const std::vector<std::pair<const char*, Settings>> oneKeyChanged{
-        {"port", [&] { auto s = running; s.port = 9001; return s; }()},
-        {"bindAddress", [&] { auto s = running; s.bindAddress = "127.0.0.1"; return s; }()},
-        {"opusBitrate", [&] { auto s = running; s.opusBitrate = 128000; return s; }()},
-        {"aacBitrate", [&] { auto s = running; s.aacBitrate = 96000; return s; }()},
-        {"maxConcurrentStreams", [&] { auto s = running; s.maxConcurrentStreams = 2; return s; }()},
-        {"streamTicketTtlSeconds", [&] { auto s = running; s.streamTicketTtlSeconds = 60; return s; }()},
-        {"muteWhileStreaming", [&] { auto s = running; s.muteWhileStreaming = false; return s; }()},
+        {"port",
+         [&] {
+             auto s = running;
+             s.port = 9001;
+             return s;
+         }()},
+        {"bindAddress",
+         [&] {
+             auto s = running;
+             s.bindAddress = "127.0.0.1";
+             return s;
+         }()},
+        {"opusBitrate",
+         [&] {
+             auto s = running;
+             s.opusBitrate = 128000;
+             return s;
+         }()},
+        {"aacBitrate",
+         [&] {
+             auto s = running;
+             s.aacBitrate = 96000;
+             return s;
+         }()},
+        {"maxConcurrentStreams",
+         [&] {
+             auto s = running;
+             s.maxConcurrentStreams = 2;
+             return s;
+         }()},
+        {"streamTicketTtlSeconds",
+         [&] {
+             auto s = running;
+             s.streamTicketTtlSeconds = 60;
+             return s;
+         }()},
+        {"muteWhileStreaming",
+         [&] {
+             auto s = running;
+             s.muteWhileStreaming = false;
+             return s;
+         }()},
     };
 
     for (const auto& [key, saved] : oneKeyChanged) {
-        INFO("key: ", std::string(key));
+        const std::string name(key);
+        INFO("key: ", name);
         CHECK(restartNeeded(running, saved));
     }
 }
@@ -492,18 +554,59 @@ TEST_CASE("a live key that differs from what is running needs no restart") {
     const Settings running;
 
     const std::vector<std::pair<const char*, Settings>> oneKeyChanged{
-        {"controlPlayback", [&] { auto s = running; s.controlPlayback = false; return s; }()},
-        {"writePlaylists", [&] { auto s = running; s.writePlaylists = false; return s; }()},
-        {"changeOutput", [&] { auto s = running; s.changeOutput = false; return s; }()},
-        {"streamingEnabled", [&] { auto s = running; s.streamingEnabled = false; return s; }()},
-        {"allowedFields", [&] { auto s = running; s.allowedFields = {}; return s; }()},
-        {"maxAutoPlaylists", [&] { auto s = running; s.maxAutoPlaylists = 7; return s; }()},
-        {"allowedHosts", [&] { auto s = running; s.allowedHosts = {"music.example"}; return s; }()},
-        {"allowedOrigins", [&] { auto s = running; s.allowedOrigins = {"https://jean.example"}; return s; }()},
+        {"controlPlayback",
+         [&] {
+             auto s = running;
+             s.controlPlayback = false;
+             return s;
+         }()},
+        {"writePlaylists",
+         [&] {
+             auto s = running;
+             s.writePlaylists = false;
+             return s;
+         }()},
+        {"changeOutput",
+         [&] {
+             auto s = running;
+             s.changeOutput = false;
+             return s;
+         }()},
+        {"streamingEnabled",
+         [&] {
+             auto s = running;
+             s.streamingEnabled = false;
+             return s;
+         }()},
+        {"allowedFields",
+         [&] {
+             auto s = running;
+             s.allowedFields = {};
+             return s;
+         }()},
+        {"maxAutoPlaylists",
+         [&] {
+             auto s = running;
+             s.maxAutoPlaylists = 7;
+             return s;
+         }()},
+        {"allowedHosts",
+         [&] {
+             auto s = running;
+             s.allowedHosts = {"music.example"};
+             return s;
+         }()},
+        {"allowedOrigins",
+         [&] {
+             auto s = running;
+             s.allowedOrigins = {"https://jean.example"};
+             return s;
+         }()},
     };
 
     for (const auto& [key, saved] : oneKeyChanged) {
-        INFO("key: ", std::string(key));
+        const std::string name(key);
+        INFO("key: ", name);
         CHECK_FALSE(restartNeeded(running, saved));
     }
 

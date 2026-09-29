@@ -46,6 +46,8 @@ T askPlayer(MainThreadQueue& mainThread, const std::string& what,
     const auto attempt = std::make_shared<std::atomic<Attempt>>(Attempt::waiting);
     auto finished = answer->future();
 
+    // clang's analyzer loses track of the closure libc++'s std::function allocates.
+    // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
     auto run = [work = std::move(work), answer, attempt, what, whenFailed = std::move(whenFailed)] {
         auto expected = Attempt::waiting;
         if (!attempt->compare_exchange_strong(expected, Attempt::started))

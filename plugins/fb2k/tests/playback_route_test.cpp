@@ -22,14 +22,14 @@ template <>
 struct StringMaker<jean::Transport> {
     static String convert(jean::Transport command) {
         switch (command) {
-            case jean::Transport::PlayPause:
-                return "PlayPause";
-            case jean::Transport::Next:
-                return "Next";
-            case jean::Transport::Previous:
-                return "Previous";
-            case jean::Transport::Stop:
-                return "Stop";
+            case jean::Transport::playPause:
+                return "playPause";
+            case jean::Transport::next:
+                return "next";
+            case jean::Transport::previous:
+                return "previous";
+            case jean::Transport::stop:
+                return "stop";
         }
         return "a Transport with no name";
     }
@@ -39,10 +39,10 @@ template <>
 struct StringMaker<jean::VolumeStep> {
     static String convert(jean::VolumeStep step) {
         switch (step) {
-            case jean::VolumeStep::Up:
-                return "Up";
-            case jean::VolumeStep::Down:
-                return "Down";
+            case jean::VolumeStep::up:
+                return "up";
+            case jean::VolumeStep::down:
+                return "down";
         }
         return "a VolumeStep with no name";
     }
@@ -68,10 +68,10 @@ struct TransportRoute {
     Transport sent;
 };
 
-constexpr std::array<TransportRoute, 4> kTransportRoutes{{{kPlayPause, Transport::PlayPause},
-                                                          {kNext, Transport::Next},
-                                                          {kPrevious, Transport::Previous},
-                                                          {kStop, Transport::Stop}}};
+constexpr std::array<TransportRoute, 4> kTransportRoutes{{{kPlayPause, Transport::playPause},
+                                                          {kNext, Transport::next},
+                                                          {kPrevious, Transport::previous},
+                                                          {kStop, Transport::stop}}};
 
 struct Command {
     const char* path;
@@ -186,19 +186,14 @@ Player commanding(Commands* commands,
     return player;
 }
 
-json errorOf(const httplib::Response& response) {
-    const auto document = json::parse(response.body, nullptr, false);
-    return document.is_object() ? document.value("error", json()) : json();
-}
-
 void checkAnswered(const httplib::Result& response) {
     REQUIRE(response);
     CHECK(response->status == 204);
     CHECK(response->body.empty());
 }
 
-json checkRefused(const TestServer& server, const Commands& commands, const std::string& path,
-                  const std::string& body, int status) {
+std::string checkRefused(const TestServer& server, const Commands& commands,
+                         const std::string& path, const std::string& body, int status) {
     const auto before = commands.count();
     const auto response = post(server, path, body);
 
@@ -206,7 +201,7 @@ json checkRefused(const TestServer& server, const Commands& commands, const std:
     REQUIRE(response);
     CHECK(response->status == status);
     const auto error = errorOf(*response);
-    CHECK(error.is_string());
+    CHECK_FALSE(error.empty());
     CHECK(commands.count() == before);
     return error;
 }
@@ -221,14 +216,6 @@ void checkUnfinished(const TestServer& server, const Commands& commands, const C
     CHECK(response->status == status);
     CHECK(errorOf(*response) == error);
     CHECK(commands.count() == before + 1);
-}
-
-json capabilitiesOf(const TestServer& server) {
-    const auto response = get(server, "/api/capabilities");
-
-    REQUIRE(response);
-    REQUIRE(response->status == 200);
-    return json::parse(response->body);
 }
 
 }  // namespace
@@ -249,8 +236,9 @@ TEST_CASE("each transport command is a 204 with no body, and reaches the player 
     CHECK(commands.count() == kTransportRoutes.size());
 }
 
-TEST_CASE("a body sent to a transport command is ignored, and the player is asked for that command "
-          "alone") {
+TEST_CASE(
+    "a body sent to a transport command is ignored, and the player is asked for that command "
+    "alone") {
     Commands commands;
     const TestServer server(servingSettings(), commanding(&commands));
 
@@ -315,8 +303,9 @@ TEST_CASE("a seek naming both forms, or neither, is a 400 and never reaches the 
     CHECK(commands.count() == 0);
 }
 
-TEST_CASE("a seek to a negative position is a 400 while a seek to 0 or a relative seek backward "
-          "lands") {
+TEST_CASE(
+    "a seek to a negative position is a 400 while a seek to 0 or a relative seek backward "
+    "lands") {
     Commands commands;
     const TestServer server(servingSettings(), commanding(&commands));
 
@@ -409,8 +398,8 @@ TEST_CASE("a volume step is spelled up or down, and reaches the player as that d
     checkAnswered(post(server, kVolume, R"({"step": "down"})"));
 
     REQUIRE(commands.steps.size() == 2);
-    CHECK(commands.steps[0] == VolumeStep::Up);
-    CHECK(commands.steps[1] == VolumeStep::Down);
+    CHECK(commands.steps[0] == VolumeStep::up);
+    CHECK(commands.steps[1] == VolumeStep::down);
     CHECK(commands.count() == 2);
 }
 
@@ -676,8 +665,8 @@ TEST_CASE("with controlPlayback off, every playback command, seek, mode and volu
 
         for (const auto& body : bodies) {
             const auto error = checkRefused(server, commands, path, body, 403);
-            if (error.is_string())
-                sentences.insert(error.get<std::string>());
+            if (!error.empty())
+                sentences.insert(error);
         }
     }
 

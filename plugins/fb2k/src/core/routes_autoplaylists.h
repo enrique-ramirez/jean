@@ -7,9 +7,6 @@
 #include "core/playlists.h"
 #include "core/rate_limit.h"
 
-#include <functional>
-#include <optional>
-
 // Autoplaylists: a query tried without creating anything, and the playlists foobar2000 keeps
 // filled from one.
 namespace jean {
@@ -23,9 +20,11 @@ public:
     void addTo(httplib::Server& server);
 
 private:
-    std::optional<PlaylistResult> attempt(httplib::Response& res,
-                                          const AutoPlaylistRequest& request,
-                                          const std::function<PlaylistResult()>& ask);
+    void preview(const httplib::Request& req, httplib::Response& res);
+
+    bool refusedBeforeAsking(httplib::Response& res, const AutoPlaylistRequest& request,
+                             bool playerCanAnswer);
+    bool previewingTooFast(httplib::Response& res);
 
     const AutoPlaylistCalls& autoPlaylists_;
     const LiveSettings& settings_;

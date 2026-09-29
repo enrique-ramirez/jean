@@ -14,7 +14,7 @@ std::string readTextFile(const std::string& path, size_t maxBytes) {
 
     std::string text;
     text.resize(static_cast<size_t>(size));
-    f->read_object(&text[0], static_cast<t_size>(size), fb2k::noAbort);
+    f->read_object(text.data(), static_cast<t_size>(size), fb2k::noAbort);
     return text;
 }
 

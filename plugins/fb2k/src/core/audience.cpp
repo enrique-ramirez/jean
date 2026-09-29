@@ -190,13 +190,20 @@ bool Audience::awaitChangeFrom(bool applied) {
 
         // A copy, because the wait releases the lock and a join or a departure may erase or move
         // the entry, while std::condition_variable::wait_until reads its deadline again on waking.
+        ++state_->waiting;
         if (soonest != state_->departures.end()) {
             const Clock::time_point wakeAt = soonest->until;
             state_->changed.wait_until(lock, wakeAt);
         } else {
             state_->changed.wait(lock);
         }
+        --state_->waiting;
     }
+}
+
+size_t Audience::waitingForAChange() const {
+    const std::lock_guard<std::mutex> held(state_->mutex);
+    return state_->waiting;
 }
 
 void Audience::close() {

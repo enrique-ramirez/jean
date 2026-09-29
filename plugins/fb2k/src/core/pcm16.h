@@ -11,7 +11,9 @@ constexpr float kLimiterKnee = 0.95F;
 
 float softLimit(float sample);
 
-// Holds the dither's generator, so one converter serves one stream.
+// Holds the dither's generator, so one converter serves one stream. Dither is noise rather than a
+// secret, so the default seed is enough.
+// NOLINTNEXTLINE(bugprone-random-generator-seed,cert-msc32-c,cert-msc51-cpp)
 class Pcm16Converter {
 public:
     void convert(const float* samples, size_t count, std::vector<std::int16_t>& out);

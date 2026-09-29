@@ -35,6 +35,14 @@ PlaybackRoutes::PlaybackRoutes(const PlaybackCalls& playback, const PlayerReport
                          "component will answer them, which usually means a client is looping",
                          clock) {}
 
+bool PlaybackRoutes::readingPlayingTrackTooFast(httplib::Response& res) {
+    if (!playingTrackReads_.refuses())
+        return false;
+
+    respondTooFast(res, playingTrackReads_, errorDocument(kReadingTracksTooFast));
+    return true;
+}
+
 void PlaybackRoutes::addTransportRoute(httplib::Server& server, const char* path,
                                        Transport command) {
     server.Post(path, [this, command](const httplib::Request&, httplib::Response& res) {
@@ -106,8 +114,8 @@ void PlaybackRoutes::addVolumeRoute(httplib::Server& server) {
                     respondUnavailable(res, kNoVolume);
                     return;
                 }
-                respondCommand(res, playback_.stepVolume(request.step == "up" ? VolumeStep::Up
-                                                                              : VolumeStep::Down));
+                respondCommand(res, playback_.stepVolume(request.step == "up" ? VolumeStep::up
+                                                                              : VolumeStep::down));
                 return;
 
             case VolumeRequest::Form::muted:
@@ -136,10 +144,8 @@ void PlaybackRoutes::addPlayingTrackRoute(httplib::Server& server) {
             return;
         }
 
-        if (playingTrackReads_.refuses()) {
-            respondTooFast(res, playingTrackReads_, errorDocument(kReadingTracksTooFast));
+        if (readingPlayingTrackTooFast(res))
             return;
-        }
 
         const auto read = playback_.readPlayingTrack(declared.columns);
         if (read.outcome != PlayerOutcome::done) {
@@ -157,10 +163,10 @@ void PlaybackRoutes::addPlayingTrackRoute(httplib::Server& server) {
 }
 
 void PlaybackRoutes::addTo(httplib::Server& server) {
-    addTransportRoute(server, "/api/playback/play-pause", Transport::PlayPause);
-    addTransportRoute(server, "/api/playback/next", Transport::Next);
-    addTransportRoute(server, "/api/playback/previous", Transport::Previous);
-    addTransportRoute(server, "/api/playback/stop", Transport::Stop);
+    addTransportRoute(server, "/api/playback/play-pause", Transport::playPause);
+    addTransportRoute(server, "/api/playback/next", Transport::next);
+    addTransportRoute(server, "/api/playback/previous", Transport::previous);
+    addTransportRoute(server, "/api/playback/stop", Transport::stop);
 
     server.Post("/api/playback/seek", [this](const httplib::Request& req, httplib::Response& res) {
         if (playbackRefused(*settings_.current(), res))

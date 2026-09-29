@@ -4,6 +4,7 @@
 #include "core/http_server.h"
 #include "core/library.h"
 #include "core/log.h"
+#include "core/main_thread_watch.h"
 #include "core/output_hold.h"
 #include "core/player_state.h"
 #include "core/playlists.h"
@@ -57,8 +58,8 @@ std::unique_ptr<Streamer> makeStreamer(const Settings& settings, PlayerStateStor
         return nullptr;
     }
 
-    return std::make_unique<Streamer>(settings.opusBitrate, settings.aacBitrate,
-                                      kPcmBufferSeconds, playerState);
+    return std::make_unique<Streamer>(settings.opusBitrate, settings.aacBitrate, kPcmBufferSeconds,
+                                      playerState);
 }
 
 void explainPortCollision() {
@@ -66,10 +67,14 @@ void explainPortCollision() {
     logError("change \"port\" in " + configPath() + " and restart foobar2000");
 }
 
-Player playerUsing(MainThreadQueue& mainThread, const Streamer* streamer, OutputHold& outputHold,
-                   LibraryFeed& libraryFeed, PlayerStateStore& playerState,
-                   const PlaylistVersions& playlistVersions, const AlbumArt& rowArt) {
+Player playerUsing(MainThreadQueue& mainThread, MainThreadWatch& mainThreadWatch,
+                   const Streamer* streamer, OutputHold& outputHold, LibraryFeed& libraryFeed,
+                   PlayerStateStore& playerState, const PlaylistVersions& playlistVersions,
+                   const AlbumArt& rowArt) {
     Player player;
+    player.checkMainThread = [&mainThreadWatch](std::chrono::steady_clock::time_point now) {
+        return mainThreadWatch.check(now);
+    };
 
     // Static for the life of the process, so read once here rather than on every capabilities
     // request. The foobar2000 SDK documents playback_control's volume as dB against full
@@ -86,6 +91,7 @@ Player playerUsing(MainThreadQueue& mainThread, const Streamer* streamer, Output
         player.report.playbackOrders.emplace_back(playlists->playback_order_get_name(index));
 
     player.playlists.list = makePlaylistLister(mainThread, playlistVersions);
+    player.playlists.readRole = makePlaylistRoleReader(mainThread);
     player.playlists.readRows = makePlaylistRowReader(mainThread, playlistVersions);
     player.playlists.readChangedRows = makeChangedPlaylistRowReader(mainThread, playlistVersions);
     player.playlists.readRowArtwork = makePlaylistRowArtworkReader(mainThread, rowArt);
@@ -170,8 +176,8 @@ public:
           playlistWatch_(mainThread_, playlistVersions_, playerState_),
           nowPlayingArtworkWatch_(nowPlayingArtwork_),
           server_(settings_, audience_,
-                  playerUsing(mainThread_, streamer_.get(), outputHold_, libraryFeed_,
-                              playerState_, playlistVersions_, rowArt_),
+                  playerUsing(mainThread_, mainThreadWatch_, streamer_.get(), outputHold_,
+                              libraryFeed_, playerState_, playlistVersions_, rowArt_),
                   mintTicket, libraryFeed_.enabled() ? &library_ : nullptr, &playerState_,
                   &nowPlayingArtwork_),
           status_(server_.start()),
@@ -207,6 +213,7 @@ public:
 private:
     const Settings settings_;
     MainThreadQueue mainThread_{foobarMainThread()};
+    MainThreadWatch mainThreadWatch_{mainThread_};
 
     PlayerStateStore playerState_;
     std::unique_ptr<Streamer> streamer_;
@@ -237,7 +244,7 @@ private:
     ConfigWatch configWatch_;
 };
 
-class initquit_jean : public initquit {
+class InitQuit : public initquit {
 public:
     void on_init() override {
         logInfo(std::string(kVersion) + " loaded into " +
@@ -259,6 +266,6 @@ private:
     std::unique_ptr<Plugin> plugin_;
 };
 
-initquit_factory_t<initquit_jean> g_initquit_jean;
+initquit_factory_t<InitQuit> g_initquit_jean;
 
 }  // namespace

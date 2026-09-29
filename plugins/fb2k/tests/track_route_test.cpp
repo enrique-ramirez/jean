@@ -47,15 +47,15 @@ std::string escaped(const std::string& value) {
 
     std::string out;
     for (const unsigned char character : value) {
-        if (std::isalnum(character) || character == '-' || character == '.' ||
+        if (std::isalnum(character) != 0 || character == '-' || character == '.' ||
             character == '_' || character == '~') {
             out += static_cast<char>(character);
             continue;
         }
 
         out += '%';
-        out += kHex[character >> 4];
-        out += kHex[character & 0xF];
+        out += kHex[static_cast<unsigned>(character) >> 4U];
+        out += kHex[static_cast<unsigned>(character) & 0xFU];
     }
 
     return out;
@@ -187,6 +187,7 @@ Player reading(FakeLibrary* library) {
 
 std::vector<std::string> columnsNumbering(size_t count) {
     std::vector<std::string> columns;
+    columns.reserve(count);
     for (size_t n = 0; n < count; ++n)
         columns.push_back("%column" + std::to_string(n) + "%");
 
@@ -392,10 +393,10 @@ TEST_CASE("a read naming both a track and an ordinal is a 400, and the player is
     FakeLibrary library = holding();
     const TestServer server(servingSettings(), reading(&library));
 
-    const auto response = get(
-        server, atOrdinal("track=" + escaped(kTrackAddress) + "&ordinal=3&structure=" +
-                              std::to_string(kLibraryStructure),
-                          {kTitle}));
+    const auto response =
+        get(server, atOrdinal("track=" + escaped(kTrackAddress) +
+                                  "&ordinal=3&structure=" + std::to_string(kLibraryStructure),
+                              {kTitle}));
 
     REQUIRE(response);
     CHECK(response->status == 400);
@@ -405,7 +406,8 @@ TEST_CASE("a read naming both a track and an ordinal is a 400, and the player is
 
 // The pair parses the way POST /api/tags parses it: an ordinal means nothing without the
 // generation it was counted at, and a generation alone names no track.
-TEST_CASE("a read naming no address, or half of the ordinal pair, is a 400 and is never looked up") {
+TEST_CASE(
+    "a read naming no address, or half of the ordinal pair, is a 400 and is never looked up") {
     FakeLibrary library = holding();
     const TestServer server(servingSettings(), reading(&library));
 
@@ -554,7 +556,8 @@ TEST_CASE("the playing track's columns come back in the order they were asked fo
 
     REQUIRE(response);
     CHECK(response->status == 200);
-    CHECK(json::parse(response->body).at("columns") == json::array({"912", "The Middle", "Someone"}));
+    CHECK(json::parse(response->body).at("columns") ==
+          json::array({"912", "The Middle", "Someone"}));
 
     REQUIRE(playback.asked.size() == 1);
     CHECK(playback.asked[0] == std::vector<std::string>{kBitrateColumn, kTitle, kArtistColumn});
@@ -638,7 +641,8 @@ TEST_CASE("a paused track is answered like a playing one") {
 // One gate for both routes, so a client reads the same refusal whichever it asked. Each case is
 // sent to GET /api/track/library as well and the two answers compared whole, which holds the
 // sentence to whatever that route says rather than to a copy of it here.
-TEST_CASE("the playing track refuses the column lists GET /api/track/library refuses, in its words") {
+TEST_CASE(
+    "the playing track refuses the column lists GET /api/track/library refuses, in its words") {
     FakePlayback playback;
     const TestServer server(servingSettings(), playingFrom(&playback));
 
@@ -660,8 +664,7 @@ TEST_CASE("the playing track refuses the column lists GET /api/track/library ref
         INFO("case: ", asked.first);
 
         const auto query = asked.second.empty() ? "" : "&" + asked.second;
-        const auto library =
-            raw.Get("/api/track/library?track=" + escaped(kTrackAddress) + query);
+        const auto library = raw.Get("/api/track/library?track=" + escaped(kTrackAddress) + query);
         const auto response = raw.Get(playingAsking(asked.second));
 
         REQUIRE(library);

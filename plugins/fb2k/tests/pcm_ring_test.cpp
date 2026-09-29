@@ -1,11 +1,14 @@
 #include "third_party/doctest.h"
 
 #include "core/pcm_ring.h"
+#include "support/eventually.h"
 
 #include <atomic>
 #include <thread>
+#include <vector>
 
 using namespace jean;
+using namespace jean::testing;
 
 namespace {
 
@@ -20,6 +23,15 @@ PcmBlock blockOf(AudioSpec spec, size_t frames, float value) {
 
 PcmBlock oneSecond(float value) {
     return blockOf(kStereo, kStereo.sampleRate, value);
+}
+
+std::vector<float> whatIsLeft(PcmRing& ring) {
+    ring.close();
+
+    std::vector<float> left;
+    for (PcmBlock got; ring.read(got);)
+        left.push_back(got.samples.front());
+    return left;
 }
 
 }  // namespace
@@ -122,40 +134,28 @@ TEST_CASE("an empty delivery costs nothing") {
     PcmRing ring(3.0);
     ring.write(PcmBlock{});
     ring.write(blockOf(kStereo, 0, 0.F));
+    ring.close();
 
-    CHECK(ring.bufferedSeconds() == doctest::Approx(0.0));
-    CHECK(ring.droppedSeconds() == doctest::Approx(0.0));
+    PcmBlock got;
+    CHECK_FALSE(ring.read(got));
 }
 
 TEST_CASE("a full ring drops the oldest audio, not the newest") {
     PcmRing ring(2.5);
     ring.write(oneSecond(1.F));
     ring.write(oneSecond(2.F));
-    CHECK(ring.bufferedSeconds() == doctest::Approx(2.0));
-    CHECK(ring.droppedSeconds() == doctest::Approx(0.0));
-
     ring.write(oneSecond(3.F));
-    CHECK(ring.droppedSeconds() == doctest::Approx(1.0));
-    CHECK(ring.bufferedSeconds() == doctest::Approx(2.0));
 
-    PcmBlock got;
-    REQUIRE(ring.read(got));
-    CHECK(got.samples.front() == doctest::Approx(2.F));
-    REQUIRE(ring.read(got));
-    CHECK(got.samples.front() == doctest::Approx(3.F));
-    CHECK(ring.bufferedSeconds() == doctest::Approx(0.0));
+    CHECK(whatIsLeft(ring) == std::vector<float>{2.F, 3.F});
 }
 
 TEST_CASE("the ring stays inside its capacity however long the writer runs") {
     PcmRing ring(2.5);
 
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 0; i < 100; ++i)
         ring.write(oneSecond(static_cast<float>(i)));
-        CHECK(ring.bufferedSeconds() <= doctest::Approx(2.5));
-    }
 
-    CHECK(ring.droppedSeconds() == doctest::Approx(98.0));
-    CHECK(ring.bufferedSeconds() == doctest::Approx(2.0));
+    CHECK(whatIsLeft(ring) == std::vector<float>{98.F, 99.F});
 }
 
 TEST_CASE("nothing is dropped while the reader keeps up") {
@@ -167,19 +167,13 @@ TEST_CASE("nothing is dropped while the reader keeps up") {
         REQUIRE(ring.read(got));
         CHECK(got.samples.front() == doctest::Approx(static_cast<float>(i)));
     }
-
-    CHECK(ring.droppedSeconds() == doctest::Approx(0.0));
 }
 
 TEST_CASE("a block longer than the whole capacity is kept rather than dropped") {
     PcmRing ring(0.25);
     ring.write(oneSecond(7.F));
 
-    CHECK(ring.droppedSeconds() == doctest::Approx(0.0));
-
-    PcmBlock got;
-    REQUIRE(ring.read(got));
-    CHECK(got.samples.front() == doctest::Approx(7.F));
+    CHECK(whatIsLeft(ring) == std::vector<float>{7.F});
 }
 
 TEST_CASE("closing drains what was accepted before it refuses to read") {
@@ -198,8 +192,6 @@ TEST_CASE("a write after closing is ignored rather than queued forever") {
     ring.close();
     ring.write(blockOf(kStereo, 10, 1.F));
 
-    CHECK(ring.bufferedSeconds() == doctest::Approx(0.0));
-
     PcmBlock got;
     CHECK_FALSE(ring.read(got));
 }
@@ -216,16 +208,18 @@ TEST_CASE("closing wakes a reader that is waiting for audio") {
         finished = true;
     });
 
+    const bool waiting = eventually([&ring] { return ring.waitingReaders() == 1; });
     ring.close();
-    reader.join();
+    joinOnceFinished(reader, finished, "a close");
 
-    CHECK(finished.load());
+    CHECK(waiting);
     CHECK_FALSE(result);
 }
 
 TEST_CASE("a reader waiting on an empty ring is woken by a write") {
     PcmRing ring(3.0);
 
+    std::atomic<bool> finished{false};
     bool result = false;
     float first = 0.F;
 
@@ -234,11 +228,14 @@ TEST_CASE("a reader waiting on an empty ring is woken by a write") {
         result = ring.read(got);
         if (result)
             first = got.samples.front();
+        finished = true;
     });
 
+    const bool waiting = eventually([&ring] { return ring.waitingReaders() == 1; });
     ring.write(blockOf(kStereo, 10, 9.F));
-    reader.join();
+    joinOnceFinished(reader, finished, "a write");
 
+    CHECK(waiting);
     CHECK(result);
     CHECK(first == doctest::Approx(9.F));
 }

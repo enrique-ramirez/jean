@@ -40,7 +40,7 @@ std::vector<std::uint8_t> opusHead(unsigned channels, std::uint16_t preSkip) {
     head.push_back(1);
     head.push_back(static_cast<std::uint8_t>(channels));
     head.push_back(static_cast<std::uint8_t>(preSkip & 0xffU));
-    head.push_back(static_cast<std::uint8_t>(preSkip >> 8));
+    head.push_back(static_cast<std::uint8_t>(static_cast<unsigned>(preSkip) >> 8U));
     appendLittleEndian(head, OpusStream::kSampleRate);
     head.push_back(0);  // output gain
     head.push_back(0);
@@ -57,13 +57,15 @@ std::vector<std::uint8_t> opusTags() {
     return tags;
 }
 
+enum class StreamPlace { first, later };
+
 // e_o_s is always zero: the stream never ends, so nothing here is ever the last packet.
-ogg_packet packetOf(const std::uint8_t* payload, size_t bytes, bool beginsStream,
+ogg_packet packetOf(const std::uint8_t* payload, size_t bytes, StreamPlace place,
                     std::int64_t granule, std::int64_t sequence) {
     ogg_packet packet{};
     packet.packet = const_cast<unsigned char*>(payload);
     packet.bytes = static_cast<long>(bytes);
-    packet.b_o_s = beginsStream ? 1 : 0;
+    packet.b_o_s = place == StreamPlace::first ? 1 : 0;
     packet.e_o_s = 0;
     packet.granulepos = granule;
     packet.packetno = sequence;
@@ -146,10 +148,10 @@ OpusStream::OpusStream(unsigned channels, int bitrate) : state_(std::make_unique
     const auto head = opusHead(channels, static_cast<std::uint16_t>(lookahead));
     const auto tags = opusTags();
 
-    auto headPacket = packetOf(head.data(), head.size(), true, 0, state.packets++);
+    auto headPacket = packetOf(head.data(), head.size(), StreamPlace::first, 0, state.packets++);
     ogg_stream_packetin(&state.ogg, &headPacket);
 
-    auto tagsPacket = packetOf(tags.data(), tags.size(), false, 0, state.packets++);
+    auto tagsPacket = packetOf(tags.data(), tags.size(), StreamPlace::later, 0, state.packets++);
     ogg_stream_packetin(&state.ogg, &tagsPacket);
 
     // Flushed rather than paged out: RFC 7845 requires both headers to end their pages,
@@ -198,8 +200,8 @@ void OpusStream::write(const float* samples, size_t frames, std::vector<std::uin
 
         state.granule += static_cast<std::int64_t>(kFrameSize);
 
-        auto packet = packetOf(state.packet.data(), static_cast<size_t>(encoded), false,
-                               state.granule, state.packets++);
+        auto packet = packetOf(state.packet.data(), static_cast<size_t>(encoded),
+                               StreamPlace::later, state.granule, state.packets++);
         ogg_stream_packetin(&state.ogg, &packet);
 
         if (++state.packetsOnPage < kPacketsPerPage)

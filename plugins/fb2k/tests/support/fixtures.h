@@ -1,8 +1,9 @@
 #pragma once
 
-#include "core/documents.h"
 #include "core/audience.h"
+#include "core/documents.h"
 #include "core/http_server.h"
+#include "core/library.h"
 #include "core/settings.h"
 #include "core/stream_ticket.h"
 
@@ -53,11 +54,19 @@ constexpr char kRating[] = "4";
 
 // A write the default allowlist permits, addressed by where the media library holds the track.
 // Leave the subsong out for a file holding one track, which is what a client sends for one.
-std::string ratingWrite(const std::string& track,
-                        std::optional<uint32_t> subsong = std::nullopt);
+std::string ratingWrite(const std::string& track, std::optional<uint32_t> subsong = std::nullopt);
 
 // The same write, addressed by a row's position in a playlist and the generation it was read at.
 std::string ratingWriteAtRow(const std::string& playlist, uint32_t index, uint64_t structure);
+
+constexpr size_t kLibraryTracks = 8;
+
+// A media library snapshot of `trackCount` tracks declaring the one column `%title%`, each at
+// builtTrackPath and titled builtTrackTitle.
+void buildLibrary(Library& library, size_t trackCount = kLibraryTracks);
+
+std::string builtTrackPath(size_t ordinal);
+std::string builtTrackTitle(size_t ordinal);
 
 // The defaults, named so a test reaches them the same way it reaches every other fixture.
 Settings servingSettings();

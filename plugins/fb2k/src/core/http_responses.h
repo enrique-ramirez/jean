@@ -6,6 +6,7 @@
 #include "core/library.h"
 #include "core/rate_limit.h"
 #include "core/settings.h"
+#include "core/shared_bytes.h"
 
 #include <cstdint>
 #include <functional>
@@ -13,6 +14,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -58,17 +60,16 @@ bool playbackRefused(const Settings& settings, httplib::Response& res);
 // /api/outputs is never gated at all, because reading the list changes nothing.
 bool outputChangeRefused(const Settings& settings, httplib::Response& res);
 
+// An id of a shape this component never reports is refused before the player is asked.
+bool playlistIdRefused(const std::string& id, httplib::Response& res);
+
 std::optional<Library::State> readyLibrary(const Library* library, httplib::Response& res);
 
 void respondTooFast(httplib::Response& res, const Throttle& throttle, std::string body);
 
-// `changes` is the budget playlist and queue edits share, refused as a PlaylistRefusal.
-bool changingTooFast(Throttle& changes, httplib::Response& res);
-
-template <typename Callback, typename Unavailable, typename... Args>
-Unavailable askIfAvailable(const Callback& ask, Unavailable whenUnavailable, Args&&... args) {
-    return ask ? ask(std::forward<Args>(args)...) : std::move(whenUnavailable);
-}
+// `changes` is the budget playlist and queue edits share, refused as a PlaylistRefusal whose
+// `detail` names that budget where a route says which one ran out.
+bool changingTooFast(Throttle& changes, httplib::Response& res, const std::string& detail = {});
 
 // cpp-httplib drops a query pair whose raw text exactly repeats an earlier one, so a column sent
 // twice arrives once. Two spellings of one column still arrive twice, and that is what the
@@ -85,13 +86,20 @@ constexpr char kAskEveryTime[] = "private, no-cache";
 // else answers the conditional request itself.
 bool alreadyHolds(const httplib::Request& req, const std::string& tag);
 
-void revalidateAlways(httplib::Response& res, const std::string& tag);
-
 // Names the snapshot and this run of the component, so a validator from before a restart never
 // matches.
 std::string snapshotTag(const Library::State& state, uint64_t runId, uint64_t playerVersion = 0);
 
-using SharedBytes = std::shared_ptr<const std::string>;
+// Hands cpp-httplib a view of bytes this component keeps rather than a copy of them. cpp-httplib
+// compresses only a body it holds, never one a content provider writes, so a type it would compress
+// is answered uncompressed this way.
+void sendHeld(httplib::Response& res, const SharedBytes& bytes, const std::string& contentType);
+
+// Sends bytes that outlive every response, such as the page build compiled into the component,
+// without copying them: compressed from `bytes` where cpp-httplib would have compressed the same
+// body, and written straight from them where it would not.
+void sendLongLived(const httplib::Request& req, httplib::Response& res, std::string_view bytes,
+                   const std::string& contentType);
 
 class GzipOnce {
 public:

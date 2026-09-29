@@ -4,11 +4,12 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace jean {
 
-std::optional<std::string> readEmbeddedPage(const std::string& path);
+std::optional<std::string_view> readEmbeddedPage(const std::string& path);
 
 std::vector<std::string> embeddedPageNames();
 

@@ -14,7 +14,7 @@ namespace {
 
 std::mutex g_fileMutex;
 
-constexpr uint64_t kMaxLogBytes = 1024 * 1024;
+constexpr uint64_t kMaxLogBytes = uint64_t{1024} * 1024;
 
 void write(const char* level, const std::string& message) {
     console::print((std::string(kComponentName) + ": " + message).c_str());

@@ -86,7 +86,7 @@ constexpr Page kPermissionsPage{kPermissionsName, IDD_PERMISSIONS, kPermissionsC
                                 kPermissionsBoolControls, false};
 
 std::string readControl(HWND dialog, int id) {
-    const auto control = GetDlgItem(dialog, id);
+    auto* const control = GetDlgItem(dialog, id);
     const auto length = GetWindowTextLengthW(control);
 
     std::wstring buffer(static_cast<size_t>(length) + 1, L'\0');
@@ -117,7 +117,7 @@ class PreferencesInstance : public preferences_page_instance {
 public:
     PreferencesInstance(const Page& page, fb2k::hwnd_t parent,
                         preferences_page_callback::ptr callback)
-        : page_(page), callback_(callback), saved_(loadSettings()) {
+        : page_(page), callback_(std::move(callback)), saved_(loadSettings()) {
         if (!CreateDialogParamW(core_api::get_my_instance(), MAKEINTRESOURCEW(page.templateId),
                                 parent, proc, reinterpret_cast<LPARAM>(this))) {
             throw exception_win32(GetLastError());

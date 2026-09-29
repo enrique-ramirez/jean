@@ -48,8 +48,7 @@ public:
 
     void close();
 
-    double bufferedSeconds() const;
-    double droppedSeconds() const;
+    size_t waitingReaders() const;
 
     PcmRing(const PcmRing&) = delete;
     PcmRing& operator=(const PcmRing&) = delete;
@@ -61,8 +60,8 @@ private:
     std::condition_variable ready_;
     std::deque<PcmBlock> blocks_;
     const double capacitySeconds_;
-    double dropped_ = 0;
     bool closed_ = false;
+    size_t waiting_ = 0;
 };
 
 }  // namespace jean

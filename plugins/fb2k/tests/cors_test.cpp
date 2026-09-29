@@ -80,14 +80,12 @@ TEST_CASE("a configured origin list reflects exactly the origins on it") {
 
         const auto preflight = server.client().Options("/api/tags", from("https://jean.example"));
         REQUIRE(preflight);
-        CHECK(preflight->get_header_value("Access-Control-Allow-Origin") ==
-              "https://jean.example");
+        CHECK(preflight->get_header_value("Access-Control-Allow-Origin") == "https://jean.example");
     }
 
     SUBCASE("an unlisted origin is not, however close it looks to a listed one") {
-        for (const char* origin :
-             {"http://evil.example", "http://127.0.0.1:8880", "https://jean.example.evil.com",
-              "http://jean.example"}) {
+        for (const char* origin : {"http://evil.example", "http://127.0.0.1:8880",
+                                   "https://jean.example.evil.com", "http://jean.example"}) {
             INFO("origin: ", std::string(origin));
 
             const auto request = server.client().Get("/api/status", from(origin));
@@ -217,7 +215,8 @@ TEST_CASE("a preflight never offers Authorization as a header a page may send") 
 
 // Cross-Origin-Resource-Policy is what stops another site's <img> or <audio> reading an answer
 // that CORS never governs, because a no-cors request carries no Origin to refuse.
-TEST_CASE("every /api/ answer is for this origin's pages alone, refusals and unknown routes included") {
+TEST_CASE(
+    "every /api/ answer is for this origin's pages alone, refusals and unknown routes included") {
     const TestServer server;
 
     for (const auto& response :

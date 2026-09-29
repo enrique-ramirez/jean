@@ -98,3 +98,8 @@ CheckOptions:
   # is a good suggestion; the second const is noise on a local we never rebind.
   - key: readability-qualified-auto.AddConstToQualified
     value: 'false'
+
+  # Nothing here declares a move member, so this fires only on the one the compiler writes for a
+  # lambda that copies a const std::string, which may throw and hurts nobody.
+  - key: bugprone-exception-escape.CheckMoveMemberFunctions
+    value: 'false'

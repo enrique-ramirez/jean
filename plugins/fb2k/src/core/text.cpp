@@ -25,7 +25,7 @@ constexpr uint64_t kFoldPrime = 1099511628211ULL;
 
 constexpr size_t kHexDigitsPerByte = 2;
 
-uint64_t fold(const std::string& bytes) {
+uint64_t fold(std::string_view bytes) {
     uint64_t digest = kFoldBasis;
     for (const char byte : bytes) {
         digest ^= static_cast<unsigned char>(byte);
@@ -122,7 +122,7 @@ bool fitsUint32(uint64_t value) {
     return value <= std::numeric_limits<uint32_t>::max();
 }
 
-std::string eTagFor(const std::string& bytes) {
+std::string eTagFor(std::string_view bytes) {
     return quotedHex(fold(bytes));
 }
 

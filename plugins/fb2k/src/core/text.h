@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace jean {
@@ -37,6 +38,6 @@ bool fitsUint32(uint64_t value);
 // needs to resist a forged tag, only to notice that the bytes changed. Shared by whatever holds
 // bytes with no version number of its own to publish instead, such as an artwork cover or the
 // page's own build.
-std::string eTagFor(const std::string& bytes);
+std::string eTagFor(std::string_view bytes);
 
 }  // namespace jean

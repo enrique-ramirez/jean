@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <map>
+#include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -72,7 +75,224 @@ std::vector<std::string> flowItems(const std::string& inside) {
     return items;
 }
 
+std::vector<std::string> specLines() {
+    std::ifstream file(specPath());
+    REQUIRE_MESSAGE(file.is_open(), "cannot read contract/openapi.yaml");
+
+    std::vector<std::string> lines;
+    for (std::string line; std::getline(file, line);) {
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        lines.push_back(std::move(line));
+    }
+    return lines;
+}
+
+std::string trimmed(const std::string& text) {
+    const auto first = text.find_first_not_of(' ');
+    if (first == std::string::npos)
+        return {};
+    return text.substr(first, text.find_last_not_of(' ') - first + 1);
+}
+
+// The `error` a line of an example gives, whether the example is written as a flow mapping,
+// `{ error: no such playlist, detail: "" }`, or as a block with `error:` on a line of its own.
+// Nothing where the line gives none, or gives an empty one.
+std::optional<std::string> exampleError(const std::string& line) {
+    const std::string key = "error: ";
+    const auto at = line.find(key);
+    if (at == std::string::npos)
+        return std::nullopt;
+
+    const auto before = at >= 2 ? line.substr(at - 2, 2) : std::string();
+    const bool inFlow = before == "{ " || before == ", ";
+    if (!inFlow && line.find_first_not_of(' ') != at)
+        return std::nullopt;
+
+    auto value = line.substr(at + key.size());
+    if (!value.empty() && value.front() == '"')
+        value = value.substr(1, value.find('"', 1) - 1);
+    else if (inFlow)
+        value = trimmed(value.substr(0, value.find_first_of(",}")));
+    else
+        value = trimmed(value);
+
+    if (value.empty())
+        return std::nullopt;
+    return value;
+}
+
+// Every NAME a line refers to as `#/components/<kind>/NAME`.
+std::vector<std::string> referenced(const std::string& line, const std::string& kind) {
+    const std::string prefix = "#/components/" + kind + "/";
+
+    std::vector<std::string> names;
+    for (auto at = line.find(prefix); at != std::string::npos; at = line.find(prefix, at + 1)) {
+        const auto start = at + prefix.size();
+        const auto end = line.find_first_not_of(
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", start);
+        names.push_back(line.substr(start, end - start));
+    }
+    return names;
+}
+
+struct Declared {
+    std::set<std::string> schemas;
+    std::set<std::string> errors;
+};
+
+void declare(Declared& declared, const std::string& line) {
+    for (auto& schema : referenced(line, "schemas"))
+        declared.schemas.insert(std::move(schema));
+    if (auto error = exampleError(line))
+        declared.errors.insert(std::move(*error));
+}
+
+// `components: responses:`, each shared response under its name.
+std::map<std::string, Declared> sharedResponses(const std::vector<std::string>& lines) {
+    constexpr size_t kNameIndent = 4;
+
+    std::map<std::string, Declared> shared;
+    Declared* current = nullptr;
+    bool inComponents = false;
+    bool inResponses = false;
+
+    for (const auto& line : lines) {
+        if (line == "components:") {
+            inComponents = true;
+            continue;
+        }
+        if (!inComponents || line.empty())
+            continue;
+
+        const auto indent = indentOf(line);
+        if (indent == 2) {
+            inResponses = keyAt(line, 2, "responses:");
+            current = nullptr;
+            continue;
+        }
+        if (!inResponses)
+            continue;
+
+        if (indent == kNameIndent && line.back() == ':') {
+            current = &shared[line.substr(kNameIndent, line.size() - kNameIndent - 1)];
+            continue;
+        }
+        if (current)
+            declare(*current, line);
+    }
+
+    return shared;
+}
+
+struct Answers {
+    std::map<std::string, std::set<int>> errors;
+    std::map<std::string, std::set<int>> schemas;
+};
+
+// Every route's responses, status by status, with each shared response a status refers to read
+// in place. Schemas and errors met outside a status, in a request body, are no answer.
+Answers publishedAnswers() {
+    const auto lines = specLines();
+    const auto shared = sharedResponses(lines);
+
+    Answers answers;
+    const auto answer = [&answers](const Declared& declared, int status) {
+        for (const auto& schema : declared.schemas)
+            answers.schemas[schema].insert(status);
+        for (const auto& error : declared.errors)
+            answers.errors[error].insert(status);
+    };
+
+    bool inPaths = false;
+    int status = 0;
+
+    for (const auto& line : lines) {
+        if (line == "paths:") {
+            inPaths = true;
+            continue;
+        }
+        if (!inPaths || line.empty())
+            continue;
+        if (line.front() != ' ')
+            break;
+
+        // A path, a method, or one of a method's own keys: `responses:`, `requestBody:`.
+        constexpr size_t kOperationKeyIndent = 6;
+        if (indentOf(line) <= kOperationKeyIndent) {
+            status = 0;
+            continue;
+        }
+
+        // A status often refers to a shared response on its own line: `"403": { $ref: ... }`.
+        if (const auto key = statusKeyAt(line, 8); !key.empty())
+            status = std::stoi(key);
+        if (status == 0)
+            continue;
+
+        Declared declared;
+        declare(declared, line);
+        answer(declared, status);
+
+        for (const auto& name : referenced(line, "responses")) {
+            const auto found = shared.find(name);
+            REQUIRE_MESSAGE(found != shared.end(), "contract/openapi.yaml refers to ", name,
+                            " and declares no such response");
+            answer(found->second, status);
+        }
+    }
+
+    return answers;
+}
+
 }  // namespace
+
+std::map<std::string, std::set<int>> publishedErrorExamples() {
+    return publishedAnswers().errors;
+}
+
+std::map<std::string, std::set<int>> publishedSchemaStatuses() {
+    return publishedAnswers().schemas;
+}
+
+std::map<std::string, std::string> publishedStatusExample() {
+    const auto lines = specLines();
+
+    constexpr size_t kPathIndent = 2;
+    constexpr size_t kValueIndent = 18;
+    constexpr size_t kFieldIndent = 20;
+
+    std::map<std::string, std::string> example;
+    bool inStatus = false;
+    bool inValue = false;
+
+    for (const auto& line : lines) {
+        if (startsWith(line, std::string(kPathIndent, ' ') + '/')) {
+            if (inStatus)
+                break;
+            inStatus = line == "  /status:";
+            continue;
+        }
+        if (!inStatus)
+            continue;
+
+        if (keyAt(line, kValueIndent, "value:")) {
+            inValue = true;
+            continue;
+        }
+        if (!inValue)
+            continue;
+
+        if (indentOf(line) != kFieldIndent)
+            break;
+
+        const auto colon = line.find(": ", kFieldIndent);
+        example[line.substr(kFieldIndent, colon - kFieldIndent)] = trimmed(line.substr(colon + 2));
+    }
+
+    REQUIRE_MESSAGE(!example.empty(), "contract/openapi.yaml shows no example of GET /status");
+    return example;
+}
 
 // A hand-rolled reader rather than a YAML library, because the shape it needs is two levels
 // of key: the file is written by hand and this is the whole grammar it uses.

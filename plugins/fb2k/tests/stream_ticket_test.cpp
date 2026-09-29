@@ -3,7 +3,9 @@
 #include "core/stream_ticket.h"
 #include "support/fixtures.h"
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 using namespace jean;
 using namespace jean::testing;
@@ -73,12 +75,14 @@ TEST_CASE("accepting one ticket leaves the others alone") {
     CHECK(tickets.admits(second.ticket, kStart));
 }
 
+// Asked again at a time the ticket was still good, it is refused: the refusal removed it rather
+// than only reporting it expired.
 TEST_CASE("an expired ticket is dropped as it is refused") {
     auto tickets = store(seconds(60));
     const auto issued = tickets.issue(kStart);
 
     CHECK_FALSE(tickets.admits(issued.ticket, at(61)));
-    CHECK(tickets.outstanding(kStart) == 0);
+    CHECK_FALSE(tickets.admits(issued.ticket, kStart));
 }
 
 TEST_CASE("expired tickets do not count towards the cap") {
@@ -87,9 +91,10 @@ TEST_CASE("expired tickets do not count towards the cap") {
     tickets.issue(kStart);
 
     const auto later = tickets.issue(at(61));
+    const auto latest = tickets.issue(at(61));
 
-    CHECK(tickets.outstanding(at(61)) == 1);
     CHECK(tickets.admits(later.ticket, at(61)));
+    CHECK(tickets.admits(latest.ticket, at(61)));
 }
 
 TEST_CASE("issuing past the cap drops the oldest, not the newest") {
@@ -98,7 +103,6 @@ TEST_CASE("issuing past the cap drops the oldest, not the newest") {
     const auto second = tickets.issue(kStart);
     const auto third = tickets.issue(kStart);
 
-    CHECK(tickets.outstanding(kStart) == 2);
     CHECK_FALSE(tickets.admits(first.ticket, kStart));
     CHECK(tickets.admits(second.ticket, kStart));
     CHECK(tickets.admits(third.ticket, kStart));
@@ -112,25 +116,39 @@ TEST_CASE("no number of uses extends a ticket past its expiry, so a leaked URL d
         CHECK(tickets.admits(issued.ticket, at(i)));
 
     CHECK_FALSE(tickets.admits(issued.ticket, at(30)));
-    CHECK(tickets.outstanding(at(30)) == 0);
 }
 
 TEST_CASE("a thousand requests leave only the cap outstanding") {
     auto tickets = store(seconds(120), 8);
 
-    for (int i = 0; i < 1000; ++i)
-        tickets.issue(kStart);
+    constexpr int kRequests = 1000;
+    std::vector<std::string> issued;
+    issued.reserve(kRequests);
+    for (int i = 0; i < kRequests; ++i)
+        issued.push_back(tickets.issue(kStart).ticket);
 
-    CHECK(tickets.outstanding(kStart) == 8);
+    const auto admitted =
+        std::count_if(issued.begin(), issued.end(), [&tickets](const auto& ticket) {
+            return static_cast<bool>(tickets.admits(ticket, kStart));
+        });
+
+    CHECK(admitted == 8);
+    CHECK(tickets.admits(issued.back(), kStart));
 }
 
+// A cap of one, so a failed mint that stored anything at all would push out the ticket issued
+// before it.
 TEST_CASE("a mint that fails issues nothing and stores nothing") {
-    TicketStore tickets([] { return std::string(); }, seconds(120), 8);
+    bool failing = false;
+    TicketStore tickets([&failing] { return failing ? std::string() : std::string("ticket"); },
+                        seconds(120), 1);
 
+    const auto good = tickets.issue(kStart);
+    failing = true;
     const auto issued = tickets.issue(kStart);
 
     CHECK(issued.ticket.empty());
     CHECK(issued.expiresIn == seconds(0));
-    CHECK(tickets.outstanding(kStart) == 0);
+    CHECK(tickets.admits(good.ticket, kStart));
     CHECK_FALSE(tickets.admits("", kStart));
 }

@@ -11,7 +11,7 @@ namespace jean {
 namespace {
 
 // A config file far larger than this was not written by this component.
-constexpr size_t kMaxConfigBytes = 1024 * 1024;
+constexpr size_t kMaxConfigBytes = size_t{1024} * 1024;
 
 Settings writeFirstRunConfig(const std::string& path) {
     Settings settings;

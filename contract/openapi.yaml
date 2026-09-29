@@ -33,7 +33,7 @@ info:
 
     A request under `/api/` that a browser marks `Sec-Fetch-Site: cross-site` or `same-site` is `403` as well, unless its `Origin` is one `allowedOrigins` lists. A browser sends that header only to a secure origin, so a request carrying none is admitted, as is one marked `same-origin` or `none`. Every answer under `/api/` carries `Cross-Origin-Resource-Policy: same-origin`, so a page on another origin cannot read one through an `<img>` or an `<audio>`, which CORS never governs.
 
-    Every `POST` requires `Content-Type: application/json`, with or without a body; without it the answer is `415`. `DELETE` carries no such rule, since a browser preflights every cross-origin `DELETE` on its own.
+    Every `POST` requires `Content-Type: application/json`, with or without a body; without it the answer is `415`, which every `POST` below lists as `JsonRequired`. `DELETE` carries no such rule, since a browser preflights every cross-origin `DELETE` on its own.
 
     `GET /stream` requires one credential of its own beside admission: a ticket from `POST /stream/ticket`.
 
@@ -445,6 +445,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "429":
           description: |
             Tag writes are arriving faster than this component will make them: a burst of 200, refilling one every 50 milliseconds, one budget however many clients are writing. Rating a whole album or a box set one track after another never meets it; a client stuck in a loop does. A request refused for what it asks is refused for that first and spends nothing. Nothing was written. `Retry-After` is sent in seconds.
@@ -554,6 +555,7 @@ paths:
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
         "409": { $ref: "#/components/responses/StructureMoved" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503":
@@ -614,6 +616,7 @@ paths:
         "400": { $ref: "#/components/responses/PlaylistRefused" }
         "403": { $ref: "#/components/responses/WritesDisabled" }
         "409": { $ref: "#/components/responses/PlaylistConflict" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaylistUnavailable" }
@@ -666,6 +669,7 @@ paths:
                   summary: A valid query on an install with no Media Library.
                   value: { valid: true, error: "", matches: 0, libraryEnabled: false }
         "400": { $ref: "#/components/responses/PlaylistRefused" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "429": { $ref: "#/components/responses/QueryPreviewedTooFast" }
         "503": { $ref: "#/components/responses/PlaylistUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
@@ -712,6 +716,7 @@ paths:
         "403": { $ref: "#/components/responses/NotOurs" }
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
         "409": { $ref: "#/components/responses/PlaylistConflict" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500":
           description: |
@@ -802,6 +807,7 @@ paths:
         "403": { $ref: "#/components/responses/PlaybackDisabled" }
         "409": { $ref: "#/components/responses/FillConflict" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/FillUnavailable" }
@@ -871,6 +877,7 @@ paths:
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
         "409": { $ref: "#/components/responses/PlaylistLocked" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaylistWritesUnavailable" }
@@ -948,6 +955,7 @@ paths:
         "403": { $ref: "#/components/responses/OwnPlaylistAddressed" }
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaylistWritesUnavailable" }
@@ -1077,6 +1085,7 @@ paths:
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
         "409": { $ref: "#/components/responses/FillConflict" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/FillUnavailable" }
@@ -1248,6 +1257,7 @@ paths:
               schema: { $ref: "#/components/schemas/PlaylistFailed" }
         "409": { $ref: "#/components/responses/PlaylistLocked" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaylistRowsUnavailable" }
@@ -1324,6 +1334,7 @@ paths:
                     error: "another component has locked that playlist against that edit"
                     detail: ""
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaylistRowsUnavailable" }
@@ -1370,6 +1381,7 @@ paths:
                   - $ref: "#/components/schemas/PlaylistFailed"
         "403": { $ref: "#/components/responses/PlaybackDisabled" }
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaylistRowsUnavailable" }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
@@ -1389,6 +1401,7 @@ paths:
         "204":
           description: Toggled.
         "403": { $ref: "#/components/responses/PlaybackDisabled" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaybackUnavailable" }
         "504": { $ref: "#/components/responses/PlaybackTooSlow" }
@@ -1408,6 +1421,7 @@ paths:
         "204":
           description: Advanced.
         "403": { $ref: "#/components/responses/PlaybackDisabled" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaybackUnavailable" }
         "504": { $ref: "#/components/responses/PlaybackTooSlow" }
@@ -1427,6 +1441,7 @@ paths:
         "204":
           description: Moved.
         "403": { $ref: "#/components/responses/PlaybackDisabled" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaybackUnavailable" }
         "504": { $ref: "#/components/responses/PlaybackTooSlow" }
@@ -1444,6 +1459,7 @@ paths:
         "204":
           description: Stopped.
         "403": { $ref: "#/components/responses/PlaybackDisabled" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaybackUnavailable" }
         "504": { $ref: "#/components/responses/PlaybackTooSlow" }
@@ -1486,6 +1502,7 @@ paths:
                 neitherForm:
                   value: { error: unacceptable seek, detail: "send exactly one of 'seconds' and 'relativeSeconds'" }
         "403": { $ref: "#/components/responses/PlaybackDisabled" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaybackUnavailable" }
         "504": { $ref: "#/components/responses/PlaybackTooSlow" }
@@ -1523,6 +1540,7 @@ paths:
                   value: { error: unacceptable mode, detail: "'shuffleRecords' is not a playback mode this API knows" }
         "403": { $ref: "#/components/responses/PlaybackDisabled" }
         "409": { $ref: "#/components/responses/PlaybackModeUnavailable" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/PlaybackUnavailable" }
         "504": { $ref: "#/components/responses/PlaybackTooSlow" }
@@ -1584,11 +1602,7 @@ paths:
                   value: { error: unacceptable output device, detail: "'deviceId' is required and must be a string" }
         "403": { $ref: "#/components/responses/OutputChangeDisabled" }
         "409": { $ref: "#/components/responses/OutputDeviceNotListed" }
-        "415":
-          description: The body was not `application/json`.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/OutputsUnavailable" }
         "504": { $ref: "#/components/responses/PlaybackTooSlow" }
@@ -1634,6 +1648,7 @@ paths:
                 badStep:
                   value: { error: unacceptable volume, detail: "'step' must be 'up' or 'down'" }
         "403": { $ref: "#/components/responses/PlaybackDisabled" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/VolumeUnavailable" }
         "504": { $ref: "#/components/responses/PlaybackTooSlow" }
@@ -1651,6 +1666,8 @@ paths:
         `library.ready` is `false` between the component starting and its first snapshot being built, and also on an install with no media library at all: the two are indistinguishable from this document alone. This is also what a client polls after a `202` from `GET /library/export`: wait until `library.ready` is true and `library.columns` has the same members as the set declared, then ask for the export again.
 
         This route never answers `503`: a player with no library is still a player, so it answers `200` with `library.ready` false and a populated `player` section. The three routes under `/library` keep their own `503` when there is no library to serve.
+
+        This route never waits on foobar2000's main thread either, so it answers while every command is waiting on that thread and headed for a `504`. `mainThread` is how a client tells the two apart: see `MainThread`.
 
         Its `ETag` names the content coding, exactly as the two binary routes do. See *Compression*.
       responses:
@@ -1702,6 +1719,7 @@ paths:
                       queueRevision: 4
                       playlistsRevision: 7
                       timelineRevision: 12
+                    mainThread: { answering: true, unansweredSeconds: null }
                 building:
                   summary: The component is up and the first walk has not finished.
                   value:
@@ -1728,6 +1746,34 @@ paths:
                       queueRevision: 0
                       playlistsRevision: 0
                       timelineRevision: 0
+                    mainThread: { answering: true, unansweredSeconds: null }
+                stalled:
+                  summary: foobar2000's main thread has not run a check for seven seconds.
+                  value:
+                    configGeneration: 3
+                    library:
+                      { ready: true, structure: 41, revision: 903, trackCount: 30441, columns: ["%title%"], build: null }
+                    player:
+                      playback: playing
+                      path: 'C:\Music\Fictional Artist\Imaginary Album\01 Track.flac'
+                      subsong: 0
+                      libraryPath: "Fictional Artist/Imaginary Album/01 Track.flac"
+                      position: { seconds: 83.4, ageSeconds: 0.2 }
+                      duration: 214.0
+                      volume: -8.5
+                      muted: false
+                      playbackMode: inOrder
+                      outputDeviceId: null
+                      title: Imaginary Track
+                      artist: Fictional Artist
+                      album: Imaginary Album
+                      albumArtist: Various Fictional Artists
+                      playingLocation: null
+                      currentPlaylistId: null
+                      queueRevision: 4
+                      playlistsRevision: 7
+                      timelineRevision: 12
+                    mainThread: { answering: false, unansweredSeconds: 7.1 }
         "304": { $ref: "#/components/responses/NotModified" }
         "429": { $ref: "#/components/responses/StatePolledTooFast" }
 
@@ -1834,6 +1880,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PlaylistFailed" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500":
           description: The player refused. No reason is given, because error text leaks filesystem paths.
@@ -1913,6 +1960,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PlaylistFailed" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "500":
           description: The player refused. No reason is given, because error text leaks filesystem paths.
@@ -2129,6 +2177,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Library" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "429": { $ref: "#/components/responses/LibraryRefreshedTooFast" }
         "503": { $ref: "#/components/responses/LibraryUnavailable" }
 
@@ -2472,11 +2521,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
-        "415":
-          description: A body was sent and was not `application/json`.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
         "503": { $ref: "#/components/responses/StreamUnavailable" }
 
   /stream/listeners:
@@ -2558,11 +2603,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
-        "415":
-          description: The body was not `application/json`.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
 
   /stream/timeline:
     get:
@@ -2824,6 +2865,16 @@ components:
           examples:
             default:
               value: { error: request too large }
+
+    JsonRequired:
+      description: |
+        The request did not carry `Content-Type: application/json`. Every `POST` needs it, one with no body included: a transport command, `POST /stream/ticket` for an anonymous listener and `POST /library/refresh` all send the header and nothing else. It is checked once admission has passed and before the route reads anything, so nothing about the request reached the player.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            default:
+              value: { error: send application/json }
 
     PlayerRefused:
       description: |
@@ -4198,16 +4249,38 @@ components:
         what the player is doing rides under `player`.
       type: object
       additionalProperties: false
-      required: [library, player, configGeneration]
+      required: [library, player, configGeneration, mainThread]
       properties:
         library: { $ref: "#/components/schemas/Library" }
         player: { $ref: "#/components/schemas/PlayerState" }
+        mainThread: { $ref: "#/components/schemas/MainThread" }
         configGeneration:
           type: integer
           minimum: 0
           description: |
             Moves when a reload changes a key `GET /capabilities` reflects, and stands still on every other reload, including one that changed nothing or changed only a key that needs foobar2000 restarted. A client polls this to learn a switch moved without asking for capabilities on every tick.
           examples: [3]
+
+    MainThread:
+      description: |
+        Whether foobar2000's main thread is running what the component hands it. Every command, every playlist read and write, the queue, tag writes and the outputs run on that thread, so while it is not answering each of them waits and then answers `504`, and `player` goes on describing the last thing the player said. A modal dialog on the player's own screen, a long scan, a hung DSP or an expensive title-formatting script can each hold it.
+
+        The component checks by handing the thread a trivial job, at most one every two seconds and only while something polls this route, and calls it not answering once a check has waited five seconds. `answering` turns back to `true` on the first poll after the thread runs the check, whether or not a command ever went through. The `ETag` moves as a stall starts and again as it ends, and stands still while one goes on.
+      type: object
+      additionalProperties: false
+      required: [answering, unansweredSeconds]
+      properties:
+        answering:
+          type: boolean
+          description: |
+            `false` while a check has waited five seconds or more without the main thread running it.
+        unansweredSeconds:
+          description: |
+            How long the check the thread has not run had waited when this document was built, and `null` exactly while `answering` is `true`. A `304` answers a document built earlier, so a client holding one adds the time since it arrived, as it does for `position.ageSeconds`.
+          oneOf:
+            - { type: number, minimum: 0 }
+            - type: "null"
+          examples: [7.1]
 
     Library:
       description: |

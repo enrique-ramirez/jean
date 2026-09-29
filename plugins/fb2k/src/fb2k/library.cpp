@@ -32,6 +32,8 @@ namespace {
 constexpr size_t kMaxPendingDirty = 4096;
 constexpr size_t kQuerySlice = 8192;
 
+enum class DirtiedBy { change, displayHook };
+
 // Both halves are taken on the main thread: library_manager::get_all_items is main thread
 // only, and titleformat_compiler::compile off it is undocumented.
 struct Walk {
@@ -111,7 +113,7 @@ struct LibraryFeed::State {
             refresh();
     }
 
-    void markDirty(metadb_handle_list_cref items, bool fromHook) {
+    void markDirty(metadb_handle_list_cref items, DirtiedBy cause) {
         if (!built_)
             return;
 
@@ -125,7 +127,7 @@ struct LibraryFeed::State {
                 for (size_t n = 0, count = items.get_count(); n < count; ++n)
                     dirty_.push_back(items.get_item(n));
 
-                if (fromHook)
+                if (cause == DirtiedBy::displayHook)
                     hookMarks_ += items.get_count();
             }
         }
@@ -136,7 +138,7 @@ struct LibraryFeed::State {
     void markDirty(const metadb_handle_ptr& item) {
         metadb_handle_list one;
         one.add_item(item);
-        markDirty(one, false);
+        markDirty(one, DirtiedBy::change);
     }
 
     // On a connection thread, so it touches nothing the worker is still writing.
@@ -522,8 +524,10 @@ private:
     // Resolved on the main thread at construction: whether fb2k::std_api_get is safe from a
     // worker thread is undocumented. library_manager::get_relative_path is then any-thread,
     // which foobar2000 documents from v2.0 and this feed already requires. is_item_in_library
-    // is not, despite the header: see ARCHITECTURE.md, *Facts about the player*. Every call
-    // to it stays in Playback::retire().
+    // is not: the SDK's library_manager.h documents it as any-thread, and foobar2000 2.25.3
+    // asserts the main thread inside it. Every call to it stays in Playback::retire().
+    // metadb_v2::queryMultiParallel says nothing either way and no path in it asserts, so it is
+    // taken as any-thread.
     const metadb_v2::ptr metadb_;
     const library_manager::ptr libraryManager_;
     const titleformat_compiler::ptr compiler_;
@@ -561,7 +565,8 @@ struct LibraryFeed::Watch : library_callback_v2_dynamic_impl_base {
         // `data` is a lazy view whose first get() runs queryMultiSimple over the whole list,
         // synchronously, here on the main thread. Reading one element of a fifty-thousand
         // item change pays for all fifty thousand.
-        state_->markDirty(items, library_callback::is_modified_from_hook());
+        const bool fromHook = library_callback::is_modified_from_hook();
+        state_->markDirty(items, fromHook ? DirtiedBy::displayHook : DirtiedBy::change);
     }
 
 private:
@@ -581,12 +586,10 @@ struct LibraryFeed::Playback : play_callback_impl_base {
     void on_playback_stop(play_control::t_stop_reason) override { retire(); }
 
 private:
-    // Unconditionally for a library item, because a play count moving is the commonest
-    // change and the one a component may not announce: foo_enhanced_playcount writes a
-    // local play through metadb_index_manager::set_user_data and dispatches no refresh at
-    // all. is_item_in_library runs here, on the main thread this callback already owns, so
-    // a stream or a file outside the library folders is never queued for the worker to ask
-    // about again off it.
+    // Unconditionally for a library item: a play count can move with no callback at all
+    // (ARCHITECTURE.md, *Facts about the player*). is_item_in_library runs here, on the main
+    // thread this callback already owns, so a stream or a file outside the library folders
+    // is never queued for the worker to ask about again off it.
     void retire() {
         if (playing_.is_valid() && library_manager::get()->is_item_in_library(playing_))
             state_->markDirty(playing_);
@@ -612,6 +615,8 @@ LibraryFeed::LibraryFeed(MainThreadQueue& mainThread, Library& library) {
 
     playback_ = std::make_unique<Playback>(state_);
 
+    // library_callback_v2_dynamic registers against library_manager_v4, whose get() crashes
+    // where foobar2000 lacks it and which has no try_register_callback of its own.
     if (library_manager_v4::tryGet().is_valid()) {
         watch_ = std::make_unique<Watch>(state_);
     } else {

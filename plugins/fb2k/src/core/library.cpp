@@ -22,6 +22,20 @@ constexpr char kMagic[] = "JLIB";
 constexpr size_t kMagicBytes = sizeof(kMagic) - 1;
 constexpr size_t kHeaderLengthBytes = 4;
 
+struct ColumnFacts {
+    size_t distinct = 0;
+    bool hasUnresolved = false;
+    bool allUnresolved = false;
+};
+
+ColumnFacts factsOf(const Column& column) {
+    ColumnFacts facts;
+    facts.distinct = column.dictionary.values.size();
+    facts.hasUnresolved = column.dictionary.ids.count(kUnresolved) > 0;
+    facts.allUnresolved = facts.distinct == 1 && facts.hasUnresolved;
+    return facts;
+}
+
 size_t paddingTo(size_t alignment, size_t size) {
     return (alignment - (size % alignment)) % alignment;
 }
@@ -134,14 +148,6 @@ uint32_t Dictionary::intern(std::string value) {
     return placed.first->second;
 }
 
-ColumnFacts factsOf(const Column& column) {
-    ColumnFacts facts;
-    facts.distinct = column.dictionary.values.size();
-    facts.hasUnresolved = column.dictionary.ids.count(kUnresolved) > 0;
-    facts.allUnresolved = facts.distinct == 1 && facts.hasUnresolved;
-    return facts;
-}
-
 size_t Snapshot::trackCount() const {
     return columns.empty() ? 0 : columns.front().ids.size();
 }
@@ -206,10 +212,6 @@ std::vector<std::string> LibraryBuilder::fields() const {
                    [](const Column& column) { return column.name; });
 
     return names;
-}
-
-size_t LibraryBuilder::fieldCount() const {
-    return columns_.size();
 }
 
 Snapshot LibraryBuilder::finish() {

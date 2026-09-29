@@ -28,12 +28,13 @@ std::string buildTag(const Library::State& state) {
 
 StateRoute::StateRoute(const Library* library, const PlayerStateStore* playerState,
                        const std::atomic<uint64_t>& configGeneration, uint64_t runId,
-                       RateLimitClock clock)
+                       RateLimitClock clock, MainThreadCheck checkMainThread)
     : library_(library),
       playerState_(playerState),
       configGeneration_(configGeneration),
       runId_(runId),
       clock_(std::move(clock)),
+      checkMainThread_(std::move(checkMainThread)),
       polls_(kPollBurst, kPollRefill) {}
 
 bool StateRoute::pollingTooFast(httplib::Response& res, const std::string& client) {
@@ -66,16 +67,19 @@ void StateRoute::addTo(httplib::Server& server) {
         const auto generation = configGeneration_.load(std::memory_order_relaxed);
         const auto state = library_ ? library_->state() : Library::State{};
         const auto published = playerState_ ? playerState_->read() : PlayerStateStore::Published{};
+        const auto mainThread = checkMainThread_ ? checkMainThread_(clock_()) : MainThreadHealth{};
         const auto tag = snapshotTag(state, runId_, published.version) + "-c" +
-                         std::to_string(generation) + buildTag(state);
+                         std::to_string(generation) + buildTag(state) +
+                         (mainThread.answering ? "" : "-stalled");
 
-        sendIfChanged(req, res, tag, "application/json", [&state, &published, generation] {
-            return stateDocument(
-                state, published.state, std::chrono::steady_clock::now(),
-                PlayerRevisions{published.queueRevision, published.playlistsRevision,
-                                published.timelineRevision},
-                generation);
-        });
+        sendIfChanged(req, res, tag, "application/json",
+                      [&state, &published, generation, &mainThread] {
+                          return stateDocument(
+                              state, published.state, std::chrono::steady_clock::now(),
+                              PlayerRevisions{published.queueRevision, published.playlistsRevision,
+                                              published.timelineRevision},
+                              generation, mainThread);
+                      });
     });
 }
 

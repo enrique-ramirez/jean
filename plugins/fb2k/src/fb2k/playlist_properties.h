@@ -21,8 +21,8 @@ size_t findOwnPlaylist(OwnPlaylistRole role);
 // Whether this component made the playlist as an autoplaylist, and so may change it.
 bool ours(size_t index);
 
-// The SDK cannot read an autoplaylist's query back, so this component keeps its own record of
-// one: ARCHITECTURE.md, *Facts about the player*.
+// The foobar2000 SDK cannot read an autoplaylist's query back: there is no get_query, and
+// get_configuration is an undocumented blob. So this component keeps its own record of one.
 std::optional<AutoPlaylistSpec> storedAutoPlaylist(size_t index);
 
 void recordAutoPlaylist(size_t index, const AutoPlaylistSpec& spec);

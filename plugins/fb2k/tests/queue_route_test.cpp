@@ -9,6 +9,7 @@
 #include "core/http_server.h"
 #include "core/library.h"
 #include "core/player_state.h"
+#include "support/fake_player.h"
 #include "support/keys.h"
 #include "support/spec.h"
 #include "support/test_server.h"
@@ -54,17 +55,6 @@ QueuedTrack fromAPlaylistRow(std::string title, uint32_t index) {
     return queued;
 }
 
-Player queueing(std::vector<QueuedTrack> entries, uint64_t revision = 1) {
-    Player player = servingPlayer();
-    player.queue.read = [entries = std::move(entries), revision] {
-        QueueRead read;
-        read.revision = revision;
-        read.entries = entries;
-        return read;
-    };
-    return player;
-}
-
 json queueOf(const TestServer& server) {
     const auto response = get(server, "/api/queue");
     REQUIRE(response);
@@ -103,6 +93,57 @@ TestServer servingQueue(const Player& player, PlayerStateStore* store, Library* 
     return TestServer(servingSettings(), player, library, countingMint(), store);
 }
 
+std::vector<std::string> queuedTitles(const FakePlayer& player) {
+    const auto queued = player.queued();
+
+    std::vector<std::string> titles;
+    std::transform(queued.begin(), queued.end(), std::back_inserter(titles),
+                   [](const QueuedTrack& entry) { return entry.title; });
+    return titles;
+}
+
+std::vector<std::string> alreadyQueued() {
+    return {"Queued A", "Queued B", "Queued C", "Queued D"};
+}
+
+// The queue a client planning a move reads: alreadyQueued(), published to `store` and then moved
+// on to `revision` by changes elsewhere, so the revision is not one a parse reading a missing
+// field would produce.
+void queuedAt(FakePlayer& player, PlayerStateStore& store, uint64_t revision) {
+    std::vector<QueuedTrack> entries;
+    for (const auto& title : alreadyQueued())
+        entries.push_back(track(title));
+
+    player.queue(std::move(entries));
+    changeTheQueueUntil(store, revision);
+}
+
+std::string rowTitle(uint32_t position) {
+    return "Row " + std::to_string(position);
+}
+
+constexpr uint32_t kRowsToQueue = 10;
+
+void holdingRowsToQueue(FakePlayer& player) {
+    PlaylistAnnotation playlist;
+    playlist.id = kPlaylistId;
+    playlist.title = "Road trip";
+
+    std::vector<FakeRow> rows;
+    rows.reserve(kRowsToQueue);
+    for (uint32_t position = 0; position < kRowsToQueue; ++position)
+        rows.push_back(titled(rowTitle(position)));
+
+    player.add(playlist, std::move(rows));
+}
+
+std::vector<std::string> builtTitles(const std::vector<uint32_t>& ordinals) {
+    std::vector<std::string> titles;
+    std::transform(ordinals.begin(), ordinals.end(), std::back_inserter(titles),
+                   [](uint32_t ordinal) { return builtTrackTitle(ordinal); });
+    return titles;
+}
+
 }  // namespace
 
 TEST_CASE("GET /api/queue answers every entry in the player's order with the fields a row draws") {
@@ -112,7 +153,9 @@ TEST_CASE("GET /api/queue answers every entry in the player's order with the fie
     second.albumArtist = "Another Artist";
     second.duration = 61.25;
 
-    const TestServer server(servingSettings(), queueing({track("First"), second, track("Third")}));
+    FakePlayer foobar;
+    foobar.queue({track("First"), second, track("Third")});
+    const TestServer server(servingSettings(), foobar.player());
 
     const auto entries = entriesOf(server);
     REQUIRE(entries.size() == 3);
@@ -138,7 +181,13 @@ TEST_CASE(
     "GET /api/queue answers the queue revision its entries were read at, and nothing else "
     "beside them") {
     constexpr uint64_t kReadAt = 42;
-    const TestServer server(servingSettings(), queueing({track("Only")}, kReadAt));
+    PlayerStateStore store;
+    changeTheQueueUntil(store, kReadAt - 1);
+
+    FakePlayer foobar(nullptr, &store);
+    foobar.queue({track("Only")});
+    REQUIRE(store.read().queueRevision == kReadAt);
+    const TestServer server = servingQueue(foobar.player(), &store);
 
     const auto body = queueOf(server);
 
@@ -154,7 +203,9 @@ TEST_CASE(
 TEST_CASE("a queued track missing its tags answers an empty string for each, never null") {
     QueuedTrack untagged;
     untagged.duration = 0;
-    const TestServer server(servingSettings(), queueing({untagged}));
+    FakePlayer foobar;
+    foobar.queue({untagged});
+    const TestServer server(servingSettings(), foobar.player());
 
     const auto entries = entriesOf(server);
     REQUIRE(entries.size() == 1);
@@ -173,8 +224,9 @@ TEST_CASE("a queued track missing its tags answers an empty string for each, nev
 TEST_CASE(
     "a queued track the media library holds carries its library path, and one it does not "
     "carries null") {
-    const TestServer server(servingSettings(),
-                            queueing({fromTheLibrary("Held"), track("Not held")}));
+    FakePlayer foobar;
+    foobar.queue({fromTheLibrary("Held"), track("Not held")});
+    const TestServer server(servingSettings(), foobar.player());
 
     const auto entries = entriesOf(server);
     REQUIRE(entries.size() == 2);
@@ -189,8 +241,9 @@ TEST_CASE(
     "a queued playlist row carries its playlist's GUID and position, and a track queued "
     "with no playlist carries null") {
     constexpr uint32_t kRow = 7;
-    const TestServer server(servingSettings(),
-                            queueing({fromAPlaylistRow("Row", kRow), fromTheLibrary("Handle")}));
+    FakePlayer foobar;
+    foobar.queue({fromAPlaylistRow("Row", kRow), fromTheLibrary("Handle")});
+    const TestServer server(servingSettings(), foobar.player());
 
     const auto entries = entriesOf(server);
     REQUIRE(entries.size() == 2);
@@ -207,9 +260,9 @@ TEST_CASE(
 // A field past these is one a client may start reading, and the queue read is bounded to what
 // Jean draws. A positional playlist id or an absolute path creeping in is the likely one.
 TEST_CASE("every queue entry carries exactly its seven keys, whichever of them are null") {
-    const TestServer server(
-        servingSettings(),
-        queueing({fromAPlaylistRow("Row", 0), fromTheLibrary("Handle"), track("Neither")}));
+    FakePlayer foobar;
+    foobar.queue({fromAPlaylistRow("Row", 0), fromTheLibrary("Handle"), track("Neither")});
+    const TestServer server(servingSettings(), foobar.player());
 
     const auto entries = entriesOf(server);
     REQUIRE(entries.size() == 3);
@@ -228,7 +281,9 @@ TEST_CASE("a queue of QUEUE_LIMIT entries is answered whole and in order") {
     for (uint32_t index = 0; index < kQueueLimit; ++index)
         queued.push_back(fromAPlaylistRow("Track " + std::to_string(index), index));
 
-    const TestServer server(servingSettings(), queueing(std::move(queued)));
+    FakePlayer foobar;
+    foobar.queue(std::move(queued));
+    const TestServer server(servingSettings(), foobar.player());
 
     const auto entries = entriesOf(server);
     REQUIRE(entries.size() == kQueueLimit);
@@ -244,35 +299,10 @@ namespace {
 
 constexpr char kQueueRows[] = "/api/queue";
 
-struct RowQueueLog {
-    int calls = 0;
-    std::string playlistId;
-    std::vector<uint32_t> positions;
-    std::optional<QueuePosition> at;
-    PlayerOutcome answer = PlayerOutcome::done;
-};
-
-Player queueingRows(RowQueueLog* log) {
-    Player player = servingPlayer();
-    player.queue.addPlaylistRows = [log](const std::string& playlistId,
-                                         const std::vector<uint32_t>& positions,
-                                         std::optional<QueuePosition> at) {
-        log->calls++;
-        log->playlistId = playlistId;
-        log->positions = positions;
-        log->at = at;
-        return log->answer;
-    };
-    return player;
-}
+constexpr char kPlaylistNobodyHolds[] = "66666666-6666-6666-6666-666666666666";
 
 std::string rowsOf(const std::string& playlistId, const json& positions) {
     return json{{"playlistId", playlistId}, {"positions", positions}}.dump();
-}
-
-bool accepted(const httplib::Result& response) {
-    constexpr int kRedirected = 300;
-    return response && response->status >= 200 && response->status < kRedirected;
 }
 
 }  // namespace
@@ -282,18 +312,20 @@ bool accepted(const httplib::Result& response) {
 TEST_CASE(
     "queueing playlist rows hands the player the playlist and every position in the order "
     "given, once, at the end of the queue") {
-    RowQueueLog log;
-    const TestServer server(servingSettings(), queueingRows(&log));
+    FakePlayer foobar;
+    holdingRowsToQueue(foobar);
+    foobar.queue({track("Queued already")});
+    const TestServer server(servingSettings(), foobar.player());
 
     const auto response = post(server, kQueueRows, rowsOf(kPlaylistId, {7, 2, 5}));
 
     REQUIRE(response);
     CHECK(accepted(response));
 
-    REQUIRE(log.calls == 1);
-    CHECK(log.playlistId == kPlaylistId);
-    CHECK(log.positions == std::vector<uint32_t>{7, 2, 5});
-    CHECK_FALSE(log.at.has_value());
+    REQUIRE(foobar.count(Call::queueRows) == 1);
+    CHECK(foobar.askedAbout(Call::queueRows) == std::vector<std::string>{kPlaylistId});
+    CHECK(queuedTitles(foobar) ==
+          std::vector<std::string>{"Queued already", rowTitle(7), rowTitle(2), rowTitle(5)});
 }
 
 // Zero is the head of the queue, and the one position a parse reading a missing field as zero
@@ -304,9 +336,10 @@ TEST_CASE(
     for (const uint32_t at : {uint32_t{0}, uint32_t{2}}) {
         INFO("at: ", at);
         PlayerStateStore store;
-        changeTheQueueUntil(store, 9);
-        RowQueueLog log;
-        const TestServer server = servingQueue(queueingRows(&log), &store);
+        FakePlayer foobar(nullptr, &store);
+        holdingRowsToQueue(foobar);
+        queuedAt(foobar, store, 9);
+        const TestServer server = servingQueue(foobar.player(), &store);
 
         auto body = json::parse(rowsOf(kPlaylistId, {4}));
         body["at"] = at;
@@ -317,19 +350,19 @@ TEST_CASE(
         REQUIRE(response);
         CHECK(accepted(response));
 
-        REQUIRE(log.calls == 1);
-        CHECK(log.positions == std::vector<uint32_t>{4});
-        REQUIRE(log.at.has_value());
-        CHECK(log.at->index == at);
-        CHECK(log.at->revision == 9);
+        REQUIRE(foobar.count(Call::queueRows) == 1);
+        auto expected = alreadyQueued();
+        expected.insert(expected.begin() + at, rowTitle(4));
+        CHECK(queuedTitles(foobar) == expected);
     }
 }
 
 TEST_CASE(
     "a queue request the component can judge for itself is a 400 and never reaches the "
     "player") {
-    RowQueueLog log;
-    const TestServer server(servingSettings(), queueingRows(&log));
+    FakePlayer foobar;
+    holdingRowsToQueue(foobar);
+    const TestServer server(servingSettings(), foobar.player());
 
     const auto positioned = [](const json& at, const json& revision) {
         auto body = json::parse(rowsOf(kPlaylistId, {1}));
@@ -365,7 +398,7 @@ TEST_CASE(
         CHECK(json::parse(response->body)["error"].is_string());
     }
 
-    CHECK(log.calls == 0);
+    CHECK(foobar.writes() == 0);
 }
 
 // Only the player knows which playlists exist and how many rows each holds, so these two are
@@ -374,64 +407,30 @@ TEST_CASE(
     "queueing from a playlist the player does not have is a 404, and a position past that "
     "playlist's end is a 400") {
     struct Case {
-        PlayerOutcome outcome;
+        std::string playlistId;
+        uint32_t position;
         int status;
     };
 
     for (const auto& expected :
-         {Case{PlayerOutcome::noSuchPlaylist, 404}, Case{PlayerOutcome::positionPastEnd, 400}}) {
-        INFO("outcome: ", describe(expected.outcome));
-        RowQueueLog log;
-        log.answer = expected.outcome;
-        const TestServer server(servingSettings(), queueingRows(&log));
+         {Case{kPlaylistNobodyHolds, 3, 404}, Case{kPlaylistId, kRowsToQueue, 400}}) {
+        INFO("playlist: ", expected.playlistId, ", position: ", expected.position);
+        FakePlayer foobar;
+        holdingRowsToQueue(foobar);
+        const TestServer server(servingSettings(), foobar.player());
 
-        const auto response = post(server, kQueueRows, rowsOf(kPlaylistId, {3}));
+        const auto response =
+            post(server, kQueueRows, rowsOf(expected.playlistId, {expected.position}));
 
         REQUIRE(response);
         CHECK(response->status == expected.status);
         CHECK(json::parse(response->body)["error"].is_string());
-        CHECK(log.calls == 1);
+        CHECK(foobar.count(Call::queueRows) == 1);
+        CHECK(foobar.queued().empty());
     }
 }
 
 namespace {
-
-struct TrackQueueLog {
-    int calls = 0;
-    uint64_t structure = 0;
-    std::vector<uint32_t> ordinals;
-    std::optional<QueuePosition> at;
-    PlayerOutcome answer = PlayerOutcome::done;
-};
-
-// Both sources recorded, so a body can be shown to reach the one it names and never the other.
-Player queueingEither(RowQueueLog* rows, TrackQueueLog* tracks) {
-    Player player = queueingRows(rows);
-    player.queue.addLibraryTracks = [tracks](uint64_t structure,
-                                             const std::vector<uint32_t>& ordinals,
-                                             std::optional<QueuePosition> at) {
-        tracks->calls++;
-        tracks->structure = structure;
-        tracks->ordinals = ordinals;
-        tracks->at = at;
-        return tracks->answer;
-    };
-    return player;
-}
-
-constexpr size_t kLibraryTracks = 8;
-
-void buildLibrary(Library& library, size_t trackCount = kLibraryTracks) {
-    LibraryBuilder builder({"%title%"}, trackCount);
-    auto& sink = builder.sink();
-
-    for (size_t index = 0; index < trackCount; ++index) {
-        const auto ordinal = std::to_string(index);
-        sink.row(index, {"Artist/Album/", ordinal + ".flac", "0", "Track " + ordinal});
-    }
-
-    library.replace(builder.finish());
-}
 
 json tracksOf(uint64_t structure, const char* form, const json& selection) {
     return json{{"structure", structure}, {form, selection}};
@@ -448,9 +447,9 @@ TEST_CASE(
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
 
-    RowQueueLog rows;
-    TrackQueueLog tracks;
-    const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+    FakePlayer foobar(&library);
+    holdingRowsToQueue(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
 
     const auto response =
         post(server, kQueueRows, tracksOf(structure, "ordinals", {5, 0, 3}).dump());
@@ -458,11 +457,9 @@ TEST_CASE(
     REQUIRE(response);
     CHECK(response->status == 204);
 
-    REQUIRE(tracks.calls == 1);
-    CHECK(tracks.structure == structure);
-    CHECK(tracks.ordinals == std::vector<uint32_t>{5, 0, 3});
-    CHECK_FALSE(tracks.at.has_value());
-    CHECK(rows.calls == 0);
+    REQUIRE(foobar.count(Call::queueTracks) == 1);
+    CHECK(queuedTitles(foobar) == builtTitles({5, 0, 3}));
+    CHECK(foobar.count(Call::queueRows) == 0);
 }
 
 // contract/openapi.yaml's `Runs` and `Bitset` are ascending by definition, for a queue as for a
@@ -481,9 +478,9 @@ TEST_CASE(
 
     for (const auto& form : {Form{"runs", {{5, 2}, {0, 1}}}, Form{"bitset", "YQ=="}}) {
         INFO("form: ", form.name);
-        RowQueueLog rows;
-        TrackQueueLog tracks;
-        const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+        FakePlayer foobar(&library);
+        holdingRowsToQueue(foobar);
+        const TestServer server(servingSettings(), foobar.player(), &library);
 
         const auto response =
             post(server, kQueueRows, tracksOf(structure, form.name, form.selection).dump());
@@ -491,9 +488,9 @@ TEST_CASE(
         REQUIRE(response);
         CHECK(response->status == 204);
 
-        REQUIRE(tracks.calls == 1);
-        CHECK(tracks.ordinals == std::vector<uint32_t>{0, 5, 6});
-        CHECK(rows.calls == 0);
+        REQUIRE(foobar.count(Call::queueTracks) == 1);
+        CHECK(queuedTitles(foobar) == builtTitles({0, 5, 6}));
+        CHECK(foobar.count(Call::queueRows) == 0);
     }
 }
 
@@ -507,10 +504,9 @@ TEST_CASE(
     for (const uint32_t at : {uint32_t{0}, uint32_t{2}}) {
         INFO("at: ", at);
         PlayerStateStore store;
-        changeTheQueueUntil(store, 9);
-        RowQueueLog rows;
-        TrackQueueLog tracks;
-        const TestServer server = servingQueue(queueingEither(&rows, &tracks), &store, &library);
+        FakePlayer foobar(&library, &store);
+        queuedAt(foobar, store, 9);
+        const TestServer server = servingQueue(foobar.player(), &store, &library);
 
         auto body = tracksOf(structure, "ordinals", {4});
         body["at"] = at;
@@ -521,12 +517,11 @@ TEST_CASE(
         REQUIRE(response);
         CHECK(response->status == 204);
 
-        REQUIRE(tracks.calls == 1);
-        CHECK(tracks.ordinals == std::vector<uint32_t>{4});
-        REQUIRE(tracks.at.has_value());
-        CHECK(tracks.at->index == at);
-        CHECK(tracks.at->revision == 9);
-        CHECK(rows.calls == 0);
+        REQUIRE(foobar.count(Call::queueTracks) == 1);
+        auto expected = alreadyQueued();
+        expected.insert(expected.begin() + at, builtTrackTitle(4));
+        CHECK(queuedTitles(foobar) == expected);
+        CHECK(foobar.count(Call::queueRows) == 0);
     }
 }
 
@@ -539,9 +534,9 @@ TEST_CASE(
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
 
-    RowQueueLog rows;
-    TrackQueueLog tracks;
-    const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+    FakePlayer foobar(&library);
+    holdingRowsToQueue(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
 
     const auto withRows = [](json body) {
         body["playlistId"] = kPlaylistId;
@@ -567,8 +562,7 @@ TEST_CASE(
         CHECK(json::parse(response->body)["error"].is_string());
     }
 
-    CHECK(rows.calls == 0);
-    CHECK(tracks.calls == 0);
+    CHECK(foobar.writes() == 0);
 }
 
 TEST_CASE(
@@ -578,9 +572,9 @@ TEST_CASE(
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
 
-    RowQueueLog rows;
-    TrackQueueLog tracks;
-    const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+    FakePlayer foobar(&library);
+    holdingRowsToQueue(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
 
     const auto positioned = [structure](const json& at, const json& revision) {
         auto body = tracksOf(structure, "ordinals", {1});
@@ -624,8 +618,7 @@ TEST_CASE(
         CHECK(json::parse(response->body)["error"].is_string());
     }
 
-    CHECK(tracks.calls == 0);
-    CHECK(rows.calls == 0);
+    CHECK(foobar.writes() == 0);
 }
 
 // An ordinal means a track only within the structure it was exported at. The shrunken library
@@ -640,9 +633,9 @@ TEST_CASE(
 
     buildLibrary(library, kLibraryTracks - 6);
 
-    RowQueueLog rows;
-    TrackQueueLog tracks;
-    const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+    FakePlayer foobar(&library);
+    holdingRowsToQueue(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
 
     for (const auto& body :
          {tracksOf(exported, "ordinals", {1}), tracksOf(exported, "ordinals", {7})}) {
@@ -654,8 +647,7 @@ TEST_CASE(
         CHECK(json::parse(response->body)["error"] == describe(DeltaOutcome::structureChanged));
     }
 
-    CHECK(tracks.calls == 0);
-    CHECK(rows.calls == 0);
+    CHECK(foobar.writes() == 0);
 }
 
 // The library can rebuild between the route's check and the job that resolves the ordinals on
@@ -665,17 +657,17 @@ TEST_CASE("a structure the library moves past before the player's job runs is a 
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
 
-    RowQueueLog rows;
-    TrackQueueLog tracks;
-    tracks.answer = PlayerOutcome::structureMoved;
-    const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+    FakePlayer foobar(&library);
+    foobar.rebuildTheLibraryBeforeEachJob();
+    const TestServer server(servingSettings(), foobar.player(), &library);
 
     const auto response = post(server, kQueueRows, tracksOf(structure, "ordinals", {2}).dump());
 
     REQUIRE(response);
     CHECK(response->status == 409);
     CHECK(json::parse(response->body)["error"] == describe(DeltaOutcome::structureChanged));
-    CHECK(tracks.calls == 1);
+    CHECK(foobar.count(Call::queueTracks) == 1);
+    CHECK(foobar.queued().empty());
 }
 
 // A request that queues nothing is a client bug, the same reason an empty `positions` is
@@ -687,9 +679,9 @@ TEST_CASE(
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
 
-    RowQueueLog rows;
-    TrackQueueLog tracks;
-    const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+    FakePlayer foobar(&library);
+    holdingRowsToQueue(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
 
     for (const auto& body :
          {tracksOf(structure, "ordinals", json::array()),
@@ -701,8 +693,7 @@ TEST_CASE(
         CHECK(json::parse(response->body)["error"].is_string());
     }
 
-    CHECK(tracks.calls == 0);
-    CHECK(rows.calls == 0);
+    CHECK(foobar.writes() == 0);
 }
 
 // The ordinals are the client's own export, so the error has to name what is missing rather than
@@ -710,19 +701,17 @@ TEST_CASE(
 TEST_CASE(
     "queueing library tracks with nothing to resolve them against is a 503 naming what is "
     "missing") {
-    TrackQueueLog tracks;
+    FakePlayer foobar;
     Library unbuilt;
 
-    const auto refused = [&tracks](Library* library, const std::string& error) {
-        RowQueueLog rows;
-        const TestServer server(servingSettings(), queueingEither(&rows, &tracks), library);
+    const auto refused = [&foobar](Library* library, const std::string& error) {
+        const TestServer server(servingSettings(), foobar.player(), library);
 
         const auto response = post(server, kQueueRows, tracksOf(1, "ordinals", {1}).dump());
 
         REQUIRE(response);
         CHECK(response->status == 503);
         CHECK(json::parse(response->body)["error"] == error);
-        CHECK(rows.calls == 0);
     };
 
     SUBCASE("an install that does not serve the library at all") {
@@ -733,7 +722,7 @@ TEST_CASE(
         refused(&unbuilt, describe(DeltaOutcome::notBuilt));
     }
 
-    CHECK(tracks.calls == 0);
+    CHECK(foobar.writes() == 0);
 }
 
 TEST_CASE("an ordinal repeated in the request is queued twice") {
@@ -741,16 +730,16 @@ TEST_CASE("an ordinal repeated in the request is queued twice") {
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
 
-    RowQueueLog rows;
-    TrackQueueLog tracks;
-    const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+    FakePlayer foobar(&library);
+    holdingRowsToQueue(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
 
     const auto response = post(server, kQueueRows, tracksOf(structure, "ordinals", {3, 3}).dump());
 
     REQUIRE(response);
     CHECK(response->status == 204);
-    REQUIRE(tracks.calls == 1);
-    CHECK(tracks.ordinals == std::vector<uint32_t>{3, 3});
+    REQUIRE(foobar.count(Call::queueTracks) == 1);
+    CHECK(queuedTitles(foobar) == builtTitles({3, 3}));
 }
 
 // A client refuses a selection past its own limit and the component holds none, so what has to
@@ -784,9 +773,9 @@ TEST_CASE(
 
     for (const auto& form : {Form{"ordinals", clicked, clicked}, Form{"runs", runs, everyOther}}) {
         INFO("form: ", form.name);
-        RowQueueLog rows;
-        TrackQueueLog tracks;
-        const TestServer server(servingSettings(), queueingEither(&rows, &tracks), &library);
+        FakePlayer foobar(&library);
+        holdingRowsToQueue(foobar);
+        const TestServer server(servingSettings(), foobar.player(), &library);
 
         const auto body = tracksOf(structure, form.name, form.selection).dump();
         CHECK(body.size() < kMaxBodyBytes);
@@ -796,10 +785,10 @@ TEST_CASE(
         REQUIRE(response);
         CHECK(response->status == 204);
 
-        REQUIRE(tracks.calls == 1);
-        REQUIRE(tracks.ordinals.size() == kQueueLimit);
-        CHECK(tracks.ordinals == form.queued);
-        CHECK(rows.calls == 0);
+        REQUIRE(foobar.count(Call::queueTracks) == 1);
+        REQUIRE(foobar.queued().size() == kQueueLimit);
+        CHECK(queuedTitles(foobar) == builtTitles(form.queued));
+        CHECK(foobar.count(Call::queueRows) == 0);
     }
 }
 
@@ -820,60 +809,8 @@ json atPosition(json body, uint32_t at, uint64_t revision) {
     return body;
 }
 
-struct MoveLog {
-    int calls = 0;
-    uint32_t from = 0;
-    uint32_t to = 0;
-    uint64_t revision = 0;
-    PlayerOutcome answer = PlayerOutcome::done;
-};
-
-Player moving(MoveLog* log) {
-    Player player = servingPlayer();
-    player.queue.moveEntry = [log](uint32_t from, uint32_t to, uint64_t revision) {
-        log->calls++;
-        log->from = from;
-        log->to = to;
-        log->revision = revision;
-        return log->answer;
-    };
-    return player;
-}
-
 json moveOf(const json& from, const json& to, const json& revision) {
     return json{{"from", from}, {"to", to}, {"revision", revision}};
-}
-
-struct ClearLog {
-    int calls = 0;
-    PlayerOutcome answer = PlayerOutcome::done;
-};
-
-Player clearing(ClearLog* log) {
-    Player player = servingPlayer();
-    player.queue.clear = [log] {
-        log->calls++;
-        return log->answer;
-    };
-    return player;
-}
-
-struct RemoveLog {
-    int calls = 0;
-    uint32_t index = 0;
-    uint64_t revision = 0;
-    PlayerOutcome answer = PlayerOutcome::done;
-};
-
-Player removing(RemoveLog* log) {
-    Player player = servingPlayer();
-    player.queue.removeEntry = [log](uint32_t index, uint64_t revision) {
-        log->calls++;
-        log->index = index;
-        log->revision = revision;
-        return log->answer;
-    };
-    return player;
 }
 
 httplib::Result removeEntry(const TestServer& server, const std::string& index,
@@ -903,13 +840,13 @@ TEST_CASE(
     const uint64_t structure = library.state().structure;
 
     PlayerStateStore store;
-    changeTheQueueTwice(store);
+    FakePlayer foobar(&library, &store);
+    holdingRowsToQueue(foobar);
+    queuedAt(foobar, store, 2);
     const uint64_t current = store.read().queueRevision;
     REQUIRE(current >= 2);
 
-    RowQueueLog rows;
-    TrackQueueLog tracks;
-    const TestServer server = servingQueue(queueingEither(&rows, &tracks), &store, &library);
+    const TestServer server = servingQueue(foobar.player(), &store, &library);
 
     for (const uint64_t named : {current - 1, current + 1}) {
         for (const auto& body : {atPosition(json::parse(rowsOf(kPlaylistId, {4})), 1, named),
@@ -930,8 +867,7 @@ TEST_CASE(
         }
     }
 
-    CHECK(rows.calls == 0);
-    CHECK(tracks.calls == 0);
+    CHECK(foobar.writes() == 0);
 }
 
 TEST_CASE(
@@ -941,32 +877,44 @@ TEST_CASE(
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
 
-    PlayerStateStore store;
-    changeTheQueueTwice(store);
-    const uint64_t current = store.read().queueRevision;
+    struct Source {
+        const char* name;
+        std::function<json(uint64_t revision)> body;
+        Call call;
+        std::string queued;
+    };
 
-    RowQueueLog rows;
-    TrackQueueLog tracks;
-    const TestServer server = servingQueue(queueingEither(&rows, &tracks), &store, &library);
+    for (const auto& source : {
+             Source{"a playlist's rows",
+                    [](uint64_t revision) {
+                        return atPosition(json::parse(rowsOf(kPlaylistId, {4})), 1, revision);
+                    },
+                    Call::queueRows, rowTitle(4)},
+             Source{"library tracks",
+                    [structure](uint64_t revision) {
+                        return atPosition(tracksOf(structure, "ordinals", {4}), 1, revision);
+                    },
+                    Call::queueTracks, builtTrackTitle(4)},
+         }) {
+        INFO("source: ", source.name);
+        PlayerStateStore store;
+        FakePlayer foobar(&library, &store);
+        holdingRowsToQueue(foobar);
+        queuedAt(foobar, store, 2);
+        const uint64_t current = store.read().queueRevision;
+        const TestServer server = servingQueue(foobar.player(), &store, &library);
 
-    const auto rowsBody = atPosition(json::parse(rowsOf(kPlaylistId, {4})), 1, current);
-    const auto tracksBody = atPosition(tracksOf(structure, "ordinals", {4}), 1, current);
+        const auto response = post(server, kQueueRows, source.body(current).dump());
 
-    const auto rowsResponse = post(server, kQueueRows, rowsBody.dump());
-    const auto tracksResponse = post(server, kQueueRows, tracksBody.dump());
+        REQUIRE(response);
+        CHECK(response->status == 204);
 
-    REQUIRE(rowsResponse);
-    REQUIRE(tracksResponse);
-    CHECK(rowsResponse->status == 204);
-    CHECK(tracksResponse->status == 204);
-
-    REQUIRE(rows.calls == 1);
-    REQUIRE(rows.at.has_value());
-    CHECK(rows.at->revision == current);
-
-    REQUIRE(tracks.calls == 1);
-    REQUIRE(tracks.at.has_value());
-    CHECK(tracks.at->revision == current);
+        // The player refuses any revision but the queue's own, so an entry landing at 1 is the
+        // revision having arrived with it.
+        REQUIRE(foobar.count(source.call) == 1);
+        REQUIRE(foobar.queued().size() == alreadyQueued().size() + 1);
+        CHECK(queuedTitles(foobar).at(1) == source.queued);
+    }
 }
 
 // The end of the queue is the end whatever it holds, so a client queueing there has no view to be
@@ -977,11 +925,10 @@ TEST_CASE("queueing at the end of a queue that has moved on is never refused for
     const uint64_t structure = library.state().structure;
 
     PlayerStateStore store;
-    changeTheQueueTwice(store);
-
-    RowQueueLog rows;
-    TrackQueueLog tracks;
-    const TestServer server = servingQueue(queueingEither(&rows, &tracks), &store, &library);
+    FakePlayer foobar(&library, &store);
+    holdingRowsToQueue(foobar);
+    queuedAt(foobar, store, 2);
+    const TestServer server = servingQueue(foobar.player(), &store, &library);
 
     const auto rowsResponse = post(server, kQueueRows, rowsOf(kPlaylistId, {4}));
     const auto tracksResponse =
@@ -991,8 +938,8 @@ TEST_CASE("queueing at the end of a queue that has moved on is never refused for
     REQUIRE(tracksResponse);
     CHECK(rowsResponse->status == 204);
     CHECK(tracksResponse->status == 204);
-    CHECK(rows.calls == 1);
-    CHECK(tracks.calls == 1);
+    CHECK(foobar.count(Call::queueRows) == 1);
+    CHECK(foobar.count(Call::queueTracks) == 1);
 }
 
 // `to` is the entry's index once it has moved: taken out at `from`, then put back at `to` in the
@@ -1005,26 +952,27 @@ TEST_CASE(
     struct Move {
         uint32_t from;
         uint32_t to;
+        std::vector<std::string> after;
     };
 
-    for (const auto& move : {Move{3, 0}, Move{0, 3}, Move{2, 2}}) {
+    for (const auto& move : {Move{3, 0, {"Queued D", "Queued A", "Queued B", "Queued C"}},
+                             Move{0, 3, {"Queued B", "Queued C", "Queued D", "Queued A"}},
+                             Move{2, 2, alreadyQueued()}}) {
         INFO("from ", move.from, " to ", move.to);
         PlayerStateStore store;
-        changeTheQueueTwice(store);
+        FakePlayer foobar(nullptr, &store);
+        queuedAt(foobar, store, 2);
         const uint64_t current = store.read().queueRevision;
 
-        MoveLog log;
-        const TestServer server = servingQueue(moving(&log), &store);
+        const TestServer server = servingQueue(foobar.player(), &store);
 
         const auto response = post(server, kMoveEntry, moveOf(move.from, move.to, current).dump());
 
         REQUIRE(response);
         CHECK(response->status == 204);
 
-        REQUIRE(log.calls == 1);
-        CHECK(log.from == move.from);
-        CHECK(log.to == move.to);
-        CHECK(log.revision == current);
+        REQUIRE(foobar.count(Call::moveQueueEntry) == 1);
+        CHECK(queuedTitles(foobar) == move.after);
     }
 }
 
@@ -1032,12 +980,12 @@ TEST_CASE(
     "moving a queue entry against a revision the queue has moved past, or never reached, is "
     "a 409 and never reaches the player") {
     PlayerStateStore store;
-    changeTheQueueTwice(store);
+    FakePlayer foobar(nullptr, &store);
+    queuedAt(foobar, store, 2);
     const uint64_t current = store.read().queueRevision;
     REQUIRE(current >= 2);
 
-    MoveLog log;
-    const TestServer server = servingQueue(moving(&log), &store);
+    const TestServer server = servingQueue(foobar.player(), &store);
 
     for (const uint64_t named : {current - 1, current + 1}) {
         INFO("revision: ", named);
@@ -1048,16 +996,16 @@ TEST_CASE(
         CHECK(json::parse(response->body)["error"].is_string());
     }
 
-    CHECK(log.calls == 0);
+    CHECK(foobar.count(Call::moveQueueEntry) == 0);
 }
 
 TEST_CASE("a move the component can judge for itself is a 400 and never reaches the player") {
     PlayerStateStore store;
-    changeTheQueueTwice(store);
+    FakePlayer foobar(nullptr, &store);
+    queuedAt(foobar, store, 2);
     const uint64_t current = store.read().queueRevision;
 
-    MoveLog log;
-    const TestServer server = servingQueue(moving(&log), &store);
+    const TestServer server = servingQueue(foobar.player(), &store);
 
     const std::vector<std::string> bodies = {
         "not json",
@@ -1082,7 +1030,7 @@ TEST_CASE("a move the component can judge for itself is a 400 and never reaches 
         CHECK(json::parse(response->body)["error"].is_string());
     }
 
-    CHECK(log.calls == 0);
+    CHECK(foobar.count(Call::moveQueueEntry) == 0);
 }
 
 TEST_CASE("a field no queue schema declares is refused, and nothing is queued or moved") {
@@ -1091,16 +1039,12 @@ TEST_CASE("a field no queue schema declares is refused, and nothing is queued or
     const uint64_t structure = library.state().structure;
 
     PlayerStateStore store;
-    changeTheQueueTwice(store);
+    FakePlayer foobar(&library, &store);
+    holdingRowsToQueue(foobar);
+    queuedAt(foobar, store, 2);
     const uint64_t current = store.read().queueRevision;
 
-    RowQueueLog rows;
-    TrackQueueLog tracks;
-    MoveLog moves;
-
-    Player player = queueingEither(&rows, &tracks);
-    player.queue.moveEntry = moving(&moves).queue.moveEntry;
-    const TestServer server = servingQueue(player, &store, &library);
+    const TestServer server = servingQueue(foobar.player(), &store, &library);
 
     struct Target {
         std::string name;
@@ -1136,28 +1080,35 @@ TEST_CASE("a field no queue schema declares is refused, and nothing is queued or
         }
     }
 
-    CHECK(rows.calls == 0);
-    CHECK(tracks.calls == 0);
-    CHECK(moves.calls == 0);
+    CHECK(foobar.writes() == 0);
 }
 
 // Only the player knows how long the queue is, so this is answered from inside the job, the same
 // way a row past a playlist's end is.
 TEST_CASE("moving an entry from or to past the end of the queue is a 400") {
     PlayerStateStore store;
-    changeTheQueueTwice(store);
+    FakePlayer foobar(nullptr, &store);
+    queuedAt(foobar, store, 2);
     const uint64_t current = store.read().queueRevision;
 
-    MoveLog log;
-    log.answer = PlayerOutcome::positionPastEnd;
-    const TestServer server = servingQueue(moving(&log), &store);
+    const TestServer server = servingQueue(foobar.player(), &store);
 
-    const auto response = post(server, kMoveEntry, moveOf(9, 0, current).dump());
+    struct Move {
+        uint32_t from;
+        uint32_t to;
+    };
 
-    REQUIRE(response);
-    CHECK(response->status == 400);
-    CHECK(json::parse(response->body)["error"].is_string());
-    CHECK(log.calls == 1);
+    for (const auto& move : {Move{9, 0}, Move{0, 9}}) {
+        INFO("from ", move.from, " to ", move.to);
+        const auto response = post(server, kMoveEntry, moveOf(move.from, move.to, current).dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(json::parse(response->body)["error"].is_string());
+    }
+
+    CHECK(foobar.count(Call::moveQueueEntry) == 2);
+    CHECK(queuedTitles(foobar) == alreadyQueued());
 }
 
 // See ARCHITECTURE.md, *Threads, and what may block*, for the race between the route's own
@@ -1171,45 +1122,50 @@ TEST_CASE(
     const uint64_t structure = library.state().structure;
 
     PlayerStateStore store;
-    changeTheQueueTwice(store);
+    FakePlayer foobar(&library, &store);
+    holdingRowsToQueue(foobar);
+    queuedAt(foobar, store, 2);
     const uint64_t current = store.read().queueRevision;
 
-    RowQueueLog rows;
-    TrackQueueLog tracks;
-    MoveLog moves;
-    rows.answer = PlayerOutcome::queueMoved;
-    tracks.answer = PlayerOutcome::queueMoved;
-    moves.answer = PlayerOutcome::queueMoved;
-
-    Player player = queueingEither(&rows, &tracks);
-    player.queue.moveEntry = moving(&moves).queue.moveEntry;
-    const TestServer server = servingQueue(player, &store, &library);
+    const TestServer server = servingQueue(foobar.player(), &store, &library);
 
     const auto staleAtTheRoute = post(server, kMoveEntry, moveOf(2, 0, current - 1).dump());
     REQUIRE(staleAtTheRoute);
     REQUIRE(staleAtTheRoute->status == 409);
     const auto routeError = json::parse(staleAtTheRoute->body)["error"];
 
+    foobar.changeTheQueueBeforeEachEdit();
+
     struct Request {
         const char* path;
-        json body;
+        std::function<json(uint64_t revision)> body;
     };
 
-    for (const auto& request :
-         {Request{kQueueRows, atPosition(json::parse(rowsOf(kPlaylistId, {4})), 1, current)},
-          Request{kQueueRows, atPosition(tracksOf(structure, "ordinals", {4}), 1, current)},
-          Request{kMoveEntry, moveOf(2, 0, current)}}) {
-        INFO("body: ", request.body.dump());
-        const auto response = post(server, request.path, request.body.dump());
+    for (const auto& request : {
+             Request{kQueueRows,
+                     [](uint64_t revision) {
+                         return atPosition(json::parse(rowsOf(kPlaylistId, {4})), 1, revision);
+                     }},
+             Request{kQueueRows,
+                     [structure](uint64_t revision) {
+                         return atPosition(tracksOf(structure, "ordinals", {4}), 1, revision);
+                     }},
+             Request{kMoveEntry, [](uint64_t revision) { return moveOf(2, 0, revision); }},
+         }) {
+        // Read afresh, because each change the player makes moves it: the route has to pass the
+        // request for the job to be the one that meets the change.
+        const auto body = request.body(store.read().queueRevision);
+        INFO("body: ", body.dump());
+        const auto response = post(server, request.path, body.dump());
 
         REQUIRE(response);
         CHECK(response->status == 409);
         CHECK(json::parse(response->body)["error"] == routeError);
     }
 
-    CHECK(rows.calls == 1);
-    CHECK(tracks.calls == 1);
-    CHECK(moves.calls == 1);
+    CHECK(foobar.count(Call::queueRows) == 1);
+    CHECK(foobar.count(Call::queueTracks) == 1);
+    CHECK(foobar.count(Call::moveQueueEntry) == 1);
 }
 
 // Zero is the head of the queue, and the index a parse reading a missing segment as zero would
@@ -1217,23 +1173,28 @@ TEST_CASE(
 TEST_CASE(
     "removing a queue entry hands the player its index and the revision the client read it "
     "at, once") {
-    for (const uint32_t index : {uint32_t{0}, uint32_t{3}}) {
-        INFO("index: ", index);
+    struct Removal {
+        uint32_t index;
+        std::vector<std::string> after;
+    };
+
+    for (const auto& removal : {Removal{0, {"Queued B", "Queued C", "Queued D"}},
+                                Removal{3, {"Queued A", "Queued B", "Queued C"}}}) {
+        INFO("index: ", removal.index);
         PlayerStateStore store;
-        changeTheQueueTwice(store);
+        FakePlayer foobar(nullptr, &store);
+        queuedAt(foobar, store, 2);
         const uint64_t current = store.read().queueRevision;
 
-        RemoveLog log;
-        const TestServer server = servingQueue(removing(&log), &store);
+        const TestServer server = servingQueue(foobar.player(), &store);
 
-        const auto response = removeEntry(server, index, current);
+        const auto response = removeEntry(server, removal.index, current);
 
         REQUIRE(response);
         CHECK(response->status == 204);
 
-        REQUIRE(log.calls == 1);
-        CHECK(log.index == index);
-        CHECK(log.revision == current);
+        REQUIRE(foobar.count(Call::removeQueueEntry) == 1);
+        CHECK(queuedTitles(foobar) == removal.after);
     }
 }
 
@@ -1242,12 +1203,12 @@ TEST_CASE(
     "removing a queue entry against a revision the queue has moved past, or never reached, "
     "is a 409 and never reaches the player") {
     PlayerStateStore store;
-    changeTheQueueTwice(store);
+    FakePlayer foobar(nullptr, &store);
+    queuedAt(foobar, store, 2);
     const uint64_t current = store.read().queueRevision;
     REQUIRE(current >= 2);
 
-    RemoveLog log;
-    const TestServer server = servingQueue(removing(&log), &store);
+    const TestServer server = servingQueue(foobar.player(), &store);
 
     for (const uint64_t named : {current - 1, current + 1}) {
         INFO("revision: ", named);
@@ -1258,16 +1219,16 @@ TEST_CASE(
         CHECK(json::parse(response->body)["error"].is_string());
     }
 
-    CHECK(log.calls == 0);
+    CHECK(foobar.count(Call::removeQueueEntry) == 0);
 }
 
 TEST_CASE("a remove the component can judge for itself is a 400 and never reaches the player") {
     PlayerStateStore store;
-    changeTheQueueTwice(store);
+    FakePlayer foobar(nullptr, &store);
+    queuedAt(foobar, store, 2);
     const std::string revision = "?revision=" + std::to_string(store.read().queueRevision);
 
-    RemoveLog log;
-    const TestServer server = servingQueue(removing(&log), &store);
+    const TestServer server = servingQueue(foobar.player(), &store);
 
     struct Request {
         const char* index;
@@ -1293,7 +1254,7 @@ TEST_CASE("a remove the component can judge for itself is a 400 and never reache
             CHECK(json::parse(response->body)["error"].is_string());
     }
 
-    CHECK(log.calls == 0);
+    CHECK(foobar.count(Call::removeQueueEntry) == 0);
 }
 
 // Only the player knows how long the queue is, so a past-the-end index is answered from inside
@@ -1303,63 +1264,63 @@ TEST_CASE(
     "removing past the end of the queue is a 400, and a queue that moves before the player's "
     "job runs is the 409 a stale revision gets") {
     PlayerStateStore store;
-    changeTheQueueTwice(store);
+    FakePlayer foobar(nullptr, &store);
+    queuedAt(foobar, store, 2);
     const uint64_t current = store.read().queueRevision;
 
-    RemoveLog log;
-    const TestServer server = servingQueue(removing(&log), &store);
+    const TestServer server = servingQueue(foobar.player(), &store);
 
     const auto staleAtTheRoute = removeEntry(server, 2, current - 1);
     REQUIRE(staleAtTheRoute);
     REQUIRE(staleAtTheRoute->status == 409);
     const auto routeError = json::parse(staleAtTheRoute->body)["error"];
 
-    log.answer = PlayerOutcome::positionPastEnd;
     const auto pastTheEnd = removeEntry(server, 9, current);
     REQUIRE(pastTheEnd);
     CHECK(pastTheEnd->status == 400);
     CHECK(json::parse(pastTheEnd->body)["error"].is_string());
 
-    log.answer = PlayerOutcome::queueMoved;
+    foobar.changeTheQueueBeforeEachEdit();
     const auto moved = removeEntry(server, 2, current);
     REQUIRE(moved);
     CHECK(moved->status == 409);
     CHECK(json::parse(moved->body)["error"] == routeError);
 
-    CHECK(log.calls == 2);
+    CHECK(foobar.count(Call::removeQueueEntry) == 2);
 }
 
 // Emptying the queue means the same thing against any view of it, so a clear carries no revision
 // and is not refused for a queue that moved.
 TEST_CASE("clearing the queue asks the player once, whatever revision the client last read") {
     PlayerStateStore store;
-    changeTheQueueTwice(store);
+    FakePlayer foobar(nullptr, &store);
+    queuedAt(foobar, store, 2);
 
-    ClearLog log;
-    const TestServer server = servingQueue(clearing(&log), &store);
+    const TestServer server = servingQueue(foobar.player(), &store);
 
     const auto response = clearTheQueue(server);
 
     REQUIRE(response);
     CHECK(response->status == 204);
-    CHECK(log.calls == 1);
+    CHECK(foobar.count(Call::clearQueue) == 1);
+    CHECK(foobar.queued().empty());
 }
 
 // A client that gave up waiting has to re-read the queue to learn whether it emptied.
 TEST_CASE("a clear the player does not finish in time is a 504") {
     PlayerStateStore store;
-    changeTheQueueTwice(store);
+    FakePlayer foobar(nullptr, &store);
+    queuedAt(foobar, store, 2);
+    foobar.refuse(Call::clearQueue, PlayerOutcome::timedOut);
 
-    ClearLog log;
-    log.answer = PlayerOutcome::timedOut;
-    const TestServer server = servingQueue(clearing(&log), &store);
+    const TestServer server = servingQueue(foobar.player(), &store);
 
     const auto response = clearTheQueue(server);
 
     REQUIRE(response);
     CHECK(response->status == 504);
     CHECK(json::parse(response->body)["error"].is_string());
-    CHECK(log.calls == 1);
+    CHECK(foobar.count(Call::clearQueue) == 1);
 }
 
 TEST_CASE("moving, removing or clearing on an install with no queue is a 503 naming the queue") {
@@ -1381,7 +1342,8 @@ TEST_CASE("moving, removing or clearing on an install with no queue is a 503 nam
 }
 
 TEST_CASE("a client moving, removing or clearing in a loop is slowed down rather than obeyed") {
-    const auto slowedDown = [](const std::function<httplib::Result()>& send, const int& calls) {
+    const auto slowedDown = [](const std::function<httplib::Result()>& send,
+                               const FakePlayer& player, Call call) {
         std::vector<httplib::Result> replies;
         std::generate_n(std::back_inserter(replies), kAttempts, send);
 
@@ -1394,61 +1356,32 @@ TEST_CASE("a client moving, removing or clearing in a loop is slowed down rather
         REQUIRE(first429 != replies.end());
         CHECK((*first429)->get_header_value("Retry-After") == "1");
         CHECK(json::parse((*first429)->body)["error"].is_string());
-        CHECK(calls < kAttempts);
+        CHECK(player.count(call) < kAttempts);
     };
 
     PlayerStateStore store;
-    changeTheQueueTwice(store);
+    FakePlayer foobar(nullptr, &store);
+    queuedAt(foobar, store, 2);
     const uint64_t current = store.read().queueRevision;
+    const TestServer server = servingQueue(foobar.player(), &store);
 
     SUBCASE("moving") {
-        MoveLog log;
-        const TestServer server = servingQueue(moving(&log), &store);
         const auto move = moveOf(2, 0, current).dump();
-        slowedDown([&server, &move] { return post(server, kMoveEntry, move); }, log.calls);
+        slowedDown([&server, &move] { return post(server, kMoveEntry, move); }, foobar,
+                   Call::moveQueueEntry);
     }
 
     SUBCASE("removing") {
-        RemoveLog log;
-        const TestServer server = servingQueue(removing(&log), &store);
-        slowedDown([&server, current] { return removeEntry(server, 2, current); }, log.calls);
+        slowedDown([&server, current] { return removeEntry(server, 2, current); }, foobar,
+                   Call::removeQueueEntry);
     }
 
     SUBCASE("clearing") {
-        ClearLog log;
-        const TestServer server = servingQueue(clearing(&log), &store);
-        slowedDown([&server] { return clearTheQueue(server); }, log.calls);
+        slowedDown([&server] { return clearTheQueue(server); }, foobar, Call::clearQueue);
     }
 }
 
 namespace {
-
-Player countingQueueWrites(int* calls) {
-    Player player = queueing({track("Queued")});
-    player.queue.addPlaylistRows = [calls](const std::string&, const std::vector<uint32_t>&,
-                                           std::optional<QueuePosition>) {
-        ++*calls;
-        return PlayerOutcome::done;
-    };
-    player.queue.addLibraryTracks = [calls](uint64_t, const std::vector<uint32_t>&,
-                                            std::optional<QueuePosition>) {
-        ++*calls;
-        return PlayerOutcome::done;
-    };
-    player.queue.moveEntry = [calls](uint32_t, uint32_t, uint64_t) {
-        ++*calls;
-        return PlayerOutcome::done;
-    };
-    player.queue.removeEntry = [calls](uint32_t, uint64_t) {
-        ++*calls;
-        return PlayerOutcome::done;
-    };
-    player.queue.clear = [calls] {
-        ++*calls;
-        return PlayerOutcome::done;
-    };
-    return player;
-}
 
 // A well-formed request to each queue write the contract publishes, so a refusal is the
 // switch's and never the body's.
@@ -1458,7 +1391,8 @@ httplib::Result writeTheQueue(const TestServer& server, const SpecRoute& route) 
     if (name == "POST /queue")
         return post(server, kQueueRows, rowsOf(kPlaylistId, {3}));
     if (name == "POST /queue/move")
-        return post(server, "/api/queue/move", json{{"from", 1}, {"to", 0}, {"revision", 1}}.dump());
+        return post(server, "/api/queue/move",
+                    json{{"from", 1}, {"to", 0}, {"revision", 1}}.dump());
     if (name == "DELETE /queue/{index}")
         return server.client().Delete("/api/queue/0?revision=1");
     if (route.method == "DELETE")
@@ -1471,11 +1405,13 @@ httplib::Result writeTheQueue(const TestServer& server, const SpecRoute& route) 
 
 // Driven from the contract, so a queue write added later is refused without editing this.
 TEST_CASE("with controlPlayback off, every queue write is 403 and reaches no player") {
-    int calls = 0;
     PlayerStateStore store;
-    changeTheQueueUntil(store, 1);
-    const TestServer server(parseSettings(R"({"controlPlayback": false})"),
-                            countingQueueWrites(&calls), nullptr, countingMint(), &store);
+    FakePlayer foobar(nullptr, &store);
+    holdingRowsToQueue(foobar);
+    foobar.queue({track("Queued")});
+    REQUIRE(store.read().queueRevision == 1);
+    const TestServer server(parseSettings(R"({"controlPlayback": false})"), foobar.player(),
+                            nullptr, countingMint(), &store);
 
     std::set<std::string> sentences;
     size_t writes = 0;
@@ -1491,22 +1427,24 @@ TEST_CASE("with controlPlayback off, every queue write is 403 and reaches no pla
         REQUIRE(response);
         CHECK(response->status == 403);
 
-        const auto body = json::parse(response->body, nullptr, false);
-        CHECK(body.is_object());
-        if (body.is_object() && body.value("error", json()).is_string())
-            sentences.insert(body["error"].get<std::string>());
+        const auto error = errorOf(*response);
+        CHECK_FALSE(error.empty());
+        sentences.insert(error);
     }
 
     REQUIRE(writes >= 4);
-    CHECK(calls == 0);
+    CHECK(foobar.writes() == 0);
+    CHECK(queuedTitles(foobar) == std::vector<std::string>{"Queued"});
     REQUIRE(sentences.size() == 1);
     CHECK(sentences.begin()->find("controlPlayback") != std::string::npos);
 }
 
 TEST_CASE("with controlPlayback off, the queue is still read") {
     PlayerStateStore store;
-    const TestServer server(parseSettings(R"({"controlPlayback": false})"),
-                            queueing({track("Queued")}), nullptr, countingMint(), &store);
+    FakePlayer foobar(nullptr, &store);
+    foobar.queue({track("Queued")});
+    const TestServer server(parseSettings(R"({"controlPlayback": false})"), foobar.player(),
+                            nullptr, countingMint(), &store);
 
     const auto entries = entriesOf(server);
 

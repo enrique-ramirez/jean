@@ -20,10 +20,13 @@ namespace jean {
 
 namespace {
 
-// No lock bit covers a playlist's place in the list: ARCHITECTURE.md, *Facts about the player*.
+// No foobar2000 lock bit covers a playlist's place in the list: playlist_manager::reorder moves
+// a playlist regardless of its lock.
 constexpr uint32_t kNoLockCoversMoving = 0;
 
-// See ARCHITECTURE.md, *Facts about the player*, for what the mask covers and what it does not.
+// foobar2000 holds a playlist's lock as a mask of the edits it refuses (filter_add,
+// filter_remove, filter_rename, filter_remove_playlist), so it is read rather than inferred from
+// a failed call.
 bool lockRefuses(size_t index, uint32_t filter) {
     return (playlist_manager::get()->playlist_lock_get_filter_mask(index) & filter) != 0;
 }
@@ -154,8 +157,9 @@ PlaylistResult removeOnMainThread(const std::string& id) {
     return removePlaylistAt(index, "playlist");
 }
 
-// The permutation playlist_manager::reorder expects; see ARCHITECTURE.md, *Facts about the
-// player*.
+// playlist_manager::reorder takes a whole permutation named by destination, new[n] =
+// old[order[n]] (pfc::guess_reorder_pattern: "to[n] = from[out[n]]"), and accepts its mirror
+// image without complaint, landing every entry one slot from where it was asked for.
 std::vector<t_size> listOrderMoving(size_t count, size_t from, size_t to) {
     std::vector<t_size> order(count);
     std::iota(order.begin(), order.end(), t_size{0});
@@ -239,8 +243,8 @@ RowsEdited removeRowsOnMainThread(const std::string& playlistId, uint64_t struct
 
 // No role check: a fill is how this component's own scratch playlist gets its rows.
 FillResult fillOnMainThread(const std::string& playlistId, const std::string& title,
-                            uint64_t structure, const std::vector<uint32_t>& ordinals, bool replace,
-                            const OrdinalResolver& resolveOrdinals,
+                            uint64_t structure, const std::vector<uint32_t>& ordinals,
+                            ExistingRows existing, const OrdinalResolver& resolveOrdinals,
                             const PlaylistVersions& versions) {
     const auto index = findPlaylist(playlistId);
     const auto resolved = resolveOrdinals(structure, ordinals);
@@ -258,7 +262,7 @@ FillResult fillOnMainThread(const std::string& playlistId, const std::string& ti
 
     auto manager = playlist_manager_v5::get();
 
-    if (replace)
+    if (existing == ExistingRows::replaced)
         removeEveryItem(index);
 
     const auto base = manager->playlist_get_item_count(index);
@@ -360,11 +364,11 @@ PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver r
                                   const PlaylistVersions& versions) {
     return [&mainThread, resolveOrdinals, &versions](
                const std::string& playlistId, const std::string& title, uint64_t structure,
-               const std::vector<uint32_t>& ordinals, bool replace) {
+               const std::vector<uint32_t>& ordinals, ExistingRows existing) {
         return askForOutcome<FillResult>(
             mainThread, "filling a playlist",
-            [playlistId, title, structure, ordinals, replace, resolveOrdinals, &versions] {
-                return fillOnMainThread(playlistId, title, structure, ordinals, replace,
+            [playlistId, title, structure, ordinals, existing, resolveOrdinals, &versions] {
+                return fillOnMainThread(playlistId, title, structure, ordinals, existing,
                                         resolveOrdinals, versions);
             });
     };

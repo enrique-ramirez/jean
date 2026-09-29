@@ -20,8 +20,8 @@ namespace {
 
 // Exactly the fields contract/openapi.yaml declares for this body, `additionalProperties:
 // false` there.
-constexpr std::array<const char*, 7> kTagWriteFields{
-    "track", "subsong", "ordinal", "playlist", "index", "structure", "fields"};
+constexpr std::array<const char*, 7> kTagWriteFields{"track", "subsong",   "ordinal", "playlist",
+                                                     "index", "structure", "fields"};
 
 // What each form is recognised by, which is everything it takes but `structure`: the ordinal
 // form and the playlist form both carry one, so it says nothing about which was sent.

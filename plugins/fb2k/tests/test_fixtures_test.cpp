@@ -51,7 +51,8 @@ std::map<std::string, std::string> sourcesCopied() {
 
 TEST_CASE("the fixture corpus is the files made for it, and nothing restocked out of a library") {
     const std::map<std::string, std::string> corpus = {
-        {"cue-99-subsongs.flac", "513FAD18578F3225FAE5DE1BDA8F700415BE6FD8AA1E7AF533B5EB796ED2D461"},
+        {"cue-99-subsongs.flac",
+         "513FAD18578F3225FAE5DE1BDA8F700415BE6FD8AA1E7AF533B5EB796ED2D461"},
         {"mono.flac", "20539FBBD6AE28CEA2B2182A4C60C6C70CBB710A136199FC83200C4E5FA00B1C"},
         {"mono.mp3", "092C62FEFDD637920F269C1695B18D1C752E3EBA2F69E0E5917CFF9ABAD11721"},
         {"silence.flac", "1E5F07490CF857F7C726465B687C773BB0CC5C3EC4ECFDCF6AA85EB11F607CE7"},

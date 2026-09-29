@@ -26,38 +26,38 @@ std::string freshFor(int seconds) {
     return "private, max-age=" + std::to_string(seconds);
 }
 
-// What sendArtwork answers with on a 200 or a 304 (present), and on its own 404 or 413 (refused).
-struct ArtworkCacheControl {
-    std::string present;
-    std::string refused;
-};
+enum class ArtworkAnswer { cover, nothingToSend };
 
-void sendArtwork(const httplib::Request& req, httplib::Response& res, const ArtworkSource& source,
-                 const ArtworkCacheControl& caching) {
+// Sets no Cache-Control: how long an answer stays fresh is each route's to say, and cpp-httplib's
+// set_header adds a second header rather than replacing the first.
+ArtworkAnswer sendArtwork(const httplib::Request& req, httplib::Response& res,
+                          const ArtworkSource& source) {
+    if (!source.picture) {
+        respondError(res, 404, kNoArtworkForTrack);
+        return ArtworkAnswer::nothingToSend;
+    }
+
     if (alreadyHolds(req, source.tag)) {
-        res.set_header("Cache-Control", caching.present);
         res.set_header("ETag", source.tag);
         res.status = 304;
-        return;
+        return ArtworkAnswer::cover;
     }
 
-    if (source.picture.size() > kMaxArtworkBytes) {
-        res.set_header("Cache-Control", caching.refused);
+    if (source.picture->size() > kMaxArtworkBytes) {
         respondError(res, 413, kArtworkTooLarge);
-        return;
+        return ArtworkAnswer::nothingToSend;
     }
 
-    const auto type = imageTypeOf(source.picture);
+    const auto type = imageTypeOf(*source.picture);
     if (type.empty()) {
-        res.set_header("Cache-Control", caching.refused);
         respondError(res, 404, kUnpublishableArtwork);
-        return;
+        return ArtworkAnswer::nothingToSend;
     }
 
-    res.set_header("Cache-Control", caching.present);
     res.set_header("ETag", source.tag);
     res.status = 200;
-    res.set_content(source.picture, type);
+    sendHeld(res, source.picture, type);
+    return ArtworkAnswer::cover;
 }
 
 }  // namespace
@@ -97,17 +97,10 @@ void ArtworkRoutes::addTo(httplib::Server& server) {
         if (fetchingTooFast(res))
             return;
 
-        const auto source = library_.readArtwork(track);
-        const auto missingCoverCacheControl = freshFor(kMissingCoverCacheLifetimeSeconds);
-
-        if (source.picture.empty()) {
-            res.set_header("Cache-Control", missingCoverCacheControl);
-            respondError(res, 404, kNoArtworkForTrack);
-            return;
-        }
-
-        sendArtwork(req, res, source,
-                    {freshFor(kCoverCacheLifetimeSeconds), missingCoverCacheControl});
+        const auto answer = sendArtwork(req, res, library_.readArtwork(track));
+        const auto lifetime = answer == ArtworkAnswer::cover ? kCoverCacheLifetimeSeconds
+                                                             : kMissingCoverCacheLifetimeSeconds;
+        res.set_header("Cache-Control", freshFor(lifetime));
     });
 
     // The picture is held rather than looked up, so a conditional request never reaches the
@@ -118,13 +111,7 @@ void ArtworkRoutes::addTo(httplib::Server& server) {
         if (fetchingTooFast(res))
             return;
 
-        const auto source = nowPlaying_ ? nowPlaying_->current() : ArtworkSource{};
-        if (source.picture.empty()) {
-            respondError(res, 404, kNoArtworkForTrack);
-            return;
-        }
-
-        sendArtwork(req, res, source, {kAskEveryTime, kAskEveryTime});
+        sendArtwork(req, res, nowPlaying_ ? nowPlaying_->current() : ArtworkSource{});
     });
 
     // The fallback for a row GET /api/artwork cannot address: no path reaches the client, so
@@ -166,12 +153,12 @@ void ArtworkRoutes::addTo(httplib::Server& server) {
                        return;
                    }
 
-                   if (read.libraryPath || read.source.picture.empty()) {
+                   if (read.libraryPath) {
                        respondError(res, 404, kNoArtworkForTrack);
                        return;
                    }
 
-                   sendArtwork(req, res, read.source, {kAskEveryTime, kAskEveryTime});
+                   sendArtwork(req, res, read.source);
                });
 }
 

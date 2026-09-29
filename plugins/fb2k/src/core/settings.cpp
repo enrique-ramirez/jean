@@ -40,8 +40,7 @@ public:
             return;
 
         if (!value->is_array()) {
-            ignoring(log_, key,
-                     value->dump() + " -- expected an array; using " + json(out).dump());
+            ignoring(log_, key, value->dump() + " -- expected an array; using " + json(out).dump());
             return;
         }
 
@@ -62,7 +61,8 @@ public:
 
         std::for_each(entries.begin(), entries.end(), [this](const auto& entry) {
             if (std::find(read_.begin(), read_.end(), entry.key()) == read_.end())
-                log_.push_back("config: '" + entry.key() + "' is not a setting this component reads");
+                log_.push_back("config: '" + entry.key() +
+                               "' is not a setting this component reads");
         });
     }
 
@@ -94,8 +94,9 @@ int inRange(std::vector<std::string>& log, const char* key, int value, int low,
     const auto bounds = high ? std::to_string(low) + " to " + std::to_string(*high)
                              : std::to_string(low) + " or more";
 
-    ignoring(log, key, std::to_string(value) + " is out of range (" + bounds + "); using " +
-                          std::to_string(fallback));
+    ignoring(log, key,
+             std::to_string(value) + " is out of range (" + bounds + "); using " +
+                 std::to_string(fallback));
     return fallback;
 }
 
@@ -117,15 +118,15 @@ Settings validated(Settings settings, std::vector<std::string>& log) {
 
     if (std::find(std::begin(kAacBitrates), std::end(kAacBitrates), settings.aacBitrate) ==
         std::end(kAacBitrates)) {
-        ignoring(log, "aacBitrate", std::to_string(settings.aacBitrate) + " is not one of " +
-                                       join(kAacBitrates) + "; using " +
-                                       std::to_string(defaults.aacBitrate));
+        ignoring(log, "aacBitrate",
+                 std::to_string(settings.aacBitrate) + " is not one of " + join(kAacBitrates) +
+                     "; using " + std::to_string(defaults.aacBitrate));
         settings.aacBitrate = defaults.aacBitrate;
     }
 
-    settings.maxConcurrentStreams = inRange(log, "maxConcurrentStreams",
-                                            settings.maxConcurrentStreams, 0, std::nullopt,
-                                            defaults.maxConcurrentStreams);
+    settings.maxConcurrentStreams =
+        inRange(log, "maxConcurrentStreams", settings.maxConcurrentStreams, 0, std::nullopt,
+                defaults.maxConcurrentStreams);
 
     settings.streamTicketTtlSeconds =
         inRange(log, "streamTicketTtlSeconds", settings.streamTicketTtlSeconds,

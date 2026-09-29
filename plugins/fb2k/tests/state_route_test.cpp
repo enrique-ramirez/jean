@@ -303,11 +303,11 @@ Player readingOneTrack() {
     player.library.readTrack = [](const std::string& track, uint32_t,
                                   const std::vector<std::string>& columns) {
         LibraryTrackRead read;
-        if (track == kTrackTheJobRefuses)
+        if (track == kTrackTheJobRefuses) {
             read.outcome = PlayerOutcome::playerRefused;
-        else if (track == kTrackTheJobIsTooSlowFor)
+        } else if (track == kTrackTheJobIsTooSlowFor) {
             read.outcome = PlayerOutcome::timedOut;
-        else if (track == kTrackTheLibraryHolds) {
+        } else if (track == kTrackTheLibraryHolds) {
             read.held = true;
             read.columns.assign(columns.size(), "One");
         }
@@ -332,11 +332,11 @@ Player readingThePlayingTrack() {
     Player player;
     player.playback.readPlayingTrack = [](const std::vector<std::string>& columns) {
         PlayingTrackRead read;
-        if (columns.front() == kColumnThePlayerRefuses)
+        if (columns.front() == kColumnThePlayerRefuses) {
             read.outcome = PlayerOutcome::playerRefused;
-        else if (columns.front() == kColumnThePlayerIsTooSlowFor)
+        } else if (columns.front() == kColumnThePlayerIsTooSlowFor) {
             read.outcome = PlayerOutcome::timedOut;
-        else if (columns.front() != kColumnAskedWithNothingPlaying) {
+        } else if (columns.front() != kColumnAskedWithNothingPlaying) {
             read.playing = true;
             read.path = R"(C:\Music\Artist\Album\one.flac)";
             read.columns.assign(columns.size(), "One");
@@ -410,9 +410,9 @@ TEST_CASE("a player with nothing playing still answers a player section a client
     const auto& player = body["player"];
     REQUIRE(player.is_object());
 
-    const std::vector<std::string> published = {
-        "playback", "path", "subsong", "position", "duration", "volume", "muted", "playbackMode",
-        "outputDeviceId"};
+    const std::vector<std::string> published = {"playback", "path",         "subsong",
+                                                "position", "duration",     "volume",
+                                                "muted",    "playbackMode", "outputDeviceId"};
     for (const std::string& field : published) {
         INFO("field: ", field);
         REQUIRE(player.contains(field));
@@ -930,8 +930,9 @@ TEST_CASE("a poll carries a body when the playing track's library path is all th
     CHECK(player.at("libraryPath") == kTrackTheLibraryHolds);
 }
 
-TEST_CASE("the poll document names the output device the player is set to, spelled as "
-          "GET /api/outputs spells it") {
+TEST_CASE(
+    "the poll document names the output device the player is set to, spelled as "
+    "GET /api/outputs spells it") {
     Library library;
     fill(library);
     PlayerStateStore store;
@@ -946,8 +947,9 @@ TEST_CASE("the poll document names the output device the player is set to, spell
 // A switch of output device moves nothing else about the player, the same shape as the library
 // path above: a field outside the comparison the version is computed from holds the ETag, the
 // switch is answered 304, and a picker stays ticked on the device the player has left.
-TEST_CASE("a poll carries a body when the output device is all that changed, and a 304 until it "
-          "changes again") {
+TEST_CASE(
+    "a poll carries a body when the output device is all that changed, and a 304 until it "
+    "changes again") {
     Library library;
     fill(library);
     PlayerStateStore store;
@@ -1110,7 +1112,8 @@ TEST_CASE("a conditional poll is a 200 when the queue changed, and a 304 when it
     CHECK(unchanged->get_header_value("ETag") == queuedTag);
 }
 
-TEST_CASE("a mark turns a conditional poll into a 200, and the timeline read after it holds the mark") {
+TEST_CASE(
+    "a mark turns a conditional poll into a 200, and the timeline read after it holds the mark") {
     Library library;
     fill(library);
     PlayerStateStore store;
@@ -1155,7 +1158,9 @@ TEST_CASE("a mark turns a conditional poll into a 200, and the timeline read aft
     CHECK(unchanged->status == 304);
 }
 
-TEST_CASE("with streaming switched off the timeline revision is 0, and nothing the player does moves it") {
+TEST_CASE(
+    "with streaming switched off the timeline revision is 0, and nothing the player does moves "
+    "it") {
     Library library;
     fill(library);
     PlayerStateStore store;
@@ -1244,12 +1249,16 @@ TEST_CASE("the player section names each revision once and carries nothing else 
     store.playlistsChanged(oneListed());
     const TestServer server = serving(&library, listingThePlayingPlaylist(), &store);
 
-    const Keys published = {
-        "playback",          "path",              "subsong",           "libraryPath",
-        "position",          "duration",          "volume",            "muted",
-        "playbackMode",      "outputDeviceId",    "title",             "artist",
-        "album",             "albumArtist",       "playingLocation",   "currentPlaylistId",
-        "queueRevision",     "playlistsRevision", "timelineRevision"};
+    const Keys published = {"playback",        "path",
+                            "subsong",         "libraryPath",
+                            "position",        "duration",
+                            "volume",          "muted",
+                            "playbackMode",    "outputDeviceId",
+                            "title",           "artist",
+                            "album",           "albumArtist",
+                            "playingLocation", "currentPlaylistId",
+                            "queueRevision",   "playlistsRevision",
+                            "timelineRevision"};
 
     CHECK(keysOf(playerSection(server)) == published);
 }
@@ -1371,8 +1380,8 @@ TEST_CASE("a build's progress leaves the export and the delta a client holds cur
     library.reportBuild(BuildProgress{BuildPhase::formatting, 8192, 30441});
 
     const auto exportedAgain = getHolding(server, kExport, exported->get_header_value("ETag"));
-    const auto patchedAgain = getHolding(server, "/api/library/changes?since=1",
-                                         patched->get_header_value("ETag"));
+    const auto patchedAgain =
+        getHolding(server, "/api/library/changes?since=1", patched->get_header_value("ETag"));
     REQUIRE(exportedAgain);
     REQUIRE(patchedAgain);
     CHECK(exportedAgain->status == 304);
@@ -2098,6 +2107,7 @@ TEST_CASE("a burst of refused polls writes one error line naming the address it 
 
     auto looping = server.client();
     std::vector<int> statuses;
+    statuses.reserve(kPollBurst + kPollsPastTheBudget);
     for (int attempt = 0; attempt < kPollBurst + kPollsPastTheBudget; attempt++)
         statuses.push_back(pollStatus(looping));
 
@@ -2362,7 +2372,9 @@ TEST_CASE("a reload that changes no switch leaves configGeneration where it was"
     CHECK(configGenerationOf(server) == settled);
 }
 
-TEST_CASE("a conditional poll is a 200 once a reload changes a switch, and a 304 after one that did not") {
+TEST_CASE(
+    "a conditional poll is a 200 once a reload changes a switch, and a 304 after one that did "
+    "not") {
     TestServer server;
 
     const auto first = get(server, "/api/state");

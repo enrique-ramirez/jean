@@ -21,7 +21,7 @@ OutputHold::~OutputHold() {
     thread_.join();
 
     try {
-        apply(false);
+        apply(Listening::nobody);
     } catch (...) {
         return;
     }
@@ -32,14 +32,14 @@ void OutputHold::watch() {
 
     while (audience_.awaitChangeFrom(applied)) {
         applied = audience_.anyListening(Clock::now());
-        apply(applied);
+        apply(applied ? Listening::somebody : Listening::nobody);
     }
 }
 
-void OutputHold::apply(bool listening) {
+void OutputHold::apply(Listening listening) {
     const std::lock_guard<std::mutex> deciding(deciding_);
 
-    if (listening) {
+    if (listening == Listening::somebody) {
         if (held_ || released_)
             return;
 

@@ -52,17 +52,20 @@ struct FillRequest {
     bool ok() const { return refusal == PlaylistRefusal::none && outcome == PlayerOutcome::done; }
 };
 
+// Whether the schema a body is held to declares `title` beside the fields a reader decodes. A
+// body carrying `title` where it is not declared is refused with any other undeclared field.
+enum class TitleField { refused, allowed };
+
 // `trackCount` bounds what an ordinal may name; one at or past it is refused rather than
 // dropped, because narrowing the set silently is not what the caller asked for.
 //
-// `allowsTitle` is `FillOwnPlaylistRequest`'s alone: `title` is declared there and nowhere
-// else, so a body carrying it against `FillPlaylistRequest` is refused with any other field
-// neither schema declares.
+// `title` is allowed by `FillOwnPlaylistRequest` and `CreatePlaylistRequest` alone.
 //
 // `expectedStructure` is `std::nullopt` only where there is no snapshot to check against,
 // such as a test exercising the decode on its own.
 FillRequest parseFill(const JsonObject& body, size_t trackCount,
-                      std::optional<uint64_t> expectedStructure, bool allowsTitle = false);
+                      std::optional<uint64_t> expectedStructure,
+                      TitleField title = TitleField::refused);
 
 // The row ceiling `parseRemoveRows` and `parseSourceRows` hold a selection against, in place
 // of the real playlist length, which core/ does not have at parse time. A playlist's rows are
@@ -105,10 +108,9 @@ struct SourceRowsRequest {
     bool ok() const { return refusal == PlaylistRefusal::none; }
 };
 
-// `allowsTitle` is `CreatePlaylistRequest`'s alone, on the same terms parseFill
-// takes it: a copy names a playlist that already has a title, so a body carrying one is
-// refused with any other field the schema does not declare.
-SourceRowsRequest parseSourceRows(const JsonObject& body, bool allowsTitle = false);
+// `title` is allowed by `CreatePlaylistRequest` alone: a copy names a playlist that already has
+// a title.
+SourceRowsRequest parseSourceRows(const JsonObject& body, TitleField title = TitleField::refused);
 
 struct MovePlaylistRequest {
     PlaylistRefusal refusal = PlaylistRefusal::none;
@@ -128,12 +130,12 @@ struct TitleRequest {
     bool ok() const { return refusal == PlaylistRefusal::none; }
 };
 
-// `onlyTitle` is for the two schemas contract/openapi.yaml declares additionalProperties: false
-// with nothing beside title: the rename, and a create naming no set. A create naming one, and the
-// own-playlist fill that shares this reader, are held to their own wider field list by parseFill
-// or parseSourceRows, so they leave it false.
-constexpr bool kOnlyTitle = true;
+// Whether the schema a title is read from declares anything beside it. contract/openapi.yaml
+// declares nothing beside title for the rename and for a create naming no set. A create naming
+// one, and the own-playlist fill that shares this reader, are held to their own wider field list
+// by parseFill or parseSourceRows, so they allow the others here.
+enum class OtherFields { refused, allowed };
 
-TitleRequest parseTitle(const JsonObject& body, bool onlyTitle = false);
+TitleRequest parseTitle(const JsonObject& body, OtherFields others = OtherFields::allowed);
 
 }  // namespace jean

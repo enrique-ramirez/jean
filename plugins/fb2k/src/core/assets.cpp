@@ -63,9 +63,8 @@ constexpr char kLocalesPrefix[] = "locales/";
 
 const std::map<std::string, std::string>& pageTypes() {
     static const std::map<std::string, std::string> table{
-        {".html", "text/html; charset=utf-8"}, {".js", "text/javascript"},
-        {".css", "text/css"},                  {".json", "application/json"},
-        {".svg", "image/svg+xml"},             {".woff2", "font/woff2"},
+        {".html", "text/html; charset=utf-8"}, {".js", "text/javascript"}, {".css", "text/css"},
+        {".json", "application/json"},         {".svg", "image/svg+xml"},  {".woff2", "font/woff2"},
     };
 
     return table;
@@ -111,7 +110,7 @@ bool pageIsLongCached(const std::string& path) {
     return path.rfind(kAssetsPrefix, 0) == 0;
 }
 
-std::string pageTag(const std::string& bytes) {
+std::string pageTag(std::string_view bytes) {
     return eTagFor(bytes);
 }
 
@@ -141,7 +140,7 @@ std::optional<std::string> interfaceContentType(const std::string& path) {
 
 PageRoute routePage(const std::string& resolvedPath, const std::vector<std::string>& pageNames) {
     if (resolvedPath.rfind(kLocalesPrefix, 0) == 0)
-        return {PageRouteKind::DiskLocale, {}, resolvedPath};
+        return {PageRouteKind::diskLocale, {}, resolvedPath};
 
     const std::string name = firstSegment(resolvedPath);
     const bool reserved =
@@ -149,13 +148,13 @@ PageRoute routePage(const std::string& resolvedPath, const std::vector<std::stri
         std::any_of(pageNames.begin(), pageNames.end(),
                     [&name](const std::string& root) { return equalsIgnoringCase(name, root); });
     if (reserved)
-        return {PageRouteKind::Reserved, name, {}};
+        return {PageRouteKind::reserved, name, {}};
 
     if (name.size() == resolvedPath.size())
-        return {PageRouteKind::FolderRoot, name, {}};
+        return {PageRouteKind::folderRoot, name, {}};
 
     const bool namesDirectory = resolvedPath.back() == '/';
-    return {PageRouteKind::FolderFile, name,
+    return {PageRouteKind::folderFile, name,
             namesDirectory ? resolvedPath + "index.html" : resolvedPath};
 }
 

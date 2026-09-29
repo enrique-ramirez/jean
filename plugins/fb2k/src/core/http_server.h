@@ -73,7 +73,7 @@ public:
     HttpServer(Settings settings, Audience& audience, Player player = {}, TicketMint mint = {},
                Library* library = nullptr, PlayerStateStore* playerState = nullptr,
                NowPlayingArtwork* nowPlayingArtwork = nullptr,
-               RateLimitClock rateLimitClock = steadyNow);
+               const RateLimitClock& rateLimitClock = steadyNow);
     ~HttpServer();
 
     // Call once.

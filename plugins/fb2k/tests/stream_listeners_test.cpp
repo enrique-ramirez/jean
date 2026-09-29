@@ -4,6 +4,7 @@
 
 #include "third_party/doctest.h"
 
+#include "support/eventually.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
@@ -99,8 +100,7 @@ private:
 };
 
 std::string ticketFor(const TestServer& server, const std::string& body) {
-    const auto response =
-        server.client().Post("/api/stream/ticket", body, "application/json");
+    const auto response = server.client().Post("/api/stream/ticket", body, "application/json");
     REQUIRE(response);
     REQUIRE(response->status == 200);
     return json::parse(response->body)["ticket"].get<std::string>();
@@ -129,14 +129,11 @@ json roster(const TestServer& server) {
 // end: an assertion inside the loop would run as many times as the scheduler felt like,
 // and the suite's assertion total is only a checkable invariant while it is fixed.
 json rosterOf(const TestServer& server, int connections) {
-    for (int attempt = 0; attempt < 200; ++attempt) {
+    eventually([&server, connections] {
         const auto response = server.client().Get("/api/stream/listeners");
-        if (response && response->status == 200 &&
-            json::parse(response->body)["connections"] == connections)
-            break;
-
-        std::this_thread::sleep_for(5ms);
-    }
+        return response && response->status == 200 &&
+               json::parse(response->body)["connections"] == connections;
+    });
 
     const auto body = roster(server);
     CHECK(body["connections"] == connections);
@@ -231,8 +228,8 @@ TEST_CASE("a name longer than the limit is refused before a ticket is issued") {
                             }));
 
     const auto response = server.client().Post(
-        "/api/stream/ticket",
-        json{{"deviceId", "phone-1"}, {"name", std::string(200, 'x')}}.dump(), "application/json");
+        "/api/stream/ticket", json{{"deviceId", "phone-1"}, {"name", std::string(200, 'x')}}.dump(),
+        "application/json");
 
     REQUIRE(response);
     CHECK(response->status == 400);

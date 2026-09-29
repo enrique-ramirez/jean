@@ -16,20 +16,24 @@ namespace {
 
 using TagFields = std::map<std::string, std::string>;
 
+// foobar2000 runs a file_info_filter's lambda on the tag updater's thread, so it captures by
+// value.
 service_ptr_t<file_info_filter> makeFilter(TagFields fields) {
-    return file_info_filter::create([fields](trackRef, t_filestats, file_info& info) {
-        std::for_each(fields.begin(), fields.end(), [&info](const auto& field) {
-            if (field.second.empty())
-                info.meta_remove_field(field.first.c_str());
-            else
-                info.meta_set(field.first.c_str(), field.second.c_str());
-        });
+    return file_info_filter::create(
+        [fields = std::move(fields)](trackRef, t_filestats, file_info& info) {
+            std::for_each(fields.begin(), fields.end(), [&info](const auto& field) {
+                if (field.second.empty())
+                    info.meta_remove_field(field.first.c_str());
+                else
+                    info.meta_set(field.first.c_str(), field.second.c_str());
+            });
 
-        return true;
-    });
+            return true;
+        });
 }
 
-// Main thread only.
+// Main thread only, as metadb_io_v2 is. Without op_flag_silent a failure raises a foobar2000
+// dialog nobody is at the player to dismiss.
 void beginWrite(const metadb_handle_ptr& track, const TagFields& fields,
                 const AnswerPtr<TagWriteOutcome>& answer) {
     metadb_handle_list one;
@@ -122,7 +126,8 @@ TagWriteOutcome writeToOrdinal(MainThreadQueue& mainThread, const OrdinalResolve
 
 TagWriter makeTagWriter(MainThreadQueue& mainThread, LibraryTrackResolver resolveLibraryTrack,
                         OrdinalResolver resolveOrdinal, const PlaylistVersions& versions) {
-    return [&mainThread, resolveLibraryTrack, resolveOrdinal, &versions](const TagWrite& write) {
+    return [&mainThread, resolveLibraryTrack = std::move(resolveLibraryTrack),
+            resolveOrdinal = std::move(resolveOrdinal), &versions](const TagWrite& write) {
         if (write.track.playlist) {
             return askToWrite(mainThread, [row = *write.track.playlist, fields = write.fields,
                                            &versions](const AnswerPtr<TagWriteOutcome>& answer) {

@@ -25,6 +25,7 @@ param(
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\lib\player.ps1"
 . "$PSScriptRoot\lib\download.ps1"
+. "$PSScriptRoot\lib\fixtures.ps1"
 
 if (-not $Foobar2000Dir) {
   throw "Set -Foobar2000Dir or the FOOBAR2000_DIR environment variable to the folder holding foobar2000.exe"
@@ -34,9 +35,7 @@ if (-not $Corpus) {
 }
 if (-not (Test-Path -LiteralPath $Corpus)) { throw "No corpus folder at $Corpus" }
 
-# A folder of its own beside the player, never inside the music library.
-if (-not $Dest) { $Dest = $env:FOO_JEAN_FIXTURE_DIR }
-if (-not $Dest) { $Dest = Join-Path (Split-Path -Parent $Foobar2000Dir.TrimEnd('\')) 'foo_jean-test' }
+$Dest = Get-FixtureRoot -Dest $Dest -Foobar2000Dir $Foobar2000Dir
 
 $rootOne = Join-Path $Dest 'one'
 $rootTwo = Join-Path $Dest 'two'

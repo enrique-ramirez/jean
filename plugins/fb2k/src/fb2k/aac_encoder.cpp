@@ -114,6 +114,8 @@ AacEncoder::AacEncoder(unsigned channels, unsigned sampleRate, int bitrate)
     }
     state.mfStarted = true;
 
+    // fb2k::audioEncoder has no implementations registered in foobar2000 or its common
+    // components, so AAC comes from the one Windows ships.
     if (FAILED(CoCreateInstance(CLSID_AACMFTEncoder, nullptr, CLSCTX_INPROC_SERVER,
                                 IID_PPV_ARGS(state.encoder.receive_ptr())))) {
         state.fail("this Windows has no AAC encoder");
@@ -132,6 +134,8 @@ AacEncoder::AacEncoder(unsigned channels, unsigned sampleRate, int bitrate)
     output->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND,
                       static_cast<UINT32>(bytesPerSecond(bitrate)));
 
+    // Payload type 0 leaves the ADTS header on each frame for this component to write. Media
+    // Foundation wants the output type set before the input type.
     output->SetUINT32(MF_MT_AAC_PAYLOAD_TYPE, 0);
 
     if (FAILED(state.encoder->SetOutputType(0, output.get_ptr(), 0))) {
@@ -192,7 +196,8 @@ void AacEncoder::State::fail(const char* what, HRESULT result) {
         return;
 
     char code[16];
-    std::snprintf(code, sizeof code, "0x%08lx", static_cast<unsigned long>(result));
+    static_cast<void>(
+        std::snprintf(code, sizeof code, "0x%08lx", static_cast<unsigned long>(result)));
     fail(std::string(what) + " (" + code + ")");
 }
 
@@ -224,6 +229,7 @@ void AacEncoder::write(const float* samples, size_t frames, std::vector<std::uin
     if (FAILED(MFCreateSample(sample.receive_ptr())))
         return;
     sample->AddBuffer(buffer.get_ptr());
+    // Media Foundation refuses a sample lacking either time or duration with 0xc00d36c8.
     sample->SetSampleTime(state.time);
     sample->SetSampleDuration(duration);
     state.time += duration;

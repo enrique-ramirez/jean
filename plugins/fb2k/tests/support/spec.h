@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -24,6 +25,17 @@ struct SpecRoute {
 std::vector<SpecRoute> publishedRoutes();
 
 std::vector<std::string> publishedEnum(const std::string& schema, const std::string& property);
+
+// Every `error` a response example shows, with the statuses it is shown under, across every
+// route and every shared response a route refers to.
+std::map<std::string, std::set<int>> publishedErrorExamples();
+
+// Every schema a response is declared as, with the statuses it answers under, reached the same
+// way.
+std::map<std::string, std::set<int>> publishedSchemaStatuses();
+
+// The top-level scalars of the example GET /status answers with.
+std::map<std::string, std::string> publishedStatusExample();
 
 // The key set of the `player` object inside one of GET /state's named 200 examples, `built`
 // or `building`, scoped to the `/state` path's own block so an example of the same name

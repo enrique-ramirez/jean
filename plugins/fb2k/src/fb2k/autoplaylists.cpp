@@ -74,6 +74,8 @@ PlaylistResult createOnMainThread(const AutoPlaylistSpec& spec, const PlaylistVe
     if (index == pfc::infinite_size)
         return playlistFailure(PlayerOutcome::playerRefused);
 
+    // add_client_simple leaves the autoplaylist to foobar2000's core, so it survives this
+    // component being removed.
     try {
         autoplaylist_manager::get()->add_client_simple(spec.query.c_str(), spec.sort.c_str(), index,
                                                        flagsFor(spec));

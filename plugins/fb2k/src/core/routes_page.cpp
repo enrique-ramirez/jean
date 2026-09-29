@@ -5,6 +5,9 @@
 #include "core/log.h"
 #include "core/text.h"
 
+#include <string_view>
+#include <utility>
+
 namespace jean {
 
 namespace {
@@ -30,19 +33,16 @@ void guardPage(httplib::Response& res) {
     res.set_header("Permissions-Policy", kPagePermissions);
 }
 
-void answerRevalidated(const httplib::Request& req, httplib::Response& res,
-                       const std::string& bytes, const std::string& type) {
+bool answeredAsHeld(const httplib::Request& req, httplib::Response& res, std::string_view bytes) {
     const auto tag = pageTag(bytes);
     res.set_header("Cache-Control", kPageRevalidate);
     res.set_header("ETag", tag);
 
-    if (alreadyHolds(req, tag)) {
-        res.status = 304;
-        return;
-    }
+    if (!alreadyHolds(req, tag))
+        return false;
 
-    res.status = 200;
-    res.set_content(bytes, type);
+    res.status = 304;
+    return true;
 }
 
 }  // namespace
@@ -65,21 +65,20 @@ void PageRoutes::serve(const httplib::Request& req, httplib::Response& res) cons
         return;
     }
 
-    if (pageIsLongCached(*resolved)) {
+    if (pageIsLongCached(*resolved))
         res.set_header("Cache-Control", kPageForAYear);
-        res.status = 200;
-        res.set_content(*bytes, *type);
+    else if (answeredAsHeld(req, res, *bytes))
         return;
-    }
 
-    answerRevalidated(req, res, *bytes, *type);
+    res.status = 200;
+    sendLongLived(req, res, *bytes, *type);
 }
 
 void PageRoutes::serveFromDisk(const httplib::Request& req, httplib::Response& res,
                                const std::string& resolved) const {
     const auto route = routePage(resolved, page_.names);
 
-    if (route.kind == PageRouteKind::Reserved) {
+    if (route.kind == PageRouteKind::reserved) {
         logReservedNameOnce(route.name);
         res.status = 404;
         return;
@@ -90,9 +89,9 @@ void PageRoutes::serveFromDisk(const httplib::Request& req, httplib::Response& r
         return;
     }
 
-    if (route.kind == PageRouteKind::FolderRoot) {
+    if (route.kind == PageRouteKind::folderRoot) {
         const auto folder = page_.readDisk(route.name);
-        if (folder.kind != DiskPage::Kind::Directory) {
+        if (folder.kind != DiskPage::Kind::directory) {
             res.status = 404;
             return;
         }
@@ -102,7 +101,7 @@ void PageRoutes::serveFromDisk(const httplib::Request& req, httplib::Response& r
         return;
     }
 
-    const auto type = route.kind == PageRouteKind::DiskLocale
+    const auto type = route.kind == PageRouteKind::diskLocale
                           ? pageContentType(route.diskPath)
                           : interfaceContentType(route.diskPath);
     if (!type) {
@@ -110,13 +109,17 @@ void PageRoutes::serveFromDisk(const httplib::Request& req, httplib::Response& r
         return;
     }
 
-    const auto page = page_.readDisk(route.diskPath);
-    if (page.kind != DiskPage::Kind::File) {
+    auto page = page_.readDisk(route.diskPath);
+    if (page.kind != DiskPage::Kind::file) {
         res.status = 404;
         return;
     }
 
-    answerRevalidated(req, res, page.bytes, *type);
+    if (answeredAsHeld(req, res, page.bytes))
+        return;
+
+    res.status = 200;
+    res.set_content(std::move(page.bytes), *type);
 }
 
 void PageRoutes::logReservedNameOnce(const std::string& name) const {

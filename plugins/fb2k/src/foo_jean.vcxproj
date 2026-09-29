@@ -64,6 +64,8 @@
     <TargetName>foo_jean</TargetName>
     <LinkIncremental Condition="'$(Configuration)'=='Debug'">true</LinkIncremental>
     <LinkIncremental Condition="'$(Configuration)'=='Release'">false</LinkIncremental>
+    <!-- MSVC matches /external:I by path prefix, so "third_party/..." reached through the repo root counts too. -->
+    <ExternalIncludePath>$(MSBuildThisFileDirectory)..\third_party;$(MSBuildThisFileDirectory)..\sdk;$(ExternalIncludePath)</ExternalIncludePath>
   </PropertyGroup>
 
   <ItemDefinitionGroup>
@@ -71,6 +73,9 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>fb2k/PCH.h</PrecompiledHeaderFile>
       <WarningLevel>Level3</WarningLevel>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <TreatAngleIncludeAsExternal>true</TreatAngleIncludeAsExternal>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <!--
@@ -147,15 +152,11 @@
     it includes <winsock2.h>, which must be seen before anything pulls in
     <windows.h>, and the SDK pulls in <windows.h>. Wrong order and the build fails
     deep inside Winsock with errors that mention none of this.
-
-    Warnings are dialled down because these are the files that include the
-    vendored headers, which are 48,000 lines we do not own.
   -->
   <ItemGroup>
     <ClCompile Include="core\*.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
-      <WarningLevel>Level1</WarningLevel>
-      <TreatSpecificWarningsAsErrors />
+      <WarningLevel>Level4</WarningLevel>
     </ClCompile>
   </ItemGroup>
 

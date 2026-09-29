@@ -768,7 +768,9 @@ TEST_CASE("the queue revision stays where it is while everything else about the 
     CHECK(store.read().queueRevision == before.queueRevision);
 }
 
-TEST_CASE("a mark moves the version and the timeline revision, and neither the queue's nor the playlists'") {
+TEST_CASE(
+    "a mark moves the version and the timeline revision, and neither the queue's nor the "
+    "playlists'") {
     const PlaylistVersions versions;
     PlayerStateStore store;
     store.publish(playing());

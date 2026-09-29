@@ -8,8 +8,10 @@
 #include "core/routes_autoplaylists.h"
 #include "core/routes_library.h"
 #include "core/routes_outputs.h"
+#include "core/routes_own_playlists.h"
 #include "core/routes_page.h"
 #include "core/routes_playback.h"
+#include "core/routes_playlist_rows.h"
 #include "core/routes_playlists.h"
 #include "core/routes_queue.h"
 #include "core/routes_state.h"
@@ -44,7 +46,7 @@ bool isJsonRequest(const httplib::Request& req) {
 
 uint64_t freshRunId() {
     std::random_device source;
-    return (uint64_t{source()} << 32) | source();
+    return (uint64_t{source()} << 32U) | source();
 }
 
 ListenerStatus listening() {
@@ -253,9 +255,11 @@ struct HttpServer::Impl {
                           clock),
           page(player.page),
           libraryRoutes(player.library, lib, settings, runId, clock),
-          stateRoute(lib, state, configGeneration, runId, clock),
+          stateRoute(lib, state, configGeneration, runId, clock, player.checkMainThread),
           artworkRoutes(player.library, player.playlists, playing, clock),
           playlistRoutes(player.playlists, lib, settings, playlistChanges),
+          playlistRowRoutes(player.playlists, lib, settings, playlistChanges),
+          ownPlaylistRoutes(player.playlists, lib, settings, playlistChanges),
           autoPlaylistRoutes(player.autoPlaylists, settings, playlistChanges, clock),
           queueRoutes(player.queue, lib, state, settings, playlistChanges),
           playbackRoutes(player.playback, player.report, settings, clock),
@@ -276,6 +280,8 @@ struct HttpServer::Impl {
     StateRoute stateRoute;
     ArtworkRoutes artworkRoutes;
     PlaylistRoutes playlistRoutes;
+    PlaylistRowRoutes playlistRowRoutes;
+    OwnPlaylistRoutes ownPlaylistRoutes;
     AutoPlaylistRoutes autoPlaylistRoutes;
     QueueRoutes queueRoutes;
     PlaybackRoutes playbackRoutes;
@@ -396,6 +402,8 @@ struct HttpServer::Impl {
 
         libraryRoutes.addTo(server);
         playlistRoutes.addTo(server);
+        playlistRowRoutes.addTo(server);
+        ownPlaylistRoutes.addTo(server);
         autoPlaylistRoutes.addTo(server);
         queueRoutes.addTo(server);
         playbackRoutes.addTo(server);
@@ -408,7 +416,7 @@ struct HttpServer::Impl {
 
 HttpServer::HttpServer(Settings settings, Audience& audience, Player player, TicketMint mint,
                        Library* library, PlayerStateStore* playerState,
-                       NowPlayingArtwork* nowPlayingArtwork, RateLimitClock rateLimitClock)
+                       NowPlayingArtwork* nowPlayingArtwork, const RateLimitClock& rateLimitClock)
     : impl_(std::make_unique<Impl>(std::move(settings), audience, std::move(player),
                                    std::move(mint), library, playerState, nowPlayingArtwork,
                                    rateLimitClock)) {}
@@ -448,8 +456,9 @@ ListenerStatus HttpServer::start() {
             server.stop();
             return refused(what +
                            "; another socket could bind this port and take half its traffic");
+        } else {
+            logError(what + "; a restart may have to wait for the port");
         }
-        logError(what + "; a restart may have to wait for the port");
     }
 
     impl.thread = std::thread([&impl] { impl.server.listen_after_bind(); });

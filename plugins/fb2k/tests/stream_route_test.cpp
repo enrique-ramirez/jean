@@ -42,8 +42,7 @@ StreamOpener opensWith(std::vector<std::string> chunks, std::string contentType 
 }
 
 std::string ticketFrom(const TestServer& server) {
-    const auto response =
-        server.client().Post("/api/stream/ticket", "", "application/json");
+    const auto response = server.client().Post("/api/stream/ticket", "", "application/json");
     REQUIRE(response);
     REQUIRE(response->status == 200);
     return json::parse(response->body)["ticket"].get<std::string>();
@@ -231,8 +230,7 @@ TEST_CASE("an install with no stream source says so rather than pretending") {
     const TestServer server;
 
     SUBCASE("no ticket is issued") {
-        const auto response = server.client().Post("/api/stream/ticket", "",
-                                                   "application/json");
+        const auto response = server.client().Post("/api/stream/ticket", "", "application/json");
         REQUIRE(response);
         CHECK(response->status == 503);
         CHECK(json::parse(response->body)["error"].get<std::string>().size() > 0);
@@ -257,13 +255,12 @@ TEST_CASE("the refusal names streamingEnabled only when that switch is actually 
     SUBCASE("streamingEnabled is on and there is simply no source") {
         const TestServer server;
 
-        const auto response =
-            server.client().Post("/api/stream/ticket", "", "application/json");
+        const auto response = server.client().Post("/api/stream/ticket", "", "application/json");
 
         REQUIRE(response);
         CHECK(response->status == 503);
-        CHECK(json::parse(response->body)["error"].get<std::string>().find(
-                  "streamingEnabled") == std::string::npos);
+        CHECK(json::parse(response->body)["error"].get<std::string>().find("streamingEnabled") ==
+              std::string::npos);
     }
 
     SUBCASE("streamingEnabled is off") {
@@ -271,13 +268,12 @@ TEST_CASE("the refusal names streamingEnabled only when that switch is actually 
         settings.streamingEnabled = false;
         const TestServer server(settings, TestServer::streaming(opensWith({"a"})));
 
-        const auto response =
-            server.client().Post("/api/stream/ticket", "", "application/json");
+        const auto response = server.client().Post("/api/stream/ticket", "", "application/json");
 
         REQUIRE(response);
         CHECK(response->status == 503);
-        CHECK(json::parse(response->body)["error"].get<std::string>().find(
-                  "streamingEnabled") != std::string::npos);
+        CHECK(json::parse(response->body)["error"].get<std::string>().find("streamingEnabled") !=
+              std::string::npos);
     }
 }
 
@@ -342,8 +338,7 @@ TEST_CASE("a mint that fails refuses to issue rather than serving an empty ticke
     const TestServer server(servingSettings(), TestServer::streaming(opensWith({"a"})), nullptr,
                             [] { return std::string(); });
 
-    const auto response =
-        server.client().Post("/api/stream/ticket", "", "application/json");
+    const auto response = server.client().Post("/api/stream/ticket", "", "application/json");
 
     REQUIRE(response);
     CHECK(response->status == 503);
@@ -399,7 +394,9 @@ bool canStream(const TestServer& server) {
 
 // The component builds its stream source whether or not streaming is on, so that a reload can
 // turn it on. The switch alone is what refuses.
-TEST_CASE("with streamingEnabled off and a source wired up, no ticket is issued and capabilities says so") {
+TEST_CASE(
+    "with streamingEnabled off and a source wired up, no ticket is issued and capabilities says "
+    "so") {
     int opens = 0;
     const TestServer server(parseSettings(R"({"streamingEnabled": false})"),
                             TestServer::streaming(opensWith({"Ogg"}, "audio/ogg", &opens)));
@@ -413,7 +410,9 @@ TEST_CASE("with streamingEnabled off and a source wired up, no ticket is issued 
     CHECK(opens == 0);
 }
 
-TEST_CASE("a reload turning streaming off refuses tickets and streams, and turning it back on serves them") {
+TEST_CASE(
+    "a reload turning streaming off refuses tickets and streams, and turning it back on serves "
+    "them") {
     int opens = 0;
     TestServer server(servingSettings(),
                       TestServer::streaming(opensWith({"Ogg"}, "audio/ogg", &opens)));

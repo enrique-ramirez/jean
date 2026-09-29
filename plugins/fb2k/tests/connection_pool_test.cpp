@@ -4,6 +4,7 @@
 
 #include "core/http_server.h"
 #include "support/test_server.h"
+#include "third_party/httplib.h"
 
 #include <algorithm>
 #include <chrono>
@@ -85,6 +86,42 @@ struct Answers {
     }
 };
 
+// A connection that sends the start of a request and then nothing, so whichever thread reads it
+// is held until the server's read timeout gives up on it or the connection closes.
+class StalledRequest {
+public:
+    explicit StalledRequest(int port) : socket_(::socket(AF_INET, SOCK_STREAM, 0)) {
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_port = htons(static_cast<uint16_t>(port));
+        ::inet_pton(AF_INET, TestServer::kClientHost, &address.sin_addr);
+
+        constexpr char kHalfARequest[] = "GET /api/status HTTP/1.1\r\nHost: 127.0.0.1\r\n";
+        const auto* to = reinterpret_cast<const sockaddr*>(&address);
+        sent_ = socket_ != INVALID_SOCKET && ::connect(socket_, to, sizeof address) == 0 &&
+                ::send(socket_, kHalfARequest, sizeof kHalfARequest - 1, 0) > 0;
+    }
+
+    ~StalledRequest() {
+        if (socket_ == INVALID_SOCKET)
+            return;
+#ifdef _WIN32
+        ::closesocket(socket_);
+#else
+        ::close(socket_);
+#endif
+    }
+
+    bool sent() const { return sent_; }
+
+    StalledRequest(const StalledRequest&) = delete;
+    StalledRequest& operator=(const StalledRequest&) = delete;
+
+private:
+    socket_t socket_;
+    bool sent_ = false;
+};
+
 std::future<void> writeInBackground(const TestServer& server, Answers& answers) {
     return std::async(std::launch::async, [&server, &answers] {
         auto client = server.client();
@@ -107,6 +144,31 @@ TEST_CASE("the pool starts where cpp-httplib does, grows fourfold, and lets as m
     CHECK(onTwentyFour.threads == 23);
     CHECK(onTwentyFour.maxThreads == 92);
     CHECK(onTwentyFour.queued == 92);
+}
+
+// A client on a poor link stalls part-way through a request as a matter of course. Each holds a
+// thread for as long as the server's read timeout, which is longer than the healthy client
+// below waits for its answer, so that client is only answered if the pool grew for it rather
+// than queueing it behind them, and if the stalled reads happen on the pool's threads rather
+// than the one accepting connections.
+TEST_CASE("requests stalled part-way through leave a thread for a request that is not") {
+    const TestServer server;
+    REQUIRE(server.status().listening);
+
+    const auto pool = connectionPoolFor(std::thread::hardware_concurrency());
+    REQUIRE(pool.maxThreads > pool.threads);
+
+    // After the server, so every one is closed, and its thread let go, before the server stops.
+    std::vector<std::unique_ptr<StalledRequest>> stalled;
+    for (size_t at = 0; at + 1 < pool.maxThreads; ++at) {
+        stalled.push_back(std::make_unique<StalledRequest>(server.port()));
+        REQUIRE(stalled.back()->sent());
+    }
+
+    const auto response = get(server, "/api/status");
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
 }
 
 // A client that finds every thread busy and the queue full is closed without an answer rather than

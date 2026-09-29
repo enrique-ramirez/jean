@@ -49,6 +49,8 @@ public:
 
     bool awaitChangeFrom(bool applied);
 
+    size_t waitingForAChange() const;
+
     void close();
 
     Audience(const Audience&) = delete;
@@ -92,6 +94,7 @@ private:
         std::vector<Entry> entries;
         std::vector<Departure> departures;
         std::uint64_t nextConnection = 1;
+        size_t waiting = 0;
         bool closed = false;
         const int maxConnections;
         const std::chrono::milliseconds linger;

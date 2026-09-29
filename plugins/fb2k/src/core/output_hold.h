@@ -10,8 +10,9 @@
 
 namespace jean {
 
-// See ARCHITECTURE.md, *Facts about the player*, for why muting here is safe and what foobar2000's
-// mute button actually does.
+// foobar2000 captures audio after DSP and before volume, so muting the player leaves the stream
+// at full level. ARCHITECTURE.md, *Facts about the player*, has what foobar2000's mute actually
+// is.
 class OutputHold {
 public:
     using Clock = Audience::Clock;
@@ -45,8 +46,10 @@ public:
     OutputHold& operator=(const OutputHold&) = delete;
 
 private:
+    enum class Listening { nobody, somebody };
+
     void watch();
-    void apply(bool listening);
+    void apply(Listening listening);
 
     Audience& audience_;
     const Player player_;

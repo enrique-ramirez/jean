@@ -16,7 +16,7 @@ class BroadcastRing {
 public:
     explicit BroadcastRing(size_t capacityBytes);
 
-    enum class Read { Ok, Idle, Lapped, Closed };
+    enum class Read { ok, idle, lapped, closed };
 
     using Cursor = std::uint64_t;
 
@@ -29,14 +29,14 @@ public:
     // Blocks until bytes are available, the ring closes, or `patience` runs out. MAY return
     // fewer bytes than are available, so callers loop.
     //
-    // Idle is neither an error nor a stop: it hands control back so the caller can check
+    // `idle` is neither an error nor a stop: it hands control back so the caller can check
     // the connection is still there (see StreamSession::next in stream.h). A paused player
     // writes nothing here, so blocking forever would never notice a listener gone.
     Read read(Cursor& cursor, std::vector<std::uint8_t>& out, std::chrono::milliseconds patience);
 
     void close();
 
-    Cursor written() const;
+    size_t waitingReaders() const;
 
     BroadcastRing(const BroadcastRing&) = delete;
     BroadcastRing& operator=(const BroadcastRing&) = delete;
@@ -47,6 +47,7 @@ private:
     std::vector<std::uint8_t> buffer_;
     Cursor written_ = 0;
     bool closed_ = false;
+    size_t waiting_ = 0;
 };
 
 }  // namespace jean

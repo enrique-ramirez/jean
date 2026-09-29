@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/shared_bytes.h"
+
 #include <cstddef>
 #include <functional>
 #include <mutex>
@@ -24,9 +26,11 @@ constexpr size_t kMaxTrackAddressLength = 4096;
 // what is checked here is length and printability rather than shape.
 std::string trackAddressRefusal(const std::string& track);
 
-// Strong, quoted, and a fold of the picture itself: nothing the player can be asked names
-// the file a cover came from until the cover has been loaded, for the reason ARCHITECTURE.md,
-// *Facts about the player*, gives.
+// Strong, quoted, and a fold of the picture itself. Nothing foobar2000 offers names the file a
+// cover came from until the cover has been loaded: album_art_extractor_instance_v2::query_paths
+// on an instance album_art_manager_v2::open has just returned answers the audio file, never the
+// image beside it. Nor does replacing a folder image raise any metadb or library callback, so
+// loading the picture is the only thing that sees it change.
 std::string artworkTag(const std::string& picture);
 
 // The Content-Type these bytes may be published as, and empty for anything else. Never
@@ -35,7 +39,7 @@ std::string imageTypeOf(const std::string& bytes);
 
 struct ArtworkSource {
     std::string tag;
-    std::string picture;
+    SharedBytes picture;
 };
 
 using ArtworkReader = std::function<ArtworkSource(const std::string& track)>;

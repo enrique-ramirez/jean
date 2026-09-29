@@ -41,16 +41,21 @@ BroadcastRing::Cursor BroadcastRing::subscribe() const {
 BroadcastRing::Read BroadcastRing::read(Cursor& cursor, std::vector<std::uint8_t>& out,
                                         std::chrono::milliseconds patience) {
     std::unique_lock<std::mutex> held(mutex_);
-    if (!ready_.wait_for(held, patience, [this, &cursor] { return cursor < written_ || closed_; }))
-        return Read::Idle;
+    ++waiting_;
+    const bool ready =
+        ready_.wait_for(held, patience, [this, &cursor] { return cursor < written_ || closed_; });
+    --waiting_;
+
+    if (!ready)
+        return Read::idle;
 
     // The cursor is the caller's to hold; unchecked, a value ahead of the writer
     // underflows into an enormous byte count.
     if (cursor > written_ || written_ - cursor > buffer_.size())
-        return Read::Lapped;
+        return Read::lapped;
 
     if (cursor == written_)
-        return Read::Closed;
+        return Read::closed;
 
     const size_t available = static_cast<size_t>(written_ - cursor);
     const size_t start = static_cast<size_t>(cursor % buffer_.size());
@@ -59,7 +64,7 @@ BroadcastRing::Read BroadcastRing::read(Cursor& cursor, std::vector<std::uint8_t
 
     out.assign(from, from + static_cast<std::ptrdiff_t>(count));
     cursor += count;
-    return Read::Ok;
+    return Read::ok;
 }
 
 void BroadcastRing::close() {
@@ -71,9 +76,9 @@ void BroadcastRing::close() {
     ready_.notify_all();
 }
 
-BroadcastRing::Cursor BroadcastRing::written() const {
+size_t BroadcastRing::waitingReaders() const {
     const std::lock_guard<std::mutex> held(mutex_);
-    return written_;
+    return waiting_;
 }
 
 }  // namespace jean

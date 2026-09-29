@@ -38,71 +38,74 @@ AutoPlaylistRoutes::AutoPlaylistRoutes(const AutoPlaylistCalls& autoPlaylists,
                 "them, which usually means a client is looping",
                 clock) {}
 
-// The three writes refuse and answer alike: what the request says, then the budget every
-// playlist edit shares, then whatever the player answered.
-std::optional<PlaylistResult> AutoPlaylistRoutes::attempt(
-    httplib::Response& res, const AutoPlaylistRequest& request,
-    const std::function<PlaylistResult()>& ask) {
+bool AutoPlaylistRoutes::refusedBeforeAsking(httplib::Response& res,
+                                             const AutoPlaylistRequest& request,
+                                             bool playerCanAnswer) {
     if (!request.ok()) {
         respondRefusal(res, request.refusal, request.detail);
-        return std::nullopt;
+        return true;
     }
 
-    if (changes_.refuses()) {
-        respondTooFast(res, changes_,
-                       refusalDocument(PlaylistRefusal::tooFast, kChangingPlaylistsTooFast));
-        return std::nullopt;
+    if (!playerCanAnswer) {
+        respondOutcome(res, PlayerOutcome::unavailable);
+        return true;
     }
 
-    auto result = ask();
-    if (result.outcome != PlayerOutcome::done) {
-        respondOutcome(res, result.outcome, result.detail);
-        return std::nullopt;
+    return changingTooFast(changes_, res, kChangingPlaylistsTooFast);
+}
+
+bool AutoPlaylistRoutes::previewingTooFast(httplib::Response& res) {
+    if (!previews_.refuses())
+        return false;
+
+    respondTooFast(res, previews_, refusalDocument(PlaylistRefusal::tooFast, kPreviewingTooFast));
+    return true;
+}
+
+void AutoPlaylistRoutes::preview(const httplib::Request& req, httplib::Response& res) {
+    const auto request = parseQueryPreview(req.body);
+    if (!request.ok()) {
+        respondRefusal(res, request.refusal, request.detail);
+        return;
     }
 
-    return result;
+    if (!autoPlaylists_.preview) {
+        respondOutcome(res, PlayerOutcome::unavailable);
+        return;
+    }
+
+    if (previewingTooFast(res))
+        return;
+
+    const auto counted = autoPlaylists_.preview(request.spec.query);
+    if (counted.outcome != PlayerOutcome::done) {
+        respondOutcome(res, counted.outcome);
+        return;
+    }
+
+    respond(res, 200, queryPreviewDocument(counted));
 }
 
 void AutoPlaylistRoutes::addTo(httplib::Server& server) {
-    server.Post("/api/autoplaylists/preview", [this](const httplib::Request& req,
-                                                     httplib::Response& res) {
-        const auto request = parseQueryPreview(req.body);
-        if (!request.ok()) {
-            respondRefusal(res, request.refusal, request.detail);
-            return;
-        }
-
-        if (previews_.refuses()) {
-            respondTooFast(res, previews_,
-                           refusalDocument(PlaylistRefusal::tooFast, kPreviewingTooFast));
-            return;
-        }
-
-        const auto preview = askIfAvailable(
-            autoPlaylists_.preview, previewFailure(PlayerOutcome::unavailable), request.spec.query);
-        if (preview.outcome != PlayerOutcome::done) {
-            respondOutcome(res, preview.outcome);
-            return;
-        }
-
-        respond(res, 200, queryPreviewDocument(preview));
-    });
+    server.Post("/api/autoplaylists/preview",
+                [this](const httplib::Request& req, httplib::Response& res) { preview(req, res); });
 
     server.Post("/api/autoplaylists", [this](const httplib::Request& req, httplib::Response& res) {
         if (playlistWritesRefused(*settings_.current(), res))
             return;
 
         const auto request = parseAutoPlaylist(req.body, Need::required);
-        const auto maxAutoPlaylists = settings_.current()->maxAutoPlaylists;
+        if (refusedBeforeAsking(res, request, autoPlaylists_.create != nullptr))
+            return;
 
-        const auto created = attempt(res, request, [this, &request, maxAutoPlaylists] {
-            return askIfAvailable(autoPlaylists_.create,
-                                  playlistFailure(PlayerOutcome::unavailable), request.spec,
-                                  maxAutoPlaylists);
-        });
+        const auto created =
+            autoPlaylists_.create(request.spec, settings_.current()->maxAutoPlaylists);
+        if (created.outcome != PlayerOutcome::done) {
+            respondOutcome(res, created.outcome, created.detail);
+            return;
+        }
 
-        if (created)
-            respond(res, 200, playlistDocument(created->playlist));
+        respond(res, 200, playlistDocument(created.playlist));
     });
 
     server.Post(kAutoPlaylistById, [this](const httplib::Request& req, httplib::Response& res) {
@@ -111,14 +114,16 @@ void AutoPlaylistRoutes::addTo(httplib::Server& server) {
 
         const auto id = req.matches[1].str();
         const auto request = withId(parseAutoPlaylist(req.body, Need::optional), id);
+        if (refusedBeforeAsking(res, request, autoPlaylists_.update != nullptr))
+            return;
 
-        const auto updated = attempt(res, request, [this, &request, &id] {
-            return askIfAvailable(autoPlaylists_.update,
-                                  playlistFailure(PlayerOutcome::unavailable), id, request.spec);
-        });
+        const auto updated = autoPlaylists_.update(id, request.spec);
+        if (updated.outcome != PlayerOutcome::done) {
+            respondOutcome(res, updated.outcome, updated.detail);
+            return;
+        }
 
-        if (updated)
-            respond(res, 200, playlistDocument(updated->playlist));
+        respond(res, 200, playlistDocument(updated.playlist));
     });
 
     server.Delete(kAutoPlaylistById, [this](const httplib::Request& req, httplib::Response& res) {
@@ -127,14 +132,16 @@ void AutoPlaylistRoutes::addTo(httplib::Server& server) {
 
         const auto id = req.matches[1].str();
         const auto request = withId(AutoPlaylistRequest(), id);
+        if (refusedBeforeAsking(res, request, autoPlaylists_.remove != nullptr))
+            return;
 
-        const auto removed = attempt(res, request, [this, &id] {
-            return askIfAvailable(autoPlaylists_.remove,
-                                  playlistFailure(PlayerOutcome::unavailable), id);
-        });
+        const auto removed = autoPlaylists_.remove(id);
+        if (removed.outcome != PlayerOutcome::done) {
+            respondOutcome(res, removed.outcome, removed.detail);
+            return;
+        }
 
-        if (removed)
-            respond(res, 200, playlistRemovedDocument(id));
+        respond(res, 200, playlistRemovedDocument(id));
     });
 }
 

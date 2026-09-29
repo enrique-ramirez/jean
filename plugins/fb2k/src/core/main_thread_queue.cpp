@@ -52,28 +52,22 @@ MainThreadQueue::~MainThreadQueue() {
     // Wait for the state to die rather than just dropping this reference: a callback in flight
     // holds a strong one. It cannot deadlock in foobar2000, because this runs from on_quit on the
     // main thread and so do the callbacks.
-    auto gone = state_->destroyed.get_future();
+    const auto gone = state_->destroyed.get_future();
     state_.reset();
     gone.wait();
 }
 
 void MainThreadQueue::enqueue(std::function<void()> work, std::function<void()> abandon) {
-    bool refused = false;
-    bool needsPosting = false;
-
-    {
-        const std::lock_guard<std::mutex> lock(state_->mutex);
-        refused = state_->closed;
-        if (!refused) {
-            needsPosting = state_->pending.empty();
-            state_->pending.push_back({std::move(work), std::move(abandon)});
-        }
-    }
-
-    if (refused) {
+    std::unique_lock<std::mutex> lock(state_->mutex);
+    if (state_->closed) {
+        lock.unlock();
         runReportingFailures(abandon);
         return;
     }
+
+    const bool needsPosting = state_->pending.empty();
+    state_->pending.push_back({std::move(work), std::move(abandon)});
+    lock.unlock();
 
     if (!needsPosting)
         return;

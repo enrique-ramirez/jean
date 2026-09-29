@@ -3,6 +3,7 @@
 #include "core/audience.h"
 #include "core/failures.h"
 #include "core/library.h"
+#include "core/main_thread_watch.h"
 #include "core/outputs.h"
 #include "core/player_state.h"
 #include "core/playlists.h"
@@ -138,7 +139,8 @@ struct PlayerRevisions {
 
 std::string stateDocument(const Library::State& state, const PlayerState& player,
                           std::chrono::steady_clock::time_point now, PlayerRevisions revisions = {},
-                          std::optional<uint64_t> configGeneration = std::nullopt);
+                          std::optional<uint64_t> configGeneration = std::nullopt,
+                          MainThreadHealth mainThread = {});
 
 // One track's declared columns, in the order declared. The address the caller sent is not
 // echoed back.

@@ -37,8 +37,8 @@ std::vector<PlaylistMark> everyMark(const PlaylistVersions& versions) {
     return marks;
 }
 
-// Linear in the row count rather than in the marked positions, and why that is still the
-// cheap side: ARCHITECTURE.md, *Facts about the player*.
+// Walking a foobar2000 bit_array with find_first and find_next is linear in the playlist's row
+// count rather than in the marked positions.
 std::vector<uint32_t> markedPositions(size_t playlist, const bit_array& mask) {
     const auto rows = playlist_manager::get()->playlist_get_item_count(playlist);
 
@@ -56,9 +56,11 @@ std::vector<uint32_t> markedPositions(size_t playlist, const bit_array& mask) {
 // The SDK has no per-playlist subscription, so every playlist's events arrive here and each
 // callback resolves the one it was handed: ARCHITECTURE.md, *Facts about the player*. The mask
 // is only valid for the length of the call, so it is walked here and the marks are published
-// from a main-thread callback of their own. Both sides run on foobar2000's main thread:
-// ARCHITECTURE.md, *Facts about the player*. A publish already queued has not read anything
-// yet and will see whatever the rest of the burst leaves behind.
+// from a main-thread callback of their own. On foobar2000 2.25.10 both sides run on the main
+// thread, so publishQueued_ is a plain bool. A publish already queued has not read anything
+// yet and will see whatever the rest of the burst leaves behind. flag_on_items_modified is
+// registered rather than flag_on_items_modified_fromplayback, which arrives about once a second
+// for the playing row as its elapsed time moves, with nothing about the track changed.
 struct PlaylistWatch::Callback : public playlist_callback_impl_base {
     Callback(MainThreadQueue& mainThread, PlaylistVersions& versions, PlayerStateStore& store)
         : playlist_callback_impl_base(flag_on_items_added | flag_on_items_removed |
@@ -96,8 +98,9 @@ struct PlaylistWatch::Callback : public playlist_callback_impl_base {
     void on_playlist_created(t_size, const char*, t_size) override { publishMarks(); }
     void on_playlists_reorder(const t_size*, t_size) override { publishMarks(); }
 
-    // Read as the last callback at which a marked index still resolves to a GUID, which the SDK
-    // does not document either way: ARCHITECTURE.md, *Facts about the player*.
+    // Read as the last callback at which a marked index still resolves to a GUID. The foobar2000
+    // SDK documents neither this nor on_playlists_removed; its own
+    // playlist_position_reference_tracker.h walks the mask over the old count, as here.
     void on_playlists_removing(const bit_array& mask, t_size oldCount, t_size) override {
         for (t_size at = mask.find_first(true, 0, oldCount); at < oldCount;
              at = mask.find_next(true, at, oldCount)) {

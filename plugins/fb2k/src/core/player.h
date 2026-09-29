@@ -3,17 +3,20 @@
 #include "core/artwork.h"
 #include "core/documents.h"
 #include "core/library.h"
+#include "core/main_thread_watch.h"
 #include "core/outputs.h"
 #include "core/player_outcome.h"
 #include "core/playlists.h"
 #include "core/stream.h"
 #include "core/tag_write.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // Everything core/ can ask of the player, one call set per thing it reaches. See ARCHITECTURE.md,
@@ -22,6 +25,16 @@
 namespace jean {
 
 using PlaylistLister = std::function<PlaylistsResult()>;
+
+// The role `playlistId` carries among the component's own playlists, read through the marker the
+// playlist carries rather than its title. An id naming no playlist carries no role rather than
+// failing: whatever the caller does with that id next answers for a missing playlist itself.
+struct PlaylistRoleRead {
+    PlayerOutcome outcome = PlayerOutcome::done;
+    std::optional<OwnPlaylistRole> role;
+};
+
+using PlaylistRoleReader = std::function<PlaylistRoleRead(const std::string& playlistId)>;
 
 // Reads at most `count` rows of `playlistId` from `offset`, with `columns` evaluated against
 // each row's own handle. The handles are copied on the main thread and formatted off it.
@@ -105,8 +118,10 @@ struct FillResult {
     uint64_t structure = 0;
 };
 
+enum class ExistingRows { kept, replaced };
+
 // Resolves `ordinals` against the snapshot built for `structure`, in the order given, and
-// inserts the tracks they name into `playlistId`, emptying it first when `replace` is set.
+// inserts the tracks they name into `playlistId`, after the rows it holds or in place of them.
 // The read-only-playlists switch is decided before this is called. Whether foobar2000 has
 // the playlist locked against the edit is not: only the player knows a lock's state, so
 // this callback answers `playlistLocked` itself. `title` renames the playlist in the same
@@ -115,7 +130,7 @@ struct FillResult {
 // to rename.
 using PlaylistFiller = std::function<FillResult(
     const std::string& playlistId, const std::string& title, uint64_t structure,
-    const std::vector<uint32_t>& ordinals, bool replace)>;
+    const std::vector<uint32_t>& ordinals, ExistingRows existing)>;
 
 // Resolves `role` to the id of the component's own playlist for it, through the marker the
 // playlist carries rather than its title, so a rename at the player still finds it and a
@@ -133,6 +148,7 @@ using OwnPlaylistEmptier = std::function<PlaylistResult(OwnPlaylistRole role)>;
 
 struct PlaylistCalls {
     PlaylistLister list;
+    PlaylistRoleReader readRole;
     PlaylistRowReader readRows;
     PlaylistChangeReader readChangedRows;
     PlaylistRowArtworkReader readRowArtwork;
@@ -180,8 +196,8 @@ struct QueueCalls {
     ClearQueue clear;
 };
 
-enum class Transport { PlayPause, Next, Previous, Stop };
-enum class VolumeStep { Up, Down };
+enum class Transport { playPause, next, previous, stop };
+enum class VolumeStep { up, down };
 
 using PlaylistRowPlayer =
     std::function<PlayerOutcome(const std::string& playlistId, uint32_t index)>;
@@ -277,12 +293,13 @@ struct StreamCalls {
 
 // Answers the bytes of the page's own build at `path`, relative to the build root and with no
 // leading slash, or nothing where nothing holds such a file. Null is how an install with no
-// page compiled in and no page on disk says so.
-using PageReader = std::function<std::optional<std::string>(const std::string& path)>;
+// page compiled in and no page on disk says so. A view rather than a copy: the build is compiled
+// into the component, so its bytes outlive every response that sends them.
+using PageReader = std::function<std::optional<std::string_view>(const std::string& path)>;
 
 struct DiskPage {
-    enum class Kind { Missing, File, Directory };
-    Kind kind = Kind::Missing;
+    enum class Kind { missing, file, directory };
+    Kind kind = Kind::missing;
     std::string bytes;
 };
 
@@ -310,8 +327,12 @@ struct PlayerReport {
     std::vector<std::string> playbackOrders;
 };
 
+// Answers at once and never waits on the main thread, which is the thing it reports on.
+using MainThreadCheck = std::function<MainThreadHealth(std::chrono::steady_clock::time_point now)>;
+
 struct Player {
     PlayerReport report;
+    MainThreadCheck checkMainThread;
     PlaylistCalls playlists;
     AutoPlaylistCalls autoPlaylists;
     QueueCalls queue;

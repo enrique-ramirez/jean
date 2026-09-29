@@ -156,6 +156,13 @@ json playerFields(const PlayerState& player, std::chrono::steady_clock::time_poi
         {"timelineRevision", revisions.timeline}};
 }
 
+json mainThreadFields(const MainThreadHealth& health) {
+    const auto unanswered = health.answering
+                                ? json(nullptr)
+                                : json(std::chrono::duration<double>(health.unanswered).count());
+    return json{{"answering", health.answering}, {"unansweredSeconds", unanswered}};
+}
+
 // The player's own listing order, kept: a sorted one would tell a client the modes came off a
 // table here rather than off the player it is actually running against.
 std::vector<std::string> playbackModesOf(const std::vector<std::string>& playbackOrders) {
@@ -337,9 +344,10 @@ std::string libraryDocument(const Library::State& state) {
 
 std::string stateDocument(const Library::State& state, const PlayerState& player,
                           std::chrono::steady_clock::time_point now, PlayerRevisions revisions,
-                          std::optional<uint64_t> configGeneration) {
-    auto body =
-        json{{"library", libraryFields(state)}, {"player", playerFields(player, now, revisions)}};
+                          std::optional<uint64_t> configGeneration, MainThreadHealth mainThread) {
+    auto body = json{{"library", libraryFields(state)},
+                     {"player", playerFields(player, now, revisions)},
+                     {"mainThread", mainThreadFields(mainThread)}};
     if (configGeneration)
         body["configGeneration"] = *configGeneration;
     return body.dump();

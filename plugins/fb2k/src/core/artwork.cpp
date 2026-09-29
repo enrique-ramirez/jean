@@ -2,6 +2,9 @@
 
 #include "core/text.h"
 
+#include <memory>
+#include <utility>
+
 namespace jean {
 
 namespace {
@@ -66,9 +69,12 @@ void NowPlayingArtwork::hold(std::string picture) {
         return;
     }
 
+    ArtworkSource source;
+    source.tag = artworkTag(picture);
+    source.picture = std::make_shared<const std::string>(std::move(picture));
+
     const std::lock_guard<std::mutex> held(mutex_);
-    held_.tag = artworkTag(picture);
-    held_.picture = std::move(picture);
+    held_ = std::move(source);
 }
 
 void NowPlayingArtwork::clear() {

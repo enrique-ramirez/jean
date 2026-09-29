@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // What a request for Jean's own page meets on its way to a file: which path it names relative
@@ -26,15 +27,15 @@ std::optional<std::string> pageContentType(const std::string& path);
 // See ARCHITECTURE.md, *Serving the page*, for why assets/ never needs asking about again.
 bool pageIsLongCached(const std::string& path);
 
-std::string pageTag(const std::string& bytes);
+std::string pageTag(std::string_view bytes);
 
 std::optional<std::string> interfaceContentType(const std::string& path);
 
 enum class PageRouteKind {
-    DiskLocale,
-    Reserved,
-    FolderRoot,
-    FolderFile,
+    diskLocale,
+    reserved,
+    folderRoot,
+    folderFile,
 };
 
 struct PageRoute {

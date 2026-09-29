@@ -51,13 +51,14 @@ void publishName(PlayerStateStore& store, const NameScripts& scripts,
 // `output_hold`'s mute and the player's own look identical to foobar2000, since it has no
 // mute flag of its own: `is_muted()` is `get_volume() == volume_mute`. So a volume this low is
 // only the *user's* mute when the hold is not the one holding it.
-bool userMuted(float volume, const OutputHold& outputHold) {
+bool userMuted(double volume, const OutputHold& outputHold) {
     return volume <= playback_control::volume_mute && !outputHold.held();
 }
 
 std::optional<std::string> activePlaybackModeOf() {
     const auto playlists = playlist_manager::get();
-    const auto name = playlists->playback_order_get_name(playlists->playback_order_get_active());
+    const auto* const name =
+        playlists->playback_order_get_name(playlists->playback_order_get_active());
     return jeanModeFor(std::string(name));
 }
 
@@ -136,8 +137,9 @@ void deferQueueRead() {
     mainThread->enqueue([store] { store->queueChanged(currentQueue()); }, [] {});
 }
 
-// See ARCHITECTURE.md, *Facts about the player*, for how this wires itself up with no
-// register/unregister pair.
+// The foobar2000 SDK gives playback_queue_callback no impl_base and no register/unregister
+// pair: it is a service, found through FB2K_MAKE_SERVICE_INTERFACE_ENTRYPOINT, so the
+// service_factory_single_t below is what wires it up.
 class QueueServiceCallback : public playback_queue_callback {
 public:
     void on_changed(t_change_origin) override { deferQueueRead(); }
@@ -193,8 +195,8 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
           artwork_(artwork),
           nameScripts_(std::move(nameScripts)) {}
 
-    // Reading the location inline here would race the player: see ARCHITECTURE.md, *Facts about
-    // the player*. `started()` leaves `playingLocation` standing on purpose (player_state.cpp),
+    // Reading the location inline here would race the player, for the reason `queueLocationRead`
+    // gives. `started()` leaves `playingLocation` standing on purpose (player_state.cpp),
     // so a poll between this call and `queueLocationRead`'s sees the outgoing track's row rather
     // than nothing. Artwork has nothing downstream to correct it the way `queueLocationRead`
     // corrects the row, so it clears here instead of standing on that same outgoing picture.
@@ -250,7 +252,9 @@ struct PlaybackWatch::Callback : public play_callback_impl_base {
         store_.volumeChanged(value, userMuted(value, outputHold_));
     }
 
-    // Deferred for the race ARCHITECTURE.md, *Facts about the player*, describes.
+    // On foobar2000 2.25.3 get_playing_item_location has not caught up with playlist_manager
+    // when on_playback_new_track fires, and reads false on a track change. A
+    // main_thread_callback runs only once that event has returned, so one queued here sees it.
     void queueLocationRead() {
         mainThread_.enqueue(
             [&store = store_, &versions = versions_] {
@@ -274,7 +278,7 @@ struct PlaybackWatch::OrderCallback : public playlist_callback_impl_base {
         : playlist_callback_impl_base(flag_on_playback_order_changed), store_(store) {}
 
     void on_playback_order_changed(t_size newIndex) override {
-        const auto name = playlist_manager::get()->playback_order_get_name(newIndex);
+        const auto* const name = playlist_manager::get()->playback_order_get_name(newIndex);
         store_.playbackModeChanged(jeanModeFor(std::string(name)));
     }
 
@@ -311,9 +315,8 @@ struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
         publishQueueTarget(&mainThread_, &store_);
     }
 
-    // locationCallback_ owns this as a LocationCallback, never as the base; see
-    // ARCHITECTURE.md, *Facts about the player*, for why that is what makes this destructor
-    // safe without `override`.
+    // The foobar2000 SDK's playlist_callback_impl_base has no virtual destructor, so
+    // locationCallback_ owns this as a LocationCallback, never as the base.
     ~LocationCallback() { publishQueueTarget(nullptr, nullptr); }
 
     void on_items_added(t_size playlist, t_size, metadb_handle_list_cref,
@@ -349,8 +352,9 @@ struct PlaybackWatch::LocationCallback : public playlist_callback_impl_base {
             return;
         }
 
-        // Also covers nothing playing, without needing to tell the two apart: see
-        // ARCHITECTURE.md, *Facts about the player*.
+        // foobar2000 answers false both when nothing is playing and when the playing item has
+        // left the playlist it started on. Either way a state that has not changed is dropped
+        // by the store, so the two need no telling apart.
         if (playlists->get_playing_playlist() != playlist)
             return;
 

@@ -14,9 +14,7 @@
 namespace jean {
 
 ConfigWatch::ConfigWatch(HttpServer& server, Settings running)
-    : server_(server),
-      running_(std::move(running)),
-      nativeConfigPath_(nativePathOf(configPath())) {
+    : server_(server), running_(std::move(running)), nativeConfigPath_(nativePathOf(configPath())) {
     std::error_code ec;
     lastSeen_ = std::filesystem::last_write_time(nativeConfigPath_, ec);
 

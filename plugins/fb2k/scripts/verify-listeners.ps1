@@ -1,8 +1,10 @@
-# Exercises the audience against the running player: a device's connections group into one row, the player is silenced while
-# somebody listens, a person undoing that is left alone, and the player gets its sound back at the end.
+# Exercises the audience against the running player: a device's connections group into one row, a departure waits out the
+# linger, and the player ends at the level and mute it started at. This script never writes either of them.
 #
-# Run on the player. Playback need not be going -- the mute follows connections, not audio -- but with the player playing
-# you can hear the thing this is about.
+# Run on the player, muted: a muted player still streams at full level (src/core/output_hold.h has why), and what is
+# checked then is that the hold leaves alone a mute it did not make. Found unmuted, with muteWhileStreaming on, the
+# player is silenced by the hold instead and given its sound back once the linger runs out. Playback need not be going:
+# the hold follows connections, not audio.
 #
 #   scripts\verify-listeners.ps1
 #   scripts\verify-listeners.ps1 -Linger 8
@@ -101,100 +103,103 @@ if (-not $mutes) { Write-Host "  note  muteWhileStreaming is off in config.json;
 
 $before = Get-PlayerVolume
 Write-Host ("player is at " + $before.value + " dB, muted: " + $before.isMuted)
-if ($before.isMuted) {
-  Write-Host "  the player is already muted by hand; unmute it and run this again" -ForegroundColor Red
-  exit 1
-}
+$holds = $mutes -and -not $before.isMuted
+$leftAlone = $mutes -and $before.isMuted
 
-Write-Host ""
-Write-Host "an empty audience"
-$idle = Get-Listeners
-Check "nobody is listening" ($idle.devices.Count -eq 0) "found $($idle.devices.Count)"
-Check "the cap is published" ($idle.maxConnections -gt 0)
-Check "the player is not held" ($idle.playerMuted -eq $false)
+function Test-StillMuted($seconds) { -not (Wait-For { -not (Get-PlayerVolume).isMuted } $seconds) }
 
-Write-Host ""
-Write-Host "one device, two connections"
-$ticket = New-Ticket 'verify-1' 'Verification device'
-$first = Open-Stream "/stream?ticket=$ticket"
-$second = Open-Stream "/stream?ticket=$ticket"
-
-Check "both connections arrive" (Wait-For { (Get-Listeners).connections -eq 2 })
-$roster = Get-Listeners
-Check "they are one device, not two" ($roster.devices.Count -eq 1) "roster has $($roster.devices.Count)"
-Check "the device kept the name it sent" ($roster.devices[0].name -eq 'Verification device') "got '$($roster.devices[0].name)'"
-Check "the row counts both sockets" ($roster.devices[0].connections -eq 2)
-Check "it has been listening for a moment" ($roster.devices[0].listeningFor -ge 0)
-
-if ($mutes) {
+try {
   Write-Host ""
-  Write-Host "the hold"
-  Check "the roster says the player was silenced" (Wait-For { (Get-Listeners).playerMuted -eq $true })
+  Write-Host "an empty audience"
+  $idle = Get-Listeners
+  Check "nobody is listening" ($idle.devices.Count -eq 0) "found $($idle.devices.Count)"
+  Check "the cap is published" ($idle.maxConnections -gt 0)
+  Check "the player is not held" ($idle.playerMuted -eq $false)
 
-  # foobar2000 has no mute flag: mute is the volume at -100 dB, so the player's own state shows the hold.
-  $during = Get-PlayerVolume
-  Check "the player reports itself muted" ($during.isMuted -eq $true) "volume is $($during.value)"
-}
-
-Write-Host ""
-Write-Host "a reconnect is not a departure"
-Close-Stream $first
-Check "one connection is left" (Wait-For { (Get-Listeners).connections -eq 1 })
-if ($mutes) {
-  Check "the player is still held for the one that stayed" ((Get-Listeners).playerMuted -eq $true)
-}
-
-Close-Stream $second
-Check "the roster empties" (Wait-For { (Get-Listeners).connections -eq 0 })
-
-if ($mutes) {
-  # The linger is what stops the player unmuting into the gap a client is about to reconnect across.
-  Check "the player is still held through the linger" ((Get-Listeners).playerMuted -eq $true)
-  Check "the player gets its sound back once the linger runs out" (Wait-For { (Get-Listeners).playerMuted -eq $false } ($Linger + 6))
-}
-
-Write-Host ""
-Write-Host "a device that says it meant to stop"
-$ticket = New-Ticket 'verify-2' 'Verification device'
-$third = Open-Stream "/stream?ticket=$ticket"
-Check "it connects" (Wait-For { (Get-Listeners).connections -eq 1 })
-
-Close-Stream $third
-Check "it disconnects" (Wait-For { (Get-Listeners).connections -eq 0 })
-
-if ($mutes) {
-  Check "the hold is still on" ((Get-Listeners).playerMuted -eq $true)
-  Get-Json "$FooJean/stream/leave" @{} 'POST' (@{ deviceId = 'verify-2' } | ConvertTo-Json -Compress) | Out-Null
-
-  # A handoff back to the player and a dropped connection close the same socket; only one of them should wait.
-  Check "saying so ends the linger at once" (Wait-For { (Get-Listeners).playerMuted -eq $false } 3)
-}
-
-if ($mutes) {
   Write-Host ""
-  Write-Host "the person at the player wins"
-  $ticket = New-Ticket 'verify-3' 'Verification device'
-  $fourth = Open-Stream "/stream?ticket=$ticket"
-  Check "the hold is taken" (Wait-For { (Get-Listeners).playerMuted -eq $true })
+  Write-Host "one device, two connections"
+  $ticket = New-Ticket 'verify-1' 'Verification device'
+  $first = Open-Stream "/stream?ticket=$ticket"
+  $second = Open-Stream "/stream?ticket=$ticket"
 
-  # Anything that moves the fader is an unmute, because the mute is the fader.
-  Get-Json "$FooJean/volume" @{} 'POST' (@{ value = $before.value } | ConvertTo-Json -Compress) | Out-Null
-  Check "the roster stops claiming the player" (Wait-For { (Get-Listeners).playerMuted -eq $false })
+  Check "both connections arrive" (Wait-For { (Get-Listeners).connections -eq 2 })
+  $roster = Get-Listeners
+  Check "they are one device, not two" ($roster.devices.Count -eq 1) "roster has $($roster.devices.Count)"
+  Check "the device kept the name it sent" ($roster.devices[0].name -eq 'Verification device') "got '$($roster.devices[0].name)'"
+  Check "the row counts both sockets" ($roster.devices[0].connections -eq 2)
+  Check "it has been listening for a moment" ($roster.devices[0].listeningFor -ge 0)
 
-  Start-Sleep -Seconds 2
-  $stillOn = Get-PlayerVolume
-  Check "it is not muted again while the listener stays" ($stillOn.isMuted -eq $false) "volume is $($stillOn.value)"
+  if ($holds) {
+    Write-Host ""
+    Write-Host "the hold"
+    Check "the roster says the player was silenced" (Wait-For { (Get-Listeners).playerMuted -eq $true })
 
-  Close-Stream $fourth
-  Start-Sleep -Seconds ($Linger + 3)
-  $afterwards = Get-PlayerVolume
-  Check "and nothing is restored that was already given back" ($afterwards.isMuted -eq $false)
+    # foobar2000 has no mute flag: mute is the volume at -100 dB, so the player's own state shows the hold.
+    $during = Get-PlayerVolume
+    Check "the player reports itself muted" ($during.isMuted -eq $true) "volume is $($during.value)"
+  }
+  if ($leftAlone) {
+    Write-Host ""
+    Write-Host "a mute somebody else made"
+    Check "the roster claims no hold over it" (-not (Wait-For { (Get-Listeners).playerMuted -eq $true } 3))
+    Check "the player is still muted" ((Get-PlayerVolume).isMuted -eq $true)
+  }
+
+  Write-Host ""
+  Write-Host "a reconnect is not a departure"
+  Close-Stream $first
+  Check "one connection is left" (Wait-For { (Get-Listeners).connections -eq 1 })
+  if ($holds) {
+    Check "the player is still held for the one that stayed" ((Get-Listeners).playerMuted -eq $true)
+  }
+
+  Close-Stream $second
+  Check "the roster empties" (Wait-For { (Get-Listeners).connections -eq 0 })
+
+  if ($holds) {
+    # The linger is what stops the player unmuting into the gap a client is about to reconnect across.
+    Check "the player is still held through the linger" ((Get-Listeners).playerMuted -eq $true)
+    Check "the player gets its sound back once the linger runs out" (Wait-For { (Get-Listeners).playerMuted -eq $false } ($Linger + 6))
+  }
+  if ($leftAlone) {
+    Check "the linger running out gives back nothing it did not take" (Test-StillMuted ($Linger + 3))
+  }
+
+  Write-Host ""
+  Write-Host "a device that says it meant to stop"
+  $ticket = New-Ticket 'verify-2' 'Verification device'
+  $third = Open-Stream "/stream?ticket=$ticket"
+  Check "it connects" (Wait-For { (Get-Listeners).connections -eq 1 })
+
+  Close-Stream $third
+  Check "it disconnects" (Wait-For { (Get-Listeners).connections -eq 0 })
+
+  if ($holds) {
+    Check "the hold is still on" ((Get-Listeners).playerMuted -eq $true)
+  }
+  if ($mutes) {
+    Get-Json "$FooJean/stream/leave" @{} 'POST' (@{ deviceId = 'verify-2' } | ConvertTo-Json -Compress) | Out-Null
+  }
+  if ($holds) {
+    # A handoff back to the player and a dropped connection close the same socket; only one of them should wait.
+    Check "saying so ends the linger at once" (Wait-For { (Get-Listeners).playerMuted -eq $false } 3)
+  }
+  if ($leftAlone) {
+    Check "saying so unmutes nothing" (Test-StillMuted 3)
+  }
 }
+finally {
+  foreach ($connection in @($open)) { Close-Stream $connection }
 
-Write-Host ""
-$after = Get-PlayerVolume
-Check "the player is left where it was found" ($after.isMuted -eq $false -and [Math]::Abs($after.value - $before.value) -lt 0.01) `
-  "was $($before.value) dB, now $($after.value) dB, muted: $($after.isMuted)"
+  Write-Host ""
+  $asFound = Wait-For {
+    $now = Get-PlayerVolume
+    $now.isMuted -eq $before.isMuted -and [Math]::Abs($now.value - $before.value) -lt 0.01
+  } ($Linger + 6)
+  $after = Get-PlayerVolume
+  Check "the player is left where it was found" $asFound `
+    "was $($before.value) dB, muted: $($before.isMuted); now $($after.value) dB, muted: $($after.isMuted)"
+}
 
 Write-Host ""
 if ($failures -eq 0) {

@@ -6,6 +6,7 @@
 #include "core/http_server.h"
 #include "core/reload.h"
 #include "support/fixtures.h"
+#include "third_party/json.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -95,6 +96,17 @@ int freePort();
 
 httplib::Result get(const TestServer& server, const std::string& path);
 httplib::Result post(const TestServer& server, const std::string& path, const std::string& body);
+
+// Any 2xx: a route that did what it was asked answers a document or a bare 204, and which one is
+// that route's own case to pin.
+bool accepted(const httplib::Result& response);
+
+// The sentence a refusal names, and nothing where the body names none. Read rather than parsed
+// straight, because an accepted request answers 204 with no body at all, and a case driving a
+// list of routes should fail on the status it asked about rather than on a parse.
+std::string errorOf(const httplib::Response& response);
+
+nlohmann::json capabilitiesOf(const TestServer& server);
 
 // cpp-httplib's client unwraps a gzip body before a caller ever sees it, so a test about the
 // wire has to turn that off.

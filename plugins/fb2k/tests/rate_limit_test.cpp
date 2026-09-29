@@ -25,8 +25,6 @@ steady_clock::time_point at(int64_t millis) {
 constexpr int kPollBurst = 30;
 constexpr auto kPollRefill = milliseconds(100);
 
-constexpr size_t kTrackedClients = 256;
-
 constexpr const char* kPhone = "192.168.1.20";
 constexpr const char* kLaptop = "192.168.1.21";
 
@@ -126,7 +124,7 @@ TEST_CASE("an address that will not stop asking keeps its empty bucket") {
     CHECK_FALSE(limiter.allow(kPhone, kStart));
 
     int allowed = 0;
-    for (size_t i = 0; i < 4 * kTrackedClients; i++) {
+    for (size_t i = 0; i < 4 * kMaxTrackedClients; i++) {
         const auto now = atMicros(static_cast<int64_t>(i) + 1);
         limiter.allow(address(i), now);
         if (limiter.allow(kPhone, now))
@@ -141,10 +139,10 @@ TEST_CASE("a bucket survives 255 other addresses arriving after it") {
 
     spendBurst(limiter, kPhone, kStart);
 
-    for (size_t i = 0; i + 1 < kTrackedClients; i++)
+    for (size_t i = 0; i + 1 < kMaxTrackedClients; i++)
         limiter.allow(address(i), atMicros(static_cast<int64_t>(i) + 1));
 
-    CHECK_FALSE(limiter.allow(kPhone, atMicros(kTrackedClients)));
+    CHECK_FALSE(limiter.allow(kPhone, atMicros(kMaxTrackedClients)));
 }
 
 TEST_CASE("the address that stopped asking is the one dropped when a 257th arrives") {
@@ -152,10 +150,10 @@ TEST_CASE("the address that stopped asking is the one dropped when a 257th arriv
 
     spendBurst(limiter, kPhone, kStart);
 
-    for (size_t i = 0; i < kTrackedClients; i++)
+    for (size_t i = 0; i < kMaxTrackedClients; i++)
         limiter.allow(address(i), atMicros(static_cast<int64_t>(i) + 1));
 
-    CHECK(limiter.allow(kPhone, atMicros(kTrackedClients + 1)));
+    CHECK(limiter.allow(kPhone, atMicros(kMaxTrackedClients + 1)));
 }
 
 TEST_CASE("connection threads asking for one address spend one bucket between them") {
@@ -176,6 +174,28 @@ TEST_CASE("connection threads asking for one address spend one bucket between th
         thread.join();
 
     CHECK(allowed.load() == kPollBurst);
+}
+
+// The table a refusal is remembered in is bounded like the buckets are, so a LAN full of
+// addresses costs a fixed amount of memory, and what that costs is stated here: an address
+// forgotten to make room is logged again the next time it is refused, once per
+// kMaxTrackedClients others, which is still a line per burst rather than one per request.
+TEST_CASE("an address forgotten to make room for kMaxTrackedClients others is logged afresh") {
+    OncePerBurst complaints;
+
+    CHECK(complaints.refused(kPhone));
+    CHECK_FALSE(complaints.refused(kPhone));
+
+    for (size_t i = 0; i + 1 < kMaxTrackedClients; i++)
+        complaints.refused(address(i));
+
+    CHECK_FALSE(complaints.refused(kPhone));
+
+    for (size_t i = 0; i < kMaxTrackedClients; i++)
+        complaints.refused(address(kMaxTrackedClients + i));
+
+    CHECK(complaints.refused(kPhone));
+    CHECK_FALSE(complaints.refused(kPhone));
 }
 
 TEST_CASE("the first refusal of a burst is worth a line, and the rest of the burst is not") {

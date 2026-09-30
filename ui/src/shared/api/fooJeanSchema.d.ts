@@ -165,6 +165,8 @@ export interface paths {
          *
          *     A query that does not parse is a `200` here, carrying `valid: false` and the player's own message. This is the route a client calls while somebody is typing, so an unreadable query is data rather than an error. Creating with the same query is a `400`.
          *
+         *     With `rows: true` the answer also names the matching tracks, as media library ordinals, counted in the generation `structure` names: the value `GET /state`'s `library.structure` reports. A client whose library snapshot is at another `structure` cannot read the ordinals against it, and asks again once it has caught up. A match the component's snapshot does not hold is left out, so `ordinals` can be shorter than `matches`. Without `rows` the answer carries neither field.
+         *
          *     A client SHOULD debounce this: it runs on foobar2000's main thread, and one request per keystroke is one main-thread callback per keystroke. A client SHOULD also read `libraryEnabled` — `matches: 0` with `libraryEnabled: false` means the install has no Media Library, and any autoplaylist created from the query will be empty.
          */
         post: operations["previewQuery"];
@@ -197,14 +199,16 @@ export interface paths {
          *
          *     The playlist itself is kept, and with it its id and its position in the player's list. Deleting and recreating changes both.
          *
-         *     Only playlists this component created can be updated, and that is a `403` whatever `writePlaylists` says. The same status also answers when `writePlaylists` is `false`, checked first.
+         *     Any autoplaylist can be updated, whoever made it. A playlist that is not an autoplaylist is a `409`, since taking it over would replace its rows with a query's results. A `403` answers when `writePlaylists` is `false`, checked first, and for this component's own scratch playlist.
+         *
+         *     Only an autoplaylist this component made is recorded: its `managed` carries the new specification, and it counts towards `maxAutoPlaylists`. Any other keeps `managed: null` after the update and spends nothing of the limit. A `key` on one of those is a `400`, since a key is how a client recognises a playlist this component made; an empty `key` is no key.
          */
         post: operations["updateAutoPlaylist"];
         /**
-         * Delete an autoplaylist this component created.
-         * @description Removes the playlist and the autoplaylist client with it.
+         * Delete an autoplaylist.
+         * @description Removes the playlist and the autoplaylist client with it. Any autoplaylist can be deleted, whoever made it.
          *
-         *     Only playlists this component created. Anything else is a `403`, including an autoplaylist made in foobar2000 itself, whatever `writePlaylists` says. The same status also answers when `writePlaylists` is `false`, checked first. Any other playlist is deleted through `DELETE /playlists/{id}`.
+         *     A playlist that is not an autoplaylist is a `409`; it is deleted through `DELETE /playlists/{id}`. Another component's lock against removing the playlist is a `409` too, the one `DELETE /playlists/{id}` answers. A `403` answers when `writePlaylists` is `false`, checked first, and for this component's own scratch playlist.
          */
         delete: operations["removeAutoPlaylist"];
         options?: never;
@@ -278,7 +282,7 @@ export interface paths {
         post: operations["renamePlaylist"];
         /**
          * Delete a playlist.
-         * @description Any playlist, unlike `DELETE /autoplaylists/{id}`, which touches only the records this component keeps. The rows go with it; the files do not.
+         * @description Any playlist, an autoplaylist included. `DELETE /autoplaylists/{id}` refuses a plain playlist. The rows go with it; the files do not.
          *
          *     **The play queue is not touched, and a client MUST NOT empty it first.** foobar2000 keeps a queued entry whose whole playlist is deleted rather than dropping it, and such an entry still plays when it reaches the head: plugins/fb2k/ARCHITECTURE.md, *Facts about the player*, has what the player does and what reading one carelessly costs. `GET /queue` answers those entries from their handles, so the queue a client draws afterwards is the queue the player will play.
          *
@@ -456,6 +460,72 @@ export interface paths {
          *     Refused with `403` under the read-only-playlists setting, with `403` whatever that setting says where the `id` is one of this component's own playlists, and with the same `409` where another component has locked the playlist against having rows removed. The two share a status and carry different `error` strings, because one is answered by reading the playlist again and the other by releasing the lock at the player.
          */
         post: operations["removePlaylistItems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists/{id}/items/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The playlist whose rows are moved, by the `id` a `PlaylistAnnotation` carries: foobar2000's own playlist GUID, lower case, dashed, no braces.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move rows of a playlist to a new place, named by position.
+         * @description The set is a removal's, read as row positions: `runs` or `ordinals`, exactly one, and never a `bitset`. `structure` is the playlist's own generation: the one `GET /playlists` reports for it, or the one a page, a delta, a copy or an earlier edit answered.
+         *
+         *     The named rows are taken out and put back together, in the order they had in the playlist, so the first of them lands at `to`. `to` counts positions in the playlist with those rows taken out, as `POST /queue/move` does for one entry. It is at most the playlist's length less the number of rows moved, and that value is the end. A set that is not contiguous lands contiguous. A move that leaves every row where it was is answered like any other.
+         *
+         *     **A `structure` that is no longer the playlist's current one is a `409` and nothing is moved.** The check runs before a row is touched. Read the playlist's rows again from the generation `GET /playlists` now reports and plan the move again.
+         *
+         *     What comes back is the generation the playlist now stands at, so a client that holds the rows re-keys them rather than reading the playlist again.
+         *
+         *     Refused with `403` under the read-only-playlists setting, with `403` whatever that setting says where the `id` is one of this component's own playlists, and with the same `409` where another component has locked the playlist against a reorder. The two share a status and carry different `error` strings, because one is answered by reading the playlist again and the other by releasing the lock at the player.
+         */
+        post: operations["movePlaylistItems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists/{id}/items/sort": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The playlist whose rows are sorted, by the `id` a `PlaylistAnnotation` carries: foobar2000's own playlist GUID, lower case, dashed, no braces.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sort a playlist by a title-formatting pattern.
+         * @description Sorts the whole playlist, whatever is selected in it, ascending by the value `pattern` formats for each row. `pattern` is foobar2000 title formatting, so a sort by several fields is one pattern joining them, as in `%album artist%|%date%|%album%`. Rows whose values compare equal keep the order they had.
+         *
+         *     `structure` is the playlist's own generation, as for `POST /playlists/{id}/items/move`, and a value that is no longer current is a `409` with nothing sorted.
+         *
+         *     What comes back is the generation the playlist now stands at and `order`, one entry per row: `order[n]` is the position the row now at position `n` held before the sort. A client holding the rows re-keys them with it rather than reading the playlist again.
+         *
+         *     Refused as a move is: `403` under the read-only-playlists setting and for this component's own playlists, and `409` for a moved `structure` or a playlist another component has locked against a reorder.
+         */
+        post: operations["sortPlaylistItems"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1605,7 +1675,7 @@ export interface components {
         ManagedAutoPlaylist: {
             /** @description Whatever the client sent, handed back verbatim. Empty when none was given. */
             key: string;
-            /** @description The query the playlist was created with. Editing the query in foobar2000's own dialog makes this stale, and the component cannot detect that: the SDK offers no way to read an autoplaylist's current query back. */
+            /** @description The query last sent to create or update the playlist. Editing the query in foobar2000's own dialog makes this stale, and the component cannot detect that: the SDK offers no way to read an autoplaylist's current query back. */
             query: string;
             sort: string;
             forceSort: boolean;
@@ -1690,6 +1760,34 @@ export interface components {
             runs?: components["schemas"]["Runs"];
             bitset?: components["schemas"]["Bitset"];
             ordinals?: components["schemas"]["Ordinals"];
+        };
+        MovePlaylistRowsRequest: {
+            /**
+             * @description The playlist's own `structure` generation, the one its positions were read at, as `RemovePlaylistRowsRequest.structure` describes it. A value other than the playlist's current one is a `409` and nothing is moved.
+             * @example 9204739866101318923
+             */
+            structure: string;
+            /** @description Row positions as ranges. Exactly one of `runs` and `ordinals` is sent. */
+            runs?: components["schemas"]["Runs"];
+            /** @description Row positions as a plain list. Exactly one of `runs` and `ordinals` is sent. The rows keep the order they have in the playlist, not the order listed. */
+            ordinals?: components["schemas"]["Ordinals"];
+            /**
+             * @description Where the first moved row lands: its position once the moved rows are taken out and put back together, counted in the playlist without them. At most the playlist's length less the rows moved; a larger value is a `400`.
+             * @example 0
+             */
+            to: number;
+        };
+        SortPlaylistRowsRequest: {
+            /**
+             * @description The playlist's own `structure` generation, as `RemovePlaylistRowsRequest.structure` describes it. A value other than the playlist's current one is a `409` and nothing is sorted.
+             * @example 9204739866101318923
+             */
+            structure: string;
+            /**
+             * @description A foobar2000 title-formatting pattern. Every row is formatted with it and the playlist is put in ascending order of the results.
+             * @example %album artist%|%date%|%album%|%discnumber%|%tracknumber%
+             */
+            pattern: string;
         };
         RenamePlaylistRequest: {
             /** @description What to title the playlist, exactly as it will read in foobar2000's own tabs. No control characters, which would be line breaks in a playlist tab. */
@@ -1803,6 +1901,34 @@ export interface components {
              */
             structure: string;
         };
+        MovedRows: {
+            /**
+             * @description The playlist's `structure` generation once the rows have moved. A client holding the rows re-keys them to this rather than reading the playlist again.
+             *
+             *     A string of decimal digits, for the reason `PlaylistAnnotation.structure` gives.
+             * @example 9204739866101318924
+             */
+            structure: string;
+        };
+        SortedRows: {
+            /**
+             * @description The playlist's `structure` generation once it is sorted.
+             *
+             *     A string of decimal digits, for the reason `PlaylistAnnotation.structure` gives.
+             * @example 9204739866101318924
+             */
+            structure: string;
+            /**
+             * @description One entry per row, in the playlist's new order: `order[n]` is the position the row now at position `n` held before the sort. A client re-keys the rows it holds with it.
+             * @example [
+             *       3,
+             *       0,
+             *       1,
+             *       2
+             *     ]
+             */
+            order: number[];
+        };
         QueryPreview: {
             /** @description Whether foobar2000 could read the query. Check this before `matches`. */
             valid: boolean;
@@ -1812,6 +1938,20 @@ export interface components {
             matches: number;
             /** @description Whether this install has a Media Library configured. Autoplaylists filter the Media Library and nothing else, so `false` means every autoplaylist is empty whatever the query. A client SHOULD say so before somebody creates one, which is why this is reported here rather than on `/capabilities`. */
             libraryEnabled: boolean;
+            /**
+             * @description The media library generation `ordinals` is counted in, the value `GET /state`'s `library.structure` reports, and a number for the reason `library.structure` is. Present only where the request sent `rows: true` and `valid` is true, together with `ordinals`, and absent otherwise.
+             * @example 41
+             */
+            structure?: number;
+            /**
+             * @description The matching tracks as media library ordinals in generation `structure`, ascending. Present only where the request sent `rows: true` and `valid` is true, and absent otherwise. A match the component's snapshot does not hold is left out, so this can be shorter than `matches`.
+             * @example [
+             *       12,
+             *       13,
+             *       407
+             *     ]
+             */
+            ordinals?: number[];
         };
         /** @description A refusal the client can act on. The request was understood and declined before the player was involved. */
         PlaylistRefusal: {
@@ -1823,8 +1963,8 @@ export interface components {
         /** @description The request was acceptable and the attempt failed. */
         PlaylistFailed: {
             /** @enum {string} */
-            error: "foobar2000 could not read that query" | "no such playlist" | "that position is past the end" | "the media library holds more than one track at that address" | "that playlist was not created by foo_jean" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the queue changed since that revision; read it again" | "the playlist's rows were added, removed or reordered; read them again" | "that revision is not one this playlist can catch up from; read its rows again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them" | "another component has locked that playlist against that edit" | "that playlist is foo_jean's own; address it by its role rather than by its id" | "this install has playback control turned off; turn on controlPlayback in config.json to allow it" | "this install has output device changes turned off; turn on changeOutput in config.json to allow them" | "the player does not list that output device; read the outputs again";
-            /** @description Empty except for a query foobar2000 could not read, where it carries the player's own parse error. That message describes text the client sent rather than anything on the player's disk, so it is safe to show. */
+            error: "foobar2000 could not read that query" | "no such playlist" | "that position is past the end" | "the media library holds more than one track at that address" | "that playlist is not an autoplaylist" | "unacceptable key" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the queue changed since that revision; read it again" | "the playlist's rows were added, removed or reordered; read them again" | "that revision is not one this playlist can catch up from; read its rows again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them" | "another component has locked that playlist against that edit" | "that playlist is foo_jean's own; address it by its role rather than by its id" | "this install has playback control turned off; turn on controlPlayback in config.json to allow it" | "this install has output device changes turned off; turn on changeOutput in config.json to allow them" | "the player does not list that output device; read the outputs again";
+            /** @description Empty except for a query foobar2000 could not read, where it carries the player's own parse error, and for a key refused on an autoplaylist this component did not make, where it says what a key names. Both describe text the client sent rather than anything on the player's disk, so they are safe to show. */
             detail: string;
         };
         /**
@@ -2293,19 +2433,6 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistRefusal"];
             };
         };
-        /**
-         * @description The target was not created by this component: `POST /autoplaylists` is the only route that makes a playlist these two can touch, so anything else, including an autoplaylist made in foobar2000 itself, is refused here whatever `writePlaylists` says. There is no remedy: a client asking either route to convert a hand-built playlist would have `beginUpdate` replace the user's own rows with a query's results.
-         *
-         *     The same status also answers when `writePlaylists` is `false` in `config.json`, checked before the target is looked at. A client tells the two apart by `error`, which the examples below give both of.
-         */
-        NotOurs: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["PlaylistFailed"];
-            };
-        };
         /** @description This install has `writePlaylists` set to `false` in `config.json`. That is a player owner's own choice, made to keep every playlist but this component's own scratch playlist read-only; setting it back to `true` is what grants the write. */
         WritesDisabled: {
             headers: {
@@ -2377,6 +2504,15 @@ export interface components {
         };
         /** @description Another playlist already has that `key`, or this install is at `maxAutoPlaylists`. */
         PlaylistConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /** @description Nothing was changed, for one of three reasons the `error` string tells apart. The target is not an autoplaylist: taking a plain playlist over would replace its rows with a query's results, and `DELETE /playlists/{id}` is how a plain playlist goes. A playlist that carries this component's record is not refused, even where its client was lost. On `POST`, another playlist may already have the `key`. On `DELETE`, another component may have locked the playlist against removal. */
+        AutoPlaylistConflict: {
             headers: {
                 [name: string]: unknown;
             };
@@ -2495,6 +2631,15 @@ export interface components {
         };
         /** @description Some other component has locked the playlist against this edit, and foobar2000 refuses it on that component's behalf. Nothing a client sends changes that: the lock is released at the player, by whatever put it there. A playlist reports its locks per edit, so one that refuses a rename may still take rows. */
         PlaylistLocked: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"];
+            };
+        };
+        /** @description Either the `structure` the request named is no longer the playlist's current one, or another component has locked the playlist against having its rows reordered. The `error` string tells them apart, and nothing is changed in either case. */
+        PlaylistRowsMovedOrLocked: {
             headers: {
                 [name: string]: unknown;
             };
@@ -3136,6 +3281,11 @@ export interface operations {
                 "application/json": {
                     /** @description foobar2000 query syntax. MUST NOT be empty: the player reads an empty query as matching everything. */
                     query: string;
+                    /**
+                     * @description Also answer which tracks match: `structure` and `ordinals` on the answer. Without it the answer carries neither. The body grows with the library for a broad query, at up to a few bytes per matching track, so ask for it only when the rows are to be drawn.
+                     * @default false
+                     */
+                    rows?: boolean;
                 };
             };
         };
@@ -3184,10 +3334,18 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistAnnotation"];
                 };
             };
-            400: components["responses"]["PlaylistRefused"];
-            403: components["responses"]["NotOurs"];
+            /** @description Declined before the player was involved, as any autoplaylist route does, or a `key` sent for an autoplaylist this component did not make, which only the player can tell. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
+                };
+            };
+            403: components["responses"]["OwnPlaylistAddressed"];
             404: components["responses"]["NoSuchPlaylist"];
-            409: components["responses"]["PlaylistConflict"];
+            409: components["responses"]["AutoPlaylistConflict"];
             415: components["responses"]["JsonRequired"];
             429: components["responses"]["TooManyRequests"];
             /** @description The player refused. If the new query compiles but the core then declines to attach it, the playlist is left as an ordinary playlist that this component still recognises as its own; sending the request again with a query the player accepts restores it. */
@@ -3232,8 +3390,9 @@ export interface operations {
                 };
             };
             400: components["responses"]["PlaylistRefused"];
-            403: components["responses"]["NotOurs"];
+            403: components["responses"]["OwnPlaylistAddressed"];
             404: components["responses"]["NoSuchPlaylist"];
+            409: components["responses"]["AutoPlaylistConflict"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaylistUnavailable"];
@@ -3696,6 +3855,102 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistFailed"];
                 };
             };
+            413: components["responses"]["BodyTooLarge"];
+            415: components["responses"]["JsonRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaylistRowsUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    movePlaylistItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The playlist whose rows are moved, by the `id` a `PlaylistAnnotation` carries: foobar2000's own playlist GUID, lower case, dashed, no braces.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MovePlaylistRowsRequest"];
+            };
+        };
+        responses: {
+            /** @description Moved. `structure` is the generation the playlist now stands at. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovedRows"];
+                };
+            };
+            /** @description The request was understood and declined. Before the player is asked: a body that is not JSON, a `structure` missing or not a string of decimal digits inside 64 bits, a set that is not exactly one of `runs` and `ordinals`, a `to` missing or not a non-negative integer, or a field the schema does not declare. Once the player has answered, the playlist's real length decides two more: a set naming a position past its end, and a `to` greater than its length less the rows moved. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
+                };
+            };
+            403: components["responses"]["OwnPlaylistAddressed"];
+            404: components["responses"]["NoSuchPlaylist"];
+            409: components["responses"]["PlaylistRowsMovedOrLocked"];
+            413: components["responses"]["BodyTooLarge"];
+            415: components["responses"]["JsonRequired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaylistRowsUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    sortPlaylistItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The playlist whose rows are sorted, by the `id` a `PlaylistAnnotation` carries: foobar2000's own playlist GUID, lower case, dashed, no braces.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SortPlaylistRowsRequest"];
+            };
+        };
+        responses: {
+            /** @description Sorted. `structure` is the generation the playlist now stands at. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SortedRows"];
+                };
+            };
+            /** @description The request was understood and declined before the player was asked: a body that is not JSON, a `structure` missing or not a string of decimal digits inside 64 bits, a `pattern` missing, empty or longer than 4096 characters, or a field the schema does not declare. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"];
+                };
+            };
+            403: components["responses"]["OwnPlaylistAddressed"];
+            404: components["responses"]["NoSuchPlaylist"];
+            409: components["responses"]["PlaylistRowsMovedOrLocked"];
             413: components["responses"]["BodyTooLarge"];
             415: components["responses"]["JsonRequired"];
             429: components["responses"]["TooManyRequests"];

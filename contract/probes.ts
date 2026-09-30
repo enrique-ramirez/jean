@@ -345,6 +345,20 @@ export const drives: Drive[] = [
 		}),
 	},
 	{
+		id: "movePlaylistItems",
+		probe: (operation) => ({
+			pathParams: { id: kUnissuedPlaylistId },
+			body: example(operation, "runs"),
+		}),
+	},
+	{
+		id: "sortPlaylistItems",
+		probe: (operation) => ({
+			pathParams: { id: kUnissuedPlaylistId },
+			body: example(operation, "default"),
+		}),
+	},
+	{
 		id: "issueStreamTicket",
 		probe: (_, context) => ({
 			body: { deviceId: context.deviceId, name: "contract check" },

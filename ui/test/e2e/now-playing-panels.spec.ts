@@ -41,6 +41,36 @@ test.describe("which panel opens", () => {
 	});
 });
 
+test.describe("a panel chosen by hand", () => {
+	test.use({
+		retagged: {
+			...TAGGED.retagged,
+			Fizz: { ...TAGGED.retagged.Fizz, "%publisher%": "Discos Dos" },
+		},
+	});
+
+	test.skip(
+		({ isMobile }) => isMobile,
+		"a phone opens its panels from the Lyrics button, and a track change picks none",
+	);
+
+	test("stays open when the next track has lyrics", async ({
+		page,
+		player,
+	}) => {
+		await playRow(page, 0);
+		const panel = nowPlayingScreen(page);
+		await expectPanelOpen(panel, "Lyrics");
+
+		await panelTab(panel, "Details").click();
+		await expectPanelOpen(panel, "Details");
+
+		player.next();
+		await expect(panel).toContainText("Discos Dos");
+		await expectPanelOpen(panel, "Details");
+	});
+});
+
 test.describe("opening a panel from the keyboard", () => {
 	test.use(TAGGED);
 

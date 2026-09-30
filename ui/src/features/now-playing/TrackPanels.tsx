@@ -60,13 +60,17 @@ export function TrackPanels({
 		enabled: !(tab === "lyrics" && lyrics.kind === "synced"),
 	});
 
+	const preferred = useRef(chosen);
+
 	// biome-ignore lint/correctness/useExhaustiveDependencies: the track settling fires this, hasLyrics is only read
 	useEffect(() => {
 		if (variant !== "gatefold" || !trackKey) return;
-		onSelectTab(hasLyrics ? "lyrics" : "details");
+		const wanted = preferred.current ?? "lyrics";
+		onSelectTab(wanted === "lyrics" && !hasLyrics ? "details" : wanted);
 	}, [variant, trackKey, onSelectTab]);
 
 	const select = (next: PanelTab) => {
+		preferred.current = next;
 		const from = TABS.findIndex((entry) => entry.id === tab);
 		const to = TABS.findIndex((entry) => entry.id === next);
 		setDirection(to > from ? 1 : -1);

@@ -88,6 +88,18 @@ std::vector<Edit> sharedBudgetEdits(uint64_t structure) {
                  server, playlist + "/items/remove",
                  json{{"structure", "1"}, {"runs", json::array({json::array({0, 1})})}}.dump());
          }},
+        {"moving rows within a playlist",
+         [playlist](const TestServer& server) {
+             return post(
+                 server, playlist + "/items/move",
+                 json{{"structure", "1"}, {"runs", json::array({json::array({0, 1})})}, {"to", 1}}
+                     .dump());
+         }},
+        {"sorting a playlist",
+         [playlist](const TestServer& server) {
+             return post(server, playlist + "/items/sort",
+                         json{{"structure", "1"}, {"pattern", "%title%"}}.dump());
+         }},
         {"filling the scratch",
          [ownFill](const TestServer& server) {
              return post(server, "/api/playlists/own/scratch/items", ownFill.dump());

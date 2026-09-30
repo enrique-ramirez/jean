@@ -18,8 +18,10 @@ std::string describe(PlayerOutcome outcome) {
             return "that position is past the end";
         case PlayerOutcome::ambiguousAddress:
             return describe(TagWriteOutcome::ambiguousAddress);
-        case PlayerOutcome::notOurs:
-            return "that playlist was not created by foo_jean";
+        case PlayerOutcome::notAnAutoPlaylist:
+            return "that playlist is not an autoplaylist";
+        case PlayerOutcome::keyRefused:
+            return describe(PlaylistRefusal::badKey);
         case PlayerOutcome::keyInUse:
             return "another playlist already has that key";
         case PlayerOutcome::tooMany:
@@ -173,8 +175,8 @@ int httpStatusFor(PlayerOutcome outcome) {
             return 200;
         case PlayerOutcome::queryInvalid:
         case PlayerOutcome::positionPastEnd:
+        case PlayerOutcome::keyRefused:
             return 400;
-        case PlayerOutcome::notOurs:
         case PlayerOutcome::writesDisabled:
         case PlayerOutcome::ownPlaylist:
         case PlayerOutcome::playbackDisabled:
@@ -183,6 +185,7 @@ int httpStatusFor(PlayerOutcome outcome) {
         case PlayerOutcome::noSuchPlaylist:
             return 404;
         case PlayerOutcome::ambiguousAddress:
+        case PlayerOutcome::notAnAutoPlaylist:
         case PlayerOutcome::keyInUse:
         case PlayerOutcome::tooMany:
         case PlayerOutcome::structureMoved:
@@ -302,7 +305,9 @@ std::string errorDocument(const std::string& message) {
 }
 
 std::string failureDocument(PlayerOutcome outcome, const std::string& detail) {
-    return json{{"error", describe(outcome)}, {"detail", detail}}.dump();
+    const std::string said =
+        detail.empty() && outcome == PlayerOutcome::keyRefused ? kKeyRefusedDetail : detail;
+    return json{{"error", describe(outcome)}, {"detail", said}}.dump();
 }
 
 std::string tagFailureDocument(TagWriteOutcome outcome) {

@@ -20,6 +20,10 @@ PlaylistRowCopier makePlaylistRowCopier(MainThreadQueue& mainThread,
                                         const PlaylistVersions& versions);
 PlaylistRowRemover makePlaylistRowRemover(MainThreadQueue& mainThread,
                                           const PlaylistVersions& versions);
+PlaylistRowMover makePlaylistRowMover(MainThreadQueue& mainThread,
+                                      const PlaylistVersions& versions);
+PlaylistRowSorter makePlaylistRowSorter(MainThreadQueue& mainThread,
+                                        const PlaylistVersions& versions);
 PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver resolveOrdinals,
                                   const PlaylistVersions& versions);
 OwnPlaylistResolver makeOwnPlaylistResolver(MainThreadQueue& mainThread,

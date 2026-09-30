@@ -15,6 +15,8 @@ constexpr char kPlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items)";
 constexpr char kPlaylistItemChanges[] = R"(/api/playlists/([0-9a-f-]{36})/items/changes)";
 constexpr char kCopyPlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items/copy)";
 constexpr char kRemovePlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items/remove)";
+constexpr char kMovePlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items/move)";
+constexpr char kSortPlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items/sort)";
 
 // The same gate as columnsDeclared, with the revision the client is catching up from. Unlike
 // GET /api/library/changes, where a present but empty `since` is read as revision zero, a
@@ -239,6 +241,68 @@ void PlaylistRowRoutes::addTo(httplib::Server& server) {
         }
 
         respond(res, 200, removedRowsDocument(removed.structure));
+    });
+
+    server.Post(kMovePlaylistItems, [this](const httplib::Request& req, httplib::Response& res) {
+        if (playlistWritesRefused(*settings_.current(), res))
+            return;
+
+        const auto id = req.matches[1].str();
+        if (playlistIdRefused(id, res))
+            return;
+
+        const auto request = parseMoveRows(parseJsonObject(req.body));
+        if (!request.ok()) {
+            respondRefusal(res, request.refusal);
+            return;
+        }
+
+        if (!playlists_.moveRows) {
+            respondUnavailable(res, kNoPlaylistRows);
+            return;
+        }
+
+        if (changingTooFast(changes_, res))
+            return;
+
+        const auto moved = playlists_.moveRows(id, request.structure, request.ordinals, request.to);
+        if (moved.outcome != PlayerOutcome::done) {
+            respondOutcome(res, moved.outcome);
+            return;
+        }
+
+        respond(res, 200, movedRowsDocument(moved.structure));
+    });
+
+    server.Post(kSortPlaylistItems, [this](const httplib::Request& req, httplib::Response& res) {
+        if (playlistWritesRefused(*settings_.current(), res))
+            return;
+
+        const auto id = req.matches[1].str();
+        if (playlistIdRefused(id, res))
+            return;
+
+        const auto request = parseSortRows(parseJsonObject(req.body));
+        if (!request.ok()) {
+            respondRefusal(res, request.refusal);
+            return;
+        }
+
+        if (!playlists_.sortRows) {
+            respondUnavailable(res, kNoPlaylistRows);
+            return;
+        }
+
+        if (changingTooFast(changes_, res))
+            return;
+
+        const auto sorted = playlists_.sortRows(id, request.structure, request.pattern);
+        if (sorted.outcome != PlayerOutcome::done) {
+            respondOutcome(res, sorted.outcome);
+            return;
+        }
+
+        respond(res, 200, sortedRowsDocument(sorted.structure, sorted.order));
     });
 }
 

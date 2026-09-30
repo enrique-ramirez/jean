@@ -274,6 +274,14 @@ std::string removedRowsDocument(uint64_t structure) {
     return json{{"structure", digitsOf(structure)}}.dump();
 }
 
+std::string movedRowsDocument(uint64_t structure) {
+    return json{{"structure", digitsOf(structure)}}.dump();
+}
+
+std::string sortedRowsDocument(uint64_t structure, const std::vector<uint32_t>& order) {
+    return json{{"structure", digitsOf(structure)}, {"order", order}}.dump();
+}
+
 std::string playlistRowsDocument(const PlaylistRowsRead& read) {
     json items = json::array();
     std::transform(read.rows.begin(), read.rows.end(), std::back_inserter(items), playlistRowOf);
@@ -331,11 +339,15 @@ std::string queueDocument(const QueueRead& read) {
 }
 
 std::string queryPreviewDocument(const PreviewResult& preview) {
-    return json{{"valid", preview.valid},
-                {"error", preview.error},
-                {"matches", preview.matches},
-                {"libraryEnabled", preview.libraryEnabled}}
-        .dump();
+    json body{{"valid", preview.valid},
+              {"error", preview.error},
+              {"matches", preview.matches},
+              {"libraryEnabled", preview.libraryEnabled}};
+    if (preview.hasRows) {
+        body["structure"] = preview.structure;
+        body["ordinals"] = preview.ordinals;
+    }
+    return body.dump();
 }
 
 std::string libraryDocument(const Library::State& state) {

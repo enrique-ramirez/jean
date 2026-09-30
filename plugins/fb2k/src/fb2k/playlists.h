@@ -6,6 +6,7 @@
 #include <foobar2000/SDK/foobar2000.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -34,6 +35,11 @@ std::optional<PlayingLocation> queuedLocationOf(const t_playback_queue_item& ite
 PlaylistAnnotation annotate(size_t index, const PlaylistVersions& versions);
 
 std::vector<PlaylistAnnotation> everyPlaylist(const PlaylistVersions& versions);
+
+// foobar2000 holds a playlist's lock as a mask of the edits it refuses (filter_add,
+// filter_remove, filter_rename, filter_remove_playlist), so it is read rather than inferred from
+// a failed call.
+bool lockRefuses(size_t index, uint32_t filter);
 
 // `kind` names the playlist in the log line.
 PlaylistResult removePlaylistAt(size_t index, const std::string& kind);

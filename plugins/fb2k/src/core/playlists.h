@@ -155,6 +155,8 @@ struct AutoPlaylistRequest {
     std::string detail;
     AutoPlaylistSpec spec;
 
+    bool rows = false;
+
     bool ok() const { return refusal == PlaylistRefusal::none; }
 };
 
@@ -188,6 +190,10 @@ struct PreviewResult {
     // none configured, so a library that isn't there and a query that matches nothing are
     // worth telling apart.
     bool libraryEnabled = false;
+
+    bool hasRows = false;
+    uint64_t structure = 0;
+    std::vector<uint32_t> ordinals;
 };
 
 PreviewResult previewFailure(PlayerOutcome outcome);
@@ -196,6 +202,10 @@ PreviewResult previewFailure(PlayerOutcome outcome);
 // the title a fill hands to the component's own scratch playlist. One number, so the two
 // routes that both accept a title cannot drift apart on how long one may be.
 constexpr size_t kMaxTitle = 256;
+
+// The longest a foobar2000 title-formatting text may be: an autoplaylist's query and sort, and a
+// row sort's pattern.
+constexpr size_t kMaxQuery = 4096;
 
 // Never throws: a malformed body is routine for the HTTP handler that calls these. Creating
 // requires a title; updating leaves the name alone when none is given, so changing a query
@@ -207,6 +217,13 @@ AutoPlaylistRequest parseQueryPreview(const std::string& body);
 // pfc::GUID_from_text reads unknown characters as zero and never reports failure, so
 // garbage would become a well-formed GUID.
 bool isPlaylistId(const std::string& id);
+
+// The order a move leaves `count` rows in, as the old position of the row now at each new one.
+// The distinct `positions` are taken out, put back together in the order the playlist held them
+// (however they were named), and the first lands at `to`, counted with them taken out. nullopt
+// for a position at or past `count` or a `to` past `count` less the rows moved.
+std::optional<std::vector<uint32_t>> moveOrder(uint32_t count, std::vector<uint32_t> positions,
+                                               uint32_t to);
 
 // nullopt once the entry's row or whole playlist is gone, never the infinite index left in
 // its place, for the reason ARCHITECTURE.md, *Facts about the player*, gives.

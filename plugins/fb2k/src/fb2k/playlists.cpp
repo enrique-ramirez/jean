@@ -66,6 +66,10 @@ std::vector<PlaylistAnnotation> everyPlaylist(const PlaylistVersions& versions) 
     return playlists;
 }
 
+bool lockRefuses(size_t index, uint32_t filter) {
+    return (playlist_manager::get()->playlist_lock_get_filter_mask(index) & filter) != 0;
+}
+
 PlaylistResult removePlaylistAt(size_t index, const std::string& kind) {
     const auto title = playlistTitle(index);
 

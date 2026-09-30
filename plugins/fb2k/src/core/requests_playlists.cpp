@@ -19,8 +19,19 @@ constexpr char kTitleField[] = "title";
 constexpr char kSourceField[] = "source";
 constexpr std::array<const char*, 2> kSourceRowsFields{kSourceField, "runs"};
 
+constexpr std::array<const char*, 4> kMoveRowsFields{"structure", "runs", "ordinals", "to"};
+constexpr std::array<const char*, 2> kSortRowsFields{"structure", "pattern"};
+
 constexpr char kIndexField[] = "index";
 constexpr std::array<const char*, 1> kMovePlaylistFields{kIndexField};
+
+// A playlist's own generation travels as a string of decimal digits, since it can pass what a
+// JSON number carries exactly.
+bool readStructureDigits(const nlohmann::json& root, uint64_t& structure) {
+    const auto found = root.find("structure");
+    return found != root.end() && found->is_string() &&
+           readDecimal(found->get<std::string>(), structure);
+}
 
 }  // namespace
 
@@ -98,10 +109,8 @@ RemoveRowsRequest parseRemoveRows(const JsonObject& body) {
     if (!declaresOnly(root, kFillFields))
         return refused<RemoveRowsRequest>(PlaylistRefusal::malformedBody);
 
-    const auto structure = root.find("structure");
     RemoveRowsRequest request;
-    if (structure == root.end() || !structure->is_string() ||
-        !readDecimal(structure->get<std::string>(), request.structure))
+    if (!readStructureDigits(root, request.structure))
         return refused<RemoveRowsRequest>(PlaylistRefusal::malformedBody);
 
     if (!namesOneSelectionForm(root))
@@ -112,6 +121,56 @@ RemoveRowsRequest parseRemoveRows(const JsonObject& body) {
         return refused<RemoveRowsRequest>(PlaylistRefusal::badOrdinals);
 
     request.ordinals = selection.ordinals;
+    return request;
+}
+
+MoveRowsRequest parseMoveRows(const JsonObject& body) {
+    if (!body.ok())
+        return refused<MoveRowsRequest>(PlaylistRefusal::malformedBody);
+
+    const auto& root = body.value;
+
+    if (!declaresOnly(root, kMoveRowsFields))
+        return refused<MoveRowsRequest>(PlaylistRefusal::malformedBody);
+
+    MoveRowsRequest request;
+    if (!readStructureDigits(root, request.structure))
+        return refused<MoveRowsRequest>(PlaylistRefusal::malformedBody);
+
+    if (!namesOneSelectionForm(root))
+        return refused<MoveRowsRequest>(PlaylistRefusal::badOrdinals);
+
+    const auto to = root.find("to");
+    if (to == root.end() || !to->is_number_unsigned() || !fitsUint32(to->get<uint64_t>()))
+        return refused<MoveRowsRequest>(PlaylistRefusal::badOrdinals);
+
+    const auto selection = decodeSelection(root, kMaxPlaylistPositionRows);
+    if (!selection.ok())
+        return refused<MoveRowsRequest>(PlaylistRefusal::badOrdinals);
+
+    request.ordinals = selection.ordinals;
+    request.to = static_cast<uint32_t>(to->get<uint64_t>());
+    return request;
+}
+
+SortRowsRequest parseSortRows(const JsonObject& body) {
+    if (!body.ok())
+        return refused<SortRowsRequest>(PlaylistRefusal::malformedBody);
+
+    const auto& root = body.value;
+
+    if (!declaresOnly(root, kSortRowsFields))
+        return refused<SortRowsRequest>(PlaylistRefusal::malformedBody);
+
+    SortRowsRequest request;
+    if (!readStructureDigits(root, request.structure))
+        return refused<SortRowsRequest>(PlaylistRefusal::malformedBody);
+
+    const auto pattern = readText(root, "pattern", kMaxQuery, Need::required);
+    if (!pattern.ok())
+        return refused<SortRowsRequest>(PlaylistRefusal::badSort);
+
+    request.pattern = pattern.value;
     return request;
 }
 

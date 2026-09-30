@@ -4,12 +4,15 @@
 
 #include "core/ask_player.h"
 #include "core/log.h"
+#include "core/refusal_order.h"
 #include "fb2k/playlist_properties.h"
 #include "fb2k/playlists.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
 
 namespace jean {
 
@@ -30,19 +33,25 @@ uint32_t flagsFor(const AutoPlaylistSpec& spec) {
     return spec.forceSort ? autoplaylist_flag_sort : 0;
 }
 
-// The playlist this component may change, or the outcome saying why it may not.
-struct OurPlaylist {
+struct AutoPlaylistTarget {
     size_t index = pfc::infinite_size;
     PlayerOutcome outcome = PlayerOutcome::done;
 };
 
-OurPlaylist ourPlaylist(const std::string& id) {
+AutoPlaylistTarget findAutoPlaylist(const std::string& id) {
     const auto index = findPlaylist(id);
-    if (index == pfc::infinite_size)
-        return {index, PlayerOutcome::noSuchPlaylist};
 
-    if (!ours(index))
-        return {index, PlayerOutcome::notOurs};
+    PlaylistEditFacts facts;
+    facts.noSuchPlaylist = index == pfc::infinite_size;
+    facts.ownPlaylist = !facts.noSuchPlaylist && roleOf(index).has_value();
+    if (const auto refusal = playlistEditRefusal(facts); refusal != PlayerOutcome::done)
+        return {index, refusal};
+
+    // foobar2000 replaces a plain playlist's rows with a query's results once it is made an
+    // autoplaylist. One that still carries this component's record lost its client to a failed
+    // update, and is the one plain playlist accepted: sending the update again restores it.
+    if (!autoplaylist_manager::get()->is_client_present(index) && !ours(index))
+        return {index, PlayerOutcome::notAnAutoPlaylist};
 
     return {index, PlayerOutcome::done};
 }
@@ -93,11 +102,15 @@ PlaylistResult createOnMainThread(const AutoPlaylistSpec& spec, const PlaylistVe
 
 PlaylistResult updateOnMainThread(const std::string& id, const AutoPlaylistSpec& spec,
                                   const PlaylistVersions& versions) {
-    const auto found = ourPlaylist(id);
+    const auto found = findAutoPlaylist(id);
     if (found.outcome != PlayerOutcome::done)
         return playlistFailure(found.outcome);
 
     const auto index = found.index;
+
+    const bool made = ours(index);
+    if (!made && !spec.key.empty())
+        return playlistFailure(PlayerOutcome::keyRefused);
 
     if (keyTaken(everyPlaylist(versions), spec.key, id))
         return playlistFailure(PlayerOutcome::keyInUse, spec.key);
@@ -126,20 +139,25 @@ PlaylistResult updateOnMainThread(const std::string& id, const AutoPlaylistSpec&
     if (!spec.title.empty())
         playlist_manager::get()->playlist_rename(index, spec.title.c_str(), spec.title.size());
 
-    recordAutoPlaylist(index, spec);
+    if (made)
+        recordAutoPlaylist(index, spec);
 
     return PlaylistResult{PlayerOutcome::done, {}, annotate(index, versions)};
 }
 
 PlaylistResult removeOnMainThread(const std::string& id) {
-    const auto found = ourPlaylist(id);
+    const auto found = findAutoPlaylist(id);
     if (found.outcome != PlayerOutcome::done)
         return playlistFailure(found.outcome);
+
+    if (lockRefuses(found.index, playlist_lock::filter_remove_playlist))
+        return playlistFailure(PlayerOutcome::playlistLocked);
 
     return removePlaylistAt(found.index, "autoplaylist");
 }
 
-PreviewResult previewOnMainThread(const std::string& query) {
+PreviewResult previewOnMainThread(const std::string& query, bool withRows,
+                                  metadb_handle_list& matched) {
     PreviewResult preview;
     preview.libraryEnabled = library_manager::get()->is_library_enabled();
 
@@ -157,6 +175,14 @@ PreviewResult previewOnMainThread(const std::string& query) {
         search_index_manager::get()->get_library_index()->search(filter, nullptr, 0, fb2k::noAbort);
 
     preview.matches = static_cast<int>(matches->get_count());
+
+    if (withRows) {
+        matched.set_size(matches->get_count());
+        size_t at = 0;
+        for (const metadb_handle_ptr& handle : matches->typed<metadb_handle>())
+            matched[at++] = handle;
+    }
+
     return preview;
 }
 
@@ -191,10 +217,25 @@ AutoPlaylistRemover makeAutoPlaylistRemover(MainThreadQueue& mainThread) {
     };
 }
 
-QueryPreviewer makeQueryPreviewer(MainThreadQueue& mainThread) {
-    return [&mainThread](const std::string& query) {
-        return askForOutcome<PreviewResult>(mainThread, "previewing a query",
-                                            [query] { return previewOnMainThread(query); });
+QueryPreviewer makeQueryPreviewer(MainThreadQueue& mainThread, OrdinalMatcher ordinalMatcher) {
+    return [&mainThread, ordinalMatcher = std::move(ordinalMatcher)](const std::string& query,
+                                                                     bool withRows) {
+        const auto matched = std::make_shared<metadb_handle_list>();
+        auto preview = askForOutcome<PreviewResult>(
+            mainThread, "previewing a query",
+            [query, withRows, matched] { return previewOnMainThread(query, withRows, *matched); });
+
+        if (preview.outcome != PlayerOutcome::done || !preview.valid || !withRows)
+            return preview;
+
+        MatchedOrdinals found;
+        if (ordinalMatcher)
+            found = ordinalMatcher(*matched);
+
+        preview.hasRows = true;
+        preview.structure = found.structure;
+        preview.ordinals = std::move(found.ordinals);
+        return preview;
     };
 }
 

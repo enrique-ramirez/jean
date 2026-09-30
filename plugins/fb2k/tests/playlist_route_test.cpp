@@ -68,6 +68,14 @@ PlaylistAnnotation rock() {
 
 constexpr int kRockMatches = 412;
 
+// The media library generation a preview's ordinals are counted in. Past 2^32, so a field
+// narrowed to 32 bits on the way out is caught, and inside 2^53, since GET /state's
+// library.structure travels as a JSON number and this is the same value.
+constexpr uint64_t kPreviewedStructure = 4294967337ULL;
+
+// Fewer than kRockMatches: a match the snapshot does not hold is left out.
+const std::vector<uint32_t> kRockOrdinals = {12, 13, 407};
+
 // The autoplaylist this component made, and the answers foobar2000 gives a preview of its query
 // and of one it cannot parse.
 void holdingAnAutoPlaylist(FakePlayer& player) {
@@ -77,6 +85,8 @@ void holdingAnAutoPlaylist(FakePlayer& player) {
     matching.valid = true;
     matching.matches = kRockMatches;
     matching.libraryEnabled = true;
+    matching.structure = kPreviewedStructure;
+    matching.ordinals = kRockOrdinals;
     player.answerPreview("%genre% IS Rock", matching);
 
     PreviewResult unparsed;
@@ -136,6 +146,24 @@ constexpr char kUnknownPlaylistId[] = "66666666-6666-6666-6666-666666666666";
 // An autoplaylist this component made, for the writes that address one beside the playlists
 // every other write addresses.
 constexpr char kAutoPlaylistId[] = "77777777-7777-7777-7777-777777777777";
+
+constexpr char kForeignAutoPlaylistId[] = "88888888-8888-8888-8888-888888888888";
+
+// An autoplaylist made in foobar2000 or by another component: an autoplaylist, holding rows, and
+// no record of this component's.
+PlaylistAnnotation foreignAutoPlaylist() {
+    PlaylistAnnotation playlist;
+    playlist.id = kForeignAutoPlaylistId;
+    playlist.title = "Made at the player";
+    playlist.isAutoPlaylist = true;
+    playlist.structure = kOrdinaryStructure;
+    playlist.revision = kOrdinaryRevision;
+    return playlist;
+}
+
+std::string autoPlaylistPath(const std::string& id) {
+    return std::string("/api/autoplaylists/") + id;
+}
 
 PlaylistAnnotation ordinary() {
     PlaylistAnnotation playlist;
@@ -622,6 +650,22 @@ std::vector<Edit> playlistEdits() {
              Call::movePlaylist}};
 }
 
+// The two routes that address an autoplaylist by its GUID. The update carries a title, so taking
+// a playlist over is seen in its name as well as in its kind.
+std::vector<Edit> autoPlaylistEdits() {
+    return {{"updating an autoplaylist",
+             [](const TestServer& server, const std::string& id) {
+                 return post(server, autoPlaylistPath(id),
+                             R"({"title": "Taken over", "query": "%genre% IS Jazz"})");
+             },
+             Call::updateAutoPlaylist},
+            {"deleting an autoplaylist",
+             [](const TestServer& server, const std::string& id) {
+                 return server.client().Delete(autoPlaylistPath(id));
+             },
+             Call::removeAutoPlaylist}};
+}
+
 // Far enough from the target's that a copy answering the source playlist's generation, or the
 // library's, is visible rather than equal by luck.
 constexpr uint64_t kSourceStructure = kRowsStructure + 100;
@@ -643,8 +687,6 @@ void holdingTwoPlaylists(FakePlayer& player) {
                titledRows(sourceTitles()));
 }
 
-// The scratch among the rows two edits address by position. Long enough for the runs rowEdits()
-// names, and at the generation its removal names.
 void holdingTheScratch(FakePlayer& player) {
     player.add(scratchEntry(),
                titledRows({"Result A", "Result B", "Result C", "Result D", "Result E"}));
@@ -665,6 +707,31 @@ json copyBody(const std::string& sourceId, const json& runs) {
 json removeRowsBody(uint64_t structure, const json& runs) {
     return json{{"structure", std::to_string(structure)}, {"runs", runs}};
 }
+
+std::string moveRowsPath(const std::string& id) {
+    return "/api/playlists/" + id + "/items/move";
+}
+
+std::string sortRowsPath(const std::string& id) {
+    return "/api/playlists/" + id + "/items/sort";
+}
+
+json moveRowsBody(uint64_t structure, const json& set, uint32_t to) {
+    json body{{"structure", std::to_string(structure)}, {"to", to}};
+    body.update(set);
+    return body;
+}
+
+json sortRowsBody(uint64_t structure, const std::string& pattern) {
+    return json{{"structure", std::to_string(structure)}, {"pattern", pattern}};
+}
+
+json firstTwoRows() {
+    return json{{"runs", json::array({json::array({0, 2})})}};
+}
+
+// contract/openapi.yaml's bound on SortPlaylistRowsRequest.pattern.
+constexpr size_t kLongestPattern = 4096;
 
 // A removal names the playlist's own generation, as a run of decimal digits. A fill names the
 // media library's, which is a number: withStructure below is the fill's builder and the two are
@@ -696,26 +763,47 @@ std::string generationOf(const TestServer& server, const std::string& id) {
     return counterIn(entryFor(listingOf(server), id), "structure");
 }
 
+// What a client sends after reading the listing, for a write driven more than once against one
+// server. A server with no player lists nothing, and any run of digits does there, since that
+// request is refused before its generation is weighed.
+uint64_t generationToSend(const TestServer& server, const std::string& id) {
+    const auto response = server.client().Get("/api/playlists");
+    if (!response || response->status != 200)
+        return 0;
+
+    return std::stoull(generationOf(server, id));
+}
+
 struct RowEdit {
     std::string name;
     std::function<httplib::Result(const TestServer&, const std::string& id)> send;
     Call call;
 };
 
-// The two edits that address a playlist's rows by position rather than the playlist by its GUID.
 std::vector<RowEdit> rowEdits() {
-    return {{"copying rows in",
-             [](const TestServer& server, const std::string& id) {
-                 return post(server, copyPath(id),
-                             copyBody(kSecondPlaylistId, unorderedRuns()).dump());
-             },
-             Call::copyRows},
-            {"removing rows",
-             [](const TestServer& server, const std::string& id) {
-                 return post(server, removeRowsPath(id),
-                             removeRowsBody(kRowsStructure, unorderedRuns()).dump());
-             },
-             Call::removeRows}};
+    return {
+        {"copying rows in",
+         [](const TestServer& server, const std::string& id) {
+             return post(server, copyPath(id), copyBody(kSecondPlaylistId, unorderedRuns()).dump());
+         },
+         Call::copyRows},
+        {"removing rows",
+         [](const TestServer& server, const std::string& id) {
+             return post(server, removeRowsPath(id),
+                         removeRowsBody(kRowsStructure, unorderedRuns()).dump());
+         },
+         Call::removeRows},
+        {"moving rows",
+         [](const TestServer& server, const std::string& id) {
+             return post(server, moveRowsPath(id),
+                         moveRowsBody(kRowsStructure, json{{"runs", unorderedRuns()}}, 1).dump());
+         },
+         Call::moveRows},
+        {"sorting rows",
+         [](const TestServer& server, const std::string& id) {
+             return post(server, sortRowsPath(id), sortRowsBody(kRowsStructure, "%title%").dump());
+         },
+         Call::sortRows}};
 }
 
 struct Write {
@@ -733,7 +821,8 @@ struct Write {
 // of the user's, and an autoplaylist holds theirs.
 //
 // The list is driven in order against one server, so the three playlist edits take a playlist
-// each and the copy runs before the removal that shortens the playlist it reads from.
+// each and the copy runs before the removal that shortens the playlist it reads from. The move and
+// the sort read the generation they send, since each moves it on.
 std::vector<Write> playlistWrites(uint64_t structure) {
     return {
         {"creating an autoplaylist",
@@ -746,6 +835,17 @@ std::vector<Write> playlistWrites(uint64_t structure) {
         {"deleting an autoplaylist",
          [](const TestServer& server) {
              return server.client().Delete(std::string("/api/autoplaylists/") + kAutoPlaylistId);
+         }},
+        {"moving rows within a playlist",
+         [](const TestServer& server) {
+             return post(
+                 server, moveRowsPath(kPlaylistId),
+                 moveRowsBody(generationToSend(server, kPlaylistId), firstTwoRows(), 2).dump());
+         }},
+        {"sorting a playlist",
+         [](const TestServer& server) {
+             return post(server, sortRowsPath(kPlaylistId),
+                         sortRowsBody(generationToSend(server, kPlaylistId), "%title%").dump());
          }},
         {"filling a playlist a user owns, which is what addTo does",
          [structure](const TestServer& server) {
@@ -791,27 +891,30 @@ void holdingEveryWriteTarget(FakePlayer& player) {
     player.add(scratchEntry());
 }
 
-// The six writes a playlist bundle builds, taken out of the list above rather than written a
-// second time. The three autoplaylist routes and the fill are older and carry their own cases,
-// and the generation playlistWrites takes is the fill's alone, so nothing kept here reads it.
-std::vector<Write> theSixWrites() {
-    const std::set<std::string> six{
-        "creating a playlist", "renaming a playlist",          "moving a playlist",
-        "deleting a playlist", "copying rows into a playlist", "removing rows from a playlist"};
+std::vector<Write> playlistAndRowWrites() {
+    const std::set<std::string> kept{"creating a playlist",
+                                     "renaming a playlist",
+                                     "moving a playlist",
+                                     "deleting a playlist",
+                                     "copying rows into a playlist",
+                                     "removing rows from a playlist",
+                                     "moving rows within a playlist",
+                                     "sorting a playlist"};
 
     auto writes = playlistWrites(0);
-    writes.erase(std::remove_if(writes.begin(), writes.end(),
-                                [&six](const Write& write) { return six.count(write.name) == 0; }),
-                 writes.end());
+    writes.erase(
+        std::remove_if(writes.begin(), writes.end(),
+                       [&kept](const Write& write) { return kept.count(write.name) == 0; }),
+        writes.end());
 
-    REQUIRE(writes.size() == six.size());
+    REQUIRE(writes.size() == kept.size());
     return writes;
 }
 
 // With writePlaylists on, the role is the only thing that can refuse these, so the message names
 // it. With the setting off, whether the setting or the role answers first is nothing the client
-// can depend on and nothing this asks about. Reusing notOurs' message is what it catches: that one
-// says the playlist was not created by foo_jean, and the scratch is the one that was.
+// can depend on and nothing this asks about. Reusing another refusal's message is what it catches:
+// the scratch is refused for being the component's own and for nothing else.
 void namesTheRole(const httplib::Response& response, bool writePlaylists) {
     if (!writePlaylists)
         return;
@@ -819,10 +922,10 @@ void namesTheRole(const httplib::Response& response, bool writePlaylists) {
     CHECK(errorOf(response) == describe(PlayerOutcome::ownPlaylist));
 }
 
-// foobar2000's playlist_lock carries a filter bit per edit, and these are the four of the six
-// writes one can refuse: renaming, removing the playlist, adding rows and removing them. A
-// create makes a playlist nothing has locked yet, and moving one within the list is announced to
-// a lock rather than filtered by it.
+// foobar2000's playlist_lock carries a filter bit per edit, and these are the writes one can
+// refuse: renaming, removing the playlist, adding rows, removing them and reordering them, which a
+// move and a sort of the rows both are. A create makes a playlist nothing has locked yet, and
+// moving one within the list is announced to a lock rather than filtered by it.
 std::vector<Write> lockableWrites() {
     return {{"renaming a playlist",
              [](const TestServer& server) {
@@ -837,9 +940,19 @@ std::vector<Write> lockableWrites() {
                  return post(server, copyPath(kPlaylistId),
                              copyBody(kSecondPlaylistId, unorderedRuns()).dump());
              }},
-            {"removing rows from a playlist", [](const TestServer& server) {
+            {"removing rows from a playlist",
+             [](const TestServer& server) {
                  return post(server, removeRowsPath(kPlaylistId),
                              removeRowsBody(kRowsStructure, unorderedRuns()).dump());
+             }},
+            {"moving rows within a playlist",
+             [](const TestServer& server) {
+                 return post(server, moveRowsPath(kPlaylistId),
+                             moveRowsBody(kRowsStructure, firstTwoRows(), 2).dump());
+             }},
+            {"sorting a playlist", [](const TestServer& server) {
+                 return post(server, sortRowsPath(kPlaylistId),
+                             sortRowsBody(kRowsStructure, "%title%").dump());
              }}};
 }
 
@@ -2368,6 +2481,488 @@ TEST_CASE(
     CHECK(heldTitles(server, kPlaylistId) == json::array({"First", "Second", "Third", "Fourth"}));
 }
 
+namespace {
+
+FakeRow byArtist(const std::string& title, const std::string& artist) {
+    FakeRow row = titled(title);
+    row.fields["%artist%"] = artist;
+    return row;
+}
+
+// Sorted by artist the rows run Second, Fourth, Third, First: neither the order they are held in,
+// nor the order their titles sort to, nor the reverse of either.
+void holdingRowsByArtist(FakePlayer& player) {
+    player.add(userPlaylist(kPlaylistId, "Road trip", kRowsStructure),
+               {byArtist("First", "Delta"), byArtist("Second", "Alpha"),
+                byArtist("Third", "Charlie"), byArtist("Fourth", "Bravo")});
+}
+
+bool publishedAsARefusal(const std::string& error) {
+    const auto published = publishedEnum("PlaylistRefusal", "error");
+    return std::find(published.begin(), published.end(), error) != published.end();
+}
+
+struct RowOrderEdit {
+    std::string name;
+    std::string path;
+    json body;
+    Call call;
+};
+
+std::vector<RowOrderEdit> rowOrderEdits() {
+    return {{"moving rows", moveRowsPath(kPlaylistId),
+             moveRowsBody(kRowsStructure, firstTwoRows(), 2), Call::moveRows},
+            {"sorting rows", sortRowsPath(kPlaylistId), sortRowsBody(kRowsStructure, "%title%"),
+             Call::sortRows}};
+}
+
+}  // namespace
+
+TEST_CASE(
+    "a move lands the first named row at `to`, counted without the named rows, and keeps them "
+    "in the order the playlist held them") {
+    struct Move {
+        std::string name;
+        json set;
+        uint32_t to;
+        json titles;
+    };
+
+    const std::vector<Move> moves{
+        // Two rows moved out of four leave two, so two is the end.
+        {"runs, to the end", firstTwoRows(), 2,
+         json::array({"Third", "Fourth", "First", "Second"})},
+        // Named last row first: a move landing them in the order named puts Fourth ahead.
+        {"ordinals named out of the playlist's order", json{{"ordinals", json::array({3, 0})}}, 1,
+         json::array({"Second", "First", "Fourth", "Third"})}};
+
+    for (const auto& move : moves) {
+        INFO("move: ", move.name);
+
+        FakePlayer foobar;
+        holdingTwoPlaylists(foobar);
+        const TestServer server(servingSettings(), foobar.player());
+
+        const auto response = post(server, moveRowsPath(kPlaylistId),
+                                   moveRowsBody(kRowsStructure, move.set, move.to).dump());
+
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+
+        CHECK(heldTitles(server, kPlaylistId) == move.titles);
+
+        const auto generation = counterIn(json::parse(response->body), "structure");
+        CHECK(generation == generationOf(server, kPlaylistId));
+        CHECK(generation != std::to_string(kRowsStructure));
+
+        CHECK(foobar.count(Call::moveRows) == 1);
+    }
+}
+
+// Whether a drop that changes nothing is sent at all is the client's call. The component's part
+// is to answer it as it answers any other move rather than refuse it or answer without the player.
+TEST_CASE("a move that leaves every row where it was is answered like any other move") {
+    FakePlayer foobar;
+    holdingTwoPlaylists(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    const auto response = post(
+        server, moveRowsPath(kPlaylistId),
+        moveRowsBody(kRowsStructure, json{{"runs", json::array({json::array({1, 2})})}}, 1).dump());
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    CHECK(counterIn(json::parse(response->body), "structure") == generationOf(server, kPlaylistId));
+    CHECK(heldTitles(server, kPlaylistId) == json(roadTripTitles()));
+    CHECK(foobar.count(Call::moveRows) == 1);
+}
+
+// Only the player knows how many rows the playlist holds, so it is what refuses these; the
+// promise is that the refusal is a 400 and that nothing moved on the way to it.
+TEST_CASE(
+    "a move naming a row or a landing past the end of the playlist is a 400 and moves nothing") {
+    struct PastTheEnd {
+        std::string name;
+        json set;
+        uint32_t to;
+    };
+
+    const std::vector<PastTheEnd> moves{
+        {"a row one past the last", json{{"ordinals", json::array({1, 4})}}, 0},
+        {"a landing one past the rows left", firstTwoRows(), 3},
+        {"a landing at the playlist's own length", json{{"ordinals", json::array({0})}}, 4}};
+
+    for (const auto& move : moves) {
+        INFO("move: ", move.name);
+
+        FakePlayer foobar;
+        holdingTwoPlaylists(foobar);
+        const TestServer server(servingSettings(), foobar.player());
+
+        const auto response = post(server, moveRowsPath(kPlaylistId),
+                                   moveRowsBody(kRowsStructure, move.set, move.to).dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(errorOf(*response) == describe(PlayerOutcome::positionPastEnd));
+
+        CHECK(heldTitles(server, kPlaylistId) == json(roadTripTitles()));
+        CHECK(generationOf(server, kPlaylistId) == std::to_string(kRowsStructure));
+    }
+}
+
+TEST_CASE(
+    "a sort puts the whole playlist in ascending order of what the pattern formats, and answers "
+    "where each row came from") {
+    FakePlayer foobar;
+    holdingRowsByArtist(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    const auto response =
+        post(server, sortRowsPath(kPlaylistId), sortRowsBody(kRowsStructure, "%artist%").dump());
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    CHECK(heldTitles(server, kPlaylistId) == json::array({"Second", "Fourth", "Third", "First"}));
+
+    const auto answered = json::parse(response->body);
+
+    // The old position of the row now at each new position. Read the other way round it is
+    // 3, 0, 2, 1, so a client re-keying by an inverted order is caught.
+    REQUIRE(answered.contains("order"));
+    CHECK(answered.at("order") == json::array({1, 3, 2, 0}));
+
+    const auto generation = counterIn(answered, "structure");
+    CHECK(generation == generationOf(server, kPlaylistId));
+    CHECK(generation != std::to_string(kRowsStructure));
+
+    CHECK(foobar.count(Call::sortRows) == 1);
+}
+
+TEST_CASE(
+    "a move or a sort against a generation the playlist has moved past is a 409 and changes "
+    "nothing") {
+    for (const auto& edit : rowOrderEdits()) {
+        INFO("edit: ", edit.name);
+
+        FakePlayer foobar;
+        holdingTwoPlaylists(foobar);
+        const TestServer server(servingSettings(), foobar.player());
+
+        auto body = edit.body;
+        body["structure"] = std::to_string(kRowsStructure - 1);
+
+        const auto response = post(server, edit.path, body.dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 409);
+        CHECK(errorOf(*response) == describe(PlayerOutcome::rowsMoved));
+
+        CHECK(heldTitles(server, kPlaylistId) == json(roadTripTitles()));
+        CHECK(generationOf(server, kPlaylistId) == std::to_string(kRowsStructure));
+    }
+}
+
+// A moved generation and a lock share 409 and are told apart by the sentence alone, since one is
+// answered by reading the playlist again and the other only at the player. No refusal carries an
+// order, which a client would otherwise re-key the rows it holds by.
+TEST_CASE(
+    "what the player answers a move or a sort maps onto the status and sentence a client acts on") {
+    struct Refusal {
+        PlayerOutcome outcome;
+        int status;
+    };
+
+    for (const auto& edit : rowOrderEdits()) {
+        for (const auto& refusal :
+             {Refusal{PlayerOutcome::rowsMoved, 409}, Refusal{PlayerOutcome::playlistLocked, 409},
+              Refusal{PlayerOutcome::ownPlaylist, 403},
+              Refusal{PlayerOutcome::positionPastEnd, 400},
+              Refusal{PlayerOutcome::noSuchPlaylist, 404},
+              Refusal{PlayerOutcome::playerRefused, 500}, Refusal{PlayerOutcome::timedOut, 504}}) {
+            INFO("edit: ", edit.name, ", outcome: ", describe(refusal.outcome));
+
+            FakePlayer foobar;
+            holdingTwoPlaylists(foobar);
+            foobar.refuse(edit.call, refusal.outcome);
+            const TestServer server(servingSettings(), foobar.player());
+
+            const auto response = post(server, edit.path, edit.body.dump());
+
+            REQUIRE(response);
+            CHECK(response->status == refusal.status);
+            CHECK(errorOf(*response) == describe(refusal.outcome));
+            CHECK(json::parse(response->body).count("order") == 0);
+            CHECK(foobar.count(edit.call) == 1);
+        }
+    }
+}
+
+TEST_CASE(
+    "a move or a sort names a generation as a run of decimal digits, and anything else is a 400 "
+    "the player never sees") {
+    FakePlayer foobar;
+    holdingTwoPlaylists(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    struct BadGeneration {
+        std::string name;
+        json value;
+    };
+
+    const std::vector<BadGeneration> generations{
+        {"a JSON number, which is the spelling a fill takes", json(kRowsStructure)},
+        {"digits behind a sign", json("-" + std::to_string(kRowsStructure))},
+        {"digits with a fraction after them", json(std::to_string(kRowsStructure) + ".0")},
+        {"a word", json("twelve")},
+        {"an empty string", json("")},
+        {"null", json(nullptr)},
+        {"more digits than 64 bits hold", json("99999999999999999999")},
+    };
+
+    for (const auto& edit : rowOrderEdits()) {
+        for (const auto& bad : generations) {
+            INFO("edit: ", edit.name, ", structure: ", bad.name);
+
+            auto body = edit.body;
+            body["structure"] = bad.value;
+
+            const auto response = post(server, edit.path, body.dump());
+
+            REQUIRE(response);
+            CHECK(response->status == 400);
+            CHECK(publishedAsARefusal(errorOf(*response)));
+        }
+
+        INFO("edit: ", edit.name, ", structure: none");
+
+        auto body = edit.body;
+        body.erase("structure");
+
+        const auto response = post(server, edit.path, body.dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+    }
+
+    CHECK(foobar.writes() == 0);
+    CHECK(heldTitles(server, kPlaylistId) == json(roadTripTitles()));
+}
+
+TEST_CASE(
+    "a move names its rows exactly as a removal does, as runs or as a plain list, and is refused "
+    "in the removal's words where it does not") {
+    FakePlayer foobar;
+    holdingTwoPlaylists(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    struct BadSet {
+        std::string name;
+        json set;
+    };
+
+    const std::vector<BadSet> sets{
+        {"runs that are not pairs", json{{"runs", json::array({0})}}},
+        {"a run starting before the first row",
+         json{{"runs", json::array({json::array({-1, 2})})}}},
+        {"both runs and a plain list",
+         json{{"runs", json::array({json::array({0, 1})})}, {"ordinals", json::array({0})}}},
+        {"no set at all", json::object()},
+        {"a field neither schema declares",
+         json{{"runs", json::array({json::array({0, 1})})}, {"replace", true}}}};
+
+    for (const auto& bad : sets) {
+        INFO("set: ", bad.name);
+
+        const auto moved = post(server, moveRowsPath(kPlaylistId),
+                                moveRowsBody(kRowsStructure, bad.set, 0).dump());
+        const auto removed = post(server, removeRowsPath(kPlaylistId),
+                                  withGeneration(bad.set, kRowsStructure).dump());
+
+        REQUIRE(moved);
+        REQUIRE(removed);
+
+        CHECK(moved->status == 400);
+        CHECK(moved->status == removed->status);
+        CHECK(errorOf(*moved) == errorOf(*removed));
+        CHECK(keysOf(moved->body) == Keys{"error", "detail"});
+    }
+
+    CHECK(foobar.writes() == 0);
+    CHECK(heldTitles(server, kPlaylistId) == json(roadTripTitles()));
+}
+
+// A bitset is a removal's third form and not a move's: contract/openapi.yaml declares only runs
+// and ordinals on MovePlaylistRowsRequest.
+TEST_CASE(
+    "a move with no whole `to`, with a bitset or with a field of its own undeclared is a 400") {
+    FakePlayer foobar;
+    holdingTwoPlaylists(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    const auto withTo = [](const json& to) {
+        auto body = moveRowsBody(kRowsStructure, firstTwoRows(), 0);
+        body["to"] = to;
+        return body.dump();
+    };
+
+    auto noTo = moveRowsBody(kRowsStructure, firstTwoRows(), 0);
+    noTo.erase("to");
+
+    struct BadBody {
+        std::string name;
+        std::string text;
+    };
+
+    const std::vector<BadBody> bodies{
+        {"a body that is not JSON", "not json"},
+        {"no to at all", noTo.dump()},
+        {"a negative to", withTo(-1)},
+        {"a to written as digits", withTo("1")},
+        {"a to with a fraction", withTo(1.5)},
+        {"a to past 32 bits", withTo(uint64_t{1} << 32)},
+        {"a bitset", moveRowsBody(kRowsStructure, json{{"bitset", "Aw=="}}, 0).dump()},
+        {"a pattern, which is the sort's field",
+         moveRowsBody(kRowsStructure,
+                      json{{"runs", json::array({json::array({0, 2})})}, {"pattern", "%title%"}}, 0)
+             .dump()}};
+
+    for (const auto& bad : bodies) {
+        INFO("body: ", bad.name);
+
+        const auto response = post(server, moveRowsPath(kPlaylistId), bad.text);
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(publishedAsARefusal(errorOf(*response)));
+        CHECK(keysOf(response->body) == Keys{"error", "detail"});
+    }
+
+    CHECK(foobar.writes() == 0);
+    CHECK(heldTitles(server, kPlaylistId) == json(roadTripTitles()));
+}
+
+TEST_CASE(
+    "a sort's pattern is refused missing, empty, not text or past 4096 bytes, and taken at 4096") {
+    FakePlayer foobar;
+    holdingTwoPlaylists(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    const auto withPattern = [](const json& pattern) {
+        auto body = sortRowsBody(kRowsStructure, "");
+        body["pattern"] = pattern;
+        return body.dump();
+    };
+
+    auto noPattern = sortRowsBody(kRowsStructure, "");
+    noPattern.erase("pattern");
+
+    struct BadBody {
+        std::string name;
+        std::string text;
+    };
+
+    const std::vector<BadBody> bodies{
+        {"a body that is not JSON", "not json"},
+        {"no pattern at all", noPattern.dump()},
+        {"an empty pattern", withPattern("")},
+        {"a pattern that is a number", withPattern(3)},
+        {"a pattern one byte past the bound", withPattern(std::string(kLongestPattern + 1, 'a'))},
+        {"runs, which are the move's field", [] {
+             auto body = sortRowsBody(kRowsStructure, "%title%");
+             body.update(firstTwoRows());
+             return body.dump();
+         }()}};
+
+    for (const auto& bad : bodies) {
+        INFO("body: ", bad.name);
+
+        const auto response = post(server, sortRowsPath(kPlaylistId), bad.text);
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(publishedAsARefusal(errorOf(*response)));
+        CHECK(keysOf(response->body) == Keys{"error", "detail"});
+    }
+
+    CHECK(foobar.writes() == 0);
+
+    const auto atTheBound =
+        post(server, sortRowsPath(kPlaylistId), withPattern(std::string(kLongestPattern, 'a')));
+
+    REQUIRE(atTheBound);
+    CHECK(atTheBound->status == 200);
+    CHECK(foobar.count(Call::sortRows) == 1);
+}
+
+// Each refusal is cheaper than the one after it and says less about the playlist: the setting
+// before anything is read, the id before the body is parsed, the body before a token is spent,
+// and the budget before the player is asked. The budget is the one every playlist write draws on,
+// so a rename spends it.
+TEST_CASE(
+    "a move and a sort refuse in the order every row edit does: the setting, the id, the body, "
+    "the budget, then the player") {
+    const std::string badId = "------------------------------------";
+
+    for (const auto& edit : rowOrderEdits()) {
+        INFO("edit: ", edit.name);
+
+        const auto pathFor = [&edit](const std::string& id) {
+            auto path = edit.path;
+            path.replace(path.find(kPlaylistId), std::string(kPlaylistId).size(), id);
+            return path;
+        };
+
+        {
+            FakePlayer foobar;
+            holdingTwoPlaylists(foobar);
+            const TestServer server(readOnlyPlaylists(), foobar.player());
+
+            const auto response = post(server, pathFor(badId), "not json");
+
+            REQUIRE(response);
+            CHECK(response->status == 403);
+            CHECK(errorOf(*response) == describe(PlayerOutcome::writesDisabled));
+            CHECK(foobar.count(edit.call) == 0);
+        }
+
+        FakePlayer foobar;
+        holdingTwoPlaylists(foobar);
+        const TestServer server(servingSettings(), foobar.player());
+
+        const auto badIdAndBody = post(server, pathFor(badId), "not json");
+        REQUIRE(badIdAndBody);
+        CHECK(badIdAndBody->status == 400);
+        CHECK(errorOf(*badIdAndBody) == describe(PlaylistRefusal::badId));
+
+        constexpr int kEnoughToSpendAnyBudget = 100;
+        bool spent = false;
+        for (int attempt = 0; attempt < kEnoughToSpendAnyBudget && !spent; ++attempt) {
+            const auto renamed =
+                post(server, playlistPath(kSecondPlaylistId), renameBody("Everything"));
+            REQUIRE(renamed);
+            spent = renamed->status == 429;
+        }
+        REQUIRE(spent);
+
+        const auto badBody = post(server, edit.path, "not json");
+        REQUIRE(badBody);
+        CHECK(badBody->status == 400);
+        CHECK(errorOf(*badBody) == describe(PlaylistRefusal::malformedBody));
+
+        // The player would answer this one 404, so a 429 says the budget was weighed first.
+        const auto overBudget = post(server, pathFor(kUnknownPlaylistId), edit.body.dump());
+        REQUIRE(overBudget);
+        CHECK(overBudget->status == 429);
+        CHECK(overBudget->get_header_value("Retry-After") == "1");
+
+        CHECK(foobar.count(edit.call) == 0);
+        CHECK(heldTitles(server, kPlaylistId) == json(roadTripTitles()));
+    }
+}
+
 TEST_CASE("creating passes the whole request through to the player") {
     FakePlayer foobar;
     holdingAnAutoPlaylist(foobar);
@@ -2415,10 +3010,11 @@ TEST_CASE("what the player says about a playlist maps onto a status a client can
     };
 
     for (const auto& expected :
-         {Case{PlayerOutcome::queryInvalid, 400}, Case{PlayerOutcome::notOurs, 403},
-          Case{PlayerOutcome::noSuchPlaylist, 404}, Case{PlayerOutcome::keyInUse, 409},
-          Case{PlayerOutcome::tooMany, 409}, Case{PlayerOutcome::playerRefused, 500},
-          Case{PlayerOutcome::timedOut, 504}, Case{PlayerOutcome::unavailable, 503}}) {
+         {Case{PlayerOutcome::queryInvalid, 400}, Case{PlayerOutcome::keyRefused, 400},
+          Case{PlayerOutcome::notAnAutoPlaylist, 409}, Case{PlayerOutcome::noSuchPlaylist, 404},
+          Case{PlayerOutcome::keyInUse, 409}, Case{PlayerOutcome::tooMany, 409},
+          Case{PlayerOutcome::playerRefused, 500}, Case{PlayerOutcome::timedOut, 504},
+          Case{PlayerOutcome::unavailable, 503}}) {
         FakePlayer foobar;
         holdingAnAutoPlaylist(foobar);
         foobar.refuse(Call::createAutoPlaylist, expected.outcome);
@@ -2447,7 +3043,7 @@ TEST_CASE("a component with no player refuses honestly rather than pretending it
 TEST_CASE("a playlist write with nothing behind it does not blame autoplaylists") {
     const TestServer server;
 
-    for (const auto& write : theSixWrites()) {
+    for (const auto& write : playlistAndRowWrites()) {
         INFO("write: ", write.name);
 
         const auto response = write.send(server);
@@ -2484,6 +3080,161 @@ TEST_CASE("updating and removing address one playlist by its id") {
     CHECK(json::parse(removed->body)["id"] == kPlaylistId);
     CHECK(foobar.askedAbout(Call::removeAutoPlaylist) == std::vector<std::string>{kPlaylistId});
     CHECK_FALSE(foobar.playlist(kPlaylistId));
+}
+
+TEST_CASE("an autoplaylist this component did not make takes an update and stays unrecorded") {
+    FakePlayer foobar;
+    holdingAnAutoPlaylist(foobar);
+    foobar.add(foreignAutoPlaylist());
+    const TestServer server(servingSettings(), foobar.player());
+
+    const auto response = post(server, autoPlaylistPath(kForeignAutoPlaylistId),
+                               R"({"title": "Late jazz", "query": "%genre% IS Jazz"})");
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto answered = json::parse(response->body);
+    CHECK(answered["id"] == kForeignAutoPlaylistId);
+    CHECK(answered["title"] == "Late jazz");
+    CHECK(answered["isAutoPlaylist"] == true);
+    CHECK(answered["managed"].is_null());
+
+    const auto listing = listingOf(server);
+    const auto listed = entryFor(listing, kForeignAutoPlaylistId);
+    CHECK(listed["title"] == "Late jazz");
+    CHECK(listed["isAutoPlaylist"] == true);
+    CHECK(listed["managed"].is_null());
+
+    CHECK(entryFor(listing, kPlaylistId)["managed"]["key"] == "folder:genre:Rock");
+}
+
+// A key is how a client recognises a playlist Jean made, so one accepted on a stranger's
+// autoplaylist would have Jean claim it. An empty key claims nothing.
+TEST_CASE(
+    "a key sent to update an autoplaylist this component did not make is refused, and one sent "
+    "to update its own is recorded") {
+    FakePlayer foobar;
+    holdingAnAutoPlaylist(foobar);
+    foobar.add(foreignAutoPlaylist());
+    const TestServer server(servingSettings(), foobar.player());
+    const auto before = listingOf(server);
+
+    SUBCASE("a key on a stranger's autoplaylist is a 400 and changes nothing") {
+        const auto response =
+            post(server, autoPlaylistPath(kForeignAutoPlaylistId),
+                 R"({"title": "Claimed", "key": "folder:genre:Jazz", "query": "%genre% IS Jazz"})");
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(json::parse(response->body) ==
+              json{{"error", "unacceptable key"},
+                   {"detail", "a key names a playlist this component made"}});
+        CHECK(listingOf(server) == before);
+    }
+
+    SUBCASE("an empty key on a stranger's autoplaylist is no key") {
+        const auto response =
+            post(server, autoPlaylistPath(kForeignAutoPlaylistId),
+                 R"({"title": "Unclaimed", "key": "", "query": "%genre% IS Jazz"})");
+
+        REQUIRE(response);
+        CHECK(response->status == 200);
+
+        const auto listed = entryFor(listingOf(server), kForeignAutoPlaylistId);
+        CHECK(listed["title"] == "Unclaimed");
+        CHECK(listed["managed"].is_null());
+    }
+
+    SUBCASE("a key on one this component made is recorded as before") {
+        const auto response = post(server, autoPlaylistPath(kPlaylistId),
+                                   R"({"key": "folder:genre:Jazz", "query": "%genre% IS Jazz"})");
+
+        REQUIRE(response);
+        CHECK(response->status == 200);
+
+        const auto managed = entryFor(listingOf(server), kPlaylistId)["managed"];
+        CHECK(managed["key"] == "folder:genre:Jazz");
+        CHECK(managed["query"] == "%genre% IS Jazz");
+    }
+}
+
+// The limit is on what this component made, so an update that recorded a stranger's autoplaylist
+// as its own would spend a create the install still has.
+TEST_CASE("updating an autoplaylist this component did not make spends nothing of the limit") {
+    auto settings = servingSettings();
+    settings.maxAutoPlaylists = 2;
+
+    FakePlayer foobar;
+    holdingAnAutoPlaylist(foobar);
+    foobar.add(foreignAutoPlaylist());
+    const TestServer server(settings, foobar.player());
+
+    const auto updated =
+        post(server, autoPlaylistPath(kForeignAutoPlaylistId), R"({"query": "%genre% IS Jazz"})");
+    REQUIRE(updated);
+    REQUIRE(updated->status == 200);
+
+    const auto created = post(server, "/api/autoplaylists", kCreate);
+    REQUIRE(created);
+    CHECK(created->status == 200);
+
+    const auto refused = post(server, "/api/autoplaylists", kCreate);
+    REQUIRE(refused);
+    CHECK(refused->status == 409);
+    CHECK(json::parse(refused->body) ==
+          json{{"error", describe(PlayerOutcome::tooMany)},
+               {"detail", "this install allows 2 and already has 2"}});
+}
+
+TEST_CASE("an autoplaylist this component did not make is deleted as one it made is") {
+    FakePlayer foobar;
+    holdingAnAutoPlaylist(foobar);
+    foobar.add(foreignAutoPlaylist());
+    const TestServer server(servingSettings(), foobar.player());
+
+    for (const std::string id : {kForeignAutoPlaylistId, kPlaylistId}) {
+        INFO("id: ", id);
+
+        const auto response = server.client().Delete(autoPlaylistPath(id));
+
+        REQUIRE(response);
+        CHECK(response->status == 200);
+        CHECK(json::parse(response->body) == json{{"removed", true}, {"id", id}});
+
+        const auto ids = idsIn(listingOf(server));
+        CHECK(std::find(ids.begin(), ids.end(), id) == ids.end());
+    }
+}
+
+// foobar2000's playlist_lock filters removing a playlist whichever call asks, so a lock another
+// component holds refuses the autoplaylist delete in the words the plain delete refuses it in.
+TEST_CASE("a locked autoplaylist is refused deletion with the 409 the plain delete answers") {
+    FakePlayer foobar;
+    holdingAnAutoPlaylist(foobar);
+    foobar.add(foreignAutoPlaylist());
+    foobar.add(userPlaylist(kThirdPlaylistId, "Locked playlist", kOrdinaryStructure));
+    for (const std::string id : {kPlaylistId, kForeignAutoPlaylistId, kThirdPlaylistId})
+        foobar.lock(id);
+    const TestServer server(servingSettings(), foobar.player());
+
+    const auto plain = server.client().Delete(playlistPath(kThirdPlaylistId));
+    REQUIRE(plain);
+    REQUIRE(plain->status == 409);
+    REQUIRE(errorOf(*plain) == describe(PlayerOutcome::playlistLocked));
+
+    for (const std::string id : {kForeignAutoPlaylistId, kPlaylistId}) {
+        INFO("id: ", id);
+
+        const auto response = server.client().Delete(autoPlaylistPath(id));
+
+        REQUIRE(response);
+        CHECK(response->status == 409);
+        CHECK(json::parse(response->body) == json::parse(plain->body));
+    }
+
+    CHECK(idsIn(listingOf(server)) ==
+          std::vector<std::string>{kPlaylistId, kForeignAutoPlaylistId, kThirdPlaylistId});
 }
 
 // pfc::GUID_from_text reads an unknown character as zero and never reports failure, so a
@@ -2532,6 +3283,110 @@ TEST_CASE("previewing a query answers 200 whether or not the query parses") {
     CHECK(bad->status == 200);
     CHECK(json::parse(bad->body)["valid"] == false);
     CHECK(json::parse(bad->body)["error"] == "Query syntax error");
+}
+
+TEST_CASE(
+    "a preview asked for rows answers the matching tracks as ordinals in its library "
+    "generation") {
+    FakePlayer foobar;
+    holdingAnAutoPlaylist(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    const auto response =
+        post(server, "/api/autoplaylists/preview", R"({"query": "%genre% IS Rock", "rows": true})");
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
+
+    const auto body = json::parse(response->body);
+    CHECK(keysOf(body) ==
+          Keys{"valid", "error", "matches", "libraryEnabled", "structure", "ordinals"});
+    CHECK(body.at("valid") == true);
+    CHECK(body.at("error") == "");
+    CHECK(body.at("matches") == kRockMatches);
+    CHECK(body.at("libraryEnabled") == true);
+
+    // A number, as GET /state's library.structure is, so a client compares the two directly.
+    CHECK(body.at("structure").is_number_unsigned());
+    CHECK(body.at("structure") == kPreviewedStructure);
+    CHECK(body.at("ordinals") == json(kRockOrdinals));
+
+    CHECK(foobar.previewsAskingRows() == std::vector<bool>{true});
+}
+
+// A client that has no rows to draw is not handed a body that grows with the library, and the
+// player is not asked to walk it.
+TEST_CASE("a preview not asked for rows answers the four fields it always has") {
+    FakePlayer foobar;
+    holdingAnAutoPlaylist(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    for (const char* body :
+         {R"({"query": "%genre% IS Rock"})", R"({"query": "%genre% IS Rock", "rows": false})"}) {
+        INFO("body: ", body);
+
+        const auto response = post(server, "/api/autoplaylists/preview", body);
+
+        REQUIRE(response);
+        CHECK(response->status == 200);
+
+        const auto answer = json::parse(response->body);
+        CHECK(keysOf(answer) == Keys{"valid", "error", "matches", "libraryEnabled"});
+        CHECK(answer.at("valid") == true);
+        CHECK(answer.at("matches") == kRockMatches);
+        CHECK(answer.at("libraryEnabled") == true);
+    }
+
+    CHECK(foobar.previewsAskingRows() == std::vector<bool>{false, false});
+}
+
+// A query somebody is still typing is an ordinary answer with rows asked for as without.
+TEST_CASE("a preview asked for rows of a query that does not parse answers 200 naming no track") {
+    FakePlayer foobar;
+    holdingAnAutoPlaylist(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    const auto response =
+        post(server, "/api/autoplaylists/preview", R"({"query": "bad", "rows": true})");
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
+
+    const auto body = json::parse(response->body);
+    CHECK(body.at("valid") == false);
+    CHECK(body.at("error") == "Query syntax error");
+    CHECK(body.at("matches") == 0);
+
+    // contract/openapi.yaml leaves open whether these two are absent here or present with no
+    // ordinal in them. Either way they travel together, and no track is named.
+    CHECK(body.contains("structure") == body.contains("ordinals"));
+    if (body.contains("ordinals"))
+        CHECK(body.at("ordinals") == json::array());
+
+    CHECK(foobar.previewsAskingRows() == std::vector<bool>{true});
+}
+
+TEST_CASE("a preview whose rows is not true or false is refused before the player") {
+    FakePlayer foobar;
+    holdingAnAutoPlaylist(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    for (const char* rows : {R"("true")", "1", "null"}) {
+        INFO("rows: ", rows);
+
+        const auto response =
+            post(server, "/api/autoplaylists/preview",
+                 std::string(R"({"query": "%genre% IS Rock", "rows": )") + rows + "}");
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+
+        const auto body = json::parse(response->body);
+        CHECK(body.at("error") == "malformed request");
+        CHECK(body.at("detail").get<std::string>().find("rows") != std::string::npos);
+    }
+
+    CHECK(foobar.count(Call::previewQuery) == 0);
 }
 
 // "preview" cannot match the id pattern, so this holds whatever order the routes are in.
@@ -2678,11 +3533,11 @@ TEST_CASE(
 // One budget covers every playlist write, as contract/openapi.yaml says, so a client looping any
 // one of them is refused. The create is the one that spent nothing: a loop on it made playlists
 // as fast as foobar2000 would take them.
-TEST_CASE("a client looping any of the six playlist writes is slowed down rather than obeyed") {
+TEST_CASE("a client looping any playlist or row write is slowed down rather than obeyed") {
     // Past kPlaylistBurst, and the server's clock stands still, so the last ten are refused.
     constexpr int kBurst = 40;
 
-    for (const auto& write : theSixWrites()) {
+    for (const auto& write : playlistAndRowWrites()) {
         INFO("write: ", write.name);
 
         FakePlayer foobar;
@@ -3496,55 +4351,55 @@ TEST_CASE(
     CHECK(foobar.writes() == 0);
 }
 
-// One status, two causes, and a message that has to be true of the cause it was sent for. The
-// setting is decided here before the player is asked; a playlist this component did not create
-// is something only the player can report, and it is refused whatever the setting says. Naming
-// the setting on both sends a player owner to config.json to turn on something already on.
+// Taking a plain playlist over would have foobar2000 replace its rows with a query's results, so
+// both autoplaylist routes refuse one and change nothing. The setting's 403 is decided before the
+// player is asked, whatever the target; this refusal is something only the player can report, and
+// naming the setting in it sends a player owner to config.json to turn on something already on.
 TEST_CASE(
-    "a write refused by the setting and one refused for a playlist this component did not "
-    "create say different things") {
-    const auto update = [](const TestServer& server) {
-        return post(server, std::string("/api/autoplaylists/") + kPlaylistId,
-                    R"({"query": "%genre% IS Jazz"})");
-    };
-
-    FakePlayer gated;
-    holdingAnAutoPlaylist(gated);
-    const TestServer refusing(readOnlyPlaylists(), gated.player());
-
-    const auto bySetting = update(refusing);
-    REQUIRE(bySetting);
-    REQUIRE(bySetting->status == 403);
-    CHECK(gated.count(Call::updateAutoPlaylist) == 0);
-
-    // kPlaylistId is a playlist of the user's here, which no record of this component's names.
-    FakePlayer asked;
-    holdingTwoPlaylists(asked);
-    const TestServer writing(servingSettings(), asked.player());
-
-    const auto byOwnership = update(writing);
-    REQUIRE(byOwnership);
-    REQUIRE(byOwnership->status == 403);
-    CHECK(asked.count(Call::updateAutoPlaylist) == 1);
-
-    const std::string setting = json::parse(bySetting->body)["error"];
-    const std::string ownership = json::parse(byOwnership->body)["error"];
-
+    "an autoplaylist route refuses a plain playlist as not an autoplaylist and leaves it as it "
+    "was, in words other than the setting's") {
     const auto names = [](const std::string& message, const std::string& what) {
         return message.find(what) != std::string::npos;
     };
 
-    CHECK(names(setting, "writePlaylists"));
-    CHECK(names(setting, "config.json"));
+    for (const auto& edit : autoPlaylistEdits()) {
+        INFO("edit: ", edit.name);
 
-    CHECK_FALSE(names(ownership, "writePlaylists"));
-    CHECK_FALSE(names(ownership, "config.json"));
-    CHECK(ownership != setting);
+        FakePlayer gated;
+        holdingTwoPlaylists(gated);
+        gated.add(foreignAutoPlaylist());
+        const TestServer refusing(readOnlyPlaylists(), gated.player());
 
-    const auto published = publishedEnum("PlaylistFailed", "error");
-    for (const auto& error : {setting, ownership}) {
-        INFO("error: ", error);
-        CHECK(std::find(published.begin(), published.end(), error) != published.end());
+        for (const std::string id : {kPlaylistId, kForeignAutoPlaylistId}) {
+            INFO("id: ", id);
+            const auto bySetting = edit.send(refusing, id);
+            REQUIRE(bySetting);
+            CHECK(bySetting->status == 403);
+            CHECK(errorOf(*bySetting) == describe(PlayerOutcome::writesDisabled));
+        }
+        CHECK(gated.writes() == 0);
+
+        FakePlayer asked;
+        holdingTwoPlaylists(asked);
+        const TestServer writing(servingSettings(), asked.player());
+        const auto before = listingOf(writing);
+
+        const auto byKind = edit.send(writing, kPlaylistId);
+        REQUIRE(byKind);
+        CHECK(byKind->status == 409);
+        CHECK(json::parse(byKind->body) ==
+              json{{"error", "that playlist is not an autoplaylist"}, {"detail", ""}});
+
+        CHECK(listingOf(writing) == before);
+        CHECK(heldTitles(writing, kPlaylistId) == json(roadTripTitles()));
+
+        const auto kind = errorOf(*byKind);
+
+        CHECK_FALSE(names(kind, "writePlaylists"));
+        CHECK_FALSE(names(kind, "config.json"));
+
+        const auto published = publishedEnum("PlaylistFailed", "error");
+        CHECK(std::find(published.begin(), published.end(), kind) != published.end());
     }
 }
 
@@ -3574,7 +4429,7 @@ TEST_CASE("the component's own playlist fills whether writePlaylists is on or of
 
 // The scratch is Jean's own working space, addressed by role and never by GUID. An edit reaching
 // it by GUID would rename, delete or empty the playlist somebody is listening from, so the switch
-// being on does not buy one: the refusal is structural, as notOurs is, rather than the setting's.
+// being on does not buy one: the refusal is structural rather than the setting's.
 TEST_CASE(
     "an edit addressing the component's own scratch playlist is refused whether "
     "writePlaylists is on or off") {
@@ -3621,6 +4476,36 @@ TEST_CASE(
             namesTheRole(*response, writePlaylists);
 
             CHECK(heldTitles(server, kScratchPlaylistId) == before);
+        }
+    }
+}
+
+TEST_CASE(
+    "an autoplaylist route addressing the scratch is refused as the component's own whether "
+    "writePlaylists is on or off") {
+    for (const bool writePlaylists : {true, false}) {
+        INFO("writePlaylists: ", writePlaylists);
+        const auto settings = writePlaylists ? servingSettings() : readOnlyPlaylists();
+
+        for (const auto& edit : autoPlaylistEdits()) {
+            INFO("edit: ", edit.name);
+
+            FakePlayer foobar;
+            holdingTwoPlaylists(foobar);
+            holdingTheScratch(foobar);
+            const TestServer server(settings, foobar.player());
+
+            const auto before = listingOf(server);
+            const auto rows = heldTitles(server, kScratchPlaylistId);
+
+            const auto response = edit.send(server, kScratchPlaylistId);
+
+            REQUIRE(response);
+            CHECK(response->status == 403);
+            namesTheRole(*response, writePlaylists);
+
+            CHECK(listingOf(server) == before);
+            CHECK(heldTitles(server, kScratchPlaylistId) == rows);
         }
     }
 }
@@ -3803,10 +4688,11 @@ TEST_CASE(
     CHECK(foobar.count(Call::removePlaylist) == 1);
     CHECK(foobar.count(Call::copyRows) == 1);
     CHECK(foobar.count(Call::removeRows) == 1);
+    CHECK(foobar.count(Call::moveRows) == 1);
+    CHECK(foobar.count(Call::sortRows) == 1);
 
-    // The fill's two tracks after the rows the playlist held, and the copy's three after those.
     CHECK(foobar.titlesOf(kPlaylistId) ==
-          std::vector<std::string>{"First", "Second", "Third", "Fourth", builtTrackTitle(3),
+          std::vector<std::string>{"First", "Fourth", "Second", "Third", builtTrackTitle(3),
                                    builtTrackTitle(1), "Source A", "Source B", "Source D"});
 }
 
@@ -3942,7 +4828,9 @@ TEST_CASE("the contract publishes a 403 on exactly the writes the setting can re
 
     for (const std::string& name :
          {std::string("POST /autoplaylists"), std::string("POST /autoplaylists/{id}"),
-          std::string("DELETE /autoplaylists/{id}"), std::string("POST /playlists/{id}/items")}) {
+          std::string("DELETE /autoplaylists/{id}"), std::string("POST /playlists/{id}/items"),
+          std::string("POST /playlists/{id}/items/move"),
+          std::string("POST /playlists/{id}/items/sort")}) {
         INFO("route: ", name);
         CHECK(answers403(name));
     }
@@ -3967,7 +4855,9 @@ TEST_CASE("the contract publishes a 429 on every write the playlist limit can re
          {std::string("POST /playlists"), std::string("POST /playlists/{id}"),
           std::string("DELETE /playlists/{id}"), std::string("POST /playlists/{id}/move"),
           std::string("POST /playlists/{id}/items/copy"),
-          std::string("POST /playlists/{id}/items/remove")}) {
+          std::string("POST /playlists/{id}/items/remove"),
+          std::string("POST /playlists/{id}/items/move"),
+          std::string("POST /playlists/{id}/items/sort")}) {
         INFO("route: ", name);
         CHECK(statusesOf(name).count(429) == 1);
     }

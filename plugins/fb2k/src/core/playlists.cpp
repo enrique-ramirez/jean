@@ -16,7 +16,6 @@ namespace jean {
 namespace {
 
 constexpr size_t kMaxKey = 256;
-constexpr size_t kMaxQuery = 4096;
 
 AutoPlaylistRequest refuse(PlaylistRefusal refusal, std::string detail) {
     AutoPlaylistRequest request;
@@ -59,6 +58,24 @@ bool isPlaylistId(const std::string& id) {
 
     return std::equal(id.begin(), id.end(), std::begin(kShape),
                       [](char c, char shape) { return shape == '-' ? c == '-' : isLowerHex(c); });
+}
+
+std::optional<std::vector<uint32_t>> moveOrder(uint32_t count, std::vector<uint32_t> positions,
+                                               uint32_t to) {
+    std::sort(positions.begin(), positions.end());
+    positions.erase(std::unique(positions.begin(), positions.end()), positions.end());
+
+    if ((!positions.empty() && positions.back() >= count) || to > count - positions.size())
+        return std::nullopt;
+
+    std::vector<uint32_t> order;
+    order.reserve(count);
+    for (uint32_t position = 0; position < count; ++position)
+        if (!std::binary_search(positions.begin(), positions.end(), position))
+            order.push_back(position);
+
+    order.insert(order.begin() + to, positions.begin(), positions.end());
+    return order;
 }
 
 std::optional<PlayingLocation> queuedLocation(
@@ -148,6 +165,13 @@ AutoPlaylistRequest parseQueryPreview(const std::string& body) {
 
     AutoPlaylistRequest request;
     request.spec.query = asked.value;
+
+    if (const auto rows = document.value.find("rows"); rows != document.value.end()) {
+        if (!rows->is_boolean())
+            return refuse(PlaylistRefusal::malformedBody, "'rows' must be true or false");
+        request.rows = rows->get<bool>();
+    }
+
     return request;
 }
 

@@ -47,6 +47,8 @@ constexpr char kChangingPlaylistsTooFast[] =
     "playlist changes are arriving faster than they can be made";
 constexpr char kPreviewingTooFast[] = "query previews are arriving faster than they can be run";
 
+constexpr char kKeyRefusedDetail[] = "a key names a playlist this component made";
+
 // The category `POST /playback/seek`, `POST /playback/mode` and `POST /volume` each refuse a
 // malformed body under, one apiece: contract/openapi.yaml's PlaybackSeekRefusal,
 // PlaybackModeRefusal and VolumeRefusal.
@@ -85,7 +87,8 @@ int httpStatusFor(DeltaOutcome outcome);
 std::string errorDocument(const std::string& message);
 
 // Nothing here describes the player's internals: the detail is empty except for an
-// unreadable query, where it is foobar2000's own message about text the client sent.
+// unreadable query, where it is foobar2000's own message about text the client sent, and a
+// refused key, whose detail is the constant beside it.
 std::string failureDocument(PlayerOutcome outcome, const std::string& detail = {});
 
 // No detail beyond the category: error text is a reliable way to leak paths.

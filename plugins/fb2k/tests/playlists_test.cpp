@@ -513,3 +513,63 @@ TEST_CASE("a stale queued position is answered as no position, and no playlist i
         CHECK(lookups == 0);
     }
 }
+
+namespace {
+
+struct PlannedMove {
+    std::string name;
+    uint32_t count;
+    Ordinals positions;
+    uint32_t to;
+    Ordinals order;
+};
+
+// Six rows, so every case below reads as a permutation of 0 to 5. Each expected order is written
+// as the old position of the row that ends up at each new position, which is what foobar2000's
+// playlist_manager::playlist_reorder_items takes.
+std::vector<PlannedMove> plannedMoves() {
+    return {
+        // The block's inverse is a different permutation, so an answer mapping old to new rather
+        // than new to old is caught.
+        {"a contiguous block down", 6, {1, 2}, 2, {0, 3, 1, 2, 4, 5}},
+        {"a contiguous block up", 6, {4, 5}, 1, {0, 4, 5, 1, 2, 3}},
+        {"scattered rows, gathered in the order the playlist holds them",
+         6,
+         {0, 2, 5},
+         1,
+         {1, 0, 2, 5, 3, 4}},
+        {"to the start", 6, {3}, 0, {3, 0, 1, 2, 4, 5}},
+        // Two rows moved out of six leave four, so four is the end.
+        {"to the end", 6, {1, 3}, 4, {0, 2, 4, 5, 1, 3}},
+        {"one row", 6, {5}, 2, {0, 1, 5, 2, 3, 4}},
+        // A drop in place is Jean's to skip, so the plan still answers one for the player.
+        {"in place", 6, {2, 3}, 2, {0, 1, 2, 3, 4, 5}},
+        {"every row", 6, {0, 1, 2, 3, 4, 5}, 0, {0, 1, 2, 3, 4, 5}},
+    };
+}
+
+}  // namespace
+
+TEST_CASE(
+    "a move's plan lands the first moved row at `to`, counted with the moved rows taken out, "
+    "and keeps the moved rows in the order they held") {
+    for (const auto& move : plannedMoves()) {
+        INFO("move: ", move.name);
+
+        const auto order = moveOrder(move.count, move.positions, move.to);
+
+        REQUIRE(order.has_value());
+        CHECK(*order == move.order);
+    }
+}
+
+TEST_CASE(
+    "a move's plan refuses a `to` past the rows left and a row past the end, and only those") {
+    CHECK(moveOrder(6, {1, 3}, 5) == std::nullopt);
+    CHECK(moveOrder(6, {0, 1, 2, 3, 4, 5}, 1) == std::nullopt);
+    CHECK(moveOrder(6, {6}, 0) == std::nullopt);
+    CHECK(moveOrder(6, {2, 6}, 0) == std::nullopt);
+
+    CHECK(moveOrder(6, {5}, 5) == Ordinals{0, 1, 2, 3, 4, 5});
+    CHECK(moveOrder(6, {0}, 5) == Ordinals{1, 2, 3, 4, 5, 0});
+}

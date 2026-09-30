@@ -11,7 +11,8 @@ enum class PlayerOutcome {
     // Says what POST /api/tags says by TagWriteOutcome::ambiguousAddress, in those words: a
     // client tells one refusal from another by the sentence rather than by the route.
     ambiguousAddress,
-    notOurs,
+    notAnAutoPlaylist,
+    keyRefused,
     keyInUse,
     tooMany,
     // Means what GET /api/library/changes already means by 409: export again, then ask again.
@@ -28,8 +29,7 @@ enum class PlayerOutcome {
     timedOut,
     unavailable,
     // The read-only-playlists setting, checked at the route before the player is asked
-    // anything. Distinct from notOurs, the structural refusal ourPlaylist() answers whatever
-    // the setting says.
+    // anything. Distinct from notAnAutoPlaylist, which only the player can report.
     writesDisabled,
     playlistLocked,
     ownPlaylist,

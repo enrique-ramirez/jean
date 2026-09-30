@@ -42,6 +42,8 @@ enum class Call {
     movePlaylist,
     copyRows,
     removeRows,
+    moveRows,
+    sortRows,
     fill,
     resolveOwn,
     emptyOwn,
@@ -106,8 +108,9 @@ public:
     // an insert is no evidence that a row landed.
     void refuse(Call call, PlayerOutcome outcome);
 
-    // A playlist_lock on `id`: renaming it, removing it, adding rows and removing rows are
-    // refused. Moving a playlist within the list is announced to a lock rather than filtered.
+    // A playlist_lock on `id`: renaming it, removing it through either delete route, adding rows,
+    // removing rows and reordering them are refused. Moving a playlist within the list is announced
+    // to a lock rather than filtered.
     void lock(const std::string& id);
 
     // Somebody closing the playlist's tab in foobar2000, which nothing in core/ is told about.
@@ -143,6 +146,8 @@ public:
 
     // The playlist each `call` named, in the order they arrived.
     std::vector<std::string> askedAbout(Call call) const;
+
+    std::vector<bool> previewsAskingRows() const;
 
     // The id the fake gives the `nth` playlist it makes, counting from zero across a create, an
     // autoplaylist and a role remade.
@@ -181,6 +186,8 @@ private:
     Held& make(const std::string& title);
     static void landed(Held& held);
 
+    static void reordered(Held& held, const std::vector<uint32_t>& order);
+
     uint64_t queueRevision() const;
     void queueChanged();
     void changeTheQueueIfAsked();
@@ -197,6 +204,7 @@ private:
     uint64_t queueRevision_ = 1;
     std::optional<PlayingLocation> playing_;
     std::map<std::string, PreviewResult> previews_;
+    std::vector<bool> previewsAskingRows_;
     std::map<Call, PlayerOutcome> refusals_;
     std::vector<Asked> asked_;
     size_t made_ = 0;

@@ -150,6 +150,17 @@ void FakePlayer::landed(Held& held) {
     held.entry.structure++;
 }
 
+void FakePlayer::reordered(Held& held, const std::vector<uint32_t>& order) {
+    if (std::is_sorted(order.begin(), order.end()))
+        return;
+
+    std::vector<FakeRow> rows;
+    std::transform(order.begin(), order.end(), std::back_inserter(rows),
+                   [&held](uint32_t old) { return held.rows[old]; });
+    held.rows = std::move(rows);
+    landed(held);
+}
+
 uint64_t FakePlayer::queueRevision() const {
     return store_ ? store_->read().queueRevision : queueRevision_;
 }
@@ -324,6 +335,11 @@ int FakePlayer::writes() const {
 int FakePlayer::total() const {
     const Lock guard(mutex_);
     return static_cast<int>(asked_.size());
+}
+
+std::vector<bool> FakePlayer::previewsAskingRows() const {
+    const Lock guard(mutex_);
+    return previewsAskingRows_;
 }
 
 std::vector<std::string> FakePlayer::askedAbout(Call call) const {
@@ -595,6 +611,79 @@ Player FakePlayer::player() {
         return RowsEdited{PlayerOutcome::done, found->entry.structure, {}};
     };
 
+    player.playlists.moveRows = [this](const std::string& id, uint64_t structure,
+                                       const std::vector<uint32_t>& positions, uint32_t to) {
+        const Lock guard(mutex_);
+        ask(Call::moveRows, id);
+
+        if (const auto refused = refusal(Call::moveRows))
+            return failed<RowsEdited>(*refused);
+
+        const auto found = find(id);
+
+        auto moving = positions;
+        std::sort(moving.begin(), moving.end());
+        moving.erase(std::unique(moving.begin(), moving.end()), moving.end());
+
+        PlaylistEditFacts facts;
+        facts.noSuchPlaylist = found == playlists_.end();
+        if (!facts.noSuchPlaylist) {
+            facts.ownPlaylist = found->entry.role.has_value();
+            facts.locked = found->locked;
+            facts.rowsMoved = structure != found->entry.structure;
+            facts.positionPastEnd =
+                anyPastEnd(moving, found->rows.size()) || to > found->rows.size() - moving.size();
+        }
+        if (const auto outcome = playlistEditRefusal(facts); outcome != PlayerOutcome::done)
+            return RowsEdited{outcome, facts.noSuchPlaylist ? 0 : found->entry.structure, {}};
+
+        std::vector<uint32_t> order;
+        for (uint32_t position = 0; position < found->rows.size(); ++position)
+            if (!std::binary_search(moving.begin(), moving.end(), position))
+                order.push_back(position);
+        order.insert(order.begin() + to, moving.begin(), moving.end());
+
+        reordered(*found, order);
+        return RowsEdited{PlayerOutcome::done, found->entry.structure, {}};
+    };
+
+    // Ascending on what `pattern` formats for each row, and stable, as foobar2000's sort is.
+    // Byte order stands in for foobar2000's comparison, so a case's values must sort the same
+    // under both.
+    player.playlists.sortRows = [this](const std::string& id, uint64_t structure,
+                                       const std::string& pattern) {
+        const Lock guard(mutex_);
+        ask(Call::sortRows, id);
+
+        if (const auto refused = refusal(Call::sortRows))
+            return SortedRows{*refused, 0, {}};
+
+        const auto found = find(id);
+
+        PlaylistEditFacts facts;
+        facts.noSuchPlaylist = found == playlists_.end();
+        if (!facts.noSuchPlaylist) {
+            facts.ownPlaylist = found->entry.role.has_value();
+            facts.locked = found->locked;
+            facts.rowsMoved = structure != found->entry.structure;
+        }
+        if (const auto outcome = playlistEditRefusal(facts); outcome != PlayerOutcome::done)
+            return SortedRows{outcome, facts.noSuchPlaylist ? 0 : found->entry.structure, {}};
+
+        const auto keyOf = [&found, &pattern](uint32_t position) {
+            return formatted(found->rows[position], {pattern}).columns.front();
+        };
+
+        std::vector<uint32_t> order(found->rows.size());
+        std::iota(order.begin(), order.end(), 0);
+        std::stable_sort(order.begin(), order.end(), [&keyOf](uint32_t left, uint32_t right) {
+            return keyOf(left) < keyOf(right);
+        });
+
+        reordered(*found, order);
+        return SortedRows{PlayerOutcome::done, found->entry.structure, order};
+    };
+
     // No role check, as fb2k/playlist_edits.cpp has none: a fill is how the scratch gets its rows.
     player.playlists.fill = [this](const std::string& id, const std::string& title,
                                    uint64_t structure, const std::vector<uint32_t>& ordinals,
@@ -714,17 +803,26 @@ Player FakePlayer::player() {
             return playlistFailure(*refused);
 
         const auto found = find(id);
-        if (found == playlists_.end())
-            return playlistFailure(PlayerOutcome::noSuchPlaylist);
-        if (!found->entry.managed)
-            return playlistFailure(PlayerOutcome::notOurs);
 
-        const auto existing = listing();
+        PlaylistEditFacts facts;
+        facts.noSuchPlaylist = found == playlists_.end();
+        facts.ownPlaylist = !facts.noSuchPlaylist && found->entry.role.has_value();
+        if (const auto outcome = playlistEditRefusal(facts); outcome != PlayerOutcome::done)
+            return playlistFailure(outcome);
 
-        if (keyTaken(existing, spec.key, id))
-            return playlistFailure(PlayerOutcome::keyInUse, spec.key);
+        if (!found->entry.isAutoPlaylist)
+            return playlistFailure(PlayerOutcome::notAnAutoPlaylist);
 
-        found->entry.managed = spec;
+        if (!found->entry.managed) {
+            if (!spec.key.empty())
+                return playlistFailure(PlayerOutcome::keyRefused);
+        } else {
+            if (keyTaken(listing(), spec.key, id))
+                return playlistFailure(PlayerOutcome::keyInUse, spec.key);
+
+            found->entry.managed = spec;
+        }
+
         if (!spec.title.empty())
             found->entry.title = spec.title;
 
@@ -741,10 +839,19 @@ Player FakePlayer::player() {
             return playlistFailure(*refused);
 
         const auto found = find(id);
-        if (found == playlists_.end())
-            return playlistFailure(PlayerOutcome::noSuchPlaylist);
-        if (!found->entry.managed)
-            return playlistFailure(PlayerOutcome::notOurs);
+
+        PlaylistEditFacts facts;
+        facts.noSuchPlaylist = found == playlists_.end();
+        facts.ownPlaylist = !facts.noSuchPlaylist && found->entry.role.has_value();
+        if (const auto outcome = playlistEditRefusal(facts); outcome != PlayerOutcome::done)
+            return playlistFailure(outcome);
+
+        if (!found->entry.isAutoPlaylist)
+            return playlistFailure(PlayerOutcome::notAnAutoPlaylist);
+
+        facts.locked = found->locked;
+        if (const auto outcome = playlistEditRefusal(facts); outcome != PlayerOutcome::done)
+            return playlistFailure(outcome);
 
         playlists_.erase(found);
 
@@ -753,20 +860,26 @@ Player FakePlayer::player() {
         return result;
     };
 
-    player.autoPlaylists.preview = [this](const std::string& query) {
+    player.autoPlaylists.preview = [this](const std::string& query, bool withRows) {
         const Lock guard(mutex_);
         ask(Call::previewQuery);
+        previewsAskingRows_.push_back(withRows);
 
         if (const auto refused = refusal(Call::previewQuery))
             return failed<PreviewResult>(*refused);
 
-        const auto found = previews_.find(query);
-        if (found != previews_.end())
-            return found->second;
-
         PreviewResult answer;
         answer.valid = true;
         answer.libraryEnabled = true;
+
+        if (const auto found = previews_.find(query); found != previews_.end())
+            answer = found->second;
+
+        answer.hasRows = withRows && answer.valid;
+        if (!answer.hasRows) {
+            answer.structure = 0;
+            answer.ordinals.clear();
+        }
         return answer;
     };
 

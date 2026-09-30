@@ -102,6 +102,8 @@ Player playerUsing(MainThreadQueue& mainThread, MainThreadWatch& mainThreadWatch
     player.playlists.move = makePlaylistMover(mainThread);
     player.playlists.copyRows = makePlaylistRowCopier(mainThread, playlistVersions);
     player.playlists.removeRows = makePlaylistRowRemover(mainThread, playlistVersions);
+    player.playlists.moveRows = makePlaylistRowMover(mainThread, playlistVersions);
+    player.playlists.sortRows = makePlaylistRowSorter(mainThread, playlistVersions);
     player.playlists.fill =
         makePlaylistFiller(mainThread, libraryFeed.ordinalResolver(), playlistVersions);
     player.playlists.resolveOwn = makeOwnPlaylistResolver(mainThread, playlistVersions);
@@ -110,7 +112,7 @@ Player playerUsing(MainThreadQueue& mainThread, MainThreadWatch& mainThreadWatch
     player.autoPlaylists.create = makeAutoPlaylistCreator(mainThread, playlistVersions);
     player.autoPlaylists.update = makeAutoPlaylistUpdater(mainThread, playlistVersions);
     player.autoPlaylists.remove = makeAutoPlaylistRemover(mainThread);
-    player.autoPlaylists.preview = makeQueryPreviewer(mainThread);
+    player.autoPlaylists.preview = makeQueryPreviewer(mainThread, libraryFeed.ordinalMatcher());
 
     player.queue.read = makeQueueReader(mainThread, playerState);
     player.queue.addPlaylistRows = makePlaylistRowQueuer(mainThread, playerState);

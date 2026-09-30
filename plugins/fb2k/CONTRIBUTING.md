@@ -53,7 +53,7 @@ Each of these is unreachable from the suite by nature, so each says how it is ve
 | The AAC encoder | Windows-only and unreachable from the suite at all. `verify-stream.ps1` drives it |
 | The preferences page's `GWLP_USERDATA` teardown | opening and closing **Preferences → Tools → Jean** is the whole test |
 | A person at the player taking back the mute hold while a stream runs | no live coverage, since no verify script writes the volume or the mute; `tests/output_hold_test.cpp` holds it |
-| `notOurs`, the guard refusing to touch a playlist this component did not create | no live coverage; exercised by hand against a playlist created for the purpose |
+| `notAnAutoPlaylist`, the guard refusing to replace a plain playlist's rows with a query's | no live coverage; exercised by hand against a playlist created for the purpose |
 
 ## 5. The HTTP contract
 

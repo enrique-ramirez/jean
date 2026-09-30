@@ -110,6 +110,19 @@ using PlaylistRowCopier =
 using PlaylistRowRemover = std::function<RowsEdited(
     const std::string& playlistId, uint64_t structure, const std::vector<uint32_t>& positions)>;
 
+using PlaylistRowMover =
+    std::function<RowsEdited(const std::string& playlistId, uint64_t structure,
+                             const std::vector<uint32_t>& positions, uint32_t to)>;
+
+struct SortedRows {
+    PlayerOutcome outcome = PlayerOutcome::done;
+    uint64_t structure = 0;
+    std::vector<uint32_t> order;
+};
+
+using PlaylistRowSorter = std::function<SortedRows(const std::string& playlistId,
+                                                   uint64_t structure, const std::string& pattern)>;
+
 // Where the rows an insert asked for landed, in the order they were inserted, and the
 // target's structure generation once they had.
 struct FillResult {
@@ -158,6 +171,8 @@ struct PlaylistCalls {
     PlaylistMover move;
     PlaylistRowCopier copyRows;
     PlaylistRowRemover removeRows;
+    PlaylistRowMover moveRows;
+    PlaylistRowSorter sortRows;
     PlaylistFiller fill;
     OwnPlaylistResolver resolveOwn;
     OwnPlaylistEmptier emptyOwn;
@@ -168,7 +183,7 @@ using AutoPlaylistCreator =
 using AutoPlaylistUpdater =
     std::function<PlaylistResult(const std::string& id, const AutoPlaylistSpec&)>;
 using AutoPlaylistRemover = std::function<PlaylistResult(const std::string& id)>;
-using QueryPreviewer = std::function<PreviewResult(const std::string& query)>;
+using QueryPreviewer = std::function<PreviewResult(const std::string& query, bool withRows)>;
 
 struct AutoPlaylistCalls {
     AutoPlaylistCreator create;

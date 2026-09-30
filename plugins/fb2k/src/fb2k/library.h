@@ -26,6 +26,13 @@ struct OrdinalResolution {
 using OrdinalResolver =
     std::function<OrdinalResolution(uint64_t structure, const std::vector<uint32_t>& ordinals)>;
 
+struct MatchedOrdinals {
+    uint64_t structure = 0;
+    std::vector<uint32_t> ordinals;
+};
+
+using OrdinalMatcher = std::function<MatchedOrdinals(const metadb_handle_list& matches)>;
+
 // The handle the snapshot holds at one address. Invalid where it holds no such track, and
 // `heldTwice` with no handle where it holds more than one: two media library roots can share
 // a relative path, and neither copy is the one the address meant.
@@ -55,6 +62,8 @@ public:
     ArtworkReader artworkReader();
 
     OrdinalResolver ordinalResolver();
+
+    OrdinalMatcher ordinalMatcher();
 
     LibraryTrackResolver trackResolver();
 

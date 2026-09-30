@@ -77,7 +77,7 @@ void AutoPlaylistRoutes::preview(const httplib::Request& req, httplib::Response&
     if (previewingTooFast(res))
         return;
 
-    const auto counted = autoPlaylists_.preview(request.spec.query);
+    const auto counted = autoPlaylists_.preview(request.spec.query, request.rows);
     if (counted.outcome != PlayerOutcome::done) {
         respondOutcome(res, counted.outcome);
         return;

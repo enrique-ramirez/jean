@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,13 +24,6 @@ namespace {
 // No foobar2000 lock bit covers a playlist's place in the list: playlist_manager::reorder moves
 // a playlist regardless of its lock.
 constexpr uint32_t kNoLockCoversMoving = 0;
-
-// foobar2000 holds a playlist's lock as a mask of the edits it refuses (filter_add,
-// filter_remove, filter_rename, filter_remove_playlist), so it is read rather than inferred from
-// a failed call.
-bool lockRefuses(size_t index, uint32_t filter) {
-    return (playlist_manager::get()->playlist_lock_get_filter_mask(index) & filter) != 0;
-}
 
 // What an edit of a user's playlist checks first: that it exists, that it is not one of this
 // component's own, and whether its lock refuses `lockFilter`.
@@ -241,6 +235,65 @@ RowsEdited removeRowsOnMainThread(const std::string& playlistId, uint64_t struct
     return RowsEdited{PlayerOutcome::done, versions.of(playlistId).structure, {}};
 }
 
+RowsEdited moveRowsOnMainThread(const std::string& playlistId, uint64_t structure,
+                                const std::vector<uint32_t>& positions, uint32_t to,
+                                const PlaylistVersions& versions) {
+    const auto index = findPlaylist(playlistId);
+    const auto manager = playlist_manager::get();
+
+    auto facts = userPlaylistFacts(index, playlist_lock::filter_reorder);
+    facts.rowsMoved = versions.of(playlistId).structure != structure;
+
+    std::optional<std::vector<uint32_t>> order;
+    if (!facts.noSuchPlaylist) {
+        order = moveOrder(manager->playlist_get_item_count(index), positions, to);
+        facts.positionPastEnd = !order.has_value();
+    }
+
+    if (const auto refusal = playlistEditRefusal(facts); refusal != PlayerOutcome::done)
+        return failureOf<RowsEdited>(refusal);
+
+    if (!order)
+        return failureOf<RowsEdited>(PlayerOutcome::positionPastEnd);
+
+    const std::vector<t_size> wide(order->begin(), order->end());
+    if (!manager->playlist_reorder_items(index, wide.data(), wide.size()))
+        return failureOf<RowsEdited>(PlayerOutcome::playerRefused);
+
+    return RowsEdited{PlayerOutcome::done, versions.of(playlistId).structure, {}};
+}
+
+SortedRows sortRowsOnMainThread(const std::string& playlistId, uint64_t structure,
+                                const std::string& pattern, const PlaylistVersions& versions) {
+    const auto index = findPlaylist(playlistId);
+    const auto manager = playlist_manager::get();
+
+    auto facts = userPlaylistFacts(index, playlist_lock::filter_reorder);
+    facts.rowsMoved = versions.of(playlistId).structure != structure;
+
+    if (const auto refusal = playlistEditRefusal(facts); refusal != PlayerOutcome::done)
+        return failureOf<SortedRows>(refusal);
+
+    metadb_handle_list items;
+    manager->playlist_get_all_items(index, items);
+
+    service_ptr_t<titleformat_object> script;
+    // compile_safe_ex never fails: the SDK formats a bad pattern as its own error text.
+    titleformat_compiler::get()->compile_safe_ex(script, pattern.c_str(), "");
+
+    std::vector<t_size> order(items.get_count());
+    if (!order.empty()) {
+        // The SDK's sort_by_format_get_order is stable, and fills order[new] with the old position
+        // of the row that belongs at new, the shape playlist_reorder_items takes.
+        items.sort_by_format_get_order(order.data(), script, nullptr);
+        if (!manager->playlist_reorder_items(index, order.data(), order.size()))
+            return failureOf<SortedRows>(PlayerOutcome::playerRefused);
+    }
+
+    return SortedRows{PlayerOutcome::done, versions.of(playlistId).structure,
+                      std::vector<uint32_t>(order.begin(), order.end())};
+}
+
 // No role check: a fill is how this component's own scratch playlist gets its rows.
 FillResult fillOnMainThread(const std::string& playlistId, const std::string& title,
                             uint64_t structure, const std::vector<uint32_t>& ordinals,
@@ -357,6 +410,29 @@ PlaylistRowRemover makePlaylistRowRemover(MainThreadQueue& mainThread,
                                              return removeRowsOnMainThread(playlistId, structure,
                                                                            positions, versions);
                                          });
+    };
+}
+
+PlaylistRowMover makePlaylistRowMover(MainThreadQueue& mainThread,
+                                      const PlaylistVersions& versions) {
+    return [&mainThread, &versions](const std::string& playlistId, uint64_t structure,
+                                    const std::vector<uint32_t>& positions, uint32_t to) {
+        return askForOutcome<RowsEdited>(mainThread, "moving rows in a playlist",
+                                         [playlistId, structure, positions, to, &versions] {
+                                             return moveRowsOnMainThread(playlistId, structure,
+                                                                         positions, to, versions);
+                                         });
+    };
+}
+
+PlaylistRowSorter makePlaylistRowSorter(MainThreadQueue& mainThread,
+                                        const PlaylistVersions& versions) {
+    return [&mainThread, &versions](const std::string& playlistId, uint64_t structure,
+                                    const std::string& pattern) {
+        return askForOutcome<SortedRows>(
+            mainThread, "sorting a playlist", [playlistId, structure, pattern, &versions] {
+                return sortRowsOnMainThread(playlistId, structure, pattern, versions);
+            });
     };
 }
 

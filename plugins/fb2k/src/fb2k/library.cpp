@@ -255,6 +255,25 @@ struct LibraryFeed::State {
         return resolved;
     }
 
+    MatchedOrdinals ordinalsOf(const metadb_handle_list& matches) const {
+        const OrderedPtr ordered = order();
+
+        MatchedOrdinals found;
+        if (!ordered)
+            return found;
+
+        found.structure = ordered->structure;
+        found.ordinals.reserve(matches.get_count());
+        for (size_t n = 0; n < matches.get_count(); ++n) {
+            const auto held = ordered->ordinals.find(matches[n].get_ptr());
+            if (held != ordered->ordinals.end())
+                found.ordinals.push_back(held->second);
+        }
+
+        std::sort(found.ordinals.begin(), found.ordinals.end());
+        return found;
+    }
+
     void stop() {
         {
             const std::lock_guard<std::mutex> lock(mutex_);
@@ -661,6 +680,14 @@ OrdinalResolver LibraryFeed::ordinalResolver() {
     return [state = state_](uint64_t structure, const std::vector<uint32_t>& ordinals) {
         return state->resolveOrdinals(structure, ordinals);
     };
+}
+
+OrdinalMatcher LibraryFeed::ordinalMatcher() {
+    if (!state_)
+        return {};
+
+    return
+        [state = state_](const metadb_handle_list& matches) { return state->ordinalsOf(matches); };
 }
 
 LibraryTrackResolver LibraryFeed::trackResolver() {

@@ -27,6 +27,6 @@ Four roles, and a script touching one assumes nothing of another: **a build mach
 - **Never run `foobar2000.exe` over SSH.** An SSH session is session 0, so it starts a second instance that intercepts the single-instance IPC and hangs the next `/exit`. Use `scripts/lib/player.ps1`. A stray shows in `tasklist` as a `Services` row; kill that PID.
 - Tag writes go only to the tree `scripts/test-fixtures.ps1` builds from its own corpus. Registering its two roots as media library folders is manual.
 - `<profile>/library-v2.0/folders` is a count, then a length, a path and a zero per folder, and `filters` must exist beside it or no scan runs. Edit it with the player stopped.
-- Exercise `notOurs` only against a playlist made for the purpose.
+- Exercise `notAnAutoPlaylist` only against a playlist made for the purpose, and an autoplaylist update or delete only against one made for it: both replace or remove a real playlist.
 - Chained `cmd` builtins over SSH fail silently, so anything longer is a `.ps1` run with `powershell -NoProfile -ExecutionPolicy Bypass -File`.
 - Set `[Console]::OutputEncoding=[Text.Encoding]::UTF8` before calling an accented filename broken; the console code page mangles it.

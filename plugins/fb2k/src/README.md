@@ -32,6 +32,8 @@ The rest of `core/` is the machinery those decisions run on. `player` is the `Pl
 
 Beside the twelve halves named above: `component.cpp` is the `initquit` that owns everything, so startup order is a constructor and shutdown order is a destructor; `playback_commands` is the seven seams into `playback_control` or `playlist_manager` that play a playlist row, drive the transport, seek, and set the order, the volume and the mute, with `core/player.h` and `core/playback_modes.h` deciding what may be asked and which order an index names; `queue` is what the play queue asks of the player, with `core/requests_queue.h` deciding what may be asked; `playlists` is what `playlist_reads`, `playlist_edits`, `autoplaylists`, `playlist_properties` and `playlist_watch` share; `tracks` is what a track handle is published as; `main_thread` is foobar2000's `MainThreadCalls`; `ticket_mint` mints a stream ticket and `files` writes a text file; `strings` and `resource.h` are the Windows plumbing; `running_settings` is what the listener actually came up with, so the page can tell a saved change from a live one; `aac_encoder` is the Media Foundation half of streaming; and `PCH.{h,cpp}` is the precompiled header, which is the SDK and nothing else.
 
+`playlist_edits` holds the row writes, a move and a sort among them: a move takes its permutation from `moveOrder` in `core/playlists.h`, which is pure, and a sort takes its permutation from the SDK; `autoplaylists` answers a preview's matches as ordinals through the `OrdinalMatcher` that `library` builds over its snapshot, empty where there is no snapshot.
+
 And the ones with no description of their own:
 
 | | |

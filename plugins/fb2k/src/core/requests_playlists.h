@@ -90,6 +90,32 @@ struct RemoveRowsRequest {
 
 RemoveRowsRequest parseRemoveRows(const JsonObject& body);
 
+// `POST /api/playlists/{id}/items/move`'s body: the rows as `runs` or `ordinals`, never
+// `bitset`, and where the first lands; see contract/openapi.yaml, `MovePlaylistRowsRequest`.
+// `structure` is read as `RemoveRowsRequest`'s is.
+struct MoveRowsRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+
+    uint64_t structure = 0;
+    std::vector<uint32_t> ordinals;
+    uint32_t to = 0;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+MoveRowsRequest parseMoveRows(const JsonObject& body);
+
+struct SortRowsRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+
+    uint64_t structure = 0;
+    std::string pattern;
+
+    bool ok() const { return refusal == PlaylistRefusal::none; }
+};
+
+SortRowsRequest parseSortRows(const JsonObject& body);
+
 // Which of the two sets a create carries, or neither; see contract/openapi.yaml,
 // `CreatePlaylistRequest`. A body naming both is read as naming a source playlist, and the
 // library fields it also carries are then fields that form does not declare.

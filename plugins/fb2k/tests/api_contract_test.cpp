@@ -420,6 +420,8 @@ TEST_CASE("every document carrying a playlist's counters carries them as strings
 
     CHECK(json::parse(copiedRowsDocument(kSeeded, {})).at("structure").dump() == digits);
     CHECK(json::parse(removedRowsDocument(kSeeded)).at("structure").dump() == digits);
+    CHECK(json::parse(movedRowsDocument(kSeeded)).at("structure").dump() == digits);
+    CHECK(json::parse(sortedRowsDocument(kSeeded, {})).at("structure").dump() == digits);
     CHECK(json::parse(fillResultDocument(kPlaylistId, kSeeded, {})).at("structure").dump() ==
           digits);
 }
@@ -430,6 +432,8 @@ TEST_CASE("the other playlist answers are the shapes contract/openapi.yaml publi
     CHECK(keysOf(playlistRemovedDocument(kPlaylistId)) == Keys{"removed", "id"});
     CHECK(keysOf(fillResultDocument(kPlaylistId, 0, {})) ==
           Keys{"playlistId", "structure", "positions"});
+    CHECK(keysOf(movedRowsDocument(0)) == Keys{"structure"});
+    CHECK(keysOf(sortedRowsDocument(0, {1, 0})) == Keys{"structure", "order"});
 
     const auto refused = parseAutoPlaylist("not json", Need::required);
     REQUIRE_FALSE(refused.ok());
@@ -441,6 +445,28 @@ TEST_CASE("the other playlist answers are the shapes contract/openapi.yaml publi
 
     CHECK(keysOf(queryPreviewDocument(PreviewResult())) ==
           Keys{"valid", "error", "matches", "libraryEnabled"});
+}
+
+// A preview asked for rows that matched nothing still says which generation it counted in, so
+// a client can tell an empty answer from a stale one.
+TEST_CASE("a preview carrying rows is the shape contract/openapi.yaml publishes") {
+    INFO(kUpdateSpec);
+
+    PreviewResult rows;
+    rows.valid = true;
+    rows.hasRows = true;
+
+    CHECK(keysOf(queryPreviewDocument(rows)) ==
+          Keys{"valid", "error", "matches", "libraryEnabled", "structure", "ordinals"});
+
+    // Past 2^32 and inside 2^53, the range GET /state's library.structure travels in.
+    constexpr uint64_t kGeneration = 4294967337ULL;
+    rows.structure = kGeneration;
+    rows.ordinals = {0, 4294967295U};
+
+    const auto document = json::parse(queryPreviewDocument(rows));
+    CHECK(document.at("structure").dump() == "4294967337");
+    CHECK(document.at("ordinals").dump() == "[0,4294967295]");
 }
 
 // Driven from the enumerations and read against the contract, so a refusal added to either side,
@@ -724,6 +750,44 @@ TEST_CASE(
         CHECK(publishesError("PlaylistFailed", sentence));
         CHECK(publishes("POST", "/outputs/active", httpStatusFor(outcome)));
     }
+}
+
+TEST_CASE("both autoplaylist routes publish the 409 for a playlist that is not an autoplaylist") {
+    const std::string sentence = "that playlist is not an autoplaylist";
+
+    INFO("add PlayerOutcome::notAnAutoPlaylist in core/player_outcome.h, saying it, sent as 409");
+    CHECK(describe(PlayerOutcome::notAnAutoPlaylist) == sentence);
+    CHECK(statusAnswered<PlayerOutcome>(sentence) == 409);
+
+    INFO(kUpdateSpec);
+    CHECK(publishesError("PlaylistFailed", sentence));
+    CHECK(publishes("POST", "/autoplaylists/{id}", 409));
+    CHECK(publishes("DELETE", "/autoplaylists/{id}", 409));
+}
+
+// A client reads the key refusal the same way whether the parser or the player made it.
+TEST_CASE("a key the player refuses on an update is the 400 a malformed key is, published there") {
+    INFO("add PlayerOutcome::keyRefused in core/player_outcome.h, saying what badKey says");
+    CHECK(describe(PlayerOutcome::keyRefused) == "unacceptable key");
+    CHECK(describe(PlayerOutcome::keyRefused) == describe(PlaylistRefusal::badKey));
+    CHECK(httpStatusFor(PlayerOutcome::keyRefused) == 400);
+
+    INFO(kUpdateSpec);
+    CHECK(publishesError("PlaylistFailed", "unacceptable key"));
+    CHECK(publishes("POST", "/autoplaylists/{id}", 400));
+}
+
+TEST_CASE("no refusal the component sends or the contract publishes says who made a playlist") {
+    const std::string sentence = "that playlist was not created by foo_jean";
+
+    CHECK(everyDescribed<PlayerOutcome>().count(sentence) == 0);
+
+    INFO(kUpdateSpec);
+    const auto published = publishedEnum("PlaylistFailed", "error");
+    CHECK(std::none_of(published.begin(), published.end(), [&sentence](const std::string& error) {
+        return unquoted(error) == sentence;
+    }));
+    CHECK(publishedErrorExamples().count(sentence) == 0);
 }
 
 TEST_CASE("a moved generation is refused with the 409 GET /library/changes already sends") {

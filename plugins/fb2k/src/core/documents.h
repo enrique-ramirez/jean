@@ -60,6 +60,8 @@ std::string fillResultDocument(const std::string& playlistId, uint64_t structure
 
 std::string copiedRowsDocument(uint64_t structure, const std::vector<size_t>& positions);
 std::string removedRowsDocument(uint64_t structure);
+std::string movedRowsDocument(uint64_t structure);
+std::string sortedRowsDocument(uint64_t structure, const std::vector<uint32_t>& order);
 
 // One row of a playlist: the columns the client declared, evaluated against the row's own
 // handle in the order it declared them, the library path GET /api/artwork?track= takes where

@@ -200,7 +200,9 @@ export function VolumePopover({
 }) {
 	const t = useTranslate();
 	const [isOpen, setIsOpen] = useState(false);
-	const ref = useDismissable<HTMLDivElement>(isOpen, () => setIsOpen(false));
+	const ref = useDismissable<HTMLDivElement>(isOpen, () => setIsOpen(false), {
+		tapOutsideOnlyDismisses: true,
+	});
 	const outputPage = useOutputPage(isOpen);
 
 	return (

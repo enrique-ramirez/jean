@@ -1,5 +1,6 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
+	choosePlayer,
 	componentOrigin,
 	dragTo,
 	expect,
@@ -8,11 +9,14 @@ import {
 	openLibrary,
 	openSettings,
 	playedFrom,
+	playingOn,
 	playRequests,
 	pressAndHold,
+	scrollTop,
 	settingsDialog,
 	statusBar,
 	test,
+	touchDrag,
 	trackRow,
 } from "./fixtures.ts";
 
@@ -173,6 +177,30 @@ const libraryGuid = (player: FakePlayer) =>
 				"data-active",
 				"true",
 			);
+			await expect(trackRow(page, THIRD_TRACK.index)).toHaveAttribute(
+				"data-cursor",
+				"true",
+			);
+		});
+
+		// With Playback follows cursor on, the cursor is what plays next, so a finger that landed on a
+		// row only to scroll past it would reorder the listening.
+		test("a scroll that starts on a row leaves the cursor and the selection alone", async ({
+			page,
+			player,
+		}) => {
+			const row = trackRow(page, THIRD_TRACK.index);
+			const box = (await row.boundingBox())!;
+			const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+			await touchDrag(page, from, { x: from.x, y: from.y - 240 }, 8);
+
+			await expect.poll(() => scrollTop(page)).toBeGreaterThan(0);
+			await expect(row).toHaveAttribute("data-cursor", "false");
+			await expect(
+				page.locator('[role="row"][data-selected="true"]'),
+			).toHaveCount(0);
+			await expectSettlesAt(player, () => playRequests(player), []);
 		});
 
 		test("a press-and-hold opens the menu and plays nothing", {
@@ -182,6 +210,72 @@ const libraryGuid = (player: FakePlayer) =>
 
 			await expect(page.getByRole("dialog")).toBeVisible();
 			await expectSettlesAt(player, () => playRequests(player), []);
+		});
+	});
+});
+
+// A popover in the status bar has no scrim, so the tap that closes it lands on
+// whatever is underneath, and a track row there plays on a tap.
+test.describe("a tap outside a status bar popover", () => {
+	test.skip(({ isMobile }) => !isMobile, "these are touch gestures");
+
+	const popovers = [
+		{
+			name: "Playing on",
+			open: (page: Page) => choosePlayer(page).tap(),
+			panel: (page: Page) => playingOn(page),
+		},
+		{
+			name: "volume",
+			open: (page: Page) =>
+				statusBar(page).getByRole("button", { name: "Show volume" }).tap(),
+			panel: (page: Page) =>
+				statusBar(page).getByRole("slider", { name: /Volume/ }),
+		},
+	];
+
+	popovers.forEach(({ name, open, panel }) => {
+		test(`closes the ${name} popover and plays nothing`, async ({
+			page,
+			player,
+		}) => {
+			await openLibrary(page);
+			const row = trackRow(page, THIRD_TRACK.index);
+			await expect(row).toBeVisible();
+
+			await open(page);
+			await expect(panel(page)).toBeVisible();
+
+			await row.tap();
+			await expect(panel(page)).toBeHidden();
+			await expect(row).toHaveAttribute("data-cursor", "false");
+			await expectSettlesAt(player, () => playRequests(player), []);
+		});
+	});
+
+	// The browser counts the tap that closed the popover toward the next one's
+	// click count, so the second reads as the back half of a double tap, which a
+	// row answers by not playing again.
+	test("a tap straight after the one that closed it plays", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		const row = trackRow(page, THIRD_TRACK.index);
+		await expect(row).toBeVisible();
+		const box = (await row.boundingBox())!;
+		const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+		await popovers[0].open(page);
+		await expect(popovers[0].panel(page)).toBeVisible();
+
+		await touchDrag(page, centre, centre, 0);
+		await touchDrag(page, centre, centre, 0);
+
+		await expectSettlesAt(player, () => playRequests(player).length, 1);
+		expect(playedFrom(player)).toEqual({
+			id: libraryGuid(player),
+			index: THIRD_TRACK.index,
 		});
 	});
 });

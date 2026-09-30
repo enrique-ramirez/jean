@@ -9,8 +9,6 @@ import { targetsFrom } from "./trackTargets";
 import type { useTrackDragSource } from "./useTrackDragSource";
 import type { useTrackSelection } from "./useTrackSelection";
 
-const isRepeatClick = (event: ReactMouseEvent) => event.detail > 1;
-
 export function useRowPointer({
 	rows,
 	selection,
@@ -30,6 +28,7 @@ export function useRowPointer({
 
 	const selectFromPointer = useCallback(
 		(index: number, event: ReactPointerEvent) => {
+			if (event.pointerType !== "mouse") return;
 			const plain = !event.shiftKey && !event.metaKey && !event.ctrlKey;
 			if (
 				plain &&
@@ -54,29 +53,38 @@ export function useRowPointer({
 	// and Safari but a plain MouseEvent in Firefox, where every desktop click would read as a tap.
 	const pointerType = useRef("mouse");
 
-	const playFromPointer = useCallback(
-		(event: ReactMouseEvent) => {
-			const aimed = targetsFrom(event, rows.length, selection.selection);
-			if (aimed) play(aimed.index);
-		},
-		[rows.length, selection.selection, play],
+	// A browser counts a click toward the next one's `detail` even when something stopped it before
+	// it reached this list, so a repeat is also one whose press follows the last click this list heard.
+	const pressesSinceClick = useRef(0);
+
+	const aimedIndex = useCallback(
+		(event: ReactMouseEvent) =>
+			targetsFrom(event, rows.length, selection.selection)?.index ?? null,
+		[rows.length, selection.selection],
 	);
 
-	// `click` rather than `pointerup`: the browser withholds it when the gesture turns out to be a scroll.
+	// A touch selects and plays on `click` rather than on the press or `pointerup`: the browser
+	// withholds it when the gesture turns out to be a scroll.
 	const onClick = useCallback(
 		(event: ReactMouseEvent) => {
-			if (pointerType.current === "mouse" || isRepeatClick(event)) return;
-			playFromPointer(event);
+			const isRepeat = event.detail > 1 && pressesSinceClick.current === 1;
+			pressesSinceClick.current = 0;
+			if (pointerType.current === "mouse") return;
+			const index = aimedIndex(event);
+			if (index === null) return;
+			selection.selectFromEvent(index, event);
+			if (!isRepeat) play(index);
 		},
-		[playFromPointer],
+		[aimedIndex, selection, play],
 	);
 
 	const onDoubleClick = useCallback(
 		(event: ReactMouseEvent) => {
 			if (pointerType.current !== "mouse") return;
-			playFromPointer(event);
+			const index = aimedIndex(event);
+			if (index !== null) play(index);
 		},
-		[playFromPointer],
+		[aimedIndex, play],
 	);
 
 	return {
@@ -84,6 +92,7 @@ export function useRowPointer({
 		rowHandlers: {
 			onPointerDown: (event: ReactPointerEvent) => {
 				pointerType.current = event.pointerType;
+				pressesSinceClick.current += 1;
 			},
 			onPointerUp: resolveCollapse,
 			onClick,

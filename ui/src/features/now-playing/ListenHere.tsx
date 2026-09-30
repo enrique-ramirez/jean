@@ -97,7 +97,9 @@ export function ListenHere({ playerName }: { playerName: string }) {
 		retry,
 	} = useListener();
 	const [isOpen, setIsOpen] = useState(false);
-	const ref = useDismissable<HTMLDivElement>(isOpen, () => setIsOpen(false));
+	const ref = useDismissable<HTMLDivElement>(isOpen, () => setIsOpen(false), {
+		tapOutsideOnlyDismisses: true,
+	});
 
 	const [gap, setGap] = useState(0);
 	useLayoutEffect(() => {

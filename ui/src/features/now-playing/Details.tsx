@@ -1,6 +1,8 @@
+import { Fragment } from "react";
 import { ArtistLinks } from "@/domain/track/ArtistLinks";
 import { readTimestamp, readValue } from "@/domain/track/fields";
 import { albumRoute, genreRoute, href } from "@/domain/track/routes";
+import { PLAYER_JOINER, valuesIn } from "@/shared/api/multiValue";
 import type { TrackColumns } from "@/shared/api/types";
 import type { Phrase } from "@/shared/i18n/en";
 import {
@@ -47,6 +49,7 @@ function played(raw: string | null, format: Formats) {
 
 interface Row {
 	credit?: true;
+	genres?: true;
 	label: DetailPhrase;
 	value: string | null;
 	href?: string;
@@ -57,8 +60,17 @@ interface Group {
 	rows: Row[];
 }
 
-const genreOf = (genre: string | null) =>
-	genre ? href(genreRoute(genre)) : undefined;
+function GenreLinks({ genres }: { genres: string }) {
+	return valuesIn(genres).map((genre, at) => (
+		// biome-ignore lint/suspicious/noArrayIndexKey: the position in the tag is the identity
+		<Fragment key={at}>
+			{at > 0 ? PLAYER_JOINER : null}
+			<a className="tag-link" href={href(genreRoute(genre))}>
+				{genre}
+			</a>
+		</Fragment>
+	));
+}
 
 function groupsOf(row: TrackColumns, format: Formats): Group[] {
 	const album = read(row, F.album);
@@ -94,7 +106,7 @@ function groupsOf(row: TrackColumns, format: Formats): Group[] {
 				{
 					label: "details.genre",
 					value: read(row, F.genre),
-					href: genreOf(read(row, F.genre)),
+					genres: true,
 				},
 				{ label: "details.publisher", value: read(row, F.publisher) },
 				{ label: "details.composer", value: read(row, F.composer) },
@@ -178,6 +190,8 @@ export function Details() {
 								<dd className={styles.value}>
 									{row.credit ? (
 										<ArtistLinks credit={row.value} />
+									) : row.genres && row.value ? (
+										<GenreLinks genres={row.value} />
 									) : row.href && row.value ? (
 										<a className="tag-link" href={row.href}>
 											{row.value}

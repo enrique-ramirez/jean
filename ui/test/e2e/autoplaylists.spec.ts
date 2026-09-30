@@ -166,7 +166,7 @@ test.describe("creating one from a genre", () => {
 		// `Punk Rock` too -- a different set from the one the tile counted.
 		expect(made?.body).toMatchObject({
 			title: "Rock En Español",
-			query: '%genre% IS "Rock En Español"',
+			query: 'genre IS "Rock En Español"',
 		});
 		// No key: a key would make it Jean's to manage, and would 409 the second one.
 		expect(made?.body).not.toHaveProperty("key");

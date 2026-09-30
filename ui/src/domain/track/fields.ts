@@ -1,5 +1,6 @@
 import { fieldTable } from "@/shared/api/fieldTable";
 import type { JlibColumn } from "@/shared/api/jlib";
+import { GENRE_EXPRESSION, valuesIn } from "@/shared/api/multiValue";
 import type { TrackColumns } from "@/shared/api/types";
 import type { Translate } from "@/shared/i18n/locale";
 import {
@@ -21,7 +22,7 @@ const FIELDS = [
 	["lastPlayed", "%lastfm_last_played%"],
 	["rating", "%rating%"],
 	["year", "%year%"],
-	["genre", "%genre%"],
+	["genre", GENRE_EXPRESSION],
 	["codec", "%codec%"],
 	["bitrate", "%bitrate%"],
 	["playCountLocal", "%play_count%"],
@@ -143,6 +144,7 @@ export const sameTagValue = (
 export interface TagGrouper {
 	readonly keys: string[];
 	readonly names: string[];
+	add: (raw: string) => number;
 	over: (column: JlibColumn) => Int32Array;
 	group: (key: string) => number;
 }
@@ -152,30 +154,28 @@ export function tagGrouper(): TagGrouper {
 	const keys: string[] = [];
 	const names: string[] = [];
 
+	const add = (raw: string) => {
+		const key = tagKey(raw);
+		let group = byKey.get(key);
+		if (group === undefined) {
+			group = keys.length;
+			keys.push(key);
+			names.push(raw);
+			byKey.set(key, group);
+		}
+		return group;
+	};
+
 	return {
 		keys,
 		names,
+		add,
 		over: (column) => {
 			const groups = new Int32Array(column.distinct);
-
 			for (let id = 0; id < column.distinct; id += 1) {
 				const raw = readValue(column.value(id));
-				if (raw === null) {
-					groups[id] = -1;
-					continue;
-				}
-
-				const key = tagKey(raw);
-				let group = byKey.get(key);
-				if (group === undefined) {
-					group = keys.length;
-					keys.push(key);
-					names.push(raw);
-					byKey.set(key, group);
-				}
-				groups[id] = group;
+				groups[id] = raw === null ? -1 : add(raw);
 			}
-
 			return groups;
 		},
 		group: (key) => byKey.get(key) ?? -1,
@@ -189,6 +189,24 @@ export interface TagGroups extends TagGrouper {
 export function tagGroups(column: JlibColumn): TagGroups {
 	const grouper = tagGrouper();
 	return { ...grouper, of: grouper.over(column) };
+}
+
+export interface GenreGroups {
+	readonly keys: string[];
+	readonly names: string[];
+	readonly of: readonly (readonly number[])[];
+	group: (key: string) => number;
+}
+
+export function genreGroups(column: JlibColumn): GenreGroups {
+	const grouper = tagGrouper();
+	const of = Array.from({ length: column.distinct }, (_, id) => {
+		const raw = readValue(column.value(id));
+		if (raw === null) return [];
+		const named = valuesIn(raw).filter((genre) => tagKey(genre) !== "");
+		return [...new Set(named.map(grouper.add))];
+	});
+	return { keys: grouper.keys, names: grouper.names, of, group: grouper.group };
 }
 
 // Album artist first: it is missing far more often than artist is, so a record credited to it groups

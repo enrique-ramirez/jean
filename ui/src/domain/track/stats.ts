@@ -1,5 +1,5 @@
 import { translate } from "@/shared/i18n/locale";
-import { FIELD, readNumber, tagGroups } from "./fields";
+import { FIELD, genreGroups, readNumber } from "./fields";
 import { byValue } from "./libraryColumns";
 import type { TrackRows } from "./project";
 
@@ -8,8 +8,6 @@ const MINUTE = 60;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-// A genre is the tag taken whole, since foobar joins multiple values with '; '. `refsOfGenre`
-// matches by the same rule and the two have to stay in step.
 export function summarise(
 	rows: TrackRows,
 	playedCount = 0,
@@ -22,7 +20,7 @@ export function summarise(
 
 	const lengths = byValue(duration, readNumber);
 	const years = byValue(year, readNumber);
-	const tags = tagGroups(genre);
+	const tags = genreGroups(genre);
 	const counts = new Int32Array(tags.keys.length);
 
 	let seconds = 0;
@@ -41,10 +39,10 @@ export function summarise(
 			latest = latest === null ? released : Math.max(latest, released);
 		}
 
-		const group = tags.of[genre.ids[ref]];
-		if (group < 0) continue;
-		if (counts[group] === 0) tagged += 1;
-		counts[group] += 1;
+		for (const group of tags.of[genre.ids[ref]]) {
+			if (counts[group] === 0) tagged += 1;
+			counts[group] += 1;
+		}
 	}
 
 	const named = tags.keys

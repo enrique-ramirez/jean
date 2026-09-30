@@ -3,6 +3,7 @@ import {
 	memo,
 	type PointerEvent as ReactPointerEvent,
 } from "react";
+import { spellValues } from "@/shared/api/multiValue";
 import type { TrackColumns } from "@/shared/api/types";
 import {
 	type Formats,
@@ -142,7 +143,9 @@ function Cell({
 		);
 	}
 
-	return <span className={className}>{value(row, column.field) ?? "--"}</span>;
+	const text = value(row, column.field);
+	const shown = column.kind === "values" && text ? spellValues(text) : text;
+	return <span className={className}>{shown ?? "--"}</span>;
 }
 
 function TrackRowComponent({

@@ -1,5 +1,5 @@
 import type { TrackColumns } from "@/shared/api/types";
-import { EMPTY_COLUMNS, FIELD, tagGroups, tagKey } from "./fields";
+import { EMPTY_COLUMNS, FIELD, genreGroups, tagKey } from "./fields";
 import { type LibraryColumns, rowAt } from "./libraryColumns";
 import type { PlaylistSnapshot } from "./playlistEntries";
 
@@ -78,8 +78,6 @@ export const EMPTY_VIEW: TrackView = Object.freeze({
 	playedCount: 0,
 });
 
-// Matched whole, since foobar joins multiple values with '; '. `summarise` counts genres by the same
-// rule and the two have to stay in step, or the count beside a name disagrees with the tracks behind it.
 export function refsOfGenre(
 	columns: LibraryColumns,
 	genre: string,
@@ -88,13 +86,14 @@ export function refsOfGenre(
 	if (!wanted) return new Int32Array(0);
 
 	const column = columns.fields[FIELD.genre];
-	const groups = tagGroups(column);
+	const groups = genreGroups(column);
 	const group = groups.group(wanted);
 	if (group < 0) return new Int32Array(0);
 
+	const tagged = groups.of.map((genres) => genres.includes(group));
 	const refs: number[] = [];
 	for (let ref = 0; ref < columns.trackCount; ref += 1)
-		if (groups.of[column.ids[ref]] === group) refs.push(ref);
+		if (tagged[column.ids[ref]]) refs.push(ref);
 
 	return Int32Array.from(refs);
 }

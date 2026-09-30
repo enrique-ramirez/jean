@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type { components } from "../../src/shared/api/fooJeanSchema.d.ts";
+import { GENRE_EXPRESSION } from "../../src/shared/api/multiValue.ts";
 import { JEAN_MODE_BY_ORDER } from "./fooJean.ts";
 import type { FakePlayerState } from "./state.ts";
 
@@ -30,6 +31,7 @@ const EXPRESSIONS = [
 	"%rating%",
 	"%year%",
 	"%genre%",
+	GENRE_EXPRESSION,
 	"%codec%",
 	"%bitrate%",
 	"%path%",

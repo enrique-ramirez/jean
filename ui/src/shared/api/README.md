@@ -51,7 +51,8 @@ Every `columns` parameter takes **foobar2000 title-formatting expressions**, eva
 | `%tracknumber%` `%discnumber%` `%totaltracks%` `%totaldiscs%` | core | |
 | `%year%` | core | clean and integer-shaped. Sort and group by this |
 | `%date%` | tags | an ordinary messy user tag, **not a date-added field**: year-only, full ISO and untidy values all appear. Parse leniently |
-| `%genre%` `%publisher%` `%composer%` | tags | |
+| `%publisher%` `%composer%` | tags | |
+| `$if2($meta_sep(genre,$char(31)),%genre%)` | tags | a genre per value, separated by U+001F; `multiValue.ts` has why |
 | `%length_seconds%` `%codec%` `%codec_profile%` `%bitrate%` `%samplerate%` `%channels%` | core | |
 | `%filesize_natural%` `%filename_ext%` `%path%` `%subsong%` | core | `%path%` is absolute and platform-separated |
 | `%rating%` | core, from the file tag | `foo_playcount` takes it over and answers from its own database, so a rating set in foobar2000's own UI shows here and not through `$meta(rating)` |

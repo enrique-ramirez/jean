@@ -1,3 +1,4 @@
+import { GENRE_EXPRESSION } from "../../src/shared/api/multiValue.ts";
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
@@ -8,6 +9,7 @@ import {
 	test,
 	viewHeader,
 } from "./fixtures.ts";
+import { openPanels, panelTab, playRow } from "./nowPlaying.ts";
 
 // The fake library carries five genres, one of them accented and two of them two
 // words. Enough to tell ranking from filtering.
@@ -195,5 +197,43 @@ test.describe("the ways in", () => {
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Genres" }),
 		).toBeVisible();
+	});
+});
+
+test.describe("a track tagged with several genres", () => {
+	test.use({
+		retagged: {
+			"Los Calientes": {
+				"%genre%": "Rock En Español, Latin Rock",
+				[GENRE_EXPRESSION]: "Rock En Español\u001fLatin Rock",
+			},
+		},
+	});
+
+	test("it counts in each genre, and no tile names two", async ({ page }) => {
+		await openGenres(page);
+
+		await expect(tiles(page)).toHaveCount(6);
+		await expect(tile(page, /Rock En Español/)).toContainText("12 tracks");
+		await expect(tile(page, /Latin Rock/)).toContainText("1 track");
+		await expect(tiles(page).filter({ hasText: "," })).toHaveCount(0);
+
+		await tile(page, /Latin Rock/).click();
+		await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+			"Latin Rock",
+		);
+		await expect(viewHeader(page)).toContainText("1 track");
+	});
+
+	test("Details links each genre on its own", async ({ page, isMobile }) => {
+		await playRow(page, 0);
+		const panel = await openPanels(page, isMobile);
+		await panelTab(panel, "Details").click();
+
+		await expect(
+			panel.getByRole("link", { name: "Rock En Español", exact: true }),
+		).toBeVisible();
+		await panel.getByRole("link", { name: "Latin Rock", exact: true }).click();
+		await expect(page).toHaveURL(/#\/genre\/Latin%20Rock$/);
 	});
 });

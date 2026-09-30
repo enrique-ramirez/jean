@@ -1,5 +1,6 @@
 import { alternativeReader } from "@/domain/track/fields";
 import { fieldTable } from "@/shared/api/fieldTable";
+import { GENRE_EXPRESSION } from "@/shared/api/multiValue";
 
 const LYRICS_EXPRESSION = "$meta(unsynced lyrics)";
 
@@ -16,7 +17,7 @@ const FIELDS = [
 	["artist", "%artist%"],
 	["year", "%year%"],
 	["date", "%date%"],
-	["genre", "%genre%"],
+	["genre", GENRE_EXPRESSION],
 	["publisher", "%publisher%"],
 	["composer", "%composer%"],
 

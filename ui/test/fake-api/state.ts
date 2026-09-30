@@ -1,3 +1,4 @@
+import { GENRE_EXPRESSION, valuesIn } from "../../src/shared/api/multiValue.ts";
 import type {
 	PlaybackState,
 	PlaylistInfo,
@@ -325,8 +326,11 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 	},
 ];
 
+// foobar2000 answers a single-valued genre the same through `%genre%` and `GENRE_EXPRESSION`.
 export const evaluate = (track: Track, expression: string) =>
-	track[expression] ?? "?";
+	track[expression] ??
+	(expression === GENRE_EXPRESSION ? track["%genre%"] : undefined) ??
+	"?";
 
 const trackKey = (track: Track) =>
 	`${track["%path%"]}\u0000${Number(track["%subsong%"]) || 0}`;
@@ -1091,16 +1095,17 @@ export function createState({
 			notify({ player: true });
 		},
 
-		// What `%genre% IS "x"` would match, which is the only query Jean composes. Read
-		// off the media library rather than a playlist, as an autoplaylist is.
+		// What `genre IS "x"` would match, which is the only query Jean composes: any one of
+		// the tag's values. Read off the media library rather than a playlist, as an
+		// autoplaylist is.
 		previewMatches(query: string): number {
-			const wanted = /^%genre% IS "(.*)"$/
-				.exec(query)?.[1]
-				?.replace(/""/g, '"');
+			const wanted = /^genre IS "(.*)"$/.exec(query)?.[1]?.replace(/""/g, '"');
 			if (wanted === undefined) return 0;
 			const key = wanted.trim().toLowerCase();
-			return allTracks().filter(
-				(track) => (track["%genre%"] ?? "").trim().toLowerCase() === key,
+			return allTracks().filter((track) =>
+				valuesIn(evaluate(track, GENRE_EXPRESSION)).some(
+					(genre) => genre.trim().toLowerCase() === key,
+				),
 			).length;
 		},
 

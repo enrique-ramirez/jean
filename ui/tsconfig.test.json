@@ -25,6 +25,7 @@
 		"test/unit",
 		"test/*.ts",
 		"test/fake-api/**/*.ts",
+		"src/shared/api/multiValue.ts",
 		"src/shared/api/types.ts",
 		"src/shared/api/fieldTable.ts",
 		"src/shared/lib/dragGeometry.ts",

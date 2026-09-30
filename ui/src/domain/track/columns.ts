@@ -5,6 +5,7 @@ export type ColumnLabel = Extract<Phrase, `column.${string}`>;
 
 export type ColumnKind =
 	| "text"
+	| "values"
 	| "duration"
 	| "rating"
 	| "playCount"
@@ -74,7 +75,7 @@ export const OPTIONAL_COLUMNS: Column[] = [
 		id: "genre",
 		label: "column.genre",
 		width: "minmax(0, 1fr)",
-		kind: "text",
+		kind: "values",
 		field: FIELD.genre,
 	},
 	{

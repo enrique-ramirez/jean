@@ -622,6 +622,18 @@ test.describe("selecting in a playlist", () => {
 		await page.keyboard.press("Escape");
 		await expect(selected(page)).toHaveCount(0);
 	});
+
+	test("Mod+A in the library search takes the field's text, not the rows", async ({
+		page,
+	}) => {
+		const field = searchField(page);
+		await field.fill("babasonicos");
+		await page.keyboard.press("ControlOrMeta+a");
+		await expect(selected(page)).toHaveCount(0);
+
+		await page.keyboard.press("Backspace");
+		await expect(field).toHaveValue("");
+	});
 });
 
 test.describe("view keys", () => {

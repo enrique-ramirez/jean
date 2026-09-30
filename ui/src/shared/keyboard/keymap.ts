@@ -414,6 +414,9 @@ const DECLARED = [
 		group: "shortcutGroup.playlist",
 		name: "shortcut.selectAll",
 		keys: ["Mod+A"],
+		// TanStack Hotkeys fires a Ctrl or Meta binding inside a text field unless told otherwise,
+		// and there Mod+A belongs to the field.
+		options: { ignoreInputs: true },
 	},
 	{
 		id: "clearSelection",

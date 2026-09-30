@@ -333,6 +333,7 @@
 	position: fixed;
 	display: grid;
 	grid-template-rows: auto minmax(0, 1fr) auto;
+	grid-template-columns: minmax(0, 1fr);
 	height: 100%;
 	gap: 12px;
 	padding: max(10px, env(safe-area-inset-top)) 20px

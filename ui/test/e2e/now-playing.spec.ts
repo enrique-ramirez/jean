@@ -221,6 +221,29 @@ test.describe("the set it is playing from", () => {
 		});
 	});
 
+	test.describe("a name longer than the screen is wide", () => {
+		const LONG =
+			"Heavy Metal Power Metal Speed Metal Symphonic Metal Progressive Metal";
+		test.use({ retagged: { "Los Calientes": { "%genre%": LONG } } });
+
+		test("is cut short, and the screen stays the width of the window", async ({
+			page,
+		}) => {
+			await page.goto(`/#/genre/${encodeURIComponent(LONG)}`);
+			await trackRow(page, 0).dblclick();
+			await openNowPlaying(page);
+
+			const screen = nowPlayingScreen(page);
+			await expect(screen.locator("header")).toContainText(LONG);
+			await expect(
+				screen.getByRole("button", { name: "Track actions" }),
+			).toBeInViewport({ ratio: 1 });
+			const width = page.viewportSize()?.width ?? 0;
+			const cover = await screen.locator("img").first().boundingBox();
+			expect((cover?.x ?? 0) + (cover?.width ?? 0)).toBeLessThanOrEqual(width);
+		});
+	});
+
 	test("it is a line and not a button when the set has nowhere to open", async ({
 		page,
 	}) => {

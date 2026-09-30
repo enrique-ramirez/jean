@@ -249,7 +249,7 @@
 }
 
 /* The pill widens into a panel once it pages to the list. The width alone only
-   keeps the panel narrower than the screen; the containing block change above is what keeps it
+   keeps the panel narrower than the row that hosts it; the containing block change above is what keeps it
    from running past an edge, since the pill's own anchor point is not necessarily near the
    screen's. `right` here is against that wider box, not the button, so a value that reads as tight
    against `.row`'s own edge (StatusBar) reads as a comfortable inset against `.transport`'s, which
@@ -258,7 +258,7 @@
    the last word. */
 .popover[data-paged="true"] {
 	align-items: stretch;
-	width: min(300px, calc(100vw - 24px));
+	width: min(300px, calc(100% - 2 * var(--popover-inset, 12px)));
 	padding: 10px 12px 12px;
 	border-radius: var(--radius);
 	right: var(--popover-inset, 12px);

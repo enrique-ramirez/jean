@@ -30,13 +30,20 @@ What the break check keeps finding:
 
 | surface | the promise | not the promise |
 |---|---|---|
-| a user interface | the click does the thing, the text appears, the control disables, the request goes out, focus lands right | class names, props, internal state, markup shape |
+| a user interface | the click does the thing, the text appears, the control disables, the request goes out, focus lands right; the loading, empty and error states each show; a bad field says what is wrong; the route's parameters reach the screen; a write refreshes what it changed | class names, props, internal state, markup shape |
 | an HTTP boundary | status, body shape, headers that change behaviour, a second identical call | which function built the response |
 | a pure function | values out for values in, including empty, zero, absent, the boundary | how it looped |
 | a queue, job or stream | the settled effect, a duplicate, a restart | intermediate states |
 | a CLI | exit code, stdout against stderr, the filesystem after | internal call order |
 
-In a browser, find things by role, label and visible text.
+In a browser:
+
+- Query by role and accessible name first, then label, then visible text. A test id is the last resort, with a comment saying why.
+- `within` a region when the page has two of something.
+- `user-event` over `fireEvent`: a click focuses and a keypress types, as the user's browser would.
+- `findBy` for what appears later; never `waitFor` around a `getBy`. Assert an absence with `queryBy`, after the thing that should have removed it has settled.
+- Render through the profile's helper, with its providers. Fake the network where the profile says; never mock a hook or a component to bring an assertion within reach.
+- A snapshot is a case only for a short, named fragment a reader would notice a diff in. Never a whole tree.
 
 One criterion, one test, with the cases it promises. A case the criterion does not decide is a gap in the spec: report it, never freeze a guess into an assertion.
 

@@ -62,7 +62,7 @@ else
   command=$(read_field command)
   [ -n "$command" ] || exit 0
   # Only commands that could have written a file are worth the scan below.
-  printf '%s' "$command" | grep -qE '(>|>>|<<|\btee\b|\bsed\b[^|]*-i|\bcp\b|\bmv\b|\binstall\b|\bpatch\b|\bdd\b|\btruncate\b|git +apply|\bpython3?\b|\bnode\b|\bperl\b)' || exit 0
+  printf '%s' "$command" | grep -qE '(>|>>|<<|\btee\b|\bsed\b[^|]*-i|\bcp\b|\bmv\b|\binstall\b|\bpatch\b|\bdd\b|\btruncate\b|git +apply|\bpython3?\b|\bnode\b|\bperl\b|\b(pnpm|npm|npx|yarn|biome|prettier)\b)' || exit 0
 
   git_dir=$(git -C "$CLAUDE_PROJECT_DIR" rev-parse --git-dir 2>/dev/null) || exit 0
   case "$git_dir" in /*) ;; *) git_dir="$CLAUDE_PROJECT_DIR/$git_dir" ;; esac

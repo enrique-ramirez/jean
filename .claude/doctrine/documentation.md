@@ -33,7 +33,7 @@ What stays is a fact about a system outside the repository: what a browser, a li
 | `ARCHITECTURE.md` | developers | how the parts fit |
 | `CLAUDE.md`, `AGENTS.md` | agents only | pointers, and traps an agent cannot read off the code |
 
-A README's reader changes with its folder: beside an app it is the app's user, in a shared package it is the developer importing it.
+A README's reader changes with its folder: beside an app it is the app's user, in a shared package it is the developer importing it. A component folder has no README: its props type and its test titles say what it does. A UI package's README shows the developer importing it how a component is rendered and tested.
 
 `CLAUDE.md` is the smallest of these. Craft that applies to anyone belongs in `CONTRIBUTING.md`. The root file points once at where style, usage and architecture live, and no file lists the others: Claude Code loads a nested `CLAUDE.md` by itself when an agent reads in that folder. The hook holds a word budget on each.
 

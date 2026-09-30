@@ -57,6 +57,7 @@ Mark every guess twice: `[?]` on the sentence, and a checkbox under Open questio
 - **The end of the story:** who sees it fail, what they do next, what happens to what was there.
 - **The thing that already exists.** Show the neighbour and ask whether this is a second one or a change to it.
 - **The fence.** Propose what is out of scope and let the owner strike lines.
+- **The screen's other states:** loading, empty, error, the narrow viewport, the other locale, and the name a screen reader gets. Say which screen or design file it follows, as `file:line`.
 
 At most five questions a round, numbered, each answerable in a sentence, closed where possible ("A or B, and what each costs"). Never two that share an answer. Two rounds is normal; five means the idea is unsettled, so say that instead.
 

@@ -40,7 +40,7 @@ Every acceptance criterion in `spec.md` against what shipped, not against what `
 - something one task sets up that nothing tears down: a subscription, a timer, a lock, a cache, a temporary file
 - a convention four tasks followed and the fifth did not
 
-Where the change has a surface that can be exercised, exercise it once end to end.
+Where the change has a surface that can be exercised, exercise it once end to end. For a page, build it, serve the build or the dev server the profile names, and walk the flow in a browser, by keyboard as well as by mouse; with no browser to hand, say so.
 
 ### 4. Defects
 
@@ -54,6 +54,7 @@ Where the change has a surface that can be exercised, exercise it once end to en
 | swallowed errors | caught and ignored, or surfaced as something the caller cannot act on |
 | trust boundary | outside input validated somewhere other than where it lands |
 | time and order | an assumed clock, arrival order, timezone |
+| a screen | the loading, empty and error states; a control with no name or out of keyboard reach; a string outside the catalogue; the narrow viewport |
 
 Not yours: design, naming and documentation (`style-reviewer`), comments (`comment-reaper`), register (the hook), and anything the linter enforces.
 

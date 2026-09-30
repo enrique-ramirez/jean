@@ -29,7 +29,7 @@ Add a row as each dispatch or check closes: start, end, wall clock, the tokens a
 
 **A group** is the tasks whose tests span the same files: one test-writer and one builder between them. A task whose tests span two toolchains or three surfaces is too big; split it and tell the owner.
 
-**A lane** is groups that must run in order: those sharing a file, a build output, a binary, a port or a generated artifact. Lanes sharing none run at once. Two lanes in one toolchain almost always share something. Where one lane blocks another only through a shared artifact (a contract, a schema, generated types), have it written first from the spec.
+**A lane** is groups that must run in order: those sharing a file, a build output, a binary, a port or a generated artifact. Lanes sharing none run at once. Two lanes in one toolchain usually share something: the lockfile, a generated file, a module both import, one type check or one build that goes red for either. Name what is shared; two groups of one app that share none of these run at once, each running only the checks over its own files. Where one lane blocks another only through a shared artifact (a contract, a schema, generated types), have it written first from the spec.
 
 Write the layout into the metrics file and say it back to the owner in a few lines.
 

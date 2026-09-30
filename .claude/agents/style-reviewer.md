@@ -25,6 +25,9 @@ Judge structure by whether it makes the code easier to read, never by whether it
 - **The second copy is the bug.** Grep for an existing implementation of anything the change adds: a helper, a parser, a formatter, a constant. Two versions of one thing drift. Say where the single home is. A magic prefix smuggled into a string value counts.
 - **Dependencies point inward.** Flag anything softening the profile's boundary, and any new layer behind it.
 - **Small files with one job.**
+- **A component has one job too.** Flag one that fetches, decides and lays out: the decision is a pure function or a hook, the fetch a query, the component the markup. A derived value is computed on render, never stored in state; server state lives in the query cache, never copied into `useState`.
+- **Copy and colour have one home.** A string a user reads goes through the catalogue, in every locale, and the register applies to it. A colour, a size or a font comes from the tokens file. Flag a literal of either in a component.
+- **Reachable.** A control without an accessible name, or one the keyboard cannot reach, is a defect even where the mouse works.
 
 ## Comments
 

@@ -21,6 +21,10 @@ HASH_COMMENTS = (".sh", ".bash", ".zsh", ".ps1", ".py", ".rb", ".yml", ".yaml", 
 # Data formats have no comment syntax, so every line in one is content.
 DATA_FORMATS = (".json", ".lock", ".svg", ".csv", ".snap")
 
+# A string literal on one line. Stripped before looking for a comment marker, so a glob
+# such as `"src/**"` does not open a block comment that never closes.
+STRINGS = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|`(?:\\.|[^`\\])*`')
+
 AGENT_FILES = ("CLAUDE.md", "AGENTS.md")
 STATUS_FILES = AGENT_FILES + ("README.md",)
 DEFAULT_BUDGETS = {"claude-budget": 400, "claude-root-budget": 800}
@@ -54,10 +58,11 @@ def prose_lines(path: str, text: str) -> list[tuple[int, str]]:
             elif stripped.startswith("#"):
                 out.append((number, line))
             continue
-        if "/*" in stripped:
+        code = STRINGS.sub("", stripped)
+        if "/*" in code:
             in_block = True
         keep = in_block or stripped.startswith("//") or stripped.startswith("*")
-        if "*/" in stripped:
+        if "*/" in code:
             in_block = False
         if keep:
             out.append((number, line))
@@ -93,9 +98,10 @@ STATUS = re.compile(
 # `-name` line in the local register file.
 BUILTINS: list[tuple[str, re.Pattern[str], str]] = [
     (
-        # A dash alone in a table cell is a placeholder for "none", not a joint.
+        # A dash alone in a table cell is a placeholder for "none", not a joint. A dialogue
+        # dash touches the word on one side only and is not one either.
         "emdash",
-        re.compile(r"(?<!\|)(?<!\|\s)—(?!\s*\|)|(?<=\s)–(?=\s)"),
+        re.compile(r"(?<!\|)(?<!\|\s)(?:(?<=\S)—(?=\S)|(?<=\s)—(?=\s))(?!\s*\|)|(?<=\s)–(?=\s)"),
         "uses a dash as a joint. Comma for an aside, colon before a definition, "
         "full stop when it is its own thought.",
     ),

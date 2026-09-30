@@ -3,6 +3,7 @@ import {
 	askResult,
 	BODYLESS_POST,
 	type Call,
+	type Failure,
 	PATIENT_TIMEOUT_MS,
 	PROBE_TIMEOUT_MS,
 	type Result,
@@ -20,8 +21,12 @@ export type PlaylistChanges = Schema["PlaylistChanges"];
 export type CreatePlaylistRequest = Schema["CreatePlaylistRequest"];
 export type CopyPlaylistRowsRequest = Schema["CopyPlaylistRowsRequest"];
 export type RemovePlaylistRowsRequest = Schema["RemovePlaylistRowsRequest"];
+export type MovePlaylistRowsRequest = Schema["MovePlaylistRowsRequest"];
+export type SortPlaylistRowsRequest = Schema["SortPlaylistRowsRequest"];
 export type CopiedRows = Schema["CopiedRows"];
 export type RemovedRows = Schema["RemovedRows"];
+export type MovedRows = Schema["MovedRows"];
+export type SortedRows = Schema["SortedRows"];
 
 export type OwnPlaylistRole = "scratch";
 
@@ -205,14 +210,59 @@ export const removePlaylistRows = (
 		}),
 	);
 
+export const movePlaylistRows = (
+	origin: string,
+	id: string,
+	move: MovePlaylistRowsRequest,
+): Promise<Result<MovedRows>> =>
+	patient(origin, (api, init) =>
+		api.POST("/playlists/{id}/items/move", {
+			...init,
+			params: byId(id),
+			body: move,
+		}),
+	);
+
+export const sortPlaylistRows = (
+	origin: string,
+	id: string,
+	sort: SortPlaylistRowsRequest,
+): Promise<Result<SortedRows>> =>
+	patient(origin, (api, init) =>
+		api.POST("/playlists/{id}/items/sort", {
+			...init,
+			params: byId(id),
+			body: sort,
+		}),
+	);
+
+// Word for word what `foo_jean` answers a row edit with `409`, by `error`: the playlist's
+// `structure` moved since the rows were read, or another component has locked it against the edit.
+const ROWS_MOVED_ERROR =
+	"the playlist's rows were added, removed or reordered; read them again";
+const ROWS_LOCKED_ERROR =
+	"another component has locked that playlist against that edit";
+
+export function rowEditRefusal(failure: Failure): "moved" | "locked" | "other" {
+	if (failure.reason !== "refused" || failure.status !== 409) return "other";
+	if (failure.error === ROWS_MOVED_ERROR) return "moved";
+	if (failure.error === ROWS_LOCKED_ERROR) return "locked";
+	return "other";
+}
+
 // A query that does not parse comes back as a 200 carrying `valid: false`, never as a 400. Debounce
-// the caller: this runs on foobar2000's main thread.
+// the caller: this runs on foobar2000's main thread, which answers `504` only after the patient
+// timeout, so a broad query over a large library is waited for rather than dropped.
 export const previewQuery = (
 	origin: string,
 	query: string,
+	{ rows }: { rows?: boolean } = {},
 ): Promise<Result<QueryPreview>> =>
-	askResult(origin, PROBE_TIMEOUT_MS, (api, init) =>
-		api.POST("/autoplaylists/preview", { ...init, body: { query } }),
+	patient(origin, (api, init) =>
+		api.POST("/autoplaylists/preview", {
+			...init,
+			body: rows ? { query, rows } : { query },
+		}),
 	);
 
 export const createAutoPlaylist = (
@@ -221,4 +271,17 @@ export const createAutoPlaylist = (
 ): Promise<Result<PlaylistAnnotation>> =>
 	patient(origin, (api, init) =>
 		api.POST("/autoplaylists", { ...init, body: create }),
+	);
+
+export const updateAutoPlaylist = (
+	origin: string,
+	id: string,
+	update: AutoPlaylistRequest,
+): Promise<Result<PlaylistAnnotation>> =>
+	patient(origin, (api, init) =>
+		api.POST("/autoplaylists/{id}", {
+			...init,
+			params: byId(id),
+			body: update,
+		}),
 	);

@@ -1,7 +1,8 @@
-import { patchColumn } from "@/shared/api/jlib";
+import { jlibColumn, patchColumn } from "@/shared/api/jlib";
 import type { PlaylistChanges } from "@/shared/api/playlists";
 import type { LibraryColumns } from "./libraryColumns";
-import type { PathTable } from "./pathTable";
+import { type PathTable, pathCollector } from "./pathTable";
+import type { PlaylistSnapshot } from "./playlistEntries";
 
 const MAX_APPENDED_CHARS = 256 * 1024;
 
@@ -82,4 +83,64 @@ export function patchPlaylist(
 	return columns
 		? { kind: "patched", columns, appendedChars: appended }
 		: RELOAD;
+}
+
+export function moveOrder(
+	count: number,
+	positions: readonly number[],
+	to: number,
+): Int32Array | null {
+	const moved = [...new Set(positions)].sort((a, b) => a - b);
+	if (moved.some((at) => !Number.isInteger(at) || at < 0 || at >= count))
+		return null;
+	if (!Number.isInteger(to) || to < 0 || to > count - moved.length) return null;
+
+	const isMoved = new Set(moved);
+	const rest: number[] = [];
+	for (let at = 0; at < count; at += 1) if (!isMoved.has(at)) rest.push(at);
+	return Int32Array.from([...rest.slice(0, to), ...moved, ...rest.slice(to)]);
+}
+
+export function reorderedSnapshot(
+	held: PlaylistSnapshot,
+	order: ArrayLike<number>,
+	structure: number,
+): PlaylistSnapshot {
+	const { columns, paths, subsongs } = held;
+	if (order.length !== columns.trackCount)
+		throw new Error(
+			`an order of ${order.length} rows cannot reorder ${columns.trackCount}`,
+		);
+
+	let reorderedPaths: PathTable | null = null;
+	if (paths) {
+		const collector = pathCollector();
+		for (let position = 0; position < order.length; position += 1)
+			collector.add(paths.at(order[position]));
+		reorderedPaths = collector.table();
+	}
+
+	return {
+		...held,
+		structure,
+		columns: {
+			load: {},
+			trackCount: columns.trackCount,
+			fields: columns.fields.map((field) =>
+				jlibColumn(
+					Uint32Array.from(order, (old) => field.ids[old]),
+					field.dict,
+					{
+						distinct: field.distinct,
+						hasUnresolved: field.hasUnresolved,
+						allUnresolved: field.allUnresolved,
+					},
+				),
+			),
+		},
+		paths: reorderedPaths,
+		subsongs: subsongs && Int32Array.from(order, (old) => subsongs[old]),
+		heat: Float32Array.from(order, (old) => held.heat[old]),
+		patina: Float32Array.from(order, (old) => held.patina[old]),
+	};
 }

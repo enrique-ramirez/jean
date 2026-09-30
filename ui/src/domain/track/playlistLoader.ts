@@ -13,13 +13,14 @@ import {
 	begin,
 	type Entry,
 	emit,
+	entryFor,
 	everyEntry,
 	heldEntry,
 	type PlaylistFeed,
 	type PlaylistGeneration,
 	playlistKey,
 } from "./playlistEntries";
-import { patchPlaylist } from "./playlistPatch";
+import { patchPlaylist, reorderedSnapshot } from "./playlistPatch";
 
 interface Chunk {
 	rows: TrackColumns[];
@@ -205,15 +206,81 @@ function applyPlaylistChanges(
 	return true;
 }
 
-export const loadPlaylist = (
+interface Hold {
+	count: number;
+	deferred: Map<string, () => void>;
+}
+
+const holds = new Map<string, Hold>();
+
+// The poll announces a move's structure before the write's answer lands, and a view asked for the
+// playlist at it would read the rows again. Holding lets the answer carry the rows instead.
+export function holdPlaylistLoads(playlistId: string): () => void {
+	const hold = holds.get(playlistId) ?? { count: 0, deferred: new Map() };
+	holds.set(playlistId, hold);
+	hold.count += 1;
+
+	let isReleased = false;
+	return () => {
+		if (isReleased) return;
+		isReleased = true;
+		hold.count -= 1;
+		if (hold.count > 0) return;
+		holds.delete(playlistId);
+		for (const start of hold.deferred.values()) start();
+	};
+}
+
+// `foo_jean` keeps a change window per structure and drops it when the structure moves, so the
+// revision a carried feed brings from the old structure is past it. The first revision a poll
+// reports at the new structure is taken as held instead of reloading the playlist.
+const carriedFeeds = new WeakSet<PlaylistFeed>();
+
+export function carryPlaylist(
+	playlistId: string,
+	from: string,
+	to: string,
+	order: ArrayLike<number>,
+): boolean {
+	const held = heldEntry(playlistKey(playlistId, from));
+	if (held?.feed?.kind !== "playlist" || held.snapshot.isLoading) return false;
+	if (order.length !== held.snapshot.columns.trackCount) return false;
+
+	const carried = entryFor(playlistKey(playlistId, to));
+	if (carried.isStarted) return false;
+
+	carried.isStarted = true;
+	carried.controller = new AbortController();
+	carried.feed = { ...held.feed, structure: to, isChecking: false };
+	// A poll that reached the new structure before this carry has already had its say, and it
+	// asked nothing: the first `410` after this carry is a genuine one, so it is not the mark's.
+	if (carried.missedPlaylist?.structure === to) carried.missedPlaylist = null;
+	else carriedFeeds.add(carried.feed);
+	emit(
+		carried,
+		reorderedSnapshot(held.snapshot, order, held.snapshot.structure),
+	);
+	return true;
+}
+
+export function loadPlaylist(
 	origin: string,
 	playlistId: string,
 	structure: string,
 	itemCount: number,
-) =>
-	begin(playlistKey(playlistId, structure), itemCount, itemCount > 0, (entry) =>
-		load(entry, origin, playlistId),
-	);
+) {
+	const key = playlistKey(playlistId, structure);
+	const start = () =>
+		begin(key, itemCount, itemCount > 0, (entry) =>
+			load(entry, origin, playlistId),
+		);
+
+	const hold = holds.get(playlistId);
+	if (!hold) return start();
+
+	hold.deferred.set(key, start);
+	return key;
+}
 
 export async function retryFailedPlaylistReads(origin: string) {
 	const pending = everyEntry().flatMap((entry) => {
@@ -262,9 +329,16 @@ export async function recheckPlaylist(
 			return;
 		}
 
+		if (!result.ok && result.reason === "gone" && carriedFeeds.has(feed)) {
+			feed.revision = generation.revision;
+			carriedFeeds.delete(feed);
+			return;
+		}
+
 		if (!result.ok)
 			return void (await reloadPlaylist(entry, origin, playlistId));
 
+		carriedFeeds.delete(feed);
 		if (entry.snapshot.isLoading) {
 			entry.missedPlaylist = generation;
 			return;

@@ -8,7 +8,7 @@ import type {
 	RecordedRequest,
 	Track,
 } from "./state.ts";
-import { evaluate, libraryItemsOf } from "./state.ts";
+import { evaluate, libraryItemsOf, sortedOrder } from "./state.ts";
 
 type FakeState = ReturnType<typeof createState>;
 
@@ -168,6 +168,13 @@ export interface FooJeanOptions {
 	autoPlaylists?: string[];
 	libraryEnabled?: boolean;
 	failCreate?: number | null;
+	// Refuses a move or a sort at the player after every check has passed, leaving the rows where
+	// they were: a 500, a 429 from the rate limiter and a dead connection are one event to a client.
+	failRowEdit?: number | null;
+	// The specification of autoplaylists Jean made, by the fake's own playlist key, read once when
+	// the fake is built. Each is also an autoplaylist, so it need not be named in `autoPlaylists`;
+	// one named only there is one foobar2000 or another component made, and carries `managed: null`.
+	autoPlaylistSpecs?: Record<string, ManagedAutoPlaylist>;
 	// Query previews answered `429` before the limiter lets one through, shaped
 	// like `libraryBusy`. `POST /__control/previewBusy` sets it mid-test.
 	previewBusy?: number;
@@ -231,12 +238,7 @@ export interface FooJeanFake extends Required<FooJeanOptions> {
 	managedAutoPlaylists: Map<string, ManagedAutoPlaylist>;
 }
 
-interface ManagedAutoPlaylist {
-	key: string;
-	query: string;
-	sort: string;
-	forceSort: boolean;
-}
+export type ManagedAutoPlaylist = components["schemas"]["ManagedAutoPlaylist"];
 
 // Spelled the way foobar2000 prints a device pair: one module GUID shared by every device it
 // offers, joined by a colon to each device's own, both upper case and without braces. The default
@@ -315,6 +317,8 @@ const DEFAULTS: FooJeanFake = {
 	autoPlaylists: [],
 	libraryEnabled: true,
 	failCreate: null,
+	failRowEdit: null,
+	autoPlaylistSpecs: {},
 	previewBusy: 0,
 	canWritePlaylists: true,
 	canChangeOutput: true,
@@ -378,20 +382,26 @@ const guardRefusals = (fake: FooJeanFake): FooJeanFake => {
 	return fake;
 };
 
-export const fooJeanState = (options: FooJeanOptions): FooJeanFake =>
-	guardRefusals({
+export const fooJeanState = (options: FooJeanOptions): FooJeanFake => {
+	const specs = options.autoPlaylistSpecs ?? {};
+	return guardRefusals({
 		...DEFAULTS,
 		...options,
 		// Copied, since a route or a spec mutates each of these in place and `DEFAULTS`
 		// outlives every test on a worker.
-		autoPlaylists: [...(options.autoPlaylists ?? [])],
+		autoPlaylists: [
+			...new Set([...(options.autoPlaylists ?? []), ...Object.keys(specs)]),
+		],
 		expectRateLimited: [...(options.expectRateLimited ?? [])],
 		routeLatency: { ...options.routeLatency },
 		ownPlaylists: {},
 		lockedPlaylists: new Set(),
 		limiter: new Map(),
-		managedAutoPlaylists: new Map(),
+		managedAutoPlaylists: new Map(
+			Object.entries(specs).map(([id, spec]) => [id, { ...spec }]),
+		),
 	});
+};
 
 export type Bucket =
 	| "playlistChanges"
@@ -430,7 +440,7 @@ const PLAYLIST_CHANGES: [string, RegExp][] = [
 	["POST", /^\/api\/playlists\/[^/]+\/items$/],
 	["POST", /^\/api\/playlists\/own\/[^/]+\/items$/],
 	["DELETE", /^\/api\/playlists\/own\/[^/]+\/items$/],
-	["POST", /^\/api\/playlists\/[^/]+\/items\/(copy|remove)$/],
+	["POST", /^\/api\/playlists\/[^/]+\/items\/(copy|remove|move|sort)$/],
 	["POST", /^\/api\/autoplaylists$/],
 	["POST", /^\/api\/autoplaylists\/[^/]+$/],
 	["DELETE", /^\/api\/autoplaylists\/[^/]+$/],
@@ -1018,10 +1028,10 @@ const AUTOPLAYLISTS_UNAVAILABLE = {
 	detail: "",
 } satisfies components["schemas"]["PlaylistFailed"];
 
-const NOT_OURS = {
-	error: "that playlist was not created by foo_jean",
+const NOT_AN_AUTOPLAYLIST = {
+	error: "that playlist is not an autoplaylist",
 	detail: "",
-} satisfies components["schemas"]["PlaylistFailed"];
+};
 
 const OWN_PLAYLIST = {
 	error:
@@ -1157,6 +1167,49 @@ function decodeSelection(
 
 	return { ok: true, ordinals };
 }
+
+const MOVE_ROWS_FIELDS = ["structure", "runs", "ordinals", "to"];
+const SORT_ROWS_FIELDS = ["structure", "pattern"];
+const MAX_SORT_PATTERN = 4096;
+
+type ParsedRowEdit =
+	| { ok: true; record: Record<string, unknown> }
+	| ({ ok: false } & FillFailure);
+
+const parseRowEdit = (
+	body: unknown,
+	fields: readonly string[],
+): ParsedRowEdit =>
+	typeof body === "object" &&
+	body !== null &&
+	declaresOnly(body as Record<string, unknown>, fields)
+		? { ok: true, record: body as Record<string, unknown> }
+		: { ok: false, ...fillFailure(400, "malformed request") };
+
+const parseRowEditStructure = (record: Record<string, unknown>) =>
+	typeof record.structure === "string"
+		? parseGeneration(record.structure)
+		: null;
+
+const failRowEditAnswer = (response: Responder, status: number) => {
+	if (status === 429) response.setHeader("Retry-After", "1");
+	return json(response, PLAYER_REFUSED, status);
+};
+
+// `moveOrder` in `src/domain/track/playlistPatch.ts`, written out again because the fake imports
+// nothing from `src/` beyond types.
+const movedOrder = (
+	count: number,
+	ordinals: readonly number[],
+	to: number,
+): number[] => {
+	const moved = [...new Set(ordinals)].sort((a, b) => a - b);
+	const moving = new Set(moved);
+	const rest = Array.from({ length: count }, (_, at) => at).filter(
+		(at) => !moving.has(at),
+	);
+	return [...rest.slice(0, to), ...moved, ...rest.slice(to)];
+};
 
 type ParsedFill =
 	| { ok: true; title?: string; structure: number; ordinals: number[] }
@@ -1528,6 +1581,14 @@ const ownRoleOf = (fake: FooJeanFake, id: string): OwnPlaylistRole | null =>
 // every route that would otherwise disagree with `GET /api/playlists` calls.
 const locksAgainstAdds = (fake: FooJeanFake, playlist: FakePlaylist): boolean =>
 	Boolean(playlist.isAuto) || fake.autoPlaylists.includes(playlist.id);
+
+// foobar2000 locks an autoplaylist against a reorder only where it is force-sorted.
+const locksAgainstReorder = (
+	fake: FooJeanFake,
+	playlist: FakePlaylist,
+): boolean =>
+	fake.lockedPlaylists.has(playlist.id) ||
+	fake.managedAutoPlaylists.get(playlist.id)?.forceSort === true;
 
 // One playlist as `GET /api/playlists` lists it, which is also what the two
 // autoplaylist writes answer with.
@@ -3341,6 +3402,115 @@ export async function handleFooJean({
 		return json(response, { structure: generationText(playlist.structure) });
 	}
 
+	const moveRowsMatch = /^\/api\/playlists\/([^/]+)\/items\/move$/.exec(path);
+	if (method === "POST" && moveRowsMatch) {
+		if (state.latency > 0) await delay(state.latency);
+
+		if (fake.canWritePlaylists === false)
+			return json(response, WRITES_DISABLED, 403);
+
+		const playlist = state.playlistByGuid(moveRowsMatch[1]);
+		if (!playlist)
+			return json(response, { error: "no such playlist", detail: "" }, 404);
+
+		const asked = parseRowEdit(body, MOVE_ROWS_FIELDS);
+		if (!asked.ok) return json(response, asked.body, asked.status);
+		const { record } = asked;
+
+		const structure = parseRowEditStructure(record);
+		const { to } = record;
+		if (structure === null || !isNonNegInt(to))
+			return json(
+				response,
+				{
+					error: "malformed request",
+					detail: "'structure' and 'to' are required",
+				},
+				400,
+			);
+		if (ownRoleOf(fake, playlist.id)) return json(response, OWN_PLAYLIST, 403);
+		if (structure !== playlist.structure)
+			return json(response, ROWS_MOVED, 409);
+
+		const selection = decodeSelection(record, playlist.items.length);
+		if (!selection.ok) return json(response, selection.body, selection.status);
+		const distinct = new Set(selection.ordinals).size;
+		if (to > playlist.items.length - distinct)
+			return json(
+				response,
+				{
+					error: "malformed request",
+					detail: "'to' is past the end of the playlist without the moved rows",
+				},
+				400,
+			);
+
+		if (locksAgainstReorder(fake, playlist))
+			return json(response, PLAYLIST_LOCKED, 409);
+		if (fake.failRowEdit) return failRowEditAnswer(response, fake.failRowEdit);
+
+		const before = playlist.items;
+		const order = movedOrder(before.length, selection.ordinals, to);
+		state.editItems(playlist, () => {
+			playlist.items = order.map((old) => before[old]);
+		});
+		state.notifyPlaylists();
+
+		return json(response, { structure: generationText(playlist.structure) });
+	}
+
+	const sortRowsMatch = /^\/api\/playlists\/([^/]+)\/items\/sort$/.exec(path);
+	if (method === "POST" && sortRowsMatch) {
+		if (state.latency > 0) await delay(state.latency);
+
+		if (fake.canWritePlaylists === false)
+			return json(response, WRITES_DISABLED, 403);
+
+		const playlist = state.playlistByGuid(sortRowsMatch[1]);
+		if (!playlist)
+			return json(response, { error: "no such playlist", detail: "" }, 404);
+
+		const asked = parseRowEdit(body, SORT_ROWS_FIELDS);
+		if (!asked.ok) return json(response, asked.body, asked.status);
+		const { record } = asked;
+
+		const structure = parseRowEditStructure(record);
+		const { pattern } = record;
+		if (
+			structure === null ||
+			typeof pattern !== "string" ||
+			pattern.length === 0 ||
+			pattern.length > MAX_SORT_PATTERN
+		)
+			return json(
+				response,
+				{
+					error: "malformed request",
+					detail:
+						"'structure' and a 'pattern' of 1 to 4096 characters are required",
+				},
+				400,
+			);
+		if (ownRoleOf(fake, playlist.id)) return json(response, OWN_PLAYLIST, 403);
+		if (structure !== playlist.structure)
+			return json(response, ROWS_MOVED, 409);
+		if (locksAgainstReorder(fake, playlist))
+			return json(response, PLAYLIST_LOCKED, 409);
+		if (fake.failRowEdit) return failRowEditAnswer(response, fake.failRowEdit);
+
+		const before = playlist.items;
+		const order = sortedOrder(before, pattern);
+		state.editItems(playlist, () => {
+			playlist.items = order.map((old) => before[old]);
+		});
+		state.notifyPlaylists();
+
+		return json(response, {
+			structure: generationText(playlist.structure),
+			order,
+		});
+	}
+
 	const ownFillMatch = /^\/api\/playlists\/own\/([^/]+)\/items$/.exec(path);
 	if (method === "POST" && ownFillMatch) {
 		// `/__control/latency`, held after the request is recorded and before the playlist is touched, so
@@ -3488,14 +3658,19 @@ export async function handleFooJean({
 			return refuseTooFast(response, "previews");
 		}
 
-		const asked = body as { query?: string } | null;
+		const asked = body as { query?: string; rows?: unknown } | null;
 		const query = String(asked?.query ?? "");
 		const valid = query.length > 0 && !query.includes("((");
+		const ordinals =
+			valid && fake.libraryEnabled ? state.previewMatches(query) : [];
 		return json(response, {
 			valid,
 			error: valid ? "" : "Query syntax error",
-			matches: valid && fake.libraryEnabled ? state.previewMatches(query) : 0,
+			matches: ordinals.length,
 			libraryEnabled: fake.libraryEnabled,
+			...(asked?.rows === true
+				? { structure: state.libraryFeed.structure, ordinals }
+				: null),
 		});
 	}
 
@@ -3530,8 +3705,9 @@ export async function handleFooJean({
 		const playlist = state.playlistByGuid(autoPlaylistMatch[1]);
 		if (!playlist)
 			return json(response, { error: "no such playlist", detail: "" }, 404);
-		const held = fake.managedAutoPlaylists.get(playlist.id);
-		if (!held) return json(response, NOT_OURS, 403);
+		if (ownRoleOf(fake, playlist.id)) return json(response, OWN_PLAYLIST, 403);
+		if (!locksAgainstAdds(fake, playlist))
+			return json(response, NOT_AN_AUTOPLAYLIST, 409);
 
 		if (method === "DELETE") {
 			fake.managedAutoPlaylists.delete(playlist.id);
@@ -3540,9 +3716,20 @@ export async function handleFooJean({
 			return json(response, { removed: true, id: playlist.guid });
 		}
 
-		fake.managedAutoPlaylists.set(playlist.id, managedOf(asked));
+		const isJeans = fake.managedAutoPlaylists.has(playlist.id);
+		if (!isJeans && asked?.key !== undefined && asked.key !== "")
+			return json(response, { error: "unacceptable key", detail: "" }, 400);
+
+		if (isJeans) fake.managedAutoPlaylists.set(playlist.id, managedOf(asked));
 		if (typeof asked?.title === "string" && asked.title.length > 0)
 			state.renamePlaylist(playlist.id, asked.title);
+
+		// The refill foobar2000 does once the query changes.
+		const tracks = state.previewTracks(String(asked?.query ?? ""));
+		state.editItems(playlist, () => {
+			playlist.items = tracks;
+		});
+		state.notifyPlaylists();
 		return json(response, annotationOf(state, playlist));
 	}
 

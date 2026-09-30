@@ -35,6 +35,7 @@ export const playlistInfoOf = (
 	revision: annotation.revision,
 	role: annotation.role,
 	isAutoPlaylist: annotation.isAutoPlaylist,
+	managed: annotation.managed,
 });
 
 export const usePlaylists = () => useCacheOnly<PlaylistInfo[]>(PLAYLISTS_KEY);
@@ -184,8 +185,10 @@ export function usePlaylistActions() {
 
 // foobar2000 allows two playlists with the same name, and the sidebar shows nothing else to tell
 // them apart by.
-export function untitledPlaylistName(playlists: PlaylistInfo[]) {
-	const base = translate("playlist.newName");
+export function untitledPlaylistName(
+	playlists: PlaylistInfo[],
+	base = translate("playlist.newName"),
+) {
 	const taken = new Set(playlists.map((entry) => entry.title));
 
 	return (

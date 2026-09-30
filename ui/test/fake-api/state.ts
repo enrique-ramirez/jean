@@ -338,6 +338,75 @@ const trackKey = (track: Track) =>
 const byLibraryPath = (a: LibraryEntry, b: LibraryEntry) =>
 	compareText(pathKey(a.path), pathKey(b.path)) || a.subsong - b.subsong;
 
+const QUERY_FIELDS: Record<string, string> = {
+	genre: GENRE_EXPRESSION,
+	artist: "%artist%",
+	"album artist": "%album artist%",
+	album: "%album%",
+};
+
+const QUERY_TERM = `%?(genre|artist|album artist|album)%? IS "((?:[^"]|"")*)"`;
+const QUERY_SHAPE = new RegExp(
+	`^(?:ALL|${QUERY_TERM}(?: (?:AND|OR) ${QUERY_TERM})*)$`,
+	"i",
+);
+const SORT_SUFFIX = / SORT (?:DESCENDING )?BY .+$/i;
+
+// The queries the fake can answer: `ALL`, or `<field> IS "<value>"` terms joined by `AND` and
+// `OR`, `AND` binding tighter, over the fields in `QUERY_FIELDS`, with a trailing `SORT BY` left
+// unread. A value matches whole and without regard to case, against each value of a multi-valued
+// tag.
+function queryMatcher(query: string): ((track: Track) => boolean) | null {
+	const body = query.replace(SORT_SUFFIX, "").trim();
+	if (!QUERY_SHAPE.test(body)) return null;
+	if (/^ALL$/i.test(body)) return () => true;
+
+	const terms = [...body.matchAll(new RegExp(QUERY_TERM, "gi"))].map(
+		([, field, value]) => {
+			const expression = QUERY_FIELDS[field.toLowerCase()];
+			const key = value.replace(/""/g, '"').trim().toLowerCase();
+			return (track: Track) =>
+				valuesIn(evaluate(track, expression)).some(
+					(held) => held.trim().toLowerCase() === key,
+				);
+		},
+	);
+	const joins = body
+		.replace(new RegExp(QUERY_TERM, "gi"), "")
+		.split(/\s+/)
+		.filter(Boolean);
+
+	const alternatives = [[terms[0]]];
+	joins.forEach((join, at) => {
+		if (join.toUpperCase() === "OR") alternatives.push([terms[at + 1]]);
+		else alternatives[alternatives.length - 1].push(terms[at + 1]);
+	});
+	return (track) =>
+		alternatives.some((group) => group.every((term) => term(track)));
+}
+
+// `order[new] = old` for a stable ascending sort by the `|`-joined fields of `pattern`, each read
+// through the fixture's expression of that name. An expression the fixture does not carry reads
+// `?` for every row and so leaves their order to the ones after it.
+export function sortedOrder(
+	items: readonly Track[],
+	pattern: string,
+): number[] {
+	const parts = pattern.split("|");
+	return items
+		.map((_, at) => at)
+		.sort((a, b) => {
+			for (const part of parts) {
+				const compared = compareText(
+					evaluate(items[a], part),
+					evaluate(items[b], part),
+				);
+				if (compared !== 0) return compared;
+			}
+			return 0;
+		});
+}
+
 export function createState({
 	playlists = DEFAULT_PLAYLISTS(),
 	player,
@@ -703,6 +772,18 @@ export function createState({
 	const PLAY_COUNT = "%lastfm_play_count%";
 
 	const ordinalOrder = () => libraryItemsOf(libraryTracks).sort(byLibraryPath);
+
+	// A tag write changes no path, so the order a preview counts in holds for the fake's life.
+	let previewOrder: LibraryEntry[] | null = null;
+
+	const previewMatches = (query: string): number[] => {
+		const matches = queryMatcher(query);
+		if (!matches) return [];
+		previewOrder ??= ordinalOrder();
+		return previewOrder.flatMap((entry, ordinal) =>
+			matches(entry.track) ? [ordinal] : [],
+		);
+	};
 
 	const dictionaryFor = (name: string) => {
 		const held = feed.dictionaries.get(name);
@@ -1095,18 +1176,14 @@ export function createState({
 			notify({ player: true });
 		},
 
-		// What `genre IS "x"` would match, which is the only query Jean composes: any one of
-		// the tag's values. Read off the media library rather than a playlist, as an
-		// autoplaylist is.
-		previewMatches(query: string): number {
-			const wanted = /^genre IS "(.*)"$/.exec(query)?.[1]?.replace(/""/g, '"');
-			if (wanted === undefined) return 0;
-			const key = wanted.trim().toLowerCase();
-			return allTracks().filter((track) =>
-				valuesIn(evaluate(track, GENRE_EXPRESSION)).some(
-					(genre) => genre.trim().toLowerCase() === key,
-				),
-			).length;
+		// The media library ordinals a query matches, ascending: in the order `ordinalOrder` numbers
+		// them, the one a fill counts in. A query outside `queryMatcher`'s grammar matches nothing.
+		previewMatches,
+
+		previewTracks(query: string): Track[] {
+			previewOrder ??= ordinalOrder();
+			const order = previewOrder;
+			return previewMatches(query).map((ordinal) => order[ordinal].track);
 		},
 
 		addPlaylist(title: string): PlaylistInfo {
@@ -1228,10 +1305,10 @@ export function createState({
 					playlist.items = [...playlist.items].sort(() => 0);
 					return;
 				}
-				playlist.items = [...playlist.items].sort((a, b) =>
-					compareText(evaluate(a, by), evaluate(b, by)),
-				);
-				if (desc) playlist.items.reverse();
+				const before = playlist.items;
+				const order = sortedOrder(before, by);
+				if (desc) order.reverse();
+				playlist.items = order.map((old) => before[old]);
 			});
 
 			notify({ playlists: true });

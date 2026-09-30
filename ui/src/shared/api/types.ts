@@ -72,6 +72,15 @@ export interface PlaylistInfo {
 	// writes rather than from `title`, so it survives a rename at the player.
 	role: "scratch" | null;
 	isAutoPlaylist: boolean;
+	// What `foo_jean` recorded of an autoplaylist it made, `null` or absent for any other playlist and
+	// for an autoplaylist made elsewhere. `key` is empty where Jean made it and not for one kept for a
+	// purpose of its own.
+	managed?: {
+		key: string;
+		query: string;
+		sort: string;
+		forceSort: boolean;
+	} | null;
 }
 
 export type TrackColumns = string[];

@@ -34,10 +34,7 @@ const fetchPatiently = async (url: string, init: RequestInit) => {
 	}
 };
 
-export const component = async <T>(
-	path: string,
-	init?: RequestInit,
-): Promise<T> => {
+const exchange = async (path: string, init?: RequestInit) => {
 	const response = await fetchPatiently(`${COMPONENT()}${path}`, {
 		...init,
 		headers: {
@@ -45,12 +42,31 @@ export const component = async <T>(
 			...init?.headers,
 		},
 	});
-	const body = await response.text();
-	if (!response.ok)
-		throw new Error(
-			`${init?.method ?? "GET"} ${path} -> ${response.status} ${body}`,
-		);
-	return (body ? JSON.parse(body) : undefined) as T;
+	return { status: response.status, text: await response.text() };
+};
+
+export const component = async <T>(
+	path: string,
+	init?: RequestInit,
+): Promise<T> => {
+	const { status, text } = await exchange(path, init);
+	if (status < 200 || status >= 300)
+		throw new Error(`${init?.method ?? "GET"} ${path} -> ${status} ${text}`);
+	return (text ? JSON.parse(text) : undefined) as T;
+};
+
+// Answers the status and the body rather than throwing on a refusal, since a refusal is what some
+// cases ask for.
+export const attempt = async <T = { error: string; detail: string }>(
+	path: string,
+	body: unknown,
+	method = "POST",
+) => {
+	const { status, text } = await exchange(path, {
+		method,
+		body: JSON.stringify(body),
+	});
+	return { status, body: (text ? JSON.parse(text) : null) as T };
 };
 
 export interface Playlist {
@@ -62,6 +78,12 @@ export interface Playlist {
 	role: string | null;
 	structure: string;
 	revision: string;
+	managed: {
+		key: string;
+		query: string;
+		sort: string;
+		forceSort: boolean;
+	} | null;
 }
 
 export const playlists = () =>
@@ -154,22 +176,23 @@ export const copyToNewPlaylist = (
 		body: JSON.stringify({ title, source, runs: [[0, rows]] }),
 	});
 
-export const copyRowsInto = async (
-	id: string,
-	source: string,
-	rows: number,
-) => {
-	const response = await fetchPatiently(
-		`${COMPONENT()}/api/playlists/${id}/items/copy`,
-		{
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ source, runs: [[0, rows]] }),
-		},
-	);
-	await response.body?.cancel();
-	return response.status;
-};
+export const copyRowsInto = async (id: string, source: string, rows: number) =>
+	(
+		await attempt(`/api/playlists/${id}/items/copy`, {
+			source,
+			runs: [[0, rows]],
+		})
+	).status;
+
+export const copyFromLibrary = (
+	title: string,
+	structure: number,
+	ordinals: readonly number[],
+) =>
+	component<Playlist>("/api/playlists", {
+		method: "POST",
+		body: JSON.stringify({ title, structure, ordinals }),
+	});
 
 export const removePlaylist = (id: string) =>
 	component<void>(`/api/playlists/${id}`, { method: "DELETE" });
@@ -214,16 +237,10 @@ export interface OutputDevice {
 export const outputs = () =>
 	component<{ devices: OutputDevice[]; active: string | null }>("/api/outputs");
 
-// Answers the status rather than throwing on a refusal, since a refusal is what some cases ask for.
 export const switchOutput = async (deviceId: string) => {
-	const response = await fetchPatiently(`${COMPONENT()}/api/outputs/active`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ deviceId }),
-	});
-	const body = await response.text();
-	return {
-		status: response.status,
-		error: body ? (JSON.parse(body) as { error: string }).error : null,
-	};
+	const { status, body } = await attempt<{ error: string } | null>(
+		"/api/outputs/active",
+		{ deviceId },
+	);
+	return { status, error: body?.error ?? null };
 };

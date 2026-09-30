@@ -11,7 +11,7 @@ Jean (/ʝan/) is a web interface for foobar2000, served by [`foo_jean`](https://
 <!-- site:rediscover -->
 ### Re-discover what you already own
 
-Every list shades its rows by how often you have played them, so a playlist you thought you knew shows its cold spots at a glance. The front door is built out of the same counts. Records you play constantly. Records you played to death and then put down. Records you only own a bad rip of. Records you have never once opened. Genres carry their own figures, and when nothing appeals, one button shuffles the lot.
+Every list shades its rows by how often you have played them, so a playlist you thought you knew shows its cold spots at a glance. The front door is built out of the same counts. Records you play constantly. Records you played to death and then put down. Records you only own a bad rip of. Records you have never once opened. Records that arrived in the last four weeks, newest first. Genres carry their own figures, and when nothing appeals, one button shuffles the lot.
 <!-- /site:rediscover -->
 
 <!-- site:search -->
@@ -60,7 +60,7 @@ One more is optional:
 
 | | |
 |---|---|
-| `foo_playcount` or `foo_enhanced_playcount` | Jean is compatible with both. They are where the play counts and last-played dates come from, which is what the shelves and the row shading are made of. Without one, none of that is drawn |
+| `foo_playcount` or `foo_enhanced_playcount` | Jean is compatible with both. They are where the play counts and last-played dates come from, which is what the shelves and the row shading are made of. `foo_playcount` also records when each track entered the library, which is what Recently added shows; it starts counting on the day it is installed. Without one, none of that is drawn |
 <!-- /site:requirements -->
 
 ## Install

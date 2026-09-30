@@ -27,6 +27,7 @@ const FIELDS = [
 	["bitrate", "%bitrate%"],
 	["playCountLocal", "%play_count%"],
 	["lastPlayedLocal", "%last_played%"],
+	["added", "%added%"],
 ] as const;
 
 export const { expressions: TRACK_EXPRESSIONS, index: FIELD } =

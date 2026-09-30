@@ -14,6 +14,7 @@ export interface Shelf {
 	blurb: ShelfPhrase;
 	pick: (albums: Album[]) => Album[];
 	caption: (album: Album, t: Translate, locale: string) => string | null;
+	minimum: number;
 }
 
 export interface FilledShelf<A extends Album = Album> extends Shelf {
@@ -28,6 +29,9 @@ const LIMIT = 24;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const YEAR_MS = 365.25 * DAY_MS;
 const RECENT_WINDOW_MS = 30 * DAY_MS;
+const ADDED_WINDOW_MS = 28 * DAY_MS;
+const FIRST_RUN_GAP_MS = 60 * 1000;
+const FIRST_RUN_SHARE = 0.25;
 const FORGOTTEN_AFTER_MS = 1.5 * YEAR_MS;
 
 const MINIMUM = 4;
@@ -38,10 +42,31 @@ const shelf = (
 	blurb: ShelfPhrase,
 	pick: Shelf["pick"],
 	caption: Shelf["caption"],
-): Shelf => ({ id, title, blurb, pick, caption });
+	minimum = MINIMUM,
+): Shelf => ({ id, title, blurb, pick, caption, minimum });
+
+// foo_playcount's first run stamps every track already in the library with that moment, one after
+// another, so the largest unbroken run of arrivals is when it was installed if the run is a good
+// share of the library.
+function firstRunOf(arrivals: number[]): { from: number; to: number } | null {
+	const sorted = Float64Array.from(arrivals).sort();
+	let run = { from: 0, to: 0, count: 0 };
+	let start = 0;
+	for (let at = 1; at <= sorted.length; at += 1) {
+		if (at < sorted.length && sorted[at] - sorted[at - 1] <= FIRST_RUN_GAP_MS)
+			continue;
+		if (at - start > run.count)
+			run = { from: sorted[start], to: sorted[at - 1], count: at - start };
+		start = at;
+	}
+	return run.count > 0 && run.count >= sorted.length * FIRST_RUN_SHARE
+		? run
+		: null;
+}
 
 const byPlays = (a: Album, b: Album) => b.plays - a.plays;
 const byRecent = (a: Album, b: Album) => b.lastPlayed - a.lastPlayed;
+const byArrival = (a: Album, b: Album) => b.added - a.added;
 // `sort(() => Math.random() - 0.5)` is biased: the result depends on the comparison order the engine happens to use.
 const shuffled = <T>(items: T[]): T[] =>
 	items
@@ -50,6 +75,29 @@ const shuffled = <T>(items: T[]): T[] =>
 		.map(({ item }) => item);
 
 export const SHELVES: Shelf[] = [
+	shelf(
+		"added",
+		"shelf.added.title",
+		"shelf.added.blurb",
+		(albums) => {
+			const since = Date.now() - ADDED_WINDOW_MS;
+			const dated = albums.filter((album) => album.added > since);
+			const firstRun = firstRunOf(
+				albums.filter((album) => album.added > 0).map((album) => album.added),
+			);
+			return dated
+				.filter(
+					(album) =>
+						!firstRun ||
+						album.added < firstRun.from ||
+						album.added > firstRun.to,
+				)
+				.sort(byArrival);
+		},
+		(album, t, locale) => describeWhen(album.added, locale, t("when.today")),
+		1,
+	),
+
 	shelf(
 		"recent",
 		"shelf.recent.title",
@@ -186,7 +234,7 @@ const fill = <A extends Album>(
 	albums: A[],
 ): FilledShelf<A> | null => {
 	const picked = entry.pick(albums) as A[];
-	return picked.length < MINIMUM
+	return picked.length < entry.minimum
 		? null
 		: { ...entry, albums: picked.slice(0, LIMIT), total: picked.length };
 };

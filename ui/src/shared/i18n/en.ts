@@ -547,6 +547,8 @@ export const en = {
 	"settings.playback.playbackFollows": "Playback follows cursor",
 	"settings.playback.title": "Playback",
 	"settings.title": "Settings",
+	"shelf.added.blurb": "New in your library these last four weeks",
+	"shelf.added.title": "Recently added",
 	"shelf.loved.blurb": "Played to death, then put down",
 	"shelf.loved.title": "Remember these?",
 	"shelf.notSince": "Not since {year}",

@@ -445,6 +445,8 @@
 	"settings.playback.playbackFollows": "La reproducción sigue al cursor",
 	"settings.playback.title": "Reproducción",
 	"settings.title": "Ajustes",
+	"shelf.added.blurb": "Lo nuevo en tu biblioteca estas cuatro semanas",
+	"shelf.added.title": "Añadido hace poco",
 	"shelf.loved.blurb": "Reproducidos hasta gastarlos, y luego olvidados",
 	"shelf.loved.title": "¿Te acuerdas de estos?",
 	"shelf.notSince": "Desde {year}, nada",

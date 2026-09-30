@@ -38,6 +38,7 @@ const blankAlbum = (
 	refs: [] as number[],
 	plays: 0,
 	lastPlayed: 0,
+	added: 0,
 	bitrateTotal: 0,
 	bitrateCount: 0,
 	year: null as number | null,
@@ -80,6 +81,7 @@ function collect(
 
 	const plays = columnReader(columns, FIELD.playCount, readNumber);
 	const playedAt = columnReader(columns, FIELD.lastPlayed, readTimestamp);
+	const addedAt = byValue(columns.fields[FIELD.added], readTimestamp);
 	const years = byValue(columns.fields[FIELD.year], readNumber);
 	const bitrates = byValue(columns.fields[FIELD.bitrate], readNumber);
 	const lossy = byValue(columns.fields[FIELD.codec], (raw) => {
@@ -94,6 +96,7 @@ function collect(
 	const bitrate = columns.fields[FIELD.bitrate].ids;
 	const codec = columns.fields[FIELD.codec].ids;
 	const rating = columns.fields[FIELD.rating].ids;
+	const added = columns.fields[FIELD.added].ids;
 
 	const drafts = new Map<number, AlbumDraft>();
 
@@ -118,6 +121,9 @@ function collect(
 
 		const played = playedAt(ref);
 		if (played !== null && played > draft.lastPlayed) draft.lastPlayed = played;
+
+		const arrived = addedAt[added[ref]];
+		if (arrived !== null && arrived > draft.added) draft.added = arrived;
 
 		// The earliest of them: a reissue often tags its own release year onto one or two tracks.
 		const released = years[year[ref]];
@@ -160,6 +166,7 @@ const COLLECTED = withAlternatives([
 	FIELD.bitrate,
 	FIELD.codec,
 	FIELD.rating,
+	FIELD.added,
 ]);
 
 export const albumIndex = growingIndex(COLLECTED, collect, derive);

@@ -59,13 +59,14 @@ Every `columns` parameter takes **foobar2000 title-formatting expressions**, eva
 | `%replaygain_track_gain%` `%replaygain_album_gain%` `%bpm%` | tags | |
 | `%lastfm_play_count%` `%lastfm_last_played%` `%lastfm_first_played%` | `foo_enhanced_playcount` | counts scrobbles across every device. `0` and `N/A` when unplayed, not `?` |
 | `%play_count%` `%last_played%` `%first_played%` | `foo_playcount` | counts plays on this machine. A different number from the last.fm pair, so preferring one is a choice |
+| `%added%` | `foo_playcount` | when the track entered the media library, in the same `YYYY-MM-DD HH:MM:SS` form as the play dates |
 | `$meta(unsynced lyrics)` | tags | **the tag name has a space.** `%lyrics%` answers `?` and `$meta(unsyncedlyrics)` finds nothing |
 
 Which of these resolve varies by install, by component and by how the library was tagged. Detect; never assume.
 
 > **There is no play history, only a last play.** A play count is a lifetime total and a last-played is the most recent play and nothing else, so a track played today and again weeks ago reports only today. Any per-day or per-week chart built on it undercounts every older bucket and slopes upward whatever the listening did. A window can honestly report how many *distinct tracks* were touched since a date, and must say so in those words.
 
-> **There is no working date-added field at any price.** `%added%` does not resolve. `%last_modified%` is not a substitute: playback can rewrite tags, which bumps the file's mtime, so it is `max(added, last played or retagged)`, wrong precisely at the recent end, where a "recently added" view would look.
+> **`%added%` starts on the day `foo_playcount` is installed.** Its first run stamps every track already in the library with that moment, so on a new install most of the library carries times seconds apart and only tracks added afterwards carry a real one. `foo_enhanced_playcount`'s `%added_enhanced%` resolves and answers `<invalid timestamp>` for every track, and its `%lastfm_added%` is the first scrobble. `%last_modified%` is not a substitute either: playback can rewrite tags, which bumps the file's mtime, so it is `max(added, last played or retagged)`, wrong precisely at the recent end, where a "recently added" view would look.
 
 > **Lyrics need no component.** `$meta(unsynced lyrics)` returns whatever is in the tag, which is LRC-timestamped only some of the time and is plain text more often than not. Real content includes several timestamps on one line, credit lines, and tags holding nothing but a URL. The field is large enough that it is fetched per track through `GET /api/track/playing` and **MUST never go in the library export's columns**, which carry every track. `foo_openlyrics` is what *writes* the tag.
 

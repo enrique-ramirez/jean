@@ -24,6 +24,7 @@ const album = (over: Partial<Album> = {}): Album => {
 		refs,
 		plays: 0,
 		lastPlayed: 0,
+		added: 0,
 		bitrateTotal: 0,
 		bitrateCount: 0,
 		lossless: true,
@@ -115,7 +116,87 @@ test("Recently played is left off, not drawn empty, when nothing was played in t
 	assert.ok(shelves.every((shelf) => shelf.albums.length > 0));
 });
 
-const SAVED_IDS = ["recent", "top", "rated", "loved", "upgrade", "unopened"];
+test("Recently added shows the first album to arrive, newest first", () => {
+	const now = Date.now();
+	const settled = many(20, () => ({ added: now - 400 * DAY_MS }));
+	const older = album({ added: now - 3 * DAY_MS });
+	const newer = album({ added: now - DAY_MS });
+
+	const added = buildShelves([...settled, older]).find(
+		(shelf) => shelf.id === "added",
+	);
+	assert.deepEqual(
+		added?.albums.map((entry) => entry.key),
+		[older.key],
+	);
+
+	const both = buildShelves([...settled, older, newer]).find(
+		(shelf) => shelf.id === "added",
+	);
+	assert.deepEqual(
+		both?.albums.map((entry) => entry.key),
+		[newer.key, older.key],
+	);
+});
+
+test("Recently added lets an album go four weeks after it arrived", () => {
+	const now = Date.now();
+	const settled = many(20, () => ({ added: now - 400 * DAY_MS }));
+	const shelves = ids([...settled, album({ added: now - 29 * DAY_MS })]);
+
+	assert.ok(!shelves.includes("added"));
+});
+
+test("Recently added ignores the moment the play-statistics component first stamped the library", () => {
+	const now = Date.now();
+	const installed = now - 2 * DAY_MS;
+	const stamped = many(20, (at) => ({ added: installed + at * 1000 }));
+
+	assert.ok(!ids(stamped).includes("added"));
+
+	const arrival = album({ added: now - DAY_MS });
+	const added = buildShelves([...stamped, arrival]).find(
+		(shelf) => shelf.id === "added",
+	);
+	assert.deepEqual(
+		added?.albums.map((entry) => entry.key),
+		[arrival.key],
+	);
+});
+
+test("Recently added ignores the stamp when it covers only part of the library", () => {
+	const now = Date.now();
+	const installed = now - 2 * DAY_MS;
+	const settled = many(12, (at) => ({ added: now - (400 + at) * DAY_MS }));
+	const stamped = many(8, (at) => ({ added: installed + at * 1000 }));
+
+	assert.ok(!ids([...settled, ...stamped]).includes("added"));
+});
+
+test("Recently added ignores a first run that took longer than an hour", () => {
+	const installed = Date.now() - 2 * DAY_MS;
+	const stamped = many(120, (at) => ({ added: installed + at * 50 * 1000 }));
+
+	assert.ok(!ids(stamped).includes("added"));
+});
+
+test("Recently added is left off when no track carries a date", () => {
+	assert.ok(
+		!ids(many(6, () => ({ plays: 5, lastPlayed: Date.now() }))).includes(
+			"added",
+		),
+	);
+});
+
+const SAVED_IDS = [
+	"added",
+	"recent",
+	"top",
+	"rated",
+	"loved",
+	"upgrade",
+	"unopened",
+];
 
 test("every shelf id a user may have saved still opens that shelf", () => {
 	assert.deepEqual(

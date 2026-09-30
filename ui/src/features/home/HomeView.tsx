@@ -18,7 +18,7 @@ import { buildShelves, type FilledShelf } from "./shelves";
 import { TopTracks } from "./TopTracks";
 import { topTracksOf } from "./tracks";
 
-const FREE_SHELF = "recent";
+const FREE_SHELVES = ["added", "recent"];
 
 const TOP_TRACKS = 10;
 
@@ -70,8 +70,8 @@ export function HomeView({
 	const { status } = library;
 	const isReading = isLibraryReading(status);
 
-	const free = shelves.find((shelf) => shelf.id === FREE_SHELF) ?? null;
-	const tabbed = shelves.filter((shelf) => shelf !== free);
+	const free = shelves.filter((shelf) => FREE_SHELVES.includes(shelf.id));
+	const tabbed = shelves.filter((shelf) => !free.includes(shelf));
 
 	const hasBand = tracks.length > 0 || stats.topGenres.length > 0;
 
@@ -95,7 +95,9 @@ export function HomeView({
 				</p>
 			) : (
 				<div className={styles.shelves}>
-					{free ? <ShelfRow shelf={free} onPlayAlbum={onPlayAlbum} /> : null}
+					{free.map((shelf) => (
+						<ShelfRow key={shelf.id} shelf={shelf} onPlayAlbum={onPlayAlbum} />
+					))}
 					{tabbed.length > 0 ? (
 						<ShelfTabs shelves={tabbed} onPlayAlbum={onPlayAlbum} />
 					) : null}

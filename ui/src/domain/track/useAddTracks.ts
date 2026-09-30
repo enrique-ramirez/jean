@@ -16,12 +16,12 @@ const causeOf = (
 	target: PlaylistInfo,
 ):
 	| "add.writePlaylistsOff"
-	| "add.smartPlaylist"
+	| "add.autoPlaylist"
 	| "add.locked"
 	| "add.failed" => {
 	if (status === 403) return "add.writePlaylistsOff";
 	if (status === 409)
-		return target.isAutoPlaylist ? "add.smartPlaylist" : "add.locked";
+		return target.isAutoPlaylist ? "add.autoPlaylist" : "add.locked";
 	return "add.failed";
 };
 

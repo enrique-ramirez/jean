@@ -97,6 +97,15 @@ export function useTrackSelection(total: number, viewKey: string) {
 		[total],
 	);
 
+	const selectBlock = useCallback(
+		(first: number, last: number, cursorAt: number) => {
+			anchor.current = first;
+			setCursor(cursorAt);
+			setSelection(rangeBetween(first, last));
+		},
+		[],
+	);
+
 	const selectAll = useCallback(
 		() =>
 			setSelection(new Set(Array.from({ length: total }, (_, index) => index))),
@@ -112,6 +121,7 @@ export function useTrackSelection(total: number, viewKey: string) {
 			selectFromEvent,
 			moveCursor,
 			moveCursorTo,
+			selectBlock,
 			selectAll,
 			clear,
 		}),
@@ -121,6 +131,7 @@ export function useTrackSelection(total: number, viewKey: string) {
 			selectFromEvent,
 			moveCursor,
 			moveCursorTo,
+			selectBlock,
 			selectAll,
 			clear,
 		],

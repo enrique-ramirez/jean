@@ -5,6 +5,7 @@ export const SURFACES = {
 	palette: { kind: "modal" },
 	shortcuts: { kind: "modal" },
 	settings: { kind: "modal" },
+	autoplaylist: { kind: "modal" },
 	nowPlaying: { kind: "route" },
 } as const;
 

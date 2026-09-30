@@ -88,6 +88,10 @@ const addToFavorites = async (page: Page, index: number, isMobile: boolean) => {
 // An autoplaylist; `useAddTracks.ts`'s top comment has what a lock on it means for a write.
 const AUTO = { id: "p9", title: "Recently Added", itemCount: 5 };
 
+// Spelled out rather than read from the catalogue: "autoplaylist" is the one word Jean uses for a
+// playlist foobar2000 fills from a query, and the sentence a person reads is what is promised.
+const AUTO_REFUSED = `Nothing was added to ${AUTO.title}. Autoplaylists fill themselves and cannot be added to.`;
+
 // What the component answers an edit the player refused for a lock: `PlaylistLocked` and
 // `FillConflict` in `contract/openapi.yaml`, which publish the same two fields.
 const LOCKED = {
@@ -156,9 +160,7 @@ test.describe("an add into a playlist the player has locked", () => {
 		await expect.poll(() => answered).toEqual([409]);
 
 		await expect(toast(page)).toContainText(AUTO.title);
-		await expect(toast(page)).toContainText(
-			en["add.smartPlaylist"].replace("{playlist}", AUTO.title),
-		);
+		await expect(toast(page)).toContainText(AUTO_REFUSED);
 		expect(titlesIn(player, AUTO.id)).toHaveLength(AUTO.itemCount);
 	});
 
@@ -189,10 +191,10 @@ test.describe("an add into a playlist the player has locked", () => {
 	});
 
 	// An ordinary playlist, refused by a lock some other component took. Jean knows the lock
-	// and not what took it, so a message about smart playlists sends somebody to look at a
+	// and not what took it, so a message about autoplaylists sends somebody to look at a
 	// playlist that is nothing of the kind, and one about `writePlaylists` sends them to a
 	// switch that is on.
-	test("names no smart playlist where the lock is another component's", async ({
+	test("names no autoplaylist where the lock is another component's", async ({
 		page,
 		player,
 		isMobile,
@@ -205,7 +207,7 @@ test.describe("an add into a playlist the player has locked", () => {
 		await expect.poll(() => answered).toEqual([409]);
 
 		await expect(toast(page)).toContainText(FAVORITES.title);
-		await expect(toast(page)).not.toContainText(/smart playlist/i);
+		await expect(toast(page)).not.toContainText(/autoplaylist/i);
 		await expect(toast(page)).not.toContainText(/writePlaylists/i);
 		await expect(toast(page).getByRole("button", { name: "Undo" })).toHaveCount(
 			0,
@@ -645,15 +647,15 @@ test.describe("undoing an add made from a library view", () => {
 });
 
 // The other refusal an add can meet, and the only one with a remedy: the player
-// owner holds this switch in the component's own preferences. Saying a smart
-// playlist swallowed the tracks would send them looking at the playlist instead.
+// owner holds this switch in the component's own preferences. Saying an autoplaylist
+// swallowed the tracks would send them looking at the playlist instead.
 test.describe("an add the component refuses outright", () => {
 	test.beforeEach(({ page }) => openLibrary(page));
 
 	// `writePlaylists` by name, because a setting is only actionable if the message
 	// spells what to go and look for. The component's own 403 already says it: Jean
 	// standing in front of that answer must not say less than it does.
-	test("names writePlaylists, and blames no smart playlist", async ({
+	test("names writePlaylists, and blames no autoplaylist", async ({
 		page,
 		isMobile,
 	}) => {
@@ -662,7 +664,7 @@ test.describe("an add the component refuses outright", () => {
 		await addToFavorites(page, 0, isMobile);
 
 		await expect(toast(page)).toContainText("writePlaylists");
-		await expect(toast(page)).not.toContainText(/smart playlist/i);
+		await expect(toast(page)).not.toContainText(/autoplaylist/i);
 	});
 });
 
@@ -670,7 +672,7 @@ test.describe("an add that failed rather than being refused", () => {
 	test.beforeEach(({ page }) => openLibrary(page));
 
 	// Nothing came back that says why, so there is no cause to report and none to borrow. The
-	// two causes Jean can name belong to answers it did not get: a smart playlist is the 409
+	// two causes Jean can name belong to answers it did not get: an autoplaylist is the 409
 	// from a playlist the player builds, and `writePlaylists` is the 403.
 	test("names the playlist and no cause, where the copy simply failed", async ({
 		page,
@@ -685,7 +687,7 @@ test.describe("an add that failed rather than being refused", () => {
 		await expect.poll(() => answered).toEqual([500]);
 
 		await expect(toast(page)).toContainText(FAVORITES.title);
-		await expect(toast(page)).not.toContainText(/smart playlist/i);
+		await expect(toast(page)).not.toContainText(/autoplaylist/i);
 		await expect(toast(page)).not.toContainText(/writePlaylists/i);
 		await expect(toast(page).getByRole("button", { name: "Undo" })).toHaveCount(
 			0,

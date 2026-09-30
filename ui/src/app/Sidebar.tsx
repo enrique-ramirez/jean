@@ -16,6 +16,7 @@ import { permitsPlaylistWrites } from "@/shared/api/discovery";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
 import { useFooJean } from "@/shared/hooks/useFooJean";
+import type { Point } from "@/shared/hooks/useLongPress";
 import { useSortableList } from "@/shared/hooks/useSortableList";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
@@ -53,6 +54,8 @@ export function Sidebar({
 	isOpen,
 	isCollapsed,
 	onDismiss,
+	onNewAutoPlaylist,
+	onEditAutoPlaylist,
 }: {
 	playlists: PlaylistInfo[];
 	playingPlaylistId: string | null;
@@ -68,11 +71,16 @@ export function Sidebar({
 	isOpen: boolean;
 	isCollapsed: boolean;
 	onDismiss: () => void;
+	onNewAutoPlaylist: () => void;
+	onEditAutoPlaylist: (playlist: PlaylistInfo) => void;
 }) {
 	const t = useTranslate();
 	const format = useFormats();
 	const { discovery } = useFooJean();
 	const canEdit = permitsPlaylistWrites(discovery);
+	const canCreateAutoPlaylists =
+		discovery.state.kind === "ready" &&
+		discovery.state.capabilities.canCreateAutoPlaylists;
 	const drag = useDragState();
 	const autoPlaylists = useAutoPlaylists();
 
@@ -80,6 +88,7 @@ export function Sidebar({
 	const swipe = useSwipe({ onLeft: onDismiss });
 	const [targetId, setTargetId] = useState<string | null>(null);
 	const [focusedId, setFocusedId] = useState<string | null>(null);
+	const [addAnchor, setAddAnchor] = useState<Point | null>(null);
 
 	const shown = useMemo(() => withoutScratchPlaylist(playlists), [playlists]);
 
@@ -99,7 +108,22 @@ export function Sidebar({
 		reorder,
 		commitRename,
 		actions,
-	} = usePlaylistEditing({ playlists, shown, target, selectedId, onSelect });
+		addActions,
+	} = usePlaylistEditing({
+		playlists,
+		shown,
+		target,
+		selectedId,
+		onSelect,
+		onNewAutoPlaylist,
+		onEditAutoPlaylist,
+	});
+
+	const onAdd = (event: ReactMouseEvent<HTMLElement>) => {
+		if (!canCreateAutoPlaylists) return newPlaylist();
+		const box = event.currentTarget.getBoundingClientRect();
+		setAddAnchor({ x: box.left, y: box.bottom });
+	};
 
 	const sortable = useSortableList({
 		keys: shown.map((entry) => entry.id),
@@ -258,7 +282,7 @@ export function Sidebar({
 							className={styles.add}
 							aria-label={t("playlist.new")}
 							disabled={isCreating}
-							onClick={newPlaylist}
+							onClick={onAdd}
 						>
 							<Plus size={15} strokeWidth={2.4} aria-hidden="true" />
 						</button>
@@ -326,6 +350,13 @@ export function Sidebar({
 				}
 				actions={actions}
 				onDismiss={menu.close}
+			/>
+
+			<ActionMenu
+				isOpen={addAnchor !== null}
+				anchor={addAnchor}
+				actions={addActions}
+				onDismiss={() => setAddAnchor(null)}
 			/>
 		</>
 	);

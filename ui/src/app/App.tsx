@@ -44,6 +44,7 @@ import { useHomePlayback } from "@/features/home/useHomePlayback";
 import { StatusBar } from "@/features/now-playing/StatusBar";
 import { QueuePanel } from "@/features/queue/QueuePanel";
 import { permitsPlaybackControl } from "@/shared/api/discovery";
+import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
@@ -74,6 +75,8 @@ import { useSelectedPlaylist } from "./useSelectedPlaylist";
 
 const loadNowPlaying = () => import("@/features/now-playing/NowPlaying");
 const loadSettings = () => import("@/features/settings/SettingsDialog");
+const loadAutoPlaylist = () =>
+	import("@/features/autoplaylist/AutoPlaylistDialog");
 const loadShortcuts = () => import("@/shared/keyboard/ShortcutSheet");
 const loadPalette = () => import("./CommandPalette");
 
@@ -82,6 +85,9 @@ const NowPlaying = lazy(() =>
 );
 const SettingsDialog = lazy(() =>
 	loadSettings().then((module) => ({ default: module.SettingsDialog })),
+);
+const AutoPlaylistDialog = lazy(() =>
+	loadAutoPlaylist().then((module) => ({ default: module.AutoPlaylistDialog })),
 );
 const ShortcutSheet = lazy(() =>
 	loadShortcuts().then((module) => ({ default: module.ShortcutSheet })),
@@ -122,6 +128,12 @@ function Shell() {
 	const sidebar = useResponsivePanel("sidebar");
 	const queue = useResponsivePanel("queue");
 	const modals = useModals();
+	const [editedAutoPlaylist, setEditedAutoPlaylist] =
+		useState<PlaylistInfo | null>(null);
+	const editAutoPlaylist = (playlist: PlaylistInfo) => {
+		setEditedAutoPlaylist(playlist);
+		modals.open("autoplaylist");
+	};
 	const [settingsSeen, setSettingsSeen] = useStoredState(
 		"jean.settingsSeen",
 		false,
@@ -481,6 +493,8 @@ function Shell() {
 					isOpen={sidebar.isDrawerOpen}
 					isCollapsed={sidebar.isCollapsed}
 					onDismiss={closeSidebarDrawer}
+					onNewAutoPlaylist={() => modals.open("autoplaylist")}
+					onEditAutoPlaylist={editAutoPlaylist}
 				/>
 
 				<MainView
@@ -498,6 +512,7 @@ function Shell() {
 					onOpenPlaylist={openPlaylist}
 					onOpenRoute={openRoute}
 					onSearch={searchFor}
+					onEditAutoPlaylist={editAutoPlaylist}
 				/>
 
 				{hasOpenedNowPlaying ? (
@@ -563,6 +578,20 @@ function Shell() {
 			{modals.isOpen.settings ? (
 				<Suspense fallback={null}>
 					<SettingsDialog onDismiss={() => modals.close("settings")} />
+				</Suspense>
+			) : null}
+
+			{modals.isOpen.autoplaylist ? (
+				<Suspense fallback={null}>
+					<AutoPlaylistDialog
+						library={library}
+						editing={editedAutoPlaylist ?? undefined}
+						onOpenPlaylist={openPlaylist}
+						onDismiss={() => {
+							modals.close("autoplaylist");
+							setEditedAutoPlaylist(null);
+						}}
+					/>
 				</Suspense>
 			) : null}
 

@@ -25,6 +25,7 @@ import {
 	titlesIn,
 	touchDrag,
 	trackRow,
+	untilQuiet,
 } from "./fixtures.ts";
 
 const DEFAULT_PLAYLIST = "Default Playlist";
@@ -132,6 +133,10 @@ const playlistsDrawn = async (page: Page) => {
 const PLAYER_HELD_MS = 6000;
 const AT_ONCE_MS = 2000;
 
+// How far an anchored menu may sit from the control that opened it: room for the popover's own
+// offset and a flip at the window's edge, far short of a menu centred in the window.
+const ANCHOR_GAP_PX = 48;
+
 const holdThePlayer = (page: Page) =>
 	page.request.post("/__control/latency", { data: { ms: PLAYER_HELD_MS } });
 
@@ -220,89 +225,312 @@ test.describe("the scratch playlist among the user's own", () => {
 	});
 });
 
-test.describe("creating a playlist", () => {
-	test("the + makes one and drops it straight into rename", async ({
-		page,
-		player,
-	}) => {
-		await openApp(page);
-		await page.getByRole("button", { name: "New playlist" }).click();
+const newPlaylistButton = (page: Page) =>
+	page.getByRole("button", { name: "New playlist" });
 
-		const field = page.getByRole("textbox", { name: "Rename New playlist" });
-		await expect(field).toBeFocused();
-		await expect(field).toHaveValue("New playlist");
+// Exact, since a name query matches a substring and "Playlist" is inside "Autoplaylist".
+const menuEntry = (page: Page, name: string) =>
+	page.getByRole("menuitem", { name, exact: true });
 
-		await expect.poll(() => titlesInOrder(player)).toContain("New playlist");
+const creates = (player: FakePlayer) =>
+	player.requests
+		.filter(
+			(one) =>
+				one.method === "POST" &&
+				(one.path === "/api/playlists" || one.path === "/api/autoplaylists"),
+		)
+		.map((one) => one.path);
 
-		await expect(
-			page.getByRole("heading", { level: 1, name: LIBRARY }),
-		).toBeVisible();
-	});
+// foo_jean answers `canCreateAutoPlaylists` only where it may write playlists and has room
+// for an autoplaylist, so `maxAutoPlaylists` is the switch between the two ways in.
+const WITHOUT_AUTOPLAYLISTS = { maxAutoPlaylists: 0 };
+const WITH_AUTOPLAYLISTS = { maxAutoPlaylists: 100 };
 
-	test("typing a name commits it", async ({ page, player }) => {
-		await openApp(page);
-		await page.getByRole("button", { name: "New playlist" }).click();
+// Everything a plain playlist is promised, asked for both ways in: the + alone where there is
+// nothing else to offer, and the menu's Playlist where there is. The second has to do exactly
+// what the first does.
+const WAYS_IN = [
+	{
+		how: "the + alone, where no autoplaylist can be made",
+		fooJean: WITHOUT_AUTOPLAYLISTS,
+		newPlaylist: (page: Page) => newPlaylistButton(page).click(),
+	},
+	{
+		how: "the menu's Playlist, where an autoplaylist can be made too",
+		fooJean: WITH_AUTOPLAYLISTS,
+		newPlaylist: async (page: Page) => {
+			await newPlaylistButton(page).click();
+			await menuEntry(page, "Playlist").click();
+		},
+	},
+];
 
-		await page
-			.getByRole("textbox", { name: "Rename New playlist" })
-			.fill("Road trip");
-		await page.keyboard.press("Enter");
+for (const { how, fooJean, newPlaylist } of WAYS_IN) {
+	test.describe(`creating a playlist through ${how}`, () => {
+		test.use({ fooJean });
 
-		await expect(link(page, "Road trip")).toBeVisible();
-		await expect.poll(() => titlesInOrder(player)).toContain("Road trip");
-		await expect
-			.poll(() => titlesInOrder(player))
-			.not.toContain("New playlist");
-	});
+		test("makes one and drops it straight into rename", async ({
+			page,
+			player,
+		}) => {
+			await openApp(page);
+			await newPlaylist(page);
 
-	test("the row opens in rename mode without waiting for the player", async ({
-		page,
-		player,
-	}) => {
-		await openApp(page);
-		await holdThePlayer(page);
+			const field = page.getByRole("textbox", { name: "Rename New playlist" });
+			await expect(field).toBeFocused();
+			await expect(field).toHaveValue("New playlist");
 
-		await page.getByRole("button", { name: "New playlist" }).click();
+			await expect.poll(() => titlesInOrder(player)).toContain("New playlist");
 
-		const field = page.getByRole("textbox", { name: "Rename New playlist" });
-		await expect(field).toBeFocused({ timeout: AT_ONCE_MS });
-
-		// A field that cannot be committed from is not rename mode. The row has no id
-		// of the player's yet, so the name typed into it has to wait for one.
-		await field.fill("Road trip");
-		await page.keyboard.press("Enter");
-		await expect.poll(() => titlesInOrder(player)).toContain("Road trip");
-	});
-
-	test("a second one does not take the same name", async ({ page, player }) => {
-		await openApp(page);
-		const add = page.getByRole("button", { name: "New playlist" });
-
-		await add.click();
-		await expect(
-			page.getByRole("textbox", { name: "Rename New playlist" }),
-		).toBeFocused();
-
-		await add.click();
-
-		await expect.poll(() => titlesInOrder(player)).toContain("New playlist 2");
-	});
-
-	// A browser defines `crypto.randomUUID` only in a secure context, and a player
-	// on the LAN serves Jean over plain HTTP. The suite runs on localhost, which
-	// the browser counts as secure, so the page has to lose it by hand.
-	test("works on a page served over plain HTTP", async ({ page, player }) => {
-		await page.addInitScript(() => {
-			Reflect.deleteProperty(Crypto.prototype, "randomUUID");
+			await expect(
+				page.getByRole("heading", { level: 1, name: LIBRARY }),
+			).toBeVisible();
 		});
+
+		test("typing a name commits it", async ({ page, player }) => {
+			await openApp(page);
+			await newPlaylist(page);
+
+			await page
+				.getByRole("textbox", { name: "Rename New playlist" })
+				.fill("Road trip");
+			await page.keyboard.press("Enter");
+
+			await expect(link(page, "Road trip")).toBeVisible();
+			await expect.poll(() => titlesInOrder(player)).toContain("Road trip");
+			await expect
+				.poll(() => titlesInOrder(player))
+				.not.toContain("New playlist");
+		});
+
+		test("the row opens in rename mode without waiting for the player", async ({
+			page,
+			player,
+		}) => {
+			await openApp(page);
+			await holdThePlayer(page);
+
+			await newPlaylist(page);
+
+			const field = page.getByRole("textbox", { name: "Rename New playlist" });
+			await expect(field).toBeFocused({ timeout: AT_ONCE_MS });
+
+			// A field that cannot be committed from is not rename mode. The row has no id
+			// of the player's yet, so the name typed into it has to wait for one.
+			await field.fill("Road trip");
+			await page.keyboard.press("Enter");
+			await expect.poll(() => titlesInOrder(player)).toContain("Road trip");
+		});
+
+		test("a second one does not take the same name", async ({
+			page,
+			player,
+		}) => {
+			await openApp(page);
+
+			await newPlaylist(page);
+			await expect(
+				page.getByRole("textbox", { name: "Rename New playlist" }),
+			).toBeFocused();
+
+			await newPlaylist(page);
+
+			await expect
+				.poll(() => titlesInOrder(player))
+				.toContain("New playlist 2");
+		});
+
+		// A browser defines `crypto.randomUUID` only in a secure context, and a player
+		// on the LAN serves Jean over plain HTTP. The suite runs on localhost, which
+		// the browser counts as secure, so the page has to lose it by hand.
+		test("works on a page served over plain HTTP", async ({ page, player }) => {
+			await page.addInitScript(() => {
+				Reflect.deleteProperty(Crypto.prototype, "randomUUID");
+			});
+			await openApp(page);
+			await newPlaylist(page);
+
+			await expect(
+				page.getByRole("textbox", { name: "Rename New playlist" }),
+			).toBeFocused();
+			await expect.poll(() => titlesInOrder(player)).toContain("New playlist");
+		});
+	});
+}
+
+// Every menu that was ever drawn, by the entries it offered. A menu that opened and closed
+// again before an assertion looked would pass a query for its absence.
+const recordMenus = (page: Page) =>
+	page.addInitScript(() => {
+		const seen: string[][] = [];
+		Object.assign(window, { menusDrawn: seen });
+		new MutationObserver(() => {
+			for (const menu of document.querySelectorAll('[role="menu"]')) {
+				if (menu.hasAttribute("data-recorded")) continue;
+				menu.setAttribute("data-recorded", "");
+				seen.push(
+					[...menu.querySelectorAll('[role="menuitem"]')].map(
+						(item) => item.textContent?.trim() ?? "",
+					),
+				);
+			}
+		}).observe(document, { childList: true, subtree: true });
+	});
+
+const menusDrawn = (page: Page) =>
+	page.evaluate(
+		() => (window as unknown as { menusDrawn: string[][] }).menusDrawn,
+	);
+
+test.describe("the + where only a plain playlist can be made", () => {
+	test.use({ fooJean: WITHOUT_AUTOPLAYLISTS });
+
+	test("creates at once and never offers a one-entry menu", async ({
+		page,
+		player,
+	}) => {
+		await recordMenus(page);
 		await openApp(page);
-		await page.getByRole("button", { name: "New playlist" }).click();
+		await newPlaylistButton(page).click();
 
 		await expect(
 			page.getByRole("textbox", { name: "Rename New playlist" }),
 		).toBeFocused();
-		await expect.poll(() => titlesInOrder(player)).toContain("New playlist");
+		await expectSettlesAt(player, () => creates(player), ["/api/playlists"]);
+		expect(await menusDrawn(page)).toEqual([]);
 	});
+});
+
+test.describe("the + where an autoplaylist can be made too", () => {
+	test.use({ fooJean: WITH_AUTOPLAYLISTS });
+
+	test("offers Playlist and Autoplaylist, beside the + on a desktop and as an action sheet on a phone, and makes nothing until one is chosen", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openApp(page);
+		const titlesBefore = titlesInOrder(player);
+		await newPlaylistButton(page).click();
+
+		const offered = page
+			.getByRole("menu")
+			.filter({ has: menuEntry(page, "Autoplaylist") });
+		await expect(offered).toBeVisible();
+		await expect(offered.getByRole("menuitem")).toHaveCount(2);
+		await expect(menuEntry(page, "Playlist")).toBeVisible();
+		await expect(menuEntry(page, "Autoplaylist")).toBeVisible();
+
+		const sheet = page
+			.getByRole("dialog")
+			.filter({ has: menuEntry(page, "Autoplaylist") });
+		if (isMobile) {
+			await expect(sheet).toBeVisible();
+		} else {
+			await expect(sheet).toHaveCount(0);
+			// Anchored: a menu drawn in the middle of the window, away from what opened it, is
+			// a dialog in all but name.
+			const button = (await newPlaylistButton(page).boundingBox())!;
+			const menu = (await offered.boundingBox())!;
+			const gapAcross = Math.max(
+				0,
+				menu.x - (button.x + button.width),
+				button.x - (menu.x + menu.width),
+			);
+			const gapDown = Math.max(
+				0,
+				menu.y - (button.y + button.height),
+				button.y - (menu.y + menu.height),
+			);
+			expect(Math.max(gapAcross, gapDown)).toBeLessThanOrEqual(ANCHOR_GAP_PX);
+		}
+
+		await expectSettlesAt(player, () => creates(player), []);
+		expect(titlesInOrder(player)).toEqual(titlesBefore);
+	});
+
+	test("Autoplaylist opens the New autoplaylist dialog, and Escape shuts it having made nothing", async ({
+		page,
+		player,
+	}) => {
+		await openApp(page);
+		const titlesBefore = titlesInOrder(player);
+		await newPlaylistButton(page).click();
+		await menuEntry(page, "Autoplaylist").click();
+
+		const dialog = page.getByRole("dialog", { name: "New autoplaylist" });
+		await expect(dialog).toBeVisible();
+		await expect(page.getByRole("menu")).toHaveCount(0);
+		// Still open once everything has settled, so the absence below is the Escape's doing and
+		// not a dialog that shut by itself.
+		await untilQuiet(player);
+		await expect(dialog).toBeVisible();
+
+		await page.keyboard.press("Escape");
+		await expect(dialog).toHaveCount(0);
+
+		await expectSettlesAt(player, () => creates(player), []);
+		expect(titlesInOrder(player)).toEqual(titlesBefore);
+	});
+});
+
+test.describe("Edit autoplaylist in a playlist's menu (criteria 29 and 37)", () => {
+	// Favorites is an autoplaylist Jean made, Rock en Español one Jean keeps for a purpose of its
+	// own, and Recently Added one foobar2000 made. Default Playlist stays plain.
+	test.use({
+		fooJean: {
+			...WITH_AUTOPLAYLISTS,
+			autoPlaylistSpecs: {
+				p2: { key: "", query: 'genre IS "Grunge"', sort: "", forceSort: false },
+				p5: {
+					key: "folder:x",
+					query: 'artist IS "Babasónicos"',
+					sort: "",
+					forceSort: false,
+				},
+			},
+		},
+	});
+
+	const EDIT = "Edit autoplaylist";
+
+	const OFFERED = [
+		{ what: "one Jean made", title: FAVORITES, query: 'genre IS "Grunge"' },
+		{ what: "one foobar2000 made", title: AUTO, query: "" },
+	];
+	for (const { what, title, query } of OFFERED) {
+		test(`an autoplaylist ${what} offers it, and it opens the Edit autoplaylist dialog on that playlist`, async ({
+			page,
+			isMobile,
+		}) => {
+			await openApp(page);
+			await menuFor(page, title, isMobile);
+			await menuEntry(page, EDIT).click();
+
+			const dialog = page.getByRole("dialog", { name: EDIT });
+			await expect(dialog).toBeVisible();
+			await expect(dialog.getByRole("textbox", { name: "Name" })).toHaveValue(
+				title,
+			);
+			await expect(dialog.getByRole("combobox", { name: "Query" })).toHaveValue(
+				query,
+			);
+		});
+	}
+
+	const WITHHELD = [
+		{ what: "an autoplaylist Jean keeps for itself", title: SPANISH },
+		{ what: "a plain playlist", title: DEFAULT_PLAYLIST },
+	];
+	for (const { what, title } of WITHHELD) {
+		test(`${what} does not offer it`, async ({ page, isMobile }) => {
+			await openApp(page);
+			await menuFor(page, title, isMobile);
+
+			await expect(menuEntry(page, "Delete")).toBeVisible();
+			expect(await menuEntry(page, EDIT).count()).toBe(0);
+		});
+	}
 });
 
 test.describe("renaming a playlist", () => {

@@ -64,6 +64,8 @@ export interface TrackBrowserProps {
 	canFollowPlayback?: boolean;
 	onPlay: (position: number) => void;
 	onOpenFinder?: () => void;
+	onReorder?: (positions: number[], gap: number) => number | null;
+	onNudge?: (positions: number[], delta: number) => number | null;
 	ref?: Ref<TrackBrowserHandle>;
 }
 
@@ -91,6 +93,8 @@ export function TrackBrowser({
 	canFollowPlayback = false,
 	onPlay,
 	onOpenFinder,
+	onReorder,
+	onNudge,
 }: TrackBrowserProps) {
 	const t = useTranslate();
 	const listRef = useRef<TrackListHandle | null>(null);
@@ -158,11 +162,53 @@ export function TrackBrowser({
 		onSelectOnly: moveCursorTo,
 	});
 
+	const { selectBlock } = selection;
+	const isListLayout = layout !== "album";
+
+	const followRows = useCallback(
+		(landed: number | null, count: number, cursorRank: number) => {
+			if (landed === null) return;
+			selectBlock(landed, landed + count - 1, landed + cursorRank);
+		},
+		[selectBlock],
+	);
+
+	const reorder = useMemo(
+		() =>
+			isListLayout && onReorder
+				? (positions: number[], gap: number) =>
+						followRows(
+							onReorder(positions, gap),
+							positions.length,
+							positions.length - 1,
+						)
+				: undefined,
+		[isListLayout, onReorder, followRows],
+	);
+
 	const trackDrag = useTrackDragSource({
 		rows,
 		source,
 		selection: selection.selection,
+		onReorder: reorder,
 	});
+
+	const nudgeRows = useCallback(
+		(delta: number) => {
+			if (!onNudge) return;
+			const positions = [...selection.selection].sort((a, b) => a - b);
+			if (positions.length === 0) return;
+			if (document.activeElement?.closest("[data-nav-row]")) return;
+
+			pendingScroll.current = true;
+			followRows(
+				onNudge(positions, delta),
+				positions.length,
+				Math.max(positions.indexOf(selection.cursor), 0),
+			);
+		},
+		[onNudge, selection.selection, selection.cursor, followRows],
+	);
 
 	const { selectFromPointer, rowHandlers } = useRowPointer({
 		rows,
@@ -217,6 +263,12 @@ export function TrackBrowser({
 		});
 		return () => setRatingTarget(null);
 	}, [source, rows, selection.cursor]);
+
+	useKeymap(
+		SCOPE.playlist,
+		{ moveRowsUp: () => nudgeRows(-1), moveRowsDown: () => nudgeRows(1) },
+		{ enabled: keysEnabled && isListLayout && onNudge !== undefined },
+	);
 
 	useFollowPlayback({
 		rowCount: rows.length,
@@ -319,6 +371,8 @@ export function TrackBrowser({
 						selection={selection.selection}
 						matches={matches}
 						onSelect={selectFromPointer}
+						gripProps={reorder ? trackDrag.handleProps : undefined}
+						reorderRows={reorder ? rows.length : undefined}
 						onActiveDirectionChange={setActiveDirection}
 						isCompactViewport={isCompactViewport}
 					/>

@@ -7,7 +7,7 @@ import { useDragSource } from "@/shared/ui/dnd";
 import { titleOf } from "./fields";
 import type { LibrarySource } from "./librarySource";
 import type { TrackRows } from "./project";
-import { targetsFrom } from "./trackTargets";
+import { REORDER_DROP_TARGET, targetsFrom } from "./trackTargets";
 import { useAddTracks } from "./useAddTracks";
 import { useQueueTracks } from "./useQueueTracks";
 
@@ -15,10 +15,12 @@ export function useTrackDragSource({
 	rows,
 	source,
 	selection,
+	onReorder,
 }: {
 	rows: TrackRows;
 	source: LibrarySource;
 	selection: Set<number>;
+	onReorder?: (positions: number[], gap: number) => void;
 }) {
 	const { data: playlists = [] } = usePlaylists();
 	const { discovery } = useFooJean();
@@ -31,7 +33,9 @@ export function useTrackDragSource({
 		getPayload: (event) => {
 			const aimed = targetsFrom(event, rows.length, selection);
 			if (!aimed) return null;
-			const { index, positions } = aimed;
+			const fromGrip = event.pointerType !== "mouse";
+			const { index } = aimed;
+			const positions = fromGrip ? [index] : aimed.positions;
 
 			const grabbed = titleOf(rows.at(index), t);
 
@@ -44,17 +48,26 @@ export function useTrackDragSource({
 								track: grabbed,
 								count: positions.length - 1,
 							}),
+				origin: index,
+				held: positions,
 				items: positions.map((position) => rows.ref(position)),
+				...(fromGrip ? { within: REORDER_DROP_TARGET } : null),
 			};
 		},
 
 		canDrop: (id) => {
+			if (id === REORDER_DROP_TARGET) return onReorder !== undefined;
 			if (id === source.playlistId) return false;
 			if (id === QUEUE_DROP_TARGET || queueDropIndex(id) !== null) return true;
 			return canWritePlaylists;
 		},
 
-		onDrop: (id, payload) => {
+		onDrop: (id, payload, gap) => {
+			if (id === REORDER_DROP_TARGET) {
+				if (gap !== null) onReorder?.(payload.items, gap);
+				return;
+			}
+
 			if (id === QUEUE_DROP_TARGET) {
 				queueTracks({ source, itemIndices: payload.items, drag: true });
 				return;

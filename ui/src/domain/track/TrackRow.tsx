@@ -1,6 +1,8 @@
+import { GripVertical } from "lucide-react";
 import {
 	type CSSProperties,
 	memo,
+	type MouseEvent as ReactMouseEvent,
 	type PointerEvent as ReactPointerEvent,
 } from "react";
 import { spellValues } from "@/shared/api/multiValue";
@@ -148,6 +150,8 @@ function Cell({
 	return <span className={className}>{shown ?? "--"}</span>;
 }
 
+const stopClick = (event: ReactMouseEvent) => event.stopPropagation();
+
 function TrackRowComponent({
 	rows,
 	index,
@@ -168,6 +172,7 @@ function TrackRowComponent({
 	note = null,
 	showDisc = false,
 	onSelect,
+	onGripPointerDown,
 }: {
 	rows: TrackRows;
 	index: number;
@@ -188,6 +193,7 @@ function TrackRowComponent({
 	note?: string | null;
 	showDisc?: boolean;
 	onSelect: (index: number, event: ReactPointerEvent) => void;
+	onGripPointerDown?: (event: ReactPointerEvent) => void;
 }) {
 	const t = useTranslate();
 	const row = rows.at(index);
@@ -215,6 +221,7 @@ function TrackRowComponent({
 			data-selected={isSelected}
 			data-cursor={isCursor}
 			data-match={isMatch}
+			data-reorderable={onGripPointerDown ? "" : undefined}
 			role="row"
 			aria-selected={isSelected}
 			onPointerDown={(event) => {
@@ -257,6 +264,20 @@ function TrackRowComponent({
 					itemIndex={itemIndex}
 				/>
 			))}
+
+			{onGripPointerDown ? (
+				<button
+					type="button"
+					className={styles.grip}
+					aria-label={t("playlist.dragHandle")}
+					tabIndex={-1}
+					data-owns-touch=""
+					onPointerDown={onGripPointerDown}
+					onClick={stopClick}
+				>
+					<GripVertical size={16} strokeWidth={2} aria-hidden="true" />
+				</button>
+			) : null}
 		</div>
 	);
 }

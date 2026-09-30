@@ -6,6 +6,8 @@ import {
 	useRef,
 } from "react";
 
+import { ownsTouch } from "./useDragFraction";
+
 export interface Point {
 	x: number;
 	y: number;
@@ -51,6 +53,7 @@ export function useLongPress(
 
 	const onPointerDown = (event: ReactPointerEvent) => {
 		if (!enabled || event.pointerType === "mouse" || !event.isPrimary) return;
+		if (ownsTouch(event.target)) return;
 
 		cancel();
 		justFired.current = false;

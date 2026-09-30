@@ -2,22 +2,27 @@ import {
 	type PointerEvent as ReactPointerEvent,
 	useCallback,
 	useEffect,
+	useMemo,
 	useRef,
 	useSyncExternalStore,
 } from "react";
 
-import { autoscrollStep } from "@/shared/lib/dragGeometry";
+import { autoscrollStep, gapAt } from "@/shared/lib/dragGeometry";
 import { subscribers } from "@/shared/lib/store";
 
 export interface DragPayload<T = unknown> {
 	items: T;
 	label: string;
 	count: number;
+	within?: string;
+	origin?: number;
+	held?: readonly number[];
 }
 
 export interface DragState {
 	isDragging: boolean;
 	over: string | null;
+	at: number | null;
 	count: number;
 	label: string | null;
 	refusal: string | null;
@@ -34,12 +39,13 @@ interface Gesture {
 	onCancel: () => void;
 }
 
-const THRESHOLD_PX = 5;
+const THRESHOLD_PX: Record<string, number> = { mouse: 5, touch: 8 };
 const GHOST_OFFSET = { x: 18, y: 16 };
 
 const IDLE: DragState = {
 	isDragging: false,
 	over: null,
+	at: null,
 	count: 0,
 	label: null,
 	refusal: null,
@@ -73,17 +79,81 @@ const placeGhost = (x: number, y: number) => {
 	ghostElement.style.transform = `translate3d(${x + GHOST_OFFSET.x}px, ${y + GHOST_OFFSET.y}px, 0)`;
 };
 
+let shiftedRows = new Map<HTMLElement, number>();
+
+const rowGapUnder = (y: number, list: HTMLElement) => {
+	for (const row of list.querySelectorAll<HTMLElement>("[data-row]")) {
+		const slot = (row.parentElement as HTMLElement).getBoundingClientRect();
+		if (y >= slot.top && y < slot.bottom)
+			return gapAt(slot, Number(row.dataset.row), y);
+	}
+	return null;
+};
+
 const targetUnder = (
 	x: number,
 	y: number,
+	payload: DragPayload,
 	canDrop?: (id: string) => boolean,
 ) => {
 	const element = document
 		.elementFromPoint(x, y)
 		?.closest<HTMLElement>("[data-drop-target]");
 	const id = element?.dataset.dropTarget;
-	if (!id || (canDrop && !canDrop(id))) return null;
-	return { id, refusal: element?.dataset.dropRefuses || null };
+	if (!element || !id) return null;
+	if (payload.within !== undefined && id !== payload.within) return null;
+	if (canDrop && !canDrop(id)) return null;
+
+	const refusal = element.dataset.dropRefuses || null;
+	if (element.dataset.dropRows === undefined)
+		return { id, refusal, at: null, list: null };
+
+	const at = rowGapUnder(y, element);
+	return at === null ? null : { id, refusal, at, list: element };
+};
+
+let markedRow: HTMLElement | null = null;
+let liftedRows = new Set<HTMLElement>();
+
+const markInsertion = (
+	list: HTMLElement | null,
+	at: number | null,
+	payload: DragPayload | undefined,
+) => {
+	const origin = payload?.origin;
+	const count = Number(list?.dataset.dropRows);
+	const rowAt = at === null ? -1 : Math.min(at, count - 1);
+	const mounted = list
+		? Array.from(list.querySelectorAll<HTMLElement>("[data-row]"))
+		: [];
+	const row = mounted.find((el) => Number(el.dataset.row) === rowAt) ?? null;
+
+	if (markedRow && markedRow !== row)
+		markedRow.removeAttribute("data-drop-line");
+	markedRow = row;
+	row?.setAttribute("data-drop-line", at === rowAt ? "before" : "after");
+
+	const height = mounted[0]?.getBoundingClientRect().height ?? 0;
+	const shifts = new Map<HTMLElement, number>();
+	if (at !== null && origin !== undefined)
+		for (const el of mounted) {
+			const index = Number(el.dataset.row);
+			if (at > origin && index > origin && index < at) shifts.set(el, -height);
+			if (at <= origin && index >= at && index < origin) shifts.set(el, height);
+		}
+
+	for (const el of shiftedRows.keys())
+		if (!shifts.has(el)) el.style.removeProperty("transform");
+	for (const [el, by] of shifts) el.style.transform = `translateY(${by}px)`;
+	shiftedRows = shifts;
+
+	const lifted = new Set(
+		mounted.filter((el) => payload?.held?.includes(Number(el.dataset.row))),
+	);
+	for (const el of liftedRows)
+		if (!lifted.has(el)) el.removeAttribute("data-dragging");
+	for (const el of lifted) el.setAttribute("data-dragging", "");
+	liftedRows = lifted;
 };
 
 const autoscroll = (x: number, y: number) => {
@@ -103,15 +173,15 @@ export function useDragSource<T = unknown>({
 }: {
 	getPayload: (event: ReactPointerEvent) => DragPayload<T> | null;
 	canDrop?: (id: string) => boolean;
-	onDrop: (over: string, payload: DragPayload<T>) => void;
+	onDrop: (over: string, payload: DragPayload<T>, at: number | null) => void;
 	disabled?: boolean;
 }) {
 	const gesture = useRef<Gesture | null>(null);
 	const frame = useRef<number | null>(null);
 	const dragged = useRef(false);
 
-	const latest = useRef({ getPayload, canDrop, onDrop });
-	latest.current = { getPayload, canDrop, onDrop };
+	const latest = useRef({ getPayload, canDrop, onDrop, disabled });
+	latest.current = { getPayload, canDrop, onDrop, disabled };
 
 	// A drag torn down without this leaves the document at `user-select: none` and the ghost on screen
 	// for the rest of the session.
@@ -128,6 +198,7 @@ export function useDragSource<T = unknown>({
 		if (!held.started) return;
 
 		setDocumentDragging(false);
+		markInsertion(null, null, undefined);
 		publish(IDLE);
 	}, []);
 
@@ -141,75 +212,97 @@ export function useDragSource<T = unknown>({
 		placeGhost(x, y);
 		autoscroll(x, y);
 
-		const found = targetUnder(x, y, latest.current.canDrop);
+		const found = targetUnder(x, y, current.payload, latest.current.canDrop);
 		const over = found?.id ?? null;
 		const refusal = found?.refusal ?? null;
-		if (over !== state.over || refusal !== state.refusal)
-			publish({ ...state, over, refusal });
+		const at = found?.at ?? null;
+		markInsertion(found?.list ?? null, at, current.payload);
+		if (over !== state.over || refusal !== state.refusal || at !== state.at)
+			publish({ ...state, over, refusal, at });
 
 		frame.current = requestAnimationFrame(tick);
 	}, []);
 
-	const onPointerDown = (event: ReactPointerEvent) => {
-		if (disabled || event.pointerType !== "mouse" || event.button !== 0) return;
+	const begin = useCallback(
+		(event: ReactPointerEvent, fromHandle: boolean) => {
+			if (latest.current.disabled || event.button !== 0) return;
+			if ((event.pointerType === "mouse") === fromHandle) return;
 
-		teardown();
-		dragged.current = false;
-
-		const payload = latest.current.getPayload(event);
-		if (!payload) return;
-
-		const current: Gesture = {
-			startX: event.clientX,
-			startY: event.clientY,
-			pointer: { x: event.clientX, y: event.clientY },
-			payload: payload as DragPayload,
-			started: false,
-			onMove: () => {},
-			onUp: () => {},
-			onCancel: () => {},
-		};
-
-		current.onMove = (moveEvent) => {
-			current.pointer = { x: moveEvent.clientX, y: moveEvent.clientY };
-			if (current.started) return;
-			if (
-				Math.hypot(
-					moveEvent.clientX - current.startX,
-					moveEvent.clientY - current.startY,
-				) < THRESHOLD_PX
-			)
-				return;
-
-			current.started = true;
-			dragged.current = true;
-			setDocumentDragging(true);
-			placeGhost(current.pointer.x, current.pointer.y);
-			publish({
-				isDragging: true,
-				over: null,
-				count: payload.count,
-				label: payload.label,
-				refusal: null,
-			});
-			frame.current = requestAnimationFrame(tick);
-		};
-
-		current.onUp = () => {
-			const { started } = current;
-			const over = state.over;
-			const refused = state.refusal !== null;
 			teardown();
-			if (started && over && !refused) latest.current.onDrop(over, payload);
-		};
+			dragged.current = false;
 
-		current.onCancel = teardown;
+			const payload = latest.current.getPayload(event);
+			if (!payload) return;
+			const threshold = THRESHOLD_PX[event.pointerType] ?? THRESHOLD_PX.touch;
 
-		gesture.current = current;
-		window.addEventListener("pointermove", current.onMove);
-		window.addEventListener("pointerup", current.onUp);
-		window.addEventListener("pointercancel", current.onCancel);
-	};
+			const current: Gesture = {
+				startX: event.clientX,
+				startY: event.clientY,
+				pointer: { x: event.clientX, y: event.clientY },
+				payload: payload as DragPayload,
+				started: false,
+				onMove: () => {},
+				onUp: () => {},
+				onCancel: () => {},
+			};
 
-	return { dragProps: { onPointerDown }, didDrag: () => dragged.current };
+			current.onMove = (moveEvent) => {
+				current.pointer = { x: moveEvent.clientX, y: moveEvent.clientY };
+				if (current.started) return;
+				if (
+					Math.hypot(
+						moveEvent.clientX - current.startX,
+						moveEvent.clientY - current.startY,
+					) < threshold
+				)
+					return;
+
+				current.started = true;
+				dragged.current = true;
+				setDocumentDragging(true);
+				placeGhost(current.pointer.x, current.pointer.y);
+				publish({
+					isDragging: true,
+					over: null,
+					at: null,
+					count: payload.count,
+					label: payload.label,
+					refusal: null,
+				});
+				frame.current = requestAnimationFrame(tick);
+			};
+
+			current.onUp = () => {
+				const { started } = current;
+				const { over, at } = state;
+				const refused = state.refusal !== null;
+				teardown();
+				if (started && over && !refused)
+					latest.current.onDrop(over, payload, at);
+			};
+
+			current.onCancel = teardown;
+
+			gesture.current = current;
+			window.addEventListener("pointermove", current.onMove);
+			window.addEventListener("pointerup", current.onUp);
+			window.addEventListener("pointercancel", current.onCancel);
+		},
+		[teardown, tick],
+	);
+
+	const dragProps = useMemo(
+		() => ({
+			onPointerDown: (event: ReactPointerEvent) => begin(event, false),
+		}),
+		[begin],
+	);
+	const handleProps = useMemo(
+		() => ({
+			onPointerDown: (event: ReactPointerEvent) => begin(event, true),
+		}),
+		[begin],
+	);
+
+	return { dragProps, handleProps, didDrag: () => dragged.current };
 }

@@ -1,6 +1,7 @@
 import { type TouchEvent as ReactTouchEvent, useRef } from "react";
 
 import { scrollParentOf } from "@/shared/lib/scrollParent";
+import { ownsTouch } from "./useDragFraction";
 
 const FLICK_MS = 600;
 const AXIS_LOCK = 8;
@@ -42,8 +43,7 @@ export function useSwipe({
 			const touch = event.touches[0];
 			if (!touch) return;
 
-			// A control that follows the finger has already claimed the axis. See `useDragFraction`.
-			if ((event.target as Element).closest("[data-owns-touch]")) return;
+			if (ownsTouch(event.target)) return;
 
 			// Bounded by the surface this handler is on: unbounded, a gesture starting on the header finds
 			// the list scrolling behind it, which mid-list reports not at the top and refuses to dismiss.

@@ -1,3 +1,5 @@
+export const REORDER_DROP_TARGET = "reorder";
+
 export function targetsFrom(
 	event: { target: EventTarget | null },
 	length: number,

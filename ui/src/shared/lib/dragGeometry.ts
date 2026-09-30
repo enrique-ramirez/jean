@@ -55,6 +55,9 @@ export function offsetFor(
 	return 0;
 }
 
+export const gapAt = ({ top, height }: RowBox, index: number, y: number) =>
+	index + (y > top + height / 2 ? 1 : 0);
+
 const ZONE_PX = 56;
 const MAX_STEP_PX = 14;
 

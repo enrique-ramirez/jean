@@ -427,6 +427,20 @@ const DECLARED = [
 		keys: ["Escape"],
 	},
 	{
+		id: "moveRowsUp",
+		scope: SCOPE.playlist,
+		group: "shortcutGroup.playlist",
+		name: "shortcut.moveRowsUp",
+		keys: ["Alt+ArrowUp"],
+	},
+	{
+		id: "moveRowsDown",
+		scope: SCOPE.playlist,
+		group: "shortcutGroup.playlist",
+		name: "shortcut.moveRowsDown",
+		keys: ["Alt+ArrowDown"],
+	},
+	{
 		id: "toggleLayout",
 		scope: SCOPE.playlist,
 		group: "shortcutGroup.playlist",

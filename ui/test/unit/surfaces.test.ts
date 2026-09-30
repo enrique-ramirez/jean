@@ -30,9 +30,9 @@ const source = filesUnder(SRC, /\.(tsx?|css)$/);
 // and `SURFACES` the rest; a new one that anything points at is a route instead.
 const MODAL_WITHOUT_ROUTE = [
 	"src/app/CommandPalette.tsx",
-	"src/features/settings/SettingsDialog.tsx",
 	"src/shared/keyboard/ShortcutSheet.tsx",
 	"src/shared/ui/ActionSheet.tsx",
+	"src/shared/ui/ModalDialog.tsx",
 ];
 
 const DECLARED = {
@@ -42,6 +42,7 @@ const DECLARED = {
 	palette: "modal",
 	shortcuts: "modal",
 	settings: "modal",
+	autoplaylist: "modal",
 	nowPlaying: "route",
 };
 

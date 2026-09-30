@@ -1,5 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
+	type PointerEvent as ReactPointerEvent,
 	type Ref,
 	type RefObject,
 	useEffect,
@@ -21,6 +22,7 @@ import type {
 } from "./listTypes";
 import styles from "./TrackList.module.css";
 import { TrackRow } from "./TrackRow";
+import { REORDER_DROP_TARGET } from "./trackTargets";
 
 const ROW_HEIGHT = 46;
 const COMPACT_ROW_HEIGHT = 34;
@@ -72,6 +74,8 @@ export function TrackList({
 	matches,
 	onSelect,
 	onActiveDirectionChange,
+	gripProps,
+	reorderRows,
 	isCompactViewport,
 }: TrackRenderProps & {
 	groups: AlbumRun[];
@@ -81,6 +85,8 @@ export function TrackList({
 	showArtwork: boolean;
 	showHeat: boolean;
 	onActiveDirectionChange?: (direction: ActiveDirection) => void;
+	gripProps?: { onPointerDown: (event: ReactPointerEvent) => void };
+	reorderRows?: number;
 	ref?: Ref<TrackListHandle>;
 }) {
 	const isAlbumLayout = layout === "album";
@@ -114,6 +120,8 @@ export function TrackList({
 		const scroller = scrollRef.current;
 		if (!list || !scroller) return undefined;
 
+		scroller.setAttribute("data-drop-scroller", "");
+
 		const measure = () => {
 			// Rounded, or a fractional margin leaks into every row's transform and the sub-pixel churn
 			// re-renders the list for nothing.
@@ -133,7 +141,10 @@ export function TrackList({
 		[scroller, ...ancestorsUpTo(list, scroller)].forEach((node) => {
 			observer.observe(node);
 		});
-		return () => observer.disconnect();
+		return () => {
+			observer.disconnect();
+			scroller.removeAttribute("data-drop-scroller");
+		};
 	}, [scrollRef]);
 
 	const virtualizer = useVirtualizer({
@@ -279,6 +290,10 @@ export function TrackList({
 			style={{ height: virtualizer.getTotalSize() }}
 			role="grid"
 			aria-rowcount={rows.length}
+			data-drop-target={
+				reorderRows === undefined ? undefined : REORDER_DROP_TARGET
+			}
+			data-drop-rows={reorderRows}
 		>
 			{virtualItems.map((virtualRow) => (
 				<div
@@ -327,6 +342,7 @@ export function TrackList({
 							isMatch={matches?.has(virtualRow.index) ?? false}
 							showDisc={discPrefixed?.[virtualRow.index] === 1}
 							onSelect={onSelect}
+							onGripPointerDown={gripProps?.onPointerDown}
 						/>
 					)}
 				</div>

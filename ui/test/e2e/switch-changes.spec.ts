@@ -3,6 +3,7 @@ import {
 	choosePlayer,
 	expect,
 	expectSettlesAt,
+	guidOfPlaylist,
 	holdThePoll,
 	listenHere,
 	MEDIA_SESSION_ACTIONS_WITH_CONTROL,
@@ -159,6 +160,48 @@ test.describe("a switch changed at the player while Jean is open", () => {
 		await allowPlaylistWrites(page, true);
 		poll.letOneThrough();
 		await expect(saveAsPlaylist(page)).toBeVisible();
+
+		await expectSameLoad(page);
+	});
+
+	test("turning playlist writes off takes Sort, the row grips and the keyboard move away on the next poll, with no reload", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await page.goto(`/#/${guidOfPlaylist(player, "p5")}`);
+		await expect(trackRow(page, 1)).toBeAttached();
+		const sort = viewHeader(page).getByRole("button", {
+			name: "Sort",
+			exact: true,
+		});
+		const grips = page
+			.locator("main")
+			.getByRole("button", { name: "Drag to reorder", includeHidden: true });
+		await expect(sort).toBeVisible();
+		if (!isMobile) await trackRow(page, 0).hover();
+		await expect(grips.first()).toBeAttached();
+		await markThisLoad(page);
+
+		const poll = await holdThePoll(page);
+		await allowPlaylistWrites(page, false);
+		poll.letOneThrough();
+		await expect(sort).toHaveCount(0);
+		await expect(grips).toHaveCount(0);
+
+		if (!isMobile) {
+			await trackRow(page, 1).click();
+			await page.keyboard.press("Alt+ArrowDown");
+			await expectSettlesAt(
+				player,
+				() =>
+					player.requests.filter(
+						(entry) =>
+							entry.method === "POST" && entry.path.endsWith("/items/move"),
+					).length,
+				0,
+			);
+		}
 
 		await expectSameLoad(page);
 	});

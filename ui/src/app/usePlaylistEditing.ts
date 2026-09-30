@@ -1,5 +1,13 @@
-import { Pencil, Trash2, Undo2 } from "lucide-react";
+import {
+	ListMusic,
+	ListPlus,
+	Pencil,
+	SquarePen,
+	Trash2,
+	Undo2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
+import { isEditableAutoPlaylist } from "@/domain/player/editableAutoPlaylist";
 import {
 	untitledPlaylistName,
 	usePlaylistActions,
@@ -19,12 +27,16 @@ export function usePlaylistEditing({
 	target,
 	selectedId,
 	onSelect,
+	onNewAutoPlaylist,
+	onEditAutoPlaylist,
 }: {
 	playlists: PlaylistInfo[];
 	shown: PlaylistInfo[];
 	target: PlaylistInfo | null;
 	selectedId: string | null | undefined;
 	onSelect: (id: string) => void;
+	onNewAutoPlaylist: () => void;
+	onEditAutoPlaylist: (playlist: PlaylistInfo) => void;
 }) {
 	const t = useTranslate();
 	const { create, rename, remove, move } = usePlaylistActions();
@@ -69,6 +81,21 @@ export function usePlaylistEditing({
 		);
 	};
 
+	const addActions: ActionNode[] = [
+		{
+			id: "plain",
+			label: t("playlist.newPlain"),
+			icon: ListPlus,
+			onSelect: newPlaylist,
+		},
+		{
+			id: "auto",
+			label: t("playlist.newAuto"),
+			icon: ListMusic,
+			onSelect: onNewAutoPlaylist,
+		},
+	];
+
 	const deletePlaylist = (playlist: PlaylistInfo) => {
 		if (playlist.id === selectedId) {
 			const at = shown.findIndex((entry) => entry.id === playlist.id);
@@ -93,6 +120,16 @@ export function usePlaylistEditing({
 				icon: Pencil,
 				onSelect: () => setRenamingId(target.id),
 			},
+			...(isEditableAutoPlaylist(target)
+				? [
+						{
+							id: "edit",
+							label: t("autoplaylist.edit"),
+							icon: SquarePen,
+							onSelect: () => onEditAutoPlaylist(target),
+						},
+					]
+				: []),
 			{ type: "separator" },
 			{
 				id: "delete",
@@ -161,5 +198,6 @@ export function usePlaylistEditing({
 		reorder,
 		commitRename,
 		actions,
+		addActions,
 	};
 }

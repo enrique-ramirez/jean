@@ -15,6 +15,9 @@ const GRABBABLE = Object.freeze({
 	WebkitTouchCallout: "none",
 });
 
+export const ownsTouch = (target: EventTarget) =>
+	(target as Element).closest("[data-owns-touch]") !== null;
+
 export function useDragFraction({
 	onDrag,
 	onCommit,
@@ -41,8 +44,7 @@ export function useDragFraction({
 
 	const handlers = {
 		style: GRABBABLE,
-		// `useSwipe` skips anything under this mark, or dragging a fader down also dismisses the screen
-		// behind it.
+		// Without the mark, dragging a fader down also dismisses the screen behind it.
 		"data-owns-touch": "",
 
 		onDragStart: (event: { preventDefault: () => void }) =>

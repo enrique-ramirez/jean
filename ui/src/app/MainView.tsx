@@ -56,6 +56,7 @@ interface MainViewProps {
 	onOpenPlaylist: (id: string) => void;
 	onOpenRoute: (route: string) => void;
 	onSearch: (query: string) => void;
+	onEditAutoPlaylist: (playlist: PlaylistInfo) => void;
 }
 
 export function MainView({
@@ -73,6 +74,7 @@ export function MainView({
 	onOpenPlaylist,
 	onOpenRoute,
 	onSearch,
+	onEditAutoPlaylist,
 }: MainViewProps) {
 	const t = useTranslate();
 	const { allMusic, list, artist } = page;
@@ -244,6 +246,7 @@ export function MainView({
 					playlist={playlist}
 					scrollRef={scrollRef}
 					isCompactViewport={isCompactViewport}
+					onEditAutoPlaylist={onEditAutoPlaylist}
 				/>
 			)}
 		</main>

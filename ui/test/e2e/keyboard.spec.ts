@@ -40,6 +40,7 @@ import { panelTab, playRow, TAGGED } from "./nowPlaying.ts";
 //                                                      it must NOT fire)
 //   Mod+Shift+p                      search-playback.spec.ts
 //   Alt+ArrowDown                    sidebar.spec.ts  (against a real reorder)
+//   Alt+ArrowUp/Down on rows         playlist-order.spec.ts (the selection moved)
 //   Mod+B with the screen open       now-playing.spec.ts (whether it moves the
 //                                                        screen is a reading of
 //                                                        two boxes, and the
@@ -405,6 +406,26 @@ test.describe("navigation and appearance", () => {
 		// A key with nothing beside it is what a missing phrase looks like. Which
 		// words go there is not this test's business.
 		await expect(row.locator("span").first()).not.toBeEmpty();
+	});
+
+	test("the sheet lists moving the selection up and down under In a playlist", async ({
+		page,
+	}) => {
+		await page.keyboard.press("Shift+?");
+		const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+		const inAPlaylist = sheet.locator("section").filter({
+			has: page.getByRole("heading", { name: "In a playlist" }),
+		});
+
+		await inSequence(["Move selection up", "Move selection down"], (name) =>
+			expect(
+				inAPlaylist
+					.locator("div")
+					.filter({ hasText: new RegExp(`^${name}`) })
+					.last()
+					.locator("kbd"),
+			).toHaveCount(2),
+		);
 	});
 
 	test("w shows what is playing and hides it again", async ({

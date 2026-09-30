@@ -1,0 +1,55 @@
+.content {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.fields {
+	display: flex;
+	flex: none;
+	flex-direction: column;
+	gap: 14px;
+	padding: 18px 22px 4px;
+}
+
+.field {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	min-width: 0;
+}
+
+.label {
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--muted);
+}
+
+.error {
+	margin: 0;
+	font-size: 0.8125rem;
+	color: var(--danger);
+}
+
+.footer {
+	display: flex;
+	flex: none;
+	justify-content: flex-end;
+	gap: 8px;
+	padding: 14px 22px;
+	border-top: 1px solid var(--border);
+}
+
+@media (max-width: 720px) {
+	.content {
+		padding-bottom: env(safe-area-inset-bottom);
+	}
+
+	.fields {
+		padding: 16px 16px 4px;
+	}
+
+	.footer {
+		display: none;
+	}
+}

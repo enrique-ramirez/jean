@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import { subscribers } from "@/shared/lib/store";
 
+export const AUTOPLAYLIST_KEYBOARD = "autoplaylist";
 export const SETTINGS_KEYBOARD = "settings";
 export const SHORTCUTS_KEYBOARD = "shortcuts";
 

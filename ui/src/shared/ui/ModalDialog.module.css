@@ -1,0 +1,134 @@
+.backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	display: grid;
+	place-items: center;
+	padding: 24px;
+	background: oklch(0 0 0 / 0.55);
+}
+
+.dialog {
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr);
+	width: min(620px, 100%);
+	max-height: 82dvh;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius);
+	background: var(--surface);
+	box-shadow: var(--shadow);
+}
+
+.dialog[data-size="wide"] {
+	width: min(720px, 100%);
+	height: min(700px, 82dvh);
+}
+
+.dialog:focus-visible {
+	outline: none;
+}
+
+.header {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 16px 16px 16px 22px;
+	border-bottom: 1px solid var(--border);
+}
+
+.close {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-left: auto;
+	padding: 5px 8px 5px 10px;
+	border: 1px solid transparent;
+	border-radius: var(--radius-sm);
+	background: none;
+	color: var(--muted);
+	cursor: pointer;
+	transition:
+		color 0.12s var(--ease),
+		background 0.12s var(--ease);
+}
+
+.close:hover {
+	background: var(--surface-sunken);
+	color: var(--text);
+}
+
+.close:focus-visible {
+	border-color: var(--accent);
+	outline: none;
+}
+
+.cap {
+	display: inline-grid;
+	place-items: center;
+	height: 20px;
+	padding: 0 6px;
+	box-sizing: border-box;
+	border: 1px solid var(--border-strong);
+	border-radius: 5px;
+	box-shadow: 0 1px 0 var(--border-strong);
+	background: var(--surface-raised);
+	color: var(--text);
+	font-family: inherit;
+	font-size: 0.6875rem;
+	font-weight: 550;
+	line-height: 1;
+}
+
+.action {
+	display: none;
+}
+
+.title {
+	margin: 0;
+	font-family: var(--font-display);
+	font-size: 1.25rem;
+	font-weight: 660;
+	line-height: 1.15;
+	letter-spacing: -0.02em;
+}
+
+@media (max-width: 720px) {
+	.backdrop {
+		padding: 0;
+	}
+
+	.dialog {
+		width: 100%;
+		max-height: none;
+		height: 100dvh;
+		border: 0;
+		border-radius: 0;
+		padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
+	}
+
+	.dialog[data-size="wide"] {
+		height: 100dvh;
+	}
+
+	.header {
+		padding: max(16px, env(safe-area-inset-top)) 16px 14px;
+	}
+
+	.header[data-has-action] .close {
+		order: -1;
+		margin-left: 0;
+		padding: 5px;
+	}
+
+	.header[data-has-action] .cap {
+		display: none;
+	}
+
+	.header[data-has-action] .title {
+		margin-right: auto;
+	}
+
+	.action {
+		display: flex;
+	}
+}

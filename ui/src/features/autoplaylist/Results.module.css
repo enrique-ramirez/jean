@@ -1,0 +1,140 @@
+.stats {
+	flex: none;
+	margin: 0;
+	padding: 12px 22px;
+	font-size: 0.8125rem;
+	font-variant-numeric: tabular-nums;
+	color: var(--muted);
+	transition: opacity 0.15s var(--ease);
+}
+
+.stats:empty {
+	display: none;
+}
+
+.stats[data-stale] {
+	opacity: 0.45;
+}
+
+.results {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	border-top: 1px solid var(--border);
+	background: var(--surface-sunken);
+}
+
+.rows {
+	position: relative;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	width: 100%;
+	transition: opacity 0.15s var(--ease);
+}
+
+.results[data-stale] .rows {
+	opacity: 0.45;
+}
+
+.row {
+	position: absolute;
+	top: 0;
+	left: 0;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
+	align-items: center;
+	gap: 12px;
+	box-sizing: border-box;
+	width: 100%;
+	min-height: var(--row-height-compact);
+	padding: 0 22px;
+	font-size: 0.8125rem;
+}
+
+.row > * {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.title {
+	font-size: 0.875rem;
+	color: var(--text);
+}
+
+.by {
+	color: var(--muted);
+}
+
+.length {
+	font-family: var(--font-numeric);
+	font-size: 0.75rem;
+	color: var(--faint);
+}
+
+.notice {
+	margin: 0;
+	padding: 28px 22px;
+	font-size: 0.8125rem;
+	line-height: 1.55;
+	color: var(--muted);
+	text-wrap: pretty;
+}
+
+.notice[data-tone="warn"] {
+	color: var(--caution);
+}
+
+.problem {
+	margin: 0 0 6px;
+	font-weight: 600;
+	color: var(--danger);
+}
+
+.message {
+	display: block;
+	margin-top: 8px;
+	padding: 8px 10px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	background: var(--surface);
+	font-family: var(--font-numeric);
+	font-size: 0.75rem;
+	line-height: 1.5;
+	color: var(--text);
+	white-space: pre-wrap;
+}
+
+@media (max-width: 720px) {
+	.stats {
+		padding-inline: 16px;
+	}
+
+	.row {
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-rows: auto auto;
+		padding: 8px 16px;
+		row-gap: 1px;
+		column-gap: 10px;
+	}
+
+	.title {
+		grid-row: 1;
+	}
+
+	.by {
+		grid-row: 2;
+		font-size: 0.75rem;
+	}
+
+	.length {
+		grid-row: 1 / 3;
+		grid-column: 2;
+	}
+
+	.notice {
+		padding-inline: 16px;
+	}
+}

@@ -655,6 +655,33 @@ test.describe("selecting in a playlist", () => {
 		await page.keyboard.press("Backspace");
 		await expect(field).toHaveValue("");
 	});
+
+	test("Mod+arrows in the library search move the caret, not the track", async ({
+		page,
+		player,
+	}) => {
+		const field = searchField(page);
+		await field.fill("babasonicos");
+		await field.evaluate((input: HTMLInputElement) =>
+			input.setSelectionRange(4, 4),
+		);
+
+		const caret = () =>
+			field.evaluate((input: HTMLInputElement) => input.selectionStart);
+
+		await page.keyboard.press("ControlOrMeta+ArrowRight");
+		await expect.poll(caret).toBeGreaterThan(4);
+		await page.keyboard.press("ControlOrMeta+ArrowLeft");
+		await expect.poll(caret).toBeLessThan(4);
+
+		await expectSettlesAt(
+			player,
+			() =>
+				commandsTo(player, "/api/playback/next").length +
+				commandsTo(player, "/api/playback/previous").length,
+			0,
+		);
+	});
 });
 
 test.describe("view keys", () => {

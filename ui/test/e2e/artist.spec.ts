@@ -160,6 +160,34 @@ test.describe("two views of one artist", () => {
 		await expect(tab(page, "Overview")).toHaveAttribute("aria-current", "true");
 	});
 
+	test("on Dvorak, the key that types a slash finds rather than stepping back a tab", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "no keyboard on the phone");
+		await openArtist(page, ARTIST);
+		await tab(page, "Tracks").click();
+		await expect(trackRow(page, 0)).toBeAttached();
+		await page.locator("main").click({ position: { x: 20, y: 300 } });
+
+		// Playwright types on US QWERTY only, so this is the event a browser sends for the key that
+		// types `/` on Dvorak: the character, on the code QWERTY calls `[`.
+		await page.evaluate(() =>
+			document.activeElement?.dispatchEvent(
+				new KeyboardEvent("keydown", {
+					key: "/",
+					code: "BracketLeft",
+					bubbles: true,
+				}),
+			),
+		);
+
+		await expect(
+			page.getByRole("textbox", { name: "Find in this artist" }),
+		).toBeFocused();
+		await expect(tab(page, "Tracks")).toHaveAttribute("aria-current", "true");
+	});
+
 	test("a tab slides in from the side it was asked for, and a history step moves nothing", async ({
 		page,
 	}) => {

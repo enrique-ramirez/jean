@@ -23,7 +23,7 @@ import {
 test.describe("which panel opens", () => {
 	test.use(TAGGED);
 
-	test("the gatefold opens on Details when the track has no lyrics", async ({
+	test("the gatefold stays on Lyrics through a track with none", async ({
 		page,
 		isMobile,
 	}) => {
@@ -34,9 +34,28 @@ test.describe("which panel opens", () => {
 
 		await playRow(page, 3);
 		const panel = nowPlayingScreen(page);
-		await expectPanelOpen(panel, "Details");
+		await expectPanelOpen(panel, "Lyrics");
+		await expect(panel).toContainText("No lyrics found");
 
 		await playRow(page, 0);
+		await expectPanelOpen(panel, "Lyrics");
+		await expect(panel).not.toContainText("No lyrics found");
+	});
+
+	test("the gatefold stays on Lyrics when the player moves on to a track with none", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "a phone opens its panels from the Lyrics button");
+
+		await playRow(page, 2);
+		const panel = nowPlayingScreen(page);
+		await expectPanelOpen(panel, "Lyrics");
+		await expect(panel).toContainText("Marcus Fuereder");
+
+		player.next();
+		await expect(panel).toContainText("No lyrics found");
 		await expectPanelOpen(panel, "Lyrics");
 	});
 });

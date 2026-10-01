@@ -2,6 +2,7 @@ import {
 	formatForDisplay,
 	type Hotkey,
 	matchesKeyboardEvent,
+	parseHotkey,
 	type RegisterableHotkey,
 } from "@tanstack/react-hotkeys";
 
@@ -11,6 +12,10 @@ export type ShortcutName = Extract<Phrase, `shortcut.${string}`>;
 export type ShortcutGroup = Extract<Phrase, `shortcutGroup.${string}`>;
 
 const shifted = (key: string) => `Shift+${key}` as RegisterableHotkey;
+
+// TanStack Hotkeys fires a Ctrl or Meta binding inside a text field unless told otherwise, and there
+// a chord that edits text belongs to the field.
+const LEAVES_TEXT_FIELDS = { ignoreInputs: true };
 
 export const SCOPE = {
 	global: "global",
@@ -50,6 +55,7 @@ const DECLARED = [
 		group: "shortcutGroup.playback",
 		name: "shortcut.nextTrack",
 		keys: ["Mod+ArrowRight"],
+		options: LEAVES_TEXT_FIELDS,
 	},
 	{
 		id: "previousTrack",
@@ -57,6 +63,7 @@ const DECLARED = [
 		group: "shortcutGroup.playback",
 		name: "shortcut.previousTrack",
 		keys: ["Mod+ArrowLeft"],
+		options: LEAVES_TEXT_FIELDS,
 	},
 	{
 		id: "stop",
@@ -232,6 +239,7 @@ const DECLARED = [
 		group: "shortcutGroup.navigation",
 		name: "shortcut.backToTop",
 		keys: ["Mod+Home"],
+		options: LEAVES_TEXT_FIELDS,
 	},
 	{
 		id: "openSettings",
@@ -414,9 +422,7 @@ const DECLARED = [
 		group: "shortcutGroup.playlist",
 		name: "shortcut.selectAll",
 		keys: ["Mod+A"],
-		// TanStack Hotkeys fires a Ctrl or Meta binding inside a text field unless told otherwise,
-		// and there Mod+A belongs to the field.
-		options: { ignoreInputs: true },
+		options: LEAVES_TEXT_FIELDS,
 	},
 	{
 		id: "clearSelection",
@@ -509,9 +515,33 @@ export type BindingId = Bound["id"];
 
 export type BindingIdIn<S extends Scope> = Extract<Bound, { scope: S }>["id"];
 
+const PUNCTUATION = /^[^A-Za-z0-9]$/;
+const PRINTABLE_ASCII = /^[!-~]$/;
+
+// TanStack Hotkeys falls back from `event.key` to `event.code` read through a QWERTY map, so on
+// another Latin layout a punctuation key also matches the character QWERTY has there: Dvorak's `/`
+// sits on QWERTY's `[`. Without Shift or Alt, a printable ASCII `event.key` is the character the
+// person pressed, and only a binding declaring that character is theirs.
+export function isTypedAsAnother(
+	event: KeyboardEvent,
+	hotkey: RegisterableHotkey,
+) {
+	const declared =
+		typeof hotkey === "string" ? parseHotkey(hotkey).key : hotkey.key;
+	return (
+		!event.shiftKey &&
+		!event.altKey &&
+		PUNCTUATION.test(declared) &&
+		PRINTABLE_ASCII.test(event.key) &&
+		event.key !== declared
+	);
+}
+
 export const matchesBinding = (event: KeyboardEvent, id: BindingId) =>
-	KEYMAP.find((binding) => binding.id === id)?.keys.some((key) =>
-		matchesKeyboardEvent(event, key as Hotkey),
+	KEYMAP.find((binding) => binding.id === id)?.keys.some(
+		(key) =>
+			matchesKeyboardEvent(event, key as Hotkey) &&
+			!isTypedAsAnother(event, key),
 	) ?? false;
 
 const documented = KEYMAP.filter((binding) => !binding.hidden);

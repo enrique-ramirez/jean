@@ -1,5 +1,5 @@
 import { Maximize2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Artist } from "@/domain/artist/Artist";
 import { PANEL_TABS, type PanelTab } from "@/domain/track/routes";
 import type { PlayerSnapshot } from "@/shared/api/types";
@@ -60,17 +60,7 @@ export function TrackPanels({
 		enabled: !(tab === "lyrics" && lyrics.kind === "synced"),
 	});
 
-	const preferred = useRef(chosen);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: the track settling fires this, hasLyrics is only read
-	useEffect(() => {
-		if (variant !== "gatefold" || !trackKey) return;
-		const wanted = preferred.current ?? "lyrics";
-		onSelectTab(wanted === "lyrics" && !hasLyrics ? "details" : wanted);
-	}, [variant, trackKey, onSelectTab]);
-
 	const select = (next: PanelTab) => {
-		preferred.current = next;
 		const from = TABS.findIndex((entry) => entry.id === tab);
 		const to = TABS.findIndex((entry) => entry.id === next);
 		setDirection(to > from ? 1 : -1);

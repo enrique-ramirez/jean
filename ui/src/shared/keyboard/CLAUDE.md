@@ -8,7 +8,7 @@
 
 ## Layouts
 
-The matcher compares `event.key` first and falls back to `event.code` through a QWERTY punctuation map. So punctuation is declared as the character typed (`Shift+?`, never `Shift+/`), and a shifted character is declared twice, `Shift+X` and bare `X`, through `shifted()`, with `shown` naming the one key the sheet draws. A letter matches on `event.key` alone and gets neither.
+The matcher compares `event.key` first and falls back to `event.code` through a QWERTY punctuation map. Unshifted, that fires QWERTY's character too, so `isTypedAsAnother()` vetoes it. So punctuation is declared as the character typed (`Shift+?`, never `Shift+/`), and a shifted character is declared twice, `Shift+X` and bare `X`, through `shifted()`, with `shown` naming the one key the sheet draws. A letter matches on `event.key` alone and gets neither.
 
 ## Overlays
 
@@ -20,4 +20,4 @@ The matcher compares `event.key` first and falls back to `event.code` through a 
 
 `hidden: true` is for a binding that only meets an expectation a list already sets, such as Shift with an arrow. A key drawn on its own control is read off the same declaration, and hidden on a coarse pointer. A key is never translated; its name is a phrase, and `mnemonicOf` reads the underline off the translated label.
 
-**A hotkey that stops working in dev is usually a stale registration.** HMR re-registers while the dead module's registration can still hold the key. Reload fully before debugging.
+**A hotkey that stops working in dev is usually a stale registration** from HMR. Reload fully before debugging.

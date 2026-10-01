@@ -149,7 +149,8 @@ const isPlayerQuiet = () =>
 // `mediaSession.playbackState` says, so a player that has gone quiet needs a paused element.
 export function pauseHere() {
 	const audio = element;
-	if (!audio || audio.paused) return;
+	// WebKit reports a pause of an element that never loaded as MEDIA_ERR_SRC_NOT_SUPPORTED.
+	if (!audio || audio.paused || !hasRendered) return;
 	if (phase.kind !== "playing" && phase.kind !== "silent") return;
 	isHeld = true;
 	audio.pause();

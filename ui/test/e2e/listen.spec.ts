@@ -236,17 +236,40 @@ test.describe("a first check that times out", () => {
 test.describe("listening on this device", () => {
 	test.use({ fooJean: {} });
 
-	test("takes a ticket and opens the stream", { tag: "@iphone" }, async ({
-		page,
-		player,
-	}) => {
-		await page.goto("/");
-		await startListening(page);
+	// WebKit claims Ogg Opus but refuses the endless WAV the fake sends as opus, so
+	// these ask for AAC.
+	test.describe("in a format WebKit plays", () => {
+		test.use({ fooJean: { streamFormats: ["aac"] } });
 
-		// One ticket per connect, not per request: Safari probes with a `Range`
-		// before fetching for real, so a ticket good once could not serve it.
-		await expectSettlesAt(player, () => ticketRequests(player).length, 1);
-		await expect.poll(() => streamRequests(player).length).toBeGreaterThan(0);
+		test("takes a ticket and opens the stream", { tag: "@iphone" }, async ({
+			page,
+			player,
+		}) => {
+			await page.goto("/");
+			await startListening(page);
+
+			// One ticket per connect, not per request: Safari probes with a `Range`
+			// before fetching for real, so a ticket good once could not serve it.
+			await expectSettlesAt(player, () => ticketRequests(player).length, 1);
+			await expect.poll(() => streamRequests(player).length).toBeGreaterThan(0);
+		});
+
+		test("advances the element's clock", { tag: "@iphone" }, async ({
+			page,
+		}) => {
+			await page.goto("/");
+			await startListening(page);
+
+			// Polled tightly rather than on the default backoff, which reaches a second
+			// between polls while this is watching a clock tick.
+			await expect
+				.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
+				.toBeGreaterThan(0);
+			const first = await currentTime(page);
+			await expect
+				.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
+				.toBeGreaterThan((first ?? 0) + 0.3);
+		});
 	});
 
 	test("asks for the format the server put first", async ({ page, player }) => {
@@ -256,21 +279,6 @@ test.describe("listening on this device", () => {
 		// The server's order is the quality order and the client only excludes, so
 		// Chromium, which plays both, asks for the first.
 		await expect.poll(() => player.streamFormats).toEqual(["opus"]);
-	});
-
-	test("advances the element's clock", { tag: "@iphone" }, async ({ page }) => {
-		await page.goto("/");
-		await startListening(page);
-
-		// Polled tightly rather than on the default backoff, which reaches a second
-		// between polls while this is watching a clock tick.
-		await expect
-			.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
-			.toBeGreaterThan(0);
-		const first = await currentTime(page);
-		await expect
-			.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
-			.toBeGreaterThan((first ?? 0) + 0.3);
 	});
 
 	test("hands the sound back to the player", async ({ page }) => {

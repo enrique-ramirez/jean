@@ -25,9 +25,6 @@ const toggle = async (page: Page, name: string) => {
 	await expect(option(page, name)).toHaveCount(0);
 };
 
-const cellCount = (page: Page) =>
-	trackRow(page, 0).locator(":scope > *").count();
-
 // The grid template is built from the same list the cells are rendered from, so
 // a template with one track too many leaves an empty column and shifts every
 // cell after it. Neither count is interesting alone; only that they agree.
@@ -36,8 +33,14 @@ const templateMatchesCells = (page: Page) =>
 		const tracks = getComputedStyle(row)
 			.gridTemplateColumns.split(" ")
 			.filter(Boolean).length;
-		return { tracks, cells: row.children.length };
+		const isGridItem = (child: Element) =>
+			getComputedStyle(child).position !== "absolute";
+		const cells = [...row.children].filter(isGridItem).length;
+		return { tracks, cells };
 	});
+
+const cellCount = (page: Page) =>
+	templateMatchesCells(page).then(({ cells }) => cells);
 
 const itemFetches = (player: FakePlayer) =>
 	requestsTo(player, "/items/").filter((entry) => entry.method === "GET")

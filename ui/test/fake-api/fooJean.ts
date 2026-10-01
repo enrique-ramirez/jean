@@ -1,5 +1,11 @@
 import type { components } from "../../src/shared/api/fooJeanSchema.d.ts";
 import type { PlaybackMode } from "../../src/shared/api/types.ts";
+import {
+	AAC_SAMPLE_RATE,
+	AAC_SAMPLES_PER_FRAME,
+	AAC_TONE,
+	adtsFrames,
+} from "./aacTone.ts";
 import { empty, json, type RequestHeaders, type Responder } from "./http.ts";
 import type { ArtworkServer } from "./routes.ts";
 import type {
@@ -909,18 +915,69 @@ function timelineOf(state: FakeState) {
 	};
 }
 
+interface StreamSource {
+	contentType: string;
+	header: Uint8Array;
+	take: (seconds: number) => Uint8Array;
+}
+
+function wavSource(): StreamSource {
+	let phase = 0;
+	return {
+		contentType: "audio/wav",
+		header: wavHeader(),
+		take: (seconds) => {
+			const bytes = tone(seconds, phase);
+			phase += SAMPLE_RATE * seconds;
+			return bytes;
+		},
+	};
+}
+
+// WebKit refuses an endless WAV, where Chromium plays it, so `aac` gets the real
+// framing.
+function aacSource(): StreamSource {
+	const frames = adtsFrames(AAC_TONE);
+	const framesPerSecond = AAC_SAMPLE_RATE / AAC_SAMPLES_PER_FRAME;
+	let next = 0;
+	let owed = 0;
+	return {
+		contentType: "audio/aac",
+		header: new Uint8Array(0),
+		take: (seconds) => {
+			owed += seconds * framesPerSecond;
+			const taken: Uint8Array[] = [];
+			for (; owed >= 1; owed -= 1) {
+				taken.push(frames[next]);
+				next = (next + 1) % frames.length;
+			}
+			const bytes = new Uint8Array(
+				taken.reduce((sum, frame) => sum + frame.length, 0),
+			);
+			let at = 0;
+			for (const frame of taken) {
+				bytes.set(frame, at);
+				at += frame.length;
+			}
+			return bytes;
+		},
+	};
+}
+
 function serveStream(
 	response: Responder,
 	fake: FooJeanFake,
 	format: string,
 	isPlaying: () => boolean,
 ) {
+	const source = !fake.playableFormats.includes(format)
+		? null
+		: format === "aac"
+			? aacSource()
+			: wavSource();
+	const unplayableType = format === "aac" ? "audio/aac" : "audio/ogg";
 	response.writeHead(200, {
-		"Content-Type": fake.playableFormats.includes(format)
-			? "audio/wav"
-			: format === "aac"
-				? "audio/aac"
-				: "audio/ogg",
+		"Content-Type": source?.contentType ?? unplayableType,
 		"Cache-Control": "no-store",
 		"Accept-Ranges": "none",
 		// No explicit `Transfer-Encoding`: setting it by hand tells Node the handler
@@ -931,19 +988,18 @@ function serveStream(
 
 	// A format the element cannot play. The bytes must arrive as the declared type,
 	// so the element fails with `MEDIA_ERR_SRC_NOT_SUPPORTED` rather than stalling.
-	if (!fake.playableFormats.includes(format)) {
+	if (!source) {
 		response.write("this is not audio, and never was.\n");
 		return response.end();
 	}
 
-	response.write(wavHeader());
+	response.write(source.header);
 
 	if (fake.streamBehaviour === "quiet") return;
 
 	// See test/README.md for the `12 - prime` arithmetic this rests on.
 	const PRIME_SECONDS = fake.streamBehaviour === "ok" ? fake.streamPrime : 1;
-	let phase = SAMPLE_RATE * PRIME_SECONDS;
-	response.write(tone(PRIME_SECONDS, 0));
+	response.write(source.take(PRIME_SECONDS));
 
 	if (fake.streamBehaviour === "short") return response.end();
 
@@ -952,8 +1008,7 @@ function serveStream(
 	const pump = setInterval(() => {
 		if (response.writableEnded) return clearInterval(pump);
 		if (!isPlaying()) return;
-		response.write(tone(0.25, phase));
-		phase += SAMPLE_RATE * 0.25;
+		response.write(source.take(0.25));
 	}, 250);
 
 	response.on("close", () => clearInterval(pump));

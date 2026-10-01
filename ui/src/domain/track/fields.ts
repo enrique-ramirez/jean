@@ -1,6 +1,7 @@
 import { fieldTable } from "@/shared/api/fieldTable";
 import type { JlibColumn } from "@/shared/api/jlib";
 import { GENRE_EXPRESSION, valuesIn } from "@/shared/api/multiValue";
+import { RATING_EXPRESSION } from "@/shared/api/rating";
 import type { TrackColumns } from "@/shared/api/types";
 import type { Translate } from "@/shared/i18n/locale";
 import {
@@ -20,7 +21,7 @@ const FIELDS = [
 	["duration", "%length_seconds%"],
 	["playCount", "%lastfm_play_count%"],
 	["lastPlayed", "%lastfm_last_played%"],
-	["rating", "%rating%"],
+	["rating", RATING_EXPRESSION],
 	["year", "%year%"],
 	["genre", GENRE_EXPRESSION],
 	["codec", "%codec%"],

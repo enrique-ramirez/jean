@@ -55,7 +55,7 @@ Every `columns` parameter takes **foobar2000 title-formatting expressions**, eva
 | `$if2($meta_sep(genre,$char(31)),%genre%)` | tags | a genre per value, separated by U+001F; `multiValue.ts` has why |
 | `%length_seconds%` `%codec%` `%codec_profile%` `%bitrate%` `%samplerate%` `%channels%` | core | |
 | `%filesize_natural%` `%filename_ext%` `%path%` `%subsong%` | core | `%path%` is absolute and platform-separated |
-| `%rating%` | core, from the file tag | `foo_playcount` takes it over and answers from its own database, so a rating set in foobar2000's own UI shows here and not through `$meta(rating)` |
+| `$if2($meta(rating),%rating%)` | tags, then `foo_playcount` | `foo_playcount` takes `%rating%` over, answering `''` where its database has no rating even if the file has a tag, in the library export and the playing-track route but not in playlist rows, so the tag is read first. `rating.ts` |
 | `%replaygain_track_gain%` `%replaygain_album_gain%` `%bpm%` | tags | |
 | `%lastfm_play_count%` `%lastfm_last_played%` `%lastfm_first_played%` | `foo_enhanced_playcount` | counts scrobbles across every device. `0` and `N/A` when unplayed, not `?` |
 | `%play_count%` `%last_played%` `%first_played%` | `foo_playcount` | counts plays on this machine. A different number from the last.fm pair, so preferring one is a choice |

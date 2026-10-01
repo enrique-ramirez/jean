@@ -26,6 +26,7 @@
 		"scripts/localePlugin.ts",
 		"test/fake-api/**/*.ts",
 		"src/shared/api/multiValue.ts",
+		"src/shared/api/rating.ts",
 		"src/shared/api/types.ts",
 		"src/shared/i18n/en.ts"
 	]

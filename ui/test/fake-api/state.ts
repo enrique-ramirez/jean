@@ -1,4 +1,5 @@
 import { GENRE_EXPRESSION, valuesIn } from "../../src/shared/api/multiValue.ts";
+import { RATING_EXPRESSION } from "../../src/shared/api/rating.ts";
 import type {
 	PlaybackState,
 	PlaylistInfo,
@@ -326,11 +327,17 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 	},
 ];
 
-// foobar2000 answers a single-valued genre the same through `%genre%` and `GENRE_EXPRESSION`.
-export const evaluate = (track: Track, expression: string) =>
-	track[expression] ??
-	(expression === GENRE_EXPRESSION ? track["%genre%"] : undefined) ??
-	"?";
+// foobar2000 answers a single-valued genre the same through `%genre%` and `GENRE_EXPRESSION`, and,
+// with no foo_playcount, a rating the same through `%rating%` and `RATING_EXPRESSION`.
+const PLAIN_SPELLING = new Map([
+	[GENRE_EXPRESSION, "%genre%"],
+	[RATING_EXPRESSION, "%rating%"],
+]);
+
+export const evaluate = (track: Track, expression: string) => {
+	const plain = PLAIN_SPELLING.get(expression);
+	return track[expression] ?? (plain && track[plain]) ?? "?";
+};
 
 const trackKey = (track: Track) =>
 	`${track["%path%"]}\u0000${Number(track["%subsong%"]) || 0}`;

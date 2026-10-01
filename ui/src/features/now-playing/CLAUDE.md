@@ -22,4 +22,4 @@
 
 ## Rating
 
-- `useNowPlayingRating` serves the stars, the menu and the digits, and offers nothing until the track's rating has arrived. `isLocalFile` gates ahead of `canWrite`, because `%rating%` answers `?` for a stream and an unrated file alike.
+- `useNowPlayingRating` serves the stars, the menu and the digits, and offers nothing until the track's rating has arrived. `isLocalFile` gates ahead of `canWrite`, because the rating answers `?` for a stream and an unrated file alike.

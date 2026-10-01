@@ -1,6 +1,7 @@
 import { alternativeReader } from "@/domain/track/fields";
 import { fieldTable } from "@/shared/api/fieldTable";
 import { GENRE_EXPRESSION } from "@/shared/api/multiValue";
+import { RATING_EXPRESSION } from "@/shared/api/rating";
 
 const LYRICS_EXPRESSION = "$meta(unsynced lyrics)";
 
@@ -8,7 +9,7 @@ export const LYRICS_EXPRESSIONS = [LYRICS_EXPRESSION];
 
 const FIELDS = [
 	["lyrics", LYRICS_EXPRESSION],
-	["rating", "%rating%"],
+	["rating", RATING_EXPRESSION],
 
 	["album", "%album%"],
 	["albumArtist", "%album artist%"],

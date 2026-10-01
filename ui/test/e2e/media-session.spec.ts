@@ -111,6 +111,9 @@ const listening = async (page: Page) => {
 		.toBe("playing");
 };
 
+const isAudioPaused = (page: Page) =>
+	page.evaluate(() => document.querySelector("audio")?.paused ?? null);
+
 const expectListeningEnded = async (page: Page, player: FakePlayer) => {
 	await expect
 		.poll(() => session(page))
@@ -321,6 +324,65 @@ test.describe("the media session", () => {
 		await expect(choosePlayer(page)).toHaveAccessibleName(
 			/Playing on this device/,
 		);
+	});
+
+	// Chrome on Android and Safari on iOS draw the lock screen's button from the
+	// element, whatever `playbackState` declares.
+	test("a pause on the lock screen pauses this device's audio, and play starts it again", async ({
+		page,
+		player,
+	}) => {
+		await recordMediaSessionHandlers(page);
+		await page.goto("/");
+		await play(page);
+		await listening(page);
+
+		await callMediaSessionAction(page, "pause");
+		await expect.poll(() => isAudioPaused(page)).toBe(true);
+		await expect.poll(() => player.player.playbackState).toBe("paused");
+
+		await callMediaSessionAction(page, "play");
+		await expect.poll(() => isAudioPaused(page)).toBe(false);
+		await expect.poll(() => player.player.playbackState).toBe("playing");
+	});
+
+	test("a pause on the lock screen while the player is already paused still pauses this device's audio", async ({
+		page,
+		player,
+	}) => {
+		await recordMediaSessionHandlers(page);
+		await page.goto("/");
+		await play(page);
+		await listening(page);
+		player.patchPlayer({ playbackState: "paused" });
+		await expect
+			.poll(() => session(page).then((live) => live.state))
+			.toBe("paused");
+
+		await callMediaSessionAction(page, "pause");
+		await expect.poll(() => isAudioPaused(page)).toBe(true);
+		expect(countPostsTo(player, "/api/playback/play-pause")).toBe(0);
+	});
+
+	test.describe("paused from elsewhere", () => {
+		test.use({ fooJean: { streamPrime: 2 } });
+
+		test("this device's audio pauses once what it holds has played, and resumes with the player", async ({
+			page,
+			player,
+		}) => {
+			await page.goto("/");
+			await play(page);
+			await listening(page);
+
+			player.patchPlayer({ playbackState: "paused" });
+			await expect
+				.poll(() => isAudioPaused(page), { timeout: 30_000 })
+				.toBe(true);
+
+			player.patchPlayer({ playbackState: "playing" });
+			await expect.poll(() => isAudioPaused(page)).toBe(false);
+		});
 	});
 
 	test("is given back when the sound goes", async ({ page }) => {

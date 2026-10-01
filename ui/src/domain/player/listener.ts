@@ -85,6 +85,13 @@ export const lagSeconds = (
 export const bufferedStart = (audio: HTMLAudioElement) =>
 	audio.buffered.length > 0 ? audio.buffered.start(0) : null;
 
+export const bufferedAhead = (audio: HTMLAudioElement) => {
+	const ranges = audio.buffered;
+	return ranges.length > 0
+		? ranges.end(ranges.length - 1) - audio.currentTime
+		: 0;
+};
+
 // `foo_jean` publishes the same display path on a stream mark and on the poll's `player.path`. A join
 // that fails shows nothing: every correction silently turns off.
 export const samePlayerPath = (

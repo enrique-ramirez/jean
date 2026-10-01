@@ -116,7 +116,7 @@ export function useMediaSession(
 
 	const next = transport.next.mutate;
 	const stopPlayer = transport.stop.mutate;
-	const { disconnect } = listener;
+	const { disconnect, pauseHere, playHere } = listener;
 
 	const live = listener.isOn && hasTrack;
 
@@ -219,9 +219,11 @@ export function useMediaSession(
 
 		setHandlers({
 			play: () => {
+				playHere();
 				if (!isPlaying) playPause();
 			},
 			pause: () => {
+				pauseHere();
 				if (isPlaying) playPause();
 			},
 			previoustrack: () => previous(),
@@ -248,6 +250,8 @@ export function useMediaSession(
 		next,
 		stopPlayer,
 		disconnect,
+		pauseHere,
+		playHere,
 		seek,
 		seekBy,
 	]);

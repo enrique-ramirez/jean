@@ -16,7 +16,7 @@
 - The device id comes from `shared/lib/randomId.ts`, which works outside a secure context. `device.ts` guesses the device's kind from the UA client hints to label it, and nothing branches on it.
 - `audience.ts` polls only while the Playing on panel is open, this device is listening, or the player reads as muted.
 - Tickets are asked for immediately before connecting and never stored or logged, and a second element is never opened to probe with, since the component caps connections.
-- Jean never pauses the element when the player pauses: the buffer is still draining, and the component keeps encoding through a pause.
+- The element pauses with the player once its buffer runs dry, or at once on a lock-screen pause: a lock screen reads the element, not `playbackState`.
 - No Web Audio and no `crossorigin`: a `GainNode` stops with the screen locked.
 - One fader, retargeted to this device while listening. `audio.volume` support is probed by writing and reading back, never sniffed; where it fails the control is not drawn. The output device picker moves into the Playing on panel's foobar2000 row, beside the fader that still reaches it.
 - Everything that moves the volume goes through one hook.

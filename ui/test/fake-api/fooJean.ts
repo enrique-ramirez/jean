@@ -909,7 +909,12 @@ function timelineOf(state: FakeState) {
 	};
 }
 
-function serveStream(response: Responder, fake: FooJeanFake, format: string) {
+function serveStream(
+	response: Responder,
+	fake: FooJeanFake,
+	format: string,
+	isPlaying: () => boolean,
+) {
 	response.writeHead(200, {
 		"Content-Type": fake.playableFormats.includes(format)
 			? "audio/wav"
@@ -942,8 +947,11 @@ function serveStream(response: Responder, fake: FooJeanFake, format: string) {
 
 	if (fake.streamBehaviour === "short") return response.end();
 
+	// The component writes nothing while the player is paused or stopped, so the
+	// listener runs dry rather than hearing silence.
 	const pump = setInterval(() => {
 		if (response.writableEnded) return clearInterval(pump);
+		if (!isPlaying()) return;
 		response.write(tone(0.25, phase));
 		phase += SAMPLE_RATE * 0.25;
 	}, 250);
@@ -2547,7 +2555,12 @@ export async function handleFooJean({
 			state.announceHold();
 		}
 
-		return serveStream(response, fake, format);
+		return serveStream(
+			response,
+			fake,
+			format,
+			() => state.player.playbackState === "playing",
+		);
 	}
 
 	if (path === "/api/capabilities") {

@@ -20,6 +20,7 @@ import {
 	anchorOf,
 	audibleMark,
 	audiblePosition,
+	bufferedAhead,
 	bufferedStart,
 	DEVICE_VOLUME_FLOOR_DB,
 	decibelsOf,
@@ -42,6 +43,8 @@ const SEEK_WAIT_MS = 20_000;
 const WATCHDOG_MS = 1000;
 // Firefox rebuffers more than once after a flush, where Chromium recovers in one.
 const AFTER_FLUSH_MS = 3000;
+const PLAYER_CATCH_UP_MS = 3000;
+const DRAINED_BELOW_SECONDS = 0.25;
 
 export type ListenPhase =
 	| { kind: "off" }
@@ -99,6 +102,8 @@ let lastTime = 0;
 let lastAdvance = 0;
 let hasRendered = false;
 let knownPlaybackState: PlaybackState | null = null;
+let isHeld = false;
+let resumedHereAt = 0;
 // Bumps on every connect, so a ticket or timeline settling after its connection was torn down is
 // discarded.
 let generation = 0;
@@ -129,9 +134,50 @@ function readStoredVolume() {
 export const subscribeListening = listeners.subscribe;
 export const listeningSnapshot = () => snapshot;
 
-export const notePlaybackState = (state: PlaybackState) => {
+export function notePlaybackState(state: PlaybackState) {
+	const previous = knownPlaybackState;
 	knownPlaybackState = state;
-};
+	if (state === previous) return;
+	if (state === "playing") playHere();
+	else holdIfDrained();
+}
+
+const isPlayerQuiet = () =>
+	knownPlaybackState !== null && knownPlaybackState !== "playing";
+
+// Browsers and the OS read a lock screen's play or pause off the element, whatever
+// `mediaSession.playbackState` says, so a player that has gone quiet needs a paused element.
+export function pauseHere() {
+	const audio = element;
+	if (!audio || audio.paused) return;
+	if (phase.kind !== "playing" && phase.kind !== "silent") return;
+	isHeld = true;
+	audio.pause();
+	if (knownPlaybackState === "stopped") setPhase({ kind: "silent" });
+}
+
+// `foo_jean` writes nothing while the player is paused, so the element runs dry rather than ends.
+// Holding only then lets the seconds already buffered play out.
+function holdIfDrained() {
+	const audio = element;
+	if (!audio || !isPlayerQuiet()) return;
+	if (performance.now() - resumedHereAt < PLAYER_CATCH_UP_MS) return;
+	if (bufferedAhead(audio) < DRAINED_BELOW_SECONDS) pauseHere();
+}
+
+// A media session action counts as the user's gesture, which iOS Safari needs for `play()`.
+export function playHere() {
+	const audio = element;
+	if (!audio || !isHeld) return;
+	isHeld = false;
+	resumedHereAt = performance.now();
+	audio.play().catch((error) => {
+		if (isPlayRefused(error)) setPhase({ kind: "blocked" });
+	});
+}
+
+const isPlayRefused = (error: unknown) =>
+	(error as DOMException)?.name === "NotAllowedError";
 
 export const isListening = (at: ListenPhase) =>
 	at.kind !== "off" && at.kind !== "failed";
@@ -226,7 +272,7 @@ async function sourceFor(
 	mse = openMseStream(url, audio, {
 		afterStall: stalledThisSession,
 		onReady: () => {
-			if (audio.paused) void audio.play().catch(() => undefined);
+			if (audio.paused && !isHeld) void audio.play().catch(() => undefined);
 		},
 		onError: () => {
 			if (isListening(phase)) scheduleReconnect();
@@ -247,6 +293,7 @@ function retireLowLatency() {
 
 // A flush empties the buffer deliberately and the first fill is not a stall, so neither is counted.
 function onWaiting() {
+	if (isPlayerQuiet()) return holdIfDrained();
 	if (!mse || !hasRendered) return;
 	if (performance.now() - flushedAt < AFTER_FLUSH_MS) return;
 
@@ -417,10 +464,10 @@ async function open(next: string) {
 	try {
 		await audio.play();
 	} catch (error) {
-		if (mine !== generation) return;
+		if (mine !== generation || isHeld) return;
 		// `play()` after an await has lost its user gesture. The only fix is a control the user presses
 		// synchronously.
-		if ((error as DOMException)?.name === "NotAllowedError") {
+		if (isPlayRefused(error)) {
 			setPhase({ kind: "blocked" });
 			return;
 		}
@@ -478,6 +525,7 @@ function watch() {
 	const audio = element;
 	if (!audio || !isListening(phase)) return;
 	if (phase.kind === "blocked" || phase.kind === "busy") return;
+	holdIfDrained();
 
 	const verdict = stallVerdict({
 		now: performance.now(),
@@ -603,6 +651,7 @@ function stopStream() {
 	reconnectTimer = null;
 	watchdogTimer = null;
 	forgetStreamClock();
+	isHeld = false;
 
 	releaseStream();
 

@@ -91,14 +91,14 @@ test("the folded search text and the entity groupings survive that patch", () =>
 	const key = generationKey("component:test", library.structure);
 
 	const index = libraryIndex(key, held.columns);
-	const artists = artistIndex(key, held.columns);
+	const artists = artistIndex(key, held.columns, true);
 	const genres = genreIndex(key, held.columns);
 
 	state.countPlay(state.libraryTracks[0]);
 	const { patched } = patchedAfterPlay(state, held.columns, library.revision);
 
 	assert.equal(libraryIndex(key, patched), index);
-	assert.equal(artistIndex(key, patched), artists);
+	assert.equal(artistIndex(key, patched, true), artists);
 	assert.equal(genreIndex(key, patched), genres);
 });
 

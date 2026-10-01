@@ -7,6 +7,7 @@ import {
 	useState,
 } from "react";
 import { type Artist, artistIndex } from "@/domain/artist/artists";
+import { useSplitCredits } from "@/domain/artist/splitCredits";
 import { announcePlaybackRefusal } from "@/domain/player/playerWrite";
 import { usePlayer } from "@/domain/player/usePlayer";
 import { useResolvedPlaylistId } from "@/domain/player/usePlaylists";
@@ -76,6 +77,7 @@ const entityOf = (suggestion: Suggestion) =>
 
 export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const { discovery, recheck } = useFooJean();
+	const [splitsCredits] = useSplitCredits();
 	const { data: playerSnapshot } = usePlayer();
 	const player = playerSnapshot?.player;
 	const playingPlaylistId =
@@ -177,11 +179,15 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		if (!index || !wanted || !key) return NOTHING_NAMED;
 
 		return {
-			artists: rankEntities(artistIndex(key, columns), wanted, SECTION_BAR),
+			artists: rankEntities(
+				artistIndex(key, columns, splitsCredits),
+				wanted,
+				SECTION_BAR,
+			),
 			albums: rankEntities(albumIndex(key, columns), wanted, SECTION_BAR),
 			genres: rankEntities(genreIndex(key, columns), wanted, SECTION_BAR),
 		};
-	}, [index, wanted, library.key, columns]);
+	}, [index, wanted, library.key, columns, splitsCredits]);
 
 	const matched = useMemo(
 		() => (index ? searchLibrary(index, trackCount, query) : null),

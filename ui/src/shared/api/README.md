@@ -60,6 +60,8 @@ Every `columns` parameter takes **foobar2000 title-formatting expressions**, eva
 | `%lastfm_play_count%` `%lastfm_last_played%` `%lastfm_first_played%` | `foo_enhanced_playcount` | counts scrobbles across every device. `0` and `N/A` when unplayed, not `?` |
 | `%play_count%` `%last_played%` `%first_played%` | `foo_playcount` | counts plays on this machine. A different number from the last.fm pair, so preferring one is a choice |
 | `%added%` | `foo_playcount` | when the track entered the media library, in the same `YYYY-MM-DD HH:MM:SS` form as the play dates |
+| `$meta_sep(artists,$char(31))` `$meta_sep(albumartists,$char(31))` | tags, as MusicBrainz Picard writes them | one artist per value. Empty, not `?`, where the tag is missing |
+| `$meta_sep(musicbrainz_artistid,$char(31))` `$meta_sep(musicbrainz_albumartistid,$char(31))` | tags, as MusicBrainz Picard writes them | one id per credited artist, in credit order, so the count says how many artists a credit like `A & B` names. `domain/artist/credits.ts` |
 | `$meta(unsynced lyrics)` | tags | **the tag name has a space.** `%lyrics%` answers `?` and `$meta(unsyncedlyrics)` finds nothing |
 
 Which of these resolve varies by install, by component and by how the library was tagged. Detect; never assume.

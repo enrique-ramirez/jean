@@ -6,6 +6,7 @@ import { ArtistInformation } from "./ArtistInformation";
 import { Language } from "./Language";
 import { Playback } from "./Playback";
 import styles from "./Settings.module.css";
+import { SharedCredits } from "./SharedCredits";
 import { TagWriting } from "./TagWriting";
 import { ThisDevice } from "./ThisDevice";
 
@@ -26,6 +27,7 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 				<Playback />
 				<ThisDevice />
 				<ArtistInformation />
+				<SharedCredits />
 			</div>
 		</ModalDialog>
 	);

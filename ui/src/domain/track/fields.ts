@@ -1,6 +1,10 @@
 import { fieldTable } from "@/shared/api/fieldTable";
 import type { JlibColumn } from "@/shared/api/jlib";
-import { GENRE_EXPRESSION, valuesIn } from "@/shared/api/multiValue";
+import {
+	everyValueOf,
+	GENRE_EXPRESSION,
+	valuesIn,
+} from "@/shared/api/multiValue";
 import { RATING_EXPRESSION } from "@/shared/api/rating";
 import type { TrackColumns } from "@/shared/api/types";
 import type { Translate } from "@/shared/i18n/locale";
@@ -29,6 +33,10 @@ const FIELDS = [
 	["playCountLocal", "%play_count%"],
 	["lastPlayedLocal", "%last_played%"],
 	["added", "%added%"],
+	["artists", everyValueOf("artists")],
+	["artistIds", everyValueOf("musicbrainz_artistid")],
+	["albumArtists", everyValueOf("albumartists")],
+	["albumArtistIds", everyValueOf("musicbrainz_albumartistid")],
 ] as const;
 
 export const { expressions: TRACK_EXPRESSIONS, index: FIELD } =
@@ -265,7 +273,7 @@ export function collapseRepeatedTag(value: string): string {
 // `and`, `with`, `,` and `/` all appear inside real ones -- Simon & Garfunkel, Blood, Sweat & Tears,
 // Sleep With Sirens -- so splitting on any of them invents artists that do not exist.
 // The separator is captured, so a caller drawing the credit can put it back exactly as tagged.
-const FEATURING = /(\s+(?:feat|ft|featuring)\.?\s+)/i;
+export const FEATURING = /(\s+(?:feat|ft|featuring)\.?\s+)/i;
 
 // Alternating names and the separators between them, verbatim. Even indices are names.
 export const splitCredit = (artist: string) => artist.split(FEATURING);

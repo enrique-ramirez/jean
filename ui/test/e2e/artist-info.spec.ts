@@ -56,7 +56,8 @@ test.describe("artist information", () => {
 		const outbound: string[] = [];
 		page.on("request", (request) => {
 			const url = request.url();
-			if (/musicbrainz|wikipedia|wikidata/i.test(url)) outbound.push(url);
+			if (/musicbrainz|wikipedia|wikidata/i.test(new URL(url).hostname))
+				outbound.push(url);
 		});
 
 		await playSomething(page);

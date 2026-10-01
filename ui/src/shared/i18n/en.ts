@@ -54,6 +54,7 @@ export const en = {
 	"artist.someOf": "{some} of {all}",
 	"artist.tracks": "Tracks",
 	"artist.views": "Artist views",
+	"artist.withOthers": "With other artists",
 	"artist.yourHistory": "Your history",
 	"artistInfo.lookingUp": "Looking up…",
 	"artistInfo.lookingUpNamed": "Looking {name} up…",
@@ -546,6 +547,14 @@ export const en = {
 	"settings.playback.help": "About following",
 	"settings.playback.playbackFollows": "Playback follows cursor",
 	"settings.playback.title": "Playback",
+	"settings.sharedCredits.enable":
+		"Split a shared credit by name when the tags do not",
+	"settings.sharedCredits.help": "About shared credits",
+	"settings.sharedCredits.how":
+		"A credit that names several artists puts the record on each of their pages. MusicBrainz tags say exactly who it names. Without them, Jean splits the credit and keeps only the names your library already credits on their own.",
+	"settings.sharedCredits.title": "Shared credits",
+	"settings.sharedCredits.whenOff":
+		"While this is off, only MusicBrainz tags split a credit.",
 	"settings.title": "Settings",
 	"shelf.added.blurb": "New in your library these last four weeks",
 	"shelf.added.title": "Recently added",

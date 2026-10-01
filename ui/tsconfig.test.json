@@ -83,6 +83,8 @@
 		"src/domain/player/oggDemux.ts",
 		"src/domain/player/playerPoll.ts",
 		"src/domain/artist/artists.ts",
+		"src/domain/artist/credits.ts",
+		"src/domain/artist/splitCredits.ts",
 		"src/domain/player/position.ts",
 		"src/domain/player/queue.ts",
 		"src/domain/player/useListener.ts",

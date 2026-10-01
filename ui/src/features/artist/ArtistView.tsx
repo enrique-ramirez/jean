@@ -45,6 +45,71 @@ import styles from "./ArtistView.module.css";
 const inLibrarySpace = (refs: Refs, view: TrackView) =>
 	Int32Array.from(refs, (at) => view.indices[at]);
 
+const recordsOf = (view: TrackView | null) =>
+	view
+		? albumsOf(view)
+				.map((album) => ({ ...album, refs: inLibrarySpace(album.refs, view) }))
+				.sort((a, b) => (b.year ?? 0) - (a.year ?? 0))
+		: [];
+
+type AlbumRecord = ReturnType<typeof recordsOf>[number];
+
+function Records({
+	heading,
+	records,
+	library,
+	showsCredit,
+	onOpenAlbum,
+}: {
+	heading: string;
+	records: AlbumRecord[];
+	library: Library;
+	showsCredit: boolean;
+	onOpenAlbum: (refs: Refs, position: number) => void;
+}) {
+	const t = useTranslate();
+	if (records.length === 0) return null;
+
+	return (
+		<section className={styles.section}>
+			<h2 className={styles.heading}>{heading}</h2>
+			<div className={styles.records}>
+				{records.map((album) => (
+					<button
+						key={album.key}
+						type="button"
+						className={styles.record}
+						onClick={() => onOpenAlbum(album.refs, 0)}
+					>
+						<span className={styles.sleeve}>
+							<Artwork
+								src={library.source.artworkUrl(album.refs[0])}
+								size="100%"
+								className={styles.cover}
+							/>
+						</span>
+						<span className={styles.recordTitle}>{album.album}</span>
+						{showsCredit && album.artistTag ? (
+							<span className={styles.recordMeta}>{album.artistTag}</span>
+						) : null}
+						<span className={styles.recordMeta}>
+							{album.year ? (
+								<span className="tabular">{album.year}</span>
+							) : null}
+							<span>
+								{t("view.trackCount", {
+									count: album.trackCount,
+									total: album.trackCount,
+								})}
+							</span>
+						</span>
+					</button>
+				))}
+			</div>
+		</section>
+	);
+}
+
 function historyOf(view: TrackView, t: Translate) {
 	const playsOf = columnReader(view.columns, FIELD.playCount, readNumber);
 	const playedAt = columnReader(view.columns, FIELD.lastPlayed, readTimestamp);
@@ -100,6 +165,10 @@ export function ArtistView({
 		() => project(snapshot, tracks.own) ?? null,
 		[snapshot, tracks.own],
 	);
+	const shared = useMemo(
+		() => project(snapshot, tracks.shared) ?? null,
+		[snapshot, tracks.shared],
+	);
 	const guest = useMemo(
 		() => project(snapshot, tracks.guest) ?? null,
 		[snapshot, tracks.guest],
@@ -110,17 +179,14 @@ export function ArtistView({
 		[own],
 	);
 
-	const discography = useMemo(() => {
-		if (!own) return [];
-		return albumsOf(own)
-			.map((album) => ({ ...album, refs: inLibrarySpace(album.refs, own) }))
-			.sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
-	}, [own]);
+	const discography = useMemo(() => recordsOf(own), [own]);
+	const withOthers = useMemo(() => recordsOf(shared), [shared]);
 
 	const history = useMemo(() => (own ? historyOf(own, t) : null), [own, t]);
 	const { hasPlayCounts } = useAvailableFields();
 
-	const held = (own?.length ?? 0) + (guest?.length ?? 0);
+	const held =
+		(own?.length ?? 0) + (shared?.length ?? 0) + (guest?.length ?? 0);
 	const allRefs = tracks.all;
 	const isPlayable = held > 0 && canControlPlayback;
 
@@ -262,41 +328,21 @@ export function ArtistView({
 				</section>
 			) : null}
 
-			{discography.length > 0 ? (
-				<section className={styles.section}>
-					<h2 className={styles.heading}>{t("artist.discography")}</h2>
-					<div className={styles.records}>
-						{discography.map((album) => (
-							<button
-								key={album.key}
-								type="button"
-								className={styles.record}
-								onClick={() => onOpenAlbum(album.refs, 0)}
-							>
-								<span className={styles.sleeve}>
-									<Artwork
-										src={library.source.artworkUrl(album.refs[0])}
-										size="100%"
-										className={styles.cover}
-									/>
-								</span>
-								<span className={styles.recordTitle}>{album.album}</span>
-								<span className={styles.recordMeta}>
-									{album.year ? (
-										<span className="tabular">{album.year}</span>
-									) : null}
-									<span>
-										{t("view.trackCount", {
-											count: album.trackCount,
-											total: album.trackCount,
-										})}
-									</span>
-								</span>
-							</button>
-						))}
-					</div>
-				</section>
-			) : null}
+			<Records
+				heading={t("artist.discography")}
+				records={discography}
+				library={library}
+				showsCredit={false}
+				onOpenAlbum={onOpenAlbum}
+			/>
+
+			<Records
+				heading={t("artist.withOthers")}
+				records={withOthers}
+				library={library}
+				showsCredit
+				onOpenAlbum={onOpenAlbum}
+			/>
 
 			{guest && guest.length > 0 ? (
 				<section className={styles.section}>

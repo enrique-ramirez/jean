@@ -6,6 +6,10 @@ const SEPARATOR = String.fromCharCode(SEPARATOR_CODE);
 // the tag, where `$if2` falls back to `%genre%` so the field still answers `?`.
 export const GENRE_EXPRESSION = `$if2($meta_sep(genre,$char(${SEPARATOR_CODE})),%genre%)`;
 
+// foobar2000 answers an empty string, not `?`, for a track without the tag.
+export const everyValueOf = (tag: string) =>
+	`$meta_sep(${tag},$char(${SEPARATOR_CODE}))`;
+
 export const PLAYER_JOINER = ", ";
 
 export const valuesIn = (raw: string) => raw.split(SEPARATOR);

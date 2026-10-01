@@ -48,7 +48,7 @@ const columnsOf = (of: string[][]) =>
 
 const columns = columnsOf(rows);
 
-const artists = artistsOf(trackRows(columns));
+const artists = artistsOf(trackRows(columns), true);
 const find = (name: string) =>
 	artists.find((entry) => entry.key === name.toLowerCase());
 
@@ -91,28 +91,29 @@ test("Various Artists is not an artist", () => {
 });
 
 test("a track is theirs when either tag names them, and a guest spot is not", () => {
-	const daft = refsOfArtist(columns, "Daft Punk");
+	const daft = refsOfArtist(columns, "Daft Punk", true);
 	assert.deepEqual([...daft.own], [4]);
 	assert.deepEqual([...daft.guest], []);
 
-	const harnett = refsOfArtist(columns, "Sinead Harnett");
+	const harnett = refsOfArtist(columns, "Sinead Harnett", true);
 	assert.deepEqual([...harnett.own], []);
 	assert.deepEqual([...harnett.guest], [5]);
 });
 
 test("an empty name matches nothing rather than everything untagged", () => {
-	const nothing = refsOfArtist(columns, "   ");
+	const nothing = refsOfArtist(columns, "   ", true);
 	assert.equal(nothing.own.length, 0);
 	assert.equal(nothing.guest.length, 0);
 });
 
 test("the counts a page shows are the rows it draws", () => {
 	for (const artist of artists) {
-		const refs = refsOfArtist(columns, artist.name);
+		const refs = refsOfArtist(columns, artist.name, true);
+		const drawn = refs.own.length + refs.shared.length;
 		assert.equal(
-			refs.own.length,
+			drawn,
 			artist.trackCount,
-			`${artist.name}: index says ${artist.trackCount}, page draws ${refs.own.length}`,
+			`${artist.name}: index says ${artist.trackCount}, page draws ${drawn}`,
 		);
 		assert.equal(refs.guest.length, artist.guestCount, artist.name);
 	}
@@ -125,11 +126,14 @@ test("the index takes in rows that arrive after it was first asked for", () => {
 
 	const collector = columnCollector(TRACK_EXPRESSIONS.length);
 	collector.add(rows.slice(0, 2));
-	assert.equal(artistIndex(key, collector.table()).length, 1);
-	assert.equal(artistIndex(key, collector.table())[0].name, "Foo Fighters");
+	assert.equal(artistIndex(key, collector.table(), true).length, 1);
+	assert.equal(
+		artistIndex(key, collector.table(), true)[0].name,
+		"Foo Fighters",
+	);
 
 	collector.add(rows.slice(2));
-	const grown = artistIndex(key, collector.table());
+	const grown = artistIndex(key, collector.table(), true);
 	assert.ok(grown.length > 1, "the rest of the library reached the index");
 	assert.ok(grown.some((entry) => entry.key === "sinead harnett"));
 
@@ -140,8 +144,8 @@ test("the index takes in rows that arrive after it was first asked for", () => {
 });
 
 test("a different library is built afresh rather than added to", () => {
-	artistIndex("library:10", columns);
-	const other = artistIndex("library:1", columnsOf(rows.slice(2, 3)));
+	artistIndex("library:10", columns, true);
+	const other = artistIndex("library:1", columnsOf(rows.slice(2, 3)), true);
 	assert.equal(other.length, 1);
 	assert.equal(other[0].key, "blood, sweat & tears");
 });
@@ -176,6 +180,7 @@ test("at the same rung, the artist you hold more of comes first", () => {
 				}),
 			),
 		),
+		true,
 	);
 
 	assert.deepEqual(
@@ -194,4 +199,141 @@ test("Various Artists is nowhere you can go, wherever it is asked", () => {
 	assert.equal(namesAnArtist(""), false);
 	assert.equal(namesAnArtist(null), false);
 	assert.equal(namesAnArtist("Blood, Sweat & Tears"), true);
+});
+
+const SEPARATOR = String.fromCharCode(31);
+
+interface Credit {
+	artist: string;
+	albumArtist?: string;
+	album?: string;
+	artists?: string[];
+	artistIds?: string[];
+	albumArtistIds?: string[];
+}
+
+const creditedColumns = (credits: Credit[]) =>
+	columnsOf(
+		credits.map((credit) => {
+			const row: string[] = [];
+			row[FIELD.artist] = credit.artist;
+			row[FIELD.albumArtist] = credit.albumArtist ?? credit.artist;
+			row[FIELD.album] = credit.album ?? credit.artist;
+			row[FIELD.artists] = (credit.artists ?? []).join(SEPARATOR);
+			row[FIELD.artistIds] = (credit.artistIds ?? []).join(SEPARATOR);
+			row[FIELD.albumArtistIds] = (credit.albumArtistIds ?? []).join(SEPARATOR);
+			return row;
+		}),
+	);
+
+const REVELRIES = "id-revelries";
+const PURNELL = "id-purnell";
+
+test("MusicBrainz ids put a collaboration on each artist's page, as shared", () => {
+	const library = creditedColumns([
+		{ artist: "Revelries", album: "Descanso Gardens", artistIds: [REVELRIES] },
+		{
+			artist: "Revelries & Henri Purnell",
+			album: "Feel It Still",
+			artistIds: [REVELRIES, PURNELL],
+			albumArtistIds: [REVELRIES, PURNELL],
+		},
+	]);
+
+	for (const guesses of [true, false]) {
+		const revelries = refsOfArtist(library, "Revelries", guesses);
+		assert.deepEqual([...revelries.own], [0]);
+		assert.deepEqual([...revelries.shared], [1]);
+
+		const purnell = refsOfArtist(library, "Henri Purnell", guesses);
+		assert.deepEqual([...purnell.shared], [1]);
+	}
+
+	const index = artistsOf(trackRows(library), false);
+	const named = (name: string) =>
+		index.find((entry) => entry.key === name.toLowerCase());
+	assert.equal(named("revelries")?.trackCount, 2);
+	assert.equal(named("henri purnell")?.trackCount, 1);
+	assert.equal(named("revelries & henri purnell")?.trackCount, 1);
+});
+
+test("an id names the artist by the spelling a solo track gives it", () => {
+	const library = creditedColumns([
+		{ artist: "Revelries", artistIds: [REVELRIES] },
+		{ artist: "REVELRIES, Henri Purnell", artistIds: [REVELRIES, PURNELL] },
+	]);
+	assert.deepEqual([...refsOfArtist(library, "Revelries", false).shared], [1]);
+});
+
+test("one id is one artist, whatever its name holds", () => {
+	const library = creditedColumns([
+		{ artist: "Simon", artistIds: ["id-simon"] },
+		{ artist: "Simon & Garfunkel", artistIds: ["id-duo"] },
+	]);
+	assert.deepEqual([...refsOfArtist(library, "Simon", true).shared], []);
+});
+
+test("ids that do not match the credit's parts keep only the names the library knows", () => {
+	const library = creditedColumns([
+		{ artist: "Revelries", artistIds: [REVELRIES] },
+		{
+			artist: "Revelries and Friends",
+			artistIds: [REVELRIES, "id-unknown"],
+		},
+	]);
+	assert.deepEqual([...refsOfArtist(library, "Revelries", false).shared], [1]);
+	assert.deepEqual([...refsOfArtist(library, "Friends", false).shared], []);
+});
+
+test("ARTISTS names each artist directly, and a name after feat. stays a guest", () => {
+	const library = creditedColumns([
+		{
+			artist: "Yung Dupe x LIL COOKIE feat. Kimmø",
+			artists: ["Yung Dupe", "LIL COOKIE", "Kimmø"],
+		},
+	]);
+	assert.deepEqual([...refsOfArtist(library, "LIL COOKIE", false).shared], [0]);
+	assert.deepEqual([...refsOfArtist(library, "Kimmø", false).guest], [0]);
+});
+
+test("without tags, a part is credited only where the library names it alone, and only while guessing", () => {
+	const library = creditedColumns([
+		{ artist: "Revelries" },
+		{ artist: "Revelries & Henri Purnell" },
+	]);
+	assert.deepEqual([...refsOfArtist(library, "Revelries", true).shared], [1]);
+	assert.deepEqual(
+		[...refsOfArtist(library, "Henri Purnell", true).shared],
+		[],
+	);
+	assert.deepEqual([...refsOfArtist(library, "Revelries", false).shared], []);
+});
+
+test("a record whose album artist is the artist alone is their own, even with a partner on the track", () => {
+	const library = creditedColumns([
+		{
+			artist: "Revelries & STVNS",
+			albumArtist: "Revelries",
+			artistIds: [REVELRIES, "id-stvns"],
+			albumArtistIds: [REVELRIES],
+		},
+	]);
+	const revelries = refsOfArtist(library, "Revelries", false);
+	assert.deepEqual([...revelries.own], [0]);
+	assert.deepEqual([...revelries.shared], []);
+});
+
+test("with guessing off, an untagged library is credited exactly as before", () => {
+	const library = creditedColumns([
+		{ artist: "Revelries" },
+		{ artist: "Revelries & Henri Purnell" },
+	]);
+	const index = artistsOf(trackRows(library), false);
+	assert.deepEqual(
+		index.map((entry) => [entry.name, entry.trackCount]),
+		[
+			["Revelries", 1],
+			["Revelries & Henri Purnell", 1],
+		],
+	);
 });

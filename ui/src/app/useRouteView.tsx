@@ -1,5 +1,6 @@
 import { type ReactNode, useMemo } from "react";
 import { type ArtistTracks, refsOfArtist } from "@/domain/artist/artists";
+import { useSplitCredits } from "@/domain/artist/splitCredits";
 import type { Library } from "@/domain/library/useLibrary";
 import { AlbumCrumb } from "@/domain/track/AlbumCrumb";
 import { albumsOf, refsOfAlbum } from "@/domain/track/albums";
@@ -35,12 +36,14 @@ export interface ArtistPage {
 
 const EMPTY_ARTIST_TRACKS: ArtistTracks = {
 	own: new Int32Array(0),
+	shared: new Int32Array(0),
 	guest: new Int32Array(0),
 	all: new Int32Array(0),
 };
 
 export function useRouteView(route: RouteView, library: Library) {
 	const t = useTranslate();
+	const [splitsCredits] = useSplitCredits();
 	const { snapshot } = library;
 
 	const shelf = route.kind === "shelf" ? route.shelf : null;
@@ -78,8 +81,10 @@ export function useRouteView(route: RouteView, library: Library) {
 
 	const artistTracks = useMemo(
 		() =>
-			artist ? refsOfArtist(snapshot.columns, artist) : EMPTY_ARTIST_TRACKS,
-		[artist, snapshot.columns],
+			artist
+				? refsOfArtist(snapshot.columns, artist, splitsCredits)
+				: EMPTY_ARTIST_TRACKS,
+		[artist, snapshot.columns, splitsCredits],
 	);
 
 	const artistView = useMemo(

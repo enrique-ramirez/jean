@@ -10,6 +10,7 @@ import { growingIndex } from "@/domain/track/growingIndex";
 import { byValue, type LibraryColumns } from "@/domain/track/libraryColumns";
 import type { TrackRows } from "@/domain/track/project";
 import { type FuzzyKey, fuzzyKey } from "@/shared/lib/text";
+import { CREDIT_FIELDS, creditMembers, type Member } from "./credits";
 
 export interface Artist {
 	name: string;
@@ -65,8 +66,20 @@ const albumArtistOf = (raw: string): Credited => {
  * A name is counted once per track however many ways it was credited there, so the counts add up to
  * the track list the page draws.
  */
-function absorb(byKey: Map<string, Draft>, rows: TrackRows, from: number) {
+const absorbing =
+	(guesses: boolean) =>
+	(byKey: Map<string, Draft>, rows: TrackRows, from: number) => {
+		absorb(byKey, rows, from, guesses);
+	};
+
+function absorb(
+	byKey: Map<string, Draft>,
+	rows: TrackRows,
+	from: number,
+	guesses: boolean,
+) {
 	const { columns } = rows;
+	const members = creditMembers(columns, guesses);
 	const artist = columns.fields[FIELD.artist];
 	const albumArtist = columns.fields[FIELD.albumArtist];
 	const album = columns.fields[FIELD.album];
@@ -114,14 +127,22 @@ function absorb(byKey: Map<string, Draft>, rows: TrackRows, from: number) {
 		// the two spellings differ often enough -- `TV On The Radio` beside `TV on the Radio` -- that a
 		// set of strings would count that track twice.
 		const leads = new Map<string, string>();
-		for (const lead of [...credited.leads, ...act.leads])
+		const shared = [...members.artist(ref), ...members.albumArtist(ref)];
+		for (const lead of [
+			...credited.leads,
+			...act.leads,
+			...shared.filter((member) => !member.isGuest),
+		])
 			if (!leads.has(lead.key)) leads.set(lead.key, lead.name);
 
 		for (const [key, name] of leads)
 			credit({ key, name }, position, albumKey, false);
 
 		const seen = new Set(leads.keys());
-		for (const guest of credited.guests) {
+		for (const guest of [
+			...credited.guests,
+			...shared.filter((member) => member.isGuest),
+		]) {
 			if (seen.has(guest.key)) continue;
 			seen.add(guest.key);
 			credit(guest, position, albumKey, true);
@@ -142,37 +163,42 @@ const derive = (byKey: Map<string, Draft>): Artist[] =>
 		}))
 		.sort((a, b) => b.trackCount - a.trackCount);
 
-export function artistsOf(rows: TrackRows): Artist[] {
+export function artistsOf(rows: TrackRows, guesses: boolean): Artist[] {
 	const byKey = new Map<string, Draft>();
-	absorb(byKey, rows, 0);
+	absorb(byKey, rows, 0, guesses);
 	return derive(byKey);
 }
 
-const CREDITED = [FIELD.artist, FIELD.albumArtist, FIELD.album];
+const CREDITED = [...CREDIT_FIELDS, FIELD.album];
 
-export const artistIndex = growingIndex(CREDITED, absorb, derive);
+const guessing = growingIndex(CREDITED, absorbing(true), derive);
+const notGuessing = growingIndex(CREDITED, absorbing(false), derive);
+
+export const artistIndex = (
+	key: string,
+	columns: LibraryColumns,
+	guesses: boolean,
+) => (guesses ? guessing : notGuessing)(key, columns);
 
 export interface ArtistTracks {
 	own: Int32Array;
+	shared: Int32Array;
 	guest: Int32Array;
-	// Both, in library order. The split is how the overview *draws* them; it is not two sets, and
-	// playing the artist from either surface has to mean the same thing.
+	// All three, in library order. The split is how the overview *draws* them; it is not three sets, and
+	// playing the artist from any surface has to mean the same thing.
 	all: Int32Array;
 }
 
-/**
- * Split by how the name was credited, since the page keeps guest spots apart from an artist's own
- * records. A track counts as theirs if either tag names them; only a name that appears solely after
- * a `feat.` is a guest.
- */
 export function refsOfArtist(
 	columns: LibraryColumns,
 	artist: string,
+	guesses: boolean,
 ): ArtistTracks {
 	const wanted = tagKey(artist);
 	if (!wanted)
 		return {
 			own: new Int32Array(0),
+			shared: new Int32Array(0),
 			guest: new Int32Array(0),
 			all: new Int32Array(0),
 		};
@@ -194,7 +220,15 @@ export function refsOfArtist(
 		return tag !== null && tagKey(collapseRepeatedTag(tag)) === wanted;
 	});
 
+	const members = creditMembers(columns, guesses);
+	const names = (named: readonly Member[], isGuest: boolean) =>
+		named.some((member) => member.key === wanted && member.isGuest === isGuest);
+	const namedAt = (ref: number, isGuest: boolean) =>
+		names(members.artist(ref), isGuest) ||
+		names(members.albumArtist(ref), isGuest);
+
 	const own: number[] = [];
+	const shared: number[] = [];
 	const guest: number[] = [];
 	const all: number[] = [];
 
@@ -202,7 +236,8 @@ export function refsOfArtist(
 		const credited = artistColumn.ids[ref];
 
 		if (leads[credited] || acts[albumArtistColumn.ids[ref]]) own.push(ref);
-		else if (guests[credited]) guest.push(ref);
+		else if (namedAt(ref, false)) shared.push(ref);
+		else if (guests[credited] || namedAt(ref, true)) guest.push(ref);
 		else continue;
 
 		all.push(ref);
@@ -210,6 +245,7 @@ export function refsOfArtist(
 
 	return {
 		own: Int32Array.from(own),
+		shared: Int32Array.from(shared),
 		guest: Int32Array.from(guest),
 		all: Int32Array.from(all),
 	};

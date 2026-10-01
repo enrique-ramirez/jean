@@ -1,6 +1,5 @@
 import { ChevronDown, Mic2, MoreHorizontal } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { usePlayingFrom } from "@/domain/library/usePlayingFrom";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
 import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
@@ -57,6 +56,7 @@ export function NowPlaying({
 	isCompactViewport,
 	isQueueOpen,
 	onToggleQueue,
+	playingFrom,
 	onOpenPlayingFrom,
 	onDismiss,
 	tab,
@@ -66,6 +66,7 @@ export function NowPlaying({
 	isCompactViewport: boolean;
 	isQueueOpen: boolean;
 	onToggleQueue: () => void;
+	playingFrom: string | null;
 	onOpenPlayingFrom?: () => void;
 	onDismiss: () => void;
 	tab: PanelTab | null;
@@ -82,7 +83,6 @@ export function NowPlaying({
 	const snapshot = useAudiblePlayer();
 	const { data: live } = usePlayer();
 	const { track, details } = useNowPlayingTrack();
-	const from = usePlayingFrom();
 	const { discovery } = useFooJean();
 	const canControlPlayback = permitsPlaybackControl(discovery);
 
@@ -207,10 +207,10 @@ export function NowPlaying({
 
 	const loading = wheel.isAwaiting ? " loading" : "";
 
-	const fromLine = from?.isPlaying ? (
+	const fromLine = playingFrom ? (
 		<>
 			<span className={styles.fromLabel}>{t("playlist.playingFrom")}</span>
-			<b>{from.name}</b>
+			<b>{playingFrom}</b>
 		</>
 	) : (
 		<span className={styles.fromLabel}>{t("player.nowPlaying")}</span>
@@ -255,7 +255,7 @@ export function NowPlaying({
 						<ChevronDown size={20} strokeWidth={2} />
 					</button>
 
-					{from?.isPlaying && onOpenPlayingFrom ? (
+					{playingFrom && onOpenPlayingFrom ? (
 						<button
 							type="button"
 							className={styles.fromLink}

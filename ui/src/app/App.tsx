@@ -204,11 +204,15 @@ function Shell() {
 		[playingFrom, t],
 	);
 
+	const playingPlaylist = browsable.find(
+		(entry) => entry.id === playingPlaylistId,
+	);
+	const playingName = playing?.isPlaying
+		? playing.name
+		: (playingPlaylist?.title ?? null);
 	const playingRoute = playingFrom?.isPlaying
 		? playingFrom.route
-		: browsable.some((entry) => entry.id === playingPlaylistId)
-			? (playingPlaylistId ?? null)
-			: null;
+		: (playingPlaylist?.id ?? null);
 
 	const { selectedId, playlist, remember } = useSelectedPlaylist({
 		route,
@@ -524,6 +528,7 @@ function Shell() {
 							isCompactViewport={isCompactViewport}
 							isQueueOpen={queue.isOpen}
 							onToggleQueue={queue.toggle}
+							playingFrom={playingName}
 							onOpenPlayingFrom={
 								playingRoute ? () => openPlayingFrom(playingRoute) : undefined
 							}

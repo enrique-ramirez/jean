@@ -244,18 +244,22 @@ test.describe("the set it is playing from", () => {
 		});
 	});
 
-	test("it is a line and not a button when the set has nowhere to open", async ({
+	test("a playlist of yours is named, and the header takes you back to it", async ({
 		page,
 	}) => {
 		await openLibrary(page);
 		await trackRow(page, 0).dblclick();
+		await page.goto("/#/all");
 		await openNowPlaying(page);
 
 		const header = nowPlayingScreen(page).locator("header");
-		await expect(header).toContainText("Now playing");
+		await expect(header).not.toContainText("Now playing");
+		await header.getByRole("button", { name: "Playing from Library" }).click();
+
+		await expect(nowPlayingScreen(page)).toBeHidden();
 		await expect(
-			header.getByRole("button", { name: /Playing from/ }),
-		).toHaveCount(0);
+			page.getByRole("heading", { level: 1, name: "Library" }),
+		).toBeVisible();
 	});
 });
 

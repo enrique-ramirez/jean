@@ -96,10 +96,10 @@ const DECLARED = [
 		keys: ["M"],
 	},
 	{
-		id: "toggleShuffle",
+		id: "playbackOrder",
 		scope: SCOPE.global,
 		group: "shortcutGroup.playback",
-		name: "shortcut.toggleShuffle",
+		name: "shortcut.playbackOrder",
 		keys: ["O"],
 	},
 	{

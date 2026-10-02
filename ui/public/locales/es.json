@@ -531,7 +531,6 @@
 	"shortcut.toggleMute": "Silenciar / quitar el silencio",
 	"shortcut.toggleNowPlaying": "Mostrar / ocultar lo que suena",
 	"shortcut.toggleQueue": "Mostrar / ocultar la cola",
-	"shortcut.toggleShuffle": "Activar / desactivar el aleatorio",
 	"shortcut.toggleSidebar": "Mostrar / ocultar la barra lateral",
 	"shortcut.toggleTheme": "Cambiar claro / oscuro",
 	"shortcut.volumeDown": "Bajar el volumen",

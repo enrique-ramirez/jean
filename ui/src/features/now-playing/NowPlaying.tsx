@@ -33,11 +33,11 @@ import { parseLyrics } from "./lyricsFormat";
 import styles from "./NowPlaying.module.css";
 import { NOW_PLAYING_FIELD } from "./nowPlayingFields";
 import type { OutputPicker } from "./OutputDevices";
+import { PlaybackOrderButton } from "./PlaybackOrderButton";
 import { PlayToggle } from "./PlayToggle";
 import { QueueButton } from "./QueueButton";
 import { Rating } from "./Rating";
 import { SeekBar } from "./SeekBar";
-import { ShuffleToggle } from "./ShuffleToggle";
 import { Times } from "./Times";
 import { INFO_EXIT_MS, TrackInfo } from "./TrackInfo";
 import { TrackPanels } from "./TrackPanels";
@@ -362,11 +362,12 @@ export function NowPlaying({
 
 						<div className={styles.transport}>
 							<div className={styles.next}>
-								<ShuffleToggle
+								<PlaybackOrderButton
 									order={order}
 									className={styles.order}
 									size={18}
 									disabled={!canControlPlayback}
+									isSurfaceOpen={isOpen && !isInfoOpen}
 								/>
 
 								<QueueButton

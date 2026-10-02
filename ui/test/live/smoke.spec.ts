@@ -1,11 +1,12 @@
 import { fold } from "../../src/shared/lib/text.ts";
 import {
 	openSettings,
+	orderButton,
 	scrollUntilMounted,
 	statusBar,
 	trackRow,
 } from "../e2e/fixtures.ts";
-import { component, player } from "./component.ts";
+import { component, type PlaybackMode, player } from "./component.ts";
 import {
 	expect,
 	type Install,
@@ -176,18 +177,63 @@ test("settings reports the component connected", async ({ page }) => {
 	await expect(panel).toContainText("Connected");
 });
 
-test("toggling shuffle reaches the player", async ({ page }) => {
+const NAME_OF = {
+	inOrder: "In order",
+	shuffleTracks: "Shuffle tracks",
+} as const;
+
+test("an order chosen from the list reaches the player, and so does the one it was in", async ({
+	page,
+}) => {
 	const mode = async () => (await player()).playbackMode;
 	const before = await mode();
+	const install = await component<{
+		canControlPlayback: boolean;
+		playbackModes: PlaybackMode[];
+	}>("/api/capabilities");
+	// Shuffle tracks, or In order where the player is already in Shuffle tracks: choosing the
+	// order it is in sends nothing.
+	const other = before === "shuffleTracks" ? "inOrder" : "shuffleTracks";
+
+	expect(
+		install.canControlPlayback,
+		"playback control is off on this install, so no order can be chosen",
+	).toBe(true);
+	test.skip(
+		install.playbackModes.length < 3,
+		`this install offers ${install.playbackModes.length} orders, and the list is drawn for three or more`,
+	);
+	test.skip(
+		before === null,
+		"the player is in an order foo_jean cannot name, which the list has no row to put back",
+	);
+	test.skip(
+		!install.playbackModes.includes(other),
+		`this install does not offer ${NAME_OF[other]}`,
+	);
 
 	await page.goto("#/all");
-	const shuffle = statusBar(page).getByRole("button", { name: "Shuffle" });
-	await expect(shuffle).toBeEnabled();
-	await shuffle.click();
+	const order = orderButton(page, false);
+	// The name carries the order once the player's state has been drawn.
+	await expect(order).toHaveAccessibleName(/^Playback order: ./);
+	const found = (await order.getAttribute("aria-label"))!.replace(
+		"Playback order: ",
+		"",
+	);
 
-	await expect.poll(mode).not.toBe(before);
-	await expect(shuffle).toHaveAttribute("aria-pressed", "true");
+	const choose = async (name: string) => {
+		await order.click();
+		const row = page
+			.getByRole("menu")
+			.getByRole("menuitemradio", { name, exact: true });
+		await row.click();
+		await expect(page.getByRole("menu")).toHaveCount(0);
+		await expect(order).toHaveAccessibleName(`Playback order: ${name}`);
+	};
 
-	await shuffle.click();
+	await choose(NAME_OF[other]);
+	await expect.poll(mode).toBe(other);
+
+	await choose(found);
 	await expect.poll(mode).toBe(before);
 });

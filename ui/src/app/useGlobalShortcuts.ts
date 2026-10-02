@@ -1,5 +1,4 @@
 import { useAudibleVolume } from "@/domain/player/useListener";
-import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import {
 	KEY_SEEK_SECONDS,
 	usePlayPause,
@@ -39,7 +38,6 @@ function usePlaybackShortcuts() {
 	const previous = usePrevious();
 	const transport = useTransport();
 	const volume = useAudibleVolume();
-	const playbackMode = usePlaybackOrder();
 
 	useKeymap(
 		SCOPE.global,
@@ -50,9 +48,6 @@ function usePlaybackShortcuts() {
 			stop: () => transport.stop.mutate(),
 			seekBack: () => seekBy.mutate(-KEY_SEEK_SECONDS),
 			seekForward: () => seekBy.mutate(KEY_SEEK_SECONDS),
-			toggleShuffle: () => {
-				if (playbackMode.canShuffle) playbackMode.toggleShuffle();
-			},
 		},
 		{ enabled: permitsPlaybackControl(discovery) },
 	);

@@ -435,7 +435,7 @@ test.describe("putting things in the queue", () => {
 		expect(Math.abs(queue.y - next.y)).toBeLessThan(queue.height);
 	});
 
-	test("on a phone it sits with the transport too, beside Shuffle", async ({
+	test("on a phone it sits with the transport too, beside the playback order button", async ({
 		page,
 		isMobile,
 	}) => {
@@ -457,11 +457,11 @@ test.describe("putting things in the queue", () => {
 			(await nowPlayingScreen(page)
 				.getByRole("button", { name })
 				.boundingBox())!;
-		const shuffle = await boxOf("Shuffle");
+		const order = await boxOf(/^Playback order/);
 		const queue = await boxOf(/^Queue/);
 
-		expect(queue.x).toBeGreaterThan(shuffle.x);
-		expect(Math.abs(queue.y - shuffle.y)).toBeLessThan(queue.height);
+		expect(queue.x).toBeGreaterThan(order.x);
+		expect(Math.abs(queue.y - order.y)).toBeLessThan(queue.height);
 	});
 
 	test("the badge counts what is queued", async ({

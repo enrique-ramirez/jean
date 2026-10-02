@@ -7,13 +7,17 @@ import {
 	dragTo,
 	expect,
 	expectDisabledWithReason,
+	expectNothingOpened,
 	expectNothingRefusedSent,
 	expectSettlesAt,
+	globalControls,
 	holdThePoll,
 	listenHere,
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
+	orderButton,
+	playbackOffToast,
 	playingOn,
 	REASON,
 	refusedAsks,
@@ -48,9 +52,6 @@ const statusBarVolume = (page: Page) =>
 
 const playPause = (page: Page) =>
 	statusBar(page).getByRole("button", { name: /^(Play|Pause)\b/ });
-
-const playbackOffToast = (page: Page) =>
-	page.getByRole("status").filter({ hasText: /controlPlayback/ });
 
 const explore = (page: Page) => page.getByRole("region", { name: "Explore" });
 
@@ -423,7 +424,7 @@ test.describe("listening on this device with playback control off at the player"
 	});
 
 	for (const isListening of [true, false])
-		test(`the transport and shuffle keys send nothing, ${isListening ? "listening here" : "with nothing listening"}`, async ({
+		test(`the transport keys, s and o send nothing, and o opens no list, ${isListening ? "listening here" : "with nothing listening"}`, async ({
 			page,
 			player,
 			isMobile,
@@ -441,12 +442,19 @@ test.describe("listening on this device with playback control off at the player"
 				"ControlOrMeta+.",
 				"ArrowRight",
 				"ArrowLeft",
-				"o",
 			]);
 			await trackRow(page, 4).click();
 			await page.keyboard.press("s");
+			await expect(orderButton(page, false)).toHaveAttribute(
+				"aria-disabled",
+				"true",
+			);
+			// Last, with nothing pressed after it: a click on a row would dismiss a list it had
+			// opened.
+			await pressFromTheBody(page, ["o"]);
 
 			await expectSettlesAt(player, () => refusedAsks(player, since), []);
+			await expectNothingOpened(page);
 		});
 
 	test("the status bar, and a phone's now-playing screen, still say why once", async ({
@@ -570,6 +578,41 @@ test.describe("playback control turned off while Jean is open", () => {
 		await expect(playbackOffToast(page)).toContainText(REASON);
 		await expect(fader).toHaveAttribute("aria-disabled", "true");
 		await expect(fader).toHaveAccessibleName(REASON);
+	});
+
+	// The poll is held, so the player's own 403 is the only way Jean can learn the switch moved.
+	test("an order chosen is refused in a toast, the button goes back to the order the player is in, and it turns disabled with its reason before the next poll", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		await globalControls(page, isMobile);
+		const order = orderButton(page, isMobile);
+		await expect(order).toHaveAccessibleName("Playback order: In order");
+		const held = player.player.playbackMode;
+
+		await holdThePoll(page);
+		await allowPlayback(page, false);
+
+		const refused = page.waitForResponse(
+			(response) =>
+				response.request().method() === "POST" &&
+				new URL(response.url()).pathname === "/api/playback/mode" &&
+				response.status() === 403,
+		);
+		await order.click();
+		await page
+			.getByRole("menuitemradio", { name: "Repeat track", exact: true })
+			.click();
+		await refused;
+
+		await expect(playbackOffToast(page)).toContainText(REASON);
+		await expect(order).toHaveAttribute("aria-disabled", "true");
+		await expect(order).toHaveAccessibleName(
+			"Playback order: In order (playback control is off)",
+		);
+		expect(player.player.playbackMode).toBe(held);
 	});
 
 	// Emptying the scratch is playback, so it follows controlPlayback. Clearing

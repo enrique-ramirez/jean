@@ -314,7 +314,7 @@
 	color: var(--muted);
 }
 
-.order[aria-pressed="true"] {
+.order[data-tone="accent"] {
 	color: var(--accent-text);
 }
 

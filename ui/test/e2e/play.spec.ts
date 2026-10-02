@@ -3,12 +3,15 @@ import {
 	choosePlayer,
 	componentOrigin,
 	dragTo,
+	drawing,
 	expect,
 	expectSettlesAt,
 	inSequence,
 	openLibrary,
 	openSettings,
+	orderButton,
 	playedFrom,
+	playerDeclaring,
 	playingOn,
 	playRequests,
 	pressAndHold,
@@ -16,6 +19,7 @@ import {
 	settingsDialog,
 	statusBar,
 	test,
+	toasts,
 	touchDrag,
 	trackRow,
 } from "./fixtures.ts";
@@ -316,9 +320,7 @@ test.describe("a component that hangs up on every command", () => {
 
 	test.beforeEach(async ({ page }) => {
 		await openLibrary(page);
-		await expect(
-			statusBar(page).getByRole("button", { name: "Shuffle" }),
-		).toBeVisible();
+		await expect(orderButton(page, false)).toBeVisible();
 	});
 
 	test("Pause goes back to Pause", async ({ page, player }) => {
@@ -337,18 +339,62 @@ test.describe("a component that hangs up on every command", () => {
 		expect(player.player.playbackState).toBe("playing");
 	});
 
-	test("Shuffle goes back to off", async ({ page, player }) => {
-		const shuffle = statusBar(page).getByRole("button", { name: "Shuffle" });
-		await expect(shuffle).toHaveAttribute("aria-pressed", "false");
+	test("an order chosen from the list goes back to In order, on the button's name, its face and the list's tick, and no toast is raised", async ({
+		page,
+		player,
+	}) => {
+		const order = orderButton(page, false);
+		const checked = page.getByRole("menuitemradio", { checked: true });
+		await expect(order).toHaveAccessibleName("Playback order: In order");
 		const hungUp = await hangUpOnCommands(page, player, () =>
-			expect(shuffle).toHaveAttribute("aria-pressed", "true", DRAWN),
+			expect(order).toHaveAccessibleName("Playback order: Repeat track", DRAWN),
 		);
 
-		await shuffle.click();
+		await order.click();
+		await page
+			.getByRole("menuitemradio", { name: "Repeat track", exact: true })
+			.click();
 
 		await expect.poll(() => hungUp).toContain("/api/playback/mode");
-		await expect(shuffle).toHaveAttribute("aria-pressed", "false");
+		await expect(order).toHaveAccessibleName("Playback order: In order");
+		await expect(order.locator("svg")).toHaveClass(
+			drawing("layout-arrow-down"),
+		);
 		expect(player.player.playbackMode).toBe(0);
+		// Read once: `toHaveCount(0)` retries, and a toast that leaves by itself would let it pass.
+		expect(await toasts(page).count()).toBe(0);
+
+		await order.click();
+		await expect(checked).toHaveAccessibleName("In order");
+	});
+
+	test.describe("on an install offering two orders", () => {
+		test.use({
+			playerState: playerDeclaring(["Default", "Repeat (playlist)"]),
+		});
+
+		test("the order a press flipped to goes back to In order, on the button's name and its face", async ({
+			page,
+			player,
+		}) => {
+			const order = orderButton(page, false);
+			await expect(order).toHaveAccessibleName("Playback order: In order");
+			const hungUp = await hangUpOnCommands(page, player, () =>
+				expect(order).toHaveAccessibleName(
+					"Playback order: Repeat playlist",
+					DRAWN,
+				),
+			);
+
+			await order.click();
+
+			await expect.poll(() => hungUp).toContain("/api/playback/mode");
+			await expect(order).toHaveAccessibleName("Playback order: In order");
+			await expect(order.locator("svg")).toHaveClass(
+				drawing("layout-arrow-down"),
+			);
+			expect(player.player.playbackMode).toBe(0);
+		});
 	});
 
 	test("Mute goes back to Mute", async ({ page, player }) => {

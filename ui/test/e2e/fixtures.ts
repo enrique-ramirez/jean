@@ -13,6 +13,7 @@ import { test as base, expect } from "@playwright/test";
 import {
 	COMPONENT_RATE_LIMITS,
 	type FooJeanOptions,
+	JEAN_MODE_BY_ORDER,
 } from "../fake-api/fooJean.ts";
 import { createServer, type FakeServer } from "../fake-api/server.ts";
 import {
@@ -229,6 +230,30 @@ export const OFFERS_NO_SHUFFLE: Partial<FakePlayerState> = {
 	],
 };
 
+// The fake holds the order as a position in what the player declares. A name `foo_jean` has no
+// mode for is declared and never offered, and a player sitting in it reports no mode at all.
+export const playerDeclaring = (
+	orders: readonly string[],
+	current = orders[0],
+): Partial<FakePlayerState> => {
+	const position = orders.length === 0 ? 0 : orders.indexOf(current);
+	if (position === -1) throw new Error(`${current} is not among ${orders}`);
+	return {
+		playbackMode: position,
+		options: [
+			{
+				id: "playbackOrder",
+				name: "Playback order",
+				type: "enum",
+				value: position,
+				enumNames: [...orders],
+			},
+		],
+	};
+};
+
+export const STOCK_ORDERS = Object.keys(JEAN_MODE_BY_ORDER);
+
 // ---- finding things on screen ----------------------------------------------
 
 // data-row is the row's index in the view rather than in the playlist; the two
@@ -296,6 +321,13 @@ export const openNowPlaying = async (page: Page) => {
 	await expect(nowPlayingScreen(page)).toBeVisible();
 };
 
+export const closeNowPlaying = async (page: Page) => {
+	await nowPlayingScreen(page)
+		.getByRole("button", { name: "Close now playing" })
+		.click();
+	await expect(nowPlayingScreen(page)).toBeHidden();
+};
+
 /**
  * Where the global playback controls are, which is a question about the
  * viewport rather than about the control. The compact status bar is Play and
@@ -308,6 +340,85 @@ export async function globalControls(page: Page, isCompact: boolean) {
 	await openNowPlaying(page);
 	return nowPlayingScreen(page);
 }
+
+// On a compact viewport the transport is the now-playing screen, which this does not open.
+export const orderButton = (
+	page: Page,
+	isCompact: boolean,
+	title = "Playback order",
+) =>
+	(isCompact ? nowPlayingScreen(page) : statusBar(page)).getByRole("button", {
+		name: new RegExp(`^${title}`),
+	});
+
+// The list a press of the order button opens is a menu on a desktop and a dialog holding one on a
+// compact viewport.
+export const expectNothingOpened = async (page: Page) => {
+	await expect(page.getByRole("menu")).toHaveCount(0);
+	await expect(page.getByRole("dialog")).toHaveCount(0);
+};
+
+export const orderList = (page: Page) => page.getByRole("menu");
+
+export const orderRow = (page: Page, name: string) =>
+	orderList(page).getByRole("menuitemradio", { name, exact: true });
+
+export const checkedOrderRows = (page: Page) =>
+	orderList(page).getByRole("menuitemradio", { checked: true });
+
+// The transport is drawn once the player has answered, and a key pressed before the order button
+// exists is not held for it.
+export const openLibraryWithTheOrderButton = async (
+	page: Page,
+	title?: string,
+) => {
+	await openLibrary(page);
+	await expect(orderButton(page, false, title)).toBeVisible();
+};
+
+// What an install offers arrives with its capabilities. Until it has, a control that depends on
+// the offer is absent or disabled on every install, so an assertion that it is not there proves
+// nothing.
+export const untilTheInstallIsKnown = async (player: FakePlayer) => {
+	await expect
+		.poll(() => requestsTo(player, "/api/capabilities").length)
+		.toBeGreaterThan(0);
+	await untilQuiet(player);
+};
+
+export const playbackOffToast = (page: Page) =>
+	page.getByRole("status").filter({ hasText: /controlPlayback/ });
+
+// Every toast on the page, found by the button each is dismissed with. The region they are drawn
+// in also holds the notice that the player has stopped answering, which is not a toast and has no
+// such button.
+export const toasts = (page: Page) =>
+	page.getByRole("status").getByRole("button", { name: "Dismiss" });
+
+// lucide-react puts `lucide-{name}` on the `svg` it draws, among other classes.
+export const drawing = (icon: string) =>
+	new RegExp(`(^|\\s)lucide-${icon}(\\s|$)`);
+
+// What a custom property resolves to inside `scope`, in the form Chromium computes a colour to.
+export const tokenColourIn = (scope: Locator, token: string) =>
+	scope.evaluate((element, name) => {
+		const probe = document.createElement("span");
+		probe.style.color = `var(${name})`;
+		element.append(probe);
+		const colour = getComputedStyle(probe).color;
+		probe.remove();
+		return colour;
+	}, token);
+
+// A Lucide icon is strokes and no fill, and Chromium computes a stroke of `currentColor` to the
+// colour it resolves to.
+export const drawnColour = (icon: Locator) =>
+	icon.evaluate((svg) => getComputedStyle(svg).stroke);
+
+// Polled, since a colour partway through a transition computes to `oklab()` in Chromium and to the
+// token's own value only once it lands.
+export const expectDrawnIn = (icon: Locator, colour: string) =>
+	expect.poll(() => drawnColour(icon)).toBe(colour);
 
 export const choosePlayer = (page: Page) =>
 	statusBar(page).getByRole("button", {
@@ -530,6 +641,13 @@ export const countPostsTo = (player: FakePlayer, route: string) =>
 	player.requests.filter(
 		(entry) => entry.method === "POST" && entry.path.split("?")[0] === route,
 	).length;
+
+export const modesSent = (player: FakePlayer) =>
+	player.requests
+		.filter(
+			(entry) => entry.method === "POST" && entry.path === "/api/playback/mode",
+		)
+		.map((entry) => entry.body?.mode);
 
 const QUIET_MS = 250;
 

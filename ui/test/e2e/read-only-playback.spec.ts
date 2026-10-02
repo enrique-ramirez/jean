@@ -1,17 +1,25 @@
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	dragFrom,
+	drawing,
 	expect,
 	expectDisabledWithReason,
+	expectDrawnIn,
+	expectNothingOpened,
 	expectNothingRefusedSent,
+	globalControls,
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
+	orderButton,
+	playerDeclaring,
 	pressAndHold,
 	REASON,
+	STOCK_ORDERS,
 	searchFor,
 	statusBar,
 	test,
+	tokenColourIn,
 	trackRow,
 	viewHeader,
 } from "./fixtures.ts";
@@ -26,6 +34,7 @@ const PLAY_PAUSE = /^(Play|Pause)\b/;
 const PREVIOUS = /^Previous track\b/;
 const NEXT = /^Next track\b/;
 const SHUFFLE = /^Shuffle\b/;
+const ORDER = /^Playback order\b/;
 const POSITION = /^Playback position\b/;
 
 const playingAtThePlayer = async (page: Page, player: FakePlayer) => {
@@ -33,6 +42,9 @@ const playingAtThePlayer = async (page: Page, player: FakePlayer) => {
 	await openLibrary(page);
 	await expect(statusBar(page)).toContainText("Deléctrico");
 };
+
+const opacityOf = (control: Locator) =>
+	control.evaluate((element) => getComputedStyle(element).opacity);
 
 const queuePanel = (page: Page) =>
 	page.getByRole("complementary", { name: "Queue" });
@@ -63,7 +75,7 @@ test.describe("with playback control off at the player", () => {
 		const controls = isMobile
 			? [button(bar, PLAY_PAUSE), slider(bar, POSITION)]
 			: [
-					button(bar, SHUFFLE),
+					button(bar, ORDER),
 					button(bar, PREVIOUS),
 					button(bar, PLAY_PAUSE),
 					button(bar, NEXT),
@@ -106,7 +118,7 @@ test.describe("with playback control off at the player", () => {
 		const screen = nowPlayingScreen(page);
 
 		for (const control of [
-			button(screen, SHUFFLE),
+			button(screen, ORDER),
 			button(screen, PREVIOUS),
 			button(screen, PLAY_PAUSE),
 			button(screen, NEXT),
@@ -117,6 +129,83 @@ test.describe("with playback control off at the player", () => {
 		const line = screen.getByText(REASON);
 		await expect(line).toHaveCount(1);
 		await expect(line).toBeVisible();
+	});
+
+	test.describe("the playback order button", () => {
+		// Shuffle albums has an icon of its own and the accent, which a button drawn for no
+		// order, or for In order, would not show.
+		test.describe("with the stock seven orders and the player in Shuffle albums", () => {
+			test.use({
+				playerState: playerDeclaring(STOCK_ORDERS, "Shuffle (albums)"),
+			});
+
+			test("keeps that order's icon and colour at its neighbours' opacity, is named with the order and the reason, and a press opens nothing and sends nothing", async ({
+				page,
+				player,
+				isMobile,
+			}) => {
+				await openLibrary(page);
+				const transport = await globalControls(page, isMobile);
+				const order = orderButton(page, isMobile);
+
+				await expectDisabledWithReason(order);
+				await expect(order).toHaveAccessibleName(
+					"Playback order: Shuffle albums (playback control is off)",
+				);
+				const face = order.locator("svg");
+				await expect(face).toHaveClass(drawing("disc-album"));
+				await expectDrawnIn(
+					face,
+					await tokenColourIn(transport, "--accent-text"),
+				);
+
+				const neighbour = button(transport, PREVIOUS);
+				await expectDisabledWithReason(neighbour);
+				await expect.poll(() => opacityOf(neighbour)).not.toBe("1");
+				await expect
+					.poll(
+						async () =>
+							(await opacityOf(order)) === (await opacityOf(neighbour)),
+					)
+					.toBe(true);
+
+				// A control that is only `aria-disabled` still receives the click.
+				await order.click({ force: true });
+
+				await expectNothingRefusedSent(player);
+				await expectNothingOpened(page);
+			});
+		});
+
+		test.describe("on an install offering two orders", () => {
+			test.use({
+				playerState: playerDeclaring(["Default", "Repeat (playlist)"]),
+			});
+
+			test("is named with the order and the reason, and neither a press nor o sends anything", async ({
+				page,
+				player,
+				isMobile,
+			}) => {
+				await openLibrary(page);
+				await globalControls(page, isMobile);
+				const order = orderButton(page, isMobile);
+
+				await expectDisabledWithReason(order);
+				await expect(order).toHaveAccessibleName(
+					"Playback order: In order (playback control is off)",
+				);
+
+				await order.click({ force: true });
+				if (!isMobile) {
+					await order.blur();
+					await page.keyboard.press("o");
+				}
+
+				await expectNothingRefusedSent(player);
+				await expectNothingOpened(page);
+			});
+		});
 	});
 
 	test("Play and Shuffle stay drawn on Home, All music and search results, disabled with the reason", async ({

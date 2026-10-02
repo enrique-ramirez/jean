@@ -1,22 +1,39 @@
-import type { FakePlayerState } from "../fake-api/state.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
+	checkedOrderRows,
+	closeNowPlaying,
+	drawing,
+	drawnColour,
 	expect,
+	expectDrawnIn,
+	expectNothingOpened,
 	expectSettlesAt,
+	expectTheScreenIsStillOpen,
+	globalControls,
 	holdRequests,
 	holdThePoll,
 	inSequence,
+	modesSent,
+	nowPlayingScreen,
 	openLibrary,
+	openLibraryWithTheOrderButton,
+	openNowPlaying,
+	orderButton,
+	orderList,
+	orderRow,
+	playerDeclaring,
 	playRequests,
 	statusBar,
 	test,
+	tokenColourIn,
+	touchDrag,
 	trackRow,
+	untilTheInstallIsKnown,
 } from "./fixtures.ts";
 
 // foobar2000's stock playback orders, in the sequence its own Order menu lists them and the fake
 // declares them: Random is fourth, between the repeats and the shuffles. `declared` is foobar2000's
-// name for the order, which is what `enumNames` takes. The rest of a row is what Jean calls that
-// order in each language and the Lucide icon it draws for it.
+// name for the order, which is what `enumNames` takes.
 const ORDERS = [
 	{
 		declared: "Default",
@@ -81,46 +98,34 @@ const [
 	SHUFFLE_FOLDERS,
 ] = ORDERS;
 
-const ACCENTED = ORDERS.filter((order) => order !== IN_ORDER);
+const ORDERS_DRAWN_IN_THE_ACCENT = ORDERS.filter((order) => order !== IN_ORDER);
 
-// ---- the player --------------------------------------------------------------
+// `foo_jean` knows an order by foobar2000's English name for it, so a name outside the stock seven
+// is an order the player can be in and the component has no mode for.
+const UNNAMED = { declared: "Shuffle (genres)" };
 
-// A player declaring `orders` in that sequence and sitting in `current`. The fake holds the order
-// as a position in what it declares, so the position is taken from the same list.
-const offering = (
-	orders: readonly Order[],
-	current: Order,
-): Partial<FakePlayerState> => ({
-	playbackMode: orders.indexOf(current),
-	options: [
-		{
-			id: "playbackOrder",
-			name: "Playback order",
-			type: "enum",
-			value: orders.indexOf(current),
-			enumNames: orders.map((order) => order.declared),
-		},
-	],
-});
+type Declared = Order | typeof UNNAMED;
+
+const offering = (orders: readonly Declared[], current?: Declared) =>
+	playerDeclaring(
+		orders.map((order) => order.declared),
+		current?.declared,
+	);
 
 const stockPlayerIn = (current: Order) => offering(ORDERS, current);
 
-// The order changed at the player itself, as foobar2000's own window or another Jean changes it.
-// Only for a player declaring the stock seven, whose positions `ORDERS` shares.
-const moveThePlayerTo = (player: FakePlayer, order: Order) =>
+// `declared` is what that player declares: the fake holds the order as a position in it.
+const moveThePlayerTo = (
+	player: FakePlayer,
+	order: Order,
+	declared: readonly Declared[] = ORDERS,
+) =>
 	player.patchPlayer({
-		options: [{ id: "playbackOrder", value: ORDERS.indexOf(order) }],
+		options: [{ id: "playbackOrder", value: declared.indexOf(order) }],
 	});
 
-const modesSent = (player: FakePlayer) =>
-	player.requests
-		.filter(
-			(entry) => entry.method === "POST" && entry.path === "/api/playback/mode",
-		)
-		.map((entry) => entry.body?.mode);
-
-// Play-pause, seek, skip, stop and the order itself: everything a key reaching the player would
-// send. Starting a row is a playlist route and is not among them.
+// Every command a key could send to the player. Starting a row goes by a playlist route and is not
+// among them.
 const playbackCommands = (player: FakePlayer) =>
 	player.requests
 		.filter(
@@ -129,72 +134,112 @@ const playbackCommands = (player: FakePlayer) =>
 		)
 		.map((entry) => entry.path);
 
+const holdModeWrites = (page: Page) =>
+	holdRequests(
+		page,
+		(request) =>
+			request.method() === "POST" &&
+			new URL(request.url()).pathname === "/api/playback/mode",
+	);
+
 const startATrack = async (page: Page, player: FakePlayer) => {
 	await trackRow(page, 1).dblclick();
 	await expect.poll(() => player.player.playbackState).toBe("playing");
 };
 
-// ---- the button and its list on a desktop --------------------------------------
+const faceOf = (page: Page, isCompact: boolean) =>
+	orderButton(page, isCompact).locator("svg");
 
-const orderButton = (page: Page, title = "Playback order") =>
-	statusBar(page).getByRole("button", { name: new RegExp(`^${title}`) });
-
-const faceOf = (page: Page) => orderButton(page).locator("svg");
-
-// lucide-react puts `lucide-{name}` on the `svg` it draws, among other classes.
-const drawing = (icon: string) => new RegExp(`(^|\\s)lucide-${icon}(\\s|$)`);
-
-// The transport is drawn once the player has answered, and a key pressed before the button exists
-// is not held for it.
-const arrive = async (page: Page, title?: string) => {
+// Previous is what is waited on, since both transports carry it whatever the install offers.
+const arriveAtTheTransport = async (page: Page, isCompact: boolean) => {
 	await openLibrary(page);
-	await expect(orderButton(page, title)).toBeVisible();
+	const transport = await globalControls(page, isCompact);
+	await expect(
+		transport.getByRole("button", { name: "Previous track" }),
+	).toBeVisible();
 };
 
-const list = (page: Page) => page.getByRole("menu");
+const transportOf = (page: Page, isCompact: boolean) =>
+	isCompact ? nowPlayingScreen(page) : statusBar(page);
 
-const rows = (page: Page) => list(page).getByRole("menuitemradio");
-
-const rowOf = (page: Page, name: string) =>
-	list(page).getByRole("menuitemradio", { name, exact: true });
-
-const checkedRows = (page: Page) =>
-	list(page).getByRole("menuitemradio", { checked: true });
+const rows = (page: Page) => orderList(page).getByRole("menuitemradio");
 
 const iconOf = (row: Locator) => row.locator("svg").first();
 
-const openList = async (page: Page) => {
-	await orderButton(page).click();
-	await expect(list(page)).toBeVisible();
+const openList = async (page: Page, isCompact: boolean) => {
+	await orderButton(page, isCompact).click();
+	await expect(orderList(page)).toBeVisible();
 };
 
-// ---- colour ------------------------------------------------------------------
+const closeButton = (page: Page) =>
+	nowPlayingScreen(page).getByRole("button", { name: "Close now playing" });
 
-// What a custom property resolves to on this page, in the form Chromium computes a colour to.
+// Close pressed, and nothing more than that: the screen is still on its way out. A browser
+// changes the address at once and tells the page in a task of its own, so a key sent straight
+// after the click can reach the app before the close has. No hand is that quick, and two frames
+// are enough for the page to have heard.
+const closeAndLetTheAppHearIt = async (page: Page) => {
+	await closeButton(page).click();
+	await expect(page).not.toHaveURL(/#\/playing/);
+	await page.evaluate(
+		() =>
+			new Promise((heard) =>
+				requestAnimationFrame(() => requestAnimationFrame(heard)),
+			),
+	);
+};
+
+const queuePanel = (page: Page) =>
+	page.getByRole("complementary", { name: "Queue" });
+
+const sheet = (page: Page) =>
+	page.getByRole("dialog", { name: "Playback order" });
+
+// The shortcut sheet closes on a key of its own, which only a sheet still holding the keyboard
+// answers.
+const OVERLAYS = [
+	{ name: "Settings", closingKey: "Escape" },
+	{ name: "Keyboard shortcuts", closingKey: "Shift+?" },
+] as const;
+
+const overlay = (page: Page, name: string) =>
+	page.getByRole("dialog", { name });
+
+// Focus is put on the overlay's button rather than walked there with Tab: how many stops lie
+// between the list and the button is not what these cases are about.
+const openOverTheOpenList = async (page: Page, name: string) => {
+	await page.keyboard.press("o");
+	await expect(orderRow(page, IN_ORDER.english)).toBeFocused();
+	await page.getByRole("button", { name, exact: true }).focus();
+	await page.keyboard.press("Enter");
+	await expect(overlay(page, name)).toBeVisible();
+};
+
+// Next track rather than Space: closing Settings hands focus back to the button that opened it,
+// and a browser answers Space on a focused button by pressing it.
+const NEXT_TRACK_KEY = "ControlOrMeta+ArrowRight";
+const NEXT_TRACK_COMMAND = "/api/playback/next";
+
+const trackInformation = (page: Page) =>
+	page.getByRole("region", { name: "Track information" });
+
+const centreOf = (box: {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}) => ({
+	x: box.x + box.width / 2,
+	y: box.y + box.height / 2,
+});
+
 const tokenColour = (page: Page, token: string) =>
-	page.evaluate((name) => {
-		const probe = document.createElement("span");
-		probe.style.color = `var(${name})`;
-		document.body.append(probe);
-		const colour = getComputedStyle(probe).color;
-		probe.remove();
-		return colour;
-	}, token);
-
-// A Lucide icon is strokes and no fill, and Chromium computes a stroke of `currentColor` to the
-// colour it resolves to.
-const drawnColour = (icon: Locator) =>
-	icon.evaluate((svg) => getComputedStyle(svg).stroke);
-
-// Polled, since a colour partway through a transition computes to `oklab()` in Chromium and to the
-// token's own value only once it lands.
-const expectDrawnIn = (icon: Locator, colour: string) =>
-	expect.poll(() => drawnColour(icon)).toBe(colour);
+	tokenColourIn(page.locator("body"), token);
 
 const ACCENT = "--accent-text";
 
-// What the shuffle toggle was drawn in at rest in the status bar.
 const RESTING_GREY = "--faint";
+const RESTING_GREY_ON_THE_SCREEN = "--muted";
 
 const OKLCH = /^oklch\(([\d.]+) ([\d.]+) ([\d.]+)\)$/;
 
@@ -204,9 +249,6 @@ const GREY_MAX_CHROMA = 0.05;
 
 const chromaOf = (colour: string) => Number(OKLCH.exec(colour)?.[2]);
 
-// ---- boxes -------------------------------------------------------------------
-
-// A popover is measured and placed after it mounts, so the box is read once it has stopped moving.
 const restingBox = async (target: Locator) => {
 	let last = "null";
 	await expect
@@ -225,6 +267,18 @@ const restingBox = async (target: Locator) => {
 	};
 };
 
+// Apple's Human Interface Guidelines and WCAG 2.5.5 both set a touch target's least side at 44, in
+// points and in CSS pixels.
+const TOUCH_TARGET = 44;
+
+// A row of the captured Library with rows either side of it, so a skip either way would land.
+const PLAYING_ROW = 2;
+
+// Inside the strip at the top of an action sheet that a thumb drags it away by.
+const GRABBER_INSET = 8;
+
+const UNNAMED_ICON = "circle-question-mark";
+
 const rightOf = (box: { x: number; width: number }) => box.x + box.width;
 const bottomOf = (box: { y: number; height: number }) => box.y + box.height;
 
@@ -236,9 +290,9 @@ test.describe("on a desktop", () => {
 
 	test.describe("the status bar", () => {
 		test.use({ playerState: stockPlayerIn(IN_ORDER) });
-		test.beforeEach(({ page }) => arrive(page));
+		test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page));
 
-		test("has one playback order button where the shuffle toggle was, and no shuffle toggle", async ({
+		test("has one playback order button, between Show current track and Previous track, with Next track too, and no Shuffle button", async ({
 			page,
 		}) => {
 			const buttons = statusBar(page).getByRole("button");
@@ -246,7 +300,10 @@ test.describe("on a desktop", () => {
 			await expect(buttons.nth(0)).toHaveAccessibleName("Show current track");
 			await expect(buttons.nth(1)).toHaveAccessibleName(/^Playback order/);
 			await expect(buttons.nth(2)).toHaveAccessibleName("Previous track");
-			await expect(orderButton(page)).toHaveCount(1);
+			await expect(
+				statusBar(page).getByRole("button", { name: "Next track" }),
+			).toBeVisible();
+			await expect(orderButton(page, false)).toHaveCount(1);
 			// Exact, or the order button's own name would answer while the player shuffles.
 			await expect(
 				statusBar(page).getByRole("button", { name: "Shuffle", exact: true }),
@@ -258,52 +315,50 @@ test.describe("on a desktop", () => {
 		test.describe(`the button's face on the ${theme} theme`, () => {
 			test.use({ settings: { "jean.theme": theme } });
 			test.beforeEach(async ({ page }) => {
-				await arrive(page);
+				await openLibraryWithTheOrderButton(page);
 				await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
 			});
 
 			test.describe("in In order", () => {
 				test.use({ playerState: stockPlayerIn(IN_ORDER) });
 
-				test("is In order's icon, in the grey the shuffle toggle had at rest", async ({
-					page,
-				}) => {
-					await expect(faceOf(page)).toHaveClass(drawing(IN_ORDER.icon));
-					await expect(orderButton(page)).toHaveAccessibleName(
+				test("is In order's icon, in the resting grey", async ({ page }) => {
+					await expect(faceOf(page, false)).toHaveClass(drawing(IN_ORDER.icon));
+					await expect(orderButton(page, false)).toHaveAccessibleName(
 						`Playback order: ${IN_ORDER.english}`,
 					);
 
 					const grey = await tokenColour(page, RESTING_GREY);
 					expect(grey).not.toBe(await tokenColour(page, ACCENT));
-					await expectDrawnIn(faceOf(page), grey);
+					await expectDrawnIn(faceOf(page, false), grey);
 				});
 			});
 
-			for (const order of ACCENTED) {
+			for (const order of ORDERS_DRAWN_IN_THE_ACCENT) {
 				test.describe(`in ${order.english}`, () => {
 					test.use({ playerState: stockPlayerIn(order) });
 
 					test("is that order's icon, in the accent at rest, hovered and with the list open", async ({
 						page,
 					}) => {
-						await expect(faceOf(page)).toHaveClass(drawing(order.icon));
-						await expect(orderButton(page)).toHaveAccessibleName(
+						await expect(faceOf(page, false)).toHaveClass(drawing(order.icon));
+						await expect(orderButton(page, false)).toHaveAccessibleName(
 							`Playback order: ${order.english}`,
 						);
 
 						const accent = await tokenColour(page, ACCENT);
 						expect(accent).not.toBe(await tokenColour(page, RESTING_GREY));
-						await expectDrawnIn(faceOf(page), accent);
+						await expectDrawnIn(faceOf(page, false), accent);
 
-						// The toggle turned to the text colour under the pointer, which on this button
-						// would read as the order having changed.
-						await orderButton(page).hover();
-						await expectDrawnIn(faceOf(page), accent);
+						// An icon that turned to the text colour under the pointer would read as the order
+						// having changed.
+						await orderButton(page, false).hover();
+						await expectDrawnIn(faceOf(page, false), accent);
 
-						await openList(page);
-						await expectDrawnIn(faceOf(page), accent);
+						await openList(page, false);
+						await expectDrawnIn(faceOf(page, false), accent);
 						await page.mouse.move(1, 1);
-						await expectDrawnIn(faceOf(page), accent);
+						await expectDrawnIn(faceOf(page, false), accent);
 					});
 				});
 			}
@@ -312,13 +367,13 @@ test.describe("on a desktop", () => {
 
 	test.describe("the button, as it is announced", () => {
 		test.use({ playerState: stockPlayerIn(REPEAT_PLAYLIST) });
-		test.beforeEach(({ page }) => arrive(page));
+		test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page));
 
 		test("its name and its tooltip are the order the player is in, and follow it", async ({
 			page,
 			player,
 		}) => {
-			const button = orderButton(page);
+			const button = orderButton(page, false);
 			await expect(button).toHaveAccessibleName(
 				"Playback order: Repeat playlist",
 			);
@@ -341,42 +396,46 @@ test.describe("on a desktop", () => {
 		test("it says it opens a menu and whether that menu is open, and is never a toggle", async ({
 			page,
 		}) => {
-			const button = orderButton(page);
+			const button = orderButton(page, false);
 			await expect(button).toHaveAttribute("aria-haspopup", "menu");
 			await expect(button).toHaveAttribute("aria-expanded", "false");
 			await expect(button).not.toHaveAttribute("aria-pressed");
 
 			await button.click();
-			await expect(list(page)).toBeVisible();
+			await expect(orderList(page)).toBeVisible();
 			await expect(button).toHaveAttribute("aria-expanded", "true");
 			await expect(button).not.toHaveAttribute("aria-pressed");
 
 			await page.keyboard.press("Escape");
-			await expect(list(page)).toHaveCount(0);
+			await expect(orderList(page)).toHaveCount(0);
 			await expect(button).toHaveAttribute("aria-expanded", "false");
 		});
 	});
 
 	test.describe("an order changed somewhere else", () => {
 		test.use({ playerState: stockPlayerIn(IN_ORDER) });
-		test.beforeEach(({ page }) => arrive(page));
+		test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page));
 
 		test("moves the name, the face and an open list's tick within one poll", async ({
 			page,
 			player,
 		}) => {
-			await openList(page);
-			await expect(checkedRows(page)).toHaveAccessibleName(IN_ORDER.english);
+			await openList(page, false);
+			await expect(checkedOrderRows(page)).toHaveAccessibleName(
+				IN_ORDER.english,
+			);
 
 			const poll = await holdThePoll(page);
 			moveThePlayerTo(player, SHUFFLE_FOLDERS);
 			poll.letOneThrough();
 
-			await expect(orderButton(page)).toHaveAccessibleName(
+			await expect(orderButton(page, false)).toHaveAccessibleName(
 				"Playback order: Shuffle folders",
 			);
-			await expect(faceOf(page)).toHaveClass(drawing(SHUFFLE_FOLDERS.icon));
-			await expect(checkedRows(page)).toHaveAccessibleName(
+			await expect(faceOf(page, false)).toHaveClass(
+				drawing(SHUFFLE_FOLDERS.icon),
+			);
+			await expect(checkedOrderRows(page)).toHaveAccessibleName(
 				SHUFFLE_FOLDERS.english,
 			);
 			await expect(rows(page)).toHaveCount(ORDERS.length);
@@ -386,21 +445,21 @@ test.describe("on a desktop", () => {
 
 	test.describe("pressing the button", () => {
 		test.use({ playerState: stockPlayerIn(IN_ORDER) });
-		test.beforeEach(({ page }) => arrive(page));
+		test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page));
 
 		test("a click opens the list wholly above the button, headed Playback order, and sends nothing", async ({
 			page,
 			player,
 		}) => {
-			await openList(page);
-			await expect(list(page)).toHaveCount(1);
+			await openList(page, false);
+			await expect(orderList(page)).toHaveCount(1);
 			await expect(rows(page)).toHaveCount(ORDERS.length);
 
 			const heading = page.getByText("Playback order", { exact: true });
 			await expect(heading).toBeVisible();
 
-			const menu = await restingBox(list(page));
-			const button = await restingBox(orderButton(page));
+			const menu = await restingBox(orderList(page));
+			const button = await restingBox(orderButton(page, false));
 			const headed = await restingBox(heading);
 			const firstRow = await restingBox(rows(page).first());
 
@@ -434,10 +493,10 @@ test.describe("on a desktop", () => {
 				page,
 				player,
 			}) => {
-				await orderButton(page).focus();
+				await orderButton(page, false).focus();
 				await page.keyboard.press(key);
 
-				await expect(list(page)).toBeVisible();
+				await expect(orderList(page)).toBeVisible();
 				await expect(rows(page)).toHaveCount(ORDERS.length);
 				await expectSettlesAt(player, () => playbackCommands(player), []);
 				expect(playRequests(player)).toEqual([]);
@@ -448,40 +507,40 @@ test.describe("on a desktop", () => {
 
 	test.describe("the list's rows", () => {
 		test.use({ playerState: stockPlayerIn(IN_ORDER) });
-		test.beforeEach(({ page }) => arrive(page));
+		test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page));
 
 		test("are the seven orders by Jean's English names, in the player's sequence, with no separator", async ({
 			page,
 		}) => {
-			await openList(page);
+			await openList(page, false);
 
 			await expect(rows(page)).toHaveText(ORDERS.map((order) => order.english));
-			await expect(list(page).getByRole("menuitem")).toHaveCount(0);
-			await expect(list(page).getByRole("separator")).toHaveCount(0);
+			await expect(orderList(page).getByRole("menuitem")).toHaveCount(0);
+			await expect(orderList(page).getByRole("separator")).toHaveCount(0);
 		});
 	});
 
-	// Sorted, this declaration reads In order, Random, Repeat track, Shuffle folders, and in Jean's
-	// own table In order, Repeat track, Shuffle folders, Random. Neither is the sequence declared.
+	// The sequence declared is neither foobar2000's stock one nor alphabetical, so rows that come
+	// back in it were not reordered by anything.
 	test.describe("a player declaring four orders in a sequence of its own", () => {
 		const DECLARED = [SHUFFLE_FOLDERS, IN_ORDER, RANDOM, REPEAT_TRACK];
 
 		test.use({ playerState: offering(DECLARED, RANDOM) });
-		test.beforeEach(({ page }) => arrive(page));
+		test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page));
 
 		test("gets those four rows in that sequence, and no other", async ({
 			page,
 		}) => {
-			await expect(orderButton(page)).toHaveAccessibleName(
+			await expect(orderButton(page, false)).toHaveAccessibleName(
 				"Playback order: Random",
 			);
-			await openList(page);
+			await openList(page, false);
 
 			await expect(rows(page)).toHaveText(
 				DECLARED.map((order) => order.english),
 			);
-			await expect(list(page).getByRole("menuitem")).toHaveCount(0);
-			await expect(checkedRows(page)).toHaveAccessibleName(RANDOM.english);
+			await expect(orderList(page).getByRole("menuitem")).toHaveCount(0);
+			await expect(checkedOrderRows(page)).toHaveAccessibleName(RANDOM.english);
 		});
 	});
 
@@ -490,17 +549,19 @@ test.describe("on a desktop", () => {
 	for (const current of [IN_ORDER, REPEAT_PLAYLIST]) {
 		test.describe(`a row's icon, with the player in ${current.english}`, () => {
 			test.use({ playerState: stockPlayerIn(current) });
-			test.beforeEach(({ page }) => arrive(page));
+			test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page));
 
 			test("is its order's, at the left of its name, in the accent for every order but In order", async ({
 				page,
 			}) => {
-				await openList(page);
-				await expect(checkedRows(page)).toHaveAccessibleName(current.english);
+				await openList(page, false);
+				await expect(checkedOrderRows(page)).toHaveAccessibleName(
+					current.english,
+				);
 				const accent = await tokenColour(page, ACCENT);
 
 				await inSequence(ORDERS, async (order) => {
-					const row = rowOf(page, order.english);
+					const row = orderRow(page, order.english);
 					await expect(iconOf(row)).toHaveClass(drawing(order.icon));
 
 					const icon = await restingBox(iconOf(row));
@@ -529,28 +590,27 @@ test.describe("on a desktop", () => {
 		// focuses its first row would pass from In order.
 		test.describe("with the player in Random", () => {
 			test.use({ playerState: stockPlayerIn(RANDOM) });
-			test.beforeEach(({ page }) => arrive(page));
+			test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page));
 
 			test("every row is a radio item, and only the current one is checked and ticked after its name", async ({
 				page,
 			}) => {
-				await openList(page);
+				await openList(page, false);
 
 				await expect(rows(page)).toHaveCount(ORDERS.length);
-				await expect(rowOf(page, RANDOM.english)).toHaveAttribute(
+				await expect(orderRow(page, RANDOM.english)).toHaveAttribute(
 					"aria-checked",
 					"true",
 				);
-				await expect(checkedRows(page)).toHaveCount(1);
+				await expect(checkedOrderRows(page)).toHaveCount(1);
 
-				// A row's icon is its first drawing. The tick is the one more the current row has.
 				await inSequence(ORDERS, (order) =>
-					expect(rowOf(page, order.english).locator("svg")).toHaveCount(
+					expect(orderRow(page, order.english).locator("svg")).toHaveCount(
 						order === RANDOM ? 2 : 1,
 					),
 				);
 
-				const current = rowOf(page, RANDOM.english);
+				const current = orderRow(page, RANDOM.english);
 				const tick = await restingBox(current.locator("svg").last());
 				const name = await restingBox(
 					current.getByText(RANDOM.english, { exact: true }),
@@ -566,56 +626,58 @@ test.describe("on a desktop", () => {
 				page,
 				player,
 			}) => {
-				await openList(page);
-				await expect(rowOf(page, RANDOM.english)).toBeFocused();
+				await openList(page, false);
+				await expect(orderRow(page, RANDOM.english)).toBeFocused();
 
 				await page.keyboard.press("ArrowDown");
-				await expect(rowOf(page, SHUFFLE_TRACKS.english)).toBeFocused();
+				await expect(orderRow(page, SHUFFLE_TRACKS.english)).toBeFocused();
 
 				await page.keyboard.press("ArrowUp");
 				await page.keyboard.press("ArrowUp");
-				await expect(rowOf(page, REPEAT_TRACK.english)).toBeFocused();
+				await expect(orderRow(page, REPEAT_TRACK.english)).toBeFocused();
 
 				await expectSettlesAt(player, () => playbackCommands(player), []);
-				await expect(checkedRows(page)).toHaveAccessibleName(RANDOM.english);
+				await expect(checkedOrderRows(page)).toHaveAccessibleName(
+					RANDOM.english,
+				);
 			});
 		});
 
 		test.describe("with the player in In order", () => {
 			test.use({ playerState: stockPlayerIn(IN_ORDER) });
-			test.beforeEach(({ page }) => arrive(page));
+			test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page));
 
 			test("the arrows wrap at both ends", async ({ page }) => {
-				await openList(page);
-				await expect(rowOf(page, IN_ORDER.english)).toBeFocused();
+				await openList(page, false);
+				await expect(orderRow(page, IN_ORDER.english)).toBeFocused();
 
 				await page.keyboard.press("ArrowUp");
-				await expect(rowOf(page, SHUFFLE_FOLDERS.english)).toBeFocused();
+				await expect(orderRow(page, SHUFFLE_FOLDERS.english)).toBeFocused();
 
 				await page.keyboard.press("ArrowDown");
-				await expect(rowOf(page, IN_ORDER.english)).toBeFocused();
+				await expect(orderRow(page, IN_ORDER.english)).toBeFocused();
 			});
 
 			test("Enter chooses the focused row, closes the list and puts focus back on the button", async ({
 				page,
 				player,
 			}) => {
-				await openList(page);
-				await expect(rowOf(page, IN_ORDER.english)).toBeFocused();
+				await openList(page, false);
+				await expect(orderRow(page, IN_ORDER.english)).toBeFocused();
 				await page.keyboard.press("ArrowDown");
 				await page.keyboard.press("ArrowDown");
-				await expect(rowOf(page, REPEAT_TRACK.english)).toBeFocused();
+				await expect(orderRow(page, REPEAT_TRACK.english)).toBeFocused();
 
 				await page.keyboard.press("Enter");
 
 				await expectSettlesAt(player, () => modesSent(player), [
 					REPEAT_TRACK.mode,
 				]);
-				await expect(list(page)).toHaveCount(0);
-				await expect(orderButton(page)).toHaveAccessibleName(
+				await expect(orderList(page)).toHaveCount(0);
+				await expect(orderButton(page, false)).toHaveAccessibleName(
 					"Playback order: Repeat track",
 				);
-				await expect(orderButton(page)).toBeFocused();
+				await expect(orderButton(page, false)).toBeFocused();
 				// Enter is also what plays the selected row of the list behind the menu.
 				expect(playRequests(player)).toEqual([]);
 			});
@@ -625,10 +687,10 @@ test.describe("on a desktop", () => {
 				player,
 			}) => {
 				await startATrack(page, player);
-				await openList(page);
-				await expect(rowOf(page, IN_ORDER.english)).toBeFocused();
+				await openList(page, false);
+				await expect(orderRow(page, IN_ORDER.english)).toBeFocused();
 				await page.keyboard.press("ArrowDown");
-				await expect(rowOf(page, REPEAT_PLAYLIST.english)).toBeFocused();
+				await expect(orderRow(page, REPEAT_PLAYLIST.english)).toBeFocused();
 
 				await page.keyboard.press("Space");
 
@@ -637,28 +699,154 @@ test.describe("on a desktop", () => {
 				]);
 				expect(modesSent(player)).toEqual([REPEAT_PLAYLIST.mode]);
 				expect(player.player.playbackState).toBe("playing");
-				await expect(list(page)).toHaveCount(0);
-				await expect(orderButton(page)).toBeFocused();
+				await expect(orderList(page)).toHaveCount(0);
+				await expect(orderButton(page, false)).toBeFocused();
 			});
 
 			test("Escape closes the list, sends nothing and puts focus back on the button", async ({
 				page,
 				player,
 			}) => {
-				await openList(page);
-				await expect(rowOf(page, IN_ORDER.english)).toBeFocused();
+				await openList(page, false);
+				await expect(orderRow(page, IN_ORDER.english)).toBeFocused();
 				await page.keyboard.press("ArrowDown");
-				await expect(rowOf(page, REPEAT_PLAYLIST.english)).toBeFocused();
+				await expect(orderRow(page, REPEAT_PLAYLIST.english)).toBeFocused();
 
 				await page.keyboard.press("Escape");
 
-				await expect(list(page)).toHaveCount(0);
-				await expect(orderButton(page)).toBeFocused();
+				await expect(orderList(page)).toHaveCount(0);
+				await expect(orderButton(page, false)).toBeFocused();
 				await expectSettlesAt(player, () => playbackCommands(player), []);
-				await expect(orderButton(page)).toHaveAccessibleName(
+				await expect(orderButton(page, false)).toHaveAccessibleName(
 					"Playback order: In order",
 				);
 			});
+
+			// The screen closes on Escape too, and the list is in front of it. Both ways of opening
+			// the list are pressed, since only a click leaves focus on the button to go back to.
+			test("with the now-playing screen open, Escape closes the list and not the screen, whether o or a click opened it", async ({
+				page,
+				player,
+			}) => {
+				await page.keyboard.press("w");
+				await expectTheScreenIsStillOpen(page);
+
+				await page.keyboard.press("o");
+				await expect(orderRow(page, IN_ORDER.english)).toBeFocused();
+				await page.keyboard.press("Escape");
+
+				await expectTheScreenIsStillOpen(page);
+				await expect(orderList(page)).toHaveCount(0);
+
+				await openList(page, false);
+				await expect(orderRow(page, IN_ORDER.english)).toBeFocused();
+				await page.keyboard.press("Escape");
+
+				await expectTheScreenIsStillOpen(page);
+				await expect(orderList(page)).toHaveCount(0);
+				await expect(orderButton(page, false)).toBeFocused();
+				await expectSettlesAt(player, () => playbackCommands(player), []);
+				await expectTheScreenIsStillOpen(page);
+			});
+
+			// The queue panel closes on Escape as well, and the list is in front of it too.
+			test("with the queue panel open, Escape closes the list and not the panel, whether o or a click opened it, and Escape again closes the panel", async ({
+				page,
+				player,
+			}) => {
+				await statusBar(page)
+					.getByRole("button", { name: /^Queue/ })
+					.click();
+				await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+
+				await page.keyboard.press("o");
+				await expect(orderRow(page, IN_ORDER.english)).toBeFocused();
+				await page.keyboard.press("Escape");
+
+				await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+				await expect(orderList(page)).toHaveCount(0);
+
+				await openList(page, false);
+				await expect(orderRow(page, IN_ORDER.english)).toBeFocused();
+				await page.keyboard.press("Escape");
+
+				await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+				await expect(orderList(page)).toHaveCount(0);
+				await expect(orderButton(page, false)).toBeFocused();
+				await expectSettlesAt(player, () => playbackCommands(player), []);
+				await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+
+				await page.keyboard.press("Escape");
+				await expect(queuePanel(page)).toHaveAttribute("data-open", "false");
+			});
+
+			// The list stays open when focus leaves it, so it is the one overlay another can be
+			// opened over, and the two can then close in either sequence. In this one the list goes
+			// first, and a keyboard handed back to a list that has gone answers no key at all.
+			for (const { name, closingKey } of OVERLAYS) {
+				test(`with ${name} opened over the list, a press inside it closes the list, and once ${closingKey} has closed it a key reaches the player and o opens the list again`, async ({
+					page,
+					player,
+				}) => {
+					await openOverTheOpenList(page, name);
+
+					await overlay(page, name)
+						.getByRole("heading", { name, exact: true })
+						.click();
+					await expect(orderList(page)).toHaveCount(0);
+
+					await page.keyboard.press("Space");
+					await expectSettlesAt(player, () => playbackCommands(player), []);
+					await expect(overlay(page, name)).toBeVisible();
+
+					await page.keyboard.press(closingKey);
+					await expect(overlay(page, name)).toHaveCount(0);
+
+					await page.keyboard.press(NEXT_TRACK_KEY);
+					await expectSettlesAt(player, () => playbackCommands(player), [
+						NEXT_TRACK_COMMAND,
+					]);
+
+					await page.keyboard.press("o");
+					await expect(orderRow(page, IN_ORDER.english)).toBeFocused();
+				});
+			}
+
+			// The other sequence, with the queue panel behind both: each key closes the front layer
+			// and no other, and the list is in front of the panel for as long as it is open.
+			for (const { name, closingKey } of OVERLAYS) {
+				test(`with ${name} opened over the list, ${closingKey} closes it and not the list, Escape then closes the list and not the queue panel, and with all three closed a key reaches the player and o opens the list again`, async ({
+					page,
+					player,
+				}) => {
+					await statusBar(page)
+						.getByRole("button", { name: /^Queue/ })
+						.click();
+					await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+					await openOverTheOpenList(page, name);
+
+					await page.keyboard.press(closingKey);
+					await expect(overlay(page, name)).toHaveCount(0);
+					await expect(orderList(page)).toHaveCount(1);
+					await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+
+					await page.keyboard.press("Escape");
+					await expect(orderList(page)).toHaveCount(0);
+					await expectSettlesAt(player, () => playbackCommands(player), []);
+					await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+
+					await page.keyboard.press("Escape");
+					await expect(queuePanel(page)).toHaveAttribute("data-open", "false");
+
+					await page.keyboard.press(NEXT_TRACK_KEY);
+					await expectSettlesAt(player, () => playbackCommands(player), [
+						NEXT_TRACK_COMMAND,
+					]);
+
+					await page.keyboard.press("o");
+					await expect(orderRow(page, IN_ORDER.english)).toBeFocused();
+				});
+			}
 
 			// With nothing playing a seek has nothing to act on, and the guard would pass unguarded.
 			test("no arrow typed at the list seeks the track playing", async ({
@@ -666,8 +854,8 @@ test.describe("on a desktop", () => {
 				player,
 			}) => {
 				await startATrack(page, player);
-				await openList(page);
-				await expect(rowOf(page, IN_ORDER.english)).toBeFocused();
+				await openList(page, false);
+				await expect(orderRow(page, IN_ORDER.english)).toBeFocused();
 
 				await page.keyboard.press("ArrowRight");
 				await page.keyboard.press("ArrowDown");
@@ -683,24 +871,25 @@ test.describe("on a desktop", () => {
 	test.describe("choosing a row", () => {
 		test.describe("with the player in In order", () => {
 			test.use({ playerState: stockPlayerIn(IN_ORDER) });
-			test.beforeEach(({ page }) => arrive(page));
+			test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page));
 
 			test("sends that order once, closes the list and starts nothing", async ({
 				page,
 				player,
 			}) => {
-				await openList(page);
-				await rowOf(page, SHUFFLE_ALBUMS.english).click();
+				await openList(page, false);
+				await orderRow(page, SHUFFLE_ALBUMS.english).click();
 
 				await expectSettlesAt(player, () => playbackCommands(player), [
 					"/api/playback/mode",
 				]);
 				expect(modesSent(player)).toEqual([SHUFFLE_ALBUMS.mode]);
 				expect(playRequests(player)).toEqual([]);
+				expect(player.playQueue).toEqual([]);
 				expect(player.player.playbackMode).toBe(ORDERS.indexOf(SHUFFLE_ALBUMS));
 				expect(player.player.playbackState).toBe("stopped");
-				await expect(list(page)).toHaveCount(0);
-				await expect(orderButton(page)).toHaveAccessibleName(
+				await expect(orderList(page)).toHaveCount(0);
+				await expect(orderButton(page, false)).toHaveAccessibleName(
 					"Playback order: Shuffle albums",
 				);
 			});
@@ -709,22 +898,24 @@ test.describe("on a desktop", () => {
 				page,
 				player,
 			}) => {
-				const held = await holdRequests(
-					page,
-					(request) =>
-						request.method() === "POST" &&
-						new URL(request.url()).pathname === "/api/playback/mode",
+				// A poll answered after the choice would draw the order the player is still in, and
+				// with the write held nothing would correct it.
+				await expect(orderButton(page, false)).toHaveAccessibleName(
+					"Playback order: In order",
 				);
-				await openList(page);
-				await rowOf(page, REPEAT_TRACK.english).click();
+				await holdThePoll(page);
+				const held = await holdModeWrites(page);
+				await openList(page, false);
+				await orderRow(page, REPEAT_TRACK.english).click();
 				await held.untilHeld();
 
-				await expect(orderButton(page)).toHaveAccessibleName(
+				await expect(orderButton(page, false)).toHaveAccessibleName(
 					"Playback order: Repeat track",
 				);
-				await expect(faceOf(page)).toHaveClass(drawing(REPEAT_TRACK.icon));
-				await expect(list(page)).toHaveCount(0);
-				// Still on its way: the player has neither seen the write nor moved.
+				await expect(faceOf(page, false)).toHaveClass(
+					drawing(REPEAT_TRACK.icon),
+				);
+				await expect(orderList(page)).toHaveCount(0);
 				expect(modesSent(player)).toEqual([]);
 				expect(player.player.playbackMode).toBe(ORDERS.indexOf(IN_ORDER));
 
@@ -733,7 +924,7 @@ test.describe("on a desktop", () => {
 				await expectSettlesAt(player, () => modesSent(player), [
 					REPEAT_TRACK.mode,
 				]);
-				await expect(orderButton(page)).toHaveAccessibleName(
+				await expect(orderButton(page, false)).toHaveAccessibleName(
 					"Playback order: Repeat track",
 				);
 			});
@@ -741,15 +932,15 @@ test.describe("on a desktop", () => {
 
 		test.describe("that is already the current one", () => {
 			test.use({ playerState: stockPlayerIn(REPEAT_PLAYLIST) });
-			test.beforeEach(({ page }) => arrive(page));
+			test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page));
 
 			test("sends nothing and closes the list", async ({ page, player }) => {
-				await openList(page);
-				await rowOf(page, REPEAT_PLAYLIST.english).click();
+				await openList(page, false);
+				await orderRow(page, REPEAT_PLAYLIST.english).click();
 
-				await expect(list(page)).toHaveCount(0);
+				await expect(orderList(page)).toHaveCount(0);
 				await expectSettlesAt(player, () => playbackCommands(player), []);
-				await expect(orderButton(page)).toHaveAccessibleName(
+				await expect(orderButton(page, false)).toHaveAccessibleName(
 					"Playback order: Repeat playlist",
 				);
 			});
@@ -760,14 +951,14 @@ test.describe("on a desktop", () => {
 		const TITLE = "Orden de reproducción";
 
 		test.use({ locale: "es-AR", playerState: stockPlayerIn(REPEAT_PLAYLIST) });
-		test.beforeEach(({ page }) => arrive(page, TITLE));
+		test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page, TITLE));
 
 		test("the button's name, the list's heading and the seven rows read in Spanish", async ({
 			page,
 		}) => {
 			await expect(page.locator("html")).toHaveAttribute("lang", "es");
 
-			const button = orderButton(page, TITLE);
+			const button = orderButton(page, false, TITLE);
 			await expect(button).toHaveAccessibleName(`${TITLE}: Repetir lista`);
 			await expect(button).toHaveAttribute("title", `${TITLE}: Repetir lista`);
 
@@ -778,3 +969,582 @@ test.describe("on a desktop", () => {
 		});
 	});
 });
+
+test.describe("on a compact viewport", () => {
+	test.skip(
+		({ isMobile }) => !isMobile,
+		"a desktop draws the button in its status bar and the list as a menu, covered above",
+	);
+
+	// Shuffle albums, so the button's name holds the word Shuffle, and a lookup of a Shuffle button
+	// by it would find this one.
+	test.use({ playerState: stockPlayerIn(SHUFFLE_ALBUMS) });
+
+	test("the now-playing screen has the order button beside the queue button, and the status bar has none", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await expect(
+			statusBar(page).getByRole("button", { name: /^(Play|Pause)$/ }),
+		).toBeVisible();
+		await expect(orderButton(page, false)).toHaveCount(0);
+
+		await openNowPlaying(page);
+		const screen = nowPlayingScreen(page);
+
+		await expect(orderButton(page, true)).toHaveCount(1);
+		await expect(orderButton(page, true)).toHaveAccessibleName(
+			"Playback order: Shuffle albums",
+		);
+		await expect(faceOf(page, true)).toHaveClass(drawing(SHUFFLE_ALBUMS.icon));
+		await expect(
+			screen.getByRole("button", { name: "Shuffle", exact: true }),
+		).toHaveCount(0);
+
+		const order = await restingBox(orderButton(page, true));
+		const queue = await restingBox(
+			screen.getByRole("button", { name: /^Queue/ }),
+		);
+		expect(Math.abs(queue.y - order.y)).toBeLessThan(queue.height);
+		expect(queue.x).toBeGreaterThanOrEqual(rightOf(order));
+		expect(queue.x - rightOf(order)).toBeLessThan(order.width);
+	});
+
+	test("the status bar runs from Show current track to Play or Pause with no Previous, Next or Queue, and the screen has Previous and Next", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await expect(
+			statusBar(page).getByRole("button", { name: /^(Play|Pause)$/ }),
+		).toBeVisible();
+
+		const barLabels = await statusBar(page)
+			.getByRole("button")
+			.evaluateAll((buttons) =>
+				buttons.map((button) => button.getAttribute("aria-label")),
+			);
+		expect(barLabels).not.toContain("Previous track");
+		expect(barLabels).not.toContain("Next track");
+		expect(barLabels.some((label) => label?.startsWith("Queue"))).toBe(false);
+		expect(barLabels[0]).toBe("Show current track");
+		expect(barLabels[barLabels.length - 1]).toMatch(/^(Play|Pause)$/);
+
+		await openNowPlaying(page);
+		const screen = nowPlayingScreen(page);
+		await expect(
+			screen.getByRole("button", { name: "Previous track" }),
+		).toBeVisible();
+		await expect(
+			screen.getByRole("button", { name: "Next track" }),
+		).toBeVisible();
+	});
+
+	// A phone can have a keyboard attached, and Playwright's has one.
+	test.describe("o, from a keyboard", () => {
+		test("with the screen open, opens the sheet with the current order checked, and sends nothing", async ({
+			page,
+			player,
+		}) => {
+			await arriveAtTheTransport(page, true);
+			await expect(orderButton(page, true)).toBeVisible();
+
+			await page.keyboard.press("o");
+
+			await expect(sheet(page)).toBeVisible();
+			await expect(
+				sheet(page).getByRole("menuitemradio", { checked: true }),
+			).toHaveAccessibleName(SHUFFLE_ALBUMS.english);
+			await expectSettlesAt(player, () => playbackCommands(player), []);
+		});
+
+		test("before the screen has been opened, opens nothing and sends nothing", async ({
+			page,
+			player,
+		}) => {
+			await openLibrary(page);
+			await expect(
+				statusBar(page).getByRole("button", { name: /^(Play|Pause)$/ }),
+			).toBeVisible();
+			await untilTheInstallIsKnown(player);
+
+			await page.keyboard.press("o");
+
+			await expectSettlesAt(player, () => playbackCommands(player), []);
+			await expectNothingOpened(page);
+		});
+
+		test("with the screen closed again, opens nothing and sends nothing", async ({
+			page,
+			player,
+		}) => {
+			await arriveAtTheTransport(page, true);
+			await expect(orderButton(page, true)).toBeVisible();
+			await closeNowPlaying(page);
+
+			await page.keyboard.press("o");
+
+			await expectSettlesAt(player, () => playbackCommands(player), []);
+			await expectNothingOpened(page);
+		});
+
+		// The screen takes a moment to leave once Close is pressed, and it is closed from the
+		// press. A sheet opened in that moment leaves with the screen, so every one ever drawn
+		// is recorded as it is added.
+		test("pressed as the screen is closing, never draws the sheet and sends nothing", async ({
+			page,
+			player,
+		}) => {
+			await arriveAtTheTransport(page, true);
+			await expect(orderButton(page, true)).toBeVisible();
+			await page.evaluate(() => {
+				new MutationObserver(() => {
+					if (document.querySelector('[role="dialog"]'))
+						document.documentElement.dataset.drewADialog = "true";
+				}).observe(document.body, { childList: true, subtree: true });
+			});
+
+			await closeAndLetTheAppHearIt(page);
+			await page.keyboard.press("o");
+
+			await expect(nowPlayingScreen(page)).toBeHidden();
+			await expectSettlesAt(player, () => playbackCommands(player), []);
+			await expect(page.locator("html")).not.toHaveAttribute(
+				"data-drew-a-dialog",
+			);
+		});
+
+		// The screen's Lyrics button brings the track information up over the whole screen, the
+		// order button with it. Playwright calls a covered element visible, so what is drawn at
+		// the button's centre is asked of the browser.
+		test("with track information up over the button, opens nothing and sends nothing", async ({
+			page,
+			player,
+		}) => {
+			await arriveAtTheTransport(page, true);
+			const button = centreOf(await restingBox(orderButton(page, true)));
+
+			await nowPlayingScreen(page)
+				.getByRole("button", { name: "Lyrics", exact: true })
+				.click();
+			await expect
+				.poll(
+					() =>
+						trackInformation(page).evaluate(
+							(layer, at) =>
+								layer.contains(document.elementFromPoint(at.x, at.y)),
+							button,
+						),
+					{ message: "track information, drawn where the order button is" },
+				)
+				.toBe(true);
+
+			await page.keyboard.press("o");
+
+			await expectSettlesAt(player, () => playbackCommands(player), []);
+			await expectNothingOpened(page);
+		});
+
+		test.describe("on an install offering two orders", () => {
+			test.use({
+				playerState: offering([IN_ORDER, REPEAT_PLAYLIST], IN_ORDER),
+			});
+
+			test("pressed as the screen is closing, sends nothing", async ({
+				page,
+				player,
+			}) => {
+				await arriveAtTheTransport(page, true);
+				await expect(orderButton(page, true)).toHaveAccessibleName(
+					"Playback order: In order",
+				);
+
+				await closeAndLetTheAppHearIt(page);
+				await page.keyboard.press("o");
+
+				await expect(nowPlayingScreen(page)).toBeHidden();
+				await expectSettlesAt(player, () => playbackCommands(player), []);
+			});
+
+			test("with the screen closed again, sends nothing", async ({
+				page,
+				player,
+			}) => {
+				await arriveAtTheTransport(page, true);
+				await expect(orderButton(page, true)).toHaveAccessibleName(
+					"Playback order: In order",
+				);
+				await closeNowPlaying(page);
+
+				await page.keyboard.press("o");
+
+				await expectSettlesAt(player, () => playbackCommands(player), []);
+			});
+		});
+	});
+
+	// The screen closes on Escape too, and the sheet is in front of it.
+	test("Escape closes the sheet and not the screen, puts focus back on the button and sends nothing", async ({
+		page,
+		player,
+	}) => {
+		await arriveAtTheTransport(page, true);
+		await expect(orderButton(page, true)).toBeVisible();
+		await orderButton(page, true).click();
+		await expect(sheet(page)).toBeVisible();
+
+		await page.keyboard.press("Escape");
+
+		await expectTheScreenIsStillOpen(page);
+		await expect(sheet(page)).toHaveCount(0);
+		await expect(orderButton(page, true)).toBeFocused();
+		await expectSettlesAt(player, () => playbackCommands(player), []);
+		await expectTheScreenIsStillOpen(page);
+	});
+
+	test("the button is a target a thumb can hit", async ({ page }) => {
+		await arriveAtTheTransport(page, true);
+		await expect(orderButton(page, true)).toBeVisible();
+
+		const box = await restingBox(orderButton(page, true));
+		expect(box.width).toBeGreaterThanOrEqual(TOUCH_TARGET);
+		expect(box.height).toBeGreaterThanOrEqual(TOUCH_TARGET);
+	});
+
+	test("a tap opens an action sheet named Playback order holding the rows, and sends nothing", async ({
+		page,
+		player,
+	}) => {
+		await arriveAtTheTransport(page, true);
+		await expect(orderButton(page, true)).toBeVisible();
+		await orderButton(page, true).tap();
+
+		await expect(sheet(page)).toBeVisible();
+		await expect(sheet(page).getByRole("menuitemradio")).toHaveText(
+			ORDERS.map((order) => order.english),
+		);
+		await expect(
+			sheet(page).getByRole("menuitemradio", { checked: true }),
+		).toHaveAccessibleName(SHUFFLE_ALBUMS.english);
+		await expectSettlesAt(player, () => playbackCommands(player), []);
+		expect(player.player.playbackMode).toBe(ORDERS.indexOf(SHUFFLE_ALBUMS));
+	});
+
+	// Started at the player, so the log of what the app asked for stays empty.
+	const openTheSheetOverAPlayingTrack = async (
+		page: Page,
+		player: FakePlayer,
+	) => {
+		await openLibrary(page);
+		await page.request.post("/__control/play", {
+			data: { playlistId: "p7", index: PLAYING_ROW },
+		});
+		await expect.poll(() => player.player.playbackState).toBe("playing");
+		await openNowPlaying(page);
+		await expect(orderButton(page, true)).toBeVisible();
+
+		await orderButton(page, true).tap();
+		await expect(sheet(page)).toBeVisible();
+	};
+
+	// React hands an event in a portal to the ancestors of the component that drew it, so a touch
+	// on the sheet reaches the screen's own handlers, where the cover wheel and the swipe that
+	// dismisses the screen listen, although the sheet is nowhere inside the screen on the page.
+	test("choosing a row sends that order, changes the face, and neither skips nor closes the screen", async ({
+		page,
+		player,
+	}) => {
+		await openTheSheetOverAPlayingTrack(page, player);
+		await sheet(page)
+			.getByRole("menuitemradio", { name: REPEAT_TRACK.english, exact: true })
+			.tap();
+
+		await expectSettlesAt(player, () => playbackCommands(player), [
+			"/api/playback/mode",
+		]);
+		expect(modesSent(player)).toEqual([REPEAT_TRACK.mode]);
+		expect(playRequests(player)).toEqual([]);
+		expect(player.playQueue).toEqual([]);
+		expect(player.player.activeItem.index).toBe(PLAYING_ROW);
+		expect(player.player.playbackState).toBe("playing");
+
+		await expect(sheet(page)).toHaveCount(0);
+		await expectTheScreenIsStillOpen(page);
+		await expect(orderButton(page, true)).toHaveAccessibleName(
+			"Playback order: Repeat track",
+		);
+		await expect(faceOf(page, true)).toHaveClass(drawing(REPEAT_TRACK.icon));
+	});
+
+	test("a drag across the open sheet turns no cover", async ({
+		page,
+		player,
+	}) => {
+		await openTheSheetOverAPlayingTrack(page, player);
+		const box = await restingBox(sheet(page));
+		const y = box.y + box.height / 2;
+
+		await touchDrag(
+			page,
+			{ x: box.x + box.width * 0.85, y },
+			{ x: box.x + box.width * 0.2, y },
+		);
+
+		await expectSettlesAt(player, () => playbackCommands(player), []);
+		expect(player.player.activeItem.index).toBe(PLAYING_ROW);
+		await expectTheScreenIsStillOpen(page);
+	});
+
+	test("dragging the sheet away by its top edge closes the sheet and leaves the screen up", async ({
+		page,
+		player,
+	}) => {
+		await openTheSheetOverAPlayingTrack(page, player);
+		const box = await restingBox(sheet(page));
+		const x = box.x + box.width / 2;
+
+		await touchDrag(
+			page,
+			{ x, y: box.y + GRABBER_INSET },
+			{ x, y: box.y + box.height },
+		);
+
+		await expect(sheet(page)).toHaveCount(0);
+		await expectTheScreenIsStillOpen(page);
+		await expect(orderButton(page, true)).toBeVisible();
+		await expectSettlesAt(player, () => playbackCommands(player), []);
+	});
+});
+
+test.describe("an install offering two orders", () => {
+	const DECLARED = [IN_ORDER, REPEAT_PLAYLIST];
+
+	test.use({ playerState: offering(DECLARED, IN_ORDER) });
+	test.beforeEach(({ page, isMobile }) => arriveAtTheTransport(page, isMobile));
+
+	test("has the button in its transport, announcing no menu, and its face follows the player", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const button = orderButton(page, isMobile);
+		await expect(button).toHaveAccessibleName("Playback order: In order");
+		await expect(button).toHaveAttribute("title", "Playback order: In order");
+		await expect(faceOf(page, isMobile)).toHaveClass(drawing(IN_ORDER.icon));
+		await expect(button).not.toHaveAttribute("aria-haspopup");
+		await expect(button).not.toHaveAttribute("aria-expanded");
+		await expect(button).not.toHaveAttribute("aria-pressed");
+
+		moveThePlayerTo(player, REPEAT_PLAYLIST, DECLARED);
+
+		await expect(button).toHaveAccessibleName(
+			"Playback order: Repeat playlist",
+		);
+		await expect(button).toHaveAttribute(
+			"title",
+			"Playback order: Repeat playlist",
+		);
+		await expect(faceOf(page, isMobile)).toHaveClass(
+			drawing(REPEAT_PLAYLIST.icon),
+		);
+		expect(modesSent(player)).toEqual([]);
+	});
+
+	test("a press sends the other order with no list, the face changing before the player answers, and the next press sends the first back", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const button = orderButton(page, isMobile);
+		// A poll answered after the press would draw the order the player is still in, and with
+		// the write held nothing would correct it.
+		await expect(button).toHaveAccessibleName("Playback order: In order");
+		await holdThePoll(page);
+		const held = await holdModeWrites(page);
+
+		await button.click();
+		await held.untilHeld();
+
+		await expect(button).toHaveAccessibleName(
+			"Playback order: Repeat playlist",
+		);
+		await expect(faceOf(page, isMobile)).toHaveClass(
+			drawing(REPEAT_PLAYLIST.icon),
+		);
+		await expectNothingOpened(page);
+		expect(modesSent(player)).toEqual([]);
+		expect(player.player.playbackMode).toBe(DECLARED.indexOf(IN_ORDER));
+
+		held.releaseAll();
+		await expectSettlesAt(player, () => modesSent(player), [
+			REPEAT_PLAYLIST.mode,
+		]);
+
+		await button.click();
+
+		await expectSettlesAt(player, () => playbackCommands(player), [
+			"/api/playback/mode",
+			"/api/playback/mode",
+		]);
+		expect(modesSent(player)).toEqual([REPEAT_PLAYLIST.mode, IN_ORDER.mode]);
+		expect(playRequests(player)).toEqual([]);
+		await expect(button).toHaveAccessibleName("Playback order: In order");
+		await expectNothingOpened(page);
+	});
+});
+
+test.describe("an order chosen from the list", () => {
+	test.use({ playerState: stockPlayerIn(IN_ORDER) });
+
+	// Going to another view closes the now-playing screen on a compact viewport, so the button
+	// read afterwards there is one drawn afresh.
+	test("is still the button's name from another view", async ({
+		page,
+		isMobile,
+	}) => {
+		await arriveAtTheTransport(page, isMobile);
+		await openList(page, isMobile);
+		await orderRow(page, REPEAT_TRACK.english).click();
+		await expect(orderButton(page, isMobile)).toHaveAccessibleName(
+			"Playback order: Repeat track",
+		);
+
+		await page.goto("/#/all");
+		await expect(
+			page.getByRole("heading", { level: 1, name: "All music" }),
+		).toBeVisible();
+		if (isMobile) await expect(nowPlayingScreen(page)).toBeHidden();
+
+		await globalControls(page, isMobile);
+		await expect(orderButton(page, isMobile)).toHaveAccessibleName(
+			"Playback order: Repeat track",
+		);
+	});
+});
+
+// Repeat playlist is declared first, so the first order as received is neither In order nor the
+// first by name, and the unnamed one is last, where it shifts no position before it.
+test.describe("an install offering two orders, with the player in one foo_jean cannot name", () => {
+	const DECLARED = [REPEAT_PLAYLIST, IN_ORDER, UNNAMED];
+
+	test.use({ playerState: offering(DECLARED, UNNAMED) });
+	test.beforeEach(({ page, isMobile }) => arriveAtTheTransport(page, isMobile));
+
+	test("shows a question mark and names no order, and a press sends the first of the two as received", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const button = orderButton(page, isMobile);
+		await expect(button).toHaveAccessibleName("Playback order");
+		await expect(button).toHaveAttribute("title", "Playback order");
+		await expect(faceOf(page, isMobile)).toHaveClass(drawing(UNNAMED_ICON));
+
+		await button.click();
+
+		await expectSettlesAt(player, () => modesSent(player), [
+			REPEAT_PLAYLIST.mode,
+		]);
+		await expectNothingOpened(page);
+		await expect(button).toHaveAccessibleName(
+			"Playback order: Repeat playlist",
+		);
+		await expect(faceOf(page, isMobile)).toHaveClass(
+			drawing(REPEAT_PLAYLIST.icon),
+		);
+	});
+});
+
+// The unnamed order sits second of four, so the three rows left are not the first three declared.
+test.describe("an install offering three orders, with the player in one foo_jean cannot name", () => {
+	const DECLARED = [RANDOM, UNNAMED, IN_ORDER, REPEAT_TRACK];
+	const OFFERED = [RANDOM, IN_ORDER, REPEAT_TRACK];
+
+	test.use({ playerState: offering(DECLARED, UNNAMED) });
+	test.beforeEach(({ page, isMobile }) => arriveAtTheTransport(page, isMobile));
+
+	test("keeps the button, with a grey question mark and no order named, and its list holds the three with none checked", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const button = orderButton(page, isMobile);
+		await expect(button).toHaveAccessibleName("Playback order");
+		await expect(button).toHaveAttribute("title", "Playback order");
+		await expect(faceOf(page, isMobile)).toHaveClass(drawing(UNNAMED_ICON));
+
+		const transport = transportOf(page, isMobile);
+		const grey = await tokenColourIn(
+			transport,
+			isMobile ? RESTING_GREY_ON_THE_SCREEN : RESTING_GREY,
+		);
+		expect(grey).not.toBe(await tokenColourIn(transport, ACCENT));
+		await expectDrawnIn(faceOf(page, isMobile), grey);
+
+		await openList(page, isMobile);
+		if (isMobile) await expect(sheet(page)).toBeVisible();
+
+		await expect(rows(page)).toHaveText(OFFERED.map((order) => order.english));
+		await expect(checkedOrderRows(page)).toHaveCount(0);
+		expect(modesSent(player)).toEqual([]);
+	});
+});
+
+// Three is the fewest that still gets a list, and none of these three shuffles.
+test.describe("an install offering three orders, none of them a shuffle", () => {
+	const DECLARED = [IN_ORDER, REPEAT_PLAYLIST, REPEAT_TRACK];
+
+	test.use({ playerState: offering(DECLARED, REPEAT_PLAYLIST) });
+	test.beforeEach(({ page, isMobile }) => arriveAtTheTransport(page, isMobile));
+
+	test("has the button, and its list holds those three", async ({
+		page,
+		isMobile,
+	}) => {
+		await expect(orderButton(page, isMobile)).toHaveAccessibleName(
+			"Playback order: Repeat playlist",
+		);
+		await expect(orderButton(page, isMobile)).toHaveAttribute(
+			"aria-haspopup",
+			"menu",
+		);
+
+		await openList(page, isMobile);
+
+		await expect(rows(page)).toHaveText(DECLARED.map((order) => order.english));
+		await expect(checkedOrderRows(page)).toHaveAccessibleName(
+			REPEAT_PLAYLIST.english,
+		);
+	});
+});
+
+for (const [offer, declared] of [
+	["one order", [IN_ORDER]],
+	["no order at all", []],
+] as const) {
+	test.describe(`an install offering ${offer}`, () => {
+		test.use({ playerState: offering(declared) });
+
+		test("has no order button in either transport, and no Shuffle button", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			await openLibrary(page);
+			await expect(
+				statusBar(page).getByRole("button", { name: /^(Play|Pause)$/ }),
+			).toBeVisible();
+			await untilTheInstallIsKnown(player);
+			await expect(orderButton(page, false)).toHaveCount(0);
+
+			await arriveAtTheTransport(page, isMobile);
+
+			await expect(orderButton(page, isMobile)).toHaveCount(0);
+			await expect(
+				transportOf(page, isMobile).getByRole("button", {
+					name: "Shuffle",
+					exact: true,
+				}),
+			).toHaveCount(0);
+		});
+	});
+}

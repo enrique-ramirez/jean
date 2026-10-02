@@ -3,25 +3,34 @@ import { useEffect, useSyncExternalStore } from "react";
 import { subscribers } from "@/shared/lib/store";
 
 export const AUTOPLAYLIST_KEYBOARD = "autoplaylist";
+export const PLAYBACK_ORDER_KEYBOARD = "playbackOrder";
 export const SETTINGS_KEYBOARD = "settings";
 export const SHORTCUTS_KEYBOARD = "shortcuts";
 
 const listeners = subscribers();
-let owner: string | null = null;
+interface Claim {
+	id: string;
+}
 
-export function useKeyboardOwnership(id: string) {
+let claims: readonly Claim[] = [];
+
+const ownerOf = () => claims.at(-1)?.id ?? null;
+
+function setClaims(next: readonly Claim[]) {
+	const before = ownerOf();
+	claims = next;
+	if (ownerOf() !== before) listeners.notify();
+}
+
+export function useKeyboardOwnership(id: string, isActive = true) {
 	useEffect(() => {
-		const previous = owner;
-		owner = id;
-		listeners.notify();
+		if (!isActive) return undefined;
+		const claim = { id };
+		setClaims([...claims, claim]);
 
-		return () => {
-			if (owner !== id) return;
-			owner = previous;
-			listeners.notify();
-		};
-	}, [id]);
+		return () => setClaims(claims.filter((held) => held !== claim));
+	}, [id, isActive]);
 }
 
 export const useKeyboardOwner = () =>
-	useSyncExternalStore(listeners.subscribe, () => owner);
+	useSyncExternalStore(listeners.subscribe, ownerOf);

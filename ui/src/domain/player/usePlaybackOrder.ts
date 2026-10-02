@@ -1,20 +1,15 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import { orThrow } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
 import { setPlaybackOrder } from "@/shared/api/playback";
 import type { PlaybackMode } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Phrase } from "@/shared/i18n/en";
-import { translate } from "@/shared/i18n/locale";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { usePlayerPatch } from "./playerWrite";
 import { usePlayer } from "./usePlayer";
 
-const SHUFFLE_PRIORITY: PlaybackMode[] = [
-	"shuffleTracks",
-	"shuffleAlbums",
-	"shuffleFolders",
-	"random",
-];
+const SHUFFLE_PRIORITY: PlaybackMode[] = ["shuffleTracks", "random"];
 
 type OrderPhrase = Extract<Phrase, `player.order.${string}`>;
 
@@ -36,6 +31,7 @@ const findShuffleMode = (offered: PlaybackMode[]) =>
 export function usePlaybackOrder() {
 	const { data } = usePlayer();
 	const { discovery } = useFooJean();
+	const t = useTranslate();
 
 	const player = data?.player;
 
@@ -53,11 +49,6 @@ export function usePlaybackOrder() {
 
 	const isInOrder = mode === "inOrder";
 
-	const previousOrder = useRef<PlaybackMode>("inOrder");
-	const effectiveMode = mode ?? "inOrder";
-	if (!isShuffle && effectiveMode !== previousOrder.current)
-		previousOrder.current = effectiveMode;
-
 	const mutation = usePlayerPatch(
 		async (next: PlaybackMode) => {
 			const origin = requireFooJean(discovery.origin);
@@ -67,11 +58,6 @@ export function usePlaybackOrder() {
 	);
 
 	const { mutate } = mutation;
-
-	const toggleShuffle = useCallback(() => {
-		if (shuffleMode === null) return;
-		mutate(isShuffle ? previousOrder.current : shuffleMode);
-	}, [isShuffle, shuffleMode, mutate]);
 
 	const enableShuffle = useCallback(() => {
 		if (shuffleMode === null || isShuffle) return;
@@ -85,15 +71,18 @@ export function usePlaybackOrder() {
 		[mode, mutate],
 	);
 
+	const nameOf = useCallback(
+		(of: PlaybackMode) => t(ORDER_NAME_PHRASE[of]),
+		[t],
+	);
+
 	return {
 		mode,
+		nameOf,
 		offered: offeredModes,
 		setOrder,
-		isShuffle,
 		canShuffle: shuffleMode !== null,
-		orderName: mode ? translate(ORDER_NAME_PHRASE[mode]) : null,
 		isInOrder,
-		toggleShuffle,
 		enableShuffle,
 	};
 }

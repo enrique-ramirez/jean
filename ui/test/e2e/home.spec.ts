@@ -7,10 +7,12 @@ import {
 	OFFERS_NO_SHUFFLE,
 	openSidebar,
 	playedFrom,
+	playerDeclaring,
 	playRequests,
 	scratchOf,
 	sidebar,
 	test,
+	untilTheInstallIsKnown,
 	viewHeader,
 } from "./fixtures.ts";
 
@@ -265,20 +267,31 @@ test.describe("starting the library from the front door", () => {
 	});
 });
 
-test.describe("a front door on a player that offers no shuffle", () => {
-	test.use({ playerState: OFFERS_NO_SHUFFLE });
+// Plain Shuffle is Shuffle tracks, or Random where the player has no Shuffle tracks. A player with
+// neither has nothing for it to turn on, whatever else it shuffles by.
+for (const [offer, playerState] of [
+	["no shuffle", OFFERS_NO_SHUFFLE],
+	[
+		"Shuffle albums and Shuffle folders, and neither Shuffle tracks nor Random",
+		playerDeclaring(["Default", "Shuffle (albums)", "Shuffle (folders)"]),
+	],
+] as const) {
+	test.describe(`a front door on a player that offers ${offer}`, () => {
+		test.use({ playerState });
 
-	test("Shuffle goes and Play stays", async ({ page }) => {
-		await page.goto("/");
-		const head = viewHeader(page);
-		await expect(
-			head.getByRole("button", { name: "Play", exact: true }),
-		).toBeVisible();
-		await expect(
-			head.getByRole("button", { name: "Shuffle", exact: true }),
-		).toHaveCount(0);
+		test("Shuffle goes and Play stays", async ({ page, player }) => {
+			await page.goto("/");
+			const head = viewHeader(page);
+			await expect(
+				head.getByRole("button", { name: "Play", exact: true }),
+			).toBeVisible();
+			await untilTheInstallIsKnown(player);
+			await expect(
+				head.getByRole("button", { name: "Shuffle", exact: true }),
+			).toHaveCount(0);
+		});
 	});
-});
+}
 
 test.describe("a front door with the component answering", () => {
 	test("Play and Shuffle are both offered", async ({ page }) => {

@@ -637,7 +637,6 @@ export const en = {
 	"shortcut.toggleMute": "Mute / unmute",
 	"shortcut.toggleNowPlaying": "Show / hide what's playing",
 	"shortcut.toggleQueue": "Show / hide the queue",
-	"shortcut.toggleShuffle": "Shuffle on / off",
 	"shortcut.toggleSidebar": "Show / hide sidebar",
 	"shortcut.toggleTheme": "Switch light / dark",
 	"shortcut.volumeDown": "Volume down",

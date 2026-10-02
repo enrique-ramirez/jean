@@ -25,10 +25,10 @@ import { Artwork } from "@/shared/ui/Artwork";
 import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";
 import { ListenHere, playerNameOf } from "./ListenHere";
 import type { OutputPicker } from "./OutputDevices";
+import { PlaybackOrderButton } from "./PlaybackOrderButton";
 import { PlayToggle } from "./PlayToggle";
 import { QueueButton } from "./QueueButton";
 import { SeekBar, useElapsedSeconds } from "./SeekBar";
-import { ShuffleToggle } from "./ShuffleToggle";
 import styles from "./StatusBar.module.css";
 import { Volume, VolumePopover } from "./Volume";
 
@@ -187,7 +187,7 @@ export function StatusBar({
 				<div className={styles.transport}>
 					{isCompactViewport ? null : (
 						<>
-							<ShuffleToggle
+							<PlaybackOrderButton
 								order={order}
 								className={styles.order}
 								size={16}

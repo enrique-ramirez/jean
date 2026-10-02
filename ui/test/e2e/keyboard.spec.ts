@@ -1,18 +1,28 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
+	checkedOrderRows,
 	expect,
+	expectNothingOpened,
 	expectPlayingFrom,
 	expectSettlesAt,
 	expectTheScreenIsStillOpen,
 	guidOfPlaylist,
 	inSequence,
 	listenHere,
+	modesSent,
 	nowPlayingScreen,
 	openAllMusic,
 	openLibrary,
+	openLibraryWithTheOrderButton,
 	openNowPlaying,
+	orderButton,
+	orderList,
+	orderRow,
 	playedFrom,
+	playerDeclaring,
+	playRequests,
 	requestsTo,
+	STOCK_ORDERS,
 	scrollTo,
 	scrollTop,
 	scrollUntilMounted,
@@ -20,9 +30,9 @@ import {
 	searchFor,
 	sidebar,
 	sidebarToggle,
-	statusBar,
 	test,
 	trackRow,
+	untilTheInstallIsKnown,
 } from "./fixtures.ts";
 import { panelTab, playRow, TAGGED } from "./nowPlaying.ts";
 
@@ -67,6 +77,13 @@ const commandsTo = (player: FakePlayer, route: string) =>
 
 const bodiesTo = (player: FakePlayer, route: string) =>
 	commandsTo(player, route).map((entry) => entry.body ?? {});
+
+// The cursor is an index in state, not DOM focus: the virtualiser unmounts a
+// focused row the moment it scrolls away, and focus would evaporate with it.
+const cursorRow = (page: Page) =>
+	page.locator('[role="row"][data-cursor="true"]');
+const cursorAt = async (page: Page, index: number) =>
+	expect(cursorRow(page)).toHaveAttribute("data-row", String(index));
 
 test.skip(({ isMobile }) => isMobile, "no keyboard on the phone");
 
@@ -165,15 +182,6 @@ test.describe("playback", () => {
 			.toEqual([{ step: "up" }, { step: "down" }]);
 	});
 
-	test("o switches shuffle on and off", async ({ page, player }) => {
-		await page.keyboard.press("o");
-		await expect
-			.poll(() =>
-				bodiesTo(player, "/api/playback/mode").map((body) => body.mode),
-			)
-			.toEqual(["shuffleTracks"]);
-	});
-
 	test("p plays the open playlist from the top", async ({ page, player }) => {
 		await page.keyboard.press("p");
 		await expect
@@ -194,6 +202,213 @@ test.describe("playback", () => {
 	});
 });
 
+test.describe("o, the playback order key", () => {
+	// Random, so the current row is neither the first nor the last: a list that always focuses its
+	// first row would pass from In order.
+	test.describe("with the stock seven orders and the player in Random", () => {
+		test.use({ playerState: playerDeclaring(STOCK_ORDERS, "Random") });
+		test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page));
+
+		test("o opens the order list with focus on the current row, and sends nothing", async ({
+			page,
+			player,
+		}) => {
+			await page.keyboard.press("o");
+
+			await expect(orderList(page)).toBeVisible();
+			await expect(orderList(page).getByRole("menuitemradio")).toHaveCount(
+				STOCK_ORDERS.length,
+			);
+
+			await expectSettlesAt(player, () => modesSent(player), []);
+			expect(player.player.playbackMode).toBe(STOCK_ORDERS.indexOf("Random"));
+			// Read once the app has gone quiet, so focus that lands on the row and then moves is seen.
+			await expect(checkedOrderRows(page)).toHaveAccessibleName("Random");
+			await expect(checkedOrderRows(page)).toBeFocused();
+		});
+
+		test("o again with the list open leaves that one list as it was, and sends nothing", async ({
+			page,
+			player,
+		}) => {
+			await page.keyboard.press("o");
+			await expect(checkedOrderRows(page)).toBeFocused();
+
+			await page.keyboard.press("o");
+
+			// Read once the app has gone quiet: a list on its way out still counts as one.
+			await expectSettlesAt(player, () => modesSent(player), []);
+			await expect(orderList(page)).toHaveCount(1);
+			await expect(orderList(page)).toBeVisible();
+			await expect(checkedOrderRows(page)).toHaveAccessibleName("Random");
+			await expect(checkedOrderRows(page)).toBeFocused();
+		});
+	});
+
+	test.describe("with the stock seven orders and the player in In order", () => {
+		test.use({ playerState: playerDeclaring(STOCK_ORDERS, "Default") });
+		test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page));
+
+		// A track row cannot hold DOM focus, so what the list leaves behind is read off what the
+		// keys do next: the cursor is on the row it was on, and Space is the transport's again. On a
+		// focused button Space presses the button instead.
+		test("o, ArrowDown, Enter sends that one order and gives the keys back to the track list", async ({
+			page,
+			player,
+		}) => {
+			await page.keyboard.press("ArrowDown");
+			await page.keyboard.press("ArrowDown");
+			await cursorAt(page, 2);
+
+			await page.keyboard.press("o");
+			await expect(orderRow(page, "In order")).toBeFocused();
+			await page.keyboard.press("ArrowDown");
+			await expect(orderRow(page, "Repeat playlist")).toBeFocused();
+			await page.keyboard.press("Enter");
+
+			await expectSettlesAt(player, () => modesSent(player), ["repeatAll"]);
+			await expect(orderList(page)).toHaveCount(0);
+			await expect(orderButton(page, false)).toHaveAccessibleName(
+				"Playback order: Repeat playlist",
+			);
+			// The same two keys move the cursor and play its row when the track list hears them.
+			await cursorAt(page, 2);
+			expect(playRequests(player)).toEqual([]);
+
+			await expect(orderButton(page, false)).not.toBeFocused();
+			await page.keyboard.press("Space");
+			await expect
+				.poll(() => commandsTo(player, "/api/playback/play-pause"))
+				.toHaveLength(1);
+			await expect(orderList(page)).toHaveCount(0);
+			expect(modesSent(player)).toEqual(["repeatAll"]);
+		});
+
+		// Favorites rather than Library: `b` lands on the row that reads as current, so focus put
+		// back there says nothing about where it was.
+		test("the list o opened from a sidebar row hands focus back to that row when Escape closes it", async ({
+			page,
+			player,
+		}) => {
+			await page.keyboard.press("b");
+			await page.keyboard.press("ArrowDown");
+			await expect(sidebarLink(page, "Favorites")).toBeFocused();
+
+			await page.keyboard.press("o");
+			await expect(orderRow(page, "In order")).toBeFocused();
+			await page.keyboard.press("Escape");
+
+			await expect(orderList(page)).toHaveCount(0);
+			await expect(sidebarLink(page, "Favorites")).toBeFocused();
+			await expectSettlesAt(player, () => modesSent(player), []);
+		});
+
+		// The second press is what stops the first assertion passing for a key that was never going
+		// to open anything.
+		test("o typed in the library search is a letter in the field, and opens the list once focus has left it", async ({
+			page,
+			player,
+		}) => {
+			await searchField(page).click();
+			await page.keyboard.press("o");
+
+			await expect(searchField(page)).toHaveValue("o");
+			await expectSettlesAt(player, () => modesSent(player), []);
+			await expect(orderList(page)).toHaveCount(0);
+
+			await searchField(page).blur();
+			await page.keyboard.press("o");
+
+			await expect(orderRow(page, "In order")).toBeFocused();
+			await expect(searchField(page)).toHaveValue("o");
+		});
+	});
+
+	test.describe("on an install offering two orders", () => {
+		test.describe("with the player in one of them", () => {
+			test.use({
+				playerState: playerDeclaring(["Default", "Repeat (playlist)"]),
+			});
+			test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page));
+
+			test("o sends the other order and opens no list, and o again sends the first back", async ({
+				page,
+				player,
+			}) => {
+				await page.keyboard.press("o");
+
+				await expectSettlesAt(player, () => modesSent(player), ["repeatAll"]);
+				await expectNothingOpened(page);
+				await expect(orderButton(page, false)).toHaveAccessibleName(
+					"Playback order: Repeat playlist",
+				);
+
+				await page.keyboard.press("o");
+
+				await expectSettlesAt(player, () => modesSent(player), [
+					"repeatAll",
+					"inOrder",
+				]);
+				await expectNothingOpened(page);
+			});
+		});
+
+		// Repeat playlist is declared first, so the first order as received is neither In order nor
+		// the first by name.
+		test.describe("with the player in an order foo_jean cannot name", () => {
+			test.use({
+				playerState: playerDeclaring(
+					["Repeat (playlist)", "Default", "Shuffle (genres)"],
+					"Shuffle (genres)",
+				),
+			});
+			test.beforeEach(({ page }) => openLibraryWithTheOrderButton(page));
+
+			test("o sends the first of the two as received, and opens no list", async ({
+				page,
+				player,
+			}) => {
+				await expect(orderButton(page, false)).toHaveAccessibleName(
+					"Playback order",
+				);
+
+				await page.keyboard.press("o");
+
+				await expectSettlesAt(player, () => modesSent(player), ["repeatAll"]);
+				await expectNothingOpened(page);
+			});
+		});
+	});
+
+	// The second player sits in an order `foo_jean` cannot name, so the one order offered is an
+	// order it is not in, and a flip would have somewhere to go.
+	for (const [offer, playerState] of [
+		["one order", playerDeclaring(["Shuffle (tracks)"])],
+		[
+			"one order, with the player in another foo_jean cannot name",
+			playerDeclaring(
+				["Shuffle (tracks)", "Shuffle (genres)"],
+				"Shuffle (genres)",
+			),
+		],
+	] as const) {
+		test.describe(`on an install offering ${offer}`, () => {
+			test.use({ playerState });
+
+			test("o sends nothing and opens nothing", async ({ page, player }) => {
+				await openLibrary(page);
+				await untilTheInstallIsKnown(player);
+				await expect(orderButton(page, false)).toHaveCount(0);
+
+				await page.keyboard.press("o");
+
+				await expectSettlesAt(player, () => modesSent(player), []);
+				await expectNothingOpened(page);
+			});
+		});
+	}
+});
+
 test.describe("a transport command, as the component sees it", () => {
 	test.beforeEach(({ page }) => openLibrary(page));
 
@@ -202,6 +417,7 @@ test.describe("a transport command, as the component sees it", () => {
 	test("every command key reaches the route the component answers", async ({
 		page,
 	}) => {
+		await expect(orderButton(page, false)).toBeVisible();
 		const sent: string[] = [];
 		page.on("request", (request) => {
 			const { pathname } = new URL(request.url());
@@ -221,8 +437,11 @@ test.describe("a transport command, as the component sees it", () => {
 			],
 			(key) => page.keyboard.press(key),
 		);
-		// Last, since Space on a focused button presses the button instead.
-		await statusBar(page).getByRole("button", { name: "Shuffle" }).click();
+		// Waited on the list holding focus: until it does, Enter plays the selected row instead.
+		await page.keyboard.press("o");
+		await expect(checkedOrderRows(page)).toBeFocused();
+		await page.keyboard.press("ArrowDown");
+		await page.keyboard.press("Enter");
 
 		await expect
 			.poll(() => [...new Set(sent)].sort())
@@ -408,6 +627,23 @@ test.describe("navigation and appearance", () => {
 		await expect(row.locator("span").first()).not.toBeEmpty();
 	});
 
+	test("the sheet lists O as Playback order under Playback, and nothing as Shuffle on / off", async ({
+		page,
+	}) => {
+		await page.keyboard.press("Shift+?");
+		const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+		const playback = sheet.locator("section").filter({
+			has: page.getByRole("heading", { name: "Playback", exact: true }),
+		});
+		const row = playback
+			.locator("div")
+			.filter({ has: page.locator("kbd", { hasText: /^O$/ }) });
+
+		await expect(row.locator("kbd")).toHaveText(["O"]);
+		await expect(row.locator("span").first()).toHaveText("Playback order");
+		await expect(sheet.getByText("Shuffle on / off")).toHaveCount(0);
+	});
+
 	test("the sheet lists moving the selection up and down under In a playlist", async ({
 		page,
 	}) => {
@@ -536,13 +772,6 @@ test.describe("navigation and appearance", () => {
 
 test.describe("moving the cursor in a playlist", () => {
 	test.beforeEach(({ page }) => openLibrary(page));
-
-	// The cursor is an index in state, not DOM focus: the virtualiser unmounts a
-	// focused row the moment it scrolls away, and focus would evaporate with it.
-	const cursorRow = (page: Page) =>
-		page.locator('[role="row"][data-cursor="true"]');
-	const cursorAt = async (page: Page, index: number) =>
-		expect(cursorRow(page)).toHaveAttribute("data-row", String(index));
 
 	test("the arrows move it, and nothing else has to", async ({ page }) => {
 		await cursorAt(page, 0);

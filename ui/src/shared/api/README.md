@@ -132,7 +132,7 @@ Which of these resolve varies by install, by component and by how the library wa
 
 ## What Jean does about the queue
 
-foobar2000's play queue is finite, ordered and exhaustive: the player takes all of it, in order, before returning to the playlist, and it outranks playback order, so with tracks queued a skip forward plays the head of the queue. A queued track leaves the queue the moment it starts, so the queue is only ever what is still to come. An entry holds a track rather than a position, so editing the playlist underneath it leaves the queue intact.
+foobar2000's play queue is finite, ordered and exhaustive: the player takes all of it, in order, before returning to the playlist, and it outranks playback order, so with tracks queued a skip forward plays the head of the queue. It outranks Jean's own *Playback follows cursor* as well: a track that came off the queue is left playing, whatever row the cursor is on. A queued track leaves the queue the moment it starts, so the queue is only ever what is still to come. An entry holds a track rather than a position, so editing the playlist underneath it leaves the queue intact.
 
 `GET /api/queue` answers every entry in the player's own order plus the revision they were read at. `domain/player/queue.ts` reads it through `followRevision`, only when `GET /api/state`'s `queueRevision` has moved from the one already held, off the same one-second poll that already carries player state, so a client watching the queue costs nothing beyond the poll it already runs.
 

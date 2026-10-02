@@ -5,6 +5,7 @@ import type {
 	PlaylistAnnotation,
 } from "@/shared/api/playlists";
 import { fetchQueue, type QueueRead } from "@/shared/api/queue";
+import type { ActiveItem } from "@/shared/api/types";
 import { type FollowRevision, followRevision } from "./followRevision";
 
 export const QUEUE_KEY = ["queue"];
@@ -71,6 +72,22 @@ export function readQueue(read: QueueRead | undefined): QueueEntry[] {
 		offset += duration;
 		return built;
 	});
+}
+
+export function isQueueHead(
+	read: QueueRead | undefined,
+	playing: ActiveItem | undefined,
+): boolean {
+	const head = read?.entries[0];
+	if (!head || !playing) return false;
+
+	const isHeadRow =
+		head.location !== null &&
+		head.location.playlistId === playing.playlistGuid &&
+		head.location.index === playing.index;
+	const isHeadTrack =
+		head.libraryPath !== null && head.libraryPath === playing.libraryPath;
+	return isHeadRow || isHeadTrack;
 }
 
 export const queuedSeconds = (entries: QueueEntry[]) =>

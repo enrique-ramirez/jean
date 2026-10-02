@@ -6,12 +6,14 @@ import {
 	openSettings,
 	playedFrom,
 	playRequests,
+	pressAndHold,
 	requestsTo,
 	settingsDialog,
 	statusBar,
 	test,
 	times,
 	trackRow,
+	untilQuiet,
 } from "./fixtures.ts";
 
 const tagWrites = (player: { requests: { method: string }[] }) =>
@@ -267,6 +269,16 @@ test.describe("cursor follows playback", () => {
 	});
 });
 
+const titleAt = (player: FakePlayer, index: number) =>
+	String(
+		player.playlists.find((entry) => entry.id === "p7")?.items[index]?.[
+			"%title%"
+		],
+	);
+
+const queuedTitles = (player: FakePlayer) =>
+	player.queuedEntries().map((entry) => String(entry.track["%title%"]));
+
 test.describe("playback follows cursor", () => {
 	test.use({
 		settings: {
@@ -292,6 +304,40 @@ test.describe("playback follows cursor", () => {
 
 		await expect(cursorRow(page)).toHaveAttribute("data-row", "5");
 		await expect.poll(() => playedFrom(player)?.index).toBe(5);
+	});
+
+	// Queueing from a row's menu leaves the cursor on the last row queued. Without this the track
+	// the queue hands over is replaced by that row at once, and foobar2000 empties the queue when a
+	// row is played.
+	test("a track that came off the queue is left playing", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		player.playItem("p7", 2);
+		await expect(statusBar(page)).toContainText("Deléctrico");
+
+		const titles = [4, 5, 6].map((index) => titleAt(player, index));
+		for (const [queued, index] of [4, 5, 6].entries()) {
+			const row = trackRow(page, index);
+			if (isMobile) await pressAndHold(page, row);
+			else await row.click({ button: "right" });
+			await page.getByRole("menuitem", { name: "Add to queue" }).click();
+			await expect
+				.poll(() => queuedTitles(player))
+				.toEqual(titles.slice(0, queued + 1));
+		}
+
+		// Jean reads the queue after the poll that announced it, so a skip sent inside that read is
+		// answered by a queue the track has already left.
+		await untilQuiet(player);
+		player.next();
+		await expect(statusBar(page)).toContainText(titles[0]);
+
+		await expectSettlesAt(player, () => playRequests(player), []);
+		await expect(statusBar(page)).toContainText(titles[0]);
+		expect(queuedTitles(player)).toEqual(titles.slice(1));
 	});
 
 	test("does not fire on arrival, whatever the cursor is on", async ({

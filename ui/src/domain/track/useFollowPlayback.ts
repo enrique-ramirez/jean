@@ -1,4 +1,9 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
+import { PLAYER_KEY } from "@/domain/player/playerPoll";
+import { isQueueHead, QUEUE_KEY } from "@/domain/player/queue";
+import type { QueueRead } from "@/shared/api/queue";
+import type { PlayerSnapshot } from "@/shared/api/types";
 import {
 	useCursorFollowsPlayback,
 	usePlaybackFollowsCursor,
@@ -27,6 +32,7 @@ export function useFollowPlayback({
 }) {
 	const [cursorFollowsPlayback] = useCursorFollowsPlayback();
 	const [playbackFollowsCursor] = usePlaybackFollowsCursor();
+	const queryClient = useQueryClient();
 
 	const jumpAsked = useJumpAsked();
 	useEffect(() => {
@@ -61,9 +67,15 @@ export function useFollowPlayback({
 		// `wasPlaying` stops the two follow settings looping, since with both on the cursor sits on the
 		// track that just ended; excluding `arrived` stops navigation reading as a track change.
 		const at = cursorAt.current;
+		const queueBeforeAdvance = queryClient.getQueryData<QueueRead>(QUEUE_KEY);
+		const cameOffQueue = isQueueHead(
+			queueBeforeAdvance,
+			queryClient.getQueryData<PlayerSnapshot>(PLAYER_KEY)?.player.activeItem,
+		);
 		if (
 			playbackFollowsCursor &&
 			!arrived &&
+			!cameOffQueue &&
 			at !== activeIndex &&
 			at !== wasPlaying &&
 			at >= 0 &&
@@ -88,6 +100,7 @@ export function useFollowPlayback({
 		canFollowPlayback,
 		cursorFollowsPlayback,
 		playbackFollowsCursor,
+		queryClient,
 		play,
 		moveCursorTo,
 		scrollToTrack,

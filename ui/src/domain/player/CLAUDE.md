@@ -4,7 +4,7 @@
 
 ## Playback
 
-- Shuffle is the player's one global mode. A view's Shuffle action starts a random track in it and turns the mode on.
+- The playback order is global to the player, and no view keeps one of its own.
 - Position arrives only on change, so `position.ts` interpolates, and the seek bar is the leaf that runs the frame loop. Lifting that state repaints the list on every frame.
 - The fader is linear in perceived loudness. The player's floor, -100 dB on foobar2000, is mapped onto the end of the travel, or the thumb stops short of the bottom. `min === max` reads as empty.
 

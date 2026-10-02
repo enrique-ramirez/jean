@@ -28,6 +28,8 @@ const ORDER_NAME_PHRASE: Record<PlaybackMode, OrderPhrase> = {
 	shuffleFolders: "player.order.shuffleFolders",
 };
 
+const NOT_OFFERED: PlaybackMode[] = [];
+
 const findShuffleMode = (offered: PlaybackMode[]) =>
 	SHUFFLE_PRIORITY.find((mode) => offered.includes(mode)) ?? null;
 
@@ -42,7 +44,7 @@ export function usePlaybackOrder() {
 
 	const mode = player?.playbackMode ?? null;
 
-	const offeredModes = capabilities?.playbackModes ?? [];
+	const offeredModes = capabilities?.playbackModes ?? NOT_OFFERED;
 	const shuffleMode = useMemo(
 		() => findShuffleMode(offeredModes),
 		[offeredModes],
@@ -76,7 +78,17 @@ export function usePlaybackOrder() {
 		mutate(shuffleMode);
 	}, [isShuffle, shuffleMode, mutate]);
 
+	const setOrder = useCallback(
+		(next: PlaybackMode) => {
+			if (next !== mode) mutate(next);
+		},
+		[mode, mutate],
+	);
+
 	return {
+		mode,
+		offered: offeredModes,
+		setOrder,
 		isShuffle,
 		canShuffle: shuffleMode !== null,
 		orderName: mode ? translate(ORDER_NAME_PHRASE[mode]) : null,

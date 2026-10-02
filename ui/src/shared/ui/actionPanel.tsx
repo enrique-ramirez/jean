@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
 	useCallback,
@@ -223,13 +223,18 @@ function Node({
 
 	const Icon = node.icon;
 	const hasSubmenu = Boolean(node.items);
+	const role =
+		node.checked === undefined
+			? { role: "menuitem" }
+			: { role: "menuitemradio", "aria-checked": node.checked };
 
 	return (
 		<button
 			type="button"
-			role="menuitem"
+			{...role}
 			className={styles.item}
 			data-danger={node.danger ? "true" : undefined}
+			data-icon-tone={node.iconTone}
 			data-submenu={hasSubmenu ? "true" : undefined}
 			disabled={node.disabled}
 			aria-haspopup={hasSubmenu ? "menu" : undefined}
@@ -247,6 +252,14 @@ function Node({
 			<span className={styles.label}>{node.label}</span>
 			{node.shortcut ? (
 				<kbd className={styles.shortcut}>{node.shortcut}</kbd>
+			) : null}
+			{node.checked ? (
+				<Check
+					className={styles.tick}
+					size={15}
+					strokeWidth={2.4}
+					aria-hidden="true"
+				/>
 			) : null}
 			{hasSubmenu ? (
 				<ChevronRight

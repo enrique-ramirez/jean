@@ -48,7 +48,7 @@ export function ActionPopover({
 		});
 	}, [anchor, ref]);
 
-	useFocusCapture(ref, placement !== null);
+	useFocusCapture(ref, placement !== null, '[aria-checked="true"]');
 
 	return (
 		// biome-ignore lint/a11y/noStaticElementInteractions: the panel takes the keyboard for the whole menu, see menuKeys.ts

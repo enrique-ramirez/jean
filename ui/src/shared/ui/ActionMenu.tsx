@@ -13,6 +13,8 @@ export interface ActionEntry {
 	icon?: IconComponent;
 	shortcut?: string;
 	danger?: boolean;
+	checked?: boolean;
+	iconTone?: "accent";
 	disabled?: boolean;
 	onSelect?: () => void;
 	keepOpen?: boolean;

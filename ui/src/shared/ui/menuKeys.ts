@@ -24,6 +24,7 @@ const itemsIn = (container: HTMLElement | null | undefined): HTMLElement[] => [
 export function useFocusCapture(
 	ref: RefObject<HTMLElement | null>,
 	isReady = true,
+	initialFocus?: string,
 ) {
 	useLayoutEffect(() => {
 		if (!isReady) return undefined;
@@ -31,13 +32,17 @@ export function useFocusCapture(
 		const panel = ref.current;
 		if (!panel) return undefined;
 		const previous = document.activeElement as HTMLElement | null;
-		if (!panel.contains(previous)) panel.focus({ preventScroll: true });
+		if (!panel.contains(previous))
+			(
+				(initialFocus && panel.querySelector<HTMLElement>(initialFocus)) ||
+				panel
+			).focus({ preventScroll: true });
 
 		return () => {
 			if (panel.contains(document.activeElement))
 				previous?.focus?.({ preventScroll: true });
 		};
-	}, [ref, isReady]);
+	}, [ref, isReady, initialFocus]);
 }
 
 // Nothing typed at an open menu belongs to the app behind it: without the `stopPropagation` the

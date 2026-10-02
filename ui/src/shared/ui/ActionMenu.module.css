@@ -327,6 +327,10 @@
 	color: currentColor;
 }
 
+.item[data-icon-tone="accent"] .icon {
+	color: var(--accent-text);
+}
+
 .item:disabled .icon {
 	color: inherit;
 }
@@ -343,6 +347,12 @@
 	font-family: var(--font-numeric);
 	font-size: 0.6875rem;
 	color: var(--faint);
+}
+
+.tick {
+	flex: 0 0 auto;
+	margin-left: auto;
+	color: var(--accent-text);
 }
 
 .chevron {

@@ -1,4 +1,5 @@
 .group {
+	position: relative;
 	display: grid;
 	grid-template-columns: 160px minmax(0, 1fr);
 	gap: 20px;
@@ -9,6 +10,32 @@
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
+}
+
+.cover {
+	align-self: flex-start;
+}
+
+.group:has([data-dragging]) .aside {
+	visibility: hidden;
+}
+
+.group[data-drop-line]::after {
+	content: "";
+	position: absolute;
+	inset-inline: 24px;
+	height: 2px;
+	border-radius: 1px;
+	background: var(--accent);
+	pointer-events: none;
+}
+
+.group[data-drop-line="before"]::after {
+	top: 0;
+}
+
+.group[data-drop-line="after"]::after {
+	bottom: 0;
 }
 
 .art {

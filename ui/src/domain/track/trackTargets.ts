@@ -1,3 +1,5 @@
+import type { AlbumRun } from "./grouping";
+
 export const REORDER_DROP_TARGET = "reorder";
 
 export function targetsFrom(
@@ -19,4 +21,16 @@ export function targetsFrom(
 			: [index];
 
 	return { index, positions };
+}
+
+export function albumFrom(
+	event: { target: EventTarget | null },
+	groups: AlbumRun[],
+): AlbumRun | null {
+	const span = (event.target as HTMLElement | null)
+		?.closest?.("[data-album-cover]")
+		?.closest<HTMLElement>("[data-span-start]");
+	if (!span) return null;
+	const start = Number(span.dataset.spanStart);
+	return groups.find((group) => group.start === start) ?? null;
 }

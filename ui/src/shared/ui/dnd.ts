@@ -90,6 +90,25 @@ const rowGapUnder = (y: number, list: HTMLElement) => {
 	return null;
 };
 
+const spanOf = (element: HTMLElement) => {
+	const start = Number(element.dataset.spanStart);
+	return { start, end: start + Number(element.dataset.spanCount) };
+};
+
+const spanGapUnder = (y: number, list: HTMLElement) => {
+	for (const element of list.querySelectorAll<HTMLElement>(
+		"[data-span-start]",
+	)) {
+		const box = element.getBoundingClientRect();
+		if (y < box.top || y >= box.bottom) continue;
+		const { start, end } = spanOf(element);
+		return y > box.top + box.height / 2 ? end : start;
+	}
+	return null;
+};
+
+const isSpanList = (list: HTMLElement) => list.dataset.dropSpans !== undefined;
+
 const targetUnder = (
 	x: number,
 	y: number,
@@ -108,12 +127,36 @@ const targetUnder = (
 	if (element.dataset.dropRows === undefined)
 		return { id, refusal, at: null, list: null };
 
-	const at = rowGapUnder(y, element);
+	const at = isSpanList(element)
+		? spanGapUnder(y, element)
+		: rowGapUnder(y, element);
 	return at === null ? null : { id, refusal, at, list: element };
 };
 
-let markedRow: HTMLElement | null = null;
+let marked: HTMLElement | null = null;
 let liftedRows = new Set<HTMLElement>();
+
+type Line = { element: HTMLElement; side: "before" | "after" } | null;
+
+const rowLine = (
+	list: HTMLElement,
+	at: number,
+	mounted: HTMLElement[],
+): Line => {
+	const rowAt = Math.min(at, Number(list.dataset.dropRows) - 1);
+	const element = mounted.find((el) => Number(el.dataset.row) === rowAt);
+	return element ? { element, side: at === rowAt ? "before" : "after" } : null;
+};
+
+const spanLine = (list: HTMLElement, at: number): Line => {
+	const spans = Array.from(
+		list.querySelectorAll<HTMLElement>("[data-span-start]"),
+	);
+	const opening = spans.find((el) => spanOf(el).start === at);
+	if (opening) return { element: opening, side: "before" };
+	const closing = spans.find((el) => spanOf(el).end === at);
+	return closing ? { element: closing, side: "after" } : null;
+};
 
 const markInsertion = (
 	list: HTMLElement | null,
@@ -121,17 +164,20 @@ const markInsertion = (
 	payload: DragPayload | undefined,
 ) => {
 	const origin = payload?.origin;
-	const count = Number(list?.dataset.dropRows);
-	const rowAt = at === null ? -1 : Math.min(at, count - 1);
 	const mounted = list
 		? Array.from(list.querySelectorAll<HTMLElement>("[data-row]"))
 		: [];
-	const row = mounted.find((el) => Number(el.dataset.row) === rowAt) ?? null;
+	const line =
+		list === null || at === null
+			? null
+			: isSpanList(list)
+				? spanLine(list, at)
+				: rowLine(list, at, mounted);
 
-	if (markedRow && markedRow !== row)
-		markedRow.removeAttribute("data-drop-line");
-	markedRow = row;
-	row?.setAttribute("data-drop-line", at === rowAt ? "before" : "after");
+	if (marked && marked !== line?.element)
+		marked.removeAttribute("data-drop-line");
+	marked = line?.element ?? null;
+	line?.element.setAttribute("data-drop-line", line.side);
 
 	const height = mounted[0]?.getBoundingClientRect().height ?? 0;
 	const shifts = new Map<HTMLElement, number>();

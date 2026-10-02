@@ -294,6 +294,9 @@ export function TrackList({
 				reorderRows === undefined ? undefined : REORDER_DROP_TARGET
 			}
 			data-drop-rows={reorderRows}
+			data-drop-spans={
+				isAlbumLayout && reorderRows !== undefined ? "" : undefined
+			}
 		>
 			{virtualItems.map((virtualRow) => (
 				<div

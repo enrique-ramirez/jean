@@ -64,15 +64,22 @@ export function AlbumGroup({
 	};
 
 	return (
-		<section className={styles.group} data-compact={isCompactViewport}>
+		<section
+			className={styles.group}
+			data-compact={isCompactViewport}
+			data-span-start={group.start}
+			data-span-count={group.count}
+		>
 			<div className={styles.aside}>
-				<Artwork
-					src={source.artworkUrl(rows.ref(group.cover))}
-					identity={coverIdentity(rows.at(group.cover))}
-					size={coverSize}
-					className={styles.art}
-					alt={t("album.coverAlt", { album: group.album })}
-				/>
+				<div className={styles.cover} data-album-cover="">
+					<Artwork
+						src={source.artworkUrl(rows.ref(group.cover))}
+						identity={coverIdentity(rows.at(group.cover))}
+						size={coverSize}
+						className={styles.art}
+						alt={t("album.coverAlt", { album: group.album })}
+					/>
+				</div>
 				<div className={styles.caption}>
 					<div className={styles.title}>{group.album}</div>
 					<div className={styles.meta}>

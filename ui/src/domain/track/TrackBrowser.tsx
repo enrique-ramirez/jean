@@ -36,7 +36,7 @@ import { useFollowPlayback } from "./useFollowPlayback";
 import { useListPreferences } from "./useListPreferences";
 import { useRowPointer } from "./useRowPointer";
 import { useTrackContextMenu } from "./useTrackContextMenu";
-import { useTrackDragSource } from "./useTrackDragSource";
+import { useAlbumDragSource, useTrackDragSource } from "./useTrackDragSource";
 import { useTrackSelection } from "./useTrackSelection";
 
 const PAGE = 12;
@@ -175,7 +175,7 @@ export function TrackBrowser({
 
 	const reorder = useMemo(
 		() =>
-			isListLayout && onReorder
+			onReorder
 				? (positions: number[], gap: number) =>
 						followRows(
 							onReorder(positions, gap),
@@ -183,14 +183,21 @@ export function TrackBrowser({
 							positions.length - 1,
 						)
 				: undefined,
-		[isListLayout, onReorder, followRows],
+		[onReorder, followRows],
 	);
 
 	const trackDrag = useTrackDragSource({
 		rows,
 		source,
 		selection: selection.selection,
-		onReorder: reorder,
+		onReorder: isListLayout ? reorder : undefined,
+	});
+
+	const albumDrag = useAlbumDragSource({
+		rows,
+		groups,
+		source,
+		onReorder: isListLayout ? undefined : reorder,
 	});
 
 	const nudgeRows = useCallback(
@@ -212,6 +219,7 @@ export function TrackBrowser({
 
 	const { selectFromPointer, rowHandlers } = useRowPointer({
 		rows,
+		groups,
 		selection,
 		trackDrag,
 		play,
@@ -221,7 +229,12 @@ export function TrackBrowser({
 	const onViewClick = useCallback(
 		(event: ReactMouseEvent) => {
 			const target = event.target as HTMLElement | null;
-			if (target?.closest("[data-row], button, a, input, label")) return;
+			if (
+				target?.closest(
+					"[data-row], [data-album-cover], button, a, input, label",
+				)
+			)
+				return;
 			clearSelection();
 		},
 		[clearSelection],
@@ -348,6 +361,7 @@ export function TrackBrowser({
 					{...mergeHandlers(
 						trackMenu.triggerProps,
 						trackDrag.dragProps,
+						albumDrag.dragProps,
 						rowHandlers,
 					)}
 				>
@@ -371,7 +385,9 @@ export function TrackBrowser({
 						selection={selection.selection}
 						matches={matches}
 						onSelect={selectFromPointer}
-						gripProps={reorder ? trackDrag.handleProps : undefined}
+						gripProps={
+							isListLayout && reorder ? trackDrag.handleProps : undefined
+						}
 						reorderRows={reorder ? rows.length : undefined}
 						onActiveDirectionChange={setActiveDirection}
 						isCompactViewport={isCompactViewport}

@@ -4,23 +4,26 @@ import {
 	useCallback,
 	useRef,
 } from "react";
+import type { AlbumRun } from "./grouping";
 import type { TrackRows } from "./project";
-import { targetsFrom } from "./trackTargets";
+import { albumFrom, targetsFrom } from "./trackTargets";
 import type { useTrackDragSource } from "./useTrackDragSource";
 import type { useTrackSelection } from "./useTrackSelection";
 
 export function useRowPointer({
 	rows,
+	groups,
 	selection,
 	trackDrag,
 	play,
 }: {
 	rows: TrackRows;
+	groups: AlbumRun[];
 	selection: ReturnType<typeof useTrackSelection>;
 	trackDrag: ReturnType<typeof useTrackDragSource>;
 	play: (position: number) => void;
 }) {
-	const { moveCursorTo } = selection;
+	const { moveCursorTo, selectBlock } = selection;
 
 	// Collapsing a multi-track selection on the way down would kill a drag of all of them, so the
 	// collapse waits for the pointer to come up.
@@ -81,10 +84,20 @@ export function useRowPointer({
 	const onDoubleClick = useCallback(
 		(event: ReactMouseEvent) => {
 			if (pointerType.current !== "mouse") return;
-			const index = aimedIndex(event);
-			if (index !== null) play(index);
+			const index = aimedIndex(event) ?? albumFrom(event, groups)?.start;
+			if (index !== undefined) play(index);
 		},
-		[aimedIndex, play],
+		[aimedIndex, groups, play],
+	);
+
+	const selectAlbum = useCallback(
+		(event: ReactPointerEvent) => {
+			if (event.pointerType !== "mouse" || event.button !== 0) return;
+			const album = albumFrom(event, groups);
+			if (album)
+				selectBlock(album.start, album.start + album.count - 1, album.start);
+		},
+		[groups, selectBlock],
 	);
 
 	return {
@@ -93,6 +106,7 @@ export function useRowPointer({
 			onPointerDown: (event: ReactPointerEvent) => {
 				pointerType.current = event.pointerType;
 				pressesSinceClick.current += 1;
+				selectAlbum(event);
 			},
 			onPointerUp: resolveCollapse,
 			onClick,

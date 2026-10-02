@@ -29,6 +29,17 @@ std::string pictureOf(const album_art_extractor_instance_v2::ptr& art, const GUI
     }
 }
 
+// The foobar2000 SDK's album_art_extractor::g_open reads the pictures a file's own tags carry and
+// never one beside it, and throws for a file with none.
+std::string embeddedPictureOf(const metadb_handle_ptr& item, const GUID& what) {
+    try {
+        const auto art = album_art_extractor::g_open(nullptr, item->get_path(), fb2k::noAbort);
+        return bytesOf(art->query(what, fb2k::noAbort));
+    } catch (const std::exception&) {
+        return {};
+    }
+}
+
 }  // namespace
 
 AlbumArt::AlbumArt() : loader_(album_art_manager_v2::tryGet()) {
@@ -50,7 +61,8 @@ ArtworkSource AlbumArt::of(const metadb_handle_ptr& item) const {
 
         const auto art = loader_->open(one, pfc::list_single_ref_t<GUID>(what), fb2k::noAbort);
 
-        auto picture = pictureOf(art, what);
+        auto picture = publishablePicture(pictureOf(art, what),
+                                          [&item, &what] { return embeddedPictureOf(item, what); });
         if (picture.empty())
             return {};
 

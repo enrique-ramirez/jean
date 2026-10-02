@@ -63,6 +63,15 @@ std::string imageTypeOf(const std::string& bytes) {
     return isWebp(bytes) ? "image/webp" : std::string();
 }
 
+std::string publishablePicture(std::string chosen,
+                               const std::function<std::string()>& readEmbedded) {
+    if (chosen.empty() || !imageTypeOf(chosen).empty())
+        return chosen;
+
+    const auto embedded = readEmbedded();
+    return imageTypeOf(embedded).empty() ? chosen : embedded;
+}
+
 void NowPlayingArtwork::hold(std::string picture) {
     if (picture.empty()) {
         clear();

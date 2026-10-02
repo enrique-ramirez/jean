@@ -37,6 +37,11 @@ std::string artworkTag(const std::string& picture);
 // image/svg+xml, for the reason ARCHITECTURE.md, *Facts about the player*, gives.
 std::string imageTypeOf(const std::string& bytes);
 
+// foobar2000's album art loader can answer an image beside the track ahead of the picture inside
+// it, so a scan kept as front.tif hides the JPEG the file carries.
+std::string publishablePicture(std::string chosen,
+                               const std::function<std::string()>& readEmbedded);
+
 struct ArtworkSource {
     std::string tag;
     SharedBytes picture;

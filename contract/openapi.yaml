@@ -135,7 +135,7 @@ info:
 
     The address is a lookup key and never a path. It is matched against what the player reported for the tracks in the snapshot and is joined to nothing, so there is no file outside the media library to name and nothing to traverse out of. An address the snapshot does not carry is a `404`, and never another record's sleeve.
 
-    The body is `image/jpeg`, `image/png`, `image/gif`, `image/webp` or `image/bmp`, read from the bytes rather than from a filename. A picture in anything else is a `404`: a type nothing recognised is not one a client should be told to draw.
+    The body is `image/jpeg`, `image/png`, `image/gif`, `image/webp` or `image/bmp`, read from the bytes rather than from a filename. Where the player's front cover is in anything else, the picture in the track's own tags is sent instead if it is one of those. With neither, the answer is a `404`: a type nothing recognised is not one a client should be told to draw.
 
     ### The playing cover
 

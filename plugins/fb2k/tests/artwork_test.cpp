@@ -44,6 +44,10 @@ constexpr char kPng[] =
     "\x89PNG\r\n\x1A\n"
     "and then the rest of a drawing";
 
+constexpr char kTiff[] =
+    "II*\0"
+    "and then the rest of a scan";
+
 constexpr char kTag[] = "\"7f3a1c00deadbeef\"";
 
 constexpr int kSecondsPerDay = 24 * 60 * 60;
@@ -180,6 +184,39 @@ TEST_CASE("only pictures a browser draws are given a type") {
     // Refusing to name SVG keeps two problems away from this route at once
     // (ARCHITECTURE.md, *Facts about the player*).
     CHECK(imageTypeOf(R"(<svg xmlns="http://www.w3.org/2000/svg"></svg>)").empty());
+}
+
+// On foobar2000 2.25 a front.tif beside the tracks was answered as the front cover, ahead of the
+// JPEG they embed and a cover.jpg in the same folder.
+TEST_CASE("a cover of a type that is not published gives way to the one inside the track's file") {
+    const std::string scan(kTiff, sizeof(kTiff) - 1);
+    int reads = 0;
+    const auto embedded = [&reads](std::string picture) {
+        return [&reads, picture = std::move(picture)] {
+            ++reads;
+            return picture;
+        };
+    };
+
+    CHECK(publishablePicture(scan, embedded(kJpeg)) == kJpeg);
+    CHECK(reads == 1);
+
+    // Still the scan, so the refusal a client reads says the format was the trouble rather
+    // than that the record has no sleeve.
+    CHECK(publishablePicture(scan, embedded("")) == scan);
+    CHECK(publishablePicture(scan, embedded("another scan")) == scan);
+}
+
+TEST_CASE("a cover of a published type, or no cover at all, never opens the track's file") {
+    int reads = 0;
+    const auto embedded = [&reads] {
+        ++reads;
+        return std::string(kJpeg);
+    };
+
+    CHECK(publishablePicture(kPng, embedded) == kPng);
+    CHECK(publishablePicture("", embedded).empty());
+    CHECK(reads == 0);
 }
 
 // The validator is the picture rather than a stat of the file the picture came from because

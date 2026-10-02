@@ -2,6 +2,9 @@ import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	checkedOrderRows,
 	closeNowPlaying,
+	dragAcrossTheSheet,
+	dragFromTheScrim,
+	dragTheSheetAwayByItsTopEdge,
 	drawing,
 	drawnColour,
 	expect,
@@ -21,12 +24,13 @@ import {
 	orderButton,
 	orderList,
 	orderRow,
+	playbackCommands,
 	playerDeclaring,
 	playRequests,
+	restingBox,
 	statusBar,
 	test,
 	tokenColourIn,
-	touchDrag,
 	trackRow,
 	untilTheInstallIsKnown,
 } from "./fixtures.ts";
@@ -123,16 +127,6 @@ const moveThePlayerTo = (
 	player.patchPlayer({
 		options: [{ id: "playbackOrder", value: declared.indexOf(order) }],
 	});
-
-// Every command a key could send to the player. Starting a row goes by a playlist route and is not
-// among them.
-const playbackCommands = (player: FakePlayer) =>
-	player.requests
-		.filter(
-			(entry) =>
-				entry.method === "POST" && entry.path.startsWith("/api/playback/"),
-		)
-		.map((entry) => entry.path);
 
 const holdModeWrites = (page: Page) =>
 	holdRequests(
@@ -249,33 +243,12 @@ const GREY_MAX_CHROMA = 0.05;
 
 const chromaOf = (colour: string) => Number(OKLCH.exec(colour)?.[2]);
 
-const restingBox = async (target: Locator) => {
-	let last = "null";
-	await expect
-		.poll(async () => {
-			const now = JSON.stringify(await target.boundingBox());
-			const isStill = now !== "null" && now === last;
-			last = now;
-			return isStill;
-		})
-		.toBe(true);
-	return JSON.parse(last) as {
-		x: number;
-		y: number;
-		width: number;
-		height: number;
-	};
-};
-
 // Apple's Human Interface Guidelines and WCAG 2.5.5 both set a touch target's least side at 44, in
 // points and in CSS pixels.
 const TOUCH_TARGET = 44;
 
 // A row of the captured Library with rows either side of it, so a skip either way would land.
 const PLAYING_ROW = 2;
-
-// Inside the strip at the top of an action sheet that a thumb drags it away by.
-const GRABBER_INSET = 8;
 
 const UNNAMED_ICON = "circle-question-mark";
 
@@ -1246,9 +1219,7 @@ test.describe("on a compact viewport", () => {
 		await expect(sheet(page)).toBeVisible();
 	};
 
-	// React hands an event in a portal to the ancestors of the component that drew it, so a touch
-	// on the sheet reaches the screen's own handlers, where the cover wheel and the swipe that
-	// dismisses the screen listen, although the sheet is nowhere inside the screen on the page.
+	// The screen's cover wheel and the swipe that dismisses it listen for touches.
 	test("choosing a row sends that order, changes the face, and neither skips nor closes the screen", async ({
 		page,
 		player,
@@ -1280,14 +1251,8 @@ test.describe("on a compact viewport", () => {
 		player,
 	}) => {
 		await openTheSheetOverAPlayingTrack(page, player);
-		const box = await restingBox(sheet(page));
-		const y = box.y + box.height / 2;
 
-		await touchDrag(
-			page,
-			{ x: box.x + box.width * 0.85, y },
-			{ x: box.x + box.width * 0.2, y },
-		);
+		await dragAcrossTheSheet(page, sheet(page));
 
 		await expectSettlesAt(player, () => playbackCommands(player), []);
 		expect(player.player.activeItem.index).toBe(PLAYING_ROW);
@@ -1299,14 +1264,36 @@ test.describe("on a compact viewport", () => {
 		player,
 	}) => {
 		await openTheSheetOverAPlayingTrack(page, player);
-		const box = await restingBox(sheet(page));
-		const x = box.x + box.width / 2;
 
-		await touchDrag(
-			page,
-			{ x, y: box.y + GRABBER_INSET },
-			{ x, y: box.y + box.height },
-		);
+		await dragTheSheetAwayByItsTopEdge(page, sheet(page));
+
+		await expect(sheet(page)).toHaveCount(0);
+		await expectTheScreenIsStillOpen(page);
+		await expect(orderButton(page, true)).toBeVisible();
+		await expectSettlesAt(player, () => playbackCommands(player), []);
+	});
+
+	test("a sideways drag that begins on the scrim closes the sheet and turns no cover", async ({
+		page,
+		player,
+	}) => {
+		await openTheSheetOverAPlayingTrack(page, player);
+
+		await dragFromTheScrim(page, sheet(page), "left");
+
+		await expect(sheet(page)).toHaveCount(0);
+		await expectSettlesAt(player, () => playbackCommands(player), []);
+		expect(player.player.activeItem.index).toBe(PLAYING_ROW);
+		await expectTheScreenIsStillOpen(page);
+	});
+
+	test("a downward drag that begins on the scrim closes the sheet and leaves the screen up", async ({
+		page,
+		player,
+	}) => {
+		await openTheSheetOverAPlayingTrack(page, player);
+
+		await dragFromTheScrim(page, sheet(page), "down");
 
 		await expect(sheet(page)).toHaveCount(0);
 		await expectTheScreenIsStillOpen(page);

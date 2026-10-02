@@ -3,7 +3,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { subscribers } from "@/shared/lib/store";
 
 export const AUTOPLAYLIST_KEYBOARD = "autoplaylist";
-export const PLAYBACK_ORDER_KEYBOARD = "playbackOrder";
+export const ACTION_MENU_KEYBOARD = "actionMenu";
 export const SETTINGS_KEYBOARD = "settings";
 export const SHORTCUTS_KEYBOARD = "shortcuts";
 

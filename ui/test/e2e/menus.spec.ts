@@ -1,13 +1,17 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
+	dragAcrossTheSheet,
+	dragFromTheScrim,
 	expect,
 	expectSettlesAt,
 	openLibrary,
 	openSidebar,
 	pressAndHold,
 	sidebar,
+	statusBar,
 	test,
 	trackRow,
+	untilQuiet,
 } from "./fixtures.ts";
 
 // `ui/ActionMenu.tsx` is one component with two shapes: a popover at the pointer
@@ -38,6 +42,38 @@ const filterField = (page: Page) =>
 
 const isTransportCommand = (path: string) =>
 	path.startsWith("/api/playback/") || path === "/api/volume";
+
+const queuePanel = (page: Page) =>
+	page.getByRole("complementary", { name: "Queue" });
+
+const isFocusInTheMenu = (page: Page) =>
+	page
+		.getByRole("menu")
+		.first()
+		.evaluate((menu) => {
+			let panel: Element = menu;
+			while (panel.parentElement && panel.parentElement !== document.body)
+				panel = panel.parentElement;
+			return panel.contains(document.activeElement);
+		});
+
+// Stop rather than Space or an arrow: focus is on whichever control comes before the menu, and
+// a browser or the control answers those itself.
+const STOP_KEY = "ControlOrMeta+.";
+
+const MENUS_OVER_THE_QUEUE = [
+	{
+		name: "a row's menu",
+		open: (page: Page) => trackRow(page, 0).click({ button: "right" }),
+	},
+	{
+		name: "the Sort menu",
+		open: (page: Page) => page.getByRole("button", { name: "Sort" }).click(),
+	},
+];
+
+// In the captured library, with enough tracks to fill its Tracks tab.
+const ARTIST = "Babasónicos";
 
 test.describe("the menu names what it is about", () => {
 	test("a single row is headed by the track", { tag: "@iphone" }, async ({
@@ -95,6 +131,24 @@ test.describe("a nested page", () => {
 		await back.click();
 		await expect(back).toHaveCount(0);
 		await expect(menuItem(page, "Add to playlist")).toBeVisible();
+	});
+
+	test("Escape at its field steps back a page, and Escape again closes the menu", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "the field waits to be tapped on touch");
+
+		await openLibrary(page);
+		await openTargets(page, isMobile);
+		await expect(filterField(page)).toBeFocused();
+
+		await page.keyboard.press("Escape");
+		await expect(menuItem(page, "Favorites")).toHaveCount(0);
+		await expect(menuItem(page, "Add to playlist")).toBeVisible();
+
+		await page.keyboard.press("Escape");
+		await expect(page.getByRole("menu")).toHaveCount(0);
 	});
 
 	test("it offers the playlists you can file into, and no others", async ({
@@ -216,6 +270,104 @@ test.describe("while a menu is open", () => {
 		await expect(
 			page.locator('[role="row"][data-selected="true"]'),
 		).toHaveCount(1);
+	});
+
+	// The queue panel closes on Escape too, and a menu opened with it up is in front of it.
+	for (const { name, open } of MENUS_OVER_THE_QUEUE) {
+		test(`with the queue panel open behind ${name}, Escape closes the menu and not the panel, and Escape again closes the panel`, async ({
+			page,
+			isMobile,
+		}) => {
+			test.skip(isMobile, "these are keyboard events");
+
+			await openLibrary(page);
+			await statusBar(page)
+				.getByRole("button", { name: /^Queue/ })
+				.click();
+			await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+			await open(page);
+			await expect(page.getByRole("menu")).toBeVisible();
+
+			await page.keyboard.press("Escape");
+			await expect(page.getByRole("menu")).toHaveCount(0);
+			await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
+
+			await page.keyboard.press("Escape");
+			await expect(queuePanel(page)).toHaveAttribute("data-open", "false");
+		});
+	}
+
+	// The menu stops the keys typed inside it, and Shift+Tab is one press out of it. On a phone
+	// the keys are an attached keyboard's.
+	test("once focus has left it, no key reaches the player and Escape still closes it", async ({
+		page,
+		isMobile,
+		player,
+	}) => {
+		await openLibrary(page);
+		await openTrackMenu(page, isMobile);
+		await page.keyboard.press("Shift+Tab");
+		await expect
+			.poll(() => isFocusInTheMenu(page), { message: "focus, in the menu" })
+			.toBe(false);
+
+		await page.keyboard.press(STOP_KEY);
+		await expectSettlesAt(
+			player,
+			() => player.requests.filter((entry) => isTransportCommand(entry.path)),
+			[],
+		);
+
+		await page.keyboard.press("Escape");
+		await expect(page.getByRole("menu")).toHaveCount(0);
+	});
+});
+
+// An artist's page reads a sideways flick as a step between its tabs.
+test.describe("an action sheet keeps a touch that begins on it", () => {
+	test.skip(
+		({ isMobile }) => !isMobile,
+		"a sheet is the compact shape, and this is touch",
+	);
+
+	test("a sideways drag across a row's sheet on an artist's Tracks tab leaves the tab and the sheet as they were", async ({
+		page,
+		player,
+		browserName,
+	}) => {
+		test.skip(browserName !== "chromium", "a finger is driven through CDP");
+
+		await page.goto(`/#/artist/${encodeURIComponent(ARTIST)}/tracks`);
+		await expect(trackRow(page, 0)).toBeAttached();
+		await pressAndHold(page, trackRow(page, 0));
+		const sheet = page.getByRole("dialog");
+		await expect(sheet).toBeVisible();
+
+		await dragAcrossTheSheet(page, sheet, "right");
+
+		await untilQuiet(player);
+		await expect(page).toHaveURL(/\/tracks$/);
+		await expect(sheet).toBeVisible();
+	});
+
+	test("a sideways drag that begins on the scrim of a row's sheet on an artist's Tracks tab closes the sheet and leaves the tab where it was", async ({
+		page,
+		player,
+		browserName,
+	}) => {
+		test.skip(browserName !== "chromium", "a finger is driven through CDP");
+
+		await page.goto(`/#/artist/${encodeURIComponent(ARTIST)}/tracks`);
+		await expect(trackRow(page, 0)).toBeAttached();
+		await pressAndHold(page, trackRow(page, 0));
+		const sheet = page.getByRole("dialog");
+		await expect(sheet).toBeVisible();
+
+		await dragFromTheScrim(page, sheet, "right");
+
+		await expect(sheet).toHaveCount(0);
+		await untilQuiet(player);
+		await expect(page).toHaveURL(/\/tracks$/);
 	});
 });
 

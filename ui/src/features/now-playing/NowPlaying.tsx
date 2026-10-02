@@ -100,11 +100,7 @@ export function NowPlaying({
 	const keyboardOwner = useKeyboardOwner();
 
 	const ownsEscape =
-		isOpen &&
-		!isInfoOpen &&
-		!isQueueOpen &&
-		!menu.isOpen &&
-		keyboardOwner === null;
+		isOpen && !isInfoOpen && !isQueueOpen && keyboardOwner === null;
 	useEscapeCapture(ownsEscape ? onDismiss : null);
 
 	const lyrics = useMemo(

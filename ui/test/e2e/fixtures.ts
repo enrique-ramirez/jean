@@ -649,6 +649,16 @@ export const modesSent = (player: FakePlayer) =>
 		)
 		.map((entry) => entry.body?.mode);
 
+// Every command a key or a gesture could send to the player. Starting a row goes by a playlist
+// route and is not among them.
+export const playbackCommands = (player: FakePlayer) =>
+	player.requests
+		.filter(
+			(entry) =>
+				entry.method === "POST" && entry.path.startsWith("/api/playback/"),
+		)
+		.map((entry) => entry.path);
+
 const QUIET_MS = 250;
 
 export const untilQuiet = async (player: FakePlayer) => {
@@ -929,6 +939,85 @@ export const touchDrag = async (
 		});
 	});
 	await send("touchEnd", to);
+};
+
+export const restingBox = async (target: Locator) => {
+	let last = "null";
+	await expect
+		.poll(async () => {
+			const now = JSON.stringify(await target.boundingBox());
+			const isStill = now !== "null" && now === last;
+			last = now;
+			return isStill;
+		})
+		.toBe(true);
+	return JSON.parse(last) as {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	};
+};
+
+// Across the middle of an action sheet, further than a flick has to travel. React hands a touch on
+// a portalled sheet to the ancestors of the component that drew it, wherever the sheet is on the
+// page, so a drag across it reaches their gesture handlers.
+export const dragAcrossTheSheet = async (
+	page: Page,
+	sheet: Locator,
+	towards: "left" | "right" = "left",
+) => {
+	const box = await restingBox(sheet);
+	await dragSideways(page, box, box.y + box.height / 2, towards);
+};
+
+const dragSideways = (
+	page: Page,
+	box: { x: number; width: number },
+	y: number,
+	towards: "left" | "right",
+) => {
+	const right = { x: box.x + box.width * 0.85, y };
+	const left = { x: box.x + box.width * 0.2, y };
+	const [from, to] = towards === "left" ? [right, left] : [left, right];
+	return touchDrag(page, from, to);
+};
+
+// The room a drag from the scrim needs above the sheet: further than a flick has to travel.
+const SCRIM_ROOM_PX = 100;
+
+// A drag that begins on the dimmed scrim above an action sheet and never crosses the sheet. The
+// sheet sits at the bottom of the viewport, so the scrim on show is what lies above it.
+export const dragFromTheScrim = async (
+	page: Page,
+	sheet: Locator,
+	towards: "left" | "right" | "down",
+) => {
+	const box = await restingBox(sheet);
+	expect(box.y, "the scrim on show above the sheet").toBeGreaterThan(
+		SCRIM_ROOM_PX,
+	);
+
+	if (towards !== "down") return dragSideways(page, box, box.y / 2, towards);
+
+	const x = box.x + box.width / 2;
+	return touchDrag(page, { x, y: box.y * 0.2 }, { x, y: box.y * 0.8 });
+};
+
+// Inside the strip at the top of an action sheet that a thumb drags it away by.
+const GRABBER_INSET = 8;
+
+export const dragTheSheetAwayByItsTopEdge = async (
+	page: Page,
+	sheet: Locator,
+) => {
+	const box = await restingBox(sheet);
+	const x = box.x + box.width / 2;
+	await touchDrag(
+		page,
+		{ x, y: box.y + GRABBER_INSET },
+		{ x, y: box.y + box.height },
+	);
 };
 
 // Driven with the real mouse rather than dispatched events: pointer capture and

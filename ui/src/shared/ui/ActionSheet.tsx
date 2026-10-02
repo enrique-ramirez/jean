@@ -1,5 +1,6 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useRef, useState } from "react";
+import { useDismissable } from "@/shared/hooks/useDismissable";
 import { useVisualViewport } from "@/shared/hooks/useVisualViewport";
 import { translate } from "@/shared/i18n/locale";
 import styles from "./ActionMenu.module.css";
@@ -19,12 +20,13 @@ export function ActionSheet({
 		onDismiss,
 		canFilter: true,
 	});
-	const ref = useRef<HTMLDivElement | null>(null);
+	const ref = useDismissable<HTMLDivElement>(!isLeaving, onDismiss);
 	const scrimRef = useRef<HTMLDivElement | null>(null);
 	const [dragY, setDragY] = useState(0);
 	const from = useRef<number | null>(null);
 
 	useFocusCapture(ref);
+
 	// The scrim is the sheet's containing block, so tracking the visual viewport here is what lifts
 	// the sheet clear of the keyboard.
 	useVisualViewport(scrimRef);
@@ -55,8 +57,8 @@ export function ActionSheet({
 		<div
 			ref={scrimRef}
 			className={styles.scrim}
+			data-owns-touch=""
 			data-state={isLeaving ? "closed" : "open"}
-			onPointerDown={onDismiss}
 		>
 			<div
 				ref={ref}

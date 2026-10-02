@@ -1,13 +1,18 @@
-import type { Locator, Page } from "./fixtures.ts";
+import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	closeSidebar,
+	dragAcrossTheSheet,
+	dragFromTheScrim,
+	dragTheSheetAwayByItsTopEdge,
 	expect,
+	expectSettlesAt,
 	expectTheScreenIsStillOpen,
 	isRowOnScreen,
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
 	openSidebar,
+	playbackCommands,
 	requestsTo,
 	scrollTo,
 	scrollTop,
@@ -106,6 +111,48 @@ test.describe("the way in and the way out", () => {
 		await page.keyboard.press("Escape");
 		await expect(menu).toBeHidden();
 		await expect(nowPlayingScreen(page)).toBeVisible();
+	});
+
+	// On a phone the keys are an attached keyboard's, and the menu is a sheet that takes a moment
+	// to leave once it is closed.
+	test("Escape pressed twice closes the track menu and then the screen, however soon the second follows", async ({
+		page,
+	}) => {
+		await playRow(page, 0);
+		await nowPlayingScreen(page)
+			.getByRole("button", { name: "Track actions" })
+			.click();
+		const menu = page.getByRole("menu");
+		await expect(menu).toBeVisible();
+
+		await page.keyboard.press("Escape");
+		await expectTheScreenIsStillOpen(page);
+		await page.keyboard.press("Escape");
+
+		await expect(nowPlayingScreen(page)).toBeHidden();
+		await expect(menu).toHaveCount(0);
+	});
+
+	test("a playlist's menu in the sidebar takes Escape before the screen does, and Escape again closes the screen", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "the screen covers the sidebar on a phone");
+
+		await playRow(page, 0);
+		await openSidebar(page);
+		await sidebar(page)
+			.getByText("Favorites", { exact: true })
+			.click({ button: "right" });
+		const menu = page.getByRole("menu");
+		await expect(menu).toBeVisible();
+
+		await page.keyboard.press("Escape");
+		await expect(menu).toHaveCount(0);
+		await expectTheScreenIsStillOpen(page);
+
+		await page.keyboard.press("Escape");
+		await expect(nowPlayingScreen(page)).toBeHidden();
 	});
 
 	test("a reload lands on it and leaving still goes somewhere", async ({
@@ -859,6 +906,88 @@ test.describe("a control that follows the finger keeps the gesture", () => {
 				),
 			)
 			.toHaveLength(1);
+	});
+});
+
+// The screen's cover wheel and the swipe that dismisses it listen for touches.
+test.describe("the track menu's sheet keeps a touch that begins on it", () => {
+	test.skip(
+		({ isMobile }) => !isMobile,
+		"a sheet is the compact shape, and this is touch",
+	);
+	test.skip(
+		({ browserName }) => browserName !== "chromium",
+		"a finger is driven through CDP",
+	);
+
+	// A row of the captured Library with rows either side of it, so a skip either way would land.
+	const PLAYING_ROW = 2;
+
+	const sheet = (page: Page) => page.getByRole("dialog");
+
+	const openTheSheetOverAPlayingTrack = async (
+		page: Page,
+		player: FakePlayer,
+	) => {
+		await playRow(page, PLAYING_ROW);
+		await expect.poll(() => player.player.activeItem.index).toBe(PLAYING_ROW);
+		await nowPlayingScreen(page)
+			.getByRole("button", { name: "Track actions" })
+			.tap();
+		await expect(sheet(page)).toBeVisible();
+	};
+
+	test("a sideways drag across it skips no track and leaves the screen up", async ({
+		page,
+		player,
+	}) => {
+		await openTheSheetOverAPlayingTrack(page, player);
+
+		await dragAcrossTheSheet(page, sheet(page));
+
+		await expectSettlesAt(player, () => playbackCommands(player), []);
+		expect(player.player.activeItem.index).toBe(PLAYING_ROW);
+		await expectTheScreenIsStillOpen(page);
+	});
+
+	test("dragging it away by its top edge closes the sheet and leaves the screen up", async ({
+		page,
+		player,
+	}) => {
+		await openTheSheetOverAPlayingTrack(page, player);
+
+		await dragTheSheetAwayByItsTopEdge(page, sheet(page));
+
+		await expect(sheet(page)).toHaveCount(0);
+		await expectTheScreenIsStillOpen(page);
+		await expectSettlesAt(player, () => playbackCommands(player), []);
+	});
+
+	test("a sideways drag that begins on the scrim closes the sheet, skips no track and leaves the screen up", async ({
+		page,
+		player,
+	}) => {
+		await openTheSheetOverAPlayingTrack(page, player);
+
+		await dragFromTheScrim(page, sheet(page), "left");
+
+		await expect(sheet(page)).toHaveCount(0);
+		await expectSettlesAt(player, () => playbackCommands(player), []);
+		expect(player.player.activeItem.index).toBe(PLAYING_ROW);
+		await expectTheScreenIsStillOpen(page);
+	});
+
+	test("a downward drag that begins on the scrim closes the sheet and leaves the screen up", async ({
+		page,
+		player,
+	}) => {
+		await openTheSheetOverAPlayingTrack(page, player);
+
+		await dragFromTheScrim(page, sheet(page), "down");
+
+		await expect(sheet(page)).toHaveCount(0);
+		await expectTheScreenIsStillOpen(page);
+		await expectSettlesAt(player, () => playbackCommands(player), []);
 	});
 });
 

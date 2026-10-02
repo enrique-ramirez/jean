@@ -17,15 +17,10 @@ import type { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import type { PlaybackMode } from "@/shared/api/types";
 import type { Point } from "@/shared/hooks/useLongPress";
 import { useTranslate } from "@/shared/i18n/useTranslate";
-import {
-	PLAYBACK_ORDER_KEYBOARD,
-	useKeyboardOwnership,
-} from "@/shared/keyboard/keyboardOwner";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
 import type { IconComponent } from "@/shared/ui/icons";
-import styles from "./PlaybackOrderButton.module.css";
 
 const ORDER_ICON: Record<PlaybackMode, IconComponent> = {
 	inOrder: LayoutArrowDown,
@@ -40,21 +35,8 @@ const ORDER_ICON: Record<PlaybackMode, IconComponent> = {
 const toneOf = (mode: PlaybackMode | null) =>
 	mode === null || mode === "inOrder" ? undefined : "accent";
 
-const stop = (event: { stopPropagation: () => void }) =>
-	event.stopPropagation();
-
 const keepKeyFromGlobalBindings = (event: ReactKeyboardEvent) => {
 	if (event.key === "Enter" || event.key === " ") event.stopPropagation();
-};
-
-// React bubbles a portal's events to the components above it in the React tree, not the DOM.
-const stopGestures = {
-	onPointerDown: stop,
-	onPointerMove: stop,
-	onPointerUp: stop,
-	onTouchStart: stop,
-	onTouchMove: stop,
-	onTouchEnd: stop,
 };
 
 export function PlaybackOrderButton({
@@ -78,7 +60,6 @@ export function PlaybackOrderButton({
 	const isList = order.offered.length > 2;
 
 	const isListOpen = isList && anchor !== null;
-	useKeyboardOwnership(PLAYBACK_ORDER_KEYBOARD, isListOpen);
 
 	const press = () => {
 		if (!isList) {
@@ -124,22 +105,20 @@ export function PlaybackOrderButton({
 				<Icon size={size} strokeWidth={2} />
 			</button>
 			{isList ? (
-				<div className={styles.shield} {...stopGestures}>
-					<ActionMenu
-						isOpen={isListOpen}
-						anchor={anchor}
-						header={{ title: t("player.order.title") }}
-						actions={order.offered.map((mode) => ({
-							id: mode,
-							label: order.nameOf(mode),
-							icon: ORDER_ICON[mode],
-							iconTone: toneOf(mode),
-							checked: mode === order.mode,
-							onSelect: () => order.setOrder(mode),
-						}))}
-						onDismiss={() => setAnchor(null)}
-					/>
-				</div>
+				<ActionMenu
+					isOpen={isListOpen}
+					anchor={anchor}
+					header={{ title: t("player.order.title") }}
+					actions={order.offered.map((mode) => ({
+						id: mode,
+						label: order.nameOf(mode),
+						icon: ORDER_ICON[mode],
+						iconTone: toneOf(mode),
+						checked: mode === order.mode,
+						onSelect: () => order.setOrder(mode),
+					}))}
+					onDismiss={() => setAnchor(null)}
+				/>
 			) : null}
 		</>
 	);

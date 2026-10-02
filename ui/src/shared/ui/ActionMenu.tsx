@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Point } from "@/shared/hooks/useLongPress";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
+import {
+	ACTION_MENU_KEYBOARD,
+	useKeyboardOwnership,
+} from "@/shared/keyboard/keyboardOwner";
 import { ActionPopover } from "./ActionPopover";
 import { ActionSheet } from "./ActionSheet";
 import type { IconComponent } from "./icons";
@@ -57,6 +61,7 @@ export function ActionMenu({
 	onDismiss: () => void;
 }) {
 	const isCompact = useIsCompactViewport();
+	useKeyboardOwnership(ACTION_MENU_KEYBOARD, isOpen);
 
 	const shown = useRef({ anchor, header, actions });
 	if (isOpen) shown.current = { anchor, header, actions };

@@ -9,7 +9,7 @@
 
 ## Gestures and the cover wheel
 
-- A control that follows the finger carries `data-owns-touch`, on its popover as well. The sleeve takes no touch (`pointer-events: none`), and nothing on the screen is keyed on the track.
+- A control that follows the finger carries `data-owns-touch`, on its popover as well, and so does every action sheet. The sleeve takes no touch (`pointer-events: none`), and nothing on the screen is keyed on the track.
 - The wheel's radius (stylesheet) and gearing (component) move together. Three nodes keyed by index modulo three serve every position.
 - A skip holds the title from the gesture until the sound catches up, while whether a turn was refused is read off the player's track. An unanswered turn times out, since at a playlist's end the player takes the skip and reports nothing.
 

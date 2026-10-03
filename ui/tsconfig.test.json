@@ -122,6 +122,8 @@
 		"src/domain/track/usePlaylistItems.ts",
 		"src/features/home/shelves.ts",
 		"src/features/home/when.ts",
+		"src/features/now-playing/lrclib.ts",
+		"src/features/now-playing/lyricDraft.ts",
 		"src/features/now-playing/lyricsFormat.ts",
 		"src/shared/api/outputs.ts",
 		"src/shared/api/playback.ts",

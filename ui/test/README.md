@@ -149,7 +149,7 @@ A fake kinder than the player it stands in for makes the suite agree with itself
 - **`POST /api/library/refresh` has a route, and nothing in Jean calls it.** The fake answers it, rate limit included, so a caller added later meets a fake that already behaves.
 - **A queue entry with no position is skipped rather than played.** A real player plays one. The fake's own playback is addressed by a playlist and a row and has nowhere to play a bare handle from, so nothing asserting what reaches the head may lean on it.
 - **The unreachable state destroys the connection rather than answering 500.** A refused socket and an error response are different events in the browser.
-- **A queue body carrying a field no schema declares is refused, as in the component.** `POST /queue` and `POST /queue/move` all answer `400` with an empty `detail`, matching `declaresOnly` in `core/api.cpp`; a fake that stayed permissive here would pass a request built from a stale type and fail against a real install.
+- **A queue body carrying a field no schema declares is refused, as in the component.** `POST /queue` and `POST /queue/move` both answer `400` with an empty `detail`, matching `declaresOnly` in `core/json.h`; a fake that stayed permissive here would pass a request built from a stale type and fail against a real install.
 - **The fake answers `415` to a body that is not `application/json`, as the component does**, since a client that stopped sending that header would pass every other assertion and fail against a real install. Tickets are **not** single-use, for the same reason the component's are not.
 - **A stream fails every way a second listener can.** `streamBehaviour` is `short` (ends after what it has sent, for reconnect) and `quiet` (opens, sends the container header, then nothing: the case with **no error to catch**, which is what a stopped player looks like and what the stall watchdog is the only answer to). `playableFormats` names which of `streamFormats` get bytes of the declared type. `failTickets` with `ticketError` separates a 503 meaning "busy" from one meaning "not supported". `expireTickets` answers 401 at `GET /stream`.
 - **The timeline carries a history and the clock starts before the fake does.** `state.streamMarks` records where recent tracks began, backdated by the position the player was at, since a listener is always *behind* the live edge. `startedAt` is a minute in the past, since the component starts with foobar2000 long before any client connects.
@@ -213,7 +213,7 @@ Two rules outrank the rest.
 | Scrolling | `isRowOnScreen`, `scrollUntilMounted`, `scrollTop`, `scrollTo` |
 | Steps | `inSequence`, `times` |
 
-A file that is not `*.spec.ts` is not collected, which is how `fixtures.ts` and `build.ts` sit in the same folder. `nowPlaying.ts` is the same thing one level down: the lyric fixtures and the panel helpers four now-playing specs share, which are too specific to be everybody's.
+A file that is not `*.spec.ts` is not collected, which is how `fixtures.ts` and `build.ts` sit in the same folder. `nowPlaying.ts` is the same thing one level down: the lyric fixtures, the panel helpers and the discard-prompt helpers the now-playing and lyric specs share, which are too specific to be everybody's.
 
 ```js
 import { expect, requestsTo, test, trackRow } from './fixtures.ts'

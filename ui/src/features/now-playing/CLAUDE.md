@@ -16,7 +16,6 @@
 ## Lyrics
 
 - The lyric tag and the details come from one `GET /api/track/playing` per track, keyed on the file, and the answer's `path` and `subsong` are checked against the track shown before anything is drawn.
-- `foo_openlyrics` writes the tag after a track starts and nothing announces it, so the lyric column alone is asked again, a few times, while the panels are mounted.
 - LRCLIB wants clients named; a browser cannot set `User-Agent`, so Jean sends `Lrclib-Client` and pays a preflight. Ignoring `Retry-After` after a `429` risks a ban. `/api/search` returns at most 20 records; `/api/get` matches duration within 2 s.
 - Every value goes through `readValue()`; read raw, a missing field is the string `?`.
 - LRC in real files carries `\r\n` or a lone `\r`, several timestamps on one line, an `[offset:…]` in milliseconds to subtract, and fractions of one to three digits. `SYNCED_MIN_SPAN` calls a lyric synced by the span of its timing.

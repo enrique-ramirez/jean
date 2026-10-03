@@ -1,6 +1,6 @@
 # API reference
 
-What `foo_jean` answers, as Jean uses it, and the foobar2000 behaviour behind it that Jean relies on. `foo_jean` is a foobar2000 component listening on a port of its own, typically 8881, and it serves Jean itself from that origin. Its source is `plugins/fb2k/`. Everything Jean calls arrives through it: playback, the player's own state, the playlist list and every edit to it, the queue, the library and its covers, writing tags, creating autoplaylists, and streaming the player's output.
+What `foo_jean` answers, as Jean uses it, and the foobar2000 behaviour behind it that Jean relies on. `foo_jean` is a foobar2000 component listening on a port of its own, typically 8881, and it serves Jean itself from that origin. Its source is `plugins/fb2k/`. Everything Jean asks of the player arrives through it: playback, the player's own state, the playlist list and every edit to it, the queue, the library and its covers, writing tags, creating autoplaylists, and streaming the player's output.
 
 **`contract/openapi.yaml` is that component's contract, and it is the reference for every route below.** Jean's types are generated from it, its descriptions carry the reasoning a client needs, and nothing restated here could do anything but drift from it. `plugins/fb2k/ARCHITECTURE.md` is the design behind it. What follows is only the part that is Jean's.
 
@@ -9,7 +9,7 @@ What `foo_jean` answers, as Jean uses it, and the foobar2000 behaviour behind it
 | | |
 |---|---|
 | Base URL | `http://<player-host>:8881`, the origin Jean is served from |
-| CORS | same-origin from Jean, so nothing it sends crosses one. `allowedOrigins` in the component's `config.json` is what a differently-hosted interface would need |
+| CORS | same-origin from Jean, so nothing it sends to the player crosses one. `allowedOrigins` in the component's `config.json` is what a differently-hosted interface would need |
 | SPA fallback | none. A path that names no file is a `404`, and a directory answers its own `index.html`, so a client-side route has to live in the hash |
 | Owner's config | `<profile>/foo_jean/config.json`, which Jean never edits and has no route to. `plugins/fb2k/README.md` has the keys |
 

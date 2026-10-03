@@ -2,7 +2,7 @@
 
 For someone about to build on Jean. Structure, boundaries and contracts: the things a file listing does not tell you. [CONTRIBUTING.md](./CONTRIBUTING.md) is how to write the code, [src/shared/api/README.md](src/shared/api/README.md) is what the player answers, and [test/README.md](./test/README.md) is the suite and the fake player.
 
-Jean is a Vite single-page app with no backend of its own; [CONTRIBUTING.md](./CONTRIBUTING.md), *Stack*, is what it is built out of. **`foo_jean` serves Jean from its own origin**: the built page, its assets and every route Jean calls share one host and one port, so nothing Jean sends ever crosses an origin.
+Jean is a Vite single-page app with no backend of its own; [CONTRIBUTING.md](./CONTRIBUTING.md), *Stack*, is what it is built out of. **`foo_jean` serves Jean from its own origin**: the built page, its assets and every route Jean calls share one host and one port, so nothing Jean sends to the player ever crosses an origin.
 
 ## The shape of it
 
@@ -18,7 +18,7 @@ flowchart TB
 
   subgraph browser["The browser"]
     app["app/<br/>shell, hash routing, theme, media session"]
-    features["features/<br/>artist · home · search · genres · library · playlist · now-playing · queue · settings"]
+    features["features/<br/>artist · autoplaylist · home · search · genres · library · playlist · now-playing · queue · settings"]
     domain["domain/<br/>library · artist · track · player"]
     shared["shared/<br/>api · ui · lib · hooks · keyboard · styles"]
     app --> features
@@ -173,6 +173,7 @@ App-level layers, lowest first. These share the root stacking context, so a new 
 | Sidebar drawer, compact | 40 |
 | Search dropdown | 42 |
 | Track info screen · lyrics screen · lyric editor | 45 |
+| Alert dialog (`AlertDialog`) | 49 |
 | Toasts · settings backdrop · shortcut sheet backdrop | 50 |
 | Command palette backdrop | 60 |
 | Action menu and its scrim | 70 |

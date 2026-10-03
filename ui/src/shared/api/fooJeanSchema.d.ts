@@ -1290,7 +1290,8 @@ export interface components {
             /**
              * @description Tag names this install permits, lower case by convention and matched case-insensitively. Anything not named here is refused with a `403`.
              * @example [
-             *       "rating"
+             *       "rating",
+             *       "unsynced lyrics"
              *     ]
              */
             allowedFields: string[];

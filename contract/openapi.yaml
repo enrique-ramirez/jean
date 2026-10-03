@@ -243,11 +243,11 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Capabilities" }
               examples:
-                ratingOnly:
+                defaultInstall:
                   summary: The default install.
                   value:
                     apiVersion: 1
-                    allowedFields: ["rating"]
+                    allowedFields: ["rating", "unsynced lyrics"]
                     canWrite: true
                     canWritePlaylists: true
                     canControlPlayback: true
@@ -3528,7 +3528,7 @@ components:
           description: |
             Tag names this install permits, lower case by convention and matched case-insensitively. Anything not named here is refused with a `403`.
           items: { type: string }
-          examples: [["rating"]]
+          examples: [["rating", "unsynced lyrics"]]
         canWrite:
           type: boolean
           description: |

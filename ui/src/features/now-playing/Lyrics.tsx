@@ -1,4 +1,4 @@
-import { Mic2, PencilLine, Search } from "lucide-react";
+import { FileSearchCorner, Mic2, PencilLine } from "lucide-react";
 import {
 	Fragment,
 	type ReactNode,
@@ -14,6 +14,7 @@ import type { PlayerSnapshot } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { Trans } from "@/shared/i18n/Trans";
 import { useTranslate } from "@/shared/i18n/useTranslate";
+import { classNames } from "@/shared/lib/classNames";
 import { scrollParentOf } from "@/shared/lib/scrollParent";
 import { Button } from "@/shared/ui/Button";
 import styles from "./Lyrics.module.css";
@@ -205,32 +206,39 @@ export function PlainLines({ lines }: { lines: string[] }) {
 
 export function LyricActions({
 	variant,
+	isIconOnly = false,
 	onSearch,
 	onEdit,
 }: {
 	variant: "primary" | "default" | "ghost";
+	isIconOnly?: boolean;
 	onSearch?: () => void;
 	onEdit?: () => void;
 }) {
 	const t = useTranslate();
+	const search = t("lyrics.search");
+	const edit = t("lyrics.edit");
+	const className = classNames(styles.action, isIconOnly && styles.iconAction);
 
 	return (
 		<>
 			<Button
 				variant={variant}
-				icon={Search}
-				className={styles.action}
+				icon={FileSearchCorner}
+				className={className}
+				aria-label={isIconOnly ? search : undefined}
 				onClick={onSearch}
 			>
-				{t("lyrics.search")}
+				{isIconOnly ? null : search}
 			</Button>
 			<Button
 				variant={variant === "primary" ? "default" : variant}
 				icon={PencilLine}
-				className={styles.action}
+				className={className}
+				aria-label={isIconOnly ? edit : undefined}
 				onClick={onEdit}
 			>
-				{t("lyrics.edit")}
+				{isIconOnly ? null : edit}
 			</Button>
 		</>
 	);

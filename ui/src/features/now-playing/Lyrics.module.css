@@ -167,11 +167,20 @@
 	font-weight: 600;
 }
 
+.iconAction {
+	justify-content: center;
+}
+
 @media (pointer: coarse) {
 	button.action {
 		min-height: 44px;
 		padding-inline: 18px;
 		font-size: 0.875rem;
+	}
+
+	button.iconAction {
+		min-width: 44px;
+		padding-inline: 0;
 	}
 }
 

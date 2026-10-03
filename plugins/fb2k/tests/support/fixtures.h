@@ -78,7 +78,7 @@ Settings servingSettings();
 // Player{} leaves it.
 Player servingPlayer();
 
-// The same, with the write allowlist widened past its default of rating alone.
+// The same, with the write allowlist widened past its default of rating and unsynced lyrics.
 Settings servingSettingsAllowing(std::vector<std::string> fields);
 
 ListenerStatus listeningStatus();

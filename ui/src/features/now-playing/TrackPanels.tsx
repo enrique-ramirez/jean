@@ -112,6 +112,7 @@ export function TrackPanels({
 	const actions = hasActions ? (
 		<LyricActions
 			variant={variant === "gatefold" ? "ghost" : "default"}
+			isIconOnly={variant === "screen"}
 			onSearch={openSearch}
 			onEdit={editPanelLyric}
 		/>

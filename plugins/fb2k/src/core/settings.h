@@ -15,7 +15,7 @@ struct Settings {
 
     std::vector<std::string> allowedHosts;
 
-    std::vector<std::string> allowedFields{"rating"};
+    std::vector<std::string> allowedFields{"rating", "unsynced lyrics"};
 
     // Zero turns creation off, the same shape as an empty allowedFields turning writes off.
     int maxAutoPlaylists = 100;

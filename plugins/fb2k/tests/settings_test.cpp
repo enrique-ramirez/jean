@@ -37,7 +37,7 @@ TEST_CASE("the defaults are reachable, and closed where it counts") {
     const Settings defaults;
 
     CHECK(defaults.bindAddress == "0.0.0.0");
-    CHECK(defaults.allowedFields == std::vector<std::string>{"rating"});
+    CHECK(defaults.allowedFields == std::vector<std::string>{"rating", "unsynced lyrics"});
 }
 
 TEST_CASE("a well-formed file is read as written") {
@@ -325,7 +325,7 @@ TEST_CASE("a malformed controlPlayback keeps playback permitted and names itself
 TEST_CASE("the switches beside controlPlayback keep their names and defaults in the file") {
     const auto written = json::parse(serialiseSettings(parseFresh("{}")));
 
-    CHECK(written["allowedFields"] == json{"rating"});
+    CHECK(written["allowedFields"] == json{"rating", "unsynced lyrics"});
     CHECK(written["writePlaylists"] == true);
     CHECK(written["changeOutput"] == true);
     CHECK(written["streamingEnabled"] == true);

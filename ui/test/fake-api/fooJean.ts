@@ -272,7 +272,7 @@ const DEFAULTS: FooJeanFake = {
 	name: "foo_jean",
 	version: "0.1.0",
 	apiVersion: 1,
-	allowedFields: ["rating"],
+	allowedFields: ["rating", "unsynced lyrics"],
 	failWrites: null,
 	writesLandAnyway: false,
 	twoRootsHold: null,

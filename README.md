@@ -71,7 +71,7 @@ One more is optional:
 
 **2. Open `http://<the player's computer>:8881/`** in any browser in the house. `foo_jean` serves Jean itself, at the port it listens on. That is the whole install.
 
-**Rating a track needs nothing extra.** `foo_jean` allows it from the moment it starts; the player owner narrows or turns it off under `File → Preferences → Tools → Jean → Permissions`. Saving a lyric needs `UNSYNCED LYRICS` added to the allowed fields (`allowedFields`) on that page, and until it is there the lyrics panel offers no Search or Edit.
+**Rating a track or saving a lyric needs nothing extra.** `foo_jean` allows both from the moment it starts; the player owner narrows or turns either off under `File → Preferences → Tools → Jean → Permissions`.
 
 **A translation lives at `<profile>/foo_jean/www/locales/<code>.json`**, added by hand.
 

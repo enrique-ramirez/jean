@@ -4274,8 +4274,8 @@ TEST_CASE("a fill answers the id of the playlist the rows landed in") {
 }
 
 TEST_CASE(
-    "a fill answers exactly the playlist, its generation and the positions, from either "
-    "route") {
+    "a fill answers exactly the playlist, its generation, the positions and what it skipped, "
+    "from either route") {
     Library library;
     buildLibrary(library);
     const uint64_t structure = library.state().structure;
@@ -4291,7 +4291,7 @@ TEST_CASE(
 
         REQUIRE(response);
         REQUIRE(response->status == 200);
-        CHECK(keysOf(response->body) == Keys{"playlistId", "structure", "positions"});
+        CHECK(keysOf(response->body) == Keys{"playlistId", "structure", "positions", "skipped"});
     }
 }
 
@@ -4912,4 +4912,540 @@ TEST_CASE("with writePlaylists off and controlPlayback on, playing a row reaches
     REQUIRE(response);
     CHECK(response->status == 204);
     CHECK(foobar.count(Call::playRow) == 1);
+}
+
+namespace {
+
+constexpr char kDuplicatesField[] = "duplicates";
+
+std::vector<FakeRow> libraryTracks(const std::vector<uint32_t>& ordinals) {
+    std::vector<FakeRow> rows;
+    std::transform(ordinals.begin(), ordinals.end(), std::back_inserter(rows), libraryTrack);
+    return rows;
+}
+
+std::vector<std::string> libraryTitles(const std::vector<uint32_t>& ordinals) {
+    std::vector<std::string> titles;
+    std::transform(ordinals.begin(), ordinals.end(), std::back_inserter(titles), builtTrackTitle);
+    return titles;
+}
+
+const std::vector<uint32_t>& ordinalsRoadTripHolds() {
+    static const std::vector<uint32_t> ordinals = {1, 6, 2};
+    return ordinals;
+}
+
+void holdingLibraryTracks(FakePlayer& player) {
+    player.add(userPlaylist(kPlaylistId, "Road trip", kRowsStructure),
+               libraryTracks(ordinalsRoadTripHolds()));
+}
+
+std::string fillBody(uint64_t structure, const json& set) {
+    return naming(userBody(structure), set);
+}
+
+std::string skippingFill(uint64_t structure, const json& set) {
+    return withField(fillBody(structure, set), kDuplicatesField, "skip");
+}
+
+std::vector<std::string> sourceSharingTwoTitles() {
+    return {"Source A", "Second", "Source C", "Fourth", "Source E"};
+}
+
+void holdingASourceSharingTwoTracks(FakePlayer& player) {
+    player.add(userPlaylist(kPlaylistId, "Road trip", kRowsStructure),
+               titledRows(roadTripTitles()));
+    player.add(userPlaylist(kSecondPlaylistId, "Everything", kSourceStructure),
+               titledRows(sourceSharingTwoTitles()));
+}
+
+json skippingCopy(const std::string& sourceId, const json& runs) {
+    auto body = copyBody(sourceId, runs);
+    body[kDuplicatesField] = "skip";
+    return body;
+}
+
+std::vector<json> unlistedDuplicates() {
+    return {"replace", "Skip", "", true, 1, nullptr, json::array({"skip"})};
+}
+
+}  // namespace
+
+// What the field is for: *Add to playlist* over a selection that overlaps the playlist asks about
+// the overlap rather than doubling it, and it can only ask about tracks the answer named. The
+// `ordinals` form is the one that can carry an order, so the skipped ones are checked out of
+// ascending order here.
+TEST_CASE(
+    "a fill skipping duplicates inserts only the tracks the playlist did not hold and names "
+    "the rest in the order they were asked for") {
+    Library library;
+    buildLibrary(library);
+
+    FakePlayer foobar(&library);
+    holdingLibraryTracks(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto before = generationOf(server, kPlaylistId);
+
+    const auto response = post(
+        server, userFill(),
+        skippingFill(library.state().structure, json{{"ordinals", json::array({6, 3, 1, 5})}}));
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto answered = json::parse(response->body);
+    CHECK(answered.at("positions") == json::array({3, 4}));
+    CHECK(answered.at("skipped") == json::array({6, 1}));
+
+    CHECK(foobar.titlesOf(kPlaylistId) == libraryTitles({1, 6, 2, 3, 5}));
+
+    const auto generation = counterIn(answered, "structure");
+    CHECK(generation == generationOf(server, kPlaylistId));
+    CHECK(generation != before);
+}
+
+TEST_CASE("a set given as runs names what it skipped in ascending ordinal order") {
+    Library library;
+    buildLibrary(library);
+
+    FakePlayer foobar(&library);
+    holdingLibraryTracks(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto set = json{{"runs", json::array({json::array({5, 2}), json::array({0, 3})})}};
+    const auto response = post(server, userFill(), skippingFill(library.state().structure, set));
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto answered = json::parse(response->body);
+    CHECK(answered.at("positions") == json::array({3, 4}));
+    CHECK(answered.at("skipped") == json::array({1, 2, 6}));
+    CHECK(foobar.titlesOf(kPlaylistId) == libraryTitles({1, 6, 2, 0, 5}));
+}
+
+TEST_CASE("a fill skipping duplicates of which the playlist holds none inserts every track") {
+    Library library;
+    buildLibrary(library);
+
+    FakePlayer foobar(&library);
+    holdingLibraryTracks(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto response =
+        post(server, userFill(),
+             skippingFill(library.state().structure, json{{"ordinals", json::array({7, 0})}}));
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto answered = json::parse(response->body);
+    CHECK(answered.at("positions") == json::array({3, 4}));
+    CHECK(answered.at("skipped") == json::array());
+    CHECK(foobar.titlesOf(kPlaylistId) == libraryTitles({1, 6, 2, 7, 0}));
+}
+
+// The generation is the one an undo would name, and nothing happened for an undo to take back:
+// a generation that moved here would also make every client holding the playlist read it again
+// for no change.
+TEST_CASE(
+    "a fill skipping duplicates all of which the playlist holds is a 200 that inserts nothing "
+    "and leaves the generation where it stood") {
+    Library library;
+    buildLibrary(library);
+
+    FakePlayer foobar(&library);
+    holdingLibraryTracks(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto before = generationOf(server, kPlaylistId);
+
+    const auto response =
+        post(server, userFill(),
+             skippingFill(library.state().structure, json{{"ordinals", json::array({2, 1})}}));
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto answered = json::parse(response->body);
+    CHECK(answered.at("playlistId") == kPlaylistId);
+    CHECK(answered.at("positions") == json::array());
+    CHECK(answered.at("skipped") == json::array({2, 1}));
+    CHECK(counterIn(answered, "structure") == before);
+
+    CHECK(generationOf(server, kPlaylistId) == before);
+    CHECK(foobar.titlesOf(kPlaylistId) == libraryTitles(ordinalsRoadTripHolds()));
+}
+
+TEST_CASE("a fill saying `add`, or saying nothing, inserts a track the playlist already holds") {
+    Library library;
+    buildLibrary(library);
+    const uint64_t structure = library.state().structure;
+
+    const auto set = json{{"ordinals", json::array({6, 3})}};
+
+    for (const auto& body :
+         {fillBody(structure, set), withField(fillBody(structure, set), kDuplicatesField, "add")}) {
+        INFO("body: ", body);
+
+        FakePlayer foobar(&library);
+        holdingLibraryTracks(foobar);
+        const TestServer server(servingSettings(), foobar.player(), &library);
+
+        const auto response = post(server, userFill(), body);
+
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+
+        const auto answered = json::parse(response->body);
+        CHECK(answered.at("positions") == json::array({3, 4}));
+        CHECK(answered.at("skipped") == json::array());
+        CHECK(foobar.titlesOf(kPlaylistId) == libraryTitles({1, 6, 2, 6, 3}));
+    }
+}
+
+// Only what the playlist held beforehand counts. A request deduplicated against itself would
+// drop a repeat somebody asked for and have no ordinal position to name it by.
+TEST_CASE("a track a fill names twice is inserted twice, or skipped twice, under `skip`") {
+    Library library;
+    buildLibrary(library);
+
+    FakePlayer foobar(&library);
+    holdingLibraryTracks(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto response = post(
+        server, userFill(),
+        skippingFill(library.state().structure, json{{"ordinals", json::array({4, 6, 4, 6})}}));
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto answered = json::parse(response->body);
+    CHECK(answered.at("positions") == json::array({3, 4}));
+    CHECK(answered.at("skipped") == json::array({6, 6}));
+    CHECK(foobar.titlesOf(kPlaylistId) == libraryTitles({1, 6, 2, 4, 4}));
+}
+
+// A row retagged at the player still holds the file it held, so a title that no longer matches
+// is not a new track.
+TEST_CASE("a track the playlist holds under different tags is still a duplicate") {
+    Library library;
+    buildLibrary(library);
+
+    FakePlayer foobar(&library);
+    holdingLibraryTracks(foobar);
+
+    auto retagged = libraryTrack(6);
+    retagged.fields["%title%"] = "Retagged at the player";
+    foobar.retag(kPlaylistId, {{1, retagged}});
+
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto response =
+        post(server, userFill(),
+             skippingFill(library.state().structure, json{{"ordinals", json::array({6})}}));
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto answered = json::parse(response->body);
+    CHECK(answered.at("positions") == json::array());
+    CHECK(answered.at("skipped") == json::array({6}));
+}
+
+TEST_CASE("the same file's other subsong is a different track and is inserted") {
+    Library library;
+    buildLibrary(library);
+
+    auto otherSubsong = libraryTrack(4);
+    otherSubsong.subsong = 2;
+
+    FakePlayer foobar(&library);
+    foobar.add(userPlaylist(kPlaylistId, "Road trip", kRowsStructure), {otherSubsong});
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto response =
+        post(server, userFill(),
+             skippingFill(library.state().structure, json{{"ordinals", json::array({4})}}));
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto answered = json::parse(response->body);
+    CHECK(answered.at("positions") == json::array({1}));
+    CHECK(answered.at("skipped") == json::array());
+}
+
+TEST_CASE("a copy skipping duplicates appends only the rows whose track the target did not hold") {
+    FakePlayer foobar;
+    holdingASourceSharingTwoTracks(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    const auto before = generationOf(server, kPlaylistId);
+
+    const auto response = post(server, copyPath(kPlaylistId),
+                               skippingCopy(kSecondPlaylistId, unorderedRuns()).dump());
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto answered = json::parse(response->body);
+    CHECK(answered.at("positions") == json::array({4}));
+    CHECK(answered.at("skipped") == json::array({1, 3}));
+
+    CHECK(heldTitles(server, kPlaylistId) ==
+          json::array({"First", "Second", "Third", "Fourth", "Source A"}));
+    CHECK(foobar.titlesOf(kSecondPlaylistId) == sourceSharingTwoTitles());
+
+    const auto generation = counterIn(answered, "structure");
+    CHECK(generation == generationOf(server, kPlaylistId));
+    CHECK(generation != before);
+}
+
+TEST_CASE("a copy skipping duplicates of which the target holds none appends every row") {
+    FakePlayer foobar;
+    holdingTwoPlaylists(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    const auto response = post(server, copyPath(kPlaylistId),
+                               skippingCopy(kSecondPlaylistId, unorderedRuns()).dump());
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto answered = json::parse(response->body);
+    CHECK(answered.at("positions") == json::array({4, 5, 6}));
+    CHECK(answered.at("skipped") == json::array());
+    CHECK(heldTitles(server, kPlaylistId) ==
+          json::array({"First", "Second", "Third", "Fourth", "Source A", "Source B", "Source D"}));
+}
+
+TEST_CASE(
+    "a copy skipping duplicates all of which the target holds is a 200 that appends nothing "
+    "and leaves the generation where it stood") {
+    FakePlayer foobar;
+    holdingASourceSharingTwoTracks(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    const auto before = generationOf(server, kPlaylistId);
+
+    const auto runs = json::array({json::array({3, 1}), json::array({1, 1})});
+    const auto response =
+        post(server, copyPath(kPlaylistId), skippingCopy(kSecondPlaylistId, runs).dump());
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto answered = json::parse(response->body);
+    CHECK(keysOf(response->body) == Keys{"structure", "positions", "skipped"});
+    CHECK(answered.at("positions") == json::array());
+    CHECK(answered.at("skipped") == json::array({1, 3}));
+    CHECK(counterIn(answered, "structure") == before);
+
+    CHECK(generationOf(server, kPlaylistId) == before);
+    CHECK(foobar.titlesOf(kPlaylistId) == roadTripTitles());
+}
+
+TEST_CASE("a copy saying `add`, or saying nothing, appends a row the target already holds") {
+    auto adding = copyBody(kSecondPlaylistId, unorderedRuns());
+    adding[kDuplicatesField] = "add";
+
+    for (const auto& body : {copyBody(kSecondPlaylistId, unorderedRuns()), adding}) {
+        INFO("body: ", body.dump());
+
+        FakePlayer foobar;
+        holdingASourceSharingTwoTracks(foobar);
+        const TestServer server(servingSettings(), foobar.player());
+
+        const auto response = post(server, copyPath(kPlaylistId), body.dump());
+
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+
+        const auto answered = json::parse(response->body);
+        CHECK(keysOf(response->body) == Keys{"structure", "positions", "skipped"});
+        CHECK(answered.at("positions") == json::array({4, 5, 6}));
+        CHECK(answered.at("skipped") == json::array());
+        CHECK(foobar.titlesOf(kPlaylistId) == std::vector<std::string>{"First", "Second", "Third",
+                                                                       "Fourth", "Source A",
+                                                                       "Second", "Fourth"});
+    }
+}
+
+// `runs` cannot name one position twice, so the repeat a copy can carry is a source holding one
+// track at two positions.
+TEST_CASE("a track the source holds twice is appended twice under `skip`") {
+    FakePlayer foobar;
+    foobar.add(userPlaylist(kPlaylistId, "Road trip", kRowsStructure),
+               titledRows(roadTripTitles()));
+    foobar.add(userPlaylist(kSecondPlaylistId, "Everything", kSourceStructure),
+               titledRows({"Twice", "Twice", "Second"}));
+    const TestServer server(servingSettings(), foobar.player());
+
+    const auto response =
+        post(server, copyPath(kPlaylistId),
+             skippingCopy(kSecondPlaylistId, json::array({json::array({0, 3})})).dump());
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto answered = json::parse(response->body);
+    CHECK(answered.at("positions") == json::array({4, 5}));
+    CHECK(answered.at("skipped") == json::array({2}));
+    CHECK(foobar.titlesOf(kPlaylistId) ==
+          std::vector<std::string>{"First", "Second", "Third", "Fourth", "Twice", "Twice"});
+}
+
+// A value this component guessed at would insert or skip against what the client meant, and
+// neither can be seen from the status alone.
+TEST_CASE("a `duplicates` the contract does not list is a 400, and the player is never asked") {
+    Library library;
+    buildLibrary(library);
+
+    FakePlayer foobar(&library);
+    holdingForAFill(foobar);
+    foobar.add(userPlaylist(kSecondPlaylistId, "Everything", kSourceStructure),
+               titledRows(sourceTitles()));
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    for (const auto& value : unlistedDuplicates()) {
+        INFO("duplicates: ", value.dump());
+
+        const auto filled =
+            post(server, userFill(),
+                 withField(userBody(library.state().structure), kDuplicatesField, value));
+
+        REQUIRE(filled);
+        CHECK(filled->status == 400);
+        CHECK(json::parse(filled->body)["error"] == "malformed request");
+
+        auto body = copyBody(kSecondPlaylistId, unorderedRuns());
+        body[kDuplicatesField] = value;
+        const auto copied = post(server, copyPath(kPlaylistId), body.dump());
+
+        REQUIRE(copied);
+        CHECK(copied->status == 400);
+        CHECK(json::parse(copied->body)["error"] == "malformed request");
+    }
+
+    CHECK(foobar.total() == 0);
+    CHECK(foobar.titlesOf(kPlaylistId) == alreadyHeld());
+}
+
+// The scratch is emptied before it is filled, so there is nothing for a fill of it to be a
+// duplicate of, and `FillOwnPlaylistRequest` does not declare the field. A value the other
+// route takes is refused here like any other undeclared field.
+TEST_CASE("the component's own playlist refuses `duplicates`, whichever value it carries") {
+    Library library;
+    buildLibrary(library);
+
+    FakePlayer foobar(&library);
+    holdingForAFill(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    for (const char* value : {"skip", "add"}) {
+        INFO("duplicates: ", value);
+
+        const auto response = post(
+            server, kScratchFill,
+            withField(ownBody(kScratchTitle, library.state().structure), kDuplicatesField, value));
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(json::parse(response->body)["error"] == "malformed request");
+    }
+
+    CHECK(foobar.total() == 0);
+    CHECK(foobar.titlesOf(kScratchPlaylistId) == alreadyHeld());
+}
+
+TEST_CASE("a fill of the component's own playlist always answers an empty `skipped`") {
+    Library library;
+    buildLibrary(library);
+
+    FakePlayer foobar(&library);
+    foobar.add(scratchEntry(), libraryTracks({3, 1}));
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto response =
+        post(server, kScratchFill, ownBody(kScratchTitle, library.state().structure));
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto answered = json::parse(response->body);
+    CHECK(answered.at("positions") == json::array({0, 1}));
+    CHECK(answered.at("skipped") == json::array());
+}
+
+// The lock is asked before the rows are. A 200 here would tell a client the playlist takes
+// rows, and the next add, of a track it does not hold, would be the one to find out it does not.
+TEST_CASE("a locked target is a 409 even where every track named would have been skipped") {
+    SUBCASE("a fill") {
+        Library library;
+        buildLibrary(library);
+
+        FakePlayer foobar(&library);
+        holdingLibraryTracks(foobar);
+        foobar.lock(kPlaylistId);
+        const TestServer server(servingSettings(), foobar.player(), &library);
+
+        const auto response =
+            post(server, userFill(),
+                 skippingFill(library.state().structure, json{{"ordinals", json::array({2, 1})}}));
+
+        REQUIRE(response);
+        CHECK(response->status == 409);
+        CHECK(json::parse(response->body)["error"] == describe(PlayerOutcome::playlistLocked));
+        CHECK(json::parse(response->body).count("skipped") == 0);
+        CHECK(foobar.titlesOf(kPlaylistId) == libraryTitles(ordinalsRoadTripHolds()));
+    }
+
+    SUBCASE("a copy") {
+        FakePlayer foobar;
+        holdingASourceSharingTwoTracks(foobar);
+        foobar.lock(kPlaylistId);
+        const TestServer server(servingSettings(), foobar.player());
+
+        const auto runs = json::array({json::array({3, 1}), json::array({1, 1})});
+        const auto response =
+            post(server, copyPath(kPlaylistId), skippingCopy(kSecondPlaylistId, runs).dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 409);
+        CHECK(json::parse(response->body)["error"] == describe(PlayerOutcome::playlistLocked));
+        CHECK(json::parse(response->body).count("skipped") == 0);
+        CHECK(foobar.titlesOf(kPlaylistId) == roadTripTitles());
+    }
+}
+
+// A create takes the fields a fill and a copy take and makes a playlist that holds nothing
+// yet, so `CreatePlaylistRequest` declares no `duplicates` for either of its sets.
+TEST_CASE("a create refuses `duplicates` with either set, and makes nothing") {
+    Library library;
+    buildLibrary(library);
+
+    FakePlayer foobar(&library);
+    holdingTwoPlaylists(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    auto fromTheLibrary = json::parse(userBody(library.state().structure));
+    fromTheLibrary["title"] = "Made";
+
+    auto fromAPlaylist = copyBody(kSecondPlaylistId, unorderedRuns());
+    fromAPlaylist["title"] = "Made";
+
+    for (auto body : {fromTheLibrary, fromAPlaylist}) {
+        INFO("body: ", body.dump());
+        body[kDuplicatesField] = "skip";
+
+        const auto response = post(server, "/api/playlists", body.dump());
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+    }
+
+    CHECK(foobar.count(Call::createPlaylist) == 0);
 }

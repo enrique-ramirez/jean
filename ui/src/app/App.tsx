@@ -52,6 +52,7 @@ import { useTheme } from "@/shared/hooks/useTheme";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { workWhenIdle } from "@/shared/lib/idle";
 import { animateScrollTo } from "@/shared/ui/animateScroll";
+import { Confirmations } from "@/shared/ui/Confirmations";
 import { DragGhost } from "@/shared/ui/DragGhost";
 import { Toasts } from "@/shared/ui/Toasts";
 import styles from "./App.module.css";
@@ -543,6 +544,8 @@ function Shell() {
 					onDismiss={() => queue.setOpen(false)}
 				/>
 			</div>
+
+			<Confirmations />
 
 			<Toasts
 				pinned={

@@ -204,17 +204,17 @@ test.describe("typing at a menu", () => {
 		await openLibrary(page);
 		await openTargets(page, isMobile);
 
-		await filterField(page).fill("fav");
+		await filterField(page).fill("def");
 		await filterField(page).press("Enter");
 
-		await expect(page.getByRole("status")).toContainText("Favorites");
+		await expect(page.getByRole("status")).toContainText("Default Playlist");
 		await expect
 			.poll(
 				() =>
-					player.playlists.find((entry) => entry.title === "Favorites")!.items
-						.length,
+					player.playlists.find((entry) => entry.title === "Default Playlist")!
+						.items.length,
 			)
-			.toBe(8);
+			.toBe(5);
 	});
 
 	test("the field takes focus on a pointer and waits to be tapped on touch", async ({

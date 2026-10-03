@@ -260,14 +260,19 @@ std::string playlistRemovedDocument(const std::string& id) {
 }
 
 std::string fillResultDocument(const std::string& playlistId, uint64_t structure,
-                               const std::vector<size_t>& positions) {
-    return json{
-        {"playlistId", playlistId}, {"structure", digitsOf(structure)}, {"positions", positions}}
+                               const std::vector<size_t>& positions,
+                               const std::vector<uint32_t>& skipped) {
+    return json{{"playlistId", playlistId},
+                {"structure", digitsOf(structure)},
+                {"positions", positions},
+                {"skipped", skipped}}
         .dump();
 }
 
-std::string copiedRowsDocument(uint64_t structure, const std::vector<size_t>& positions) {
-    return json{{"structure", digitsOf(structure)}, {"positions", positions}}.dump();
+std::string copiedRowsDocument(uint64_t structure, const std::vector<size_t>& positions,
+                               const std::vector<uint32_t>& skipped) {
+    return json{{"structure", digitsOf(structure)}, {"positions", positions}, {"skipped", skipped}}
+        .dump();
 }
 
 std::string removedRowsDocument(uint64_t structure) {

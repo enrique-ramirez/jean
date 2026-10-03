@@ -8,6 +8,7 @@ import {
 import { pathCollector } from "../../src/domain/track/pathTable.ts";
 import type { PlaylistSnapshot } from "../../src/domain/track/playlistEntries.ts";
 import {
+	keptOrder,
 	moveOrder,
 	patchPlaylist,
 	reorderedSnapshot,
@@ -404,12 +405,31 @@ test("reordering leaves the held snapshot showing the order it had", () => {
 	assert.equal(held.structure, HELD_STRUCTURE);
 });
 
-test("an order longer or shorter than the held rows is a programming error and throws", () => {
+test("an order longer than the held rows is a programming error and throws", () => {
 	const held = snapshotOf(HELD_ROWS);
-	assert.throws(() => reorderedSnapshot(held, [1, 0, 2], ANSWERED_STRUCTURE));
 	assert.throws(() =>
 		reorderedSnapshot(held, [1, 0, 2, 3, 4], ANSWERED_STRUCTURE),
 	);
+});
+
+test("an order naming fewer rows than are held leaves the others out and counts what remains", () => {
+	const held = snapshotOf(HELD_ROWS);
+	const kept = keptOrder(HELD_ROWS.length, [1]);
+	assert.deepEqual(Array.from(kept ?? []), [0, 2, 3]);
+
+	const shortened = reorderedSnapshot(held, kept ?? [], ANSWERED_STRUCTURE);
+	assert.deepEqual(
+		rowsOf(shortened),
+		[0, 2, 3].map((old) => HELD_ROWS[old]),
+	);
+	assert.equal(shortened.loaded, HELD_ROWS.length - 1);
+	assert.equal(shortened.total, HELD_ROWS.length - 1);
+	assert.equal(shortened.paths?.length, HELD_ROWS.length - 1);
+});
+
+test("a removal naming a row the playlist does not hold is refused", () => {
+	assert.equal(keptOrder(HELD_ROWS.length, [HELD_ROWS.length]), null);
+	assert.equal(keptOrder(HELD_ROWS.length, [-1]), null);
 });
 
 // A rating is drawn from what was written until the player's delta confirms

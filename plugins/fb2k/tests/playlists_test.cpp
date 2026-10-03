@@ -573,3 +573,18 @@ TEST_CASE(
     CHECK(moveOrder(6, {5}, 5) == Ordinals{0, 1, 2, 3, 4, 5});
     CHECK(moveOrder(6, {0}, 5) == Ordinals{1, 2, 3, 4, 5, 0});
 }
+
+TEST_CASE("a split inserts what the target did not hold and names what it did, both in order") {
+    const auto split = splitDuplicates({9, 0, 4, 0, 7}, {false, true, false, true, true});
+
+    CHECK(split.inserted == std::vector<size_t>{0, 2});
+    CHECK(split.skipped == Ordinals{0, 0, 7});
+
+    const auto nothingHeld = splitDuplicates({9, 0}, {false, false});
+    CHECK(nothingHeld.inserted == std::vector<size_t>{0, 1});
+    CHECK(nothingHeld.skipped.empty());
+
+    const auto nothingNamed = splitDuplicates({}, {});
+    CHECK(nothingNamed.inserted.empty());
+    CHECK(nothingNamed.skipped.empty());
+}

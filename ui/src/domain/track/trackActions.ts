@@ -1,4 +1,12 @@
-import { Check, ListEnd, ListMusic, ListPlus, Star, User } from "lucide-react";
+import {
+	Check,
+	ListEnd,
+	ListMusic,
+	ListPlus,
+	ListX,
+	Star,
+	User,
+} from "lucide-react";
 import type { PlaylistInfo } from "@/shared/api/types";
 import type { Translate } from "@/shared/i18n/locale";
 import type { ActionNode } from "@/shared/ui/ActionMenu";
@@ -42,6 +50,7 @@ export function trackActions({
 	canControlPlayback,
 	queueTracks,
 	addTracks,
+	removeTracks,
 	rating,
 	credit,
 	t,
@@ -62,6 +71,7 @@ export function trackActions({
 		target: PlaylistInfo;
 		itemIndices: number[];
 	}) => void;
+	removeTracks?: () => void;
 	rating: ActionNode | null;
 	t: Translate;
 	// The `%artist%` line of the one track this is about. A track list gives its rows no artist link
@@ -140,6 +150,18 @@ export function trackActions({
 							icon: ListMusic,
 							onSelect: () => addTracks({ source, target, itemIndices }),
 						})),
+					},
+				]
+			: []),
+		...(removeTracks
+			? [
+					{ type: "separator" as const },
+					{
+						id: "remove",
+						label: t("track.removeFromPlaylist"),
+						icon: ListX,
+						danger: true,
+						onSelect: removeTracks,
 					},
 				]
 			: []),

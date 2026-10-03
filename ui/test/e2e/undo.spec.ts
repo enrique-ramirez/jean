@@ -22,7 +22,8 @@ import {
 // Adding goes through the row menu rather than a drag: the menu is the route
 // that exists on both surfaces. sidebar.spec.ts covers the drag.
 
-const FAVORITES = { id: "p2", title: "Favorites", itemCount: 7 };
+// A playlist holding none of the library playlist's first rows, so an add from there lands whole.
+const TARGET = { id: "p1", title: "Default Playlist", itemCount: 4 };
 const LIBRARY = "p7";
 
 const toast = (page: Page) => page.getByRole("status");
@@ -77,12 +78,10 @@ const openRowMenu = async (page: Page, index: number, isMobile: boolean) => {
 	).toBeVisible();
 };
 
-const addToFavorites = async (page: Page, index: number, isMobile: boolean) => {
+const addToTarget = async (page: Page, index: number, isMobile: boolean) => {
 	await openRowMenu(page, index, isMobile);
 	await page.getByRole("menuitem", { name: "Add to playlist" }).click();
-	await page
-		.getByRole("menuitem", { name: FAVORITES.title, exact: true })
-		.click();
+	await page.getByRole("menuitem", { name: TARGET.title, exact: true }).click();
 };
 
 // An autoplaylist; `useAddTracks.ts`'s top comment has what a lock on it means for a write.
@@ -199,20 +198,20 @@ test.describe("an add into a playlist the player has locked", () => {
 		player,
 		isMobile,
 	}) => {
-		await lockPlaylistAtThePlayer(page, FAVORITES.id);
+		await lockPlaylistAtThePlayer(page, TARGET.id);
 		const answered = copyStatuses(page);
 
-		await addTo(page, 0, isMobile, FAVORITES.title);
+		await addTo(page, 0, isMobile, TARGET.title);
 
 		await expect.poll(() => answered).toEqual([409]);
 
-		await expect(toast(page)).toContainText(FAVORITES.title);
+		await expect(toast(page)).toContainText(TARGET.title);
 		await expect(toast(page)).not.toContainText(/autoplaylist/i);
 		await expect(toast(page)).not.toContainText(/writePlaylists/i);
 		await expect(toast(page).getByRole("button", { name: "Undo" })).toHaveCount(
 			0,
 		);
-		expect(titlesIn(player, FAVORITES.id)).toHaveLength(FAVORITES.itemCount);
+		expect(titlesIn(player, TARGET.id)).toHaveLength(TARGET.itemCount);
 	});
 
 	test("the playlist that does take them still says the true thing", async ({
@@ -220,17 +219,15 @@ test.describe("an add into a playlist the player has locked", () => {
 		player,
 		isMobile,
 	}) => {
-		await addTo(page, 0, isMobile, FAVORITES.title);
+		await addTo(page, 0, isMobile, TARGET.title);
 
-		await expect(toast(page)).toContainText(
-			`Added 1 track to ${FAVORITES.title}`,
-		);
+		await expect(toast(page)).toContainText(`Added 1 track to ${TARGET.title}`);
 		await expect(
 			toast(page).getByRole("button", { name: "Undo" }),
 		).toBeVisible();
 		await expect
-			.poll(() => titlesIn(player, FAVORITES.id).length)
-			.toBe(FAVORITES.itemCount + 1);
+			.poll(() => titlesIn(player, TARGET.id).length)
+			.toBe(TARGET.itemCount + 1);
 	});
 });
 
@@ -241,11 +238,9 @@ test.describe("adding tracks to a playlist", () => {
 		page,
 		isMobile,
 	}) => {
-		await addToFavorites(page, 0, isMobile);
+		await addToTarget(page, 0, isMobile);
 
-		await expect(toast(page)).toContainText(
-			`Added 1 track to ${FAVORITES.title}`,
-		);
+		await expect(toast(page)).toContainText(`Added 1 track to ${TARGET.title}`);
 		await expect(
 			toast(page).getByRole("button", { name: "Undo" }),
 		).toBeVisible();
@@ -267,11 +262,9 @@ test.describe("adding tracks to a playlist", () => {
 		await expectSettlesAt(player, () => listReads(player).length > 0, true);
 		player.requests.length = 0;
 
-		await addToFavorites(page, 0, isMobile);
+		await addToTarget(page, 0, isMobile);
 
-		await expect(toast(page)).toContainText(
-			`Added 1 track to ${FAVORITES.title}`,
-		);
+		await expect(toast(page)).toContainText(`Added 1 track to ${TARGET.title}`);
 		await expectSettlesAt(
 			player,
 			() => postsTo(player, "/items/copy").length,
@@ -299,7 +292,7 @@ test.describe("adding tracks to a playlist", () => {
 			page.locator('[role="row"][data-selected="true"]'),
 		).toHaveCount(3);
 
-		await addToFavorites(page, 1, isMobile);
+		await addToTarget(page, 1, isMobile);
 
 		await expectSettlesAt(
 			player,
@@ -308,36 +301,38 @@ test.describe("adding tracks to a playlist", () => {
 		);
 		const copy = postsTo(player, "/items/copy")[0];
 		expect(copy.path).toBe(
-			`/api/playlists/${guidOfPlaylist(player, FAVORITES.id)}/items/copy`,
+			`/api/playlists/${guidOfPlaylist(player, TARGET.id)}/items/copy`,
 		);
 		expect(copy.body).toEqual({
 			source: guidOfPlaylist(player, LIBRARY),
 			runs: [[0, 3]],
+			duplicates: "skip",
 		});
 
 		await expect(toast(page)).toContainText(
-			`Added 3 tracks to ${FAVORITES.title}`,
+			`Added 3 tracks to ${TARGET.title}`,
 		);
 	});
 });
 
-// foobar2000 playlists are ordered lists, not sets, so a track already in one goes in again: a
-// uniqueness rule the player does not have would be Jean lying about the data. Both ways an add is
-// made, a copy out of a playlist and a fill from a library view.
+// foobar2000 playlists are ordered lists, not sets, so a track already in one may go in again. Jean
+// asks first and never decides: the tracks the target lacks land at once, and the ones it holds
+// wait for an answer. Both ways an add is made, a copy out of a playlist and a fill from a library
+// view.
 const SPANISH = { id: "p5", title: "Rock en Español" };
 const HELD = "Los Calientes";
+
+const question = (page: Page) => page.getByRole("alertdialog");
 
 for (const [view, open] of [
 	["a playlist", openLibrary],
 	["a library view", openAllMusic],
 ] as const) {
 	test.describe(`adding from ${view} a track the target already holds`, () => {
-		test("adds it again rather than skipping it", async ({
-			page,
-			player,
-			isMobile,
-		}) => {
-			const held = titlesIn(player, SPANISH.id);
+		let held: string[];
+
+		test.beforeEach(async ({ page, player, isMobile }) => {
+			held = titlesIn(player, SPANISH.id);
 			expect(held, `${SPANISH.title} already holds ${HELD}`).toContain(HELD);
 
 			await open(page);
@@ -350,6 +345,31 @@ for (const [view, open] of [
 				.getByRole("menuitem", { name: SPANISH.title, exact: true })
 				.click();
 
+			await expect(question(page)).toContainText(
+				`${HELD} is already in ${SPANISH.title}.`,
+			);
+		});
+
+		test("asks before adding it again, having added nothing", async ({
+			player,
+		}) => {
+			expect(titlesIn(player, SPANISH.id)).toEqual(held);
+		});
+
+		test("Skip leaves the playlist as it was and says nothing", async ({
+			page,
+			player,
+		}) => {
+			await question(page).getByRole("button", { name: "Skip" }).click();
+
+			await expect(question(page)).toHaveCount(0);
+			await expect(toast(page)).toHaveCount(0);
+			await expectSettlesAt(player, () => titlesIn(player, SPANISH.id), held);
+		});
+
+		test("Add anyway puts it in again", async ({ page, player }) => {
+			await question(page).getByRole("button", { name: "Add anyway" }).click();
+
 			await expect(toast(page)).toContainText(
 				`Added 1 track to ${SPANISH.title}`,
 			);
@@ -361,6 +381,75 @@ for (const [view, open] of [
 	});
 }
 
+// The first three rows of the library playlist: Favorites holds the first two and lacks the third.
+// It holds none of the rows a library view opens on.
+const FAVORITES = { id: "p2", title: "Favorites", itemCount: 7 };
+
+test.describe("adding a selection the target holds part of", () => {
+	const FRESH = "Deléctrico";
+	const ALREADY = ["Los Calientes", "Fizz"];
+
+	let before: string[];
+
+	test.beforeEach(async ({ page, player, isMobile }) => {
+		test.skip(isMobile, "building a selection needs Shift and a pointer");
+
+		before = titlesIn(player, FAVORITES.id);
+		expect(before).not.toContain(FRESH);
+		for (const title of ALREADY) expect(before).toContain(title);
+
+		await openLibrary(page);
+		await trackRow(page, 0).click();
+		await trackRow(page, 2).click({ modifiers: ["Shift"] });
+		await addTo(page, 1, isMobile, FAVORITES.title);
+
+		await expect(question(page)).toContainText(
+			`2 tracks are already in ${FAVORITES.title}.`,
+		);
+	});
+
+	test("the tracks it lacks land without waiting for the answer", async ({
+		player,
+	}) => {
+		await expect
+			.poll(() => titlesIn(player, FAVORITES.id))
+			.toEqual([...before, FRESH]);
+	});
+
+	test("Skip keeps only those, and says how many went in", async ({
+		page,
+		player,
+	}) => {
+		await question(page).getByRole("button", { name: "Skip" }).click();
+
+		await expect(toast(page)).toContainText(
+			`Added 1 track to ${FAVORITES.title}`,
+		);
+		await expectSettlesAt(player, () => titlesIn(player, FAVORITES.id), [
+			...before,
+			FRESH,
+		]);
+	});
+
+	test("Add anyway adds the rest, and one Undo takes all of it back off", async ({
+		page,
+		player,
+	}) => {
+		await question(page).getByRole("button", { name: "Add anyway" }).click();
+
+		await expect(toast(page)).toContainText(
+			`Added 3 tracks to ${FAVORITES.title}`,
+		);
+		await expect
+			.poll(() => titlesIn(player, FAVORITES.id))
+			.toEqual([...before, FRESH, ...ALREADY]);
+
+		await toast(page).getByRole("button", { name: "Undo" }).click();
+
+		await expectSettlesAt(player, () => titlesIn(player, FAVORITES.id), before);
+	});
+});
+
 test.describe("undoing it", () => {
 	test.beforeEach(({ page }) => openLibrary(page));
 
@@ -369,17 +458,16 @@ test.describe("undoing it", () => {
 		player,
 		isMobile,
 	}) => {
-		const before = titlesIn(player, FAVORITES.id);
+		const before = titlesIn(player, TARGET.id);
 
-		await addToFavorites(page, 0, isMobile);
+		await addToTarget(page, 0, isMobile);
 		await expect
 			.poll(
-				() =>
-					player.playlists.find((entry) => entry.id === FAVORITES.id)!.items,
+				() => player.playlists.find((entry) => entry.id === TARGET.id)!.items,
 			)
-			.toHaveLength(FAVORITES.itemCount + 1);
+			.toHaveLength(TARGET.itemCount + 1);
 
-		const structureAfterAdd = structureOf(player, FAVORITES.id);
+		const structureAfterAdd = structureOf(player, TARGET.id);
 
 		await toast(page).getByRole("button", { name: "Undo" }).click();
 
@@ -392,12 +480,12 @@ test.describe("undoing it", () => {
 		);
 		expect(postsTo(player, "/items/remove")[0].body).toEqual({
 			structure: structureAfterAdd,
-			runs: [[FAVORITES.itemCount, 1]],
+			runs: [[TARGET.itemCount, 1]],
 		});
 
 		// Titles rather than a count: removing the first track instead of the last
 		// would leave the count right and the playlist wrong.
-		await expect.poll(() => titlesIn(player, FAVORITES.id)).toEqual(before);
+		await expect.poll(() => titlesIn(player, TARGET.id)).toEqual(before);
 	});
 
 	test("a multi-track add comes off in one piece", async ({
@@ -407,19 +495,18 @@ test.describe("undoing it", () => {
 	}) => {
 		test.skip(isMobile, "building a selection needs Shift and the arrows");
 
-		const before = titlesIn(player, FAVORITES.id);
+		const before = titlesIn(player, TARGET.id);
 
 		await page.keyboard.press("Shift+ArrowDown");
 		await page.keyboard.press("Shift+ArrowDown");
-		await addToFavorites(page, 1, isMobile);
+		await addToTarget(page, 1, isMobile);
 		await expect
 			.poll(
-				() =>
-					player.playlists.find((entry) => entry.id === FAVORITES.id)!.items,
+				() => player.playlists.find((entry) => entry.id === TARGET.id)!.items,
 			)
-			.toHaveLength(FAVORITES.itemCount + 3);
+			.toHaveLength(TARGET.itemCount + 3);
 
-		const structureAfterAdd = structureOf(player, FAVORITES.id);
+		const structureAfterAdd = structureOf(player, TARGET.id);
 
 		await toast(page).getByRole("button", { name: "Undo" }).click();
 
@@ -430,9 +517,9 @@ test.describe("undoing it", () => {
 		);
 		expect(postsTo(player, "/items/remove")[0].body).toEqual({
 			structure: structureAfterAdd,
-			runs: [[7, 3]],
+			runs: [[4, 3]],
 		});
-		await expect.poll(() => titlesIn(player, FAVORITES.id)).toEqual(before);
+		await expect.poll(() => titlesIn(player, TARGET.id)).toEqual(before);
 	});
 
 	// A rating, a play count or a retag moves the playlist's content revision and
@@ -443,17 +530,17 @@ test.describe("undoing it", () => {
 		player,
 		isMobile,
 	}) => {
-		const before = titlesIn(player, FAVORITES.id);
+		const before = titlesIn(player, TARGET.id);
 
-		await addToFavorites(page, 0, isMobile);
+		await addToTarget(page, 0, isMobile);
 		await expect
-			.poll(() => titlesIn(player, FAVORITES.id).length)
-			.toBe(FAVORITES.itemCount + 1);
+			.poll(() => titlesIn(player, TARGET.id).length)
+			.toBe(TARGET.itemCount + 1);
 
 		// `retagPlaying` is the fake's only content change that leaves a row where it
 		// is, so the row that changes has to be the playing one.
 		const caughtUp = listReads(player).length;
-		player.playItem(FAVORITES.id, 0);
+		player.playItem(TARGET.id, 0);
 		player.retagPlaying({ "%rating%": "4" });
 
 		// Both of those move the playlists revision, and the poll answers by reading
@@ -464,7 +551,7 @@ test.describe("undoing it", () => {
 		player.requests.length = 0;
 		await toast(page).getByRole("button", { name: "Undo" }).click();
 
-		await expect.poll(() => titlesIn(player, FAVORITES.id)).toEqual(before);
+		await expect.poll(() => titlesIn(player, TARGET.id)).toEqual(before);
 		await expectSettlesAt(
 			player,
 			() => postsTo(player, "/items/remove").length,
@@ -482,7 +569,7 @@ test.describe("undoing it", () => {
 		player,
 		isMobile,
 	}) => {
-		await addToFavorites(page, 0, isMobile);
+		await addToTarget(page, 0, isMobile);
 		await expect(
 			toast(page).getByRole("button", { name: "Undo" }),
 		).toBeVisible();
@@ -490,20 +577,19 @@ test.describe("undoing it", () => {
 		// foobar2000 on the desktop, adding two tracks of its own while the toast
 		// is still on screen. Now [7] is somebody else's track.
 		await page.request.post("/__control/append", {
-			data: { sourceId: LIBRARY, targetId: FAVORITES.id, items: [20, 21] },
+			data: { sourceId: LIBRARY, targetId: TARGET.id, items: [20, 21] },
 		});
 		await expect
 			.poll(
-				() =>
-					player.playlists.find((entry) => entry.id === FAVORITES.id)!.items,
+				() => player.playlists.find((entry) => entry.id === TARGET.id)!.items,
 			)
-			.toHaveLength(FAVORITES.itemCount + 3);
+			.toHaveLength(TARGET.itemCount + 3);
 
-		const after = titlesIn(player, FAVORITES.id);
+		const after = titlesIn(player, TARGET.id);
 		await toast(page).getByRole("button", { name: "Undo" }).click();
 
 		await expect(toast(page)).toContainText(
-			`${FAVORITES.title} has changed since then`,
+			`${TARGET.title} has changed since then`,
 		);
 
 		// The component is what notices. Nothing here reads the playlist first, so the
@@ -514,7 +600,7 @@ test.describe("undoing it", () => {
 			() => postsTo(player, "/items/remove").length,
 			1,
 		);
-		expect(titlesIn(player, FAVORITES.id)).toEqual(after);
+		expect(titlesIn(player, TARGET.id)).toEqual(after);
 	});
 
 	test("the toast can be dismissed without undoing", async ({
@@ -522,7 +608,7 @@ test.describe("undoing it", () => {
 		player,
 		isMobile,
 	}) => {
-		await addToFavorites(page, 0, isMobile);
+		await addToTarget(page, 0, isMobile);
 		await expect(toast(page)).toBeVisible();
 
 		await toast(page).getByRole("button", { name: "Dismiss" }).click();
@@ -534,8 +620,8 @@ test.describe("undoing it", () => {
 			0,
 		);
 		expect(
-			player.playlists.find((entry) => entry.id === FAVORITES.id)!.items,
-		).toHaveLength(FAVORITES.itemCount + 1);
+			player.playlists.find((entry) => entry.id === TARGET.id)!.items,
+		).toHaveLength(TARGET.itemCount + 1);
 	});
 });
 
@@ -661,7 +747,7 @@ test.describe("an add the component refuses outright", () => {
 	}) => {
 		await refusePlaylistWrites(page);
 
-		await addToFavorites(page, 0, isMobile);
+		await addToTarget(page, 0, isMobile);
 
 		await expect(toast(page)).toContainText("writePlaylists");
 		await expect(toast(page)).not.toContainText(/autoplaylist/i);
@@ -682,17 +768,17 @@ test.describe("an add that failed rather than being refused", () => {
 		await failPlaylistWritesAtThePlayer(page, 500);
 		const answered = copyStatuses(page);
 
-		await addTo(page, 0, isMobile, FAVORITES.title);
+		await addTo(page, 0, isMobile, TARGET.title);
 
 		await expect.poll(() => answered).toEqual([500]);
 
-		await expect(toast(page)).toContainText(FAVORITES.title);
+		await expect(toast(page)).toContainText(TARGET.title);
 		await expect(toast(page)).not.toContainText(/autoplaylist/i);
 		await expect(toast(page)).not.toContainText(/writePlaylists/i);
 		await expect(toast(page).getByRole("button", { name: "Undo" })).toHaveCount(
 			0,
 		);
-		expect(titlesIn(player, FAVORITES.id)).toHaveLength(FAVORITES.itemCount);
+		expect(titlesIn(player, TARGET.id)).toHaveLength(TARGET.itemCount);
 	});
 });
 
@@ -756,13 +842,11 @@ test.describe("what the player answers an edit it holds the lock on", () => {
 	}) => {
 		const origin = await componentOrigin(request);
 
-		const taken = await copyInto(request, origin, player, FAVORITES.id);
+		const taken = await copyInto(request, origin, player, TARGET.id);
 
 		expect(taken.status()).toBe(200);
-		expect((await taken.json()).positions).toEqual([7, 8, 9]);
-		expect(titlesIn(player, FAVORITES.id)).toHaveLength(
-			FAVORITES.itemCount + 3,
-		);
+		expect((await taken.json()).positions).toEqual([4, 5, 6]);
+		expect(titlesIn(player, TARGET.id)).toHaveLength(TARGET.itemCount + 3);
 	});
 });
 

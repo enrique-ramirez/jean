@@ -15,6 +15,7 @@ namespace {
 // Exactly the fields contract/openapi.yaml declares for each request body below.
 constexpr std::array<const char*, 4> kFillFields{"structure", "runs", "bitset", "ordinals"};
 constexpr char kTitleField[] = "title";
+constexpr char kDuplicatesField[] = "duplicates";
 
 constexpr char kSourceField[] = "source";
 constexpr std::array<const char*, 2> kSourceRowsFields{kSourceField, "runs"};
@@ -31,6 +32,31 @@ bool readStructureDigits(const nlohmann::json& root, uint64_t& structure) {
     const auto found = root.find("structure");
     return found != root.end() && found->is_string() &&
            readDecimal(found->get<std::string>(), structure);
+}
+
+std::vector<const char*> withOptionalFields(std::vector<const char*> fields, TitleField title,
+                                            DuplicatesField duplicates) {
+    if (title == TitleField::allowed)
+        fields.push_back(kTitleField);
+    if (duplicates == DuplicatesField::allowed)
+        fields.push_back(kDuplicatesField);
+    return fields;
+}
+
+std::optional<Duplicates> readDuplicates(const nlohmann::json& root) {
+    const auto found = root.find(kDuplicatesField);
+    if (found == root.end())
+        return Duplicates::added;
+
+    if (!found->is_string())
+        return std::nullopt;
+
+    const auto value = found->get<std::string>();
+    if (value == "add")
+        return Duplicates::added;
+    if (value == "skip")
+        return Duplicates::skipped;
+    return std::nullopt;
 }
 
 }  // namespace
@@ -65,15 +91,15 @@ PlayRowRequest parsePlayRow(const std::string& id, const std::string& indexText)
 }
 
 FillRequest parseFill(const JsonObject& body, size_t trackCount,
-                      std::optional<uint64_t> expectedStructure, TitleField title) {
+                      std::optional<uint64_t> expectedStructure, TitleField title,
+                      DuplicatesField duplicates) {
     if (!body.ok())
         return refused<FillRequest>(PlaylistRefusal::malformedBody);
 
     const auto& root = body.value;
 
-    std::vector<const char*> fields(kFillFields.begin(), kFillFields.end());
-    if (title == TitleField::allowed)
-        fields.push_back(kTitleField);
+    const auto fields =
+        withOptionalFields({kFillFields.begin(), kFillFields.end()}, title, duplicates);
     if (!declaresOnly(root, fields))
         return refused<FillRequest>(PlaylistRefusal::malformedBody);
 
@@ -81,11 +107,16 @@ FillRequest parseFill(const JsonObject& body, size_t trackCount,
     if (structure == root.end() || !structure->is_number_unsigned())
         return refused<FillRequest>(PlaylistRefusal::malformedBody);
 
+    const auto asked = readDuplicates(root);
+    if (!asked)
+        return refused<FillRequest>(PlaylistRefusal::malformedBody);
+
     if (!namesOneSelectionForm(root))
         return refused<FillRequest>(PlaylistRefusal::badOrdinals);
 
     FillRequest request;
     request.structure = structure->get<uint64_t>();
+    request.duplicates = *asked;
 
     if (expectedStructure && request.structure != *expectedStructure) {
         request.outcome = PlayerOutcome::structureMoved;
@@ -187,16 +218,20 @@ NewPlaylistSet newPlaylistSetOf(const JsonObject& body) {
     return namesTracks ? NewPlaylistSet::libraryTracks : NewPlaylistSet::none;
 }
 
-SourceRowsRequest parseSourceRows(const JsonObject& body, TitleField title) {
+SourceRowsRequest parseSourceRows(const JsonObject& body, TitleField title,
+                                  DuplicatesField duplicates) {
     if (!body.ok())
         return refused<SourceRowsRequest>(PlaylistRefusal::malformedBody);
 
     const auto& root = body.value;
 
-    std::vector<const char*> fields(kSourceRowsFields.begin(), kSourceRowsFields.end());
-    if (title == TitleField::allowed)
-        fields.push_back(kTitleField);
+    const auto fields =
+        withOptionalFields({kSourceRowsFields.begin(), kSourceRowsFields.end()}, title, duplicates);
     if (!declaresOnly(root, fields))
+        return refused<SourceRowsRequest>(PlaylistRefusal::malformedBody);
+
+    const auto asked = readDuplicates(root);
+    if (!asked)
         return refused<SourceRowsRequest>(PlaylistRefusal::malformedBody);
 
     const auto source = root.find(kSourceField);
@@ -210,6 +245,7 @@ SourceRowsRequest parseSourceRows(const JsonObject& body, TitleField title) {
     SourceRowsRequest request;
     request.playlistId = source->get<std::string>();
     request.positions = selection.ordinals;
+    request.duplicates = *asked;
     return request;
 }
 

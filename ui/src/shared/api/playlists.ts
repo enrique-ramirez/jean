@@ -15,6 +15,7 @@ export type AutoPlaylistRequest = Schema["AutoPlaylistRequest"];
 export type QueryPreview = Schema["QueryPreview"];
 export type FillPlaylistRequest = Schema["FillPlaylistRequest"];
 export type FillOwnPlaylistRequest = Schema["FillOwnPlaylistRequest"];
+export type Duplicates = Schema["Duplicates"];
 export type FillResult = Schema["FillResult"];
 export type PlaylistPage = Schema["PlaylistPage"];
 export type PlaylistChanges = Schema["PlaylistChanges"];

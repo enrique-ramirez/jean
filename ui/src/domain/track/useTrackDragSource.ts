@@ -14,7 +14,12 @@ import { useQueueTracks } from "./useQueueTracks";
 
 type Reorder = (positions: number[], gap: number) => void;
 
-function useTrackDrop(source: LibrarySource, onReorder: Reorder | undefined) {
+function useTrackDrop(
+	rows: TrackRows,
+	source: LibrarySource,
+	onReorder: Reorder | undefined,
+) {
+	const t = useTranslate();
 	const { data: playlists = [] } = usePlaylists();
 	const { discovery } = useFooJean();
 	const canWritePlaylists = permitsPlaylistWrites(discovery);
@@ -51,7 +56,15 @@ function useTrackDrop(source: LibrarySource, onReorder: Reorder | undefined) {
 			}
 
 			const target = playlists.find((entry) => entry.id === id);
-			if (target) addTracks({ source, target, itemIndices: payload.items });
+			if (!target) return;
+
+			const { items, held = [] } = payload;
+			addTracks({
+				source,
+				target,
+				itemIndices: items,
+				titleOf: (ref) => titleOf(rows.at(held[items.indexOf(ref)]), t),
+			});
 		},
 	};
 }
@@ -68,7 +81,7 @@ export function useTrackDragSource({
 	onReorder?: Reorder;
 }) {
 	const t = useTranslate();
-	const drop = useTrackDrop(source, onReorder);
+	const drop = useTrackDrop(rows, source, onReorder);
 
 	return useDragSource<number[]>({
 		getPayload: (event) => {
@@ -110,7 +123,7 @@ export function useAlbumDragSource({
 	source: LibrarySource;
 	onReorder?: Reorder;
 }) {
-	const drop = useTrackDrop(source, onReorder);
+	const drop = useTrackDrop(rows, source, onReorder);
 
 	return useDragSource<number[]>({
 		getPayload: (event) => {

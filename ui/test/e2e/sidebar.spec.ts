@@ -1332,9 +1332,10 @@ test.describe("dragging tracks onto a playlist", () => {
 		await openApp(page);
 		await scrollUntilMounted(page, trackRow(page, 0));
 
-		const before = player.playlists.find((entry) => entry.title === FAVORITES)!
-			.items.length;
-		const target = await dragTrackTo(page, 0, FAVORITES);
+		const before = player.playlists.find(
+			(entry) => entry.title === DEFAULT_PLAYLIST,
+		)!.items.length;
+		const target = await dragTrackTo(page, 0, DEFAULT_PLAYLIST);
 
 		// The row arms on an animation frame rather than on the move event, so that
 		// a target autoscrolling under a stationary pointer still lights up.
@@ -1344,8 +1345,8 @@ test.describe("dragging tracks onto a playlist", () => {
 		const libraryGuid = player.playlists.find(
 			(entry) => entry.title === LIBRARY,
 		)!.guid;
-		const favoritesGuid = player.playlists.find(
-			(entry) => entry.title === FAVORITES,
+		const targetGuid = player.playlists.find(
+			(entry) => entry.title === DEFAULT_PLAYLIST,
 		)!.guid;
 
 		const copyRequests = () =>
@@ -1355,18 +1356,22 @@ test.describe("dragging tracks onto a playlist", () => {
 
 		await expectSettlesAt(player, () => copyRequests().length, 1);
 		const copy = copyRequests()[0];
-		expect(copy.path).toBe(`/api/playlists/${favoritesGuid}/items/copy`);
-		expect(copy.body).toEqual({ source: libraryGuid, runs: [[0, 1]] });
+		expect(copy.path).toBe(`/api/playlists/${targetGuid}/items/copy`);
+		expect(copy.body).toEqual({
+			source: libraryGuid,
+			runs: [[0, 1]],
+			duplicates: "skip",
+		});
 
 		await expect
 			.poll(
 				() =>
-					player.playlists.find((entry) => entry.title === FAVORITES)!.items
-						.length,
+					player.playlists.find((entry) => entry.title === DEFAULT_PLAYLIST)!
+						.items.length,
 			)
 			.toBe(before + 1);
 
-		await expect(page.getByRole("status")).toContainText(FAVORITES);
+		await expect(page.getByRole("status")).toContainText(DEFAULT_PLAYLIST);
 	});
 
 	// Collapsing a selection on pointer-down empties it before the pointer has moved a pixel, and a
@@ -1406,12 +1411,12 @@ test.describe("dragging tracks onto a playlist", () => {
 			player,
 		}) => {
 			await selectThree(page);
-			const before = titlesIn(player, "p2").length;
+			const before = titlesIn(player, "p1").length;
 
 			await pressOn(page, 1);
 			expect(await selectedOnceDrawn(page)).toBe(3);
 
-			const target = row(page, FAVORITES);
+			const target = row(page, DEFAULT_PLAYLIST);
 			const box = await target.boundingBox();
 			await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2, {
 				steps: 16,
@@ -1420,11 +1425,11 @@ test.describe("dragging tracks onto a playlist", () => {
 			await page.mouse.up();
 
 			await expect(page.getByRole("status")).toContainText(
-				`Added 3 tracks to ${FAVORITES}`,
+				`Added 3 tracks to ${DEFAULT_PLAYLIST}`,
 			);
 			await expectSettlesAt(
 				player,
-				() => titlesIn(player, "p2").length,
+				() => titlesIn(player, "p1").length,
 				before + 3,
 			);
 		});

@@ -28,7 +28,7 @@ The now-playing screen is the one that stays open on a phone. Big artwork, the r
 
 <!-- site:more -->
 - **Browses** your playlists and your whole library, as a list or grouped by album, over a virtualised view that does not care how many tracks you own.
-- **Manages playlists**: create, rename, drag them into the order you like, drop tracks in from anywhere. Rows move within a playlist by dragging as well, a whole album by its cover in the album view, and a playlist sorts by album, artist, title or release date, in foobar2000 itself. Adding tracks comes with an undo; deleting a playlist asks first.
+- **Manages playlists**: create, rename, drag them into the order you like, drop tracks in from anywhere. Rows move within a playlist by dragging as well, a whole album by its cover in the album view, and a playlist sorts by album, artist, title or release date, in foobar2000 itself. Rows come out from the row menu or with `Delete`. Adding tracks comes with an undo, and asks before adding one the playlist already holds; deleting a playlist asks first.
 - **Sets the playback order** from the transport, shuffle and repeat included, whichever orders foobar2000 offers.
 - **Draws the play queue as a timetable**, so every row says when it will play.
 - **Indexes your genres**, all of them, found by typing, and turns any of them into an autoplaylist the player keeps filled. Any query foobar2000 understands makes one too, with a count and a preview of what it will hold before it is made.

@@ -11,7 +11,8 @@
 
 - Following playback measures the row against the scroll container, since overscan mounts rows past the fold. The virtualiser's `align: "auto"` is minimal scrolling, not centring.
 - `jumpToPlaying.ts` is raised when the route lands, never at the click.
-- Undo removes the range that landed, and a `409` on the removal says the playlist changed underneath.
+- Undo removes the range that landed, and a `409` on the removal says the playlist changed underneath. An add that landed as two requests comes off newest first.
+- A removal is a reorder naming fewer rows: carried, never reloaded.
 
 ## Holding a library
 

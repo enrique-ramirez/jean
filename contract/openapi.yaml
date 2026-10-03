@@ -838,6 +838,7 @@ paths:
                     playlistId: "45837d74-fa4f-415c-bba9-bf2db8f0dc04"
                     structure: "9204739866101318924"
                     positions: [0, 1]
+                    skipped: []
         "400": { $ref: "#/components/responses/PlaylistRefused" }
         "403": { $ref: "#/components/responses/PlaybackDisabled" }
         "409": { $ref: "#/components/responses/FillConflict" }
@@ -1086,6 +1087,8 @@ paths:
 
         The set to insert is named by exactly one of `runs`, `bitset` and `ordinals`, resolved against the `structure` sent alongside it. Sending more than one, or none, is a `400`. `runs` and `bitset` are inserted in ascending ordinal order — neither can carry any other — and `ordinals` is inserted in exactly the order it is given, which is the form a client holding a click-ordered set, such as a multi-select, MUST use to keep that order.
 
+        `duplicates: skip` leaves out every track the playlist already holds and names it in `skipped`. Where that is the whole set nothing is inserted, `positions` is empty and `structure` is the one the playlist already stood at.
+
         Refused with `403` under the read-only-playlists setting.
       requestBody:
         required: true
@@ -1102,6 +1105,9 @@ paths:
               ordinals:
                 summary: The same three ordinals in click order, which only this form can carry.
                 value: { structure: 41, ordinals: [9, 0, 1] }
+              skippingDuplicates:
+                summary: The same three ordinals, leaving out any the playlist already holds.
+                value: { structure: 41, ordinals: [9, 0, 1], duplicates: skip }
       responses:
         "200":
           description: Inserted. `positions` names where each row landed, and `structure` the generation the target now stands at.
@@ -1115,6 +1121,14 @@ paths:
                     playlistId: "45837d74-fa4f-415c-bba9-bf2db8f0dc04"
                     structure: "9204739866101318924"
                     positions: [4, 5, 6]
+                    skipped: []
+                skipped:
+                  summary: Ordinals 9, 0 and 1 asked for with `duplicates` `skip`, of which the playlist already held ordinal 0.
+                  value:
+                    playlistId: "45837d74-fa4f-415c-bba9-bf2db8f0dc04"
+                    structure: "9204739866101318924"
+                    positions: [4, 5]
+                    skipped: [0]
         "400": { $ref: "#/components/responses/PlaylistRefused" }
         "403": { $ref: "#/components/responses/OwnPlaylistAddressed" }
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
@@ -1252,6 +1266,8 @@ paths:
 
         `runs` naming no rows at all is accepted and appends nothing. A body naming no `source` is a `400` rather than a copy of the target onto itself.
 
+        `duplicates: skip` leaves out every row whose track the target already holds and names its source position in `skipped`. Where that is every row nothing is appended, `positions` is empty and `structure` is the one the target already stood at.
+
         Refused with `403` under the read-only-playlists setting, with `403` whatever that setting says where `id` is one of this component's own playlists, and with `409` where another component has locked the target against having rows added. The `source` is only read from, so neither a lock on it nor a `role` it carries bears on anything here.
       requestBody:
         required: true
@@ -1273,7 +1289,10 @@ paths:
               examples:
                 default:
                   summary: Three rows appended to a playlist that held four.
-                  value: { structure: "9204739866101318924", positions: [4, 5, 6] }
+                  value: { structure: "9204739866101318924", positions: [4, 5, 6], skipped: [] }
+                skipped:
+                  summary: Rows 1, 2 and 4 asked for with `duplicates` `skip`, of which the target already held the track at row 2.
+                  value: { structure: "9204739866101318924", positions: [4, 5], skipped: [2] }
         "400":
           description: |
             The request was understood and declined before the player was asked: a body that is not JSON, a missing `source` or one this component did not issue, a missing or malformed `runs`, a field the schema does not declare, a `runs` entry naming a row past the end of the source playlist, or a selection resolving to more than 1,500,000 rows, an engineered ceiling on what one request may resolve to, set far above any selection made in a playlist view; the real playlist length is checked again once the player has answered. A create from the same source is refused in the same words.
@@ -4173,6 +4192,19 @@ components:
         runs: { $ref: "#/components/schemas/Runs" }
         bitset: { $ref: "#/components/schemas/Bitset" }
         ordinals: { $ref: "#/components/schemas/Ordinals" }
+        duplicates: { $ref: "#/components/schemas/Duplicates" }
+
+    Duplicates:
+      type: string
+      enum: [add, skip]
+      default: add
+      description: |
+        What becomes of a track the target playlist already holds. `add` inserts it again, and is what leaving the field out means. `skip` leaves it out and names it in the answer's `skipped`, so a client can ask a person about those and send them again without this field.
+
+        Two rows hold the same track where they name the same file and the same subsong, which is how foobar2000 itself tells one track from another. Tags play no part, so the same recording in two files is two tracks. Only what the target held before the request counts: a track the request itself names twice is inserted twice under either value.
+
+        The target's lock is asked before its rows are, so a locked playlist is a `409` even where every track named would have been skipped.
+      examples: [skip]
 
     CopyPlaylistRowsRequest:
       type: object
@@ -4186,6 +4218,7 @@ components:
             The playlist to take rows from, by the `id` a `PlaylistAnnotation` carries. Rows are copied, so the source is left as it was. No generation is sent with it: the positions are read against the playlist as it stands when the player takes the job.
           examples: ["45837d74-fa4f-415c-bba9-bf2db8f0dc04"]
         runs: { $ref: "#/components/schemas/Runs" }
+        duplicates: { $ref: "#/components/schemas/Duplicates" }
 
     RemovePlaylistRowsRequest:
       type: object
@@ -4332,7 +4365,7 @@ components:
     FillResult:
       type: object
       additionalProperties: false
-      required: [playlistId, structure, positions]
+      required: [playlistId, structure, positions, skipped]
       properties:
         playlistId:
           type: string
@@ -4355,11 +4388,17 @@ components:
           description: |
             One position per row inserted, in the order the rows were inserted: request order for `ordinals`, ascending ordinal order for `runs` and `bitset`. `positions[i]` is where the *i*-th inserted row landed, 0-based.
           examples: [[0, 1, 2]]
+        skipped:
+          type: array
+          items: { type: integer, minimum: 0 }
+          description: |
+            The media library ordinal of each track left out because the playlist already held it, in the order the request would have inserted them. Empty unless the request said `duplicates: skip`, and always empty from `POST /playlists/own/{role}/items`, which takes no such field.
+          examples: [[]]
 
     CopiedRows:
       type: object
       additionalProperties: false
-      required: [structure, positions]
+      required: [structure, positions, skipped]
       properties:
         structure:
           type: string
@@ -4373,8 +4412,14 @@ components:
           type: array
           items: { type: integer, minimum: 0 }
           description: |
-            One position per row appended, in ascending source order, 0-based in the target. Empty where `runs` named no rows.
+            One position per row appended, in ascending source order, 0-based in the target. Empty where `runs` named no rows, and where `duplicates: skip` left every one out.
           examples: [[4, 5, 6]]
+        skipped:
+          type: array
+          items: { type: integer, minimum: 0 }
+          description: |
+            The position in `source` of each row left out because the target already held its track, ascending. Empty unless the request said `duplicates: skip`.
+          examples: [[]]
 
     RemovedRows:
       type: object

@@ -388,7 +388,7 @@ export const evaluate = (track: Track, expression: string) => {
 	);
 };
 
-const trackKey = (track: Track) =>
+export const trackKey = (track: Track) =>
 	`${track["%path%"]}\u0000${Number(track["%subsong%"]) || 0}`;
 
 const byLibraryPath = (a: LibraryEntry, b: LibraryEntry) =>

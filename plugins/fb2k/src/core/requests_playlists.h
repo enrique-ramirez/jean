@@ -48,6 +48,7 @@ struct FillRequest {
 
     uint64_t structure = 0;
     std::vector<uint32_t> ordinals;
+    Duplicates duplicates = Duplicates::added;
 
     bool ok() const { return refusal == PlaylistRefusal::none && outcome == PlayerOutcome::done; }
 };
@@ -55,6 +56,8 @@ struct FillRequest {
 // Whether the schema a body is held to declares `title` beside the fields a reader decodes. A
 // body carrying `title` where it is not declared is refused with any other undeclared field.
 enum class TitleField { refused, allowed };
+
+enum class DuplicatesField { refused, allowed };
 
 // `trackCount` bounds what an ordinal may name; one at or past it is refused rather than
 // dropped, because narrowing the set silently is not what the caller asked for.
@@ -65,7 +68,8 @@ enum class TitleField { refused, allowed };
 // such as a test exercising the decode on its own.
 FillRequest parseFill(const JsonObject& body, size_t trackCount,
                       std::optional<uint64_t> expectedStructure,
-                      TitleField title = TitleField::refused);
+                      TitleField title = TitleField::refused,
+                      DuplicatesField duplicates = DuplicatesField::refused);
 
 // The row ceiling `parseRemoveRows` and `parseSourceRows` hold a selection against, in place
 // of the real playlist length, which core/ does not have at parse time. A playlist's rows are
@@ -130,13 +134,15 @@ struct SourceRowsRequest {
 
     std::string playlistId;
     std::vector<uint32_t> positions;
+    Duplicates duplicates = Duplicates::added;
 
     bool ok() const { return refusal == PlaylistRefusal::none; }
 };
 
 // `title` is allowed by `CreatePlaylistRequest` alone: a copy names a playlist that already has
 // a title.
-SourceRowsRequest parseSourceRows(const JsonObject& body, TitleField title = TitleField::refused);
+SourceRowsRequest parseSourceRows(const JsonObject& body, TitleField title = TitleField::refused,
+                                  DuplicatesField duplicates = DuplicatesField::refused);
 
 struct MovePlaylistRequest {
     PlaylistRefusal refusal = PlaylistRefusal::none;

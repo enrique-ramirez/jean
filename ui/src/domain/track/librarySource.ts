@@ -6,6 +6,7 @@ import { encodeFill, runsOf } from "@/shared/api/fillEncoding";
 import { libraryPathMatcher } from "@/shared/api/playerState";
 import {
 	copyPlaylistRows,
+	type Duplicates,
 	type FillOwnPlaylistRequest,
 	type FillPlaylistRequest,
 	fillOwnPlaylist,
@@ -34,6 +35,7 @@ import type { Refs } from "./project";
 export interface AddedRows {
 	positions: number[];
 	structure: string;
+	skipped: number[];
 }
 
 export interface LibrarySourceCommon {
@@ -45,7 +47,11 @@ export interface LibrarySourceCommon {
 
 	addresses: (ref: number) => TrackAddress[];
 	address: (ref: number) => TrackAddress | null;
-	addTo: (targetId: string, refs: Refs) => Promise<AddedRows>;
+	addTo: (
+		targetId: string,
+		refs: Refs,
+		duplicates: Duplicates,
+	) => Promise<AddedRows>;
 	queueTargets: (refs: Refs) => Promise<QueueSource>;
 	playingPosition: (
 		refs: Refs,
@@ -107,16 +113,24 @@ const fillScratch =
 
 const addToPlaylist =
 	(paths: PathTable, origin: string | null, structure: number) =>
-	async (targetId: string, refs: Refs): Promise<AddedRows> => {
+	async (
+		targetId: string,
+		refs: Refs,
+		duplicates: Duplicates,
+	): Promise<AddedRows> => {
 		const required = requireFooJean(origin);
 
-		const request: FillPlaylistRequest = encodeFill(refs, {
-			structure,
-			trackCount: paths.length,
-		});
+		const request: FillPlaylistRequest = {
+			...encodeFill(refs, { structure, trackCount: paths.length }),
+			duplicates,
+		};
 
-		const result = orThrow(await fillPlaylist(required, targetId, request));
-		return { positions: result.positions, structure: result.structure };
+		const {
+			positions,
+			structure: landed,
+			skipped,
+		} = orThrow(await fillPlaylist(required, targetId, request));
+		return { positions, structure: landed, skipped };
 	};
 
 const queueLibraryTracks =
@@ -331,12 +345,17 @@ const fromPlaylist = (
 			kind: "rows",
 			targets: Array.from(refs, (ref) => ({ playlistId, itemIndex: ref })),
 		}),
-		addTo: async (targetId: string, refs: Refs): Promise<AddedRows> => {
+		addTo: async (
+			targetId: string,
+			refs: Refs,
+			duplicates: Duplicates,
+		): Promise<AddedRows> => {
 			const required = requireFooJean(origin);
 			return orThrow(
 				await copyPlaylistRows(required, targetId, {
 					source: playlistId,
 					runs: runsOf(refs),
+					duplicates,
 				}),
 			);
 		},

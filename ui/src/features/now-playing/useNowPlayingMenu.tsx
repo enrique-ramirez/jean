@@ -74,7 +74,8 @@ export function useNowPlayingMenu() {
 			canQueue,
 			canControlPlayback,
 			queueTracks,
-			addTracks,
+			addTracks: (options) =>
+				addTracks({ ...options, titleOf: () => track?.title ?? "" }),
 			credit: track?.artist,
 			t,
 			rating,
@@ -83,6 +84,7 @@ export function useNowPlayingMenu() {
 		source,
 		hasTrack,
 		item,
+		track?.title,
 		track?.artist,
 		playlists,
 		canWritePlaylists,

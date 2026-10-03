@@ -215,13 +215,18 @@ test("a seek publishes that an absolute position is never negative, and an offse
 
 // A create reading a set the fill route would refuse, or refusing one it would take, is a
 // second grammar for a client to learn. The contract holds the two together by declaring the
-// same fields, so a client that can fill a playlist can fill one it is creating.
+// same fields, so a client that can fill a playlist can fill one it is creating. `duplicates`
+// is the one field apart: it asks about rows the target already holds, and a playlist being
+// created holds none.
 test("a create takes the fill's own set, and the setting refuses it", () => {
 	const create = operation("createPlaylist");
 
 	assert.equal(`${create.method} ${create.path}`, "POST /playlists");
 
-	for (const field of declaredKeys("fillPlaylist"))
+	const naming = [...declaredKeys("fillPlaylist")].filter(
+		(field) => field !== "duplicates",
+	);
+	for (const field of naming)
 		assert.ok(
 			declaredKeys("createPlaylist").has(field),
 			`a create cannot be sent the ${field} a fill takes`,
@@ -302,7 +307,11 @@ test("a copy answers where its rows landed and what generation they landed at", 
 	const copied = operation("copyPlaylistItems").published.get(200);
 	assert.ok(copied, "a copy no longer answers a document");
 
-	assert.deepEqual(copied.required?.sort(), ["positions", "structure"]);
+	assert.deepEqual(copied.required?.sort(), [
+		"positions",
+		"skipped",
+		"structure",
+	]);
 
 	const removed = operation("removePlaylistItems").published.get(200);
 	assert.ok(removed, "a removal no longer answers a document");

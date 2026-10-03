@@ -56,9 +56,11 @@ std::string playlistRemovedDocument(const std::string& id);
 std::string queryPreviewDocument(const PreviewResult& preview);
 
 std::string fillResultDocument(const std::string& playlistId, uint64_t structure,
-                               const std::vector<size_t>& positions);
+                               const std::vector<size_t>& positions,
+                               const std::vector<uint32_t>& skipped);
 
-std::string copiedRowsDocument(uint64_t structure, const std::vector<size_t>& positions);
+std::string copiedRowsDocument(uint64_t structure, const std::vector<size_t>& positions,
+                               const std::vector<uint32_t>& skipped);
 std::string removedRowsDocument(uint64_t structure);
 std::string movedRowsDocument(uint64_t structure);
 std::string sortedRowsDocument(uint64_t structure, const std::vector<uint32_t>& order);

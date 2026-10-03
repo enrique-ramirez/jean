@@ -8,20 +8,24 @@ import { translate } from "@/shared/i18n/locale";
 import { pushToast } from "@/shared/ui/toastStore";
 import type { PlaylistSnapshot } from "./playlistEntries";
 import { carryPlaylist, holdPlaylistLoads } from "./playlistLoader";
-import { moveOrder, reorderedSnapshot } from "./playlistPatch";
+import { keptOrder, moveOrder, reorderedSnapshot } from "./playlistPatch";
 import {
 	REFUSAL_PHRASES,
-	type ReorderEdit,
-	sendReorderEdit,
-} from "./reorderEdit";
+	type Refusal,
+	type RowEdit,
+	sendRowEdit,
+} from "./rowEdit";
 
 interface Session {
 	playlistId: string;
 	chain: string[];
-	queue: ReorderEdit[];
+	queue: RowEdit[];
 	sorts: number;
+	sending: RowEdit["kind"] | null;
 	release: (() => void) | null;
 }
+
+type Rearrangement = Exclude<RowEdit, { kind: "sort" }>;
 
 interface Overlay {
 	playlistId: string;
@@ -33,7 +37,7 @@ interface Overlay {
 const isIdentity = (order: Int32Array) =>
 	order.every((old, position) => old === position);
 
-export function usePlaylistReorder({
+export function usePlaylistRowEdits({
 	playlist,
 	snapshot,
 }: {
@@ -68,12 +72,12 @@ export function usePlaylistReorder({
 	}, []);
 
 	const refuse = useCallback(
-		(held: Session, cause: "moved" | "locked" | "other") => {
+		(held: Session, cause: Refusal, kind: RowEdit["kind"]) => {
 			if (session.current !== held) return;
 			abandon();
 			pushToast({
 				tone: "error",
-				message: translate(REFUSAL_PHRASES[cause], {
+				message: translate(REFUSAL_PHRASES[kind][cause], {
 					playlist: latest.current.playlist?.title ?? "",
 				}),
 			});
@@ -88,7 +92,8 @@ export function usePlaylistReorder({
 
 		for (let edit = held.queue.shift(); edit; edit = held.queue.shift()) {
 			const structure = held.chain[held.chain.length - 1];
-			const answered = await sendReorderEdit(
+			held.sending = edit.kind;
+			const answered = await sendRowEdit(
 				player,
 				held.playlistId,
 				structure,
@@ -98,7 +103,7 @@ export function usePlaylistReorder({
 
 			if (!answered.ok) {
 				if (answered.reason === "refused" && answered.status === 403) recheck();
-				refuse(held, rowEditRefusal(answered));
+				refuse(held, rowEditRefusal(answered), edit.kind);
 				return;
 			}
 
@@ -120,6 +125,13 @@ export function usePlaylistReorder({
 					}),
 				});
 			}
+			if (edit.kind === "remove")
+				pushToast({
+					message: translate("playlist.rowsRemoved", {
+						count: edit.positions.length,
+						playlist: latest.current.playlist?.title ?? "",
+					}),
+				});
 			setOverlay(
 				(current) =>
 					current && {
@@ -143,7 +155,8 @@ export function usePlaylistReorder({
 	}, [recheck, refuse, settle]);
 
 	const write = useCoalescedWrite<true>(drain, () => {
-		if (session.current) refuse(session.current, "other");
+		const held = session.current;
+		if (held) refuse(held, "other", held.sending ?? "move");
 	});
 
 	const drawnBase = useCallback(() => {
@@ -155,7 +168,7 @@ export function usePlaylistReorder({
 		return drawn && drawn.playlistId === current?.id ? drawn.snapshot : loaded;
 	}, []);
 
-	const canReorder =
+	const canEdit =
 		canWritePlaylists &&
 		playlist !== null &&
 		!playlist.isAutoPlaylist &&
@@ -170,6 +183,7 @@ export function usePlaylistReorder({
 				chain: [current.structure],
 				queue: [],
 				sorts: 0,
+				sending: null,
 				release: null,
 			};
 		const held = session.current;
@@ -177,31 +191,57 @@ export function usePlaylistReorder({
 		return held;
 	}, []);
 
-	const send = useCallback(
-		(positions: number[], toFor: (moved: number[]) => number) => {
-			const { playlist: current } = latest.current;
-			if (!canReorder || !current) return null;
-			if (session.current?.playlistId === current.id && session.current.sorts)
-				return null;
-
-			const base = drawnBase();
-			const moved = [...new Set(positions)].sort((a, b) => a - b);
-			const to = toFor(moved);
-			const order = moveOrder(base.columns.trackCount, moved, to);
-			if (!order || isIdentity(order)) return null;
-
+	const enqueue = useCallback(
+		(current: PlaylistInfo, edit: RowEdit, drawn: PlaylistSnapshot) => {
 			const held = sessionFor(current);
-			held.queue.push({ kind: "move", positions: moved, to, order });
+			if (edit.kind === "sort") held.sorts += 1;
+			held.queue.push(edit);
 			setOverlay({
 				playlistId: current.id,
-				snapshot: reorderedSnapshot(base, order, base.structure),
+				snapshot: drawn,
 				chain: [...held.chain],
 				isSettled: false,
 			});
 			write(true);
-			return to;
 		},
-		[canReorder, drawnBase, sessionFor, write],
+		[sessionFor, write],
+	);
+
+	const rearrange = useCallback(
+		<Edit extends Rearrangement>(
+			positions: number[],
+			editFor: (named: number[], count: number) => Edit | null,
+		): Edit | null => {
+			const { playlist: current } = latest.current;
+			if (!canEdit || !current) return null;
+			if (session.current?.playlistId === current.id && session.current.sorts)
+				return null;
+
+			const base = drawnBase();
+			const named = [...new Set(positions)].sort((a, b) => a - b);
+			const edit = editFor(named, base.columns.trackCount);
+			if (!edit) return null;
+
+			enqueue(
+				current,
+				edit,
+				reorderedSnapshot(base, edit.order, base.structure),
+			);
+			return edit;
+		},
+		[canEdit, drawnBase, enqueue],
+	);
+
+	const send = useCallback(
+		(positions: number[], toFor: (moved: number[]) => number) =>
+			rearrange(positions, (moved, count) => {
+				const to = toFor(moved);
+				const order = moveOrder(count, moved, to);
+				return order && !isIdentity(order)
+					? { kind: "move" as const, positions: moved, to, order }
+					: null;
+			})?.to ?? null,
+		[rearrange],
 	);
 
 	const move = useCallback(
@@ -219,24 +259,24 @@ export function usePlaylistReorder({
 		[send],
 	);
 
+	const remove = useCallback(
+		(positions: number[]) =>
+			rearrange(positions, (removed, count) => {
+				const order = keptOrder(count, removed);
+				return order && removed.length > 0
+					? { kind: "remove" as const, positions: removed, order }
+					: null;
+			}) !== null,
+		[rearrange],
+	);
+
 	const sort = useCallback(
 		(pattern: string, ordering: string) => {
 			const { playlist: current } = latest.current;
-			if (!canReorder || !current) return;
-
-			const base = drawnBase();
-			const held = sessionFor(current);
-			held.sorts += 1;
-			held.queue.push({ kind: "sort", pattern, ordering });
-			setOverlay({
-				playlistId: current.id,
-				snapshot: base,
-				chain: [...held.chain],
-				isSettled: false,
-			});
-			write(true);
+			if (!canEdit || !current) return;
+			enqueue(current, { kind: "sort", pattern, ordering }, drawnBase());
 		},
-		[canReorder, drawnBase, sessionFor, write],
+		[canEdit, drawnBase, enqueue],
 	);
 
 	const structure = playlist?.structure;
@@ -253,8 +293,9 @@ export function usePlaylistReorder({
 			overlay && overlay.playlistId === playlistId
 				? overlay.snapshot
 				: snapshot,
-		onReorder: canReorder ? move : undefined,
-		onNudge: canReorder ? nudge : undefined,
-		sort: canReorder ? sort : undefined,
+		onReorder: canEdit ? move : undefined,
+		onNudge: canEdit ? nudge : undefined,
+		onRemove: canEdit ? remove : undefined,
+		sort: canEdit ? sort : undefined,
 	};
 }

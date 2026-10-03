@@ -70,14 +70,17 @@ void OwnPlaylistRoutes::fill(const httplib::Request& req, httplib::Response& res
         return;
     }
 
-    const auto filled = playlists_.fill(resolved.playlist.id, titled, request.structure,
-                                        request.ordinals, ExistingRows::replaced);
+    const auto filled =
+        playlists_.fill(resolved.playlist.id, titled, request.structure, request.ordinals,
+                        ExistingRows::replaced, Duplicates::added);
     if (filled.outcome != PlayerOutcome::done) {
         respondOutcome(res, filled.outcome);
         return;
     }
 
-    respond(res, 200, fillResultDocument(resolved.playlist.id, filled.structure, filled.positions));
+    respond(res, 200,
+            fillResultDocument(resolved.playlist.id, filled.structure, filled.positions,
+                               filled.skipped));
 }
 
 void OwnPlaylistRoutes::empty(const httplib::Request& req, httplib::Response& res) {

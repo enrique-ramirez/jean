@@ -66,6 +66,7 @@ export interface TrackBrowserProps {
 	onOpenFinder?: () => void;
 	onReorder?: (positions: number[], gap: number) => number | null;
 	onNudge?: (positions: number[], delta: number) => number | null;
+	onRemove?: (positions: number[]) => boolean;
 	ref?: Ref<TrackBrowserHandle>;
 }
 
@@ -95,6 +96,7 @@ export function TrackBrowser({
 	onOpenFinder,
 	onReorder,
 	onNudge,
+	onRemove,
 }: TrackBrowserProps) {
 	const t = useTranslate();
 	const listRef = useRef<TrackListHandle | null>(null);
@@ -155,14 +157,31 @@ export function TrackBrowser({
 		scrollToTrack,
 	]);
 
+	const { selectBlock, clear: clearSelection } = selection;
+
+	const removeRows = useMemo(
+		() =>
+			onRemove
+				? (positions: number[]) => {
+						if (positions.length === 0 || !onRemove(positions)) return;
+						const remaining = rows.length - positions.length;
+						const first = positions.reduce((least, at) => Math.min(least, at));
+						const next = Math.min(first, remaining - 1);
+						if (next < 0) clearSelection();
+						else selectBlock(next, next, next);
+					}
+				: undefined,
+		[onRemove, rows.length, clearSelection, selectBlock],
+	);
+
 	const trackMenu = useTrackContextMenu({
 		rows,
 		source,
 		selection: selection.selection,
 		onSelectOnly: moveCursorTo,
+		onRemove: removeRows,
 	});
 
-	const { selectBlock } = selection;
 	const isListLayout = layout !== "album";
 
 	const followRows = useCallback(
@@ -225,7 +244,6 @@ export function TrackBrowser({
 		play,
 	});
 
-	const clearSelection = selection.clear;
 	const onViewClick = useCallback(
 		(event: ReactMouseEvent) => {
 			const target = event.target as HTMLElement | null;
@@ -281,6 +299,17 @@ export function TrackBrowser({
 		SCOPE.playlist,
 		{ moveRowsUp: () => nudgeRows(-1), moveRowsDown: () => nudgeRows(1) },
 		{ enabled: keysEnabled && isListLayout && onNudge !== undefined },
+	);
+
+	useKeymap(
+		SCOPE.playlist,
+		{
+			removeRows: () => {
+				if (document.activeElement?.closest("[data-nav-row]")) return;
+				removeRows?.([...selection.selection]);
+			},
+		},
+		{ enabled: keysEnabled && removeRows !== undefined },
 	);
 
 	useFollowPlayback({

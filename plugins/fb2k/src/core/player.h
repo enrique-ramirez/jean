@@ -96,6 +96,7 @@ struct RowsEdited {
     PlayerOutcome outcome = PlayerOutcome::done;
     uint64_t structure = 0;
     std::vector<size_t> positions;
+    std::vector<uint32_t> skipped;
 };
 
 // Appends the rows `positions` names in `sourcePlaylistId` to the end of `playlistId`. Takes no
@@ -103,7 +104,7 @@ struct RowsEdited {
 // one to protect, and the generation this answers is the one a client's undo names.
 using PlaylistRowCopier =
     std::function<RowsEdited(const std::string& playlistId, const std::string& sourcePlaylistId,
-                             const std::vector<uint32_t>& positions)>;
+                             const std::vector<uint32_t>& positions, Duplicates duplicates)>;
 
 // Removes the rows `positions` names from `playlistId`, and answers `rowsMoved` having removed
 // nothing where `structure` is no longer the playlist's structure generation.
@@ -129,6 +130,7 @@ struct FillResult {
     PlayerOutcome outcome = PlayerOutcome::done;
     std::vector<size_t> positions;
     uint64_t structure = 0;
+    std::vector<uint32_t> skipped;
 };
 
 enum class ExistingRows { kept, replaced };
@@ -143,7 +145,7 @@ enum class ExistingRows { kept, replaced };
 // to rename.
 using PlaylistFiller = std::function<FillResult(
     const std::string& playlistId, const std::string& title, uint64_t structure,
-    const std::vector<uint32_t>& ordinals, ExistingRows existing)>;
+    const std::vector<uint32_t>& ordinals, ExistingRows existing, Duplicates duplicates)>;
 
 // Resolves `role` to the id of the component's own playlist for it, through the marker the
 // playlist carries rather than its title, so a rename at the player still finds it and a

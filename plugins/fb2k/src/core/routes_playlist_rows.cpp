@@ -81,7 +81,8 @@ void PlaylistRowRoutes::fill(const httplib::Request& req, httplib::Response& res
     if (playlistIdRefused(id, res))
         return;
 
-    const auto request = parseFill(parseJsonObject(req.body), state->trackCount, state->structure);
+    const auto request = parseFill(parseJsonObject(req.body), state->trackCount, state->structure,
+                                   TitleField::refused, DuplicatesField::allowed);
     if (!request.ok()) {
         respondRequestRefused(res, request);
         return;
@@ -98,14 +99,14 @@ void PlaylistRowRoutes::fill(const httplib::Request& req, httplib::Response& res
     if (ownPlaylistRefused(id, res))
         return;
 
-    const auto filled =
-        playlists_.fill(id, std::string{}, request.structure, request.ordinals, ExistingRows::kept);
+    const auto filled = playlists_.fill(id, std::string{}, request.structure, request.ordinals,
+                                        ExistingRows::kept, request.duplicates);
     if (filled.outcome != PlayerOutcome::done) {
         respondOutcome(res, filled.outcome);
         return;
     }
 
-    respond(res, 200, fillResultDocument(id, filled.structure, filled.positions));
+    respond(res, 200, fillResultDocument(id, filled.structure, filled.positions, filled.skipped));
 }
 
 void PlaylistRowRoutes::addTo(httplib::Server& server) {
@@ -189,7 +190,8 @@ void PlaylistRowRoutes::addTo(httplib::Server& server) {
         if (playlistIdRefused(id, res))
             return;
 
-        const auto request = parseSourceRows(parseJsonObject(req.body));
+        const auto request = parseSourceRows(parseJsonObject(req.body), TitleField::refused,
+                                             DuplicatesField::allowed);
         if (!request.ok()) {
             respondRefusal(res, request.refusal);
             return;
@@ -203,13 +205,14 @@ void PlaylistRowRoutes::addTo(httplib::Server& server) {
         if (changingTooFast(changes_, res))
             return;
 
-        const auto copied = playlists_.copyRows(id, request.playlistId, request.positions);
+        const auto copied =
+            playlists_.copyRows(id, request.playlistId, request.positions, request.duplicates);
         if (copied.outcome != PlayerOutcome::done) {
             respondOutcome(res, copied.outcome);
             return;
         }
 
-        respond(res, 200, copiedRowsDocument(copied.structure, copied.positions));
+        respond(res, 200, copiedRowsDocument(copied.structure, copied.positions, copied.skipped));
     });
 
     server.Post(kRemovePlaylistItems, [this](const httplib::Request& req, httplib::Response& res) {

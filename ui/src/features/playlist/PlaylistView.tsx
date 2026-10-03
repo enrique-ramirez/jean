@@ -10,7 +10,7 @@ import { summarise } from "@/domain/track/stats";
 import { TrackPage } from "@/domain/track/TrackPage";
 import { useFinder } from "@/domain/track/useFinder";
 import { usePlaylistItems } from "@/domain/track/usePlaylistItems";
-import { usePlaylistReorder } from "@/domain/track/usePlaylistReorder";
+import { usePlaylistRowEdits } from "@/domain/track/usePlaylistRowEdits";
 import { permitsPlaylistWrites } from "@/shared/api/discovery";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
@@ -40,7 +40,7 @@ export function PlaylistView({
 		playlist?.revision,
 		playlist?.itemCount,
 	);
-	const { snapshot, onReorder, onNudge, sort } = usePlaylistReorder({
+	const { snapshot, onReorder, onNudge, onRemove, sort } = usePlaylistRowEdits({
 		playlist,
 		snapshot: held,
 	});
@@ -125,6 +125,7 @@ export function PlaylistView({
 			onOpenFinder={finder.open}
 			onReorder={onReorder}
 			onNudge={onNudge}
+			onRemove={onRemove}
 			actions={
 				canEditQuery ? (
 					<Button icon={SquarePen} onClick={() => onEditAutoPlaylist(playlist)}>

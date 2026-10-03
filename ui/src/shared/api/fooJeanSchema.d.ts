@@ -355,6 +355,8 @@ export interface paths {
          *
          *     The set to insert is named by exactly one of `runs`, `bitset` and `ordinals`, resolved against the `structure` sent alongside it. Sending more than one, or none, is a `400`. `runs` and `bitset` are inserted in ascending ordinal order — neither can carry any other — and `ordinals` is inserted in exactly the order it is given, which is the form a client holding a click-ordered set, such as a multi-select, MUST use to keep that order.
          *
+         *     `duplicates: skip` leaves out every track the playlist already holds and names it in `skipped`. Where that is the whole set nothing is inserted, `positions` is empty and `structure` is the one the playlist already stood at.
+         *
          *     Refused with `403` under the read-only-playlists setting.
          */
         post: operations["fillPlaylist"];
@@ -424,6 +426,8 @@ export interface paths {
          *     One operation of the player's: nothing here reads an item count before or after the write.
          *
          *     `runs` naming no rows at all is accepted and appends nothing. A body naming no `source` is a `400` rather than a copy of the target onto itself.
+         *
+         *     `duplicates: skip` leaves out every row whose track the target already holds and names its source position in `skipped`. Where that is every row nothing is appended, `positions` is empty and `structure` is the one the target already stood at.
          *
          *     Refused with `403` under the read-only-playlists setting, with `403` whatever that setting says where `id` is one of this component's own playlists, and with `409` where another component has locked the target against having rows added. The `source` is only read from, so neither a lock on it nor a `role` it carries bears on anything here.
          */
@@ -1741,7 +1745,19 @@ export interface components {
             runs?: components["schemas"]["Runs"];
             bitset?: components["schemas"]["Bitset"];
             ordinals?: components["schemas"]["Ordinals"];
+            duplicates?: components["schemas"]["Duplicates"];
         };
+        /**
+         * @description What becomes of a track the target playlist already holds. `add` inserts it again, and is what leaving the field out means. `skip` leaves it out and names it in the answer's `skipped`, so a client can ask a person about those and send them again without this field.
+         *
+         *     Two rows hold the same track where they name the same file and the same subsong, which is how foobar2000 itself tells one track from another. Tags play no part, so the same recording in two files is two tracks. Only what the target held before the request counts: a track the request itself names twice is inserted twice under either value.
+         *
+         *     The target's lock is asked before its rows are, so a locked playlist is a `409` even where every track named would have been skipped.
+         * @default add
+         * @example skip
+         * @enum {string}
+         */
+        Duplicates: "add" | "skip";
         CopyPlaylistRowsRequest: {
             /**
              * @description The playlist to take rows from, by the `id` a `PlaylistAnnotation` carries. Rows are copied, so the source is left as it was. No generation is sent with it: the positions are read against the playlist as it stands when the player takes the job.
@@ -1749,6 +1765,7 @@ export interface components {
              */
             source: string;
             runs: components["schemas"]["Runs"];
+            duplicates?: components["schemas"]["Duplicates"];
         };
         RemovePlaylistRowsRequest: {
             /**
@@ -1874,6 +1891,11 @@ export interface components {
              *     ]
              */
             positions: number[];
+            /**
+             * @description The media library ordinal of each track left out because the playlist already held it, in the order the request would have inserted them. Empty unless the request said `duplicates: skip`, and always empty from `POST /playlists/own/{role}/items`, which takes no such field.
+             * @example []
+             */
+            skipped: number[];
         };
         CopiedRows: {
             /**
@@ -1884,7 +1906,7 @@ export interface components {
              */
             structure: string;
             /**
-             * @description One position per row appended, in ascending source order, 0-based in the target. Empty where `runs` named no rows.
+             * @description One position per row appended, in ascending source order, 0-based in the target. Empty where `runs` named no rows, and where `duplicates: skip` left every one out.
              * @example [
              *       4,
              *       5,
@@ -1892,6 +1914,11 @@ export interface components {
              *     ]
              */
             positions: number[];
+            /**
+             * @description The position in `source` of each row left out because the target already held its track, ascending. Empty unless the request said `duplicates: skip`.
+             * @example []
+             */
+            skipped: number[];
         };
         RemovedRows: {
             /**

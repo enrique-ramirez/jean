@@ -78,6 +78,18 @@ std::optional<std::vector<uint32_t>> moveOrder(uint32_t count, std::vector<uint3
     return order;
 }
 
+DuplicateSplit splitDuplicates(const std::vector<uint32_t>& named,
+                               const std::vector<bool>& alreadyHeld) {
+    DuplicateSplit split;
+    for (size_t at = 0; at < named.size(); ++at) {
+        if (alreadyHeld[at])
+            split.skipped.push_back(named[at]);
+        else
+            split.inserted.push_back(at);
+    }
+    return split;
+}
+
 std::optional<PlayingLocation> queuedLocation(
     size_t playlist, size_t item, const std::function<std::string(size_t)>& playlistIdAt) {
     constexpr size_t kInfinite = std::numeric_limits<size_t>::max();

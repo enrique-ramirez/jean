@@ -32,11 +32,13 @@ export function useTrackContextMenu({
 	source,
 	selection,
 	onSelectOnly,
+	onRemove,
 }: {
 	rows: TrackRows;
 	source: LibrarySource;
 	selection: Set<number>;
 	onSelectOnly: (index: number) => void;
+	onRemove?: (positions: number[]) => void;
 }) {
 	const t = useTranslate();
 	const { data: playlists = [] } = usePlaylists();
@@ -100,7 +102,13 @@ export function useTrackContextMenu({
 			canQueue,
 			canControlPlayback,
 			queueTracks,
-			addTracks,
+			addTracks: (options) =>
+				addTracks({
+					...options,
+					titleOf: (ref) =>
+						titleOf(rows.at(positions[itemIndices.indexOf(ref)]), t),
+				}),
+			removeTracks: onRemove && (() => onRemove(positions)),
 			credit: count === 1 ? value(rows.at(positions[0]), FIELD.artist) : null,
 			t,
 			rating: rateable
@@ -128,6 +136,7 @@ export function useTrackContextMenu({
 		source,
 		canWritePlaylists,
 		addTracks,
+		onRemove,
 		canQueue,
 		canControlPlayback,
 		queueTracks,

@@ -418,11 +418,11 @@ TEST_CASE("every document carrying a playlist's counters carries them as strings
     changes.revision = kSeeded;
     CHECK(json::parse(playlistChangesDocument(changes)).at("revision").dump() == digits);
 
-    CHECK(json::parse(copiedRowsDocument(kSeeded, {})).at("structure").dump() == digits);
+    CHECK(json::parse(copiedRowsDocument(kSeeded, {}, {})).at("structure").dump() == digits);
     CHECK(json::parse(removedRowsDocument(kSeeded)).at("structure").dump() == digits);
     CHECK(json::parse(movedRowsDocument(kSeeded)).at("structure").dump() == digits);
     CHECK(json::parse(sortedRowsDocument(kSeeded, {})).at("structure").dump() == digits);
-    CHECK(json::parse(fillResultDocument(kPlaylistId, kSeeded, {})).at("structure").dump() ==
+    CHECK(json::parse(fillResultDocument(kPlaylistId, kSeeded, {}, {})).at("structure").dump() ==
           digits);
 }
 
@@ -430,8 +430,8 @@ TEST_CASE("the other playlist answers are the shapes contract/openapi.yaml publi
     INFO(kUpdateSpec);
 
     CHECK(keysOf(playlistRemovedDocument(kPlaylistId)) == Keys{"removed", "id"});
-    CHECK(keysOf(fillResultDocument(kPlaylistId, 0, {})) ==
-          Keys{"playlistId", "structure", "positions"});
+    CHECK(keysOf(fillResultDocument(kPlaylistId, 0, {}, {})) ==
+          Keys{"playlistId", "structure", "positions", "skipped"});
     CHECK(keysOf(movedRowsDocument(0)) == Keys{"structure"});
     CHECK(keysOf(sortedRowsDocument(0, {1, 0})) == Keys{"structure", "order"});
 

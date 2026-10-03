@@ -558,6 +558,14 @@ const DECLARED = [
 		keys: ["Alt+ArrowDown"],
 	},
 	{
+		id: "removeRows",
+		scope: SCOPE.playlist,
+		group: "shortcutGroup.playlist",
+		name: "shortcut.removeRows",
+		keys: ["Delete", "Mod+Backspace"],
+		shown: ["Del"],
+	},
+	{
 		id: "toggleLayout",
 		scope: SCOPE.playlist,
 		group: "shortcutGroup.playlist",

@@ -29,6 +29,14 @@ export const en = {
 	},
 	"add.autoPlaylist":
 		"Nothing was added to {playlist}. Autoplaylists fill themselves and cannot be added to.",
+	"add.duplicateAdd": "Add anyway",
+	"add.duplicateCount": {
+		one: "{count} track is already in {playlist}.",
+		other: "{count} tracks are already in {playlist}.",
+	},
+	"add.duplicateNamed": "{track} is already in {playlist}.",
+	"add.duplicateSkip": "Skip",
+	"add.duplicateTitle": "Add again?",
 	"add.failed": "Nothing was added to {playlist}.",
 	"add.locked":
 		"Nothing was added to {playlist}. Something else at the player has it locked.",
@@ -526,9 +534,16 @@ export const en = {
 	"playlist.newName": "New playlist",
 	"playlist.newPlain": "Playlist",
 	"playlist.playingFrom": "Playing from",
+	"playlist.removeFailed": "Nothing was removed from {playlist}",
+	"playlist.removeRefusedMoved":
+		"{playlist} changed at the player, so nothing was removed",
 	"playlist.renameFailed": "{playlist} could not be renamed.",
 	"playlist.renameOne": "Rename {playlist}",
 	"playlist.reorderRefused": "The player would not reorder that.",
+	"playlist.rowsRemoved": {
+		one: "Removed {count} track from {playlist}",
+		other: "Removed {count} tracks from {playlist}",
+	},
 	"playlist.sort": "Sort",
 	"playlist.sortBy.album": "Album",
 	"playlist.sortBy.artist": "Artist",
@@ -742,6 +757,7 @@ export const en = {
 	"shortcut.rate3": "Rate 3 stars",
 	"shortcut.rate4": "Rate 4 stars",
 	"shortcut.rate5": "Rate 5 stars",
+	"shortcut.removeRows": "Remove selection from the playlist",
 	"shortcut.saveSearch": "Save results as a playlist",
 	"shortcut.seekBack": "Seek back 5 seconds",
 	"shortcut.seekForward": "Seek forward 5 seconds",
@@ -812,6 +828,7 @@ export const en = {
 	"track.loading": "Loading tracks…",
 	"track.queue": "Add to queue",
 	"track.queueLimited": "Add to queue ({limit} at a time)",
+	"track.removeFromPlaylist": "Remove from playlist",
 	"track.selected": "Selected",
 	"track.unknownAlbum": "Unknown album",
 	"track.unknownArtist": "Unknown artist",

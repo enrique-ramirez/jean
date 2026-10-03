@@ -14,6 +14,7 @@
 #include <numeric>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -54,6 +55,45 @@ std::vector<size_t> positionsFrom(size_t base, size_t count) {
     std::vector<size_t> positions(count);
     std::iota(positions.begin(), positions.end(), base);
     return positions;
+}
+
+// foobar2000's metadb keeps one metadb_handle per playable_location, a path and a
+// subsong, so two rows hold the same track exactly where their handles are the same object.
+std::vector<bool> alreadyHeld(size_t index, const metadb_handle_list& items,
+                              Duplicates duplicates) {
+    std::vector<bool> held(items.get_count(), false);
+    if (duplicates == Duplicates::added)
+        return held;
+
+    metadb_handle_list rows;
+    playlist_manager::get()->playlist_get_all_items(index, rows);
+
+    std::unordered_set<const metadb_handle*> tracks;
+    tracks.reserve(rows.get_count());
+    for (size_t at = 0, count = rows.get_count(); at < count; ++at)
+        tracks.insert(rows[at].get_ptr());
+
+    for (size_t at = 0; at < held.size(); ++at)
+        held[at] = tracks.count(items[at].get_ptr()) != 0;
+
+    return held;
+}
+
+metadb_handle_list itemsAt(const metadb_handle_list& items, const std::vector<size_t>& indices) {
+    metadb_handle_list chosen;
+    for (const size_t at : indices)
+        chosen.add_item(items[at]);
+    return chosen;
+}
+
+std::vector<size_t> appendItems(size_t index, const metadb_handle_list& items) {
+    const auto manager = playlist_manager_v5::get();
+    const auto base = manager->playlist_get_item_count(index);
+
+    if (items.get_count() != 0)
+        manager->playlist_insert_items(index, base, items, bit_array_false());
+
+    return positionsFrom(base, items.get_count());
 }
 
 struct CopiedRows {
@@ -190,7 +230,7 @@ PlaylistResult moveOnMainThread(const std::string& id, uint32_t index) {
 // The target alone is checked for a role. A source is read rather than changed, so *Add to
 // playlist* over results Jean played through the scratch keeps working.
 RowsEdited copyRowsOnMainThread(const std::string& playlistId, const std::string& sourcePlaylistId,
-                                const std::vector<uint32_t>& positions,
+                                const std::vector<uint32_t>& positions, Duplicates duplicates,
                                 const PlaylistVersions& versions) {
     const auto index = findPlaylist(playlistId);
 
@@ -202,13 +242,12 @@ RowsEdited copyRowsOnMainThread(const std::string& playlistId, const std::string
     if (gathered.outcome != PlayerOutcome::done)
         return failureOf<RowsEdited>(gathered.outcome);
 
-    const auto manager = playlist_manager_v5::get();
-    const auto base = manager->playlist_get_item_count(index);
-    manager->playlist_insert_items(index, base, gathered.items, bit_array_false());
+    auto split = splitDuplicates(positions, alreadyHeld(index, gathered.items, duplicates));
 
     RowsEdited copied;
-    copied.positions = positionsFrom(base, gathered.items.get_count());
+    copied.positions = appendItems(index, itemsAt(gathered.items, split.inserted));
     copied.structure = versions.of(playlistId).structure;
+    copied.skipped = std::move(split.skipped);
     return copied;
 }
 
@@ -232,7 +271,7 @@ RowsEdited removeRowsOnMainThread(const std::string& playlistId, uint64_t struct
 
     manager->playlist_remove_items(index, mask);
 
-    return RowsEdited{PlayerOutcome::done, versions.of(playlistId).structure, {}};
+    return RowsEdited{PlayerOutcome::done, versions.of(playlistId).structure, {}, {}};
 }
 
 RowsEdited moveRowsOnMainThread(const std::string& playlistId, uint64_t structure,
@@ -260,7 +299,7 @@ RowsEdited moveRowsOnMainThread(const std::string& playlistId, uint64_t structur
     if (!manager->playlist_reorder_items(index, wide.data(), wide.size()))
         return failureOf<RowsEdited>(PlayerOutcome::playerRefused);
 
-    return RowsEdited{PlayerOutcome::done, versions.of(playlistId).structure, {}};
+    return RowsEdited{PlayerOutcome::done, versions.of(playlistId).structure, {}, {}};
 }
 
 SortedRows sortRowsOnMainThread(const std::string& playlistId, uint64_t structure,
@@ -297,7 +336,8 @@ SortedRows sortRowsOnMainThread(const std::string& playlistId, uint64_t structur
 // No role check: a fill is how this component's own scratch playlist gets its rows.
 FillResult fillOnMainThread(const std::string& playlistId, const std::string& title,
                             uint64_t structure, const std::vector<uint32_t>& ordinals,
-                            ExistingRows existing, const OrdinalResolver& resolveOrdinals,
+                            ExistingRows existing, Duplicates duplicates,
+                            const OrdinalResolver& resolveOrdinals,
                             const PlaylistVersions& versions) {
     const auto index = findPlaylist(playlistId);
     const auto resolved = resolveOrdinals(structure, ordinals);
@@ -313,16 +353,16 @@ FillResult fillOnMainThread(const std::string& playlistId, const std::string& ti
     if (!title.empty())
         playlist_manager::get()->playlist_rename(index, title.c_str(), title.size());
 
-    const auto manager = playlist_manager_v5::get();
+    auto split = splitDuplicates(ordinals, alreadyHeld(index, resolved.items, duplicates));
 
     if (existing == ExistingRows::replaced)
         removeEveryItem(index);
 
-    const auto base = manager->playlist_get_item_count(index);
-    manager->playlist_insert_items(index, base, resolved.items, bit_array_false());
-
-    return FillResult{PlayerOutcome::done, positionsFrom(base, resolved.items.get_count()),
-                      versions.of(playlistId).structure};
+    FillResult filled;
+    filled.positions = appendItems(index, itemsAt(resolved.items, split.inserted));
+    filled.structure = versions.of(playlistId).structure;
+    filled.skipped = std::move(split.skipped);
+    return filled;
 }
 
 PlaylistResult resolveOwnOnMainThread(OwnPlaylistRole role, const std::string& title,
@@ -392,11 +432,12 @@ PlaylistRowCopier makePlaylistRowCopier(MainThreadQueue& mainThread,
                                         const PlaylistVersions& versions) {
     return
         [&mainThread, &versions](const std::string& playlistId, const std::string& sourcePlaylistId,
-                                 const std::vector<uint32_t>& positions) {
+                                 const std::vector<uint32_t>& positions, Duplicates duplicates) {
             return askForOutcome<RowsEdited>(
                 mainThread, "copying rows into a playlist",
-                [playlistId, sourcePlaylistId, positions, &versions] {
-                    return copyRowsOnMainThread(playlistId, sourcePlaylistId, positions, versions);
+                [playlistId, sourcePlaylistId, positions, duplicates, &versions] {
+                    return copyRowsOnMainThread(playlistId, sourcePlaylistId, positions, duplicates,
+                                                versions);
                 });
         };
 }
@@ -440,13 +481,15 @@ PlaylistFiller makePlaylistFiller(MainThreadQueue& mainThread, OrdinalResolver r
                                   const PlaylistVersions& versions) {
     return [&mainThread, resolveOrdinals = std::move(resolveOrdinals), &versions](
                const std::string& playlistId, const std::string& title, uint64_t structure,
-               const std::vector<uint32_t>& ordinals, ExistingRows existing) {
-        return askForOutcome<FillResult>(
-            mainThread, "filling a playlist",
-            [playlistId, title, structure, ordinals, existing, resolveOrdinals, &versions] {
-                return fillOnMainThread(playlistId, title, structure, ordinals, existing,
-                                        resolveOrdinals, versions);
-            });
+               const std::vector<uint32_t>& ordinals, ExistingRows existing,
+               Duplicates duplicates) {
+        return askForOutcome<FillResult>(mainThread, "filling a playlist",
+                                         [playlistId, title, structure, ordinals, existing,
+                                          duplicates, resolveOrdinals, &versions] {
+                                             return fillOnMainThread(playlistId, title, structure,
+                                                                     ordinals, existing, duplicates,
+                                                                     resolveOrdinals, versions);
+                                         });
     };
 }
 

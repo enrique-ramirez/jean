@@ -14,7 +14,7 @@ import type {
 	RecordedRequest,
 	Track,
 } from "./state.ts";
-import { evaluate, libraryItemsOf, sortedOrder } from "./state.ts";
+import { evaluate, libraryItemsOf, sortedOrder, trackKey } from "./state.ts";
 
 type FakeState = ReturnType<typeof createState>;
 
@@ -1279,8 +1279,38 @@ const movedOrder = (
 };
 
 type ParsedFill =
-	| { ok: true; title?: string; structure: number; ordinals: number[] }
+	| {
+			ok: true;
+			title?: string;
+			structure: number;
+			ordinals: number[];
+			skipsDuplicates: boolean;
+	  }
 	| ({ ok: false } & FillFailure);
+
+const DUPLICATES = ["add", "skip"];
+
+const duplicatesFailure = (duplicates: unknown): FillFailure | null =>
+	duplicates === undefined || DUPLICATES.includes(duplicates as string)
+		? null
+		: fillFailure(
+				400,
+				"malformed request",
+				"'duplicates' must be 'add' or 'skip'",
+			);
+
+function splitDuplicates<T>(
+	playlist: FakePlaylist,
+	named: T[],
+	trackOf: (entry: T) => Track,
+): { fresh: T[]; held: T[] } {
+	const present = new Set(playlist.items.map(trackKey));
+	const isHeld = (entry: T) => present.has(trackKey(trackOf(entry)));
+	return {
+		fresh: named.filter((entry) => !isHeld(entry)),
+		held: named.filter(isHeld),
+	};
+}
 
 function parseFill(
 	body: unknown,
@@ -1302,7 +1332,7 @@ function parseFill(
 		"runs",
 		"bitset",
 		"ordinals",
-		...(requireTitle ? ["title"] : []),
+		...(requireTitle ? ["title"] : ["duplicates"]),
 	]);
 	const stray = Object.keys(record).find((key) => !allowed.has(key));
 	if (stray)
@@ -1331,6 +1361,9 @@ function parseFill(
 			...fillFailure(400, "malformed request", "'structure' is required"),
 		};
 
+	const refused = duplicatesFailure(record.duplicates);
+	if (refused) return { ok: false, ...refused };
+
 	const selection = decodeSelection(record, trackCount);
 	if (!selection.ok) return selection;
 
@@ -1339,6 +1372,7 @@ function parseFill(
 		title,
 		structure: record.structure as number,
 		ordinals: selection.ordinals,
+		skipsDuplicates: record.duplicates === "skip",
 	};
 }
 
@@ -1717,6 +1751,8 @@ function insertTracks(
 	tracks: Track[],
 	{ replace }: { replace: boolean },
 ): number[] {
+	if (!replace && tracks.length === 0) return [];
+
 	const start = replace ? 0 : playlist.items.length;
 	state.editItems(playlist, () => {
 		if (replace) playlist.items = [];
@@ -3388,7 +3424,11 @@ export async function handleFooJean({
 		if (fake.canWritePlaylists === false)
 			return json(response, WRITES_DISABLED, 403);
 
-		const asked = body as { source?: unknown; runs?: unknown } | null;
+		const asked = body as {
+			source?: unknown;
+			runs?: unknown;
+			duplicates?: unknown;
+		} | null;
 		if (typeof asked?.source !== "string" || !GUID_PATTERN.test(asked.source))
 			return json(
 				response,
@@ -3398,6 +3438,9 @@ export async function handleFooJean({
 				},
 				400,
 			);
+
+		const refused = duplicatesFailure(asked.duplicates);
+		if (refused) return json(response, refused.body, refused.status);
 
 		const target = state.playlistByGuid(guid);
 		if (!target)
@@ -3416,17 +3459,27 @@ export async function handleFooJean({
 		);
 		if (!selection.ok) return json(response, selection.body, selection.status);
 
-		const before = target.items.length;
-		state.editItems(target, () => {
-			target.items.push(
-				...selection.ordinals.map((ordinal) => source.items[ordinal]),
-			);
-		});
+		const { fresh, held } =
+			asked.duplicates === "skip"
+				? splitDuplicates(
+						target,
+						selection.ordinals,
+						(ordinal) => source.items[ordinal],
+					)
+				: { fresh: selection.ordinals, held: [] };
+
+		const positions = insertTracks(
+			state,
+			target,
+			fresh.map((ordinal) => source.items[ordinal]),
+			{ replace: false },
+		);
 		state.notifyPlaylists();
 
 		return json(response, {
 			structure: generationText(target.structure),
-			positions: selection.ordinals.map((_, at) => before + at),
+			positions,
+			skipped: held,
 		});
 	}
 
@@ -3464,6 +3517,12 @@ export async function handleFooJean({
 			playlist.items.length,
 		);
 		if (!selection.ok) return json(response, selection.body, selection.status);
+
+		if (
+			locksAgainstAdds(fake, playlist) ||
+			fake.lockedPlaylists.has(playlist.id)
+		)
+			return json(response, PLAYLIST_LOCKED, 409);
 
 		const drop = new Set(selection.ordinals);
 		state.editItems(playlist, () => {
@@ -3638,6 +3697,7 @@ export async function handleFooJean({
 			playlistId: playlist.guid,
 			structure: generationText(playlist.structure),
 			positions,
+			skipped: [],
 		});
 	}
 
@@ -3709,10 +3769,18 @@ export async function handleFooJean({
 			return json(response, STRUCTURE_MOVED, 409);
 
 		const tracks = state.ordinalOrder();
+		const { fresh, held } = parsed.skipsDuplicates
+			? splitDuplicates(
+					playlist,
+					parsed.ordinals,
+					(ordinal) => tracks[ordinal].track,
+				)
+			: { fresh: parsed.ordinals, held: [] };
+
 		const positions = insertTracks(
 			state,
 			playlist,
-			parsed.ordinals.map((ordinal) => tracks[ordinal].track),
+			fresh.map((ordinal) => tracks[ordinal].track),
 			{ replace: false },
 		);
 		state.notifyPlaylists();
@@ -3721,6 +3789,7 @@ export async function handleFooJean({
 			playlistId: guid,
 			structure: generationText(playlist.structure),
 			positions,
+			skipped: held,
 		});
 	}
 

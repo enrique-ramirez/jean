@@ -120,7 +120,7 @@ const CALLS: Call[] = [
 	},
 	{
 		name: "adding library rows to a playlist",
-		run: (source) => source.addTo(TARGET_GUID, REFS),
+		run: (source) => source.addTo(TARGET_GUID, REFS, "add"),
 	},
 ];
 

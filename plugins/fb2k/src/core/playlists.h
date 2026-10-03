@@ -225,6 +225,16 @@ bool isPlaylistId(const std::string& id);
 std::optional<std::vector<uint32_t>> moveOrder(uint32_t count, std::vector<uint32_t> positions,
                                                uint32_t to);
 
+enum class Duplicates { added, skipped };
+
+struct DuplicateSplit {
+    std::vector<size_t> inserted;
+    std::vector<uint32_t> skipped;
+};
+
+DuplicateSplit splitDuplicates(const std::vector<uint32_t>& named,
+                               const std::vector<bool>& alreadyHeld);
+
 // nullopt once the entry's row or whole playlist is gone, never the infinite index left in
 // its place, for the reason ARCHITECTURE.md, *Facts about the player*, gives.
 std::optional<PlayingLocation> queuedLocation(

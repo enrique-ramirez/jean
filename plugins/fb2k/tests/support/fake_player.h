@@ -30,6 +30,8 @@ FakeRow titled(const std::string& title);
 
 std::vector<FakeRow> titledRows(const std::vector<std::string>& titles);
 
+FakeRow libraryTrack(uint32_t ordinal);
+
 // Each call the Player seam offers that the fake answers.
 enum class Call {
     listPlaylists,

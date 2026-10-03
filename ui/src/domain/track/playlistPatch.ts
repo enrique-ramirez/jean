@@ -101,16 +101,34 @@ export function moveOrder(
 	return Int32Array.from([...rest.slice(0, to), ...moved, ...rest.slice(to)]);
 }
 
+export function keptOrder(
+	count: number,
+	removed: readonly number[],
+): Int32Array | null {
+	if (removed.some((at) => !Number.isInteger(at) || at < 0 || at >= count))
+		return null;
+
+	const isRemoved = new Set(removed);
+	const kept: number[] = [];
+	for (let at = 0; at < count; at += 1) if (!isRemoved.has(at)) kept.push(at);
+	return Int32Array.from(kept);
+}
+
+const playedAmong = (heat: Float32Array) =>
+	heat.reduce((played, warmth) => played + (warmth > 0 ? 1 : 0), 0);
+
 export function reorderedSnapshot(
 	held: PlaylistSnapshot,
 	order: ArrayLike<number>,
 	structure: number,
 ): PlaylistSnapshot {
 	const { columns, paths, subsongs } = held;
-	if (order.length !== columns.trackCount)
+	if (order.length > columns.trackCount)
 		throw new Error(
 			`an order of ${order.length} rows cannot reorder ${columns.trackCount}`,
 		);
+
+	const heat = Float32Array.from(order, (old) => held.heat[old]);
 
 	let reorderedPaths: PathTable | null = null;
 	if (paths) {
@@ -125,7 +143,7 @@ export function reorderedSnapshot(
 		structure,
 		columns: {
 			load: {},
-			trackCount: columns.trackCount,
+			trackCount: order.length,
 			fields: columns.fields.map((field) =>
 				jlibColumn(
 					Uint32Array.from(order, (old) => field.ids[old]),
@@ -140,7 +158,11 @@ export function reorderedSnapshot(
 		},
 		paths: reorderedPaths,
 		subsongs: subsongs && Int32Array.from(order, (old) => subsongs[old]),
-		heat: Float32Array.from(order, (old) => held.heat[old]),
+		loaded: order.length,
+		total: held.total - (columns.trackCount - order.length),
+		heat,
 		patina: Float32Array.from(order, (old) => held.patina[old]),
+		playedCount:
+			held.playedCount - (playedAmong(held.heat) - playedAmong(heat)),
 	};
 }

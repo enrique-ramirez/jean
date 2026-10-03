@@ -8,6 +8,7 @@
 #include <iterator>
 #include <numeric>
 #include <set>
+#include <tuple>
 #include <utility>
 
 namespace jean::testing {
@@ -28,12 +29,6 @@ PlaylistRow formatted(const FakeRow& row, const std::vector<std::string>& column
                    });
 
     return answer;
-}
-
-FakeRow libraryTrack(uint32_t ordinal) {
-    FakeRow row = titled(builtTrackTitle(ordinal));
-    row.libraryPath = builtTrackPath(ordinal);
-    return row;
 }
 
 QueuedTrack queuedFrom(const FakeRow& row) {
@@ -61,6 +56,35 @@ std::vector<size_t> positionsFrom(size_t base, size_t count) {
     return positions;
 }
 
+using Track = std::tuple<std::optional<std::string>, uint32_t, std::map<std::string, std::string>>;
+
+Track trackOf(const FakeRow& row) {
+    if (row.libraryPath)
+        return {row.libraryPath, row.subsong, {}};
+    return {std::nullopt, row.subsong, row.fields};
+}
+
+std::vector<bool> alreadyHeld(const std::vector<FakeRow>& held, const std::vector<FakeRow>& rows,
+                              Duplicates duplicates) {
+    if (duplicates == Duplicates::added)
+        return std::vector<bool>(rows.size(), false);
+
+    std::set<Track> tracks;
+    std::transform(held.begin(), held.end(), std::inserter(tracks, tracks.end()), trackOf);
+
+    std::vector<bool> answer;
+    std::transform(rows.begin(), rows.end(), std::back_inserter(answer),
+                   [&tracks](const FakeRow& row) { return tracks.count(trackOf(row)) != 0; });
+    return answer;
+}
+
+std::vector<FakeRow> rowsAt(const std::vector<FakeRow>& rows, const std::vector<size_t>& indices) {
+    std::vector<FakeRow> chosen;
+    std::transform(indices.begin(), indices.end(), std::back_inserter(chosen),
+                   [&rows](size_t at) { return rows[at]; });
+    return chosen;
+}
+
 template <typename Result>
 Result failed(PlayerOutcome outcome) {
     Result result;
@@ -80,6 +104,12 @@ std::vector<FakeRow> titledRows(const std::vector<std::string>& titles) {
     std::vector<FakeRow> rows;
     std::transform(titles.begin(), titles.end(), std::back_inserter(rows), titled);
     return rows;
+}
+
+FakeRow libraryTrack(uint32_t ordinal) {
+    FakeRow row = titled(builtTrackTitle(ordinal));
+    row.libraryPath = builtTrackPath(ordinal);
+    return row;
 }
 
 FakePlayer::FakePlayer(Library* library, PlayerStateStore* store)
@@ -537,7 +567,8 @@ Player FakePlayer::player() {
 
     // The target alone is checked for a role and a lock: a source is read rather than changed.
     player.playlists.copyRows = [this](const std::string& id, const std::string& sourceId,
-                                       const std::vector<uint32_t>& positions) {
+                                       const std::vector<uint32_t>& positions,
+                                       Duplicates duplicates) {
         const Lock guard(mutex_);
         ask(Call::copyRows, id);
 
@@ -545,7 +576,7 @@ Player FakePlayer::player() {
 
         if (const auto refused = refusal(Call::copyRows)) {
             const auto base = target == playlists_.end() ? 0 : target->rows.size();
-            return RowsEdited{*refused, 0, positionsFrom(base, positions.size())};
+            return RowsEdited{*refused, 0, positionsFrom(base, positions.size()), {}};
         }
 
         PlaylistEditFacts facts;
@@ -563,9 +594,12 @@ Player FakePlayer::player() {
         if (const auto outcome = playlistEditRefusal(read); outcome != PlayerOutcome::done)
             return failed<RowsEdited>(outcome);
 
-        std::vector<FakeRow> copied;
-        std::transform(positions.begin(), positions.end(), std::back_inserter(copied),
+        std::vector<FakeRow> named;
+        std::transform(positions.begin(), positions.end(), std::back_inserter(named),
                        [&source](uint32_t position) { return source->rows[position]; });
+
+        auto split = splitDuplicates(positions, alreadyHeld(target->rows, named, duplicates));
+        const auto copied = rowsAt(named, split.inserted);
 
         RowsEdited edited;
         edited.positions = positionsFrom(target->rows.size(), copied.size());
@@ -574,6 +608,7 @@ Player FakePlayer::player() {
             landed(*target);
 
         edited.structure = target->entry.structure;
+        edited.skipped = std::move(split.skipped);
         return edited;
     };
 
@@ -596,7 +631,7 @@ Player FakePlayer::player() {
             facts.positionPastEnd = anyPastEnd(positions, found->rows.size());
         }
         if (const auto outcome = playlistEditRefusal(facts); outcome != PlayerOutcome::done)
-            return RowsEdited{outcome, facts.noSuchPlaylist ? 0 : found->entry.structure, {}};
+            return RowsEdited{outcome, facts.noSuchPlaylist ? 0 : found->entry.structure, {}, {}};
 
         auto descending = positions;
         std::sort(descending.begin(), descending.end(), std::greater<>());
@@ -608,7 +643,7 @@ Player FakePlayer::player() {
         if (!descending.empty())
             landed(*found);
 
-        return RowsEdited{PlayerOutcome::done, found->entry.structure, {}};
+        return RowsEdited{PlayerOutcome::done, found->entry.structure, {}, {}};
     };
 
     player.playlists.moveRows = [this](const std::string& id, uint64_t structure,
@@ -635,7 +670,7 @@ Player FakePlayer::player() {
                 anyPastEnd(moving, found->rows.size()) || to > found->rows.size() - moving.size();
         }
         if (const auto outcome = playlistEditRefusal(facts); outcome != PlayerOutcome::done)
-            return RowsEdited{outcome, facts.noSuchPlaylist ? 0 : found->entry.structure, {}};
+            return RowsEdited{outcome, facts.noSuchPlaylist ? 0 : found->entry.structure, {}, {}};
 
         std::vector<uint32_t> order;
         for (uint32_t position = 0; position < found->rows.size(); ++position)
@@ -644,7 +679,7 @@ Player FakePlayer::player() {
         order.insert(order.begin() + to, moving.begin(), moving.end());
 
         reordered(*found, order);
-        return RowsEdited{PlayerOutcome::done, found->entry.structure, {}};
+        return RowsEdited{PlayerOutcome::done, found->entry.structure, {}, {}};
     };
 
     // Ascending on what `pattern` formats for each row, and stable, as foobar2000's sort is.
@@ -687,7 +722,7 @@ Player FakePlayer::player() {
     // No role check, as fb2k/playlist_edits.cpp has none: a fill is how the scratch gets its rows.
     player.playlists.fill = [this](const std::string& id, const std::string& title,
                                    uint64_t structure, const std::vector<uint32_t>& ordinals,
-                                   ExistingRows existing) {
+                                   ExistingRows existing, Duplicates duplicates) {
         const Lock guard(mutex_);
         ask(Call::fill, id);
 
@@ -695,7 +730,7 @@ Player FakePlayer::player() {
 
         if (const auto refused = refusal(Call::fill)) {
             const auto base = found == playlists_.end() ? 0 : found->rows.size();
-            return FillResult{*refused, positionsFrom(base, ordinals.size()), 0};
+            return FillResult{*refused, positionsFrom(base, ordinals.size()), 0, {}};
         }
 
         PlaylistEditFacts facts;
@@ -708,19 +743,24 @@ Player FakePlayer::player() {
         if (!title.empty())
             found->entry.title = title;
 
+        std::vector<FakeRow> named;
+        std::transform(ordinals.begin(), ordinals.end(), std::back_inserter(named), libraryTrack);
+
+        auto split = splitDuplicates(ordinals, alreadyHeld(found->rows, named, duplicates));
+        const auto inserted = rowsAt(named, split.inserted);
+
         const bool emptied = existing == ExistingRows::replaced && !found->rows.empty();
         if (existing == ExistingRows::replaced)
             found->rows.clear();
 
         const auto base = found->rows.size();
-        std::transform(ordinals.begin(), ordinals.end(), std::back_inserter(found->rows),
-                       libraryTrack);
+        found->rows.insert(found->rows.end(), inserted.begin(), inserted.end());
 
-        if (emptied || !ordinals.empty())
+        if (emptied || !inserted.empty())
             landed(*found);
 
-        return FillResult{PlayerOutcome::done, positionsFrom(base, ordinals.size()),
-                          found->entry.structure};
+        return FillResult{PlayerOutcome::done, positionsFrom(base, inserted.size()),
+                          found->entry.structure, std::move(split.skipped)};
     };
 
     player.playlists.resolveOwn = [this](OwnPlaylistRole role, const std::string& title) {

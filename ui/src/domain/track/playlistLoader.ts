@@ -244,7 +244,7 @@ export function carryPlaylist(
 ): boolean {
 	const held = heldEntry(playlistKey(playlistId, from));
 	if (held?.feed?.kind !== "playlist" || held.snapshot.isLoading) return false;
-	if (order.length !== held.snapshot.columns.trackCount) return false;
+	if (order.length > held.snapshot.columns.trackCount) return false;
 
 	const carried = entryFor(playlistKey(playlistId, to));
 	if (carried.isStarted) return false;

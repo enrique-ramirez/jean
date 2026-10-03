@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Maximize2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { Artist } from "@/domain/artist/Artist";
@@ -11,11 +12,15 @@ import { mnemonicOf } from "@/shared/keyboard/mnemonic";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Tabs } from "@/shared/ui/Tabs";
 import { Details } from "./Details";
-import { Lyrics } from "./Lyrics";
+import type { EditorOpening } from "./LyricEditor";
+import { LyricSearch, type SearchMemory } from "./LyricSearch";
+import { LyricActions, Lyrics } from "./Lyrics";
+import { draftFromText } from "./lyricDraft";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";
 import styles from "./TrackPanels.module.css";
 import { useLyricsRecheck } from "./useLyricsRecheck";
-import { useNowPlayingTrack } from "./useNowPlayingTrack";
+import { type LyricTarget, useNowPlayingLyric } from "./useNowPlayingLyric";
+import { cachedLyrics, useNowPlayingTrack } from "./useNowPlayingTrack";
 import { usePanelScroll } from "./usePanelScroll";
 
 type PanelPhrase = Extract<Phrase, `panel.${string}`>;
@@ -36,6 +41,7 @@ export function TrackPanels({
 	isExpanded = false,
 	tab: chosen,
 	onSelectTab,
+	onEdit,
 }: {
 	variant: "gatefold" | "screen";
 	lyrics: ParsedLyrics;
@@ -46,9 +52,13 @@ export function TrackPanels({
 	isExpanded?: boolean;
 	tab: PanelTab | null;
 	onSelectTab: (tab: PanelTab) => void;
+	onEdit: (opening: EditorOpening) => void;
 }) {
 	const t = useTranslate();
 	const { track } = useNowPlayingTrack();
+	const queryClient = useQueryClient();
+	const { canSave, target } = useNowPlayingLyric();
+	const [search, setSearch] = useState<LyricTarget | null>(null);
 	useLyricsRecheck();
 	const tab = chosen ?? PANEL_TABS[0];
 	const [direction, setDirection] = useState(0);
@@ -75,7 +85,40 @@ export function TrackPanels({
 
 	const swipe = useSwipe({ onLeft: () => step(1), onRight: () => step(-1) });
 
-	const canExpand = Boolean(onExpand) && tab === "lyrics" && hasLyrics;
+	const searched =
+		search !== null && tab === "lyrics" && !isExpanded ? search : null;
+	const isSearching = searched !== null;
+	const searchMemory = useRef<SearchMemory | null>(null);
+	const openSearch = () => {
+		searchMemory.current = null;
+		if (target) setSearch(target);
+	};
+	const closeSearch = () => {
+		searchMemory.current = null;
+		setSearch(null);
+	};
+
+	const heldBy = (of: LyricTarget) =>
+		cachedLyrics(queryClient, of.path, of.subsong);
+	const editPanelLyric = target
+		? () => {
+				const held = heldBy(target);
+				onEdit({ target, draft: draftFromText(held), held });
+			}
+		: undefined;
+
+	const hasActions =
+		canSave && tab === "lyrics" && hasLyrics && !isExpanded && !isSearching;
+	const actions = hasActions ? (
+		<LyricActions
+			variant={variant === "gatefold" ? "ghost" : "default"}
+			onSearch={openSearch}
+			onEdit={editPanelLyric}
+		/>
+	) : null;
+
+	const canExpand =
+		Boolean(onExpand) && tab === "lyrics" && hasLyrics && !isSearching;
 
 	useKeymap(
 		SCOPE.nowPlaying,
@@ -92,8 +135,31 @@ export function TrackPanels({
 
 	const panel =
 		tab === "lyrics" ? (
-			isExpanded ? null : (
-				<Lyrics lyrics={lyrics} snapshot={snapshot} onSeek={onSeek} />
+			isExpanded ? null : searched ? (
+				<LyricSearch
+					target={searched}
+					variant={variant}
+					snapshot={snapshot}
+					onBack={closeSearch}
+					onOpenEditor={(draft) =>
+						onEdit({
+							target: searched,
+							draft,
+							held: heldBy(searched),
+							onSaved: closeSearch,
+						})
+					}
+					memory={searchMemory}
+					className={styles.search}
+				/>
+			) : (
+				<Lyrics
+					lyrics={lyrics}
+					snapshot={snapshot}
+					onSeek={onSeek}
+					onSearch={openSearch}
+					onEdit={editPanelLyric}
+				/>
 			)
 		) : tab === "details" ? (
 			<Details />
@@ -114,17 +180,26 @@ export function TrackPanels({
 				}))}
 				onChange={select}
 			>
-				{canExpand ? (
-					<button
-						type="button"
-						className={styles.expand}
-						aria-label={t("lyrics.fullScreen")}
-						onClick={onExpand}
-					>
-						<Maximize2 size={16} strokeWidth={2} />
-					</button>
+				{canExpand || (variant === "gatefold" && actions) ? (
+					<div className={styles.tabActions}>
+						{variant === "gatefold" ? actions : null}
+						{canExpand ? (
+							<button
+								type="button"
+								className={styles.expand}
+								aria-label={t("lyrics.fullScreen")}
+								onClick={onExpand}
+							>
+								<Maximize2 size={16} strokeWidth={2} />
+							</button>
+						) : null}
+					</div>
 				) : null}
 			</Tabs>
+
+			{variant === "screen" && actions ? (
+				<div className={styles.actionRow}>{actions}</div>
+			) : null}
 
 			<div
 				key={tab}

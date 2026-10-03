@@ -28,6 +28,7 @@ import { Artwork } from "@/shared/ui/Artwork";
 import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";
 import { CoverWheel, useCoverWheel } from "./CoverWheel";
 import { ListenHere, playerNameOf } from "./ListenHere";
+import { type EditorOpening, LyricEditor } from "./LyricEditor";
 import { LyricsScreen } from "./LyricsScreen";
 import { parseLyrics } from "./lyricsFormat";
 import styles from "./NowPlaying.module.css";
@@ -96,6 +97,9 @@ export function NowPlaying({
 	const menu = useNowPlayingMenu();
 
 	const [isLyricsFull, setIsLyricsFull] = useState(false);
+	const [editing, setEditing] = useResettingState<EditorOpening | null>(null, [
+		isOpen,
+	]);
 
 	const keyboardOwner = useKeyboardOwner();
 
@@ -343,6 +347,7 @@ export function NowPlaying({
 							isExpanded={isLyricsFull}
 							tab={tab}
 							onSelectTab={onSelectTab}
+							onEdit={setEditing}
 						/>
 					)}
 				</div>
@@ -444,6 +449,7 @@ export function NowPlaying({
 					onClose={() => setIsInfoOpen(false)}
 					tab={tab}
 					onSelectTab={onSelectTab}
+					onEdit={setEditing}
 				/>
 			) : null}
 
@@ -453,6 +459,15 @@ export function NowPlaying({
 					snapshot={snapshot}
 					onSeek={seekTo}
 					onClose={() => setIsLyricsFull(false)}
+				/>
+			) : null}
+
+			{editing ? (
+				<LyricEditor
+					opening={editing}
+					snapshot={snapshot}
+					variant={isCompactViewport ? "screen" : "gatefold"}
+					onClose={() => setEditing(null)}
 				/>
 			) : null}
 		</>

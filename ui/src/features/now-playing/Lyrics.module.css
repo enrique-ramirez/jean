@@ -144,3 +144,63 @@
 	border-radius: 4px;
 	background: var(--surface);
 }
+
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 8px;
+	margin-top: 6px;
+	color: var(--text);
+}
+
+.empty .searchHint {
+	max-width: 36ch;
+	color: var(--faint);
+	font-size: 0.8125rem;
+	line-height: 1.5;
+	text-align: center;
+}
+
+.searchHint b {
+	color: var(--muted);
+	font-weight: 600;
+}
+
+@media (pointer: coarse) {
+	button.action {
+		min-height: 44px;
+		padding-inline: 18px;
+		font-size: 0.875rem;
+	}
+}
+
+.selectable {
+	position: relative;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 12px;
+	border-radius: var(--radius-sm);
+}
+
+.selectable[data-selected="true"] {
+	background: var(--surface);
+}
+
+.selectable[data-selected="true"]::before {
+	content: "";
+	position: absolute;
+	top: 8px;
+	bottom: 8px;
+	left: 0;
+	width: 3px;
+	border-radius: 3px;
+	background: var(--accent);
+}
+
+.selectable[data-selected="true"] .line,
+:root[data-theme="light"] .selectable[data-selected="true"] .line[data-state] {
+	color: var(--text);
+	opacity: 1;
+}

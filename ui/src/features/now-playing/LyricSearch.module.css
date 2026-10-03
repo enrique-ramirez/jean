@@ -1,0 +1,302 @@
+.view {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	padding-bottom: 88px;
+}
+
+.head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 14px 0 12px;
+}
+
+.back {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 6px 10px 6px 6px;
+	border: 0;
+	border-radius: var(--radius-pill);
+	background: none;
+	color: var(--muted);
+	font-size: 0.8125rem;
+	font-weight: 600;
+	transition: color 0.15s var(--ease);
+}
+
+.back:hover {
+	color: var(--text);
+}
+
+.where {
+	color: var(--faint);
+	font-size: 0.8125rem;
+}
+
+.query {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.field {
+	display: flex;
+	flex: 1;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	padding: 8px 14px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-pill);
+	background: var(--surface);
+	color: var(--text);
+	font-size: 0.875rem;
+}
+
+.narrow {
+	flex: 0.8;
+}
+
+.field:focus-within {
+	border-color: var(--accent-line);
+	box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 14%, transparent);
+}
+
+.fieldLabel {
+	flex: none;
+	color: var(--faint);
+	font-size: 0.75rem;
+}
+
+/* `width: 0`, not only `min-width: 0`: an `<input>` asserts a default width up the tree otherwise. */
+.field input {
+	flex: 1;
+	width: 0;
+	min-width: 0;
+	padding: 0;
+	border: 0;
+	background: none;
+	font: inherit;
+	color: var(--text);
+}
+
+.field input:focus,
+.field input:focus-visible {
+	outline: none;
+}
+
+.tally {
+	margin: 16px 0 4px;
+	color: var(--muted);
+	font-size: 0.8125rem;
+}
+
+.tally b {
+	color: var(--text);
+	font-weight: 600;
+}
+
+.status {
+	margin: 28px 0;
+	color: var(--muted);
+	font-size: 0.9375rem;
+	text-align: center;
+}
+
+.group {
+	display: flex;
+	gap: 8px;
+	margin: 14px 0 4px;
+	padding: 0 12px;
+	color: var(--faint);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.group span {
+	font-weight: 550;
+	letter-spacing: 0;
+}
+
+.versions {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.version + .version {
+	border-top: 1px solid var(--border);
+}
+
+.versionButton {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 4px 16px;
+	width: 100%;
+	padding: 9px 12px;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: none;
+	color: var(--text);
+	text-align: left;
+	transition: background 0.15s var(--ease);
+}
+
+.versionButton:hover {
+	background: var(--surface);
+}
+
+.versionTitle {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	font-size: 0.9375rem;
+	font-weight: 600;
+}
+
+.versionName {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.versionDetail {
+	grid-column: 1;
+	overflow: hidden;
+	color: var(--muted);
+	font-size: 0.8125rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dash {
+	color: var(--faint);
+}
+
+.versionLength {
+	grid-column: 2;
+	grid-row: 1 / span 2;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 3px;
+	text-align: right;
+}
+
+.length {
+	font-family: var(--font-numeric);
+	font-size: 0.8125rem;
+}
+
+.difference {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	color: var(--muted);
+	font-size: 0.75rem;
+}
+
+.version[data-length="same"] .difference {
+	color: var(--positive);
+}
+
+.version[data-length="far"] .difference {
+	color: var(--caution);
+}
+
+.chip {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	gap: 5px;
+	padding: 2px 8px 2px 7px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-pill);
+	background: var(--surface);
+	color: var(--muted);
+	font-size: 0.6875rem;
+	font-weight: 600;
+}
+
+.chip[data-kind="synced"] {
+	border-color: var(--accent-line);
+	background: var(--accent-quiet);
+	color: var(--accent-text);
+}
+
+.notice {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 12px;
+	padding: 56px 0;
+	color: var(--faint);
+	text-align: center;
+}
+
+.notice p {
+	margin: 0;
+}
+
+.noticeTitle {
+	color: var(--muted);
+	font-size: 0.9375rem;
+}
+
+.noticeHint {
+	max-width: 44ch;
+	font-size: 0.8125rem;
+	line-height: 1.5;
+}
+
+button.again {
+	color: var(--text);
+}
+
+@media (max-width: 720px) {
+	.query {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.narrow {
+		flex: 1;
+	}
+}
+
+@media (pointer: coarse) {
+	.back,
+	.field,
+	button.again {
+		min-height: 44px;
+	}
+
+	.field {
+		padding-inline: 16px;
+		font-size: 1rem;
+	}
+
+	button.again {
+		justify-content: center;
+		font-size: 0.875rem;
+	}
+
+	.versionButton {
+		padding-block: 11px;
+	}
+}
+
+.view[hidden] {
+	display: none;
+}
+
+.versionDetail .length,
+.versionDetail .difference {
+	margin-left: 8px;
+}

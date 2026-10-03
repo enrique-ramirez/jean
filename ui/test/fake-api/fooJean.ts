@@ -730,8 +730,12 @@ const applyTags = (
 		if (track["%path%"] !== target["%path%"]) return;
 		if (subsongOf(track) !== subsongOf(target)) return;
 		for (const [field, value] of Object.entries(fields)) {
-			if (value === "") delete track[`%${field}%`];
-			else track[`%${field}%`] = value;
+			// foobar2000 answers `%field%` and `$meta(field)` from the one tag.
+			const spellings = [`%${field}%`, `$meta(${field.toLowerCase()})`];
+			for (const spelling of spellings) {
+				if (value === "") delete track[spelling];
+				else track[spelling] = value;
+			}
 		}
 	};
 

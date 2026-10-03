@@ -12,7 +12,7 @@ export const NO_LYRICS: Lyrics = { kind: "none" };
 
 const TIMESTAMP = /^\[(\d{1,3}):([0-5]?\d)(?:[.:](\d{1,3}))?\]/;
 
-const ID_TAG = /^\[([a-z]{2,8}):(.*)\]$/i;
+export const ID_TAG = /^\[([a-z]{2,8}):(.*)\]$/i;
 
 const fractionSeconds = (digits: string | undefined) =>
 	digits ? Number(digits.padEnd(3, "0")) / 1000 : 0;
@@ -22,7 +22,7 @@ interface SourceLine {
 	text: string;
 }
 
-function peel(raw: string): SourceLine {
+export function peel(raw: string): SourceLine {
 	let rest = raw;
 	const times: number[] = [];
 

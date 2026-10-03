@@ -23,7 +23,7 @@ One box takes the whole library and answers as you type, sorted into artists, re
 <!-- site:nowplaying -->
 ### Your music, your way
 
-The now-playing screen is the one that stays open on a phone. Big artwork, the rating under your thumb, the transport where your hand already is, and tabs for the lyrics, the tags the file actually carries, and who the artist is. Lyrics scroll in time when the file carries the timestamps, and tapping a line seeks there. Light and dark are both drawn rather than one inverted from the other, so pick whichever suits the room.
+The now-playing screen is the one that stays open on a phone. Big artwork, the rating under your thumb, the transport where your hand already is, and tabs for the lyrics, the tags the file actually carries, and who the artist is. Lyrics scroll in time when the file carries the timestamps, and tapping a line seeks there. A lyric that is missing or wrong can be searched for and fixed from Jean: Search asks LRCLIB when you press it, a version previews against the song with its timing nudged, and a lyric can be edited and synced line by line, with nothing written to the file until Save. Light and dark are both drawn rather than one inverted from the other, so pick whichever suits the room.
 <!-- /site:nowplaying -->
 
 <!-- site:more -->
@@ -71,7 +71,7 @@ One more is optional:
 
 **2. Open `http://<the player's computer>:8881/`** in any browser in the house. `foo_jean` serves Jean itself, at the port it listens on. That is the whole install.
 
-**Rating a track or writing a tag needs nothing extra.** `foo_jean` allows it from the moment it starts; the player owner narrows or turns it off under `File → Preferences → Tools → Jean → Permissions`.
+**Rating a track needs nothing extra.** `foo_jean` allows it from the moment it starts; the player owner narrows or turns it off under `File → Preferences → Tools → Jean → Permissions`. Saving a lyric needs `UNSYNCED LYRICS` added to the allowed fields (`allowedFields`) on that page, and until it is there the lyrics panel offers no Search or Edit.
 
 **A translation lives at `<profile>/foo_jean/www/locales/<code>.json`**, added by hand.
 

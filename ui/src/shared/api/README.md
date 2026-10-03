@@ -62,7 +62,7 @@ Every `columns` parameter takes **foobar2000 title-formatting expressions**, eva
 | `%added%` | `foo_playcount` | when the track entered the media library, in the same `YYYY-MM-DD HH:MM:SS` form as the play dates |
 | `$meta_sep(artists,$char(31))` `$meta_sep(albumartists,$char(31))` | tags, as MusicBrainz Picard writes them | one artist per value. Empty, not `?`, where the tag is missing |
 | `$meta_sep(musicbrainz_artistid,$char(31))` `$meta_sep(musicbrainz_albumartistid,$char(31))` | tags, as MusicBrainz Picard writes them | one id per credited artist, in credit order, so the count says how many artists a credit like `A & B` names. `domain/artist/credits.ts` |
-| `$meta(unsynced lyrics)` | tags | **the tag name has a space.** `%lyrics%` answers `?` and `$meta(unsyncedlyrics)` finds nothing |
+| `$if2($meta(unsynced lyrics),$if2($meta(lyrics),$if2($meta(syncedlyrics),$meta(unsyncedlyrics))))` | tags | the first present of `UNSYNCED LYRICS`, `LYRICS`, `SYNCEDLYRICS` and `UNSYNCEDLYRICS`, the order `foo_openlyrics` reads them in. **The tag name has a space.** `%lyrics%` answers `?`, and a write goes to `UNSYNCED LYRICS` alone |
 
 Which of these resolve varies by install, by component and by how the library was tagged. Detect; never assume.
 
@@ -70,7 +70,7 @@ Which of these resolve varies by install, by component and by how the library wa
 
 > **`%added%` starts on the day `foo_playcount` is installed.** Its first run stamps every track already in the library with that moment, so on a new install most of the library carries times seconds apart and only tracks added afterwards carry a real one. `foo_enhanced_playcount`'s `%added_enhanced%` resolves and answers `<invalid timestamp>` for every track, and its `%lastfm_added%` is the first scrobble. `%last_modified%` is not a substitute either: playback can rewrite tags, which bumps the file's mtime, so it is `max(added, last played or retagged)`, wrong precisely at the recent end, where a "recently added" view would look.
 
-> **Lyrics need no component.** `$meta(unsynced lyrics)` returns whatever is in the tag, which is LRC-timestamped only some of the time and is plain text more often than not. Real content includes several timestamps on one line, credit lines, and tags holding nothing but a URL. The field is large enough that it is fetched per track through `GET /api/track/playing` and **MUST never go in the library export's columns**, which carry every track. `foo_openlyrics` is what *writes* the tag.
+> **Lyrics need no component.** The four tags above return whatever is in them, which is LRC-timestamped only some of the time and is plain text more often than not. Real content includes several timestamps on one line, credit lines, and tags holding nothing but a URL. The field is large enough that it is fetched per track through `GET /api/track/playing` and **MUST never go in the library export's columns**, which carry every track. `foo_openlyrics` is what *writes* the tag.
 
 ## Paths
 

@@ -4,8 +4,11 @@ import { useState } from "react";
 import type { PanelTab } from "@/domain/track/routes";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
+import { leaveGuarded } from "@/shared/hooks/useLeaveGuard";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useTranslate } from "@/shared/i18n/useTranslate";
+import { useKeyboardOwner } from "@/shared/keyboard/keyboardOwner";
+import type { EditorOpening } from "./LyricEditor";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";
 import styles from "./TrackInfo.module.css";
 import { TrackPanels } from "./TrackPanels";
@@ -24,6 +27,7 @@ export function TrackInfo({
 	onClose,
 	tab,
 	onSelectTab,
+	onEdit,
 }: {
 	isOpen: boolean;
 	title: string;
@@ -35,16 +39,19 @@ export function TrackInfo({
 	onClose: () => void;
 	tab: PanelTab | null;
 	onSelectTab: (tab: PanelTab) => void;
+	onEdit: (opening: EditorOpening) => void;
 }) {
 	const t = useTranslate();
 	const [exit, setExit] = useState<"up" | "down">("down");
 
-	const close = (towards: "up" | "down") => {
-		setExit(towards);
-		onClose();
-	};
+	const close = (towards: "up" | "down") =>
+		leaveGuarded(() => {
+			setExit(towards);
+			onClose();
+		});
 
-	useEscapeCapture(() => close("down"));
+	const keyboardOwner = useKeyboardOwner();
+	useEscapeCapture(keyboardOwner === null ? () => close("down") : null);
 
 	const swipe = useSwipe({
 		onDown: () => close("down"),
@@ -83,6 +90,7 @@ export function TrackInfo({
 				trackKey={trackKey}
 				tab={tab}
 				onSelectTab={onSelectTab}
+				onEdit={onEdit}
 			/>
 		</section>
 	);

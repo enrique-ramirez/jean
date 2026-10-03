@@ -33,12 +33,16 @@ import {
 } from "./tagWriter";
 
 export const RATING_FIELD = "rating";
+export const LYRIC_FIELD = "unsynced lyrics";
 
 const FIELDS_KEY = "jean.fooJeanFields";
 
 // A field this install permits that Jean has no name for is drawn as the player spells it, which is
 // the only honest thing to call something the component's own configuration invented.
-const FIELD_LABELS = { rating: "fooJean.field.rating" } as const;
+const FIELD_LABELS = {
+	rating: "fooJean.field.rating",
+	[LYRIC_FIELD]: "fooJean.field.lyrics",
+} as const;
 
 export function labelOfField(field: string, t: Translate): string {
 	const known = FIELD_LABELS[field.toLowerCase() as keyof typeof FIELD_LABELS];
@@ -86,6 +90,11 @@ interface TagWriting {
 		stars: number | null,
 		show: OptimisticValue,
 	) => void;
+	writeLyric: (
+		writable: WritableAddress,
+		label: string,
+		text: string,
+	) => Promise<boolean>;
 }
 
 const IDLE: TagWriting = {
@@ -101,6 +110,7 @@ const IDLE: TagWriting = {
 	writableAddress: () => null,
 	rate: () => {},
 	rateTrack: () => {},
+	writeLyric: async () => false,
 };
 
 const TagWriterContext = createContext<TagWriting>(IDLE);
@@ -148,6 +158,24 @@ const refusalMessage = (result: WriteFailure, label: string, raw: string) => {
 	if (result.reason === "too-fast")
 		return translate("rate.tooFast", { track: label });
 	return translate("rate.failed", { label, message: result.message });
+};
+
+const lyricRefusalMessage = (result: WriteFailure, label: string) => {
+	if (result.reason === "timeout")
+		return translate("lyrics.saveTimedOut", { track: label });
+	if (result.reason === "ambiguous")
+		return translate("lyrics.saveAmbiguous", { track: label });
+	if (result.reason === "moved") return translate("lyrics.saveMoved");
+	if (result.reason === "not-allowed")
+		return translate("lyrics.saveNotAllowed");
+	if (result.reason === "unknown-track")
+		return translate("lyrics.saveUnknownTrack");
+	if (result.reason === "too-fast")
+		return translate("lyrics.saveTooFast", { track: label });
+	return translate("lyrics.saveFailed", {
+		track: label,
+		message: result.message,
+	});
 };
 
 const addressKey = (address: TrackAddress) => {
@@ -313,6 +341,29 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 		[queueRating],
 	);
 
+	const writeLyric = useCallback(
+		async (writable: WritableAddress, label: string, text: string) => {
+			const { result } = await writeToAddress(writerRef.current, writable, {
+				[LYRIC_FIELD]: text,
+			});
+			if (result.ok) return true;
+
+			if (result.reason === "not-allowed") {
+				console.error(
+					`foo_jean refused '${result.field ?? LYRIC_FIELD}': ${result.message}`,
+				);
+				setRefused((current) => [...current, result.field ?? LYRIC_FIELD]);
+			}
+
+			pushToast({
+				message: lyricRefusalMessage(result, label),
+				tone: "error",
+			});
+			return false;
+		},
+		[],
+	);
+
 	const value = useMemo<TagWriting>(
 		() => ({
 			state: resolution.state,
@@ -330,6 +381,7 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 			writableAddress,
 			rate,
 			rateTrack,
+			writeLyric,
 		}),
 		[
 			resolution,
@@ -344,6 +396,7 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 			writableAddress,
 			rate,
 			rateTrack,
+			writeLyric,
 		],
 	);
 
@@ -355,10 +408,8 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 }
 
 // `foo_jean` refuses an address two media library roots both hold before it writes anything, so the
-// precise address beside it goes instead. Nothing else is ever sent twice: every other refusal
-// leaves it open whether the tag was written, and a second write would land on top of a rating
-// somebody made in between.
-async function writeRating(
+// precise address beside it goes instead.
+async function writeToAddress(
 	writer: TagWriter,
 	{ address, retry }: WritableAddress,
 	fields: Record<string, string>,
@@ -376,7 +427,7 @@ async function sendRating(
 	writer: TagWriter,
 	refuse: (update: (current: string[]) => string[]) => void,
 ) {
-	const { sentTo, result } = await writeRating(
+	const { sentTo, result } = await writeToAddress(
 		writer,
 		{ address, retry },
 		{ [RATING_FIELD]: raw },

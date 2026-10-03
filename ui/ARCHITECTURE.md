@@ -172,13 +172,13 @@ App-level layers, lowest first. These share the root stacking context, so a new 
 | Sidebar scrim, compact | 39 |
 | Sidebar drawer, compact | 40 |
 | Search dropdown | 42 |
-| Track info screen · lyrics screen | 45 |
+| Track info screen · lyrics screen · lyric editor | 45 |
 | Toasts · settings backdrop · shortcut sheet backdrop | 50 |
 | Command palette backdrop | 60 |
 | Action menu and its scrim | 70 |
 | Drag ghost | 80 |
 
-Lyrics sit above the app chrome, the queue panel and the now-playing screen, and **under** toasts and menus, so a failed write can still say so. The drag ghost is above everything, since a drag can start anywhere. The seek bar reaches above the status bar's top edge, so on desktop the status bar is lifted to the queue panel's layer and wins the tie by coming later in the document; its popovers stack inside it and so still clear the queue panel.
+Lyrics and the lyric editor sit above the app chrome, the queue panel and the now-playing screen, and **under** toasts and menus, so a failed write can still say so. The drag ghost is above everything, since a drag can start anywhere. The seek bar reaches above the status bar's top edge, so on desktop the status bar is lifted to the queue panel's layer and wins the tie by coming later in the document; its popovers stack inside it and so still clear the queue panel.
 
 Values of `0`–`5` inside `AlbumCard`, `ShelfRow`, `GenreTile`, `TrackPanels`, `QueuePanel` rows, `ActionMenu` pages and the `Sidebar` row being dragged are local to a stacking context their own component establishes, and mean nothing against this table.
 

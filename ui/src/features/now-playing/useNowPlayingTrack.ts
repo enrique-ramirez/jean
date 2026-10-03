@@ -1,8 +1,13 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	type QueryClient,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
 
 import { useAudiblePlayer } from "@/domain/player/usePlayer";
 import { usePlaylists } from "@/domain/player/usePlaylists";
+import { readValue } from "@/domain/track/fields";
 import { orThrow, retryWhenTooFast } from "@/shared/api/client";
 import { readTrack } from "@/shared/api/playerState";
 import { fetchPlayingTrack } from "@/shared/api/tracks";
@@ -45,6 +50,30 @@ const withColumn = (
 	row[field] = raw;
 	return { ...details, row };
 };
+
+export function setCachedLyrics(
+	queryClient: QueryClient,
+	path: string,
+	subsong: number,
+	raw: string,
+) {
+	queryClient.setQueryData(
+		keyOf(path, subsong),
+		(current: NowPlayingDetails | null | undefined) =>
+			current ? withColumn(current, NOW_PLAYING_FIELD.lyrics, raw) : current,
+	);
+}
+
+export function cachedLyrics(
+	queryClient: QueryClient,
+	path: string,
+	subsong: number,
+): string {
+	const details = queryClient.getQueryData<NowPlayingDetails>(
+		keyOf(path, subsong),
+	);
+	return readValue(details?.row[NOW_PLAYING_FIELD.lyrics]) ?? "";
+}
 
 function positionOfPlaying(
 	item: ActiveItem,
@@ -96,7 +125,10 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 	const { discovery } = useFooJean();
 	const { origin } = discovery;
 
-	const addresses = addressesOfPlaying(snapshot?.player?.activeItem, playlists);
+	const item = snapshot?.player?.activeItem;
+	const addresses = addressesOfPlaying(item, playlists);
+	const artistTag = item?.columns[0] || null;
+	const duration = item && item.duration > 0 ? item.duration : null;
 
 	const ready = enabled && path !== null && Boolean(origin);
 
@@ -184,15 +216,18 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 	);
 
 	const setLyrics = useCallback(
-		(raw: string) =>
-			patch((current) => withColumn(current, NOW_PLAYING_FIELD.lyrics, raw)),
-		[patch],
+		(raw: string) => {
+			if (path !== null) setCachedLyrics(queryClient, path, subsong, raw);
+		},
+		[queryClient, path, subsong],
 	);
 
 	return {
 		track,
 		nothingPlaying,
 		addresses,
+		artistTag,
+		duration,
 		details: query.isError ? null : (query.data ?? null),
 		isPending: ready && query.isPending,
 		setRating,

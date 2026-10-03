@@ -54,8 +54,12 @@ export const TAGGED = {
 	},
 };
 
-export const writeLyric = (player: FakePlayer, lyric: string) => {
-	const written = player.retagPlaying({ "$meta(unsynced lyrics)": lyric });
+export const writeLyric = (
+	player: FakePlayer,
+	lyric: string,
+	tag = "unsynced lyrics",
+) => {
+	const written = player.retagPlaying({ [`$meta(${tag})`]: lyric });
 	if (!written) throw new Error("nothing is playing to write a lyric onto");
 };
 
@@ -83,4 +87,111 @@ export const panelTab = (root: Locator, name: string) =>
 // screen reader uses free to disappear without a test noticing.
 export const expectPanelOpen = async (root: Locator, name: string) => {
 	await expect(panelTab(root, name)).toHaveAttribute("aria-current", "true");
+};
+
+export const titleAddressedBy = (
+	player: FakePlayer,
+	body: Record<string, unknown> | null | undefined,
+) => {
+	if (typeof body?.track === "string") {
+		const subsong = Number(body.subsong ?? 0);
+		const held = player.playlists
+			.flatMap((playlist) => playlist.items)
+			.find(
+				(track) =>
+					player.libraryPathFor(track) === body.track &&
+					(Number(track["%subsong%"]) || 0) === subsong,
+			);
+		return held?.["%title%"] ?? null;
+	}
+	if (typeof body?.playlist === "string")
+		return (
+			player.playlistByGuid(body.playlist)?.items[Number(body.index)]?.[
+				"%title%"
+			] ?? null
+		);
+	if (typeof body?.ordinal === "number")
+		return player.ordinalOrder()[body.ordinal]?.track["%title%"] ?? null;
+	return null;
+};
+
+export const lyricTagOf = (
+	player: FakePlayer,
+	title: string,
+	tag = "unsynced lyrics",
+) =>
+	player
+		.playlistById("p7")
+		?.items.find((track) => track["%title%"] === title)?.[`$meta(${tag})`];
+
+export const untilThePageKnowsPlaying = (page: Page, title: string) =>
+	expect(page).toHaveTitle(
+		new RegExp(`^${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} — `),
+	);
+
+export const discardPrompt = (page: Page) => page.getByRole("alertdialog");
+
+export const keepEditingButton = (prompt: Locator) =>
+	prompt.getByRole("button", { name: "Keep editing", exact: true });
+
+export const discardButton = (prompt: Locator) =>
+	prompt.getByRole("button", { name: "Discard", exact: true });
+
+const PROMPT_TITLE = "Discard your changes?";
+
+export const expectDiscardPrompt = async (page: Page, description?: string) => {
+	const prompt = discardPrompt(page);
+	await expect(prompt).toBeVisible();
+	await expect(prompt).toHaveAccessibleName(PROMPT_TITLE);
+	await expect(prompt.getByText(PROMPT_TITLE, { exact: true })).toBeVisible();
+	if (description === undefined)
+		await expect(prompt).toHaveAccessibleDescription(/\S/);
+	else {
+		await expect(prompt).toHaveAccessibleDescription(description);
+		await expect(prompt).toContainText(description);
+	}
+	// A screen reader's cursor is not held by a focus trap; aria-modal keeps it off the page behind.
+	await expect(prompt).toHaveAttribute("aria-modal", "true");
+	await expect(prompt.getByRole("button")).toHaveCount(2);
+	await expect(discardButton(prompt)).toBeVisible();
+	await expect(keepEditingButton(prompt)).toBeFocused();
+	return prompt;
+};
+
+export const recordPromptsEverShown = (page: Page) =>
+	page.addInitScript(() => {
+		const shown: string[] = [];
+		const seen = new WeakSet<Element>();
+		Object.assign(window, { promptsShown: shown });
+		const look = () => {
+			for (const prompt of document.querySelectorAll('[role="alertdialog"]')) {
+				if (seen.has(prompt)) continue;
+				seen.add(prompt);
+				shown.push(prompt.querySelector("h1, h2, h3")?.textContent ?? "");
+			}
+		};
+		new MutationObserver(look).observe(document, {
+			subtree: true,
+			childList: true,
+			attributes: true,
+		});
+	});
+
+export const promptsEverShown = (page: Page) =>
+	page.evaluate(
+		() => (window as unknown as { promptsShown: string[] }).promptsShown,
+	);
+
+const TOUCH_TARGET = 44;
+
+export const expectTouchTargets = async (
+	controls: readonly (readonly [name: string, control: Locator])[],
+) => {
+	for (const [name, control] of controls) {
+		await expect(control, `${name} is not drawn`).toBeVisible();
+		const height = Math.round((await control.boundingBox())?.height ?? 0);
+		expect
+			.soft(height, `${name} is ${height} px tall`)
+			.toBeGreaterThanOrEqual(TOUCH_TARGET);
+	}
 };

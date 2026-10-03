@@ -1,0 +1,184 @@
+.preview {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 14px 0 12px;
+}
+
+.back {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 6px 10px 6px 6px;
+	border: 0;
+	border-radius: var(--radius-pill);
+	background: none;
+	color: var(--muted);
+	font-size: 0.8125rem;
+	font-weight: 600;
+	transition: color 0.15s var(--ease);
+}
+
+.back:hover {
+	color: var(--text);
+}
+
+.note {
+	color: var(--faint);
+	font-size: 0.8125rem;
+}
+
+.nav {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: auto;
+	color: var(--faint);
+	font-size: 0.75rem;
+}
+
+.round {
+	display: grid;
+	place-items: center;
+	width: 28px;
+	height: 28px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-pill);
+	background: var(--surface);
+	color: var(--muted);
+}
+
+.round:hover:not(:disabled) {
+	border-color: var(--border-strong);
+	color: var(--text);
+}
+
+.round:disabled {
+	opacity: 0.4;
+}
+
+.stale {
+	margin: 0 0 10px;
+	padding: 8px 12px;
+	border: 1px solid color-mix(in oklab, var(--caution) 45%, transparent);
+	border-radius: var(--radius-sm);
+	background: color-mix(in oklab, var(--caution) 9%, var(--surface));
+	color: var(--muted);
+	font-size: 0.8125rem;
+	line-height: 1.4;
+}
+
+.pick {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 14px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	background: var(--surface);
+}
+
+.summary {
+	flex: 1;
+	min-width: 0;
+}
+
+.body {
+	min-width: 0;
+}
+
+.wordless {
+	margin: 40px 0;
+	color: var(--muted);
+	font-size: 0.9375rem;
+	text-align: center;
+}
+
+.moved {
+	padding-right: 10px;
+	color: var(--accent-text);
+	font-family: var(--font-numeric);
+	font-size: 0.6875rem;
+}
+
+.bar {
+	position: sticky;
+	bottom: 0;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 0 18px;
+	background: linear-gradient(to bottom, transparent, var(--bg) 22%);
+}
+
+.spacer {
+	flex: 1;
+}
+
+.dock {
+	display: flex;
+	flex: none;
+	flex-direction: column;
+	gap: 10px;
+	margin-inline: -20px;
+	padding: 12px 16px calc(10px + env(safe-area-inset-bottom));
+	border-top: 1px solid var(--border);
+	background: var(--surface);
+}
+
+.dockRow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.unsaved {
+	margin-left: auto;
+	color: var(--faint);
+	font-size: 0.75rem;
+}
+
+.preview[data-variant="screen"] {
+	flex: 1;
+	min-height: 0;
+}
+
+.preview[data-variant="screen"] .body {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.actions {
+	display: flex;
+	gap: 8px;
+}
+
+.preview[data-variant="screen"] .actions > * {
+	flex: 1;
+	justify-content: center;
+}
+
+@media (pointer: coarse) {
+	.round {
+		width: 44px;
+		height: 44px;
+	}
+
+	.back {
+		min-height: 44px;
+	}
+
+	button.save,
+	button.open {
+		min-height: 44px;
+	}
+}

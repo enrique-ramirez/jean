@@ -13,17 +13,28 @@
 	background: var(--bg);
 }
 
-.expand {
-	position: absolute;
-	top: 100%;
-	right: 4px;
-	margin-top: 8px;
-	z-index: 1;
+.tabActions {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	margin-left: auto;
+	padding-bottom: 2px;
+}
 
+.actionRow {
+	display: flex;
+	flex: none;
+	justify-content: flex-end;
+	gap: 6px;
+	padding: 8px 14px 0;
+}
+
+.expand {
 	display: grid;
 	place-items: center;
 	width: 34px;
 	height: 34px;
+	margin-left: 6px;
 	border: 1px solid var(--border);
 	border-radius: var(--radius-pill);
 	background: var(--surface);
@@ -127,4 +138,20 @@
 .panel[data-variant="screen"] .panelBody > * {
 	flex: none;
 	margin-block: auto;
+}
+
+.panel[data-variant="screen"] .panelBody > .search {
+	margin-block: 0;
+	padding-top: 30px;
+}
+
+.panel[data-variant="screen"] .panelBody:has(> .search[data-variant]) {
+	mask-image: none;
+	-webkit-mask-image: none;
+}
+
+.panel[data-variant="screen"] .panelBody > .search[data-variant] {
+	padding-top: 0;
+	flex: 1 1 auto;
+	min-height: 0;
 }

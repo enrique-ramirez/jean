@@ -1,11 +1,9 @@
 import { X } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 
+import { focusableIn } from "@/shared/hooks/useTabTrap";
 import { useKeyboardOwnership } from "@/shared/keyboard/keyboardOwner";
 import styles from "./ModalDialog.module.css";
-
-const FOCUSABLE =
-	'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function ModalDialog({
 	keyboardOwner,
@@ -53,9 +51,7 @@ export function ModalDialog({
 
 			if (event.key !== "Tab" || !dialog) return;
 
-			const focusable = [
-				...dialog.querySelectorAll<HTMLElement>(FOCUSABLE),
-			].filter((element) => element.getClientRects().length > 0);
+			const focusable = focusableIn(dialog);
 			const first = focusable[0];
 			const last = focusable[focusable.length - 1];
 			if (!first || !last) return;

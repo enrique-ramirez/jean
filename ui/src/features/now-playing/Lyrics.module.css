@@ -107,6 +107,7 @@
 .empty {
 	flex: 1;
 	min-height: 160px;
+	padding-block: 28px;
 	display: flex;
 	flex-direction: column;
 	align-items: center;

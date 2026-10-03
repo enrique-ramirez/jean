@@ -171,7 +171,7 @@
 	display: grid;
 	grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
 	gap: 40px;
-	align-items: start;
+	flex-grow: 1;
 	/* A grid item's automatic minimum is its min-content size, so a title with nowhere
 	   to break holds the leaf open. Half of a pair: the other half is `align-self:
 	   stretch` on the compact `.identity`, and neither half works alone. */
@@ -344,7 +344,6 @@
 .screen[data-compact="true"] .spread {
 	display: flex;
 	flex-direction: column;
-	align-items: stretch;
 	justify-content: center;
 	gap: 12px;
 	flex: 1;
@@ -429,6 +428,7 @@
 @container (max-width: calc(1040px - 2 * 28px)) {
 	.screen:not([data-compact="true"]) .spread {
 		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: auto 1fr;
 		gap: 24px;
 	}
 

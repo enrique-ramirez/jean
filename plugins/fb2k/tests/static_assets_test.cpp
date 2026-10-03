@@ -813,8 +813,8 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "c14 the page may reach the player and the three artist-information services, and nothing "
-    "else") {
+    "c14 the page may reach the player, the three artist-information services and LRCLIB's "
+    "lyric search, and nothing else") {
     FakePages pages = aBuild();
     const TestServer server(servingSettings(), serving(&pages));
 
@@ -824,7 +824,8 @@ TEST_CASE(
     auto policy = directivesOf(response->get_header_value("Content-Security-Policy"));
     CHECK(policy["connect-src"] == std::set<std::string>{"'self'", "https://musicbrainz.org",
                                                          "https://www.wikidata.org",
-                                                         "https://en.wikipedia.org"});
+                                                         "https://en.wikipedia.org",
+                                                         "https://lrclib.net"});
 }
 
 TEST_CASE(

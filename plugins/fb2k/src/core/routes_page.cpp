@@ -16,11 +16,13 @@ namespace {
 constexpr char kPageRevalidate[] = "no-cache";
 constexpr char kPageForAYear[] = "public, max-age=31536000, immutable";
 
-// ui/src/features/now-playing/artistInfo.ts is what reaches the three hosts beyond this origin.
+// ui/src/domain/artist/artistInfo.ts reaches the three hosts of artist information, and
+// ui/src/features/now-playing/lrclib.ts reaches LRCLIB; no other file reaches beyond this origin.
 constexpr char kPageContentPolicy[] =
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; "
     "media-src 'self' blob:; font-src 'self'; "
-    "connect-src 'self' https://musicbrainz.org https://www.wikidata.org https://en.wikipedia.org; "
+    "connect-src 'self' https://musicbrainz.org https://www.wikidata.org https://en.wikipedia.org "
+    "https://lrclib.net; "
     "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
 constexpr char kPagePermissions[] = "camera=(), microphone=(), geolocation=()";

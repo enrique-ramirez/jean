@@ -248,7 +248,7 @@ Both generations sit under `library` in `GET /api/state`, which is small, ETagge
 
 `core/assets.h` decides what a request for Jean's own page may resolve to; `core/routes_page.cpp` asks it and answers, the same split as *The one boundary* at a smaller scale.
 
-Every page answer carries `guardPage`'s headers: a content security policy, `kPageContentPolicy`, that admits nothing from another origin but three hosts Jean fetches artist information from, and headers refusing framing, the referrer, a shared opener and the camera, microphone and location.
+Every page answer carries `guardPage`'s headers: a content security policy, `kPageContentPolicy`, that admits nothing from another origin but the three hosts Jean fetches artist information from and `https://lrclib.net`, where a lyric is searched for, and headers refusing framing, the referrer, a shared opener and the camera, microphone and location.
 
 Vite content-hashes every file it writes under `assets/`, so a rebuild is a new URL rather than a changed file at an old one. A browser that already holds a hashed file can keep it for a year without asking again, because the path itself changes when the file does. `index.html` and a hand-added locale carry no such hash, so they are revalidated on every load: an upgrade must never hide behind a browser's stale copy of the page that names it.
 

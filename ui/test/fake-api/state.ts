@@ -334,9 +334,58 @@ const PLAIN_SPELLING = new Map([
 	[RATING_EXPRESSION, "%rating%"],
 ]);
 
+const argumentsOf = (inside: string) => {
+	const parts: string[] = [];
+	let depth = 0;
+	let from = 0;
+	for (let at = 0; at < inside.length; at++) {
+		if (inside[at] === "(") depth += 1;
+		else if (inside[at] === ")") depth -= 1;
+		else if (inside[at] === "," && depth === 0) {
+			parts.push(inside.slice(from, at));
+			from = at + 1;
+		}
+		if (depth < 0) return null;
+	}
+	parts.push(inside.slice(from));
+	return depth === 0 ? parts : null;
+};
+
+const CALL = /^\$(\w+)\((.*)\)$/s;
+
+// foobar2000 title formatting: `$meta(x)` answers '' and false for a file without the field, where
+// `%x%` answers `?`; `$if2(a,b)` answers `a` where it is true and `b` otherwise.
+const titleFormat = (
+	track: Track,
+	expression: string,
+): { text: string; isTrue: boolean } | null => {
+	const held = track[expression];
+	if (held !== undefined)
+		return { text: held, isTrue: held !== "" && held !== "?" };
+
+	const call = CALL.exec(expression);
+	const parts = call && argumentsOf(call[2]);
+	if (!call || !parts) return null;
+
+	if (call[1] === "meta" && parts.length === 1) {
+		const text = track[`$meta(${parts[0].toLowerCase()})`] ?? "";
+		return { text, isTrue: text !== "" };
+	}
+	if (call[1] === "if2" && parts.length === 2) {
+		const first = titleFormat(track, parts[0]);
+		return first?.isTrue ? first : titleFormat(track, parts[1]);
+	}
+	return null;
+};
+
 export const evaluate = (track: Track, expression: string) => {
 	const plain = PLAIN_SPELLING.get(expression);
-	return track[expression] ?? (plain && track[plain]) ?? "?";
+	return (
+		track[expression] ??
+		(plain && track[plain]) ??
+		titleFormat(track, expression)?.text ??
+		"?"
+	);
 };
 
 const trackKey = (track: Track) =>

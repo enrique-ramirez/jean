@@ -282,6 +282,147 @@ test.describe("reading the lyric tag", () => {
 	});
 });
 
+// foo_openlyrics reads `UNSYNCED LYRICS`, `LYRICS`, `SYNCEDLYRICS` and `UNSYNCEDLYRICS`, in that
+// order.
+test.describe("the lyric tags foo_openlyrics reads", () => {
+	const synced = (words: string) =>
+		[
+			`[00:12.00]${words}, the first line`,
+			`[00:40.00]${words}, the second line`,
+			`[01:20.00]${words}, the last line`,
+		].join("\r\n");
+
+	const plain = (words: string) =>
+		[`${words}, untimed`, "", `${words}, still untimed`].join("\r\n");
+
+	const TAG_ORDER: {
+		state: string;
+		row: number;
+		tags: Record<string, string>;
+		shows: string;
+	}[] = [
+		{
+			state: "UNSYNCED LYRICS over LYRICS",
+			row: 1,
+			tags: {
+				"unsynced lyrics": plain("From UNSYNCED LYRICS"),
+				lyrics: plain("From LYRICS"),
+			},
+			shows: "From UNSYNCED LYRICS",
+		},
+		{
+			state: "LYRICS over SYNCEDLYRICS and UNSYNCEDLYRICS",
+			row: 2,
+			tags: {
+				lyrics: plain("From LYRICS"),
+				syncedlyrics: plain("From SYNCEDLYRICS"),
+				unsyncedlyrics: plain("From UNSYNCEDLYRICS"),
+			},
+			shows: "From LYRICS",
+		},
+		{
+			state: "SYNCEDLYRICS over UNSYNCEDLYRICS",
+			row: 4,
+			tags: {
+				syncedlyrics: plain("From SYNCEDLYRICS"),
+				unsyncedlyrics: plain("From UNSYNCEDLYRICS"),
+			},
+			shows: "From SYNCEDLYRICS",
+		},
+		{
+			state: "UNSYNCEDLYRICS when it is the only one",
+			row: 5,
+			tags: { unsyncedlyrics: plain("From UNSYNCEDLYRICS") },
+			shows: "From UNSYNCEDLYRICS",
+		},
+	];
+
+	const ROW_TITLES = [
+		"Los Calientes",
+		"Fizz",
+		"Deléctrico",
+		"Soy Rock",
+		"Pendejo",
+		"El Loco",
+	];
+
+	const asTags = (tags: Record<string, string>) =>
+		Object.fromEntries(
+			Object.entries(tags).map(([tag, lyric]) => [`$meta(${tag})`, lyric]),
+		);
+
+	test.use({
+		retagged: {
+			[ROW_TITLES[0]]: asTags({ lyrics: synced("From LYRICS") }),
+			...Object.fromEntries(
+				TAG_ORDER.map(({ row, tags }) => [ROW_TITLES[row], asTags(tags)]),
+			),
+		},
+	});
+
+	test("a LYRICS tag alone is shown, and shown synced", async ({
+		page,
+		isMobile,
+	}) => {
+		await playRow(page, 0);
+		const panel = await openPanels(page, isMobile);
+		await panelTab(panel, "Lyrics").click();
+
+		await expect(
+			panel.getByRole("button", { name: "From LYRICS, the second line" }),
+		).toBeVisible();
+		await expect(panel).not.toContainText("Unsynced");
+	});
+
+	for (const { state, row, tags, shows } of TAG_ORDER) {
+		test(`the panel shows ${state}`, async ({ page, isMobile }) => {
+			await playRow(page, row);
+			const panel = await openPanels(page, isMobile);
+			await panelTab(panel, "Lyrics").click();
+
+			await expect(panel).toContainText(`${shows}, untimed`);
+			for (const lyric of Object.values(tags)) {
+				const [first] = lyric.split("\r\n");
+				if (first !== `${shows}, untimed`)
+					await expect(panel).not.toContainText(first);
+			}
+		});
+	}
+
+	test("a LYRICS tag written mid-track arrives through the re-read, which asks what the screen asked", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await page.clock.install();
+		await recordPlayingReads(page);
+		await playRow(page, 3);
+		const panel = await openPanels(page, isMobile);
+		await panelTab(panel, "Lyrics").click();
+		await expect(panel).toContainText("No lyrics found");
+
+		const from = await firstReadAnswered(page);
+		await runClockTo(page, from + 6_000);
+		writeLyric(player, synced("Written mid-track"), "lyrics");
+		await runClockTo(page, from + 30_000);
+
+		await expect(
+			panel.getByRole("button", { name: "Written mid-track, the last line" }),
+		).toBeVisible();
+		expect(await looksAt(page)).toEqual([2, 5, 10]);
+
+		const asked = requestsTo(player, "/api/track/playing")
+			.filter((entry) => entry.method === "GET")
+			.map((entry) =>
+				new URLSearchParams(entry.path.split("?")[1] ?? "").getAll("columns"),
+			);
+		const screenAsked = asked.filter((columns) => columns.length > 1).flat();
+		const reReads = asked.filter((columns) => columns.length === 1).flat();
+		expect(reReads).toHaveLength(3);
+		for (const expression of reReads) expect(screenAsked).toContain(expression);
+	});
+});
+
 test.describe("a lyric read through the stream", () => {
 	// Kept out of `TAGGED`: a component also makes the rating control writable,
 	// which changes the screen the slim-strip tests measure. Six seconds of lag;

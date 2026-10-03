@@ -3,7 +3,9 @@ import { fieldTable } from "@/shared/api/fieldTable";
 import { GENRE_EXPRESSION } from "@/shared/api/multiValue";
 import { RATING_EXPRESSION } from "@/shared/api/rating";
 
-const LYRICS_EXPRESSION = "$meta(unsynced lyrics)";
+// foo_openlyrics reads these tags in this order.
+const LYRICS_EXPRESSION =
+	"$if2($meta(unsynced lyrics),$if2($meta(lyrics),$if2($meta(syncedlyrics),$meta(unsyncedlyrics))))";
 
 export const LYRICS_EXPRESSIONS = [LYRICS_EXPRESSION];
 

@@ -1900,9 +1900,11 @@ const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
 		// what an unplugged device looks like: `outputDeviceId` says what the player is set to, not
 		// what a picker can still offer.
 		outputDeviceId: fake.activeOutput,
+		outputSilent: fake.activeOutput === null ? null : false,
 		queueRevision: state.queueRevision,
 		playlistsRevision: state.playlistsRevision,
 		timelineRevision: state.timelineRevision,
+		sessionRevision: 0,
 	};
 };
 
@@ -2678,6 +2680,8 @@ export async function handleFooJean({
 			volumeUnit: state.player.volume.type,
 			playbackModes: playbackModesOf(state),
 			streamFormats: fake.canStream ? fake.streamFormats : [],
+			maxSessions: 0,
+			canCreateSessions: false,
 			...(fake.canWritePlaylists === "absent"
 				? null
 				: { canWritePlaylists: fake.canWritePlaylists }),

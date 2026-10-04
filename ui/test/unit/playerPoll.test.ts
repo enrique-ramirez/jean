@@ -66,12 +66,14 @@ const stateDocument = (
 		queueRevision: 0,
 		playlistsRevision: 0,
 		timelineRevision: 0,
+		sessionRevision: 0,
 		position: { seconds: 12, ageSeconds: 0 },
 		duration: 180,
 		volume: -6,
 		muted: false,
 		playbackMode: "inOrder",
 		outputDeviceId: null,
+		outputSilent: null,
 		title: null,
 		artist: null,
 		playingLocation: null,
@@ -147,6 +149,8 @@ const CAPABILITIES = {
 	volumeMax: 0,
 	volumeUnit: "db",
 	playbackModes: ["inOrder", "shuffleTracks"],
+	maxSessions: 0,
+	canCreateSessions: false,
 } satisfies FooJeanCapabilities;
 
 const NAME = { artist: "Babasónicos", title: "One" };

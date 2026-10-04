@@ -612,6 +612,8 @@ export interface paths {
          * Toggle between playing and paused.
          * @description Whether that means resuming a paused track or starting one again from a stop is foobar2000's own call; this route asks for the toggle and does not choose. The answer comes once the player has been handed this command and run it, and nothing comes back beyond the status. Where playback landed reaches a client through `GET /state`'s `playback`, not this answer.
          *
+         *     Naming a detached session, the toggle acts on the `playback` its state reads. A session reading `playing` is paused. A session paused through this route is set to play, and reads `paused` until a connection listens. A session set to play that reads `paused` only because no connection listens stays set to play, and this changes nothing.
+         *
          *     This route takes no body. One sent is ignored.
          *
          *     Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
@@ -658,7 +660,9 @@ export interface paths {
         put?: never;
         /**
          * Move to the previous track.
-         * @description The answer comes once the player has been handed this command and run it. Where playback landed reaches a client through `GET /state`'s `playingLocation`, not this answer.
+         * @description Naming the player's own session, this is foobar2000's own Previous. Naming a detached session that is on a track more than three seconds in, playing or paused, it starts that track again from its start and plays it; otherwise it goes back in the session's own order and plays that track. A stopped session goes back. A session holding no snapshot changes nothing, unless it is on a track more than three seconds in.
+         *
+         *     The answer comes once the player has been handed this command and run it. Where playback landed reaches a client through `GET /state`'s `playingLocation`, not this answer.
          *
          *     This route takes no body. One sent is ignored.
          *
@@ -1711,7 +1715,7 @@ export interface components {
             libraryPath: string | null;
             /** @description Devices connected to the session's stream now, counted as `GET /stream/listeners` counts `devices`. A device inside its linger has gone and is not counted. */
             listeners: number;
-            /** @description The orders the session offers. For `engine`, exactly `GET /capabilities`' `playbackModes`, in its order. For a detached session, `inOrder`, `repeatAll`, `repeatOne`, `shuffleTracks` and `random`. */
+            /** @description The orders the session offers. For `engine`, exactly `GET /capabilities`' `playbackModes`, in its order. For a detached session, `inOrder`, `repeatAll`, `repeatOne`, `random` and `shuffleTracks`. */
             playbackModes: components["schemas"]["PlaybackMode"][];
             /** @description Whether the session stopped running foobar2000's DSP chain after a DSP in it failed, which it does for the rest of its life. Always `false` for `engine`. */
             chainDropped: boolean;
@@ -2312,7 +2316,7 @@ export interface components {
          */
         PlayerState: {
             /**
-             * @description What the player is doing right now.
+             * @description What the player is doing right now. A detached session set to play reads `paused` while no connection listens to its stream, a device inside its linger included, and its position stands still; it reads `playing` from the moment a connection listens. A detached session paused through `POST /playback/play-pause` reads `paused` whether or not anybody listens.
              * @enum {string}
              */
             playback: "stopped" | "paused" | "playing";

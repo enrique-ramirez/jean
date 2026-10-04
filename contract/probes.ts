@@ -14,6 +14,8 @@ export interface Context {
 	managed: unknown;
 	ticket: string | null;
 	revision: number | null;
+	structure?: number | null;
+	sessionId?: string | null;
 }
 
 export type Probe = (operation: Operation, context: Context) => Attempt | null;
@@ -134,8 +136,11 @@ export const drives: Drive[] = [
 		id: "getState",
 		probe: () => ({}),
 		learns: (body, context) => {
-			const state = body as { library?: { revision?: number } };
+			const state = body as {
+				library?: { revision?: number; structure?: number };
+			};
 			context.revision = state.library?.revision ?? null;
+			context.structure = state.library?.structure ?? null;
 		},
 	},
 	{
@@ -376,7 +381,64 @@ export const drives: Drive[] = [
 	{ id: "getStreamTimeline", probe: () => ({}) },
 	{ id: "releaseOutputHold", probe: () => ({}) },
 	{
+		// A private session plays nothing until it is asked to, so nobody else sees it and nothing
+		// is heard. The run leaves it again at the end, through `leaveStream`.
+		id: "createSession",
+		probe: (_, context) => ({
+			body: { deviceId: context.deviceId, name: "contract check" },
+		}),
+		learns: (body, context) => {
+			context.sessionId = (body as { id?: string }).id ?? null;
+		},
+	},
+	{
+		// The first track of the library `getState` read, played in the run's own session and never
+		// in the player's: that session is private, so nobody else is shown it playing, and nobody
+		// listens to it, so it decodes nothing and nothing is heard.
+		id: "playLibrarySet",
+		probe: (_, context) =>
+			context.sessionId && context.structure != null
+				? {
+						query: { session: context.sessionId, deviceId: context.deviceId },
+						body: { structure: context.structure, ordinals: [0], index: 0 },
+					}
+				: null,
+	},
+	{
+		id: "listSessions",
+		probe: (_, context) => ({ query: { deviceId: context.deviceId } }),
+	},
+	{
+		id: "getSession",
+		probe: (_, context) =>
+			context.sessionId
+				? {
+						pathParams: { id: context.sessionId },
+						query: { deviceId: context.deviceId },
+					}
+				: null,
+	},
+	{
+		// The run's own session is already private, so stopping sharing it changes what nobody
+		// else is shown.
+		id: "shareSession",
+		probe: (_, context) =>
+			context.sessionId
+				? {
+						pathParams: { id: context.sessionId },
+						query: { deviceId: context.deviceId },
+						body: { shared: false },
+					}
+				: null,
+	},
+	{
+		// Last, so a run leaves nothing behind. The run's device is the only member of the session
+		// it created, so leaving it ends it at once rather than at the end of its grace. With no
+		// session created, the leave ends the device's linger on the player's own session.
 		id: "leaveStream",
-		probe: (_, context) => ({ body: { deviceId: context.deviceId } }),
+		probe: (_, context) => ({
+			...(context.sessionId ? { query: { session: context.sessionId } } : {}),
+			body: { deviceId: context.deviceId },
+		}),
 	},
 ];

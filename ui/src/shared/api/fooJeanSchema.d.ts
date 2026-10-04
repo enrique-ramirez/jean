@@ -237,7 +237,7 @@ export interface paths {
          *
          *     The set to insert is named by exactly one of `runs`, `bitset` and `ordinals`, resolved against the `structure` sent alongside it. Sending more than one, or none, is a `400`. `runs` and `bitset` are inserted in ascending ordinal order — neither can carry any other — and `ordinals` is inserted in exactly the order it is given, which is the form a client holding a click-ordered set, such as a multi-select or a queue, MUST use to keep that order.
          *
-         *     The read-only-playlists setting never refuses this operation: it protects a user's own playlists, and neither of the component's own holds any. `controlPlayback` does: playing a set is playback, and this is refused with a `403` while it is off.
+         *     The read-only-playlists setting never refuses this operation: it protects a user's own playlists, and neither of the component's own holds any. `controlPlayback` does: playing a set through the scratch is the player's own session's playback, and this is refused with a `403` while it is off.
          */
         post: operations["fillOwnPlaylist"];
         /**
@@ -562,9 +562,37 @@ export interface paths {
          *
          *     Nothing comes back. Where playback landed reaches a client through `GET /state`'s `playingLocation`, on the player's own report rather than on this answer, so a track started at the player and a track started here arrive the same way.
          *
-         *     This writes nothing and the read-only-playlists setting does not refuse it. `controlPlayback` does: this is playback, not a playlist write.
+         *     This writes nothing and the read-only-playlists setting does not refuse it. `controlPlayback` does, for the player's own session: this is playback, not a playlist write.
+         *
+         *     Naming a detached session, the playlist's rows as they stand become that session's own to play, starting at `index`, and the player's own playback stays where it was. A later edit to the playlist, or deleting it, changes nothing the session plays.
          */
         post: operations["playPlaylistRow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playback/play": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Play a set of library tracks in a detached session.
+         * @description The set becomes the named session's own to play, starting at `index`. Its tracks are taken from the library when the request is answered, so a later rebuild changes nothing the session plays. No playlist the player holds is written, the scratch included, and the player's own playback stays where it was.
+         *
+         *     The set is read as `POST /playlists/{id}/items` reads a fill, by `structure` and exactly one of `runs`, `bitset` and `ordinals`, without `duplicates`. `index` counts into the set in the order it decodes: as given for `ordinals`, ascending for `runs` and `bitset`.
+         *
+         *     The player's own session plays a set through `POST /playlists/own/{role}/items` and `POST /playlists/{id}/items/{index}/play`. Naming it, or naming no session, is a `403` while `controlPlayback` is off and a `409` otherwise, either before the body is read. A detached session is never refused for `controlPlayback`.
+         *
+         *     A `structure` that has moved is answered `409` before `index` is looked at, so a client holding a stale snapshot is told to export again rather than that its `index` is wrong.
+         */
+        post: operations["playLibrarySet"];
         delete?: never;
         options?: never;
         head?: never;
@@ -702,7 +730,7 @@ export interface paths {
          * Put the player into a playback order, by name.
          * @description `mode` is one of the seven names `PlaybackMode` publishes. Neither foobar2000's own string nor its ordinal ever crosses this API in either direction: the name is resolved to the player's own order index inside the component, off the same list `GET /capabilities`'s `playbackModes` is built from.
          *
-         *     A name outside `PlaybackMode` is a `400`. A name inside it that this install does not offer, because it is missing from `GET /capabilities`'s `playbackModes`, is a `409`: the request is well formed and the player is the reason it cannot be met, the same reading `POST /tags` already gives an address it cannot place.
+         *     A name outside `PlaybackMode` is a `400`. A name inside it that this install does not offer, because it is missing from `GET /capabilities`'s `playbackModes`, is a `409`: the request is well formed and the player is the reason it cannot be met, the same reading `POST /tags` already gives an address it cannot place. Naming a detached session, a name inside `PlaybackMode` that the session's own `playbackModes` does not list, `shuffleAlbums` or `shuffleFolders`, is the same `409`, whatever this install offers.
          *
          *     The answer comes once the player has been handed this command and run it. Where the mode landed reaches a client through `GET /state`'s `playbackMode`, not this answer.
          */
@@ -749,6 +777,8 @@ export interface paths {
          * @description `deviceId` is one of the ids `GET /outputs` last listed. There is no output type alongside it: foobar2000 picks the module and the device together, off the pair the id itself carries, so a type field would only restate what the id already says.
          *
          *     The answer comes once the player has been handed this command and run it. Where the switch landed reaches a client through `GET /state`'s `outputDeviceId`, not this answer.
+         *
+         *     The output is the player's, whichever session a client is in. This route reads no `session`, so one sent with it is ignored, an id nobody issued included, and the answer is the one a request naming none gets.
          */
         post: operations["setActiveOutput"];
         delete?: never;
@@ -775,6 +805,8 @@ export interface paths {
          *     The answer comes once the player has been handed this command and run it. Where the level and the mute flag landed reach a client through `GET /state`'s `volume` and `muted`, not this answer.
          *
          *     Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
+         *
+         *     The level is the player's, whichever session a client is in: a detached session has no output to turn down, and a listener sets its own level on its own device. This route reads no `session`, so one sent with it is ignored, an id nobody issued included, and the answer is the one a request naming none gets.
          */
         post: operations["setVolume"];
         delete?: never;
@@ -803,6 +835,10 @@ export interface paths {
          *     This route never waits on foobar2000's main thread either, so it answers while every command is waiting on that thread and headed for a `504`. `mainThread` is how a client tells the two apart: see `MainThread`.
          *
          *     Its `ETag` names the content coding, exactly as the two binary routes do. See *Compression*.
+         *
+         *     Naming a detached session, `player` answers that session: its `playback`, `path`, `subsong`, `libraryPath`, `position`, `duration`, `playbackMode`, `title`, `artist`, `album`, `albumArtist`, `queueRevision`, `timelineRevision` and `sessionRevision`. `volume`, `muted`, `outputDeviceId`, `outputSilent`, `currentPlaylistId` and `playlistsRevision` answer the player whichever session is named, and so do `library`, `mainThread` and `configGeneration`. `playingLocation` is `null`: a detached session plays a snapshot of a playlist, which stops matching it at the playlist's first edit. Each session is polled under an `ETag` of its own, so a change in one leaves every other answering `304`.
+         *
+         *     A poll naming a detached session with a `deviceId` keeps that device a member, and so keeps the session from ending, whether it is answered `200` or `304`. A poll naming no device holds nothing, and neither does a command.
          */
         get: operations["getState"];
         put?: never;
@@ -825,6 +861,8 @@ export interface paths {
          * @description Every queued entry, in the order the player will play them, with the fields a client draws a row from and the revision they were read at. `revision` is `GET /state`'s `queueRevision` as of this read: refetch when the one a client holds has moved, and not otherwise.
          *
          *     A queued library track carries `libraryPath` and no `location`. A queued playlist row carries `location`, and `libraryPath` too where the media library also holds that track. Either may be missing on its own, and both are missing for a track queued from a playlist row or a whole playlist since removed: the core keeps such an entry rather than dropping it, so this reports it with `location: null` rather than a stale position.
+         *
+         *     Naming a detached session, this is that session's queue, read at its own revision: the `queueRevision` a poll naming the session answers. Every entry's `location` is `null`, since a session holds what it queued by handle and not by a playlist row.
          */
         get: operations["getQueue"];
         put?: never;
@@ -837,11 +875,13 @@ export interface paths {
          *     Omit `at` to queue at the end. Send it with `revision`, the queue revision it was chosen against from `GET /state`'s `queueRevision`, to queue at that position instead; `at` without `revision` is a `400`, decided here rather than by the player.
          *
          *     Whether `playlistId` names a playlist, and whether a row or `at` names a position past what it addresses -- a row past the playlist's end, `at` past the queue's end -- are answered by the player rather than judged here: only it knows which playlists exist and how many rows or queue entries each holds. A `structure` that has moved is a `409`, the same as a fill's.
+         *
+         *     Naming a detached session, the tracks join that session's queue and no other, taken by handle when the request is answered, and `revision` is that session's `queueRevision`. A session's queue holds at most 10000 entries.
          */
         post: operations["queueTracks"];
         /**
          * Empty the queue.
-         * @description Removes every entry. Emptying the queue means the same thing against any view of it, so this carries no revision and is never refused for one that has moved.
+         * @description Removes every entry. Emptying the queue means the same thing against any view of it, so this carries no revision and is never refused for one that has moved. Naming a detached session, it empties that session's queue and no other.
          */
         delete: operations["clearQueue"];
         options?: never;
@@ -860,7 +900,7 @@ export interface paths {
         put?: never;
         /**
          * Move one queue entry.
-         * @description Takes the entry out at `from` and puts it back at `to`, its index once the queue is that one entry shorter -- the same plan Jean's queue panel makes for a drag. `revision` is the queue revision the move was planned against, from `GET /state`'s `queueRevision` or `GET /queue`'s own `revision`, and is required: unlike `POST /queue`'s `at`, a move has no "the end" to fall back to that needs no revision.
+         * @description Takes the entry out at `from` and puts it back at `to`, its index once the queue is that one entry shorter -- the same plan Jean's queue panel makes for a drag. `revision` is the queue revision the move was planned against, from `GET /state`'s `queueRevision` or `GET /queue`'s own `revision`, and is required: unlike `POST /queue`'s `at`, a move has no "the end" to fall back to that needs no revision. Naming a detached session, it moves an entry in that session's queue, and `revision` is that session's `queueRevision`.
          */
         post: operations["moveQueueEntry"];
         delete?: never;
@@ -885,7 +925,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove one queue entry. */
+        /**
+         * Remove one queue entry.
+         * @description Naming a detached session, it removes an entry from that session's queue, and `revision` is that session's `queueRevision`.
+         */
         delete: operations["removeQueueEntry"];
         options?: never;
         head?: never;
@@ -1022,6 +1065,8 @@ export interface paths {
          *     Unlike `GET /artwork/playing`, this route sets no `ETag` and never answers `304`: there is nothing held here to fold a validator from, so a conditional request would cost the same job at the player as a fresh one.
          *
          *     Every response carries `Cache-Control: private, no-cache`, refusals included: the address names nothing durable, so what sits behind it changes without the URL changing.
+         *
+         *     Naming a detached session answers the track that session is on, its columns evaluated against that track's stored tags, since the player is not the one playing it. The session is asked before the columns are judged, so a session this device may not see answers `404` whatever the columns say. A detached session's read spends the same budget the player's own does.
          */
         get: operations["getPlayingTrack"];
         put?: never;
@@ -1064,6 +1109,8 @@ export interface paths {
         /**
          * The front cover of whatever is playing.
          * @description One picture, addressed by nothing. *The playing cover* above is the whole of it: why it exists beside `GET /artwork`, what it resolves that the snapshot cannot, and why revalidating it costs no file access.
+         *
+         *     Naming a detached session answers the cover of the track that session is on, read the way `GET /artwork` reads one, so a front cover in a format this component does not publish gives way to the picture in the track's own tags. It is read once for each track the session plays, on the first request after the track changes, and held until the track changes again, so a revalidation costs no file access here either; a track with no cover is held as having none. A detached session's request spends the same budget the player's own does.
          */
         get: operations["getPlayingArtwork"];
         put?: never;
@@ -1125,6 +1172,10 @@ export interface paths {
          *     A client SHOULD call this immediately before opening the stream rather than at page load, and MUST request a fresh ticket when reconnecting. Clients MUST NOT store a ticket or log it.
          *
          *     This is also where a device says who it is, because it is the only part of opening a stream a client controls: an `<audio>` element sends no body and no header of its own. The identity rides the ticket to the connection it opens, so `GET /stream/listeners` can group sockets into devices. A request with no body is an anonymous listener rather than a refusal.
+         *
+         *     Naming a detached session, the ticket opens that session's stream, and `GET /stream` reads no `session` of its own. The device is still read from the body and never from the query, so the body's device is the one a session answers. A ticket makes that device a member of a shared session, which it keeps once the session stops being shared, until both its grace as a controller and its listening linger have run out. An anonymous request may take a ticket for a shared session and listen to it, and is never a member. A private session this device is not a member of answers `404` and issues nothing, as does a request with no body naming one.
+         *
+         *     Refused in this order: streaming switched off or not offered, whatever session is named; the body; then the session.
          */
         post: operations["issueStreamTicket"];
         delete?: never;
@@ -1147,6 +1198,8 @@ export interface paths {
          *     This is a roster and not a set of targets. Audio cannot be sent to a device that is not already asking for it: starting playback in a browser needs a gesture on that browser, so there is nothing here for a client to press.
          *
          *     Nothing in it names a network address or a user agent. A device is called what it called itself.
+         *
+         *     Naming a detached session, `devices` are that session's own listeners. Whichever session is named, `connections` counts every session together, the player's own included, since one `maxConcurrentStreams` bounds them all, and `playerMuted` answers the player. So the player's own roster can hold fewer sockets than `connections` says while somebody listens to a detached session. A private session's roster answers its members alone, and `404` to any other device or to none.
          */
         get: operations["getStreamListeners"];
         put?: never;
@@ -1169,7 +1222,9 @@ export interface paths {
         post?: never;
         /**
          * Ask for the player to be audible alongside the listeners.
-         * @description While anybody is listening this component silences the player, so that choosing a device moves the sound rather than doubling it. This asks for both at once instead.
+         * @description While anybody is listening to the player's own session this component silences the player, so that choosing a device moves the sound rather than doubling it. This asks for both at once instead. A device listening to a detached session never silences the player, since it is not hearing what the player plays.
+         *
+         *     The hold is the player's, whichever session a client is in. This route reads no `session`, so one sent with it is ignored, an id nobody issued included, and the answer is the one a request naming none gets.
          *
          *     There is no route that *takes* the hold. A client says it wants both outputs; when they should be one is the component's to decide, and it decides again the moment everybody has stopped listening — the choice is scoped to the spell of listening it was made in, not to a connection, so a reconnect does not undo it and the next session does not inherit it.
          *
@@ -1197,6 +1252,8 @@ export interface paths {
          * @description A closed socket does not say why it closed. A handoff back to the player and a wireless dropout look identical from here, and they want opposite answers: the first should give the player its sound back at once, the second must not unmute into a gap the client is about to reconnect across. So a device that stopped deliberately says so, and everything else waits out the linger.
          *
          *     Best effort, and never required. A client that crashes, a tab that closes and a request that fails all end the same way a moment later. Ignored while the device still holds a connection, and it can only ever end its own linger — a `deviceId` nobody sent is not a way to unmute the player.
+         *
+         *     It ends what it ends in the session named and in no other. Naming none or `engine`, that is the device's linger on the player's own session, and the player's session never ends. Naming a detached session, it is this device's linger there and its grace as a controller as well, so the device stops being a member unless it still holds a connection, which keeps it listening and on the roster. A detached session whose last member leaves this way ends at once, its stream stopped before this answers. This is the one way a session ends before its grace runs out, and no request ends one for a device still in it. A shared session this device was never in answers `204` and ends nothing, and a session this device may not see answers `404` and ends nothing anywhere, the player's own session included. The device is read from the body, as `POST /stream/ticket` reads it, and never from the query.
          */
         post: operations["leaveStream"];
         delete?: never;
@@ -1233,6 +1290,8 @@ export interface paths {
          *     A client MUST re-anchor after every reconnect, because `currentTime` restarts. It MAY re-poll occasionally and re-derive `anchor` to shed clock drift, which is milliseconds over a few minutes.
          *
          *     Browsers differ over whether `currentTime` starts at zero or at the stream's own granule position, which is a large number for a listener joining a long-running stream. Deriving `anchor` as above works either way, and a client can tell which it got from whether `anchor` came out near zero.
+         *
+         *     Naming a detached session, this is that session's stream clock and its marks, which share nothing with the player's own.
          */
         get: operations["getStreamTimeline"];
         put?: never;
@@ -1257,10 +1316,82 @@ export interface paths {
          *     The response is chunked and ends when the client disconnects, the component stops, or the listener falls too far behind to be sent contiguous audio. A client MUST reconnect rather than treat the end as a stop: a dropped connection is ordinary on a wireless network, and an `<audio>` element does not retry by itself.
          *
          *     This route takes a ticket because an `<audio>` element cannot send a header at all: without one, anything that can address this origin, a cross-origin `<audio src>` included, could open a stream. Without a valid ticket it answers `401`.
+         *
+         *     It plays the session its ticket was issued for and no other, and reads no `session` of its own: one beside the ticket is ignored. A detached session's stream is that session's audio, decoded for it alone, and its listeners never silence the player. Where the ticket's session has ended since the ticket was issued, this answers `404` and opens nothing. Every connection counts against one `maxConcurrentStreams`, whichever session it hears.
+         *
+         *     Refused in this order: the ticket, streaming switched off, the format, the ticket's session, then the cap.
          */
         get: operations["openStream"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The sessions this device may see.
+         * @description The player's own session first, always, then every detached session this device may see, in the order they were created: each one that is shared, and each private one it is a member of.
+         */
+        get: operations["listSessions"];
+        put?: never;
+        /**
+         * Start a detached session of this device's own.
+         * @description A detached session plays out of the same library as the player and is heard through a stream of its own, without touching what the player is doing. It starts stopped, with nothing to play and nothing queued, in `inOrder`, and private: listed and answered only to its members, the creator first among them.
+         *
+         *     **Private is a courtesy, not a security boundary.** Anything on the network can send another device's `deviceId`, so a private session is one other clients are not shown, and nothing more.
+         *
+         *     The device is read from the body, as `POST /stream/ticket` reads it, and never from the query. Its `deviceId` and `name` are what the session's `createdBy` answers.
+         *
+         *     `controlPlayback` does not govern this route: it governs the player's own session alone.
+         *
+         *     A session is kept by its members: a device listening to it, one polling `GET /state` naming it with that device's `deviceId`, or one that took a ticket for it. A command naming it keeps nothing. A session nobody keeps is ended once its grace runs out, so a client that creates one and goes away leaves nothing behind for long.
+         *
+         *     While `GET /capabilities` answers `canCreateSessions: false` this route answers `503 sessions are not available`, after the body is judged. With `maxSessions` detached sessions already kept it answers `503 too many sessions`, and a session ending frees its place. Turning streaming off refuses creating one, and ends none already kept.
+         */
+        post: operations["createSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A session's `id`, `engine` for the player's own.
+                 * @example engine
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * One session.
+         * @description The player's own session answers any device, or none. A detached session answers a device that may see it, and `404` to anybody else, in the same words and the same bytes as an id nobody issued, so a stranger cannot tell a private session from one that does not exist.
+         */
+        get: operations["getSession"];
+        put?: never;
+        /**
+         * Share a detached session, or stop sharing it.
+         * @description A shared session is listed for every device, and any of them may control it, listen to it, or both. Stopping sharing unlists it for everybody but its members and disconnects nobody already listening.
+         *
+         *     Any device that may see the session may change this, so a device that sees a shared session may share it or stop sharing it, and the request makes it a member. Sharing is not protection in either direction: a private session is a courtesy, not a security boundary.
+         *
+         *     Refused in this order: the player's own session, whatever the device and the body; no `deviceId`; a session this device may not see, before its body is read; then a body without a boolean `shared`. `controlPlayback` does not govern this route.
+         */
+        post: operations["shareSession"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1307,9 +1438,9 @@ export interface components {
              *     The component's own scratch playlist stays writable regardless: this governs the user's playlists, not the component's own plumbing. The play queue is unaffected either way, since it is addressed through `/queue` rather than through a playlist.
              */
             canWritePlaylists: boolean;
-            /** @description Whether this install permits driving playback from here: the transport, seeking, the playback mode, the volume, playing a row and every queue write. `controlPlayback` in `config.json`, defaulting to `true`. Reading the state and the queue is unaffected either way, and so is the component's own scratch playlist, which follows this rather than `canWritePlaylists`. */
+            /** @description Whether this install permits driving the player's own session from here: the transport, seeking, the playback mode, the volume, playing a row and every queue write. `controlPlayback` in `config.json`, defaulting to `true`. Reading the state and the queue is unaffected either way, and so is the component's own scratch playlist, which follows this rather than `canWritePlaylists`. A detached session is driven whatever this says. */
             canControlPlayback: boolean;
-            /** @description Whether this install permits switching the player's output device. `changeOutput` in `config.json`, defaulting to `true`. It refuses `POST /outputs/active` alone: `GET /outputs` stays open regardless, and the volume, the mute flag and every playback command answer to `controlPlayback` instead. */
+            /** @description Whether this install permits switching the player's output device. `changeOutput` in `config.json`, defaulting to `true`. It refuses `POST /outputs/active` alone: `GET /outputs` stays open regardless, and the volume, the mute flag and every playback command to the player's own session answer to `controlPlayback` instead. */
             canChangeOutput: boolean;
             /**
              * @description How many autoplaylists this component will keep at once, counting only the ones it created. `0` switches creation off.
@@ -1333,7 +1464,7 @@ export interface components {
              */
             streamFormats: string[];
             /**
-             * @description Whether this install silences the player while somebody is listening to the stream. `muteWhileStreaming` in `config.json`, and the player owner's decision rather than a client's: there is no route that changes it.
+             * @description Whether this install silences the player while somebody is listening to the player's own session. `muteWhileStreaming` in `config.json`, and the player owner's decision rather than a client's: there is no route that changes it. A device listening to a detached session never silences the player.
              *
              *     The capture is taken before the player's volume, so muting leaves the stream at full level. False makes the player one more speaker alongside every listener, which is fine a room apart from them and an echo in the same one — the stream runs a second or two behind.
              */
@@ -1382,6 +1513,13 @@ export interface components {
              *     ]
              */
             playbackModes: components["schemas"]["PlaybackMode"][];
+            /**
+             * @description How many detached sessions this install keeps at once. `maxSessions` in `config.json`, from 0 to 8 and 4 by default, and the value foobar2000 was started with: a change to it waits for a restart. The player's own session is never counted. `0` switches creating them off.
+             * @example 4
+             */
+            maxSessions: number;
+            /** @description Whether `POST /sessions` can create a detached session here: true only where `canStream` is true, this install can start a session's stream, and `maxSessions` is above zero. A detached session is heard through the stream and nowhere else, so it is false while streaming is off, and moves with `streamingEnabled` with no restart. It says nothing about a free place: with every place taken it stays true and `POST /sessions` answers `503 too many sessions`. `controlPlayback` does not govern it. */
+            canCreateSessions: boolean;
         };
         /**
          * @description Jean's own name for a playback order. `foo_jean` maps it both ways against whatever the player calls its own orders; neither foobar2000's own string nor its ordinal ever crosses this API.
@@ -1509,7 +1647,7 @@ export interface components {
             name?: string;
         };
         StreamListeners: {
-            /** @description Connected devices, longest-listening first. A device inside its linger has gone and is not here. */
+            /** @description Connected devices of the session named, the player's own where none is, longest-listening first. A device inside its linger has gone and is not here. */
             devices: {
                 /** @description As the device sent it, or `#<n>` for a connection that named nothing. Each anonymous connection is its own device: merging them would report two strangers as one person. */
                 deviceId: string;
@@ -1525,12 +1663,12 @@ export interface components {
                 /** @description Seconds since this device's oldest live connection opened. */
                 listeningFor: number;
             }[];
-            /** @description Every socket, across every device. This is what `maxConnections` bounds, and it is not the number a person should be shown. */
+            /** @description Every socket, across every device and every session together, whichever session is named. This is what `maxConnections` bounds, and it is not the number a person should be shown. */
             connections: number;
-            /** @description `maxConcurrentStreams` from `config.json`. */
+            /** @description `maxConcurrentStreams` from `config.json`, which bounds the connections of every session together. */
             maxConnections: number;
             /**
-             * @description Whether the player is silent *because somebody is listening*, as opposed to muted by hand. foobar2000 has no mute flag, only a volume at -100 dB, so a client reading the volume alone sees a fader at the bottom either way, and this is what tells it which sentence to put next to it.
+             * @description Whether the player is silent *because somebody is listening to the player's own session*, as opposed to muted by hand. It answers the player's state whichever session is named: a device listening to a detached session never silences it. foobar2000 has no mute flag, only a volume at -100 dB, so a client reading the volume alone sees a fader at the bottom either way, and this is what tells it which sentence to put next to it.
              *
              *     False the moment anybody unmutes the player from either end: the hold never argues, and stays released until nobody is listening.
              */
@@ -1544,6 +1682,75 @@ export interface components {
              * @example 120
              */
             expiresIn: number;
+        };
+        /** @description One playback session. The player's own is `engine`: it always exists, is always shared, and answers what `GET /state` answers about the player. Every other is `detached`, playing for itself out of the same library. */
+        Session: {
+            /**
+             * @description `engine` for the player's own session. Otherwise opaque, drawn the way a stream ticket is, so an unlisted session is not found by counting.
+             * @example engine
+             */
+            id: string;
+            /** @enum {string} */
+            kind: "engine" | "detached";
+            /** @description Whether every device sees the session, or only its members. Always `true` for `engine`. A private session is a courtesy, not a security boundary: anything on the network can send another device's `deviceId`. */
+            shared: boolean;
+            /**
+             * @description As `PlayerState` spells it.
+             * @enum {string}
+             */
+            playback: "stopped" | "paused" | "playing";
+            /** @description As `PlayerState` spells it, and `null` where none has been computed. */
+            title: string | null;
+            /** @description As `PlayerState` spells it, and `null` where none has been computed. */
+            artist: string | null;
+            /** @description As `PlayerState` spells it, and `null` where none has been computed. */
+            album: string | null;
+            /** @description As `PlayerState` spells it, and `null` where none has been computed. */
+            albumArtist: string | null;
+            /** @description As `PlayerState` spells it, and `null` where the media library holds no such track or nothing is playing. */
+            libraryPath: string | null;
+            /** @description Devices connected to the session's stream now, counted as `GET /stream/listeners` counts `devices`. A device inside its linger has gone and is not counted. */
+            listeners: number;
+            /** @description The orders the session offers. For `engine`, exactly `GET /capabilities`' `playbackModes`, in its order. For a detached session, `inOrder`, `repeatAll`, `repeatOne`, `shuffleTracks` and `random`. */
+            playbackModes: components["schemas"]["PlaybackMode"][];
+            /** @description Whether the session stopped running foobar2000's DSP chain after a DSP in it failed, which it does for the rest of its life. Always `false` for `engine`. */
+            chainDropped: boolean;
+            /** @description What went wrong while the session played: its last eight reports, oldest first, a ninth dropping the first. Always empty for `engine`. A track that would not decode is skipped and reported; a session that has skipped every track it holds without decoding one stops rather than going round again. `sessionRevision` in `GET /state` moves for each report. */
+            reports: components["schemas"]["SessionReport"][];
+            /**
+             * @description The device that created the session, as it named itself in `POST /sessions`, and `null` for `engine`. Two devices can carry one `name`, so `deviceId` is what tells two creators apart.
+             *
+             *     The `deviceId` here is the one the creator's private sessions are entered with, and anybody this session is answered to reads it. That is why private is a courtesy and not a boundary.
+             */
+            createdBy: {
+                deviceId: string;
+                /** @description Null where the device named nothing, as a row of `StreamListeners.devices` spells it. */
+                name: string | null;
+            } | null;
+        };
+        /** @description One thing that went wrong while a detached session played, and the track it happened on. */
+        SessionReport: {
+            /** @description `1` for the session's first report, and one higher for each after it, for the session's whole life, so a client that has read up to one knows which are new. */
+            sequence: number;
+            /**
+             * @description `undecodable`: the track would not decode, and the session skipped to the next. `chainDropped`: a DSP in foobar2000's chain failed, and the session plays on without the chain for the rest of its life, as `chainDropped` on the session says after this report has left the eight.
+             * @enum {string}
+             */
+            kind: "undecodable" | "chainDropped";
+            /** @description The track's path, as `PlayerState.path` spells it. */
+            path: string;
+            /** @description As `PlayerState.subsong` spells it. */
+            subsong: number;
+            /** @description As `PlayerState.libraryPath` spells it, and `null` where the media library holds no such track. */
+            libraryPath: string | null;
+        };
+        Sessions: {
+            /** @description The player's own session first, then the detached sessions in the order they were created. */
+            sessions: components["schemas"]["Session"][];
+        };
+        ShareSessionRequest: {
+            /** @description `true` lists the session for every device, `false` for its members alone. */
+            shared: boolean;
         };
         /** @description Where to write, and what. The address is exactly one of three: `track` with `subsong`, `ordinal` with `structure`, or `playlist` with `index` and `structure`. None of them and two of them are both a `400`, and so is a member of any carried with the wrong type. Nothing here is a filesystem path. */
         TagWriteRequest: {
@@ -1746,6 +1953,21 @@ export interface components {
             bitset?: components["schemas"]["Bitset"];
             ordinals?: components["schemas"]["Ordinals"];
             duplicates?: components["schemas"]["Duplicates"];
+        };
+        PlayLibrarySetRequest: {
+            /**
+             * @description The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
+             * @example 41
+             */
+            structure: number;
+            runs?: components["schemas"]["Runs"];
+            bitset?: components["schemas"]["Bitset"];
+            ordinals?: components["schemas"]["Ordinals"];
+            /**
+             * @description The track in the set to start at, `0` being the first, counted in the order the set decodes.
+             * @example 1
+             */
+            index: number;
         };
         /**
          * @description What becomes of a track the target playlist already holds. `add` inserts it again, and is what leaving the field out means. `skip` leaves it out and names it in the answer's `skipped`, so a client can ask a person about those and send them again without this field.
@@ -2115,6 +2337,8 @@ export interface components {
             playbackMode: components["schemas"]["PlaybackMode"] | null;
             /** @description The id of the device the player is set to, spelled exactly as `GET /outputs` spells it, or `null` where the component cannot ask. It rides every poll of this document because it is one field; the device list is its own route because building it costs more than a poll should. */
             outputDeviceId: string | null;
+            /** @description `true` exactly where the active output is foobar2000's Null Output, whichever of its devices is chosen, and `false` for every other output. `null` exactly where `outputDeviceId` is `null`. It is a guess about one output and says nothing else: it is `false` for speakers that are unplugged, for a muted player and for a third-party output that plays nowhere, and neither the volume, `muted` nor the stream's hold (`playerMuted`) moves it. It answers the player whichever session is named. */
+            outputSilent: boolean | null;
             /** @description The playing track's title, computed by the player, or `null` when it has not computed one. */
             title: string | null;
             /** @description The playing track's artist, computed by the player, or `null` when it has not computed one. */
@@ -2140,6 +2364,8 @@ export interface components {
             playlistsRevision: number;
             /** @description Moves when the encoder lays a mark on the timeline `GET /stream/timeline` answers, for a track starting or a seek. Never moves for anything else this section reports. `0`, and never moving, where `maxConcurrentStreams` is `0` in `config.json`. */
             timelineRevision: number;
+            /** @description Moves when the named detached session's `shared`, `chainDropped` or `reports` move, and for nothing else: a client reads `GET /sessions/{id}` again when the one it holds has moved, as it reads the queue on `queueRevision`. A track change does not move it. `0`, and never moving, for the player's own session. */
+            sessionRevision: number;
         };
         /**
          * @description Where playback was at the moment this component last looked, and how long ago that
@@ -2485,7 +2711,7 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
-        /** @description This install has `controlPlayback` set to `false` in `config.json`. That is a player owner's own choice, made to keep the transport, the queue and the component's own scratch playlist untouched from here; setting it back to `true` is what grants the write. Reading the state and the queue is unaffected. */
+        /** @description This install has `controlPlayback` set to `false` in `config.json`, and the request is for the player's own session. That is a player owner's own choice, made to keep the player's transport, its queue and the component's own scratch playlist untouched from here; setting it back to `true` is what grants the write. Reading the state and the queue is unaffected, and nothing addressed to a detached session is refused. */
         PlaybackDisabled: {
             headers: {
                 [name: string]: unknown;
@@ -2494,7 +2720,7 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
-        /** @description This install has `changeOutput` set to `false` in `config.json`. That is a player owner's own choice; setting it back to `true` is what grants the write. `GET /outputs` is unaffected either way, and so are the volume, the mute flag and every playback command, which follow `controlPlayback` instead. */
+        /** @description This install has `changeOutput` set to `false` in `config.json`. That is a player owner's own choice; setting it back to `true` is what grants the write. `GET /outputs` is unaffected either way, and so are the volume, the mute flag and every playback command, which follow `controlPlayback` instead for the player's own session. */
         OutputChangeDisabled: {
             headers: {
                 [name: string]: unknown;
@@ -2702,7 +2928,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Either this install does not stream, because no encoder started or `streamingEnabled` is false, or it is already serving as many connections as `maxConcurrentStreams` allows. The `error` string distinguishes them, and a client SHOULD present the second as busy and retry rather than as unsupported. `GET /capabilities` reports the first in advance. */
+        /** @description Either this install does not stream, because no encoder started or `streamingEnabled` is false, or it is already serving as many connections as `maxConcurrentStreams` allows, across every session together. The `error` string distinguishes them, and a client SHOULD present the second as busy and retry rather than as unsupported. `GET /capabilities` reports the first in advance. */
         StreamUnavailable: {
             headers: {
                 [name: string]: unknown;
@@ -2772,7 +2998,7 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
-        /** @description `mode` is a `PlaybackMode` this API knows, but this install's own order list, `GET /capabilities`'s `playbackModes`, does not carry it. The request is well formed and the player is the reason it cannot be met; nothing was changed. */
+        /** @description `mode` is a `PlaybackMode` this API knows, but the order list of the session it is for does not carry it: this install's own, `GET /capabilities`'s `playbackModes`, for the player's own session, and the session's `playbackModes` for a detached one. The request is well formed and the player is the reason it cannot be met; nothing was changed. */
         PlaybackModeUnavailable: {
             headers: {
                 [name: string]: unknown;
@@ -2871,7 +3097,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description The player is stopped. `GET /artwork/playing` answers `404` the same way for the same reason, and a paused player is answered like a playing one, here as there. */
+        /** @description The player is stopped, or the session named is. `GET /artwork/playing` answers `404` the same way for the same reason, and a paused player or session is answered like a playing one, here as there. Or `session` names no session this device may see, in the same bytes as `NoSuchSession`; the `error` string tells the two apart. */
         NoTrackPlaying: {
             headers: {
                 /** @description `private, no-cache`: revalidate on every request, since this URL names a different track once the player does. */
@@ -2937,9 +3163,11 @@ export interface components {
             };
         };
         /**
-         * @description There is no picture to send for whatever is playing: nothing is playing yet, the player has no front cover for what is, or the cover is in a format this component does not publish.
+         * @description There is no picture to send for whatever is playing, in the player or in the session named: nothing is playing yet, there is no front cover for what is, or the cover is in a format this component does not publish.
          *
          *     The `error` string is the same one `GET /artwork` answers with for the second and third of those, because from a reader's side it is the same fact. A client SHOULD fall back to whatever it draws for a record with no art rather than report an error.
+         *
+         *     Or `session` names no session this device may see, in the same bytes as `NoSuchSession`; the `error` string tells that apart.
          */
         NoPlayingArtwork: {
             headers: {
@@ -3023,8 +3251,36 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description No session this device may see has that id: nobody issued it, it has ended, or it is private and this device is not a member. All three answer in the same bytes, so a stranger cannot tell a private session from one that does not exist. */
+        NoSuchSession: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description This install cannot start a session's stream, or it already holds as many detached sessions as it allows. The `error` string tells them apart, and a client SHOULD present the second as busy rather than as unsupported. The player's own session does not count against the limit. */
+        SessionsUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
     };
-    parameters: never;
+    parameters: {
+        /**
+         * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+         *
+         *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+         * @example engine
+         */
+        Session: string;
+        /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+        DeviceId: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -3989,7 +4245,17 @@ export interface operations {
     };
     playPlaylistRow: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
             header?: never;
             path: {
                 /**
@@ -4024,16 +4290,96 @@ export interface operations {
                 };
             };
             403: components["responses"]["PlaybackDisabled"];
-            404: components["responses"]["NoSuchPlaylist"];
+            /** @description No playlist has that id, or `session` names no session this device may see. The `error` string tells them apart, and the second answers in the same bytes as `NoSuchSession`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"] | components["schemas"]["Error"];
+                };
+            };
             415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaylistRowsUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
         };
     };
+    playLibrarySet: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlayLibrarySetRequest"];
+            };
+        };
+        responses: {
+            /** @description Playing. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A body that is not JSON or names a field this route does not take, `title` and `duplicates` among them; an ordinal set that is not exactly one of `runs`, `bitset` and `ordinals`, or that names an ordinal outside the library while its `structure` is still the current one; an `index` that is missing or not a whole number; or an `index` past the end of the set, an empty set included. The `error` string tells the last two apart from the rest and from each other. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRefusal"] | components["schemas"]["PlaylistFailed"] | components["schemas"]["Error"];
+                };
+            };
+            403: components["responses"]["PlaybackDisabled"];
+            404: components["responses"]["NoSuchSession"];
+            /** @description The player's own session was named, or no session was, or the `structure` the set was resolved against has moved, the same `409` a fill answers. The `error` string tells them apart. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] | components["schemas"]["PlaylistFailed"];
+                };
+            };
+            415: components["responses"]["JsonRequired"];
+            /** @description The media library is not available or its first snapshot has not been built yet, or this install cannot take a library set into a session. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     playPause: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4048,6 +4394,7 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["PlaybackDisabled"];
+            404: components["responses"]["NoSuchSession"];
             415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
@@ -4056,7 +4403,17 @@ export interface operations {
     };
     nextTrack: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4071,6 +4428,7 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["PlaybackDisabled"];
+            404: components["responses"]["NoSuchSession"];
             415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
@@ -4079,7 +4437,17 @@ export interface operations {
     };
     previousTrack: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4094,6 +4462,7 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["PlaybackDisabled"];
+            404: components["responses"]["NoSuchSession"];
             415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
@@ -4102,7 +4471,17 @@ export interface operations {
     };
     stop: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4117,6 +4496,7 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["PlaybackDisabled"];
+            404: components["responses"]["NoSuchSession"];
             415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
@@ -4125,7 +4505,17 @@ export interface operations {
     };
     seek: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4153,6 +4543,7 @@ export interface operations {
                 };
             };
             403: components["responses"]["PlaybackDisabled"];
+            404: components["responses"]["NoSuchSession"];
             415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaybackUnavailable"];
@@ -4161,7 +4552,17 @@ export interface operations {
     };
     setPlaybackMode: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4189,6 +4590,7 @@ export interface operations {
                 };
             };
             403: components["responses"]["PlaybackDisabled"];
+            404: components["responses"]["NoSuchSession"];
             409: components["responses"]["PlaybackModeUnavailable"];
             415: components["responses"]["JsonRequired"];
             500: components["responses"]["PlayerRefused"];
@@ -4294,7 +4696,17 @@ export interface operations {
     };
     getState: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4317,12 +4729,23 @@ export interface operations {
                 };
             };
             304: components["responses"]["NotModified"];
+            404: components["responses"]["NoSuchSession"];
             429: components["responses"]["StatePolledTooFast"];
         };
     };
     getQueue: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4338,6 +4761,7 @@ export interface operations {
                     "application/json": components["schemas"]["QueueRead"];
                 };
             };
+            404: components["responses"]["NoSuchSession"];
             /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
             500: {
                 headers: {
@@ -4369,7 +4793,17 @@ export interface operations {
     };
     queueTracks: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4397,14 +4831,22 @@ export interface operations {
                 };
             };
             403: components["responses"]["PlaybackDisabled"];
-            404: components["responses"]["NoSuchPlaylist"];
-            /** @description Either the `structure` a library-tracks request named has moved -- tracks were added to or removed from the library, so every ordinal it carries has shifted -- or `at` was sent with a `revision` the queue has moved past or never reached. `error` tells the two apart: re-read `GET /state`'s `library.structure` and export again for the first, or re-read `GET /queue` and try again for the second. */
+            /** @description No playlist has that id, or `session` names no session this device may see. The `error` string tells them apart, and the second answers in the same bytes as `NoSuchSession`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFailed"] | components["schemas"]["Error"];
+                };
+            };
+            /** @description Either the `structure` a library-tracks request named has moved -- tracks were added to or removed from the library, so every ordinal it carries has shifted -- or `at` was sent with a `revision` the queue has moved past or never reached. `error` tells the two apart: re-read `GET /state`'s `library.structure` and export again for the first, or re-read `GET /queue` and try again for the second. Naming a detached session, a request that would take its queue past 10000 entries is refused whole, and changes nothing. */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlaylistFailed"];
+                    "application/json": components["schemas"]["PlaylistFailed"] | components["schemas"]["Error"];
                 };
             };
             415: components["responses"]["JsonRequired"];
@@ -4440,7 +4882,17 @@ export interface operations {
     };
     clearQueue: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4455,6 +4907,7 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["PlaybackDisabled"];
+            404: components["responses"]["NoSuchSession"];
             429: components["responses"]["TooManyRequests"];
             /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
             500: {
@@ -4487,7 +4940,17 @@ export interface operations {
     };
     moveQueueEntry: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4515,6 +4978,7 @@ export interface operations {
                 };
             };
             403: components["responses"]["PlaybackDisabled"];
+            404: components["responses"]["NoSuchSession"];
             /** @description `revision` is not the queue's current one: it has moved past what a client planned this against, or has not reached it yet. Re-read `GET /queue` and try again. */
             409: {
                 headers: {
@@ -4560,6 +5024,15 @@ export interface operations {
             query: {
                 /** @description The queue revision `index` was read at, from `GET /state`'s `queueRevision` or `GET /queue`'s own `revision`. */
                 revision: number;
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
             };
             header?: never;
             path: {
@@ -4587,6 +5060,7 @@ export interface operations {
                 };
             };
             403: components["responses"]["PlaybackDisabled"];
+            404: components["responses"]["NoSuchSession"];
             /** @description `revision` is not the queue's current one: it has moved past what a client planned this against, or has not reached it yet. Re-read `GET /queue` and try again. */
             409: {
                 headers: {
@@ -4830,6 +5304,15 @@ export interface operations {
         parameters: {
             query: {
                 /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+                /**
                  * @description The columns to evaluate, repeated once per column: `?columns=%25title%25&columns=%25artist%25`. Never comma-separated, because a title-formatting expression may contain commas. The answer carries one value per column, in the order declared.
                  *
                  *     Passed to foobar2000's title-formatting compiler untouched, under the same gate `GET /track/library` puts on a declaration: at most 64, each 1 to 1024 printable characters, and no repeats.
@@ -4914,7 +5397,17 @@ export interface operations {
     };
     getPlayingArtwork: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5001,7 +5494,15 @@ export interface operations {
     };
     issueStreamTicket: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5030,13 +5531,24 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            404: components["responses"]["NoSuchSession"];
             415: components["responses"]["JsonRequired"];
             503: components["responses"]["StreamUnavailable"];
         };
     };
     getStreamListeners: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5052,6 +5564,7 @@ export interface operations {
                     "application/json": components["schemas"]["StreamListeners"];
                 };
             };
+            404: components["responses"]["NoSuchSession"];
         };
     };
     releaseOutputHold: {
@@ -5083,7 +5596,15 @@ export interface operations {
     };
     leaveStream: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5110,12 +5631,23 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            404: components["responses"]["NoSuchSession"];
             415: components["responses"]["JsonRequired"];
         };
     };
     getStreamTimeline: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5131,6 +5663,7 @@ export interface operations {
                     "application/json": components["schemas"]["StreamTimeline"];
                 };
             };
+            404: components["responses"]["NoSuchSession"];
             503: components["responses"]["StreamUnavailable"];
         };
     };
@@ -5181,7 +5714,149 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            404: components["responses"]["NoSuchSession"];
             503: components["responses"]["StreamUnavailable"];
+        };
+    };
+    listSessions: {
+        parameters: {
+            query?: {
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sessions, the player's own first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sessions"];
+                };
+            };
+        };
+    };
+    createSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceIdentity"];
+            };
+        };
+        responses: {
+            /** @description The new session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description A body that is not a JSON object, a `deviceId` or `name` that is not text, either of them longer than 64 bytes as sent, or no `deviceId`. A `deviceId` that is absent, empty, only spaces and tabs, or holds an unprintable character counts as none, and so does a `deviceId` in the query. A `name` like that is not refused: the session's `createdBy.name` answers `null`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            415: components["responses"]["JsonRequired"];
+            503: components["responses"]["SessionsUnavailable"];
+        };
+    };
+    getSession: {
+        parameters: {
+            query?: {
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description A session's `id`, `engine` for the player's own.
+                 * @example engine
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            404: components["responses"]["NoSuchSession"];
+        };
+    };
+    shareSession: {
+        parameters: {
+            query: {
+                /** @description The device asking. Required here, since only a device that may see the session may change it. */
+                deviceId: string;
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description A session's `id`, `engine` for the player's own.
+                 * @example engine
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShareSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description The session as the change left it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description No `deviceId` in the query, or a body without a boolean `shared`. Nothing was changed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NoSuchSession"];
+            /** @description The player's own session is always shared, and nothing about it changes here. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            415: components["responses"]["JsonRequired"];
         };
     };
 }

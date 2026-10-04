@@ -28,7 +28,8 @@ What one run does to the player, which is little but not nothing:
 - **It declares a column set of its own and takes the library.** One column, so the snapshot a client is using is the other of the two an implementation keeps rather than the one evicted. The refresh that follows rebuilds that one-column set, not the client's.
 - **It asks for one cover and expects not to get it.** The address it sends names a track no player holds, because the snapshot is binary and the suite decodes none of it, so what the answer pins is the refusal rather than a picture.
 - **It empties the play queue.** `DELETE /queue` carries no revision to refuse it against, so nothing scopes the clear to what the run added; point `CONTRACT_URL` at an install whose queue is nobody's to lose. The move and remove probes beside it name a revision no queue holds, so those two change nothing.
-- **It opens the stream and hangs up at once**, mints a ticket, asks for the output hold to be released, and leaves.
+- **It opens the stream and hangs up at once**, mints a ticket, and asks for the output hold to be released.
+- **It creates one private session** and plays the library's first track in it with nobody listening, so nothing decodes and nothing is heard. That play names the run's session and never the player's own. It reads the session, lists the sessions, stops sharing it, and leaves it last, which ends it at once; that leave names the session, so the run's linger on the player's own stream runs out on its own. Where the implementation declines to create one, the leave ends that linger instead.
 
 ## What it checks
 

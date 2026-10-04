@@ -50,6 +50,7 @@ const std::vector<RestartKey>& restartKeys() {
         {"aacBitrate", [](const Settings& s) { return json(s.aacBitrate); }},
         {"bindAddress", [](const Settings& s) { return json(s.bindAddress); }},
         {"maxConcurrentStreams", [](const Settings& s) { return json(s.maxConcurrentStreams); }},
+        {"maxSessions", [](const Settings& s) { return json(s.maxSessions); }},
         {"muteWhileStreaming", [](const Settings& s) { return json(s.muteWhileStreaming); }},
         {"opusBitrate", [](const Settings& s) { return json(s.opusBitrate); }},
         {"port", [](const Settings& s) { return json(s.port); }},

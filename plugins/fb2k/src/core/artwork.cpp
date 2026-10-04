@@ -72,6 +72,10 @@ std::string publishablePicture(std::string chosen,
     return imageTypeOf(embedded).empty() ? chosen : embedded;
 }
 
+bool oversized(const ArtworkSource& source) {
+    return source.picture ? source.picture->size() > kMaxArtworkBytes : !source.tag.empty();
+}
+
 void NowPlayingArtwork::hold(std::string picture) {
     if (picture.empty()) {
         clear();

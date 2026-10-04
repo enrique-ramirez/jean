@@ -955,6 +955,7 @@ TEST_CASE(
     PlayerStateStore store;
     PlayerState started = playing();
     started.outputDeviceId = kSpeakers;
+    started.outputSilent = false;
     store.publish(started);
     const TestServer server = serving(&library, &store);
 
@@ -978,18 +979,133 @@ TEST_CASE(
     REQUIRE_FALSE(movedTag.empty());
     CHECK(movedTag != tag);
 
-    store.outputDeviceChanged(std::string{kHeadphones});
+    store.outputDeviceChanged(std::string{kHeadphones}, false);
 
     const auto held = getHolding(server, "/api/state", movedTag);
     REQUIRE(held);
     CHECK(held->status == 304);
 
-    store.outputDeviceChanged(std::nullopt);
+    store.outputDeviceChanged(std::nullopt, std::nullopt);
 
     const auto unnamed = getHolding(server, "/api/state", movedTag);
     REQUIRE(unnamed);
     REQUIRE(unnamed->status == 200);
     CHECK(json::parse(unnamed->body).at("player").at("outputDeviceId") == nullptr);
+}
+
+// One device id throughout, so a poll that read the answer off the id rather than off what the
+// player reported would answer the same thing all three times.
+TEST_CASE("the poll says whether the output plays anywhere as true, false or null, beside the id") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    PlayerState state = playing();
+    state.outputDeviceId = kSpeakers;
+    state.outputSilent = true;
+    store.publish(state);
+    const TestServer server = serving(&library, &store);
+
+    const auto silent = playerSection(server);
+    REQUIRE(silent.contains("outputSilent"));
+    CHECK(silent["outputSilent"].is_boolean());
+    CHECK(silent["outputSilent"] == true);
+    CHECK(silent["outputDeviceId"] == kSpeakers);
+
+    store.outputDeviceChanged(std::string{kSpeakers}, false);
+
+    const auto audible = playerSection(server);
+    CHECK(audible["outputSilent"].is_boolean());
+    CHECK(audible["outputSilent"] == false);
+    CHECK(audible["outputDeviceId"] == kSpeakers);
+
+    store.outputDeviceChanged(std::nullopt, std::nullopt);
+
+    const auto unknown = playerSection(server);
+    REQUIRE(unknown.contains("outputSilent"));
+    CHECK(unknown["outputSilent"].is_null());
+    CHECK(unknown["outputDeviceId"].is_null());
+}
+
+TEST_CASE("a player whose output was never reported answers null for the id and for the silence") {
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library);
+
+    const auto player = playerSection(server);
+
+    REQUIRE(player.contains("outputSilent"));
+    CHECK(player["outputSilent"].is_null());
+    CHECK(player["outputDeviceId"].is_null());
+}
+
+TEST_CASE(
+    "a poll carries a body when only the output's silence changed, and a 304 until it changes "
+    "again") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    PlayerState started = playing();
+    started.outputDeviceId = kSpeakers;
+    started.outputSilent = false;
+    store.publish(started);
+    const TestServer server = serving(&library, &store);
+
+    const auto first = get(server, "/api/state");
+    REQUIRE(first);
+    REQUIRE(first->status == 200);
+    const auto tag = first->get_header_value("ETag");
+    REQUIRE_FALSE(tag.empty());
+
+    store.outputDeviceChanged(std::string{kSpeakers}, true);
+
+    const auto moved = getHolding(server, "/api/state", tag);
+    REQUIRE(moved);
+    REQUIRE(moved->status == 200);
+    CHECK(json::parse(moved->body).at("player").at("outputSilent") == true);
+
+    const auto movedTag = moved->get_header_value("ETag");
+    REQUIRE_FALSE(movedTag.empty());
+    CHECK(movedTag != tag);
+
+    store.outputDeviceChanged(std::string{kSpeakers}, true);
+
+    const auto held = getHolding(server, "/api/state", movedTag);
+    REQUIRE(held);
+    CHECK(held->status == 304);
+}
+
+// The player's volume callback leaves the stream's hold out of `muted`, so the case reports a mute
+// by hand, as a user's would arrive, and moves the level.
+TEST_CASE("neither the volume nor a mute, the stream's hold included, moves outputSilent") {
+    Library library;
+    fill(library);
+    PlayerStateStore store;
+    PlayerState state = playing();
+    state.outputDeviceId = kSpeakers;
+
+    SUBCASE("an output that plays nowhere") {
+        state.outputSilent = true;
+    }
+    SUBCASE("an output that plays somewhere") {
+        state.outputSilent = false;
+    }
+
+    store.publish(state);
+    const TestServer server = serving(&library, &store);
+    const bool reported = *state.outputSilent;
+
+    store.volumeChanged(-30, true);
+    const auto muted = playerSection(server);
+    CHECK(muted["muted"] == true);
+    CHECK(muted["outputSilent"] == reported);
+
+    store.volumeChanged(-100, false);
+    const auto quiet = playerSection(server);
+    CHECK(quiet["volume"] == -100);
+    CHECK(quiet["outputSilent"] == reported);
+
+    store.volumeChanged(0, false);
+    CHECK(playerSection(server)["outputSilent"] == reported);
 }
 
 TEST_CASE("a conditional poll is a 200 when the playing row moved, a 304 until it moves again") {
@@ -1249,16 +1365,27 @@ TEST_CASE("the player section names each revision once and carries nothing else 
     store.playlistsChanged(oneListed());
     const TestServer server = serving(&library, listingThePlayingPlaylist(), &store);
 
-    const Keys published = {"playback",        "path",
-                            "subsong",         "libraryPath",
-                            "position",        "duration",
-                            "volume",          "muted",
-                            "playbackMode",    "outputDeviceId",
-                            "title",           "artist",
-                            "album",           "albumArtist",
-                            "playingLocation", "currentPlaylistId",
-                            "queueRevision",   "playlistsRevision",
-                            "timelineRevision"};
+    const Keys published = {"playback",
+                            "path",
+                            "subsong",
+                            "libraryPath",
+                            "position",
+                            "duration",
+                            "volume",
+                            "muted",
+                            "playbackMode",
+                            "outputDeviceId",
+                            "outputSilent",
+                            "title",
+                            "artist",
+                            "album",
+                            "albumArtist",
+                            "playingLocation",
+                            "currentPlaylistId",
+                            "queueRevision",
+                            "playlistsRevision",
+                            "timelineRevision",
+                            "sessionRevision"};
 
     CHECK(keysOf(playerSection(server)) == published);
 }

@@ -4,6 +4,10 @@
 #include "core/http_responses.h"
 #include "core/json.h"
 #include "core/requests_queue.h"
+#include "core/session_scope.h"
+
+#include <algorithm>
+#include <utility>
 
 namespace jean {
 
@@ -18,14 +22,26 @@ constexpr char kQueueEntryPath[] = R"(/api/queue/([^/]+))";
 
 }  // namespace
 
-QueueRoutes::QueueRoutes(const QueueCalls& queue, const Library* library,
+QueueRoutes::QueueRoutes(const QueueCalls& queue, const SessionCalls& sessions,
+                         SessionRegistry& registry, const Library* library,
                          const PlayerStateStore* playerState, const LiveSettings& settings,
-                         Throttle& changes)
+                         Throttle& changes, const RateLimitClock& clock)
     : queue_(queue),
+      sessions_(sessions),
+      registry_(registry),
       library_(library),
       playerState_(playerState),
       settings_(settings),
-      changes_(changes) {}
+      changes_(changes),
+      clock_(clock) {}
+
+SessionAnswer QueueRoutes::namedSession(const httplib::Request& req, httplib::Response& res) {
+    return scopedSession(sessionScopeOf(req), res, registry_, clock_());
+}
+
+SessionAnswer QueueRoutes::commandedSession(const httplib::Request& req, httplib::Response& res) {
+    return jean::commandedSession(req, res, registry_, clock_(), *settings_.current());
+}
 
 // A revision only a route reading it ahead of the player can judge: the store, not the job, is
 // what a client's own next poll will see.
@@ -38,10 +54,79 @@ bool QueueRoutes::queueMoved(uint64_t revision, httplib::Response& res) const {
     return true;
 }
 
-void QueueRoutes::queuePlaylistRows(const JsonObject& body, httplib::Response& res) {
+void QueueRoutes::readSessionQueue(const Session& session, httplib::Response& res) {
+    if (!sessions_.readQueue) {
+        respondUnavailable(res, kNoQueue);
+        return;
+    }
+
+    const auto queue = session.queue();
+    auto read = sessions_.readQueue(queue.entries);
+    if (read.outcome != PlayerOutcome::done) {
+        respondOutcome(res, read.outcome);
+        return;
+    }
+
+    read.revision = queue.revision;
+    std::for_each(read.entries.begin(), read.entries.end(),
+                  [](QueuedTrack& entry) { entry.location.reset(); });
+
+    respond(res, 200, queueDocument(read));
+}
+
+void QueueRoutes::queueInSession(Session& session, std::optional<QueuePosition> at,
+                                 size_t requestedCount,
+                                 const std::function<SessionTracksRead()>& take,
+                                 httplib::Response& res) {
+    if (changingTooFast(changes_, res))
+        return;
+
+    if (at && at->revision != session.revisions().queue) {
+        respondOutcome(res, PlayerOutcome::queueMoved);
+        return;
+    }
+
+    if (requestedCount > kMaxSessionQueue) {
+        respondError(res, 409, kSessionQueueFull);
+        return;
+    }
+
+    auto taken = take();
+    if (taken.outcome != PlayerOutcome::done) {
+        respondCommand(res, taken.outcome);
+        return;
+    }
+
+    const auto queued = at ? session.enqueueAt(std::move(taken.tracks), at->index, at->revision)
+                           : session.enqueue(std::move(taken.tracks));
+    if (queued == PlayerOutcome::tooMany) {
+        respondError(res, 409, kSessionQueueFull);
+        return;
+    }
+
+    respondCommand(res, queued);
+}
+
+void QueueRoutes::queuePlaylistRows(Session* session, const JsonObject& body,
+                                    httplib::Response& res) {
     const auto request = parseQueueRows(body);
     if (!request.ok()) {
         respondRefusal(res, request.refusal);
+        return;
+    }
+
+    if (session) {
+        if (!sessions_.takePlaylist) {
+            respondUnavailable(res, kNoQueue);
+            return;
+        }
+
+        queueInSession(
+            *session, request.at, request.positions.size(),
+            [this, &request] {
+                return sessions_.takePlaylist(request.playlistId, request.positions);
+            },
+            res);
         return;
     }
 
@@ -59,7 +144,8 @@ void QueueRoutes::queuePlaylistRows(const JsonObject& body, httplib::Response& r
     respondCommand(res, queue_.addPlaylistRows(request.playlistId, request.positions, request.at));
 }
 
-void QueueRoutes::queueLibraryTracks(const JsonObject& body, httplib::Response& res) {
+void QueueRoutes::queueLibraryTracks(Session* session, const JsonObject& body,
+                                     httplib::Response& res) {
     const auto state = readyLibrary(library_, res);
     if (!state)
         return;
@@ -67,6 +153,19 @@ void QueueRoutes::queueLibraryTracks(const JsonObject& body, httplib::Response& 
     const auto request = parseQueueTracks(body, state->trackCount, state->structure);
     if (!request.ok()) {
         respondRequestRefused(res, request);
+        return;
+    }
+
+    if (session) {
+        if (!sessions_.takeLibrary) {
+            respondUnavailable(res, kNoQueue);
+            return;
+        }
+
+        queueInSession(
+            *session, request.at, request.ordinals.size(),
+            [this, &request] { return sessions_.takeLibrary(request.structure, request.ordinals); },
+            res);
         return;
     }
 
@@ -85,7 +184,16 @@ void QueueRoutes::queueLibraryTracks(const JsonObject& body, httplib::Response& 
 }
 
 void QueueRoutes::addTo(httplib::Server& server) {
-    server.Get(kQueuePath, [this](const httplib::Request&, httplib::Response& res) {
+    server.Get(kQueuePath, [this](const httplib::Request& req, httplib::Response& res) {
+        const auto named = namedSession(req, res);
+        if (named.which == SessionAnswer::Which::none)
+            return;
+
+        if (named.session) {
+            readSessionQueue(*named.session, res);
+            return;
+        }
+
         if (!queue_.read) {
             respondUnavailable(res, kNoQueue);
             return;
@@ -101,16 +209,17 @@ void QueueRoutes::addTo(httplib::Server& server) {
     });
 
     server.Post(kQueuePath, [this](const httplib::Request& req, httplib::Response& res) {
-        if (playbackRefused(*settings_.current(), res))
+        const auto named = commandedSession(req, res);
+        if (named.which == SessionAnswer::Which::none)
             return;
 
         const auto body = parseJsonObject(req.body);
         switch (queueSourceOf(body)) {
             case QueueSource::playlistRows:
-                queuePlaylistRows(body, res);
+                queuePlaylistRows(named.session.get(), body, res);
                 return;
             case QueueSource::libraryTracks:
-                queueLibraryTracks(body, res);
+                queueLibraryTracks(named.session.get(), body, res);
                 return;
             case QueueSource::invalid:
                 respondRefusal(res, PlaylistRefusal::malformedBody);
@@ -118,9 +227,19 @@ void QueueRoutes::addTo(httplib::Server& server) {
         }
     });
 
-    server.Delete(kQueuePath, [this](const httplib::Request&, httplib::Response& res) {
-        if (playbackRefused(*settings_.current(), res))
+    server.Delete(kQueuePath, [this](const httplib::Request& req, httplib::Response& res) {
+        const auto named = commandedSession(req, res);
+        if (named.which == SessionAnswer::Which::none)
             return;
+
+        if (named.session) {
+            if (changingTooFast(changes_, res))
+                return;
+
+            named.session->clearQueue();
+            respondCommand(res, PlayerOutcome::done);
+            return;
+        }
 
         if (!queue_.clear) {
             respondUnavailable(res, kNoQueue);
@@ -134,12 +253,22 @@ void QueueRoutes::addTo(httplib::Server& server) {
     });
 
     server.Post(kMoveQueuePath, [this](const httplib::Request& req, httplib::Response& res) {
-        if (playbackRefused(*settings_.current(), res))
+        const auto named = commandedSession(req, res);
+        if (named.which == SessionAnswer::Which::none)
             return;
 
         const auto request = parseMoveQueue(parseJsonObject(req.body));
         if (!request.ok()) {
             respondRefusal(res, request.refusal);
+            return;
+        }
+
+        if (named.session) {
+            if (changingTooFast(changes_, res))
+                return;
+
+            respondCommand(res,
+                           named.session->moveQueued(request.from, request.to, request.revision));
             return;
         }
 
@@ -158,13 +287,22 @@ void QueueRoutes::addTo(httplib::Server& server) {
     });
 
     server.Delete(kQueueEntryPath, [this](const httplib::Request& req, httplib::Response& res) {
-        if (playbackRefused(*settings_.current(), res))
+        const auto named = commandedSession(req, res);
+        if (named.which == SessionAnswer::Which::none)
             return;
 
         const auto request =
             parseRemoveQueue(req.matches[1].str(), req.get_param_value("revision"));
         if (!request.ok()) {
             respondRefusal(res, request.refusal);
+            return;
+        }
+
+        if (named.session) {
+            if (changingTooFast(changes_, res))
+                return;
+
+            respondCommand(res, named.session->removeQueued(request.index, request.revision));
             return;
         }
 

@@ -60,6 +60,7 @@ $flags = @(
   "/I`"$src`"",
   "/imsvc`"$root`"",
   "/imsvc`"$sdk`"",
+  "/imsvc`"$(Join-Path $sdk 'foobar2000')`"",
   "/imsvc`"$(Join-Path $sdk 'wtl\Include')`"",
   "/imsvc`"$(Join-Path $root 'third_party\opus\include')`"",
   "/imsvc`"$(Join-Path $root 'third_party\ogg\include')`"",

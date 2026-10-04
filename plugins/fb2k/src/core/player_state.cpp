@@ -7,6 +7,15 @@ namespace jean {
 using std::chrono::duration;
 using std::chrono::steady_clock;
 
+namespace {
+
+bool samePlayerFields(const PlayerState& a, const PlayerState& b) {
+    return a.volume == b.volume && a.muted == b.muted && a.outputDeviceId == b.outputDeviceId &&
+           a.outputSilent == b.outputSilent && a.currentPlaylistId == b.currentPlaylistId;
+}
+
+}  // namespace
+
 bool operator==(const PlayingLocation& a, const PlayingLocation& b) {
     return a.playlistId == b.playlistId && a.index == b.index;
 }
@@ -25,9 +34,10 @@ bool operator==(const PlayerState& a, const PlayerState& b) {
            a.libraryPath == b.libraryPath && a.position.seconds == b.position.seconds &&
            a.position.taken == b.position.taken && a.duration == b.duration &&
            a.volume == b.volume && a.muted == b.muted && a.playbackMode == b.playbackMode &&
-           a.outputDeviceId == b.outputDeviceId && a.title == b.title && a.artist == b.artist &&
-           a.album == b.album && a.albumArtist == b.albumArtist &&
-           a.playingLocation == b.playingLocation && a.currentPlaylistId == b.currentPlaylistId;
+           a.outputDeviceId == b.outputDeviceId && a.outputSilent == b.outputSilent &&
+           a.title == b.title && a.artist == b.artist && a.album == b.album &&
+           a.albumArtist == b.albumArtist && a.playingLocation == b.playingLocation &&
+           a.currentPlaylistId == b.currentPlaylistId;
 }
 
 void PlayerStateStore::publish(PlayerState state) {
@@ -37,7 +47,8 @@ void PlayerStateStore::publish(PlayerState state) {
 
 PlayerStateStore::Published PlayerStateStore::read() const {
     const std::lock_guard<std::mutex> held(mutex_);
-    return {version_, queueRevision_, playlistsRevision_, timelineRevision_, state_};
+    return {version_,          queueRevision_,  playlistsRevision_,
+            timelineRevision_, playerRevision_, state_};
 }
 
 void PlayerStateStore::started(PlayingTrack track, steady_clock::time_point now) {
@@ -141,11 +152,13 @@ void PlayerStateStore::playbackModeChanged(std::optional<std::string> mode) {
     applyLocked(std::move(next));
 }
 
-void PlayerStateStore::outputDeviceChanged(std::optional<std::string> id) {
+void PlayerStateStore::outputDeviceChanged(std::optional<std::string> id,
+                                           std::optional<bool> silent) {
     const std::lock_guard<std::mutex> held(mutex_);
 
     PlayerState next = state_;
     next.outputDeviceId = std::move(id);
+    next.outputSilent = silent;
 
     applyLocked(std::move(next));
 }
@@ -209,6 +222,9 @@ void PlayerStateStore::timelineMarked() {
 void PlayerStateStore::applyLocked(PlayerState next) {
     if (next == state_)
         return;
+
+    if (!samePlayerFields(next, state_))
+        ++playerRevision_;
 
     state_ = std::move(next);
     ++version_;

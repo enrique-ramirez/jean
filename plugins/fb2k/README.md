@@ -70,13 +70,14 @@ Everything is a file. `<profile>/foo_jean/config.json` is written on first start
   "aacBitrate": 192000,
   "maxConcurrentStreams": 8,
   "streamTicketTtlSeconds": 120,
-  "muteWhileStreaming": true
+  "muteWhileStreaming": true,
+  "maxSessions": 4
 }
 ```
 
 Every key is optional. An absent key keeps its default; a present but malformed one logs a line naming it, the value it refused and the default it took, so a single bad edit cannot stop a headless player coming up and never leaves silent about what happened. A key that is not a setting at all is reported too, because a typo like `bindaddress` otherwise changes nothing and says nothing.
 
-`controlPlayback`, `writePlaylists`, `allowedFields`, `changeOutput`, `streamingEnabled`, `maxAutoPlaylists`, `allowedHosts` and `allowedOrigins` take effect on the next request once the file changes on disk, with no restart. `port`, `bindAddress`, `opusBitrate`, `aacBitrate`, `maxConcurrentStreams`, `streamTicketTtlSeconds` and `muteWhileStreaming` keep their running values until foobar2000 restarts, because nothing rebinds a listening socket or a stream already open.
+`controlPlayback`, `writePlaylists`, `allowedFields`, `changeOutput`, `streamingEnabled`, `maxAutoPlaylists`, `allowedHosts` and `allowedOrigins` take effect on the next request once the file changes on disk, with no restart. `port`, `bindAddress`, `opusBitrate`, `aacBitrate`, `maxConcurrentStreams`, `streamTicketTtlSeconds`, `muteWhileStreaming` and `maxSessions` keep their running values until foobar2000 restarts, because nothing rebinds a listening socket, reopens a stream already open or resizes the session cap the listener started with.
 
 | key | meaning |
 |---|---|
@@ -87,14 +88,15 @@ Every key is optional. An absent key keeps its default; a present but malformed 
 | `allowedFields` | The write allowlist. Nothing outside it is ever written, and clients read it from `/api/capabilities` rather than being configured twice. Empty switches writing off. |
 | `maxAutoPlaylists` | How many autoplaylists this component will keep at once, counting only the ones it created. `0` switches creation off. |
 | `writePlaylists` | `true` by default, so leaving it alone permits every playlist write this component can make: create, add, edit, delete, reorder, rename. Set it to `false` to make every playlist and autoplaylist read-only except the component's own scratch playlist, which stays writable because it is how Jean works rather than the user's music. |
-| `controlPlayback` | `true` by default. Set it to `false` and every playback command, seek, playback mode, volume, playing a row, and every queue and scratch write answers `403 playbackDisabled`; reading the queue and the state still answers. |
+| `controlPlayback` | `true` by default. Set it to `false` and the volume, every scratch write, and every playback command, seek, playback mode, row played and queue write addressed to the player's own session answer `403 playbackDisabled`; reading the queue and the state still answers. A detached session is governed by none of it, and creating one is not refused. |
 | `changeOutput` | `true` by default. Set it to `false` and `POST /api/outputs/active` answers `403`, so no client can switch the player's output device; `GET /api/outputs` still lists them. |
-| `streamingEnabled` | `false`, or a `maxConcurrentStreams` of `0`, and the capture callback is never registered at all. `/api/capabilities` then reports `canStream: false`. |
+| `streamingEnabled` | `false` refuses every stream, the player's own session's and every detached session's, and refuses creating a detached session, since a detached session is heard nowhere else. `/api/capabilities` then reports `canStream: false` and `canCreateSessions: false`. A `maxConcurrentStreams` of `0` does the same, and then the capture callback is never registered at all. |
 | `opusBitrate` | Bits per second for the Opus stream, between 32000 and 510000. One bitrate rather than a per-request choice: each distinct value would need its own encoder and buffer for as long as anybody listened to it. Opus is hard to tell from the source above 192000, and libopus can barely spend more than 256000. |
 | `aacBitrate` | Bits per second for the AAC stream, and **only one of four values**, which `src/core/settings.h` names beside the reason. A refusal would cost the ADTS format altogether, which is the only one older Safari can play, so a value off the list is reported and replaced rather than passed on. |
-| `maxConcurrentStreams` | Stream *connections*, which is not the same as listeners: one device is routinely two, for the reason `plugins/fb2k/ARCHITECTURE.md`, *Facts about the player*, gives. Over the cap is a `503` saying so. |
+| `maxConcurrentStreams` | Stream *connections*, across every session together, which is not the same as listeners: one device is routinely two, for the reason `plugins/fb2k/ARCHITECTURE.md`, *Facts about the player*, gives. Over the cap is a `503` saying so. |
 | `streamTicketTtlSeconds` | How long a stream ticket stays valid, between 10 and 3600. A ticket is **not** single-use, for that same reason; the window is what bounds a leaked URL. |
-| `muteWhileStreaming` | Silences the player while anybody is listening, so the sound moves rather than doubles. `false` makes the player one more speaker alongside every listener: fine a room away, an echo in the same room, because the stream runs a second or two behind. |
+| `maxSessions` | How many detached playback sessions this component will keep at once, between 0 and 8; the player's own session is never counted. One past the cap is a `503` saying so, and `0` switches creating them off. |
+| `muteWhileStreaming` | Silences the player while anybody is listening to the player's own session, so the sound moves rather than doubles. A listener to a detached session never silences it. `false` makes the player one more speaker alongside every listener: fine a room away, an echo in the same room, because the stream runs a second or two behind. |
 
 ### The preferences page
 
@@ -102,7 +104,7 @@ Every key is optional. An absent key keeps its default; a present but malformed 
 
 The page is stricter than the file parser, deliberately: a hand-edited file must never stop a headless player coming up, so a bad key there falls back to a default, while the dialog refuses and says what to type.
 
-**Applying most switches needs no restart**, since a change to `config.json` reaches a running listener within a couple of seconds. Either page shows *"a restart is needed for some changes to take effect"*, and only where a saved value differs from what the process is actually running with for one of `port`, `bindAddress`, `opusBitrate`, `aacBitrate`, `maxConcurrentStreams`, `streamTicketTtlSeconds` or `muteWhileStreaming`, since nothing rebinds a listening socket or a stream already open.
+**Applying most switches needs no restart**, since a change to `config.json` reaches a running listener within a couple of seconds. Either page shows *"a restart is needed for some changes to take effect"*, and only where a saved value differs from what the process is actually running with for one of the keys above that wait for a restart.
 
 ## The API
 

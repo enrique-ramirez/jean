@@ -41,6 +41,8 @@ struct QueueEditFacts {
 
     // A row past the end of its playlist, or a queue position past the end of the queue.
     bool positionPastEnd = false;
+
+    bool tooMany = false;
 };
 
 // done where nothing refuses the edit. A moved queue outranks everything else: every other fact

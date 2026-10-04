@@ -539,6 +539,12 @@ TEST_CASE("each restart-only key that differs from what is running needs a resta
              s.muteWhileStreaming = false;
              return s;
          }()},
+        {"maxSessions",
+         [&] {
+             auto s = running;
+             s.maxSessions = 2;
+             return s;
+         }()},
     };
 
     for (const auto& [key, saved] : oneKeyChanged) {

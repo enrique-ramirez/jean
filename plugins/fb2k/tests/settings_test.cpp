@@ -3,6 +3,7 @@
 
 #include "third_party/doctest.h"
 
+#include "core/reload.h"
 #include "core/settings.h"
 
 #include <algorithm>
@@ -356,4 +357,66 @@ TEST_CASE("a malformed key at startup logs the key, the value it refused and the
     CHECK(parseFresh(R"({"maxAutoPlaylists": -7})").maxAutoPlaylists ==
           Settings().maxAutoPlaylists);
     CHECK(lineWith({"maxAutoPlaylists", "-7", "100"}));
+}
+
+TEST_CASE("an absent maxSessions allows four detached sessions, and the file says so") {
+    CHECK(Settings().maxSessions == 4);
+    CHECK(parseFresh("{}").maxSessions == 4);
+    CHECK(json::parse(serialiseSettings(parseFresh("{}")))["maxSessions"] == 4);
+}
+
+// Zero is kept, because it is how an install turns creating sessions off.
+TEST_CASE("a session cap from 0 to 8 is read as written") {
+    for (int cap = 0; cap <= 8; ++cap) {
+        INFO("maxSessions: ", cap);
+        const auto settings = parseFresh(R"({"maxSessions": )" + std::to_string(cap) + "}");
+
+        CHECK(settings.maxSessions == cap);
+        CHECK_FALSE(logged("'maxSessions'"));
+    }
+}
+
+TEST_CASE("a session cap outside 0 to 8 falls back to four and logs the value it refused") {
+    const auto lineWith = [](std::initializer_list<const char*> fragments) {
+        const auto lines = loggedLines();
+        return std::any_of(lines.begin(), lines.end(), [fragments](const std::string& line) {
+            return std::all_of(fragments.begin(), fragments.end(), [&line](const char* fragment) {
+                return line.find(fragment) != std::string::npos;
+            });
+        });
+    };
+
+    CHECK(parseFresh(R"({"maxSessions": 9})").maxSessions == 4);
+    CHECK(lineWith({"maxSessions", "9", "4"}));
+
+    CHECK(parseFresh(R"({"maxSessions": -1})").maxSessions == 4);
+    CHECK(lineWith({"maxSessions", "-1", "4"}));
+
+    CHECK(parseFresh(R"({"maxSessions": "four"})").maxSessions == 4);
+    CHECK(lineWith({"maxSessions", "four", "4"}));
+}
+
+TEST_CASE("maxSessions survives a round trip through the file format") {
+    Settings original;
+    original.maxSessions = 7;
+
+    CHECK(parseFresh(serialiseSettings(original)).maxSessions == 7);
+    CHECK_FALSE(logged("'maxSessions'"));
+}
+
+// The registry is built once with the cap it is given, as the stream cap's audience is.
+TEST_CASE("a reload keeps the running session cap and says a restart is needed for the new one") {
+    Settings running;
+    running.maxSessions = 2;
+
+    auto file = running;
+    file.maxSessions = 6;
+
+    const auto decision = decideReload(running, serialiseSettings(file));
+
+    CHECK(decision.next.maxSessions == 2);
+    CHECK(decision.restartKeys == std::vector<std::string>{"maxSessions"});
+    CHECK(decision.changedKeys.empty());
+
+    CHECK(decideReload(running, serialiseSettings(running)).restartKeys.empty());
 }

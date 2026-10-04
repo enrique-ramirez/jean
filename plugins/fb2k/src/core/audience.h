@@ -2,13 +2,16 @@
 
 #include "core/device.h"
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jean {
@@ -29,11 +32,16 @@ struct AudienceMember {
 class Audience {
 public:
     using Clock = std::chrono::steady_clock;
+    using Now = std::function<Clock::time_point()>;
 
     class Membership;
 
-    Audience(int maxConnections, std::chrono::milliseconds linger);
+    Audience(int maxConnections, std::chrono::milliseconds linger, Now now = &Clock::now);
     ~Audience();
+
+    std::unique_ptr<Audience> sibling() const;
+
+    Clock::time_point now() const;
 
     std::shared_ptr<Membership> join(const DeviceIdentity& device, const std::string& format,
                                      Clock::time_point now);
@@ -47,7 +55,11 @@ public:
 
     bool anyListening(Clock::time_point now) const;
 
+    bool holds(const std::string& deviceId, Clock::time_point now) const;
+
     bool awaitChangeFrom(bool applied);
+
+    size_t departuresHeld() const;
 
     size_t waitingForAChange() const;
 
@@ -80,14 +92,31 @@ private:
         Clock::time_point until;
     };
 
+    class Cap {
+    public:
+        explicit Cap(int max) : max_(max) {}
+
+        bool take();
+        void give();
+        int taken() const;
+
+    private:
+        const int max_;
+        std::atomic<int> taken_{0};
+    };
+
+    Audience(std::shared_ptr<Cap> cap, std::chrono::milliseconds linger, Now now);
+
     static Key keyFor(const DeviceIdentity& device, std::uint64_t connection);
     static void dropDepartures(std::vector<Departure>& departures, const Key& key);
+    static void dropExpired(std::vector<Departure>& departures, Clock::time_point now);
     static bool stillHolding(const std::vector<Entry>& entries, const Key& key);
 
     bool listeningLocked(Clock::time_point now) const;
 
     struct State {
-        State(int max, std::chrono::milliseconds linger) : maxConnections(max), linger(linger) {}
+        State(std::shared_ptr<Cap> cap, std::chrono::milliseconds linger, Now now)
+            : cap(std::move(cap)), linger(linger), now(std::move(now)) {}
 
         mutable std::mutex mutex;
         std::condition_variable changed;
@@ -96,8 +125,9 @@ private:
         std::uint64_t nextConnection = 1;
         size_t waiting = 0;
         bool closed = false;
-        const int maxConnections;
+        const std::shared_ptr<Cap> cap;
         const std::chrono::milliseconds linger;
+        const Now now;
     };
 
     std::shared_ptr<State> state_;

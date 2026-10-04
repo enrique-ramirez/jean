@@ -46,6 +46,8 @@ struct LibraryTrackResolution {
 using LibraryTrackResolver =
     std::function<LibraryTrackResolution(const std::string& track, uint32_t subsong)>;
 
+LibraryTrackTaker makeLibraryTrackTaker(OrdinalResolver resolveOrdinals);
+
 class LibraryFeed {
 public:
     // Main thread only; registering the change callbacks requires it.

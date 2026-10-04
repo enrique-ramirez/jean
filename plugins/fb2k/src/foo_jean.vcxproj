@@ -193,11 +193,31 @@
     </ClCompile>
   </ItemGroup>
 
+  <!--
+    The three foobar2000 SDK helper sources input_helper needs. Each includes "StdAfx.h", which
+    is foobar2000+atl.h and so ATL and WTL, and names "SDK/..." from the SDK's foobar2000 folder.
+    No precompiled header and that folder on their own include path keep both out of every file
+    under src/. Warnings off for the reason the Opus block gives.
+  -->
+  <ItemGroup>
+    <ClCompile Include="..\sdk\foobar2000\helpers\input_helpers.cpp;..\sdk\foobar2000\helpers\readers.cpp;..\sdk\foobar2000\helpers\file_list_helper.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <ObjectFileName>$(IntDir)sdk_helpers\</ObjectFileName>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\sdk\foobar2000;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemGroup>
+
   <ItemGroup>
     <ClCompile Include="fb2k\PCH.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="fb2k\*.cpp" Exclude="fb2k\PCH.cpp" />
+    <ClCompile Include="fb2k\*.cpp" Exclude="fb2k\PCH.cpp;fb2k\decoder_source.cpp" />
+    <!-- helpers\input_helpers.h names "SDK/..." from the SDK's foobar2000 folder too. -->
+    <ClCompile Include="fb2k\decoder_source.cpp">
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\sdk\foobar2000;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
   </ItemGroup>
 
   <!--
@@ -245,10 +265,11 @@
       <Project>{71ad2674-065b-48f5-b8b0-e1f9d3892081}</Project>
     </ProjectReference>
     <!--
-      Deliberately absent: foobar2000_sdk_helpers and libPPUI. The helpers will
-      likely be referenced once there is tag writing to do; libPPUI is a list
-      control library for UI this component does not draw. Neither is added on
-      speculation; if the link starts asking for symbols, it will name them.
+      Deliberately absent: foobar2000_sdk_helpers and libPPUI. Of the helpers,
+      only the three sources input_helper needs are compiled, in their own item
+      group above, rather than the library built with ATL throughout; libPPUI is
+      a list control library for UI this component does not draw. If the link
+      starts asking for symbols, it will name them.
     -->
   </ItemGroup>
 

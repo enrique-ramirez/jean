@@ -14,14 +14,19 @@
 #include "core/routes_playlist_rows.h"
 #include "core/routes_playlists.h"
 #include "core/routes_queue.h"
+#include "core/routes_sessions.h"
 #include "core/routes_state.h"
 #include "core/routes_stream.h"
+#include "core/session_registry.h"
 #include "core/text.h"
 
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <cstddef>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <random>
 #include <system_error>
@@ -47,6 +52,20 @@ bool isJsonRequest(const httplib::Request& req) {
 uint64_t freshRunId() {
     std::random_device source;
     return (uint64_t{source()} << 32U) | source();
+}
+
+SessionRandom sessionRandom() {
+    struct Shared {
+        std::mutex lock;
+        std::mt19937 draws{std::random_device{}()};
+    };
+
+    const auto shared = std::make_shared<Shared>();
+    return [shared](size_t bound) {
+        std::uniform_int_distribution<size_t> below(0, bound - 1);
+        const std::lock_guard<std::mutex> held(shared->lock);
+        return below(shared->draws);
+    };
 }
 
 ListenerStatus listening() {
@@ -253,18 +272,27 @@ struct HttpServer::Impl {
                           "refusing playlist changes: they are arriving faster than this "
                           "component will make them, which usually means a client is looping",
                           clock),
+          sessionCapacity{player.sessions.start != nullptr, settings.current()->maxSessions},
+          sessions(audience, sessionCapacity.maxSessions, mint, sessionRandom(),
+                   player.sessions.start),
           page(player.page),
           libraryRoutes(player.library, lib, settings, runId, clock),
-          stateRoute(lib, state, configGeneration, runId, clock, player.checkMainThread),
-          artworkRoutes(player.library, player.playlists, playing, clock),
+          stateRoute(lib, state, configGeneration, runId, clock, player.checkMainThread,
+                     player.sessions, sessions),
+          artworkRoutes(player.library, player.playlists, player.sessions, sessions, playing,
+                        clock),
           playlistRoutes(player.playlists, lib, settings, playlistChanges),
           playlistRowRoutes(player.playlists, lib, settings, playlistChanges),
           ownPlaylistRoutes(player.playlists, lib, settings, playlistChanges),
           autoPlaylistRoutes(player.autoPlaylists, settings, playlistChanges, clock),
-          queueRoutes(player.queue, lib, state, settings, playlistChanges),
-          playbackRoutes(player.playback, player.report, settings, clock),
+          queueRoutes(player.queue, player.sessions, sessions, lib, state, settings,
+                      playlistChanges, clock),
+          playbackRoutes(player.playback, player.sessions, sessions, lib, player.report, settings,
+                         clock),
           outputRoutes(player.outputs, settings),
-          streamRoutes(player.stream, audience, settings, std::move(mint)) {}
+          streamRoutes(player.stream, audience, sessions, settings, std::move(mint), clock),
+          sessionRoutes(sessions, audience, player.report, state, player.sessions, settings,
+                        player.stream.formats, sessionCapacity, clock) {}
 
     LiveSettings settings;
     std::atomic<uint64_t> configGeneration{0};
@@ -274,6 +302,11 @@ struct HttpServer::Impl {
     const uint64_t runId = freshRunId();
 
     Throttle playlistChanges;
+
+    const SessionCapacity sessionCapacity;
+
+    // Declared before streamRoutes, whose initialiser moves the mint this copies.
+    SessionRegistry sessions;
 
     PageRoutes page;
     LibraryRoutes libraryRoutes;
@@ -287,6 +320,7 @@ struct HttpServer::Impl {
     PlaybackRoutes playbackRoutes;
     OutputRoutes outputRoutes;
     StreamRoutes streamRoutes;
+    SessionRoutes sessionRoutes;
 
     httplib::Server server;
     std::thread thread;
@@ -394,10 +428,10 @@ struct HttpServer::Impl {
         });
 
         server.Get("/api/capabilities", [this](const httplib::Request&, httplib::Response& res) {
-            respond(
-                res, 200,
-                capabilitiesDocument(*settings.current(), player.report, player.stream.formats,
-                                     player.stream.releaseOutput != nullptr, library != nullptr));
+            respond(res, 200,
+                    capabilitiesDocument(*settings.current(), player.report, player.stream.formats,
+                                         player.stream.releaseOutput != nullptr, library != nullptr,
+                                         sessionCapacity));
         });
 
         libraryRoutes.addTo(server);
@@ -409,6 +443,7 @@ struct HttpServer::Impl {
         playbackRoutes.addTo(server);
         outputRoutes.addTo(server);
         streamRoutes.addTo(server);
+        sessionRoutes.addTo(server);
         stateRoute.addTo(server);
         artworkRoutes.addTo(server);
     }
@@ -470,6 +505,9 @@ void HttpServer::stop() {
     if (!impl_ || impl_->stopping.exchange(true))
         return;
 
+    // A session's listeners hold connection threads until its stream stops, so the sessions close
+    // before the join below waits for those threads.
+    impl_->sessions.close();
     impl_->server.stop();
 
     if (impl_->thread.joinable())

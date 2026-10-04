@@ -7,6 +7,7 @@
 #include "core/outputs.h"
 #include "core/player_state.h"
 #include "core/playlists.h"
+#include "core/session.h"
 #include "core/settings.h"
 #include "core/tag_write.h"
 #include "core/timeline.h"
@@ -27,6 +28,15 @@ std::string statusDocument();
 
 struct PlayerReport;
 
+struct SessionCapacity {
+    bool startsStreams = false;
+    int maxSessions = 0;
+};
+
+bool canStream(const Settings& settings, const std::vector<std::string>& streamFormats);
+bool canCreateSessions(const Settings& settings, const std::vector<std::string>& streamFormats,
+                       const SessionCapacity& capacity);
+
 // `mutesWhileStreaming` is whether this install actually holds the player's output, not
 // whether it was asked to: the setting alone is true on an install with no encoder, where
 // there is nothing to hold and DELETE /stream/hold answers 503.
@@ -38,7 +48,25 @@ struct PlayerReport;
 // name for is offered to a client not at all.
 std::string capabilitiesDocument(const Settings& settings, const PlayerReport& report,
                                  const std::vector<std::string>& streamFormats,
-                                 bool mutesWhileStreaming, bool servesLibrary);
+                                 bool mutesWhileStreaming, bool servesLibrary,
+                                 const SessionCapacity& sessions);
+
+std::vector<std::string> playbackModesOf(const std::vector<std::string>& playbackOrders);
+
+struct SessionView {
+    std::string id;
+    bool detached = false;
+    bool shared = false;
+    PlayerState state;
+    size_t listeners = 0;
+    std::vector<std::string> playbackModes;
+    bool chainDropped = false;
+    std::vector<SessionReport> reports;
+    std::optional<DeviceIdentity> createdBy;
+};
+
+std::string sessionDocument(const SessionView& session);
+std::string sessionsDocument(const std::vector<SessionView>& sessions);
 
 std::string streamListenersDocument(const std::vector<AudienceMember>& members, int connections,
                                     int maxConnections, bool playerMuted);
@@ -139,6 +167,7 @@ struct PlayerRevisions {
     uint64_t queue = 0;
     uint64_t playlists = 0;
     uint64_t timeline = 0;
+    uint64_t session = 0;
 };
 
 std::string stateDocument(const Library::State& state, const PlayerState& player,

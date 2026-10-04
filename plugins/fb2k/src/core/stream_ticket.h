@@ -31,6 +31,7 @@ public:
     struct Admission {
         bool ok = false;
         DeviceIdentity device;
+        std::string session;
 
         explicit operator bool() const { return ok; }
     };
@@ -38,7 +39,7 @@ public:
     // `mint` MUST return unguessable text and MAY return empty on failure.
     TicketStore(std::function<std::string()> mint, std::chrono::seconds ttl, size_t maxOutstanding);
 
-    Issued issue(Clock::time_point now, DeviceIdentity device = {});
+    Issued issue(Clock::time_point now, DeviceIdentity device = {}, std::string session = {});
 
     // Unknown and expired are both refused, and callers MUST NOT report which. An expired
     // ticket is dropped as it is refused, so a refusal cannot keep one alive.
@@ -52,6 +53,7 @@ private:
         std::string ticket;
         Clock::time_point expiresAt;
         DeviceIdentity device;
+        std::string session;
     };
 
     std::mutex mutex_;

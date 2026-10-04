@@ -3,6 +3,7 @@
 #include "core/documents.h"
 #include "core/http_responses.h"
 #include "core/requests_playlists.h"
+#include "core/session_scope.h"
 
 #include <chrono>
 #include <string>
@@ -32,7 +33,8 @@ enum class ArtworkAnswer { cover, nothingToSend };
 // set_header adds a second header rather than replacing the first.
 ArtworkAnswer sendArtwork(const httplib::Request& req, httplib::Response& res,
                           const ArtworkSource& source) {
-    if (!source.picture) {
+    const bool tooLarge = oversized(source);
+    if (!source.picture && !tooLarge) {
         respondError(res, 404, kNoArtworkForTrack);
         return ArtworkAnswer::nothingToSend;
     }
@@ -43,7 +45,7 @@ ArtworkAnswer sendArtwork(const httplib::Request& req, httplib::Response& res,
         return ArtworkAnswer::cover;
     }
 
-    if (source.picture->size() > kMaxArtworkBytes) {
+    if (tooLarge) {
         respondError(res, 413, kArtworkTooLarge);
         return ArtworkAnswer::nothingToSend;
     }
@@ -63,10 +65,14 @@ ArtworkAnswer sendArtwork(const httplib::Request& req, httplib::Response& res,
 }  // namespace
 
 ArtworkRoutes::ArtworkRoutes(const LibraryCalls& library, const PlaylistCalls& playlists,
+                             const SessionCalls& sessions, SessionRegistry& registry,
                              const NowPlayingArtwork* nowPlaying, const RateLimitClock& clock)
     : library_(library),
       playlists_(playlists),
+      sessions_(sessions),
+      registry_(registry),
       nowPlaying_(nowPlaying),
+      clock_(clock),
       reads_(kArtworkBurst, kArtworkRefill,
              "refusing artwork reads: they are arriving faster than this component will answer "
              "them, which usually means a client is looping",
@@ -78,6 +84,26 @@ bool ArtworkRoutes::fetchingTooFast(httplib::Response& res) {
 
     respondTooFast(res, reads_, errorDocument(kFetchingArtworkTooFast));
     return true;
+}
+
+void ArtworkRoutes::sendPlaying(const httplib::Request& req, httplib::Response& res) {
+    res.set_header("Cache-Control", kAskEveryTime);
+
+    const auto named = scopedSession(sessionScopeOf(req), res, registry_, clock_());
+    if (named.which == SessionAnswer::Which::none)
+        return;
+
+    if (fetchingTooFast(res))
+        return;
+
+    if (named.session) {
+        sendArtwork(
+            req, res,
+            sessions_.readArtwork ? named.session->cover(sessions_.readArtwork) : ArtworkSource{});
+        return;
+    }
+
+    sendArtwork(req, res, nowPlaying_ ? nowPlaying_->current() : ArtworkSource{});
 }
 
 void ArtworkRoutes::addTo(httplib::Server& server) {
@@ -103,15 +129,8 @@ void ArtworkRoutes::addTo(httplib::Server& server) {
         res.set_header("Cache-Control", freshFor(lifetime));
     });
 
-    // The picture is held rather than looked up, so a conditional request never reaches the
-    // player or a file: it costs a comparison of two strings.
     server.Get("/api/artwork/playing", [this](const httplib::Request& req, httplib::Response& res) {
-        res.set_header("Cache-Control", kAskEveryTime);
-
-        if (fetchingTooFast(res))
-            return;
-
-        sendArtwork(req, res, nowPlaying_ ? nowPlaying_->current() : ArtworkSource{});
+        sendPlaying(req, res);
     });
 
     // The fallback for a row GET /api/artwork cannot address: no path reaches the client, so

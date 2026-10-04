@@ -10,7 +10,8 @@ namespace jean {
 TicketStore::TicketStore(TicketMint mint, std::chrono::seconds ttl, size_t maxOutstanding)
     : mint_(std::move(mint)), ttl_(ttl), maxOutstanding_(std::max<size_t>(maxOutstanding, 1)) {}
 
-TicketStore::Issued TicketStore::issue(Clock::time_point now, DeviceIdentity device) {
+TicketStore::Issued TicketStore::issue(Clock::time_point now, DeviceIdentity device,
+                                       std::string session) {
     std::string ticket = mint_ ? mint_() : std::string();
     if (ticket.empty())
         return {};
@@ -24,7 +25,7 @@ TicketStore::Issued TicketStore::issue(Clock::time_point now, DeviceIdentity dev
     if (entries_.size() >= maxOutstanding_)
         entries_.erase(entries_.begin());
 
-    entries_.push_back({ticket, now + ttl_, sanitised(std::move(device))});
+    entries_.push_back({ticket, now + ttl_, sanitised(std::move(device)), std::move(session)});
     return {std::move(ticket), ttl_};
 }
 
@@ -42,7 +43,7 @@ TicketStore::Admission TicketStore::admits(const std::string& ticket, Clock::tim
 
     const Entry& entry = entries_[static_cast<size_t>(found)];
     if (entry.expiresAt > now)
-        return {true, entry.device};
+        return {true, entry.device, entry.session};
 
     entries_.erase(entries_.begin() + found);
     return {};

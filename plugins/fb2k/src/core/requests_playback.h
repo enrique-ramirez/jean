@@ -2,7 +2,11 @@
 
 #include "core/failures.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <string>
+#include <vector>
 
 // What a playback, volume or output route's request asks for, decoded and refused before the
 // player is asked anything. Never throws: a malformed body is routine for the HTTP handler that
@@ -61,5 +65,22 @@ struct ActiveOutputRequest {
 };
 
 ActiveOutputRequest parseActiveOutput(const JsonObject& body);
+
+struct PlaySetRequest {
+    PlaylistRefusal refusal = PlaylistRefusal::none;
+    PlayerOutcome outcome = PlayerOutcome::done;
+    bool indexRefused = false;
+
+    uint64_t structure = 0;
+    std::vector<uint32_t> ordinals;
+    uint32_t index = 0;
+
+    bool ok() const {
+        return refusal == PlaylistRefusal::none && outcome == PlayerOutcome::done && !indexRefused;
+    }
+};
+
+PlaySetRequest parsePlaySet(const JsonObject& body, size_t trackCount,
+                            std::optional<uint64_t> expectedStructure);
 
 }  // namespace jean

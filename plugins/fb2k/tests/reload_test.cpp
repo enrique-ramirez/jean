@@ -27,8 +27,9 @@ std::vector<std::string> expectedLiveKeys() {
 }
 
 std::vector<std::string> expectedRestartKeys() {
-    return {"aacBitrate",  "bindAddress", "maxConcurrentStreams",  "muteWhileStreaming",
-            "opusBitrate", "port",        "streamTicketTtlSeconds"};
+    return {"aacBitrate",  "bindAddress",           "maxConcurrentStreams",
+            "maxSessions", "muteWhileStreaming",    "opusBitrate",
+            "port",        "streamTicketTtlSeconds"};
 }
 
 std::vector<std::string> sorted(std::vector<std::string> keys) {
@@ -74,7 +75,8 @@ Settings runningAwayFromDefaults() {
         "streamingEnabled": false,
         "maxConcurrentStreams": 3,
         "streamTicketTtlSeconds": 300,
-        "muteWhileStreaming": false
+        "muteWhileStreaming": false,
+        "maxSessions": 2
     })");
 }
 
@@ -129,6 +131,7 @@ TEST_CASE(
     file.maxConcurrentStreams = 2;
     file.streamTicketTtlSeconds = 60;
     file.muteWhileStreaming = true;
+    file.maxSessions = 6;
 
     const auto decision = decideReload(running, serialiseSettings(file));
 
@@ -273,7 +276,8 @@ TEST_CASE("a reload that changes nothing says so and names no key") {
                                  "allowedFields": ["rating", "title"],
                                  "allowedHosts": ["old.example"],
                                  "allowedOrigins": ["https://old.example"],
-                                 "bindAddress": "192.168.1.10", "port": 9100})")}) {
+                                 "bindAddress": "192.168.1.10", "port": 9100,
+                                 "maxSessions": 2})")}) {
         const auto decision = decideReload(running, text);
 
         CHECK(decision.next == running);

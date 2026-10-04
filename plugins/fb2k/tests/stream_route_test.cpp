@@ -13,7 +13,7 @@ using nlohmann::json;
 
 namespace {
 
-class FiniteStream : public StreamSession {
+class FiniteStream : public StreamListener {
 public:
     explicit FiniteStream(std::vector<std::string> chunks) : chunks_(std::move(chunks)) {}
 
@@ -83,7 +83,7 @@ TEST_CASE("the ticket lives as long as the file says, not as long as the default
     CHECK(json::parse(response->body)["expiresIn"] == 45);
 }
 
-TEST_CASE("a ticket streams the bytes the session produces") {
+TEST_CASE("a ticket streams the bytes the listener produces") {
     const TestServer server(servingSettings(),
                             TestServer::streaming(opensWith({"Ogg", "S", "audio"})));
 
@@ -345,9 +345,9 @@ TEST_CASE("a mint that fails refuses to issue rather than serving an empty ticke
 }
 
 TEST_CASE("a stream with nothing to send yet is not a stream that ended") {
-    // What a session does while the player is paused: it has no audio, and says so rather
+    // What a listener does while the player is paused: it has no audio, and says so rather
     // than blocking, so the route gets a chance to check that anybody is still there.
-    class IdleThenAudio : public StreamSession {
+    class IdleThenAudio : public StreamListener {
     public:
         bool next(std::vector<std::uint8_t>& out) override {
             out.clear();

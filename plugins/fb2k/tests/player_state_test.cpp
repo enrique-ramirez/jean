@@ -40,6 +40,7 @@ PlayerState playing() {
     state.muted = false;
     state.playbackMode = "repeatAll";
     state.outputDeviceId = kSpeakers;
+    state.outputSilent = false;
     return state;
 }
 
@@ -187,6 +188,9 @@ TEST_CASE("changing any field a client can see advances the version") {
     }
     SUBCASE("the output device stops being one the component can name") {
         changed.outputDeviceId = std::nullopt;
+    }
+    SUBCASE("the output stops playing anywhere") {
+        changed.outputSilent = true;
     }
 
     store.publish(changed);
@@ -378,7 +382,7 @@ TEST_CASE("an output device change reaches a client, and one the component canno
     store.publish(playing());
     const uint64_t before = store.read().version;
 
-    store.outputDeviceChanged(std::string{kHeadphones});
+    store.outputDeviceChanged(std::string{kHeadphones}, false);
 
     const auto switched = store.read();
     CHECK(switched.state.outputDeviceId == kHeadphones);
@@ -386,7 +390,7 @@ TEST_CASE("an output device change reaches a client, and one the component canno
     CHECK(switched.state.playbackMode == "repeatAll");
     CHECK(switched.version > before);
 
-    store.outputDeviceChanged(std::nullopt);
+    store.outputDeviceChanged(std::nullopt, std::nullopt);
 
     const auto cleared = store.read();
     CHECK_FALSE(cleared.state.outputDeviceId.has_value());
@@ -401,10 +405,66 @@ TEST_CASE("an output device reported again unchanged leaves the version alone") 
     const uint64_t before = store.read().version;
 
     for (int edit = 0; edit < kEditsInABurst; ++edit)
-        store.outputDeviceChanged(std::string{kSpeakers});
+        store.outputDeviceChanged(std::string{kSpeakers}, false);
 
     CHECK(store.read().version == before);
     CHECK(store.read().state.outputDeviceId == kSpeakers);
+}
+
+TEST_CASE("whether the output plays anywhere is read back as it was reported, beside the device") {
+    PlayerStateStore store;
+    store.publish(playing());
+    const uint64_t before = store.read().version;
+
+    store.outputDeviceChanged(std::string{kSpeakers}, true);
+
+    const auto silent = store.read();
+    CHECK(silent.state.outputDeviceId == kSpeakers);
+    CHECK(silent.state.outputSilent == true);
+    CHECK(silent.version > before);
+
+    store.outputDeviceChanged(std::string{kSpeakers}, false);
+
+    const auto audible = store.read();
+    CHECK(audible.state.outputSilent == false);
+    CHECK(audible.version > silent.version);
+
+    store.outputDeviceChanged(std::nullopt, std::nullopt);
+
+    const auto unknown = store.read();
+    CHECK_FALSE(unknown.state.outputDeviceId.has_value());
+    CHECK_FALSE(unknown.state.outputSilent.has_value());
+    CHECK(unknown.version > audible.version);
+}
+
+TEST_CASE("a silent output reported again unchanged leaves the version alone") {
+    PlayerStateStore store;
+    store.publish(playing());
+    store.outputDeviceChanged(std::string{kSpeakers}, true);
+    const uint64_t before = store.read().version;
+
+    for (int edit = 0; edit < kEditsInABurst; ++edit)
+        store.outputDeviceChanged(std::string{kSpeakers}, true);
+
+    CHECK(store.read().version == before);
+    CHECK(store.read().state.outputSilent == true);
+}
+
+TEST_CASE("the output going silent and coming back moves the player revision each time, once") {
+    PlayerStateStore store;
+    store.publish(playing());
+    const uint64_t before = store.read().playerRevision;
+
+    store.outputDeviceChanged(std::string{kSpeakers}, true);
+    const uint64_t silent = store.read().playerRevision;
+    store.outputDeviceChanged(std::string{kSpeakers}, true);
+
+    CHECK(silent > before);
+    CHECK(store.read().playerRevision == silent);
+
+    store.outputDeviceChanged(std::string{kSpeakers}, false);
+
+    CHECK(store.read().playerRevision > silent);
 }
 
 // foobar2000 fires the playlist item callbacks for an edit anywhere in the playlist, once per

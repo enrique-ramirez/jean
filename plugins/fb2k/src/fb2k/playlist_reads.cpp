@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -126,6 +127,40 @@ RowHandle readRowHandleOnMainThread(const std::string& playlistId, uint32_t row)
     return found;
 }
 
+struct TakenHandles {
+    PlayerOutcome outcome = PlayerOutcome::done;
+    metadb_handle_list handles;
+};
+
+TakenHandles takeHandlesOnMainThread(const std::string& playlistId,
+                                     const std::optional<std::vector<uint32_t>>& positions) {
+    const auto playlist = findPlaylist(playlistId);
+    if (playlist == pfc::infinite_size)
+        return failureOf<TakenHandles>(PlayerOutcome::noSuchPlaylist);
+
+    const auto manager = playlist_manager::get();
+    TakenHandles taken;
+
+    if (!positions) {
+        manager->playlist_get_all_items(playlist, taken.handles);
+        return taken;
+    }
+
+    const auto rowCount = manager->playlist_get_item_count(playlist);
+    if (std::any_of(positions->begin(), positions->end(),
+                    [rowCount](uint32_t position) { return position >= rowCount; }))
+        return failureOf<TakenHandles>(PlayerOutcome::positionPastEnd);
+
+    for (const uint32_t position : *positions) {
+        metadb_handle_ptr handle;
+        if (!manager->playlist_get_item_handle(handle, playlist, position))
+            return failureOf<TakenHandles>(PlayerOutcome::playerRefused);
+        taken.handles.add_item(handle);
+    }
+
+    return taken;
+}
+
 PlaylistRow formattedRow(const metadb_handle_ptr& handle,
                          const std::vector<titleformat_object::ptr>& scripts,
                          const library_manager::ptr& libraryManager) {
@@ -238,6 +273,25 @@ PlaylistRowArtworkReader makePlaylistRowArtworkReader(MainThreadQueue& mainThrea
         if (!read.libraryPath)
             read.source = art.of(found.handle);
 
+        return read;
+    };
+}
+
+PlaylistTrackTaker makePlaylistTrackTaker(MainThreadQueue& mainThread) {
+    const auto libraryManager = library_manager::get();
+
+    return [&mainThread, libraryManager](const std::string& playlistId,
+                                         const std::optional<std::vector<uint32_t>>& positions) {
+        const auto taken = askForOutcome<TakenHandles>(
+            mainThread, "taking a playlist's tracks for a session",
+            [playlistId, positions] { return takeHandlesOnMainThread(playlistId, positions); });
+
+        SessionTracksRead read;
+        read.outcome = taken.outcome;
+        if (read.outcome != PlayerOutcome::done)
+            return read;
+
+        read.tracks = sessionTracksOf(taken.handles, libraryManager);
         return read;
     };
 }

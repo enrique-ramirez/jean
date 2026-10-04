@@ -36,6 +36,8 @@ struct Settings {
 
     int streamTicketTtlSeconds = 120;
 
+    int maxSessions = 4;
+
     // Off makes the player one more speaker alongside every listener, rather than one that
     // steps aside for them.
     bool muteWhileStreaming = true;
@@ -56,6 +58,7 @@ constexpr int kMaxOpusBitrate = 510000;
 constexpr int kAacBitrates[] = {96000, 128000, 160000, 192000};
 constexpr int kMinTicketTtlSeconds = 10;
 constexpr int kMaxTicketTtlSeconds = 3600;
+constexpr int kMaxSessionsCeiling = 8;
 
 bool operator==(const Settings& a, const Settings& b);
 inline bool operator!=(const Settings& a, const Settings& b) {

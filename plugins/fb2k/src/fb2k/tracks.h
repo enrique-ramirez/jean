@@ -1,9 +1,13 @@
 #pragma once
 
+#include "core/session.h"
+
 #include <foobar2000/SDK/foobar2000.h>
 
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 // What this component publishes about a track it holds a handle to: the two spellings of its
 // path, and the scripts that name it.
@@ -18,6 +22,12 @@ std::string displayPathOf(const metadb_handle_ptr& track);
 // fb2k::std_api_get off it is undocumented; get_relative_path itself is any-thread.
 std::optional<std::string> libraryPathOf(const metadb_handle_ptr& track,
                                          const library_manager::ptr& libraryManager);
+
+metadb_handle_ptr handleOf(const SessionTrack& track);
+std::shared_ptr<const void> handleFor(const metadb_handle_ptr& track);
+
+std::vector<SessionTrack> sessionTracksOf(const metadb_handle_list& handles,
+                                          const library_manager::ptr& libraryManager);
 
 // foobar2000 answers the filename for a track with no title tag: "If 'title' metadata field is
 // missing, file name is used instead." The playing track's name keeps that fallback, and a queue
@@ -43,5 +53,9 @@ struct NameScripts {
 // Main thread, once, for the reason ARCHITECTURE.md, *Facts about the player*, gives for
 // compiling a shared titleformat_object there.
 NameScripts compiledNameScripts(const char* titleScript);
+
+// `script` run against the track's own tags in `info`, on any thread.
+std::string formattedField(const metadb_handle_ptr& track, const file_info& info,
+                           const titleformat_object::ptr& script);
 
 }  // namespace jean

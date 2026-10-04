@@ -31,7 +31,7 @@ Player listingManyPlaylists() {
         [playlists] { return PlaylistsResult{PlayerOutcome::done, playlists}; });
 }
 
-class Repetitive : public StreamSession {
+class Repetitive : public StreamListener {
 public:
     static constexpr int kPages = 40;
     static constexpr char kPage[] = "an ogg page, and the next one looks a great deal like it. ";

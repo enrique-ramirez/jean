@@ -2,7 +2,7 @@
 
 For somebody about to build on this: how the pieces fit, which thread owns what, and why the boundaries sit where they do. [plugins/fb2k/README.md](README.md) is what the component is and how to run it, [plugins/fb2k/CONTRIBUTING.md](CONTRIBUTING.md) is how to write its code, and [src/README.md](src/README.md) is the source tree file by file.
 
-foo_jean is a DLL foobar2000 loads, an HTTP listener on a port of its own, a snapshot of the media library, and one live encode of the player's output. It serves Jean's own page as well as its API, so the two share an origin and a client talks to this component alone. It owns the media library, cover art, tag writing, the play queue and every playlist, and it reports what the player is doing. A playlist is listed, read, created, renamed, deleted, reordered, its rows moved and sorted, filled from library ordinals, copied from, cut down and played here, and nowhere else, and every other playback command, transport, seek, the mode and the volume, is answered here too. Every playlist and autoplaylist write is gated behind `writePlaylists`, and an edit addressing one of foo_jean's own playlists is refused whatever that setting says.
+foo_jean is a DLL foobar2000 loads, an HTTP listener on a port of its own, a snapshot of the media library, and a live encode of the player's output and of each detached playback session. It serves Jean's own page as well as its API, so the two share an origin and a client talks to this component alone. It owns the media library, cover art, tag writing, the play queue and every playlist, and it reports what the player is doing. A playlist is listed, read, created, renamed, deleted, reordered, its rows moved and sorted, filled from library ordinals, copied from, cut down and played here, and nowhere else, and every other playback command, transport, seek, the mode and the volume, is answered here too. Every playlist and autoplaylist write is gated behind `writePlaylists`, and an edit addressing one of foo_jean's own playlists is refused whatever that setting says.
 
 ## The shape of it
 
@@ -17,7 +17,8 @@ flowchart TB
     subgraph fb2k["src/fb2k/ — knows the SDK"]
       work["tag_writer · playlists · player_mute"]
       feed["LibraryFeed<br/>change callbacks, and a worker of its own"]
-      str["Streamer"]
+      str["Streamer<br/>the player's, and one per detached session"]
+      dec["decoder_source<br/>a decoder thread per detached session"]
       prefs["preferences page<br/>Tools → Jean"]
       assets["ui_assets<br/>Jean's build, compiled in"]
     end
@@ -28,6 +29,7 @@ flowchart TB
       pure["settings · tag_write · playlists · admission<br/>rate_limit · stream_ticket · documents · assets"]
       lib["Library<br/>one snapshot · two generations"]
       aud["Audience"]
+      reg["SessionRegistry<br/>the detached sessions"]
       hold["OutputHold<br/>a thread of its own"]
     end
   end
@@ -38,6 +40,7 @@ flowchart TB
   end
 
   cap -->|audio_chunk| str
+  dec -->|PcmSource| str
   work -->|blocking calls| queue
   queue -->|marshalled work| main
   prefs --> queue
@@ -46,10 +49,12 @@ flowchart TB
   work -.->|Player callbacks| http
   str -.->|StreamOpener · formats · timeline| http
   assets -.->|page.read · page.readDisk · page.names| http
+  dec -.->|SessionCalls.start| reg
   feed -->|a built snapshot| lib
   http --> pure
   http --> lib
   http --> aud
+  http --> reg
   aud -->|anybody listening?| hold
   hold -->|mute · restore| queue
 
@@ -70,15 +75,18 @@ What the seam buys is the reason to keep it sharp. The security-critical half, m
 
 ## The seams
 
-Three, all the same shape: `core/` declares what it needs, `fb2k/` supplies it in the component, and `tests/` supplies something else.
+Four, all the same shape: `core/` declares what it needs, `fb2k/` supplies it in the component, and `tests/` supplies something else.
 
 | seam | declared in | supplied by | absent means |
 |---|---|---|---|
 | `Player`, a struct of `std::function`s, one per thing the player can be asked | `core/player.h` | `fb2k/component.cpp`, assembled field by field so two callbacks of the same signature cannot swap silently | that route answers `503`, except `GET /api/track/playing`, which answers `404` |
-| `StreamOpener` and `StreamSession` | `core/stream.h` | `fb2k/streamer.cpp` | no streaming, and `canStream` is false |
+| `StreamOpener` and `StreamListener` | `core/stream.h` | `fb2k/streamer.cpp` | no streaming, and `canStream` is false |
+| `SessionCalls`, the `Player`'s `sessions`: start a detached session's stream, take a playlist's or the library's tracks for it, and read its track, its queue and its cover | `core/player.h` | `start` by `fb2k/decoder_source.cpp`, `takePlaylist` by `fb2k/playlist_reads.cpp`, `takeLibrary` by `fb2k/library.cpp`, `readQueue` by `fb2k/queue.cpp`, `readTrack` and `readArtwork` by `fb2k/session_track.cpp`; `fb2k/component.cpp` wires all six only where the player's own `Streamer` exists | without `start`, `canCreateSessions` is false and `POST /api/sessions` answers `503`; without another, the route asking it of a detached session answers `503`, or `404` for its playing track and cover |
 | `logInfo` and `logError` | `core/log.h` | `fb2k/log.cpp`, or `tests/support/log_capture.cpp` | a link error |
 
 Every `Player` callback blocks until foobar2000 has finished or given up, so each belongs on an HTTP worker and never on the main thread. `core/ask_player.h` is how all of them get there. Work the main thread has not started when the wait runs out is dropped; work it has started may still land after its caller has given up. A null callback is not a fault. It is how an install that switched something off says so, and the route answers `503` rather than pretending. `playback.readPlayingTrack` is the one exception: nothing about `GET /api/track/playing` can be switched off the way a library or a stream can, so a null seam there answers `404` instead, the same status the route answers when nothing is playing, following `GET /api/artwork/playing`'s own answer to the same question. Four do not follow the pattern. `library.refresh` returns early: it hands a column set to the snapshot worker and comes straight back, because the client is answered `202` and polls. `library.readArtwork` never reaches the main thread at all: it resolves an address against the snapshot and then talks to foobar2000's album art loader and the filesystem on the connection thread, because a cover is file I/O and the main thread may not wait for one. `library.readTrack` is both: its address resolves against the snapshot on the connection thread the way `library.readArtwork` does, and the caller's columns are compiled on the main thread inside one `askPlayer` job, for the reason `core/player.h`'s `LibraryTrackReader` comment gives, and evaluated back on the connection thread. `library.writeTags` is the one that differs within itself: two of its three address forms resolve against the snapshot on the connection thread and hop to the main thread only to write, while the third resolves inside the writing job, for the reason *Track identity* gives.
+
+The session calls differ again, because a detached session already holds its tracks' handles. `takeLibrary`, `readQueue` and `readArtwork` never reach the main thread. `readTrack` reaches it only to compile the columns a caller asked for, `takePlaylist` copies a playlist's handles in one job, and `start` builds the session's `Streamer` in one, for the reason *Threads, and what may block* gives.
 
 The seven playback and volume commands in `fb2k/playback_commands.cpp`, playing a playlist row among them, follow the plain form of the pattern too: each is one `askPlayer` call run on the main thread, answered once foobar2000 has run the command, with a `504` when it does not finish in time and a `500` when it throws. There is no document to build for a command, and where it landed is `GET /api/state`'s `playback`, `position`, `playbackMode`, `volume` and `muted` to report, not this answer's.
 
@@ -87,6 +95,14 @@ The seven playback and volume commands in `fb2k/playback_commands.cpp`, playing 
 `playlists.readRole` is the one whose absence refuses nothing. `POST /playlists/{id}/items` asks it whether the id names one of this component's own playlists before filling, and refuses the fill where the player could not answer; a null `readRole` lets the fill through, which only a test's fake ever leaves, since `fb2k/component.cpp` always wires it.
 
 `HttpServer` takes a `Library*` as well, and that is not a seam. `Library` lives in `core/`, carries its own mutex and is read from a connection thread directly, so wrapping it in callbacks would buy an abstraction with one implementation. Null is how an install with the library switched off says so, and every library route then answers `503` like any other absent capability.
+
+## Playback sessions
+
+Two kinds, and only one is an object here. The engine session is foobar2000's own playback, `playback_control`, under the id `engine`. `SessionRegistry` answers for it without holding it: its state stays foobar2000's, reported through `PlayerStateStore`, its queue is foobar2000's play queue, its audience is the one `HttpServer` is handed, and its `Streamer` is the plugin's. A request naming no session names it, and the route runs the code it would run if there were no other kind. A detached session is a `Session` from `core/session.h`, owned by the registry: its snapshot, queue, order, transport and members are the component's own, and die with the process.
+
+**A detached session plays what it was handed, and the engine session plays what foobar2000 plays.** Playing a playlist or a set of library tracks in a detached session copies their handles once, and the session plays that copy: a later edit to the playlist changes nothing it plays next, and deleting the playlist does not stop it. The engine session follows its playlist as foobar2000 does. A row number stops naming a detached session's track at the playlist's first edit, so a detached session publishes no row for its playing track or for a queued one.
+
+**What is the player's stays the player's, whichever session a request names.** The volume and the mute, the output device and the hold on it, the playlists and autoplaylists, the library and its tags are one each, and every route about them answers the player. `controlPlayback` governs the engine session alone, and `muteWhileStreaming` counts the engine session's listeners alone: each detached session's audience is a `sibling()` of the engine's, with a roster and a wait of its own, so `OutputHold`'s watcher never wakes for it and a listener there never silences the player. A sibling shares the one cap, so `maxConcurrentStreams` bounds stream connections across every session together, since each holds a pooled connection thread whichever session it hears.
 
 ## The audio path
 
@@ -97,9 +113,16 @@ flowchart LR
     mk["on_playback_new_track · on_playback_seek<br/>StreamMark, held for the next block"]
   end
 
+  subgraph dt["a detached session's decoder thread"]
+    ih["input_helper<br/>opened from the session's handle"]
+    fx["ReplayGain, then the player's DSP chain<br/>the gain source read off the session's order"]
+    pc["Pacer<br/>1x, a short lead, never past the ring's room"]
+    ml["MarkPlacer<br/>the mark past the chain's latency"]
+  end
+
   pcm["PcmRing<br/>bounded in seconds · write never blocks · drops the oldest"]
 
-  subgraph enc["one encoder thread, both formats"]
+  subgraph enc["one encoder thread per Streamer, both formats"]
     conv["Converter<br/>resampler_manager_v3 chain<br/>any rate and layout → 48 kHz stereo float"]
     op["OpusStream<br/>20 ms frames → whole Ogg pages"]
     ac["AacEncoder<br/>Media Foundation AAC-LC → ADTS frames"]
@@ -117,7 +140,9 @@ flowchart LR
   end
 
   mk -.->|attached to| ch
-  ch --> pcm
+  ch -->|PcmSource| pcm
+  ih --> fx --> pc -->|PcmSource| pcm
+  ml -.->|attached to| pc
   pcm --> conv
   pcm --> tl
   conv --> op
@@ -129,17 +154,23 @@ flowchart LR
   tl -.->|GET /api/stream/timeline| s1
 ```
 
+**Two sources feed a `Streamer`, and they meet at one seam.** The engine session's audio is captured: `engineCapture()` in `fb2k/streamer.cpp` builds a foobar2000 `playback_stream_capture_v2` callback, which writes each chunk to the ring on the main thread, after the player's DSP chain and before its volume. A detached session decodes for itself: `Decoder` in `fb2k/decoder_source.cpp` is one thread per session, which opens each track from the handle the session holds through the SDK's `input_helper`, scales it by ReplayGain, runs the player's DSP chain over it, and writes what the chain hands back. Each is a `PcmSource` (`core/stream.h`), built by the `Streamer` it feeds and writing into that `Streamer`'s `PcmRing`, and nothing past the ring knows which it was. The encoder thread, `Converter`, both encoders, both broadcast rings, the timeline and every listener's cursor are the same code, and every detached session has a whole `Streamer` of its own. The seam sits at the ring because the capture's whole contribution is one `PcmRing::write`, so a second source costs a second writer and no second pipeline.
+
+**A detached session is made to sound as the engine's capture does.** That capture is post-DSP, so a decoder applies ReplayGain and then the DSP chain before the ring, both on the player's own settings. `fb2k/player_audio_settings.h` holds those settings, kept current by foobar2000's two change notifications, and a decoder copies them between runs of its chain, so a change in Preferences plays from the next block with no restart. The gain source follows the session's order rather than the player's: foobar2000's `query_scale` applies no gain for a source mode that follows the playback order, so `core/session_audio.h` resolves that mode against the session's own order and the decoder hands foobar2000 a plain track or album mode. A chain that throws is dropped for the rest of that session's life, and the session plays on without it. Which flags each run of the chain carries is decided in `core/session_audio.h` too.
+
+**Nothing paces a decoder but `core/pacer.h`.** The capture arrives as fast as the player's output plays it; a decoder has no such clock. The pacer releases its blocks at 1x, `kSessionLead` ahead of what has played, and never into less room than the block needs, since a full `PcmRing` drops its oldest block, which is audio nobody has heard. Asked more than the lead late, it starts its schedule again from now, so a pause, a spell with nobody connected or a stall is not owed back in a burst.
+
 **Neither end ever stalls the player.** A block the main thread cannot hand off is discarded rather than queued, and a listener the writer laps is dropped rather than waited for. A cursor is an absolute byte offset, so how far behind a listener has fallen is a subtraction that no wraparound can confuse.
 
-**The clock advances from each block's own duration**, not from what was encoded, so it keeps running while nobody is listening. Otherwise every track change during an idle spell would collapse onto one instant. A mark is taken on the main thread, travels attached to the next block of audio rather than being read separately, and is stamped by the encoder with the stream time of the audio it introduces, so the timeline describes what a listener hears rather than what the player is doing. Laying it also bumps `PlayerStateStore`'s `timelineRevision`, which is what moves `GET /api/state`'s `ETag` for it.
+**The clock advances from each block's own duration**, not from what was encoded, so the engine session's keeps running while nobody is listening. Otherwise every track change during an idle spell would collapse onto one instant. A detached session decodes only while `Session::running()` is true, which needs a connection, and its position runs only then too, so with nobody connected its clock and its position both stand still. A mark travels attached to a block of audio rather than being read separately, and is stamped by the encoder with the stream time of the audio it introduces, so the timeline describes what a listener hears rather than what the player is doing. The engine's is taken on the main thread and rides the next block. A detached session's decoder lays its own, on the block where the track becomes audible, which is later than its first decoded sample by the chain's latency; `core/session_audio.h`'s `MarkPlacer` decides which block that is. Laying a mark calls the `marked` callback its `Streamer` was built with, which bumps the `timelineRevision` of the session it belongs to, `PlayerStateStore`'s for the engine and the `Session`'s own for a detached one, so one session's marks never move another's `ETag`.
 
-**A format nobody is listening to is never encoded**, so an idle player burns no core, and the two formats fail apart: one encoder giving up closes its own ring, which ends its listeners' responses so they can reconnect, while the other keeps playing rather than going silent for a fault it did not have.
+**A format nobody is listening to is never encoded**, so an idle player burns no core, and a detached session with no connection decodes nothing either: a linger is not a listener, and decoding through one would play to nobody and start a reconnecting listener further ahead. The two formats fail apart: one encoder giving up closes its own ring, which ends its listeners' responses so they can reconnect, while the other keeps playing rather than going silent for a fault it did not have.
 
 **Ogg needs its header pages before any audio; ADTS is self-describing**, so a listener joins it at any frame. That is the whole difference between the two preambles. The Ogg stream is never restarted at a track change either, because Firefox stops at the first chained boundary. A decoder can only start reading Ogg from a page boundary, never mid-page, which is why encoded output is gathered into whole pages and handed to the ring in one write per block rather than as each page is produced. A listener's cursor starts wherever the ring currently ends, and that position must be one a fresh decoder can begin at.
 
-**Delivery is 1x and a listener never catches up**, so latency added anywhere is paid for the whole session rather than absorbed. Two defaults charge for it, and both are overridden: libogg gathers a byte count before it emits a page, so a page is cut by duration instead (`OpusStream::kPageSeconds` has why), and cpp-httplib leaves Nagle on, so `set_tcp_nodelay` is mandatory once a page is smaller than a segment.
+**Delivery is 1x and a listener never catches up**, so latency added anywhere is paid for as long as anybody listens rather than absorbed. Two defaults charge for it, and both are overridden: libogg gathers a byte count before it emits a page, so a page is cut by duration instead (`OpusStream::kPageSeconds` has why), and cpp-httplib leaves Nagle on, so `set_tcp_nodelay` is mandatory once a page is smaller than a segment.
 
-**A connection ends when cpp-httplib drops its content provider, and not reliably before that.** `Audience::Membership`'s destructor is what a socket closing actually triggers, and `StreamSession::next` returning `false` or the writer lambda returning `false` is what makes that happen; nothing else in this component is told a listener is gone.
+**A connection ends when cpp-httplib drops its content provider, and not reliably before that.** `Audience::Membership`'s destructor is what a socket closing actually triggers, and `StreamListener::next` returning `false` or the writer lambda returning `false` is what makes that happen. The one other thing told a listener is gone is a detached session: `Session::listen` hands the connection a membership whose release tells the session, and that is how the session counts the connections `Session::running()` reads.
 
 ## Threads, and what may block
 
@@ -148,9 +179,10 @@ The thing least visible from any one file.
 | thread | owned by | blocks on | must never |
 |---|---|---|---|
 | the main thread | foobar2000 | nothing | wait for anything this component does |
-| one encoder thread | `Streamer` | `PcmRing::read` | let an exception escape, because it is a thread entry point |
+| one encoder thread per `Streamer`, the engine's and each detached session's | `Streamer` | `PcmRing::read` | let an exception escape, because it is a thread entry point |
+| one decoder thread per detached session | `Decoder`, the session's `PcmSource` | `Session::awaitRunning` while the session is not running, `Session::awaitDue` for the pacer, and `input_helper` and the DSP chain | reach the main thread or `playback_control`, or let an exception escape |
 | the snapshot worker | `LibraryFeed` | one main-thread hop for `library_manager::get_all_items`, then `metadb_v2::queryMultiParallel`, a slice at a time | hold the main thread for anything past that hop, or let an exception escape |
-| the hold's watcher | `OutputHold` | `Audience::awaitChangeFrom` | run where the player's volume callback holds a lock |
+| the hold's watcher | `OutputHold` | `Audience::awaitChangeFrom`, on the engine session's audience | run where the player's volume callback holds a lock |
 | the listener | `HttpServer` | `accept` | outlive `stop()` |
 | one per connection | cpp-httplib's pool, `max(8, cores - 1)` at rest and four times that at its ceiling | `BroadcastRing::read`, a `Player` callback, or foobar2000's album art loader and the file under it | outlive `HttpServer::stop()` |
 
@@ -158,11 +190,17 @@ The thing least visible from any one file.
 
 **The main thread reaches this component from six places**: the capture callback, the two playback callbacks that take a mark, the volume callback, the output config change callback, the preferences page, and every batch `MainThreadQueue` dispatches, which includes the empty check `MainThreadWatch` posts from a state poll to see whether the main thread still answers. None of them may block. `PcmRing::write` drops its oldest block rather than wait, `MainThreadQueue` coalesces a burst of requests into one main-thread callback rather than one each, and `OutputHold::playerVolumeChanged` takes no lock at all: the mute the hold takes lands on the main thread and comes straight back as a volume callback, which against a held lock is a deadlock.
 
+**A decoder thread touches its session, its ring and the player's audio settings, and nothing else of this component.** Its `input_helper`, its chain and the abort that cuts them short are its own, made, run and destroyed on that thread under the COM `fb2k/com_thread.h` holds. Nothing it needs comes from the main thread once it runs: the chain and the ReplayGain settings are copied when the session's stream starts, and a later change arrives through `PlayerAudioSettings`. foobar2000 delivers both change notifications on the main thread (*Facts about the player*) and each decoder reads on its own, so `PlayerAudioSettings` locks. It never calls `playback_control` and never registers a capture, so the engine session's playback and state are out of its reach.
+
+**One main-thread job starts a detached session's stream.** `SessionCalls::start` runs on the connection thread that asked `POST /api/sessions` and blocks on one `askForOutcome` job, which builds the session's `Streamer` and copies the chain and the ReplayGain settings. It is the main thread for the reason `fb2k/decoder_source.cpp` gives: `AacEncoder`'s constructor calls `MFStartup` and `CoCreateInstance` on the constructing thread, so a session's `Streamer` is built where the engine's is. The decoder thread starts only once the job has answered, so a job that timed out leaves nothing decoding. The registry holds no lock while `start` runs, and counts the session against `maxSessions` until it answers.
+
+**Locks nest registry, then session, then audience, and none is held across a start, a stop or a join.** A session never calls the registry. A stop joins the session's decoder and encoder threads, and both call into the session, so a session lock held across one is a deadlock, and a registry lock held across one stalls every route that names a session for the length of the join. So the registry takes a session off its list and refuses it further listeners under its own lock, and stops it after releasing that lock.
+
 **`GET /api/outputs` and `POST /api/outputs/active` both list and switch a device through `askPlayer`**, so `output_manager_v2::listDevices`, `getCoreConfig` and `setCoreConfigDevice` all run on the main thread, and the connection thread that asked either route blocks until it answers, the same shape the playback and volume commands already use.
 
 **A queue move, removal or positioned insert checks its revision twice, and the second check reads the queue itself.** The route reads `PlayerStateStore`'s `queueRevision` on the connection thread before dispatching to the main-thread job. `fb2k/playback_watch.cpp`'s `deferQueueRead` is what moves that revision, queued onto the main thread whenever `playback_queue_callback::on_changed` fires, so a queue change foobar2000 has already made can still be waiting there when the job runs. The job therefore hands the store the queue as foobar2000 holds it before comparing: `queueChanged` moves the revision only when the queue differs, so a read still pending costs nothing when it lands, and the job never proceeds against a queue that has moved further than its revision says.
 
-**Shutdown is `Plugin`'s field order read backwards, with one pair the destructor body governs.** Reverse declaration order would destroy the server before the streamer, and `~HttpServer` joins connection threads that only `Streamer::stop()` can unblock, so the body stops the streamer and then the server. The fields handle the rest: the volume watch dies before the hold it fires at, the hold before the audience it waits on, the audience before the streamer, and `MainThreadQueue` last, so nothing marshals work onto a queue being torn down.
+**Shutdown is `Plugin`'s field order read backwards, with one pair the destructor body governs.** Reverse declaration order would destroy the server before the streamer, and `~HttpServer` joins connection threads that only stopping the stream they read can unblock, so the body stops the engine's `Streamer` and then the server. `HttpServer::stop()` closes the session registry before it stops listening: every detached session refuses another listener, and then its stream stops, which joins its decoder and encoder and ends every response reading from it. None of that may need the main thread, which is the thread running it. `PlayerAudioSettings` is declared before the server, so every decoder reading it is joined before it goes. The fields handle the rest: the volume watch dies before the hold it fires at, the hold before the audience it waits on, the audience before the streamer, and `MainThreadQueue` last, so nothing marshals work onto a queue being torn down.
 
 All of that runs from `on_quit`, on the main thread. That is why `askPlayer` runs its work inline when `MainThreadCalls::isCurrent` says it is already on the main thread: `fb2k::inMainThread` always defers, so queuing from there would wait out the whole timeout for a callback only this thread can dispatch, and the caller that does it is the hold, asking the player to unmute.
 
@@ -302,6 +340,14 @@ What foobar2000, its SDK and the platforms under it do that more than one file h
 - **`on_items_modified` fires once per loaded playlist holding a track whose tags changed, with that playlist's own position mask.** On foobar2000 2.25.10 that holds for a write through this component and for a file retagged outside the player with folder monitoring on. foobar2000 loads a playlist's contents on demand, so one nothing has read since the process started raises nothing. A content revision per playlist stays honest regardless: a client can only be stale about rows it holds, and asking for them loaded the playlist through `playlist_get_items`.
 - **foobar2000 keeps a queued entry whose row is removed or whose whole playlist is deleted**, and marks whichever position no longer names anything as infinite. On foobar2000 2.25.10 such an entry still plays when it reaches the head. Read as an index, the infinite value crashes the player, so an entry is read through its handle.
 - **Captured samples exceed full scale.** Peaks above +1 dBFS are routine on modern masters, so nothing in the audio path may assume `[-1, 1]`.
+- **A decode through the SDK's `input_helper` reproduces foobar2000's own playback to the sample.** On foobar2000 2.25.10, a track's handle opened with `input_flag_playback`, scaled by `t_replaygain_config::query_scale` on the core's ReplayGain settings and run through the core's chain in a `dsp_manager` built with `dsp_entry::flag_playback`, matched `playback_stream_capture_v2`'s output sample for sample, through a stateful limiter and a 48 to 44.1 kHz resample, with the chain's latency landing alike on both sides. Two files cut from one FLAC at a sample off any frame boundary rejoined to the sample when decoded one after the other into one chain, with `END_OF_TRACK` and no flush between them, both through that chain and through none.
+- **A decode through `input_helper` reaches no `play_callback` and no `playback_statistics_collector`.** On foobar2000 2.25.10 a track decoded to its end that way moved none of `play_callback`'s counters and no `on_item_played`, while the engine playing the same track moved `on_playback_starting`, `on_playback_new_track`, `on_playback_time`, `on_playback_stop` and `on_item_played`. A component that counts or scrobbles plays hears the engine's and none of a detached session's.
+- **Under ReplayGain's source mode by playback order, foobar2000 takes the gain from the order, and `query_scale` handed that mode unresolved applies none.** On foobar2000 2.25.10 the engine applied album gain under Default, Repeat (playlist), Shuffle (albums) and Shuffle (folders), and track gain under Repeat (track), Random and Shuffle (tracks), each matching its explicit mode to 0.000 dB. A decode outside `playback_control` resolves the mode against its own order before calling `t_replaygain_config::query_scale`.
+- **foobar2000 delivers the DSP chain's and ReplayGain's change notifications on the main thread, inside the call that caused them.** On foobar2000 2.25.10 every `dsp_config_callback::on_core_settings_change` and every `replaygain_core_settings_notify::on_changed` arrived on the main thread within the `set_core_settings` call that made the change. The SDK does not say which thread it uses.
+- **`input_helper::open` throws for a file it cannot open, and a file damaged after its header does not throw at all.** On foobar2000 2.25.10 it throws "Unsupported format or corrupted file" for a file no input takes and "Object not found" for one deleted since it was listed. A FLAC whose frames are garbage past its header, or one cut short, opens, and `input_helper::run` ends it early with no throw, so it reads as a short track.
+- **Raising the `abort_callback` handed to `input_helper` or `dsp_manager` makes whichever `run` is in progress throw "User abort"**, on foobar2000 2.25.10, so a decoder stopped that way meets a throw that does not mean the track failed.
+- **Under the Crossfader, foobar2000 announces the next track where its fade-in starts.** On foobar2000 2.25.10 the engine's mark for the next track, taken at `on_playback_new_track`, landed 0.97 s before the old track ended, at position 0.098 in the new one. A decoder running the same DSP reaches the next track at the old track's end, so the two kinds of session mark one crossfade a second apart.
+- **With no active Windows audio endpoint, foobar2000 still lists a default device, and on it answers play and stays stopped.** On foobar2000 2.25.10 it listed one default device, shared and exclusive, beside the Null Output; a play on the shared one was answered and playback stayed stopped. That device is not the Null Output, so `outputSilent` reads `false` for it.
 - **Under Wine, foobar2000 loads Wine's own `msvcp140.dll` rather than the Microsoft copy beside `foobar2000.exe`.** Against it, a `std::future::wait_for` built with VS 2022 17.14 runs its full timeout even once answered, so every request that waits on the main thread fails. The C++ runtime is linked statically for that reason, `/MT` in `Directory.Build.targets`, and `scripts/build.ps1` refuses a DLL that imports one.
 - **`album_art.h:231` promises `now_playing_album_art_notify` is never called without a cover, and foobar2000 2.25.3 breaks it**: skipping tracks twice in quick succession calls `on_album_art` with a null `album_art_data::ptr`, so a caller checks the pointer. For a track that has no cover the callback is simply not called, so a store fed only by it keeps the last picture until whatever watches playback clears it on a track change.
 - **Safari cannot play Opus before 18.4**, which is why the AAC path exists. **An HTML `<audio>` element issues a plain GET with no custom body and no custom header**, and probes a source with `Range: bytes=0-1` before it plays, so one listening device routinely counts as two connections and the stream response denies ranges. A stream ticket is minted over a request a script controls and carries the device's identity into the `<audio>` element's GET in the URL, the one place that GET can carry it.
@@ -314,8 +360,8 @@ What foobar2000, its SDK and the platforms under it do that more than one file h
 The code says what is there. These are the gaps to design back into rather than fill.
 
 - **No event stream.** cpp-httplib is thread-per-connection, so a subscription would cost a thread for as long as a client held it. A client polls `GET /api/state` instead, and its `playlistsRevision` says when to read `GET /api/playlists` again. Streaming is the one thing worth a held thread, which is exactly what `maxConcurrentStreams` bounds.
-- **No second copy of anything the player answers cheaply.** For tags and playlists this component is a messenger: accept a request, hand the work to foobar2000, answer, and hold nothing between one request and the next. A copy of a playlist would be wrong the moment somebody edited it in the player, and there is nothing to win by keeping one. The media library is the exception, and it is a snapshot rather than a cache: what makes it safe to hold is that `library_callback_v2_dynamic` says when the library changed, so nothing here has to guess whether what it holds is still true. *The media library* is what that costs.
+- **No second copy of anything the player answers cheaply.** For tags and playlists this component is a messenger: accept a request, hand the work to foobar2000, answer, and hold nothing between one request and the next. A copy of a playlist would be wrong the moment somebody edited it in the player, and there is nothing to win by keeping one. The media library is the exception, and it is a snapshot rather than a cache: what makes it safe to hold is that `library_callback_v2_dynamic` says when the library changed, so nothing here has to guess whether what it holds is still true. *The media library* is what that costs. A detached session's snapshot is not such a copy: it is the handles of the tracks the session was asked to play, kept as handed and never compared with the playlist again (*Playback sessions*).
 - **No library scan.** Nothing here walks a directory. Paths arrive from a client and are resolved against what the player reports, and `preview` counts a query through the core's own library index rather than reading anything off disk.
 - **No second abstraction behind the boundary.** One architectural seam is enough. `core/` has no plugin registry, no strategy interface with a single implementation, and no layer between a route and the pure function it calls.
-- **No per-request bitrate, and no seeking.** One encoder per format feeds every listener of it; a second bitrate would mean a second encoder and a second buffer for as long as anybody held it. Seeking means asking foobar2000 to seek, which moves every listener at once.
+- **No per-request bitrate, and no seeking a listener's own stream.** One encoder per format per session feeds every listener of it; a second bitrate would mean a second encoder and a second buffer for as long as anybody held it. A seek moves the session, foobar2000's own playback or a detached session's, and with it every listener of that session at once.
 - **No route that takes the output hold.** A client may ask for the player to be audible alongside the listeners. When they should be one output again is this component's decision, and it makes it afresh once everybody has stopped listening.

@@ -1,5 +1,6 @@
 #include "core/pcm_ring.h"
 
+#include <algorithm>
 #include <numeric>
 #include <utility>
 
@@ -35,6 +36,14 @@ void PcmRing::write(PcmBlock block) {
     }
 
     ready_.notify_one();
+}
+
+double PcmRing::roomSeconds() const {
+    const std::lock_guard<std::mutex> held(mutex_);
+    if (closed_)
+        return 0.0;
+
+    return std::max(0.0, capacitySeconds_ - bufferedLocked());
 }
 
 bool PcmRing::read(PcmBlock& out) {

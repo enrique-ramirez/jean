@@ -41,15 +41,22 @@ ParsedDeviceId parseDeviceId(const std::string& id) {
     return parsed;
 }
 
-// nullopt where this foobar2000 has no output_manager_v2. Never held between calls: a service
-// call is cheap, and the pair can move at the player between one call and the next.
-std::optional<std::string> currentDeviceId() {
+struct ActiveOutput {
+    std::optional<std::string> id;
+    std::optional<bool> silent;
+};
+
+// Both halves nullopt where this foobar2000 has no output_manager_v2. Never held between calls: a
+// service call is cheap, and the pair can move at the player between one call and the next.
+// output_id_null is the module GUID of foobar2000's Null Output, whichever of its devices is
+// chosen.
+ActiveOutput activeOutput() {
     if (output_manager_v2::tryGet().is_empty())
-        return std::nullopt;
+        return {};
 
     outputCoreConfig_t config{};
     output_manager_v2::get()->getCoreConfig(&config, sizeof(config));
-    return deviceIdOf(config.m_output, config.m_device);
+    return {deviceIdOf(config.m_output, config.m_device), config.m_output == output_id_null};
 }
 
 }  // namespace
@@ -122,12 +129,12 @@ struct OutputWatch::Callback : public output_config_change_callback {
         : store(store), manager(std::move(manager)) {}
 
     void outputConfigChanged() override {
-        const auto id = currentDeviceId();
-        if (id == lastSeen)
+        const auto output = activeOutput();
+        if (output.id == lastSeen.id && output.silent == lastSeen.silent)
             return;
 
-        lastSeen = id;
-        store.outputDeviceChanged(id);
+        lastSeen = output;
+        store.outputDeviceChanged(output.id, output.silent);
     }
 
     PlayerStateStore& store;
@@ -136,7 +143,7 @@ struct OutputWatch::Callback : public output_config_change_callback {
     // this registered against, the way fb2k/artwork.h's NowPlayingArtworkWatch holds its own.
     output_manager_v2::ptr manager;
 
-    std::optional<std::string> lastSeen;
+    ActiveOutput lastSeen;
 };
 
 OutputWatch::OutputWatch(PlayerStateStore& store) {
@@ -145,8 +152,8 @@ OutputWatch::OutputWatch(PlayerStateStore& store) {
         return;
 
     callback_ = std::make_unique<Callback>(store, manager);
-    callback_->lastSeen = currentDeviceId();
-    store.outputDeviceChanged(callback_->lastSeen);
+    callback_->lastSeen = activeOutput();
+    store.outputDeviceChanged(callback_->lastSeen.id, callback_->lastSeen.silent);
 
     manager->addCallback(callback_.get());
 }

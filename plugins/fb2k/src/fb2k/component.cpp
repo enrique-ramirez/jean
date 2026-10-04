@@ -13,11 +13,13 @@
 #include "fb2k/autoplaylists.h"
 #include "fb2k/config_file.h"
 #include "fb2k/config_watch.h"
+#include "fb2k/decoder_source.h"
 #include "fb2k/library.h"
 #include "fb2k/main_thread.h"
 #include "fb2k/paths.h"
 #include "fb2k/playback_commands.h"
 #include "fb2k/playback_watch.h"
+#include "fb2k/player_audio_settings.h"
 #include "fb2k/player_mute.h"
 #include "fb2k/player_outputs.h"
 #include "fb2k/playlist_edits.h"
@@ -26,11 +28,13 @@
 #include "fb2k/queue.h"
 #include "fb2k/running_server.h"
 #include "fb2k/running_settings.h"
+#include "fb2k/session_track.h"
 #include "fb2k/streamer.h"
 #include "fb2k/tag_writer.h"
 #include "fb2k/ticket_mint.h"
 #include "fb2k/ui_assets.h"
 
+#include <atomic>
 #include <chrono>
 #include <memory>
 
@@ -58,19 +62,65 @@ std::unique_ptr<Streamer> makeStreamer(const Settings& settings, PlayerStateStor
         return nullptr;
     }
 
-    return std::make_unique<Streamer>(settings.opusBitrate, settings.aacBitrate, kPcmBufferSeconds,
-                                      playerState);
+    return std::make_unique<Streamer>(
+        settings.opusBitrate, settings.aacBitrate, kPcmBufferSeconds,
+        [&playerState] { playerState.timelineMarked(); }, engineCapture());
 }
+
+// The foobar2000 SDK does not say which thread delivers dsp_config_callback or the ReplayGain
+// notify, so the pointer is atomic and PlayerAudioSettings locks. Null while the component is not
+// running.
+std::atomic<PlayerAudioSettings*> g_playerAudio{nullptr};
+
+// The foobar2000 SDK registers a dsp_config_callback only as a service, found at load, so it
+// reaches the settings through g_playerAudio.
+class ChainCallback : public dsp_config_callback {
+public:
+    void on_core_settings_change(const dsp_chain_config& chain) override {
+        if (PlayerAudioSettings* const settings = g_playerAudio.load())
+            settings->chainChanged(chain);
+    }
+};
+
+service_factory_single_t<ChainCallback> g_chainCallback;
+
+class PlayerAudioWatch : public replaygain_core_settings_notify {
+public:
+    explicit PlayerAudioWatch(PlayerAudioSettings& settings)
+        : settings_(settings), replayGain_(replaygain_manager_v2::tryGet()) {
+        g_playerAudio = &settings_;
+        if (replayGain_.is_valid())
+            replayGain_->add_notify(this);
+    }
+
+    ~PlayerAudioWatch() {
+        if (replayGain_.is_valid())
+            replayGain_->remove_notify(this);
+        g_playerAudio = nullptr;
+    }
+
+    void on_changed(const t_replaygain_config& config) override {
+        settings_.replayGainChanged(config);
+    }
+
+    PlayerAudioWatch(const PlayerAudioWatch&) = delete;
+    PlayerAudioWatch& operator=(const PlayerAudioWatch&) = delete;
+
+private:
+    PlayerAudioSettings& settings_;
+    const replaygain_manager_v2::ptr replayGain_;
+};
 
 void explainPortCollision() {
     logError("another program on this machine is already listening on that port");
     logError("change \"port\" in " + configPath() + " and restart foobar2000");
 }
 
-Player playerUsing(MainThreadQueue& mainThread, MainThreadWatch& mainThreadWatch,
-                   const Streamer* streamer, OutputHold& outputHold, LibraryFeed& libraryFeed,
-                   PlayerStateStore& playerState, const PlaylistVersions& playlistVersions,
-                   const AlbumArt& rowArt) {
+Player playerUsing(const Settings& settings, MainThreadQueue& mainThread,
+                   MainThreadWatch& mainThreadWatch, const Streamer* streamer,
+                   OutputHold& outputHold, LibraryFeed& libraryFeed, PlayerStateStore& playerState,
+                   const PlaylistVersions& playlistVersions, const AlbumArt& rowArt,
+                   const PlayerAudioSettings& playerAudio) {
     Player player;
     player.checkMainThread = [&mainThreadWatch](std::chrono::steady_clock::time_point now) {
         return mainThreadWatch.check(now);
@@ -144,6 +194,16 @@ Player playerUsing(MainThreadQueue& mainThread, MainThreadWatch& mainThreadWatch
         player.stream.open = streamer->opener();
         player.stream.formats = streamer->formats();
         player.stream.readTimeline = [streamer] { return streamer->timeline(); };
+
+        player.sessions.start = [&mainThread, &settings, &playerAudio](Session& session) {
+            return startSessionStream(session, mainThread, settings, kPcmBufferSeconds,
+                                      playerAudio);
+        };
+        player.sessions.takePlaylist = makePlaylistTrackTaker(mainThread);
+        player.sessions.takeLibrary = makeLibraryTrackTaker(libraryFeed.ordinalResolver());
+        player.sessions.readQueue = makeSessionQueueReader();
+        player.sessions.readTrack = makeSessionTrackReader(mainThread);
+        player.sessions.readArtwork = makeSessionArtworkReader(rowArt);
     }
 
     if (outputHold.enabled()) {
@@ -177,11 +237,12 @@ public:
           outputWatch_(playerState_),
           playlistWatch_(mainThread_, playlistVersions_, playerState_),
           nowPlayingArtworkWatch_(nowPlayingArtwork_),
-          server_(settings_, audience_,
-                  playerUsing(mainThread_, mainThreadWatch_, streamer_.get(), outputHold_,
-                              libraryFeed_, playerState_, playlistVersions_, rowArt_),
-                  mintTicket, libraryFeed_.enabled() ? &library_ : nullptr, &playerState_,
-                  &nowPlayingArtwork_),
+          server_(
+              settings_, audience_,
+              playerUsing(settings_, mainThread_, mainThreadWatch_, streamer_.get(), outputHold_,
+                          libraryFeed_, playerState_, playlistVersions_, rowArt_, playerAudio_),
+              mintTicket, libraryFeed_.enabled() ? &library_ : nullptr, &playerState_,
+              &nowPlayingArtwork_),
           status_(server_.start()),
           configWatch_(server_, settings_) {
         if (status_.listening) {
@@ -239,6 +300,11 @@ private:
     // Resolved separately from LibraryFeed's own, because a playlist row's handle never
     // passes through the media library snapshot.
     AlbumArt rowArt_;
+
+    // Declared before server_ and so destroyed after it: the destructor's server_.stop() closes
+    // every session, and closing one joins the decoder reading these.
+    PlayerAudioSettings playerAudio_;
+    PlayerAudioWatch playerAudioWatch_{playerAudio_};
 
     HttpServer server_;
     const ListenerStatus status_;

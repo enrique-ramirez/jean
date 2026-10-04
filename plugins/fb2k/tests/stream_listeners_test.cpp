@@ -25,7 +25,7 @@ namespace {
 
 // Stays open until it is let go, which is the only way to read a roster with somebody
 // actually on it.
-class HeldStream : public StreamSession {
+class HeldStream : public StreamListener {
 public:
     struct Gate {
         std::mutex mutex;
@@ -52,10 +52,10 @@ private:
     bool sent_ = false;
 };
 
-// The gate every session blocks on, and the player built over it. Separate from the
+// The gate every listener blocks on, and the player built over it. Separate from the
 // connections below because the order matters both ways: this has to exist before the
 // server, and the connections have to be let go before the server stops -- stopping joins
-// the connection threads, and a session still inside next() would hold them forever.
+// the connection threads, and a listener still inside next() would hold them forever.
 struct Source {
     std::shared_ptr<HeldStream::Gate> gate = std::make_shared<HeldStream::Gate>();
 
@@ -387,7 +387,7 @@ constexpr int kCallsAllowedAfterReload = 4;
 
 // Never ends by itself while it is wanted. Once the reload has landed it allows a few more calls
 // and then ends anyway, so a server that never cuts fails this test rather than hanging it.
-class LiveStream : public StreamSession {
+class LiveStream : public StreamListener {
 public:
     LiveStream(std::shared_ptr<Cut> cut, bool paused) : cut_(std::move(cut)), paused_(paused) {}
 

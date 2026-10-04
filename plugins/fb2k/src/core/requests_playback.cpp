@@ -1,6 +1,8 @@
 #include "core/requests_playback.h"
 
 #include "core/json.h"
+#include "core/requests_playlists.h"
+#include "core/text.h"
 
 #include <array>
 
@@ -15,6 +17,7 @@ constexpr std::array<const char*, 1> kPlaybackModeFields{kModeField};
 constexpr std::array<const char*, 3> kVolumeFields{"value", "step", "muted"};
 constexpr char kDeviceIdField[] = "deviceId";
 constexpr std::array<const char*, 1> kActiveOutputFields{kDeviceIdField};
+constexpr char kIndexField[] = "index";
 
 constexpr char kUndeclaredField[] = "a field this route does not take was named";
 
@@ -150,6 +153,43 @@ ActiveOutputRequest parseActiveOutput(const JsonObject& body) {
     ActiveOutputRequest request;
     request.ok = true;
     request.deviceId = deviceId->get<std::string>();
+    return request;
+}
+
+PlaySetRequest parsePlaySet(const JsonObject& body, size_t trackCount,
+                            std::optional<uint64_t> expectedStructure) {
+    if (!body.ok())
+        return refused<PlaySetRequest>(PlaylistRefusal::malformedBody);
+
+    JsonObject set = body;
+    std::optional<nlohmann::json> index;
+    if (const auto found = set.value.find(kIndexField); found != set.value.end()) {
+        index = *found;
+        set.value.erase(found);
+    }
+
+    const auto fill = parseFill(set, trackCount, expectedStructure);
+    if (!fill.ok()) {
+        PlaySetRequest request;
+        request.refusal = fill.refusal;
+        request.outcome = fill.outcome;
+        return request;
+    }
+
+    if (!index || !index->is_number_unsigned() || !fitsUint32(index->get<uint64_t>())) {
+        PlaySetRequest request;
+        request.indexRefused = true;
+        return request;
+    }
+
+    PlaySetRequest request;
+    request.structure = fill.structure;
+    request.ordinals = fill.ordinals;
+    request.index = static_cast<uint32_t>(index->get<uint64_t>());
+
+    if (request.index >= request.ordinals.size())
+        request.outcome = PlayerOutcome::positionPastEnd;
+
     return request;
 }
 

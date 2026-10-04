@@ -30,7 +30,7 @@ public:
     // fewer bytes than are available, so callers loop.
     //
     // `idle` is neither an error nor a stop: it hands control back so the caller can check
-    // the connection is still there (see StreamSession::next in stream.h). A paused player
+    // the connection is still there (see StreamListener::next in stream.h). A paused player
     // writes nothing here, so blocking forever would never notice a listener gone.
     Read read(Cursor& cursor, std::vector<std::uint8_t>& out, std::chrono::milliseconds patience);
 

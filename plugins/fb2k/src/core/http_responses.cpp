@@ -146,6 +146,22 @@ bool playbackRefused(const Settings& settings, httplib::Response& res) {
     return refusedBySwitch(settings.controlPlayback, PlayerOutcome::playbackDisabled, res);
 }
 
+void respondUnknownSession(httplib::Response& res) {
+    respondError(res, 404, kUnknownSession);
+}
+
+bool readDeviceIdentity(const httplib::Request& req, httplib::Response& res,
+                        DeviceIdentity& device) {
+    const auto asked = parseDeviceIdentity(req.body);
+    if (!asked.ok()) {
+        respondError(res, 400, asked.refusal);
+        return false;
+    }
+
+    device = asked.device;
+    return true;
+}
+
 bool outputChangeRefused(const Settings& settings, httplib::Response& res) {
     return refusedBySwitch(settings.changeOutput, PlayerOutcome::changeDisabled, res);
 }

@@ -47,6 +47,8 @@ struct ArtworkSource {
     SharedBytes picture;
 };
 
+bool oversized(const ArtworkSource& source);
+
 using ArtworkReader = std::function<ArtworkSource(const std::string& track)>;
 
 // The cover of whatever is playing, addressed by nothing: held rather than looked up, so a

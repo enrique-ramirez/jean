@@ -6,12 +6,12 @@
 #include "core/refusal_order.h"
 #include "fb2k/library.h"
 #include "fb2k/playlists.h"
-#include "fb2k/strings.h"
 #include "fb2k/tracks.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <vector>
@@ -45,13 +45,6 @@ CopiedQueue copyQueue(const PlayerStateStore& store) {
         copied.items.push_back({items[at].m_handle, queuedLocationOf(items[at])});
 
     return copied;
-}
-
-std::string formattedField(const metadb_handle_ptr& handle, const file_info& info,
-                           const titleformat_object::ptr& script) {
-    pfc::string8 out;
-    handle->format_title_from_external_info(info, nullptr, out, script, nullptr);
-    return toStd(out);
 }
 
 QueuedTrack formatted(const CopiedQueueItem& item, const NameScripts& scripts,
@@ -296,6 +289,22 @@ RemoveQueueEntry makeRemoveQueueEntry(MainThreadQueue& mainThread, PlayerStateSt
         return askForOutcome<PlayerOutcome>(
             mainThread, "removing a queue entry",
             [index, revision, &store] { return removeEntryOnMainThread(index, revision, store); });
+    };
+}
+
+SessionQueueReader makeSessionQueueReader() {
+    const auto scripts = compiledNameScripts(kTitleOrNothingScript);
+    const auto libraryManager = library_manager::get();
+
+    return [scripts, libraryManager](const std::vector<SessionTrack>& entries) {
+        QueueRead read;
+        read.entries.reserve(entries.size());
+        std::transform(entries.begin(), entries.end(), std::back_inserter(read.entries),
+                       [&scripts, &libraryManager](const SessionTrack& entry) {
+                           return formatted(CopiedQueueItem{handleOf(entry), std::nullopt}, scripts,
+                                            libraryManager);
+                       });
+        return read;
     };
 }
 

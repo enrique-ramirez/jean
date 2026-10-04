@@ -7,6 +7,7 @@
 #include "fb2k/artwork.h"
 #include "fb2k/columns.h"
 #include "fb2k/strings.h"
+#include "fb2k/tracks.h"
 
 #include <foobar2000/SDK/foosortstring.h>
 
@@ -671,6 +672,27 @@ ArtworkReader LibraryFeed::artworkReader() {
         return {};
 
     return [state = state_](const std::string& track) { return state->artwork(track); };
+}
+
+LibraryTrackTaker makeLibraryTrackTaker(OrdinalResolver resolveOrdinals) {
+    if (!resolveOrdinals)
+        return {};
+
+    const auto libraryManager = library_manager::get();
+
+    return [resolveOrdinals = std::move(resolveOrdinals), libraryManager](
+               uint64_t structure, const std::vector<uint32_t>& ordinals) {
+        const auto resolved = resolveOrdinals(structure, ordinals);
+
+        SessionTracksRead read;
+        if (!resolved.structureMatched) {
+            read.outcome = PlayerOutcome::structureMoved;
+            return read;
+        }
+
+        read.tracks = sessionTracksOf(resolved.items, libraryManager);
+        return read;
+    };
 }
 
 OrdinalResolver LibraryFeed::ordinalResolver() {

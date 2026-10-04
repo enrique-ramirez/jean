@@ -2,6 +2,7 @@
 
 #include "third_party/httplib.h"
 
+#include "core/device.h"
 #include "core/failures.h"
 #include "core/library.h"
 #include "core/rate_limit.h"
@@ -55,6 +56,11 @@ void respondRequestRefused(httplib::Response& res, const Request& request) {
 bool playlistWritesRefused(const Settings& settings, httplib::Response& res);
 
 bool playbackRefused(const Settings& settings, httplib::Response& res);
+
+void respondUnknownSession(httplib::Response& res);
+
+bool readDeviceIdentity(const httplib::Request& req, httplib::Response& res,
+                        DeviceIdentity& device);
 
 // changeOutput permits the device alone: controlPlayback never gates a switch, and GET
 // /api/outputs is never gated at all, because reading the list changes nothing.

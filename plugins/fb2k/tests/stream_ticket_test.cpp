@@ -1,5 +1,6 @@
 #include "third_party/doctest.h"
 
+#include "core/session.h"
 #include "core/stream_ticket.h"
 #include "support/fixtures.h"
 
@@ -134,6 +135,35 @@ TEST_CASE("a thousand requests leave only the cap outstanding") {
 
     CHECK(admitted == 8);
     CHECK(tickets.admits(issued.back(), kStart));
+}
+
+// Two tickets for two sessions, admitted in the other order, so an admission answering the session
+// of the ticket issued last, or first, names the wrong one.
+TEST_CASE("an admission names the session its ticket was issued for") {
+    auto tickets = store();
+    const auto forKitchen =
+        tickets.issue(kStart, DeviceIdentity{"phone", "Android phone"}, "Wb3kq");
+    const auto forDesk = tickets.issue(kStart, DeviceIdentity{"laptop", "Laptop"}, "Ad9xz");
+
+    const auto desk = tickets.admits(forDesk.ticket, kStart);
+    const auto kitchen = tickets.admits(forKitchen.ticket, kStart);
+
+    REQUIRE(desk);
+    REQUIRE(kitchen);
+    CHECK(desk.session == "Ad9xz");
+    CHECK(desk.device.id == "laptop");
+    CHECK(kitchen.session == "Wb3kq");
+    CHECK(kitchen.device.id == "phone");
+}
+
+TEST_CASE("a ticket issued for no session admits to the engine session") {
+    auto tickets = store();
+    const auto issued = tickets.issue(kStart, DeviceIdentity{"phone", "Android phone"});
+
+    const auto admission = tickets.admits(issued.ticket, kStart);
+
+    REQUIRE(admission);
+    CHECK((admission.session.empty() || admission.session == kEngineSessionId));
 }
 
 // A cap of one, so a failed mint that stored anything at all would push out the ticket issued

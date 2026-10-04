@@ -10,11 +10,13 @@
 #include "core/stream.h"
 #include "core/timeline.h"
 #include "fb2k/aac_encoder.h"
+#include "fb2k/com_thread.h"
 #include "fb2k/tracks.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <initializer_list>
 #include <iterator>
 #include <optional>
@@ -79,13 +81,13 @@ struct Streamer::State {
     std::thread thread;
     std::atomic<bool> stopping{false};
 
-    State(int opusBitrate, int aacBitrate, double bufferSeconds, PlayerStateStore& playerState)
+    State(int opusBitrate, int aacBitrate, double bufferSeconds, std::function<void()> marked)
         : pcm(bufferSeconds),
           opus(kOutputChannels, opusBitrate),
           aac(kOutputChannels, OpusStream::kSampleRate, aacBitrate),
           ogg("opus", "audio/ogg", opusBitrate, opus),
           adts("aac", "audio/aac", aacBitrate, aac),
-          timeline(kTimelineMarks, [&playerState] { playerState.timelineMarked(); }) {
+          timeline(kTimelineMarks, std::move(marked)) {
         ogg.preamble = opus.headers();
 
         for (Format* format : {&ogg, &adts}) {
@@ -110,12 +112,16 @@ struct Streamer::State {
     std::vector<Format*> working;
 };
 
-struct Streamer::Capture : public playback_stream_capture_callback_impl,
-                           public play_callback_impl_base {
-    explicit Capture(std::shared_ptr<State> state)
+namespace {
+
+class Capture : public PcmSource,
+                public playback_stream_capture_callback_impl,
+                public play_callback_impl_base {
+public:
+    explicit Capture(PcmRing& ring)
         : playback_stream_capture_callback_impl(kCaptureInterval),
           play_callback_impl_base(flag_on_playback_new_track | flag_on_playback_seek),
-          state_(std::move(state)) {}
+          ring_(ring) {}
 
     void on_playback_new_track(metadb_handle_ptr track) override {
         pending_ = markOf(track, playback_control::get()->playback_get_position());
@@ -139,9 +145,10 @@ struct Streamer::Capture : public playback_stream_capture_callback_impl,
         block.mark = std::move(pending_);
         pending_.reset();
 
-        state_->pcm.write(std::move(block));
+        ring_.write(std::move(block));
     }
 
+private:
     static StreamMark markOf(const metadb_handle_ptr& track, double position) {
         StreamMark mark;
         mark.position = position;
@@ -153,11 +160,9 @@ struct Streamer::Capture : public playback_stream_capture_callback_impl,
         return mark;
     }
 
-    std::shared_ptr<State> state_;
+    PcmRing& ring_;
     std::optional<StreamMark> pending_;
 };
-
-namespace {
 
 // Resampling and channel conversion through the player's own resampler, so a user who chose
 // SoX gets SoX. PPHS ships with foobar2000 and accepts every ratio, so the chain exists on a
@@ -247,14 +252,14 @@ private:
     bool complained_ = false;
 };
 
-class Session : public StreamSession {
+class Listener : public StreamListener {
 public:
-    Session(std::shared_ptr<Streamer::State> state, Format* format)
+    Listener(std::shared_ptr<Streamer::State> state, Format* format)
         : state_(std::move(state)), format_(format), cursor_(format->broadcast.subscribe()) {
         ++format_->listeners;
     }
 
-    ~Session() override { --format_->listeners; }
+    ~Listener() override { --format_->listeners; }
 
     bool next(std::vector<std::uint8_t>& out) override {
         if (!sentPreamble_) {
@@ -279,12 +284,6 @@ private:
     Format* format_;
     BroadcastRing::Cursor cursor_;
     bool sentPreamble_ = false;
-};
-
-// Media Foundation needs COM initialised on the encoder thread itself.
-struct ComOnThisThread {
-    ComOnThisThread() { CoInitializeEx(nullptr, COINIT_MULTITHREADED); }
-    ~ComOnThisThread() { CoUninitialize(); }
 };
 
 void encode(const std::shared_ptr<Streamer::State>& state) {
@@ -331,9 +330,9 @@ void encode(const std::shared_ptr<Streamer::State>& state) {
     }
 }
 
-// The one thread entry point in this component, and an exception leaving it calls
-// std::terminate: the SDK throws in the resampler and the DSP chain, and taking the player
-// down with no message is not what a failed stream is worth.
+// A thread entry point, and an exception leaving any thread entry point calls std::terminate: the
+// SDK throws in the resampler and the DSP chain, and taking the player down with no message is not
+// what a failed stream is worth.
 void runEncoder(const std::shared_ptr<Streamer::State>& state) {
     try {
         encode(state);
@@ -349,15 +348,29 @@ void runEncoder(const std::shared_ptr<Streamer::State>& state) {
 
 }  // namespace
 
+PcmSourceFactory engineCapture() {
+    return [](PcmRing& ring) -> std::unique_ptr<PcmSource> {
+        return std::make_unique<Capture>(ring);
+    };
+}
+
 Streamer::Streamer(int opusBitrate, int aacBitrate, double bufferSeconds,
-                   PlayerStateStore& playerState)
-    : state_(std::make_shared<State>(opusBitrate, aacBitrate, bufferSeconds, playerState)) {
+                   std::function<void()> marked, const PcmSourceFactory& source)
+    : state_(std::make_shared<State>(opusBitrate, aacBitrate, bufferSeconds, std::move(marked))) {
     if (state_->working.empty()) {
         logError("streaming is unavailable: no encoder started");
         return;
     }
 
-    capture_ = std::make_unique<Capture>(state_);
+    if (source)
+        source_ = source(state_->pcm);
+
+    if (!source_) {
+        logError("streaming is unavailable: no audio source started");
+        state_->working.clear();
+        return;
+    }
+
     state_->thread = std::thread([state = state_] { runEncoder(state); });
 }
 
@@ -389,7 +402,7 @@ StreamOpener Streamer::opener() const {
         if (format == nullptr)
             return {};
 
-        return {format->contentType, std::make_unique<Session>(state, format)};
+        return {format->contentType, std::make_unique<Listener>(state, format)};
     };
 }
 
@@ -397,7 +410,7 @@ void Streamer::stop() {
     if (state_->stopping.exchange(true))
         return;
 
-    capture_.reset();
+    source_.reset();
     state_->pcm.close();
     state_->ogg.broadcast.close();
     state_->adts.broadcast.close();

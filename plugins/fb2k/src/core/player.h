@@ -7,6 +7,7 @@
 #include "core/outputs.h"
 #include "core/player_outcome.h"
 #include "core/playlists.h"
+#include "core/session.h"
 #include "core/stream.h"
 #include "core/tag_write.h"
 
@@ -347,6 +348,54 @@ struct PlayerReport {
 // Answers at once and never waits on the main thread, which is the thing it reports on.
 using MainThreadCheck = std::function<MainThreadHealth(std::chrono::steady_clock::time_point now)>;
 
+struct SessionTracksRead {
+    PlayerOutcome outcome = PlayerOutcome::done;
+    std::vector<SessionTrack> tracks;
+};
+
+// One main-thread job copies the handles; the calling thread spells them as SessionTracks.
+using PlaylistTrackTaker = std::function<SessionTracksRead(
+    const std::string& playlistId, const std::optional<std::vector<uint32_t>>& positions)>;
+
+// No main-thread job. structureMoved where `structure` is no longer the snapshot's.
+using LibraryTrackTaker =
+    std::function<SessionTracksRead(uint64_t structure, const std::vector<uint32_t>& ordinals)>;
+
+struct SessionTrackRead {
+    PlayerOutcome outcome = PlayerOutcome::done;
+    bool named = true;
+    std::string title;
+    std::string artist;
+    std::string album;
+    std::string albumArtist;
+
+    // Seconds, as the track's metadata gives its length.
+    double duration = 0;
+
+    std::vector<std::string> columns;
+};
+
+// `columns` are compiled in one main-thread job, and with none asked for nothing reaches the main
+// thread. `named` false, and `outcome` done, where the player has not read the track's metadata
+// yet.
+using SessionTrackReader = std::function<SessionTrackRead(const SessionTrack& track,
+                                                          const std::vector<std::string>& columns)>;
+
+// No main-thread job. `location` is unset on every entry and the route sets `revision`.
+using SessionQueueReader = std::function<QueueRead(const std::vector<SessionTrack>& entries)>;
+
+// Read with no main-thread job.
+using SessionArtworkReader = std::function<ArtworkSource(const SessionTrack& track)>;
+
+struct SessionCalls {
+    SessionStreamStarter start;
+    PlaylistTrackTaker takePlaylist;
+    LibraryTrackTaker takeLibrary;
+    SessionTrackReader readTrack;
+    SessionQueueReader readQueue;
+    SessionArtworkReader readArtwork;
+};
+
 struct Player {
     PlayerReport report;
     MainThreadCheck checkMainThread;
@@ -357,6 +406,7 @@ struct Player {
     OutputCalls outputs;
     LibraryCalls library;
     StreamCalls stream;
+    SessionCalls sessions;
     PageCalls page;
 };
 

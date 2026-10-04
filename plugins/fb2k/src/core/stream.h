@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/pcm_ring.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -34,9 +36,9 @@ protected:
     StreamEncoder() = default;
 };
 
-class StreamSession {
+class StreamListener {
 public:
-    virtual ~StreamSession() = default;
+    virtual ~StreamListener() = default;
 
     // Blocks until bytes are available. False ends the response, which is how a listener
     // that fell too far behind is dropped.
@@ -46,22 +48,34 @@ public:
     // a socket is only ever found dead by writing to it.
     //
     // A blocked call delays HttpServer::stop(), so whatever supplies these MUST unblock
-    // every session before the server is stopped.
+    // every listener before the server is stopped.
     virtual bool next(std::vector<std::uint8_t>& out) = 0;
 
-    StreamSession(const StreamSession&) = delete;
-    StreamSession& operator=(const StreamSession&) = delete;
+    StreamListener(const StreamListener&) = delete;
+    StreamListener& operator=(const StreamListener&) = delete;
 
 protected:
-    StreamSession() = default;
+    StreamListener() = default;
 };
+
+class PcmSource {
+public:
+    virtual ~PcmSource() = default;
+
+    PcmSource(const PcmSource&) = delete;
+    PcmSource& operator=(const PcmSource&) = delete;
+
+protected:
+    PcmSource() = default;
+};
+
+using PcmSourceFactory = std::function<std::unique_ptr<PcmSource>(PcmRing&)>;
 
 struct OpenedStream {
     std::string contentType;
-    std::unique_ptr<StreamSession> session;
+    std::unique_ptr<StreamListener> listener;
 };
 
-// A null session refuses the connection.
 using StreamOpener = std::function<OpenedStream(const std::string& format)>;
 
 }  // namespace jean

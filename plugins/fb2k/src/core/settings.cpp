@@ -132,6 +132,9 @@ Settings validated(Settings settings, std::vector<std::string>& log) {
         inRange(log, "streamTicketTtlSeconds", settings.streamTicketTtlSeconds,
                 kMinTicketTtlSeconds, kMaxTicketTtlSeconds, defaults.streamTicketTtlSeconds);
 
+    settings.maxSessions = inRange(log, "maxSessions", settings.maxSessions, 0, kMaxSessionsCeiling,
+                                   defaults.maxSessions);
+
     return settings;
 }
 
@@ -165,6 +168,7 @@ SettingsParse parseSettingsLogging(const std::string& text) {
     keys.read("maxConcurrentStreams", settings.maxConcurrentStreams);
     keys.read("streamTicketTtlSeconds", settings.streamTicketTtlSeconds);
     keys.read("muteWhileStreaming", settings.muteWhileStreaming);
+    keys.read("maxSessions", settings.maxSessions);
 
     keys.warnAboutLeftovers();
 
@@ -202,7 +206,8 @@ std::string serialiseSettings(const Settings& settings) {
                     {"streamingEnabled", settings.streamingEnabled},
                     {"maxConcurrentStreams", settings.maxConcurrentStreams},
                     {"streamTicketTtlSeconds", settings.streamTicketTtlSeconds},
-                    {"muteWhileStreaming", settings.muteWhileStreaming}};
+                    {"muteWhileStreaming", settings.muteWhileStreaming},
+                    {"maxSessions", settings.maxSessions}};
 
     return root.dump(2) + "\n";
 }

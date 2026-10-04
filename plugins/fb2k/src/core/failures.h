@@ -36,6 +36,16 @@ constexpr char kUnpublishableArtwork[] = "that artwork is not in a format this c
 constexpr char kArtworkTooLarge[] = "that artwork is larger than this component sends";
 constexpr char kSendJson[] = "send application/json";
 constexpr char kColumnsRequired[] = "'columns' is required";
+constexpr char kNoSessions[] = "sessions are not available";
+constexpr char kTooManySessions[] = "too many sessions";
+constexpr char kUnknownSession[] = "no such session";
+constexpr char kEngineSessionUnchangeable[] = "the engine session cannot be changed";
+constexpr char kDeviceIdRequired[] = "'deviceId' is required";
+constexpr char kSharedNotBoolean[] = "'shared' must be true or false";
+constexpr char kSessionQueueFull[] = "the session's queue is full";
+constexpr char kEnginePlaysRows[] =
+    "the engine session plays a playlist row; name a detached session";
+constexpr char kBadPlayIndex[] = "'index' must be a whole number";
 
 constexpr char kRefreshingTooFast[] = "too many library refreshes";
 constexpr char kPollingTooFast[] = "too many state polls";

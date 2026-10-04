@@ -4,11 +4,39 @@
 
 namespace jean {
 
-Audience::Audience(int maxConnections, std::chrono::milliseconds linger)
-    : state_(std::make_shared<State>(maxConnections, linger)) {}
+Audience::Audience(int maxConnections, std::chrono::milliseconds linger, Now now)
+    : Audience(std::make_shared<Cap>(maxConnections), linger, std::move(now)) {}
+
+Audience::Audience(std::shared_ptr<Cap> cap, std::chrono::milliseconds linger, Now now)
+    : state_(std::make_shared<State>(std::move(cap), linger, std::move(now))) {}
 
 Audience::~Audience() {
     close();
+}
+
+std::unique_ptr<Audience> Audience::sibling() const {
+    return std::unique_ptr<Audience>(new Audience(state_->cap, state_->linger, state_->now));
+}
+
+Audience::Clock::time_point Audience::now() const {
+    return state_->now();
+}
+
+bool Audience::Cap::take() {
+    int taken = taken_.load();
+    do {
+        if (taken >= max_)
+            return false;
+    } while (!taken_.compare_exchange_weak(taken, taken + 1));
+    return true;
+}
+
+void Audience::Cap::give() {
+    --taken_;
+}
+
+int Audience::Cap::taken() const {
+    return taken_.load();
 }
 
 Audience::Key Audience::keyFor(const DeviceIdentity& device, std::uint64_t connection) {
@@ -24,6 +52,12 @@ void Audience::dropDepartures(std::vector<Departure>& departures, const Key& key
                      departures.end());
 }
 
+void Audience::dropExpired(std::vector<Departure>& departures, Clock::time_point now) {
+    departures.erase(std::remove_if(departures.begin(), departures.end(),
+                                    [now](const Departure& gone) { return gone.until <= now; }),
+                     departures.end());
+}
+
 bool Audience::stillHolding(const std::vector<Entry>& entries, const Key& key) {
     return std::any_of(entries.begin(), entries.end(),
                        [&key](const Entry& live) { return live.key == key; });
@@ -35,7 +69,10 @@ public:
         : state_(std::move(state)), key_(std::move(key)), connection_(connection) {}
 
     ~Membership() {
+        state_->cap->give();
+
         try {
+            const auto now = state_->now();
             const std::lock_guard<std::mutex> held(state_->mutex);
 
             state_->entries.erase(std::remove_if(state_->entries.begin(), state_->entries.end(),
@@ -44,8 +81,9 @@ public:
                                                  }),
                                   state_->entries.end());
 
+            dropExpired(state_->departures, now);
             if (!stillHolding(state_->entries, key_))
-                state_->departures.push_back({key_, Clock::now() + state_->linger});
+                state_->departures.push_back({key_, now + state_->linger});
         } catch (...) {
             state_->changed.notify_all();
             return;
@@ -67,11 +105,14 @@ std::shared_ptr<Audience::Membership> Audience::join(const DeviceIdentity& devic
                                                      const std::string& format,
                                                      Clock::time_point now) {
     const auto state = state_;
+    const auto expiredBy = state->now();
     Entry entry;
 
     {
         const std::lock_guard<std::mutex> held(state->mutex);
-        if (state->closed || static_cast<int>(state->entries.size()) >= state->maxConnections)
+        dropExpired(state->departures, expiredBy);
+
+        if (state->closed || !state->cap->take())
             return nullptr;
 
         entry.connection = state->nextConnection++;
@@ -151,8 +192,7 @@ std::vector<AudienceMember> Audience::roster(Clock::time_point now) const {
 }
 
 int Audience::connections() const {
-    const std::lock_guard<std::mutex> held(state_->mutex);
-    return static_cast<int>(state_->entries.size());
+    return state_->cap->taken();
 }
 
 bool Audience::listeningLocked(Clock::time_point now) const {
@@ -168,6 +208,19 @@ bool Audience::anyListening(Clock::time_point now) const {
     return listeningLocked(now);
 }
 
+bool Audience::holds(const std::string& deviceId, Clock::time_point now) const {
+    if (deviceId.empty())
+        return false;
+
+    const Key key{deviceId, false};
+    const std::lock_guard<std::mutex> held(state_->mutex);
+
+    return stillHolding(state_->entries, key) ||
+           std::any_of(
+               state_->departures.begin(), state_->departures.end(),
+               [&key, now](const Departure& gone) { return gone.key == key && gone.until > now; });
+}
+
 bool Audience::awaitChangeFrom(bool applied) {
     std::unique_lock<std::mutex> lock(state_->mutex);
 
@@ -176,10 +229,7 @@ bool Audience::awaitChangeFrom(bool applied) {
             return false;
 
         const auto now = Clock::now();
-        state_->departures.erase(
-            std::remove_if(state_->departures.begin(), state_->departures.end(),
-                           [now](const Departure& gone) { return gone.until <= now; }),
-            state_->departures.end());
+        dropExpired(state_->departures, now);
 
         if (listeningLocked(now) != applied)
             return true;
@@ -199,6 +249,11 @@ bool Audience::awaitChangeFrom(bool applied) {
         }
         --state_->waiting;
     }
+}
+
+size_t Audience::departuresHeld() const {
+    const std::lock_guard<std::mutex> held(state_->mutex);
+    return state_->departures.size();
 }
 
 size_t Audience::waitingForAChange() const {

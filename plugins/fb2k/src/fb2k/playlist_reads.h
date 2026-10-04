@@ -23,4 +23,6 @@ PlaylistChangeReader makeChangedPlaylistRowReader(MainThreadQueue& mainThread,
 PlaylistRowArtworkReader makePlaylistRowArtworkReader(MainThreadQueue& mainThread,
                                                       const AlbumArt& art);
 
+PlaylistTrackTaker makePlaylistTrackTaker(MainThreadQueue& mainThread);
+
 }  // namespace jean

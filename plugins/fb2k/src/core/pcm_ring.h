@@ -41,8 +41,13 @@ class PcmRing {
 public:
     explicit PcmRing(double capacitySeconds);
 
-    // MUST NOT block: the caller is the player's main thread.
+    // MUST NOT block: the engine's writer is foobar2000's main thread.
     void write(PcmBlock block);
+
+    // Seconds a write can add before the oldest block is dropped, never negative, and 0 once
+    // closed. Only a writer that must not lose audio asks, and since it is the only writer, the
+    // room can only grow between the ask and the write.
+    double roomSeconds() const;
 
     bool read(PcmBlock& out);
 

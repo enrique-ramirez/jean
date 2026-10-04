@@ -32,7 +32,7 @@ namespace {
 constexpr char kUpdateSpec[] = "shape changed -- update contract/openapi.yaml to match";
 
 // One byte, once, so a stream ends by itself rather than holding a thread.
-class OneChunk : public StreamSession {
+class OneChunk : public StreamListener {
 public:
     bool next(std::vector<std::uint8_t>& out) override {
         if (sent_)
@@ -220,11 +220,29 @@ TEST_CASE("GET /capabilities is the shape contract/openapi.yaml publishes") {
     report.volumeUnit = "db";
     report.playbackOrders = {"Default"};
 
-    CHECK(keysOf(capabilitiesDocument(servingSettings(), report, {"opus", "aac"}, true, true)) ==
-          Keys{"apiVersion", "allowedFields", "canWrite", "canWritePlaylists", "canControlPlayback",
-               "canChangeOutput", "maxAutoPlaylists", "canCreateAutoPlaylists", "canStream",
-               "streamFormats", "canMuteWhileStreaming", "canReadLibrary", "playerName",
-               "playerVersion", "volumeMin", "volumeMax", "volumeUnit", "playbackModes"});
+    const auto document = capabilitiesDocument(servingSettings(), report, {"opus", "aac"}, true,
+                                               true, SessionCapacity{true, 4});
+
+    CHECK(keysOf(document) == Keys{"apiVersion",
+                                   "allowedFields",
+                                   "canWrite",
+                                   "canWritePlaylists",
+                                   "canControlPlayback",
+                                   "canChangeOutput",
+                                   "maxAutoPlaylists",
+                                   "canCreateAutoPlaylists",
+                                   "canStream",
+                                   "streamFormats",
+                                   "canMuteWhileStreaming",
+                                   "canReadLibrary",
+                                   "playerName",
+                                   "playerVersion",
+                                   "volumeMin",
+                                   "volumeMax",
+                                   "volumeUnit",
+                                   "playbackModes",
+                                   "maxSessions",
+                                   "canCreateSessions"});
 }
 
 TEST_CASE("a client is told what it may write") {
@@ -589,6 +607,37 @@ TEST_CASE("GET /outputs is the shape contract/openapi.yaml publishes") {
     CHECK(keysOf(outputsDocument(read)) == Keys{"devices", "active"});
 }
 
+TEST_CASE("a session is the shape contract/openapi.yaml publishes") {
+    INFO(kUpdateSpec);
+
+    const auto keys =
+        Keys{"id",      "kind",        "shared",      "playback",  "title",         "artist",
+             "album",   "albumArtist", "libraryPath", "listeners", "playbackModes", "chainDropped",
+             "reports", "createdBy"};
+
+    SessionView engine;
+    engine.id = "engine";
+    engine.shared = true;
+    CHECK(keysOf(sessionDocument(engine)) == keys);
+
+    SessionView detached;
+    detached.id = "Wb3kqRf8TmZ2";
+    detached.detached = true;
+    detached.createdBy = DeviceIdentity{"3f8a1c0e-2b7d-4a91-9c33-51e0a2f6d4b8", "Android phone"};
+    detached.reports = {SessionReport{1, SessionReportKind::undecodable,
+                                      R"(C:\Music\Fictional Artist\01 Track.flac)", 0,
+                                      std::nullopt}};
+
+    const auto session = json::parse(sessionDocument(detached));
+    CHECK(keysOf(session) == keys);
+    CHECK(keysOf(session["createdBy"]) == Keys{"deviceId", "name"});
+    REQUIRE(session["reports"].size() == 1);
+    CHECK(keysOf(session["reports"][0]) ==
+          Keys{"sequence", "kind", "path", "subsong", "libraryPath"});
+
+    CHECK(keysOf(sessionsDocument({engine, detached})) == Keys{"sessions"});
+}
+
 // api_contract_test.cpp's other cases compare an emitted document with a key set written by
 // hand; this one is the check nothing else here makes, that the specification's own examples
 // agree with the schema they illustrate. `PlayerState` is `additionalProperties: false`, so
@@ -596,16 +645,27 @@ TEST_CASE("GET /outputs is the shape contract/openapi.yaml publishes") {
 TEST_CASE("GET /state's documented examples are the shape PlayerState declares") {
     INFO(kUpdateSpec);
 
-    const auto required = Keys{"playback",        "path",
-                               "subsong",         "libraryPath",
-                               "position",        "duration",
-                               "volume",          "muted",
-                               "title",           "artist",
-                               "album",           "albumArtist",
-                               "playbackMode",    "outputDeviceId",
-                               "playingLocation", "currentPlaylistId",
-                               "queueRevision",   "playlistsRevision",
-                               "timelineRevision"};
+    const auto required = Keys{"playback",
+                               "path",
+                               "subsong",
+                               "libraryPath",
+                               "position",
+                               "duration",
+                               "volume",
+                               "muted",
+                               "title",
+                               "artist",
+                               "album",
+                               "albumArtist",
+                               "playbackMode",
+                               "outputDeviceId",
+                               "outputSilent",
+                               "playingLocation",
+                               "currentPlaylistId",
+                               "queueRevision",
+                               "playlistsRevision",
+                               "timelineRevision",
+                               "sessionRevision"};
 
     PlayerState playing;
     playing.playback = PlaybackState::playing;
@@ -616,6 +676,7 @@ TEST_CASE("GET /state's documented examples are the shape PlayerState declares")
     playing.playbackMode = "inOrder";
     playing.outputDeviceId =
         "{5A3E1C27-8B4D-4F0E-9C61-2D7B8E9F0A13}:{0E1D3C47-5A7B-4F21-9C3D-2B8E6F4A1D90}";
+    playing.outputSilent = false;
     playing.title = "Imaginary Track";
     playing.artist = "Fictional Artist";
     playing.album = "Imaginary Album";

@@ -22,6 +22,8 @@ RemoveQueueEntry makeRemoveQueueEntry(MainThreadQueue& mainThread, PlayerStateSt
 
 ClearQueue makeClearQueue(MainThreadQueue& mainThread);
 
+SessionQueueReader makeSessionQueueReader();
+
 // foobar2000's playlist_manager::queue_get_contents is a main-thread call.
 std::vector<QueueEntry> currentQueue();
 

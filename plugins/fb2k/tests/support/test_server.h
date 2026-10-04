@@ -43,6 +43,14 @@ public:
                         PlayerStateStore* playerState = nullptr,
                         NowPlayingArtwork* nowPlayingArtwork = nullptr);
 
+    // A server whose audience, and so every session's, reads the clock advanceRateLimits moves.
+    // The server hands that clock to its routes, and each route passes the registry its `now`
+    // from it, so a case moves a listener's linger and a session's grace together.
+    // Every other server's audience reads the real clock, and the cases that read a linger with
+    // Audience::Clock::now() rely on that.
+    static TestServer onOneClock(Settings settings, const Player& player,
+                                 const TicketMint& mint = countingMint());
+
     struct WriterLog {
         std::vector<TagWrite> calls;
         TagWriteOutcome answer = TagWriteOutcome::written;
@@ -81,6 +89,13 @@ public:
     httplib::Client client() const;
 
 private:
+    struct OnOneClock {};
+
+    TestServer(OnOneClock, Settings settings, const Player& player, const TicketMint& mint);
+
+    void listen(const Player& player, Library* library, const TicketMint& mint,
+                PlayerStateStore* playerState, NowPlayingArtwork* nowPlayingArtwork);
+
     Settings settings_;
 
     // Shared rather than held, so the server's reading of it survives this object being moved.

@@ -144,6 +144,7 @@ json playerFields(const PlayerState& player, std::chrono::steady_clock::time_poi
         {"muted", player.muted},
         {"playbackMode", player.playbackMode ? json(*player.playbackMode) : json(nullptr)},
         {"outputDeviceId", player.outputDeviceId ? json(*player.outputDeviceId) : json(nullptr)},
+        {"outputSilent", player.outputSilent ? json(*player.outputSilent) : json(nullptr)},
         {"title", player.title ? json(*player.title) : json(nullptr)},
         {"artist", player.artist ? json(*player.artist) : json(nullptr)},
         {"album", player.album ? json(*player.album) : json(nullptr)},
@@ -153,7 +154,8 @@ json playerFields(const PlayerState& player, std::chrono::steady_clock::time_poi
          player.currentPlaylistId ? json(*player.currentPlaylistId) : json(nullptr)},
         {"queueRevision", revisions.queue},
         {"playlistsRevision", revisions.playlists},
-        {"timelineRevision", revisions.timeline}};
+        {"timelineRevision", revisions.timeline},
+        {"sessionRevision", revisions.session}};
 }
 
 json mainThreadFields(const MainThreadHealth& health) {
@@ -163,8 +165,56 @@ json mainThreadFields(const MainThreadHealth& health) {
     return json{{"answering", health.answering}, {"unansweredSeconds", unanswered}};
 }
 
-// The player's own listing order, kept: a sorted one would tell a client the modes came off a
-// table here rather than off the player it is actually running against.
+const char* reportKindName(SessionReportKind kind) {
+    switch (kind) {
+        case SessionReportKind::undecodable:
+            return "undecodable";
+        case SessionReportKind::chainDropped:
+            return "chainDropped";
+    }
+    return "undecodable";
+}
+
+json sessionReportOf(const SessionReport& report) {
+    return json{{"sequence", report.sequence},
+                {"kind", reportKindName(report.kind)},
+                {"path", report.path},
+                {"subsong", report.subsong},
+                {"libraryPath", report.libraryPath ? json(*report.libraryPath) : json(nullptr)}};
+}
+
+json creatorOf(const std::optional<DeviceIdentity>& creator) {
+    if (!creator)
+        return json(nullptr);
+    return json{{"deviceId", creator->id},
+                {"name", creator->name.empty() ? json(nullptr) : json(creator->name)}};
+}
+
+json sessionOf(const SessionView& session) {
+    const PlayerState& state = session.state;
+
+    json reports = json::array();
+    std::transform(session.reports.begin(), session.reports.end(), std::back_inserter(reports),
+                   sessionReportOf);
+
+    return json{{"id", session.id},
+                {"kind", session.detached ? "detached" : "engine"},
+                {"shared", session.shared},
+                {"playback", playbackName(state.playback)},
+                {"title", state.title ? json(*state.title) : json(nullptr)},
+                {"artist", state.artist ? json(*state.artist) : json(nullptr)},
+                {"album", state.album ? json(*state.album) : json(nullptr)},
+                {"albumArtist", state.albumArtist ? json(*state.albumArtist) : json(nullptr)},
+                {"libraryPath", state.libraryPath ? json(*state.libraryPath) : json(nullptr)},
+                {"listeners", session.listeners},
+                {"playbackModes", session.playbackModes},
+                {"chainDropped", session.chainDropped},
+                {"reports", std::move(reports)},
+                {"createdBy", creatorOf(session.createdBy)}};
+}
+
+}  // namespace
+
 std::vector<std::string> playbackModesOf(const std::vector<std::string>& playbackOrders) {
     std::vector<std::string> modes;
     for (const auto& order : playbackOrders) {
@@ -174,15 +224,23 @@ std::vector<std::string> playbackModesOf(const std::vector<std::string>& playbac
     return modes;
 }
 
-}  // namespace
-
 std::string statusDocument() {
     return identity().dump();
 }
 
+bool canStream(const Settings& settings, const std::vector<std::string>& streamFormats) {
+    return !streamFormats.empty() && settings.streamingEnabled;
+}
+
+bool canCreateSessions(const Settings& settings, const std::vector<std::string>& streamFormats,
+                       const SessionCapacity& capacity) {
+    return canStream(settings, streamFormats) && capacity.startsStreams && capacity.maxSessions > 0;
+}
+
 std::string capabilitiesDocument(const Settings& settings, const PlayerReport& report,
                                  const std::vector<std::string>& streamFormats,
-                                 bool mutesWhileStreaming, bool servesLibrary) {
+                                 bool mutesWhileStreaming, bool servesLibrary,
+                                 const SessionCapacity& sessions) {
     const json body{
         {"apiVersion", kApiVersion},
         {"allowedFields", settings.allowedFields},
@@ -192,7 +250,7 @@ std::string capabilitiesDocument(const Settings& settings, const PlayerReport& r
         {"canChangeOutput", settings.changeOutput},
         {"maxAutoPlaylists", settings.maxAutoPlaylists},
         {"canCreateAutoPlaylists", settings.writePlaylists && settings.maxAutoPlaylists > 0},
-        {"canStream", !streamFormats.empty() && settings.streamingEnabled},
+        {"canStream", canStream(settings, streamFormats)},
         {"streamFormats", streamFormats},
         {"canMuteWhileStreaming", mutesWhileStreaming},
         {"canReadLibrary", servesLibrary},
@@ -201,8 +259,21 @@ std::string capabilitiesDocument(const Settings& settings, const PlayerReport& r
         {"volumeMin", report.volumeMin},
         {"volumeMax", report.volumeMax},
         {"volumeUnit", report.volumeUnit},
-        {"playbackModes", playbackModesOf(report.playbackOrders)}};
+        {"playbackModes", playbackModesOf(report.playbackOrders)},
+        {"maxSessions", sessions.maxSessions},
+        {"canCreateSessions", canCreateSessions(settings, streamFormats, sessions)}};
     return body.dump();
+}
+
+std::string sessionDocument(const SessionView& session) {
+    return sessionOf(session).dump();
+}
+
+std::string sessionsDocument(const std::vector<SessionView>& sessions) {
+    json entries = json::array();
+    std::transform(sessions.begin(), sessions.end(), std::back_inserter(entries), sessionOf);
+
+    return json{{"sessions", std::move(entries)}}.dump();
 }
 
 std::string streamListenersDocument(const std::vector<AudienceMember>& members, int connections,

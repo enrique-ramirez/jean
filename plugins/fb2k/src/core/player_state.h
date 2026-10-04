@@ -48,6 +48,10 @@ struct PlayerState {
     // Rides the poll rather than a watch of its own, the way playbackMode does.
     std::optional<std::string> outputDeviceId;
 
+    // Whether that output is foobar2000's Null Output, as `fb2k/` judged it; `std::nullopt`
+    // exactly where `outputDeviceId` is.
+    std::optional<bool> outputSilent;
+
     // The playing track's name, computed by the player through title-formatting.
     std::optional<std::string> title;
     std::optional<std::string> artist;
@@ -105,6 +109,8 @@ public:
         uint64_t queueRevision = 0;
         uint64_t playlistsRevision = 0;
         uint64_t timelineRevision = 0;
+
+        uint64_t playerRevision = 0;
         PlayerState state;
     };
 
@@ -121,7 +127,7 @@ public:
     void volumeChanged(double volume, bool muted);
     void durationChanged(double duration);
     void playbackModeChanged(std::optional<std::string> mode);
-    void outputDeviceChanged(std::optional<std::string> id);
+    void outputDeviceChanged(std::optional<std::string> id, std::optional<bool> silent);
     void playingLocationChanged(std::optional<PlayingLocation> location);
     void currentPlaylistChanged(std::optional<std::string> playlistId);
 
@@ -147,6 +153,7 @@ private:
     uint64_t queueRevision_ = 0;
     uint64_t playlistsRevision_ = 0;
     uint64_t timelineRevision_ = 0;
+    uint64_t playerRevision_ = 0;
     PlayerState state_;
     std::vector<QueueEntry> queue_;
     std::vector<PlaylistMark> playlists_;

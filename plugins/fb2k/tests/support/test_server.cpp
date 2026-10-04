@@ -49,6 +49,24 @@ TestServer::TestServer(Settings settings, const Player& player, Library* library
     : settings_(std::move(settings)),
       audience_(std::make_unique<Audience>(settings_.maxConcurrentStreams,
                                            std::chrono::seconds(kMuteLingerSeconds))) {
+    listen(player, library, mint, playerState, nowPlayingArtwork);
+}
+
+TestServer::TestServer(OnOneClock /*oneClock*/, Settings settings, const Player& player,
+                       const TicketMint& mint)
+    : settings_(std::move(settings)),
+      audience_(std::make_unique<Audience>(settings_.maxConcurrentStreams,
+                                           std::chrono::seconds(kMuteLingerSeconds),
+                                           [clock = rateLimitClock_] { return clock->now(); })) {
+    listen(player, nullptr, mint, nullptr, nullptr);
+}
+
+TestServer TestServer::onOneClock(Settings settings, const Player& player, const TicketMint& mint) {
+    return TestServer(OnOneClock{}, std::move(settings), player, mint);
+}
+
+void TestServer::listen(const Player& player, Library* library, const TicketMint& mint,
+                        PlayerStateStore* playerState, NowPlayingArtwork* nowPlayingArtwork) {
     // freePort() has to close its probe before we bind, so something else occasionally takes the
     // port in between. Retry that rather than fail somewhere unrelated; a failure to listen for
     // any other reason, such as an address the settings name that no interface carries, is the

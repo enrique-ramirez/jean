@@ -48,6 +48,11 @@ constexpr char kDisplay[] =
 // kSpeakers.
 constexpr char kModuleAlone[] = "{5A3E1C27-8B4D-4F0E-9C61-2D7B8E9F0A13}";
 
+// Listed like any other device. The id is opaque to everything here: what says this one plays
+// nowhere is the flag the player's callback hands the store with it.
+constexpr char kNowhere[] =
+    "{3C9A0E57-1D4B-4E86-A2F0-7B5D9C1E3A48}:{00000000-0000-0000-0000-000000000000}";
+
 constexpr char kUnissued[] =
     "{9D8C7B6A-5F4E-4D3C-8B2A-1F0E9D8C7B6A}:{6A5B4C3D-2E1F-4A0B-9C8D-7E6F5A4B3C2D}";
 
@@ -558,6 +563,90 @@ TEST_CASE("a switch leaves GET /api/state's outputDeviceId where the player last
     REQUIRE(after);
     CHECK(after->status == 304);
     CHECK(store.read().state.outputDeviceId == kHeadphones);
+}
+
+namespace {
+
+json polledPlayer(const httplib::Result& response) {
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+    return json::parse(response->body).at("player");
+}
+
+}  // namespace
+
+TEST_CASE(
+    "a switch the player reports moves outputDeviceId, outputSilent and the poll's tag on the same "
+    "poll") {
+    PlayerStateStore store;
+    PlayerState reported;
+    reported.outputDeviceId = kHeadphones;
+    reported.outputSilent = false;
+    store.publish(reported);
+
+    Outputs outputs;
+    outputs.devices.push_back({kNowhere, "Null Output"});
+    const TestServer server(servingSettings(), switching(&outputs), nullptr, countingMint(),
+                            &store);
+
+    const auto before = get(server, "/api/state");
+    const auto audible = polledPlayer(before);
+    CHECK(audible["outputSilent"] == false);
+    const auto tag = before->get_header_value("ETag");
+    REQUIRE_FALSE(tag.empty());
+
+    checkSwitched(post(server, kActive, switchTo(kNowhere)));
+    store.outputDeviceChanged(std::string{kNowhere}, true);
+
+    const auto toNowhere =
+        server.client().Get("/api/state", httplib::Headers{{"If-None-Match", tag}});
+    const auto silent = polledPlayer(toNowhere);
+    CHECK(silent["outputDeviceId"] == kNowhere);
+    CHECK(silent["outputSilent"] == true);
+    const auto silentTag = toNowhere->get_header_value("ETag");
+    REQUIRE_FALSE(silentTag.empty());
+    CHECK(silentTag != tag);
+
+    checkSwitched(post(server, kActive, switchTo(kSpeakers)));
+    store.outputDeviceChanged(std::string{kSpeakers}, false);
+
+    const auto back =
+        server.client().Get("/api/state", httplib::Headers{{"If-None-Match", silentTag}});
+    const auto heard = polledPlayer(back);
+    CHECK(heard["outputDeviceId"] == kSpeakers);
+    CHECK(heard["outputSilent"] == false);
+    CHECK(back->get_header_value("ETag") != silentTag);
+
+    CHECK(outputs.switched == std::vector<std::string>{kNowhere, kSpeakers});
+}
+
+TEST_CASE(
+    "a switch between two outputs that both play somewhere moves the id and the tag, and leaves "
+    "outputSilent") {
+    PlayerStateStore store;
+    PlayerState reported;
+    reported.outputDeviceId = kHeadphones;
+    reported.outputSilent = false;
+    store.publish(reported);
+
+    Outputs outputs;
+    const TestServer server(servingSettings(), switching(&outputs), nullptr, countingMint(),
+                            &store);
+
+    const auto before = get(server, "/api/state");
+    polledPlayer(before);
+    const auto tag = before->get_header_value("ETag");
+    REQUIRE_FALSE(tag.empty());
+
+    checkSwitched(post(server, kActive, switchTo(kSpeakers)));
+    store.outputDeviceChanged(std::string{kSpeakers}, false);
+
+    const auto after = server.client().Get("/api/state", httplib::Headers{{"If-None-Match", tag}});
+    const auto player = polledPlayer(after);
+    CHECK(player["outputDeviceId"] == kSpeakers);
+    CHECK(player["outputSilent"].is_boolean());
+    CHECK(player["outputSilent"] == false);
+    CHECK(after->get_header_value("ETag") != tag);
 }
 
 TEST_CASE("an output refusal says what the contract publishes, under the status it publishes") {

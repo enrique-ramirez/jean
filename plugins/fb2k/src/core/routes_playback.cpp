@@ -6,9 +6,13 @@
 #include "core/playback_modes.h"
 #include "core/requests_playback.h"
 #include "core/requests_playlists.h"
+#include "core/session_order.h"
+#include "core/session_scope.h"
 
 #include <chrono>
+#include <optional>
 #include <string>
+#include <utility>
 
 namespace jean {
 
@@ -23,13 +27,55 @@ constexpr auto kPlayingTrackRefill = std::chrono::milliseconds(250);
 
 constexpr char kPlayPlaylistRow[] = R"(/api/playlists/([0-9a-f-]{36})/items/([^/]+)/play)";
 
+void respondUnknownMode(httplib::Response& res, const std::string& mode) {
+    respondRefusal(res, PlaybackRefusal::badMode,
+                   "'" + mode + "' is not a playback mode this API knows");
+}
+
+void commandSession(Session& session, Transport command, Session::Clock::time_point now) {
+    switch (command) {
+        case Transport::playPause:
+            session.playPause(now);
+            return;
+        case Transport::next:
+            session.next(now);
+            return;
+        case Transport::previous:
+            session.previous(now);
+            return;
+        case Transport::stop:
+            session.stop(now);
+            return;
+    }
+}
+
+void setSessionMode(Session& session, const std::string& mode, httplib::Response& res) {
+    const auto order = sessionOrderNamed(mode);
+    if (!order) {
+        if (playerOrderFor(mode))
+            respondError(res, 409, kModeNotOffered);
+        else
+            respondUnknownMode(res, mode);
+        return;
+    }
+
+    session.setOrder(*order);
+    respondCommand(res, PlayerOutcome::done);
+}
+
 }  // namespace
 
-PlaybackRoutes::PlaybackRoutes(const PlaybackCalls& playback, const PlayerReport& report,
-                               const LiveSettings& settings, const RateLimitClock& clock)
+PlaybackRoutes::PlaybackRoutes(const PlaybackCalls& playback, const SessionCalls& sessions,
+                               SessionRegistry& registry, const Library* library,
+                               const PlayerReport& report, const LiveSettings& settings,
+                               const RateLimitClock& clock)
     : playback_(playback),
+      sessions_(sessions),
+      registry_(registry),
+      library_(library),
       report_(report),
       settings_(settings),
+      clock_(clock),
       playingTrackReads_(kPlayingTrackBurst, kPlayingTrackRefill,
                          "refusing playing track reads: they are arriving faster than this "
                          "component will answer them, which usually means a client is looping",
@@ -43,11 +89,23 @@ bool PlaybackRoutes::readingPlayingTrackTooFast(httplib::Response& res) {
     return true;
 }
 
+SessionAnswer PlaybackRoutes::commandedSession(const httplib::Request& req,
+                                               httplib::Response& res) {
+    return jean::commandedSession(req, res, registry_, clock_(), *settings_.current());
+}
+
 void PlaybackRoutes::addTransportRoute(httplib::Server& server, const char* path,
                                        Transport command) {
-    server.Post(path, [this, command](const httplib::Request&, httplib::Response& res) {
-        if (playbackRefused(*settings_.current(), res))
+    server.Post(path, [this, command](const httplib::Request& req, httplib::Response& res) {
+        const auto named = commandedSession(req, res);
+        if (named.which == SessionAnswer::Which::none)
             return;
+
+        if (named.session) {
+            commandSession(*named.session, command, clock_());
+            respondCommand(res, PlayerOutcome::done);
+            return;
+        }
 
         if (!playback_.commandTransport) {
             respondUnavailable(res, kNoPlayback);
@@ -58,8 +116,34 @@ void PlaybackRoutes::addTransportRoute(httplib::Server& server, const char* path
     });
 }
 
+void PlaybackRoutes::seek(const httplib::Request& req, httplib::Response& res) {
+    const auto named = commandedSession(req, res);
+    if (named.which == SessionAnswer::Which::none)
+        return;
+
+    const auto request = parseSeek(parseJsonObject(req.body));
+    if (!request.ok()) {
+        respondRefusal(res, request.refusal, request.detail);
+        return;
+    }
+
+    if (named.session) {
+        named.session->seek(request.seconds, request.relative, clock_());
+        respondCommand(res, PlayerOutcome::done);
+        return;
+    }
+
+    if (!playback_.seek) {
+        respondUnavailable(res, kNoPlayback);
+        return;
+    }
+
+    respondCommand(res, playback_.seek(request.seconds, request.relative));
+}
+
 void PlaybackRoutes::setMode(const httplib::Request& req, httplib::Response& res) {
-    if (playbackRefused(*settings_.current(), res))
+    const auto named = commandedSession(req, res);
+    if (named.which == SessionAnswer::Which::none)
         return;
 
     const auto request = parsePlaybackMode(parseJsonObject(req.body));
@@ -68,10 +152,14 @@ void PlaybackRoutes::setMode(const httplib::Request& req, httplib::Response& res
         return;
     }
 
+    if (named.session) {
+        setSessionMode(*named.session, request.mode, res);
+        return;
+    }
+
     const auto resolved = resolvePlaybackMode(request.mode, report_.playbackOrders);
     if (resolved.resolution == PlaybackModeResolution::unknownMode) {
-        respondRefusal(res, PlaybackRefusal::badMode,
-                       "'" + request.mode + "' is not a playback mode this API knows");
+        respondUnknownMode(res, request.mode);
         return;
     }
 
@@ -86,6 +174,86 @@ void PlaybackRoutes::setMode(const httplib::Request& req, httplib::Response& res
     }
 
     respondCommand(res, playback_.setOrder(resolved.index));
+}
+
+void PlaybackRoutes::playRow(const httplib::Request& req, httplib::Response& res) {
+    const auto named = commandedSession(req, res);
+    if (named.which == SessionAnswer::Which::none)
+        return;
+
+    const auto request = parsePlayRow(req.matches[1].str(), req.matches[2].str());
+    if (!request.ok()) {
+        respondRefusal(res, request.refusal);
+        return;
+    }
+
+    if (named.session) {
+        playRowIn(*named.session, request.playlistId, request.index, res);
+        return;
+    }
+
+    if (!playback_.playPlaylistRow) {
+        respondUnavailable(res, kNoPlaylistRows);
+        return;
+    }
+
+    respondCommand(res, playback_.playPlaylistRow(request.playlistId, request.index));
+}
+
+void PlaybackRoutes::playRowIn(Session& session, const std::string& playlistId, uint32_t index,
+                               httplib::Response& res) {
+    if (!sessions_.takePlaylist) {
+        respondUnavailable(res, kNoPlaylistRows);
+        return;
+    }
+
+    auto taken = sessions_.takePlaylist(playlistId, std::nullopt);
+    if (taken.outcome != PlayerOutcome::done) {
+        respondCommand(res, taken.outcome);
+        return;
+    }
+
+    respondCommand(res, session.play(std::move(taken.tracks), index, clock_()));
+}
+
+void PlaybackRoutes::playSet(const httplib::Request& req, httplib::Response& res) {
+    const auto named = commandedSession(req, res);
+    if (named.which == SessionAnswer::Which::none)
+        return;
+
+    if (!named.session) {
+        respondError(res, 409, kEnginePlaysRows);
+        return;
+    }
+
+    const auto state = readyLibrary(library_, res);
+    if (!state)
+        return;
+
+    const auto request =
+        parsePlaySet(parseJsonObject(req.body), state->trackCount, state->structure);
+    if (request.indexRefused) {
+        respondError(res, 400, kBadPlayIndex);
+        return;
+    }
+
+    if (!request.ok()) {
+        respondRequestRefused(res, request);
+        return;
+    }
+
+    if (!sessions_.takeLibrary) {
+        respondUnavailable(res, kNoPlayback);
+        return;
+    }
+
+    auto taken = sessions_.takeLibrary(request.structure, request.ordinals);
+    if (taken.outcome != PlayerOutcome::done) {
+        respondCommand(res, taken.outcome);
+        return;
+    }
+
+    respondCommand(res, named.session->play(std::move(taken.tracks), request.index, clock_()));
 }
 
 void PlaybackRoutes::addVolumeRoute(httplib::Server& server) {
@@ -133,9 +301,18 @@ void PlaybackRoutes::addPlayingTrackRoute(httplib::Server& server) {
     server.Get("/api/track/playing", [this](const httplib::Request& req, httplib::Response& res) {
         res.set_header("Cache-Control", kAskEveryTime);
 
+        const auto named = scopedSession(sessionScopeOf(req), res, registry_, clock_());
+        if (named.which == SessionAnswer::Which::none)
+            return;
+
         const auto declared = columnsDeclared(req);
         if (!declared.ok()) {
             respondRefusal(res, declared.refusal, declared.detail);
+            return;
+        }
+
+        if (named.session) {
+            readSessionTrack(*named.session, declared.columns, res);
             return;
         }
 
@@ -162,52 +339,51 @@ void PlaybackRoutes::addPlayingTrackRoute(httplib::Server& server) {
     });
 }
 
+void PlaybackRoutes::readSessionTrack(const Session& session,
+                                      const std::vector<std::string>& columns,
+                                      httplib::Response& res) {
+    if (!sessions_.readTrack) {
+        respondError(res, 404, kNothingPlaying);
+        return;
+    }
+
+    if (readingPlayingTrackTooFast(res))
+        return;
+
+    const auto turn = session.turn();
+    if (!turn) {
+        respondError(res, 404, kNothingPlaying);
+        return;
+    }
+
+    const auto read = sessions_.readTrack(turn->track, columns);
+    if (read.outcome != PlayerOutcome::done) {
+        respondOutcome(res, read.outcome);
+        return;
+    }
+
+    respond(res, 200, playingTrackDocument(turn->track.path, turn->track.subsong, read.columns));
+}
+
 void PlaybackRoutes::addTo(httplib::Server& server) {
     addTransportRoute(server, "/api/playback/play-pause", Transport::playPause);
     addTransportRoute(server, "/api/playback/next", Transport::next);
     addTransportRoute(server, "/api/playback/previous", Transport::previous);
     addTransportRoute(server, "/api/playback/stop", Transport::stop);
 
-    server.Post("/api/playback/seek", [this](const httplib::Request& req, httplib::Response& res) {
-        if (playbackRefused(*settings_.current(), res))
-            return;
-
-        const auto request = parseSeek(parseJsonObject(req.body));
-        if (!request.ok()) {
-            respondRefusal(res, request.refusal, request.detail);
-            return;
-        }
-
-        if (!playback_.seek) {
-            respondUnavailable(res, kNoPlayback);
-            return;
-        }
-
-        respondCommand(res, playback_.seek(request.seconds, request.relative));
-    });
+    server.Post("/api/playback/seek",
+                [this](const httplib::Request& req, httplib::Response& res) { seek(req, res); });
 
     server.Post("/api/playback/mode",
                 [this](const httplib::Request& req, httplib::Response& res) { setMode(req, res); });
 
     addVolumeRoute(server);
 
-    server.Post(kPlayPlaylistRow, [this](const httplib::Request& req, httplib::Response& res) {
-        if (playbackRefused(*settings_.current(), res))
-            return;
+    server.Post(kPlayPlaylistRow,
+                [this](const httplib::Request& req, httplib::Response& res) { playRow(req, res); });
 
-        const auto request = parsePlayRow(req.matches[1].str(), req.matches[2].str());
-        if (!request.ok()) {
-            respondRefusal(res, request.refusal);
-            return;
-        }
-
-        if (!playback_.playPlaylistRow) {
-            respondUnavailable(res, kNoPlaylistRows);
-            return;
-        }
-
-        respondCommand(res, playback_.playPlaylistRow(request.playlistId, request.index));
-    });
+    server.Post("/api/playback/play",
+                [this](const httplib::Request& req, httplib::Response& res) { playSet(req, res); });
 
     addPlayingTrackRoute(server);
 }

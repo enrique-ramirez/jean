@@ -27,6 +27,8 @@ PlayerOutcome queueEditRefusal(const QueueEditFacts& facts) {
         return PlayerOutcome::structureMoved;
     if (facts.positionPastEnd)
         return PlayerOutcome::positionPastEnd;
+    if (facts.tooMany)
+        return PlayerOutcome::tooMany;
     return PlayerOutcome::done;
 }
 

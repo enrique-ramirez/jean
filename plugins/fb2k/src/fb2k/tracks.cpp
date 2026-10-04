@@ -4,6 +4,10 @@
 
 #include "fb2k/strings.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 namespace jean {
 
 std::string displayPathOf(const metadb_handle_ptr& track) {
@@ -40,6 +44,41 @@ NameScripts compiledNameScripts(const char* titleScript) {
     compiler->compile_safe_ex(scripts.album, kAlbumScript, "");
     compiler->compile_safe_ex(scripts.albumArtist, kAlbumArtistScript, "");
     return scripts;
+}
+
+std::string formattedField(const metadb_handle_ptr& track, const file_info& info,
+                           const titleformat_object::ptr& script) {
+    pfc::string8 out;
+    track->format_title_from_external_info(info, nullptr, out, script, nullptr);
+    return toStd(out);
+}
+
+metadb_handle_ptr handleOf(const SessionTrack& track) {
+    const auto held = std::static_pointer_cast<const metadb_handle_ptr>(track.handle);
+    return held ? *held : metadb_handle_ptr();
+}
+
+std::shared_ptr<const void> handleFor(const metadb_handle_ptr& track) {
+    return std::make_shared<const metadb_handle_ptr>(track);
+}
+
+std::vector<SessionTrack> sessionTracksOf(const metadb_handle_list& handles,
+                                          const library_manager::ptr& libraryManager) {
+    std::vector<SessionTrack> tracks;
+    tracks.reserve(handles.get_count());
+
+    for (t_size at = 0; at < handles.get_count(); ++at) {
+        const metadb_handle_ptr& handle = handles[at];
+
+        SessionTrack track;
+        track.path = displayPathOf(handle);
+        track.subsong = handle.is_valid() ? handle->get_subsong_index() : 0;
+        track.libraryPath = libraryPathOf(handle, libraryManager);
+        track.handle = handleFor(handle);
+        tracks.push_back(std::move(track));
+    }
+
+    return tracks;
 }
 
 }  // namespace jean

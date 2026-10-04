@@ -575,17 +575,15 @@ TEST_CASE("creating a session answers a private, stopped and empty detached sess
     CHECK(recorder.calls() == 0);
 }
 
-// The sequence the five are listed in is the owner's to decide, so only the set is pinned.
-TEST_CASE("a detached session offers exactly the five orders a detached session can play") {
+TEST_CASE("a detached session offers exactly the five orders it can play, in their sequence") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
+    const auto session = created(server, kPhone);
 
-    const auto modes = created(server, kPhone)["playbackModes"];
-
-    REQUIRE(modes.is_array());
-    CHECK(modes.size() == 5);
-    CHECK(modes.get<std::set<std::string>>() ==
-          std::set<std::string>{"inOrder", "repeatAll", "repeatOne", "shuffleTracks", "random"});
+    const auto expected =
+        json::array({"inOrder", "repeatAll", "repeatOne", "random", "shuffleTracks"});
+    CHECK(session["playbackModes"] == expected);
+    CHECK(sessionsSeenBy(server, kPhone)[1]["playbackModes"] == expected);
     CHECK(recorder.calls() == 0);
 }
 
@@ -1174,10 +1172,21 @@ std::string playingSession(const TestServer& server, Recorder& recorder,
     return id;
 }
 
-// No listener is connected, so a playing session's position stands still and any instant reads
-// the same.
+// Read at the instant the server's clock starts from, which no mark is taken before, so the
+// position is the one last marked, listener or none.
 PlayerState stateOf(const Recorder& recorder, const std::string& id) {
     return recorder.session(id)->state(Session::Clock::time_point{});
+}
+
+// A connection listening to the session `id`, as a stream holds one, for as long as the case holds
+// what this returns. It reads the session's own audience clock, which is the real one here, ahead
+// of the server's: the position it marks stays where it was.
+std::shared_ptr<Audience::Membership> listening(const Recorder& recorder, const std::string& id,
+                                                const std::string& deviceId) {
+    const auto session = recorder.session(id);
+    auto ears = session->listen(DeviceIdentity{deviceId, {}}, "opus", session->audience().now());
+    REQUIRE(ears);
+    return ears;
 }
 
 }  // namespace
@@ -1188,6 +1197,7 @@ TEST_CASE("a row play naming a session plays that row of the playlist the taker 
     const auto rows = tracks("Road", kRows);
     const auto other = createdId(server, kPhone);
     const auto id = createdId(server, kPhone);
+    const auto ears = listening(recorder, id, kPhone);
     recorder.hold(kPlaylistId, rows);
 
     checkDone(post(server, scoped(rowPlayPath(kPlaylistId, 2), id, kPhone), ""));
@@ -1261,6 +1271,8 @@ TEST_CASE("play-pause and stop move the session named and no other") {
     const auto rows = tracks("Road", kRows);
     const auto other = playingSession(server, recorder, kPhone, rows, 0);
     const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto othersEars = listening(recorder, other, kPhone);
+    const auto ears = listening(recorder, id, kPhone);
 
     checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
     CHECK(documentOf(server, id, kPhone)["playback"] == "paused");
@@ -1278,14 +1290,13 @@ TEST_CASE("play-pause and stop move the session named and no other") {
     CHECK(recorder.calls() == 0);
 }
 
-// Only the middle of a snapshot under inOrder: the edges and the shuffling orders are with the
-// owner.
 TEST_CASE("in the middle of a snapshot, next plays the following row and previous the one before") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
     const auto other = playingSession(server, recorder, kPhone, rows, 0);
     const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto ears = listening(recorder, id, kPhone);
 
     checkDone(post(server, scoped(kPrevious, id, kPhone), ""));
     CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOf(rows[1]));
@@ -1489,9 +1500,11 @@ TEST_CASE("with controlPlayback off, a detached session is created, shared and d
     const auto id = createdId(server, kPhone);
     CHECK(shared(server, id, kPhone, true)["shared"] == true);
     recorder.hold(kPlaylistId, rows);
+    const auto ears = listening(recorder, id, kPhone);
 
     checkDone(post(server, scoped(rowPlayPath(kPlaylistId, 2), id, kPhone), ""));
     CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOf(rows[2]));
+    CHECK(documentOf(server, id, kPhone)["playback"] == "playing");
 
     checkDone(post(server, scoped(kNext, id, kPhone), ""));
     CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOf(rows[3]));
@@ -1519,6 +1532,7 @@ TEST_CASE("a private session is 404 on each route to a stranger and to no device
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
     const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto ears = listening(recorder, id, kPhone);
     const auto unknown = unknownSessionAnswer(server);
 
     for (const auto& route : sevenRoutes()) {
@@ -1694,8 +1708,8 @@ TEST_CASE("a poll naming the engine session answers the poll naming none, its se
 }
 
 // Two sessions and the engine, each in a state the other two are not in, so a field read from the
-// wrong one of the three shows. A session's position stands still with nobody listening, so it is
-// read as the seek left it.
+// wrong one of the three shows. The server's clock stands still, so a session's position is read
+// as the seek left it.
 TEST_CASE(
     "each session's poll answers its own playback and the player's volume, output and lists") {
     Recorder recorder;
@@ -1710,6 +1724,7 @@ TEST_CASE(
     auto rows = tracks("Road", kRows);
     rows[2].subsong = 4;
     const auto paused = playingSession(server, recorder, kPhone, rows, 2);
+    const auto ears = listening(recorder, paused, kPhone);
     checkDone(post(server, scoped(kMode, paused, kPhone), R"({"mode": "repeatAll"})"));
     checkDone(post(server, scoped(kSeek, paused, kPhone), R"({"seconds": 42})"));
     checkDone(post(server, scoped(kPlayPause, paused, kPhone), ""));
@@ -1787,6 +1802,7 @@ TEST_CASE("a session's poll names its track through the track reader, once for e
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
     const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto ears = listening(recorder, id, kPhone);
 
     const auto first = playerPolled(server, id, kPhone);
     CHECK(first["title"] == nameOf(rows[2]));
@@ -2048,6 +2064,7 @@ TEST_CASE("a session's poll is 304 while nothing it answers moves, and 200 once 
     const TestServer server = serving(recorder.player(), &store);
     const auto rows = tracks("Road", kRows);
     const auto id = playingSession(server, recorder, kPhone, rows, 1);
+    const auto ears = listening(recorder, id, kPhone);
 
     const auto tag = tagOf(poll(server, id, kPhone));
     checkUnchanged(pollHolding(server, id, kPhone, tag), tag);
@@ -3003,6 +3020,7 @@ TEST_CASE("a library set played in a session plays from its index, whichever for
           Form{"bitset", "Qg==", {1, 6}}}) {
         CAPTURE(form.name);
         const auto id = createdId(server, kPhone);
+        const auto ears = listening(recorder, id, kPhone);
         const auto asked = recorder.libraryTaken().size();
 
         checkDone(playing(server, id, kPhone,
@@ -3295,6 +3313,7 @@ TEST_CASE("a paused session's playing track is answered, and a stopped one is th
     const auto rows = tracks("Road", kRows);
     const auto fresh = createdId(server, kPhone);
     const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto ears = listening(recorder, id, kPhone);
 
     checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
     const auto paused = get(server, playingTrackOf(id, kPhone));
@@ -3419,6 +3438,7 @@ TEST_CASE("a session's cover is read once for each track however often it is ask
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
     const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto ears = listening(recorder, id, kPhone);
     const auto path = playingCoverOf(id, kPhone);
 
     const auto first = get(server, path);
@@ -3657,6 +3677,7 @@ TEST_CASE(
     const auto rows = tracks("Road", kRows);
     recorder.cannotName(nameOf(rows[2]), PlayerOutcome::done);
     const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto ears = listening(recorder, id, kPhone);
     const auto readsBefore = recorder.trackReads().size();
 
     for (size_t poll = 1; poll <= 3; ++poll) {
@@ -4085,5 +4106,151 @@ TEST_CASE("a reload moving maxSessions changes nothing until foobar2000 restarts
     REQUIRE(refused);
     CHECK(refused->status == 503);
     CHECK(errorOf(*refused) == "too many sessions");
+    CHECK(recorder.calls() == 0);
+}
+
+namespace {
+
+std::string playbackRead(const TestServer& server, const std::string& id) {
+    const auto document = documentOf(server, id, kPhone)["playback"];
+    CHECK(playerPolled(server, id, kPhone)["playback"] == document);
+    return document.get<std::string>();
+}
+
+}  // namespace
+
+TEST_CASE("play-pause on a session nobody hears leaves it set to play, so it plays once heard") {
+    Recorder recorder;
+    const TestServer server = serving(recorder.player());
+    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
+    CHECK(playbackRead(server, id) == "paused");
+
+    checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
+    CHECK(playbackRead(server, id) == "paused");
+
+    const auto ears = listening(recorder, id, kPhone);
+    CHECK(playbackRead(server, id) == "playing");
+    CHECK(recorder.calls() == 0);
+}
+
+TEST_CASE("play-pause on a session its controller paused answers 204, and it plays once heard") {
+    Recorder recorder;
+    const TestServer server = serving(recorder.player());
+    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
+    auto ears = listening(recorder, id, kPhone);
+    checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
+    REQUIRE(playbackRead(server, id) == "paused");
+    ears.reset();
+
+    checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
+    CHECK(playbackRead(server, id) == "paused");
+
+    ears = listening(recorder, id, kPhone);
+    CHECK(playbackRead(server, id) == "playing");
+    CHECK(recorder.calls() == 0);
+}
+
+TEST_CASE("play-pause on a session reading playing pauses it, and a reconnect finds it paused") {
+    Recorder recorder;
+    const TestServer server = serving(recorder.player());
+    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
+    auto ears = listening(recorder, id, kPhone);
+    REQUIRE(playbackRead(server, id) == "playing");
+
+    checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
+    CHECK(playbackRead(server, id) == "paused");
+
+    ears.reset();
+    ears = listening(recorder, id, kPhone);
+    CHECK(playbackRead(server, id) == "paused");
+    CHECK(recorder.calls() == 0);
+}
+
+TEST_CASE(
+    "a listener arriving and leaving moves a session's poll and its tag, not sessionRevision") {
+    Recorder recorder;
+    const TestServer server = serving(recorder.player());
+    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 1);
+
+    const auto unheard = poll(server, id, kPhone);
+    const auto unheardTag = tagOf(unheard);
+    const auto revision = bodyOf(unheard)["player"]["sessionRevision"];
+    CHECK(bodyOf(unheard)["player"]["playback"] == "paused");
+
+    auto ears = listening(recorder, id, kPhone);
+    const auto heard = pollHolding(server, id, kPhone, unheardTag);
+    checkMoved(heard, unheardTag);
+    CHECK(bodyOf(heard)["player"]["playback"] == "playing");
+    CHECK(bodyOf(heard)["player"]["sessionRevision"] == revision);
+
+    const auto heardTag = tagOf(heard);
+    ears.reset();
+    const auto left = pollHolding(server, id, kPhone, heardTag);
+    checkMoved(left, heardTag);
+    CHECK(bodyOf(left)["player"]["playback"] == "paused");
+    CHECK(bodyOf(left)["player"]["sessionRevision"] == revision);
+    CHECK(recorder.calls() == 0);
+}
+
+TEST_CASE(
+    "previous more than three seconds into a session's track answers 204 and plays it from 0") {
+    Recorder recorder;
+    const TestServer server = serving(recorder.player());
+    const auto rows = tracks("Road", kRows);
+    const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    checkDone(post(server, scoped(kSeek, id, kPhone), R"({"seconds": 10})"));
+    REQUIRE(playerPolled(server, id, kPhone)["position"]["seconds"] == 10);
+    const auto seeked = recorder.session(id)->turn();
+    REQUIRE(seeked.has_value());
+
+    checkDone(post(server, scoped(kPrevious, id, kPhone), ""));
+
+    const auto player = playerPolled(server, id, kPhone);
+    CHECK(player["path"] == rows[2].path);
+    CHECK(player["libraryPath"] == libraryPathOf(rows[2]));
+    CHECK(player["position"]["seconds"] == 0);
+    const auto restarted = recorder.session(id)->turn();
+    REQUIRE(restarted.has_value());
+    CHECK(restarted->serial != seeked->serial);
+    CHECK(restarted->cut);
+    CHECK(recorder.engine().transports.empty());
+    CHECK(recorder.calls() == 0);
+}
+
+TEST_CASE("next and previous on a session with nothing to play answer 204 and move nothing") {
+    Recorder recorder;
+    const TestServer server = serving(recorder.player());
+    const auto id = createdId(server, kPhone);
+    const auto tag = tagOf(poll(server, id, kPhone));
+
+    checkDone(post(server, scoped(kNext, id, kPhone), ""));
+    checkDone(post(server, scoped(kPrevious, id, kPhone), ""));
+
+    checkUnchanged(pollHolding(server, id, kPhone, tag), tag);
+    const auto session = documentOf(server, id, kPhone);
+    CHECK(session["playback"] == "stopped");
+    CHECK(session["libraryPath"].is_null());
+    CHECK(recorder.engine().transports.empty());
+    CHECK(recorder.calls() == 0);
+}
+
+TEST_CASE(
+    "a library set naming no session or the engine session is 403 while controlPlayback is off") {
+    Recorder recorder;
+    Library library;
+    buildLibrary(library);
+    const auto structure = library.state().structure;
+    const TestServer server = servingWith(recorder.player(), &library, nullptr,
+                                          parseSettings(R"({"controlPlayback": false})"));
+    createdId(server, kPhone);
+    const auto body = fromIndex(librarySet(structure, "ordinals", {1, 2}), 0);
+
+    const auto unnamed = playing(server, "", "", body);
+    REQUIRE(unnamed);
+    CHECK(unnamed->status == 403);
+    CHECK(errorOf(*unnamed) == describe(PlayerOutcome::playbackDisabled));
+    checkSameAnswer(playing(server, kEngineSessionId, kPhone, body), unnamed);
+
+    CHECK(recorder.libraryTaken().empty());
     CHECK(recorder.calls() == 0);
 }

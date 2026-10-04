@@ -483,3 +483,192 @@ TEST_CASE("a queued track taken to play frees its place in a full queue") {
     CHECK(session->queue().entries.size() == kMaxSessionQueue);
     CHECK(session->queue().entries.back().path == "queued room");
 }
+
+namespace {
+
+constexpr double kWellIn = 10;
+
+const SessionOrder kEveryOrder[]{SessionOrder::inOrder, SessionOrder::repeatAll,
+                                 SessionOrder::repeatOne, SessionOrder::random,
+                                 SessionOrder::shuffleTracks};
+
+std::string playingPath(const Session& session) {
+    const auto turn = session.turn();
+    return turn ? turn->track.path : std::string();
+}
+
+}  // namespace
+
+TEST_CASE("next takes a queued track before the snapshot's next row") {
+    Sessions sessions;
+    const auto session = sessions.create();
+    REQUIRE(session->play(rows(4), 1, sessions.now) == PlayerOutcome::done);
+    session->enqueue(queued({"a"}));
+
+    session->next(sessions.now);
+    CHECK(playingPath(*session) == "queued a");
+    CHECK(session->queue().entries.empty());
+
+    session->next(sessions.now);
+    CHECK(playingPath(*session) == "row 2");
+}
+
+TEST_CASE("previous takes nothing from the queue, and moves its revision not at all") {
+    Sessions sessions;
+    const auto session = sessions.create();
+    REQUIRE(session->play(rows(4), 2, sessions.now) == PlayerOutcome::done);
+    session->enqueue(queued({"a"}));
+    const auto revision = session->queue().revision;
+
+    session->previous(sessions.now);
+
+    CHECK(playingPath(*session) == "row 1");
+    CHECK(names(session->queue()) == std::vector<std::string>{"queued a"});
+    CHECK(session->queue().revision == revision);
+}
+
+TEST_CASE("previous more than three seconds into a queued track starts that track again") {
+    Sessions sessions;
+    const auto session = sessions.create();
+    REQUIRE(session->play(rows(4), 0, sessions.now) == PlayerOutcome::done);
+    session->enqueue(queued({"a", "b"}));
+    endTrack(*session, sessions.now);
+    REQUIRE(playingPath(*session) == "queued a");
+    session->seek(kWellIn, false, sessions.now);
+    const auto seeked = session->turn();
+    REQUIRE(seeked.has_value());
+
+    session->previous(sessions.now);
+
+    const auto restarted = session->turn();
+    REQUIRE(restarted.has_value());
+    CHECK(restarted->track.path == "queued a");
+    CHECK(restarted->serial != seeked->serial);
+    CHECK(restarted->from == doctest::Approx(0));
+    CHECK(names(session->queue()) == std::vector<std::string>{"queued b"});
+    CHECK(played(*session, 6, sessions.now) ==
+          std::vector<std::string>{"queued a", "queued b", "row 1", "row 2", "row 3"});
+}
+
+TEST_CASE("previous within three seconds of a queued track goes back to the row played before it") {
+    Sessions sessions;
+    const auto session = sessions.create();
+    REQUIRE(session->play(rows(4), 1, sessions.now) == PlayerOutcome::done);
+    session->enqueue(queued({"a", "b"}));
+    endTrack(*session, sessions.now);
+    REQUIRE(playingPath(*session) == "queued a");
+
+    session->previous(sessions.now);
+
+    CHECK(playingPath(*session) == "row 1");
+    CHECK(names(session->queue()) == std::vector<std::string>{"queued b"});
+}
+
+TEST_CASE(
+    "previous more than three seconds into a queued track restarts it with no snapshot held") {
+    Sessions sessions;
+    const auto session = sessions.create();
+    session->enqueue(queued({"a", "b"}));
+    session->playPause(sessions.now);
+    REQUIRE(playingPath(*session) == "queued a");
+    session->seek(kWellIn, false, sessions.now);
+    const auto seeked = session->turn();
+    REQUIRE(seeked.has_value());
+
+    session->previous(sessions.now);
+
+    const auto restarted = session->turn();
+    REQUIRE(restarted.has_value());
+    CHECK(restarted->track.path == "queued a");
+    CHECK(restarted->serial != seeked->serial);
+    CHECK(restarted->from == doctest::Approx(0));
+    CHECK(names(session->queue()) == std::vector<std::string>{"queued b"});
+}
+
+TEST_CASE("previous on a stopped session holding only a queue starts nothing and takes nothing") {
+    Sessions sessions;
+    const auto session = sessions.create();
+    session->enqueue(queued({"a"}));
+    const auto version = session->revisions().version;
+
+    session->previous(sessions.now);
+
+    CHECK_FALSE(session->turn().has_value());
+    CHECK(session->state(sessions.now).playback == PlaybackState::stopped);
+    CHECK(names(session->queue()) == std::vector<std::string>{"queued a"});
+    CHECK(session->revisions().version == version);
+
+    session->next(sessions.now);
+    CHECK(playingPath(*session) == "queued a");
+}
+
+TEST_CASE("play after a stop starts the row it stopped on from its start") {
+    Sessions sessions;
+    const auto session = sessions.create();
+    REQUIRE(session->play(rows(4), 2, sessions.now) == PlayerOutcome::done);
+    session->seek(kWellIn, false, sessions.now);
+    session->stop(sessions.now);
+
+    session->playPause(sessions.now);
+
+    REQUIRE(session->turn().has_value());
+    CHECK(session->turn()->track.path == "row 2");
+    CHECK(session->turn()->from == doctest::Approx(0));
+}
+
+TEST_CASE(
+    "play after a stop takes the queue first, and the snapshot goes on after the stopped row") {
+    Sessions sessions;
+    const auto session = sessions.create();
+    REQUIRE(session->play(rows(5), 1, sessions.now) == PlayerOutcome::done);
+    session->stop(sessions.now);
+    session->enqueue(queued({"a"}));
+
+    session->playPause(sessions.now);
+
+    CHECK(played(*session, 6, sessions.now) ==
+          std::vector<std::string>{"queued a", "row 2", "row 3", "row 4"});
+}
+
+TEST_CASE("a stop during a queued track loses that track and keeps the rest of the queue") {
+    Sessions sessions;
+    const auto session = sessions.create();
+    REQUIRE(session->play(rows(3), 0, sessions.now) == PlayerOutcome::done);
+    session->enqueue(queued({"a", "b"}));
+    endTrack(*session, sessions.now);
+    REQUIRE(playingPath(*session) == "queued a");
+
+    session->stop(sessions.now);
+    CHECK(names(session->queue()) == std::vector<std::string>{"queued b"});
+
+    session->playPause(sessions.now);
+    CHECK(played(*session, 4, sessions.now) ==
+          std::vector<std::string>{"queued b", "row 1", "row 2"});
+}
+
+// Twin sessions drawing the same script, one whose queued track failed and one whose ran out.
+// repeatOne is where a failure and an end differ for a row: a failed row moves on, an ended one
+// plays again.
+TEST_CASE(
+    "a queued track that fails resumes the snapshot as though it had ended, under every order") {
+    for (const auto order : kEveryOrder) {
+        CAPTURE(modeNameOf(order));
+        Sessions sessions;
+        const auto failing = sessions.create();
+        const auto ending = sessions.create();
+
+        for (const auto& session : {failing, ending}) {
+            session->setOrder(order);
+            REQUIRE(session->play(rows(4), 1, sessions.now) == PlayerOutcome::done);
+            session->enqueue(queued({"a"}));
+            endTrack(*session, sessions.now);
+            REQUIRE(playingPath(*session) == "queued a");
+        }
+
+        CHECK(failing->threw(failing->turn()->serial, Thrower::decoder, sessions.now) ==
+              AfterThrow::skipTrack);
+        endTrack(*ending, sessions.now);
+
+        CHECK(played(*failing, 6, sessions.now) == played(*ending, 6, sessions.now));
+    }
+}

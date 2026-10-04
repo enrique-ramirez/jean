@@ -438,6 +438,12 @@ std::optional<std::string> failCurrent(Session& session, Time now) {
     return turn->track.path;
 }
 
+std::shared_ptr<Audience::Membership> listening(Session& session, Time now) {
+    auto ears = session.listen(DeviceIdentity{"phone", {}}, "opus", now);
+    REQUIRE(ears);
+    return ears;
+}
+
 }  // namespace
 
 // One row under a repeat order, or every row unreadable, would otherwise reopen a failing track
@@ -454,6 +460,7 @@ TEST_CASE("a session whose every track fails stops once each has failed, under e
             // at the last, where going round is what they would do next.
             const size_t start = order == SessionOrder::inOrder ? 0 : count - 1;
             const auto session = sessions.playing(count, start, order);
+            const auto ears = listening(*session, now);
 
             std::vector<std::string> failed;
             for (size_t i = 0; i < count; ++i) {
@@ -489,6 +496,7 @@ TEST_CASE("a track that plays to its end ends a run of failures") {
     Sessions sessions;
     const auto now = sessions.now();
     const auto session = sessions.playing(3, 0, SessionOrder::repeatAll);
+    const auto ears = listening(*session, now);
 
     REQUIRE(failCurrent(*session, now));
     REQUIRE(failCurrent(*session, now));
@@ -527,6 +535,7 @@ TEST_CASE("a chain that throws is no track failing, and counts nothing toward a 
     Sessions sessions;
     const auto now = sessions.now();
     const auto session = sessions.playing(3, 0, SessionOrder::repeatAll);
+    const auto ears = listening(*session, now);
 
     REQUIRE(failCurrent(*session, now));
     REQUIRE(session->threw(Sessions::serial(*session), Thrower::chain, now) ==
@@ -543,6 +552,7 @@ TEST_CASE("a queued track that fails does not cut short a pass over the snapshot
     Sessions sessions;
     const auto now = sessions.now();
     const auto session = sessions.playing(2, 0, SessionOrder::repeatAll);
+    const auto ears = listening(*session, now);
     session->enqueue({queuedTrack("a")});
 
     CHECK(failCurrent(*session, now) == pathOf(0));
@@ -576,6 +586,7 @@ TEST_CASE("after a stop for failing tracks, a new play starts a fresh run") {
     Sessions sessions;
     const auto now = sessions.now();
     const auto session = sessions.playing(2, 0, SessionOrder::repeatAll);
+    const auto ears = listening(*session, now);
 
     REQUIRE(failCurrent(*session, now));
     REQUIRE(failCurrent(*session, now));

@@ -581,7 +581,7 @@ TEST_CASE("a session decodes only while a connection listens, and its document c
     const auto id = createdBy(server, kPhone);
     play(server, id, kPhone);
     const auto session = source.session(id);
-    REQUIRE(documentOf(server, id, kPhone)["playback"] == "playing");
+    REQUIRE(session->turn().has_value());
     CHECK_FALSE(session->running());
 
     source.hold(id);
@@ -1081,4 +1081,72 @@ TEST_CASE("maxConcurrentStreams bounds the connections of every session and the 
     checkSameAnswer(listen(server, ticketFor(server, kitchen, kPhone)), engine);
     CHECK(source.opens(kitchen).size() == 1);
     CHECK(source.opens(desk).size() == 1);
+}
+
+namespace {
+
+httplib::Result pollHolding(const TestServer& server, const std::string& id,
+                            const std::string& tag) {
+    return server.client().Get(scoped("/api/state", id, kPhone),
+                               httplib::Headers{{"If-None-Match", tag}});
+}
+
+json playerOf(const httplib::Result& response) {
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+    return json::parse(response->body)["player"];
+}
+
+std::string tagOf(const httplib::Result& response) {
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+    auto tag = response->get_header_value("ETag");
+    REQUIRE_FALSE(tag.empty());
+    return tag;
+}
+
+// A connection is counted on the session under the session's own lock, a moment after the audience
+// counts it, so a case waits on the session itself. The waiting reads are unasserted and the answer
+// is asserted once, so the suite's assertion total stays fixed.
+void runsAt(const Session& session, bool running) {
+    eventually([&session, running] { return session.running() == running; });
+    REQUIRE(session.running() == running);
+}
+
+}  // namespace
+
+TEST_CASE(
+    "a session set to play reads paused until a connection listens, and again once it closes") {
+    Source source;
+    const TestServer server = oneClock(source);
+    Connections live(server, source);
+    const auto id = createdBy(server, kPhone);
+    play(server, id, kPhone);
+    const auto session = source.session(id);
+
+    const auto unheard = get(server, scoped("/api/state", id, kPhone));
+    const auto unheardTag = tagOf(unheard);
+    const auto revision = playerOf(unheard)["sessionRevision"];
+    CHECK(playerOf(unheard)["playback"] == "paused");
+    CHECK(documentOf(server, id, kPhone)["playback"] == "paused");
+
+    source.hold(id);
+    live.open(ticketFor(server, id, kPhone));
+    runsAt(*session, true);
+
+    const auto heard = pollHolding(server, id, unheardTag);
+    CHECK(playerOf(heard)["playback"] == "playing");
+    CHECK(heard->get_header_value("ETag") != unheardTag);
+    CHECK(playerOf(heard)["sessionRevision"] == revision);
+    CHECK(documentOf(server, id, kPhone)["playback"] == "playing");
+
+    const auto heardTag = tagOf(heard);
+    source.letGo(id);
+    runsAt(*session, false);
+
+    const auto left = pollHolding(server, id, heardTag);
+    CHECK(playerOf(left)["playback"] == "paused");
+    CHECK(left->get_header_value("ETag") != heardTag);
+    CHECK(playerOf(left)["sessionRevision"] == revision);
+    CHECK(documentOf(server, id, kPhone)["playback"] == "paused");
 }

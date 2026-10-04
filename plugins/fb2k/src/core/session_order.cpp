@@ -14,13 +14,12 @@ struct OrderName {
     const char* name;
 };
 
-// In the sequence sessionPlaybackModes() lists them. Provisional, waiting on the owner: the
-// sequence itself.
+// In the sequence sessionPlaybackModes() lists them.
 constexpr OrderName kOrders[]{{SessionOrder::inOrder, "inOrder"},
                               {SessionOrder::repeatAll, "repeatAll"},
                               {SessionOrder::repeatOne, "repeatOne"},
-                              {SessionOrder::shuffleTracks, "shuffleTracks"},
-                              {SessionOrder::random, "random"}};
+                              {SessionOrder::random, "random"},
+                              {SessionOrder::shuffleTracks, "shuffleTracks"}};
 
 // Fisher-Yates over rows[first..], written out rather than handed to std::shuffle because the
 // standard library does not fix how std::shuffle consumes its generator, so one source of
@@ -44,10 +43,6 @@ size_t drawnBeside(size_t at, size_t count, const SessionRandom& random) {
     return drawn >= at ? drawn + 1 : drawn;
 }
 
-// Provisional, waiting on the owner: inOrder stays on its first row, repeatAll and repeatOne
-// wrap from the first row to the last, shuffleTracks walks back and stays on the first of its
-// walk, and random draws afresh as a track's end does. It moves so however far into the track
-// the session is: no rule restarts the track instead.
 SessionCursor steppedBack(SessionOrder order, size_t count, size_t at, SessionCursor cursor,
                           const SessionRandom& random) {
     switch (order) {
@@ -98,9 +93,6 @@ SessionCursor advanced(SessionOrder order, size_t count, SessionCursor from, Adv
     if (why == Advance::previous)
         return steppedBack(order, count, at, std::move(next), random);
 
-    // Provisional, waiting on the owner: a skip forward from inOrder's last row wraps to its first
-    // rather than stopping, and repeatOne skips to the next row, wrapping, rather than repeating.
-    // The other three skip as a track's end moves them.
     if (why == Advance::next &&
         (order == SessionOrder::inOrder || order == SessionOrder::repeatOne)) {
         next.at = (at + 1) % count;

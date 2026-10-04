@@ -8,7 +8,7 @@
 
 namespace jean {
 
-enum class SessionOrder { inOrder, repeatAll, repeatOne, shuffleTracks, random };
+enum class SessionOrder { inOrder, repeatAll, repeatOne, random, shuffleTracks };
 
 std::optional<SessionOrder> sessionOrderNamed(const std::string& jeanMode);
 std::string modeNameOf(SessionOrder order);

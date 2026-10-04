@@ -88,7 +88,8 @@ PlayerState Session::state(Clock::time_point now) const {
     const std::lock_guard<std::mutex> held(mutex_);
 
     PlayerState answer;
-    answer.playback = playback_;
+    answer.playback =
+        playback_ == PlaybackState::playing && listeners_ == 0 ? PlaybackState::paused : playback_;
     answer.playbackMode = modeNameOf(order_);
 
     if (const SessionTrack* const track = playingLocked()) {
@@ -105,8 +106,6 @@ PlayerState Session::state(Clock::time_point now) const {
         }
     }
 
-    // Provisional, waiting on the owner: playing to nobody answers `playing`, its position
-    // standing still.
     answer.position = {positionLocked(now), now};
 
     return answer;
@@ -175,8 +174,6 @@ void Session::startLocked(double from, bool cut, Clock::time_point now) {
 void Session::stopLocked(Clock::time_point now) {
     // The cursor stays where it was, so play after a stop with nothing queued starts that row again
     // from its start; a queued track is taken first.
-    // Provisional, waiting on the owner: a queued track stopped part way is not put back, since it
-    // left the queue when it started.
     queued_.reset();
     playback_ = PlaybackState::stopped;
     duration_ = 0;
@@ -211,8 +208,6 @@ void Session::playPause(Clock::time_point now) {
             if (queue_.empty() && snapshot_.empty())
                 return;
 
-            // Provisional, waiting on the owner: play after a stop takes the queue first, and the
-            // snapshot then resumes on the row after the one the cursor stayed on.
             playback_ = PlaybackState::playing;
             if (takeQueuedLocked(true, now))
                 return;
@@ -224,6 +219,9 @@ void Session::playPause(Clock::time_point now) {
             startLocked(0, true, now);
             return;
         case PlaybackState::playing:
+            if (listeners_ == 0)
+                return;
+
             markLocked(now);
             playback_ = PlaybackState::paused;
             break;
@@ -237,8 +235,6 @@ void Session::playPause(Clock::time_point now) {
     woken_.notify_all();
 }
 
-// Provisional, waiting on the owner, for next and previous both: with nothing to play each does
-// nothing while the route answers 204, and from stopped or paused each starts playing.
 void Session::next(Clock::time_point now) {
     const std::lock_guard<std::mutex> held(mutex_);
 
@@ -256,14 +252,21 @@ void Session::next(Clock::time_point now) {
 void Session::previous(Clock::time_point now) {
     const std::lock_guard<std::mutex> held(mutex_);
 
-    if (snapshot_.empty())
+    const bool restarts =
+        playingLocked() != nullptr &&
+        positionLocked(now) > std::chrono::duration<double>(kPreviousRestartsAfter).count();
+    if (!restarts && snapshot_.empty())
         return;
 
     playback_ = PlaybackState::playing;
     failedRows_ = 0;
 
-    // Provisional, waiting on the owner: from a queued track, back to the row the cursor stayed
-    // on, which is the one played before it.
+    if (restarts) {
+        duration_ = 0;
+        startLocked(0, true, now);
+        return;
+    }
+
     if (queued_ && cursor_.at) {
         queued_.reset();
         duration_ = 0;
@@ -620,8 +623,6 @@ bool Session::advanceLocked(Advance why, Clock::time_point now) {
     if (takeQueuedLocked(cut, now))
         return true;
 
-    // Provisional, waiting on the owner: a queued track that failed was not the row's, so the
-    // snapshot resumes as after an end.
     const Advance rowWhy = queued_ ? Advance::ended : why;
     queued_.reset();
     cursor_ = advanced(order_, snapshot_.size(), std::move(cursor_), rowWhy, random_);

@@ -372,7 +372,10 @@ TEST_CASE("a session is stopped with no turn, and not while it plays or pauses")
 
     REQUIRE(session->play(rows(2), 0, now) == PlayerOutcome::done);
     CHECK_FALSE(session->stopped());
+    const auto ears = session->listen(device("phone"), "opus", now);
+    REQUIRE(ears);
     session->playPause(now);
+    REQUIRE(session->state(now).playback == PlaybackState::paused);
     CHECK_FALSE(session->stopped());
     session->stop(now);
     CHECK(session->stopped());

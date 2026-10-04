@@ -391,11 +391,9 @@ TEST_CASE("random never plays one row twice running, and never stops") {
     }
 }
 
-TEST_CASE("a session offers exactly the five orders it can play, and knows no other by name") {
-    auto offered = sessionPlaybackModes();
-    std::sort(offered.begin(), offered.end());
-    CHECK(offered == std::vector<std::string>{"inOrder", "random", "repeatAll", "repeatOne",
-                                              "shuffleTracks"});
+TEST_CASE("a session offers exactly the five orders it can play, in sequence, and knows no other") {
+    CHECK(sessionPlaybackModes() ==
+          std::vector<std::string>{"inOrder", "repeatAll", "repeatOne", "random", "shuffleTracks"});
 
     for (const auto& name : sessionPlaybackModes()) {
         CAPTURE(name);
@@ -1123,4 +1121,469 @@ TEST_CASE("a device leaving a session it was never in reaps nothing") {
     CHECK(sessions.registry.leave(hidden->id(), "tablet", sessions.now()) ==
           SessionAnswer::Which::none);
     CHECK(sessions.whichFor(hidden->id(), "laptop") == SessionAnswer::Which::detached);
+}
+
+namespace {
+
+std::shared_ptr<Audience::Membership> listening(Session& session, Time now) {
+    auto ears = session.listen(device("phone"), "opus", now);
+    REQUIRE(ears);
+    return ears;
+}
+
+PlaybackState playbackOf(const Session& session, Time now) {
+    return session.state(now).playback;
+}
+
+}  // namespace
+
+TEST_CASE(
+    "a session set to play reads paused while nobody listens, and playing while somebody does") {
+    Sessions sessions;
+    const auto session = sessions.create("phone");
+    REQUIRE(session->play(tracks(3), 1, sessions.now()) == PlayerOutcome::done);
+    session->began(session->turn()->serial, 300, sessions.now());
+
+    sessions.wait(60s);
+    CHECK(playbackOf(*session, sessions.now()) == PlaybackState::paused);
+    CHECK(heard(session->state(sessions.now()), sessions.now()) == doctest::Approx(0));
+    CHECK(session->turn().has_value());
+    CHECK_FALSE(session->running());
+
+    auto ears = listening(*session, sessions.now());
+    CHECK(playbackOf(*session, sessions.now()) == PlaybackState::playing);
+    sessions.wait(10s);
+    CHECK(heard(session->state(sessions.now()), sessions.now()) == doctest::Approx(10));
+
+    ears.reset();
+    REQUIRE(session->audience().anyListening(sessions.now()));
+    CHECK(playbackOf(*session, sessions.now()) == PlaybackState::paused);
+
+    sessions.wait(20s);
+    CHECK(playbackOf(*session, sessions.now()) == PlaybackState::paused);
+    CHECK(heard(session->state(sessions.now()), sessions.now()) == doctest::Approx(10));
+}
+
+TEST_CASE("a session its controller paused reads paused whether or not a connection listens") {
+    Sessions sessions;
+    const auto session = sessions.create("phone");
+    const auto now = sessions.now();
+    REQUIRE(session->play(tracks(3), 1, now) == PlayerOutcome::done);
+
+    auto ears = listening(*session, now);
+    session->playPause(now);
+    CHECK(playbackOf(*session, now) == PlaybackState::paused);
+
+    ears.reset();
+    CHECK(playbackOf(*session, now) == PlaybackState::paused);
+
+    ears = listening(*session, now);
+    CHECK(playbackOf(*session, now) == PlaybackState::paused);
+    CHECK_FALSE(session->running());
+}
+
+TEST_CASE("a stopped session reads stopped whether or not a connection listens") {
+    Sessions sessions;
+    const auto session = sessions.create("phone");
+    const auto now = sessions.now();
+
+    auto ears = listening(*session, now);
+    CHECK(playbackOf(*session, now) == PlaybackState::stopped);
+
+    REQUIRE(session->play(tracks(3), 1, now) == PlayerOutcome::done);
+    session->stop(now);
+    CHECK(playbackOf(*session, now) == PlaybackState::stopped);
+
+    ears.reset();
+    CHECK(playbackOf(*session, now) == PlaybackState::stopped);
+}
+
+// Pressed once: a press that paused would leave the session paused for the listener arriving next.
+TEST_CASE(
+    "play-pause on a session that reads paused only because nobody listens leaves it set to play") {
+    Sessions sessions;
+    const auto session = sessions.create("phone");
+    const auto now = sessions.now();
+    REQUIRE(session->play(tracks(3), 1, now) == PlayerOutcome::done);
+
+    session->playPause(now);
+    CHECK(playbackOf(*session, now) == PlaybackState::paused);
+    CHECK(rowPlaying(*session, tracks(3)) == size_t{1});
+
+    const auto ears = listening(*session, now);
+    CHECK(playbackOf(*session, now) == PlaybackState::playing);
+    CHECK(session->running());
+}
+
+TEST_CASE(
+    "play-pause on a session its controller paused sets it to play, read paused until heard") {
+    Sessions sessions;
+    const auto session = sessions.create("phone");
+    const auto now = sessions.now();
+    REQUIRE(session->play(tracks(3), 1, now) == PlayerOutcome::done);
+
+    auto ears = listening(*session, now);
+    session->playPause(now);
+    REQUIRE(playbackOf(*session, now) == PlaybackState::paused);
+
+    session->playPause(now);
+    CHECK(playbackOf(*session, now) == PlaybackState::playing);
+
+    session->playPause(now);
+    REQUIRE(playbackOf(*session, now) == PlaybackState::paused);
+    ears.reset();
+
+    session->playPause(now);
+    CHECK(playbackOf(*session, now) == PlaybackState::paused);
+    CHECK(rowPlaying(*session, tracks(3)) == size_t{1});
+    CHECK_FALSE(session->running());
+
+    ears = listening(*session, now);
+    CHECK(playbackOf(*session, now) == PlaybackState::playing);
+    CHECK(session->running());
+}
+
+TEST_CASE(
+    "play-pause on a session reading playing pauses it, and it stays paused for a reconnect") {
+    Sessions sessions;
+    const auto session = sessions.create("phone");
+    const auto now = sessions.now();
+    REQUIRE(session->play(tracks(3), 1, now) == PlayerOutcome::done);
+
+    auto ears = listening(*session, now);
+    REQUIRE(playbackOf(*session, now) == PlaybackState::playing);
+
+    session->playPause(now);
+    CHECK(playbackOf(*session, now) == PlaybackState::paused);
+
+    ears.reset();
+    ears = listening(*session, now);
+    CHECK(playbackOf(*session, now) == PlaybackState::paused);
+    CHECK_FALSE(session->running());
+}
+
+namespace {
+
+constexpr double kJustUnderThree = 2.999;
+constexpr double kExactlyThree = 3;
+constexpr double kJustOverThree = 3.001;
+
+constexpr double kWellIn = 10;
+
+const SessionOrder kEveryOrder[]{SessionOrder::inOrder, SessionOrder::repeatAll,
+                                 SessionOrder::repeatOne, SessionOrder::random,
+                                 SessionOrder::shuffleTracks};
+
+}  // namespace
+
+TEST_CASE("previous restarts a track once it is more than three seconds in") {
+    CHECK(kPreviousRestartsAfter == std::chrono::seconds(3));
+}
+
+TEST_CASE("previous more than three seconds into a track starts it again as a new turn from 0") {
+    Sessions sessions;
+    const auto session = sessions.create("phone");
+    const auto now = sessions.now();
+    const auto songs = tracks(5);
+    REQUIRE(session->play(songs, 2, now) == PlayerOutcome::done);
+    session->seek(kWellIn, false, now);
+    const auto seeked = session->turn();
+    REQUIRE(seeked.has_value());
+
+    session->previous(now);
+
+    const auto restarted = session->turn();
+    REQUIRE(restarted.has_value());
+    CHECK(restarted->track.path == songs[2].path);
+    CHECK(restarted->serial != seeked->serial);
+    CHECK(restarted->cut);
+    CHECK(restarted->from == doctest::Approx(0));
+    CHECK(session->state(now).position.seconds == doctest::Approx(0));
+}
+
+TEST_CASE("previous goes back at three seconds in or less, and restarts the track just past it") {
+    const auto songs = tracks(5);
+    const std::pair<double, size_t> table[]{
+        {kJustUnderThree, 1}, {kExactlyThree, 1}, {kJustOverThree, 2}};
+
+    for (const auto& asked : table) {
+        const double position = asked.first;
+        const size_t row = asked.second;
+        CAPTURE(position);
+        Sessions sessions;
+        const auto session = sessions.create("phone");
+        const auto now = sessions.now();
+        REQUIRE(session->play(songs, 2, now) == PlayerOutcome::done);
+        session->seek(position, false, now);
+
+        session->previous(now);
+        CHECK(rowPlaying(*session, songs) == row);
+    }
+}
+
+TEST_CASE("a position a listener heard counts toward the three seconds as a seek's does") {
+    Sessions sessions;
+    const auto session = sessions.create("phone");
+    const auto songs = tracks(5);
+    REQUIRE(session->play(songs, 2, sessions.now()) == PlayerOutcome::done);
+    session->began(session->turn()->serial, 300, sessions.now());
+    const auto ears = listening(*session, sessions.now());
+
+    sessions.wait(4s);
+    session->previous(sessions.now());
+    CHECK(rowPlaying(*session, songs) == size_t{2});
+    CHECK(heard(session->state(sessions.now()), sessions.now()) == doctest::Approx(0));
+
+    sessions.wait(2s);
+    session->previous(sessions.now());
+    CHECK(rowPlaying(*session, songs) == size_t{1});
+}
+
+TEST_CASE("previous more than three seconds into a paused track restarts it and plays it") {
+    Sessions sessions;
+    const auto session = sessions.create("phone");
+    const auto songs = tracks(5);
+    REQUIRE(session->play(songs, 2, sessions.now()) == PlayerOutcome::done);
+    session->began(session->turn()->serial, 300, sessions.now());
+    const auto ears = listening(*session, sessions.now());
+    sessions.wait(10s);
+    session->playPause(sessions.now());
+    REQUIRE(playbackOf(*session, sessions.now()) == PlaybackState::paused);
+
+    session->previous(sessions.now());
+
+    CHECK(rowPlaying(*session, songs) == size_t{2});
+    CHECK(session->turn()->from == doctest::Approx(0));
+    CHECK(playbackOf(*session, sessions.now()) == PlaybackState::playing);
+}
+
+TEST_CASE("restarting a track leaves what plays after it as it was, under every order") {
+    const auto songs = tracks(5);
+
+    for (const auto order : kEveryOrder) {
+        CAPTURE(modeNameOf(order));
+        Sessions restartedOnes(kMaxSessions, countingUp());
+        Sessions untouchedOnes(kMaxSessions, countingUp());
+        const auto restarted = restartedOnes.create("phone");
+        const auto untouched = untouchedOnes.create("phone");
+        const auto now = restartedOnes.now();
+
+        for (const auto& session : {restarted, untouched}) {
+            session->setOrder(order);
+            REQUIRE(session->play(songs, 2, now) == PlayerOutcome::done);
+        }
+        restarted->seek(kWellIn, false, now);
+        restarted->previous(now);
+
+        CHECK(rowsPlayed(*restarted, songs, 8, now) == rowsPlayed(*untouched, songs, 8, now));
+    }
+}
+
+TEST_CASE("previous goes back a row, holding the first under in order and wrapping under repeats") {
+    const auto songs = tracks(5);
+    const std::pair<SessionOrder, size_t> fromTheFirst[]{
+        {SessionOrder::inOrder, 0}, {SessionOrder::repeatAll, 4}, {SessionOrder::repeatOne, 4}};
+
+    for (const auto& asked : fromTheFirst) {
+        const SessionOrder order = asked.first;
+        const size_t wrapped = asked.second;
+        CAPTURE(modeNameOf(order));
+        Sessions sessions;
+        const auto session = sessions.create("phone");
+        const auto now = sessions.now();
+        session->setOrder(order);
+
+        REQUIRE(session->play(songs, 2, now) == PlayerOutcome::done);
+        session->previous(now);
+        CHECK(rowPlaying(*session, songs) == size_t{1});
+
+        REQUIRE(session->play(songs, 0, now) == PlayerOutcome::done);
+        session->previous(now);
+        CHECK(rowPlaying(*session, songs) == wrapped);
+    }
+}
+
+TEST_CASE("previous under shuffle walks back along the rows it played and stays on the first") {
+    const auto songs = tracks(5);
+
+    for (const auto& script : {countingUp, countingDown, scattered}) {
+        Sessions sessions(kMaxSessions, script());
+        const auto session = sessions.create("phone");
+        const auto now = sessions.now();
+        session->setOrder(SessionOrder::shuffleTracks);
+        REQUIRE(session->play(songs, 3, now) == PlayerOutcome::done);
+
+        const auto walked = rowsPlayed(*session, songs, 2, now);
+        REQUIRE(walked.size() == 2);
+        REQUIRE(walked[0] == 3);
+
+        const std::vector<size_t> expected{walked[1], walked[0], walked[0]};
+        std::vector<size_t> back;
+        for (size_t step = 0; step < expected.size(); ++step) {
+            session->previous(now);
+            back.push_back(rowPlaying(*session, songs).value_or(songs.size()));
+        }
+        CHECK(back == expected);
+    }
+}
+
+TEST_CASE("previous under random draws its row afresh from the session's source") {
+    const auto songs = tracks(5);
+    std::vector<size_t> drawn;
+
+    for (const auto& script : {countingUp, countingDown}) {
+        Sessions sessions(kMaxSessions, script());
+        const auto session = sessions.create("phone");
+        const auto now = sessions.now();
+        session->setOrder(SessionOrder::random);
+        REQUIRE(session->play(songs, 2, now) == PlayerOutcome::done);
+
+        session->previous(now);
+        const auto row = rowPlaying(*session, songs);
+        REQUIRE(row.has_value());
+        drawn.push_back(row.value_or(0));
+    }
+
+    CHECK(drawn[0] != drawn[1]);
+}
+
+TEST_CASE("previous on a stopped session goes back a row and starts it") {
+    Sessions sessions;
+    const auto session = sessions.create("phone");
+    const auto now = sessions.now();
+    const auto songs = tracks(5);
+    REQUIRE(session->play(songs, 2, now) == PlayerOutcome::done);
+    session->seek(kWellIn, false, now);
+    session->stop(now);
+
+    session->previous(now);
+
+    CHECK(rowPlaying(*session, songs) == size_t{1});
+    const auto ears = listening(*session, now);
+    CHECK(playbackOf(*session, now) == PlaybackState::playing);
+}
+
+TEST_CASE("next on in order's last row wraps to the first, and under repeat one moves on a row") {
+    const auto songs = tracks(5);
+    const std::pair<SessionOrder, size_t> fromTheLast[]{{SessionOrder::inOrder, 0},
+                                                        {SessionOrder::repeatOne, 0}};
+
+    for (const auto& asked : fromTheLast) {
+        const SessionOrder order = asked.first;
+        const size_t wrapped = asked.second;
+        CAPTURE(modeNameOf(order));
+        Sessions sessions;
+        const auto session = sessions.create("phone");
+        const auto now = sessions.now();
+        session->setOrder(order);
+
+        REQUIRE(session->play(songs, 2, now) == PlayerOutcome::done);
+        session->next(now);
+        CHECK(rowPlaying(*session, songs) == size_t{3});
+
+        REQUIRE(session->play(songs, 4, now) == PlayerOutcome::done);
+        session->next(now);
+        CHECK(rowPlaying(*session, songs) == wrapped);
+    }
+}
+
+TEST_CASE("next under repeat all, shuffle and random moves as a track's end does") {
+    const auto songs = tracks(4);
+
+    for (const auto order :
+         {SessionOrder::repeatAll, SessionOrder::shuffleTracks, SessionOrder::random}) {
+        CAPTURE(modeNameOf(order));
+        Sessions skippedOnes(kMaxSessions, scattered());
+        Sessions endedOnes(kMaxSessions, scattered());
+        const auto skipped = skippedOnes.create("phone");
+        const auto ended = endedOnes.create("phone");
+        const auto now = skippedOnes.now();
+
+        for (const auto& session : {skipped, ended}) {
+            session->setOrder(order);
+            REQUIRE(session->play(songs, 1, now) == PlayerOutcome::done);
+        }
+
+        std::vector<size_t> bySkipping;
+        std::vector<size_t> byEnding;
+        for (size_t step = 0; step < 2 * songs.size(); ++step) {
+            skipped->next(now);
+            ended->ended(ended->turn()->serial, now);
+            bySkipping.push_back(rowPlaying(*skipped, songs).value_or(songs.size()));
+            byEnding.push_back(rowPlaying(*ended, songs).value_or(songs.size()));
+        }
+        CHECK(bySkipping == byEnding);
+    }
+}
+
+TEST_CASE("next and previous on a paused or a stopped session with something to play start it") {
+    const auto songs = tracks(5);
+
+    for (const bool stopping : {false, true}) {
+        for (const bool forward : {true, false}) {
+            CAPTURE(stopping);
+            CAPTURE(forward);
+            Sessions sessions;
+            const auto session = sessions.create("phone");
+            const auto now = sessions.now();
+            REQUIRE(session->play(songs, 2, now) == PlayerOutcome::done);
+            const auto ears = listening(*session, now);
+
+            if (stopping)
+                session->stop(now);
+            else
+                session->playPause(now);
+            REQUIRE(playbackOf(*session, now) != PlaybackState::playing);
+
+            if (forward)
+                session->next(now);
+            else
+                session->previous(now);
+
+            CHECK(playbackOf(*session, now) == PlaybackState::playing);
+            CHECK(rowPlaying(*session, songs) == (forward ? size_t{3} : size_t{1}));
+        }
+    }
+}
+
+TEST_CASE("next and previous on a session with nothing to play change nothing") {
+    Sessions sessions;
+    const auto session = sessions.create("phone");
+    const auto now = sessions.now();
+    const auto version = session->revisions().version;
+
+    session->next(now);
+    session->previous(now);
+
+    CHECK(playbackOf(*session, now) == PlaybackState::stopped);
+    CHECK_FALSE(session->turn().has_value());
+    CHECK(session->revisions().version == version);
+}
+
+TEST_CASE("a shuffle pass a next ends gives way to one that starts on another row") {
+    for (const size_t count : {size_t{2}, size_t{3}, size_t{5}}) {
+        for (const auto& script : {countingUp, countingDown, scattered}) {
+            CAPTURE(count);
+            const auto songs = tracks(count);
+            Sessions sessions(kMaxSessions, script());
+            const auto session = sessions.create("phone");
+            const auto now = sessions.now();
+            session->setOrder(SessionOrder::shuffleTracks);
+            REQUIRE(session->play(songs, 0, now) == PlayerOutcome::done);
+
+            const size_t passes = 8;
+            std::vector<size_t> played{0};
+            for (size_t step = 1; step < passes * count; ++step) {
+                session->next(now);
+                played.push_back(rowPlaying(*session, songs).value_or(count));
+            }
+
+            CHECK(std::adjacent_find(played.begin(), played.end()) == played.end());
+            for (size_t pass = 0; pass < passes; ++pass) {
+                CAPTURE(pass);
+                const auto from = played.begin() + static_cast<std::ptrdiff_t>(pass * count);
+                CHECK(everyRowOnce({from, from + static_cast<std::ptrdiff_t>(count)}, count));
+            }
+        }
+    }
 }

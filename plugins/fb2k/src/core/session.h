@@ -26,6 +26,7 @@ namespace jean {
 
 constexpr char kEngineSessionId[] = "engine";
 constexpr auto kControllingGrace = std::chrono::minutes(15);
+constexpr auto kPreviousRestartsAfter = std::chrono::seconds(3);
 constexpr size_t kMaxSessionControllers = 64;
 constexpr size_t kMaxSessionQueue = 10000;
 constexpr size_t kSessionReportsKept = 8;

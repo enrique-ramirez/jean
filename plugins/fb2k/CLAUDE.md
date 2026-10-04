@@ -5,7 +5,7 @@
 ## Priorities, in order
 
 1. **Security.** The component is safe as the only thing between the network and files it can rewrite. `plugins/fb2k/CONTRIBUTING.md`, *Security rules*, binds every feature.
-2. **Performance, mostly foobar2000's.** For tags and playlists the component is a messenger and holds nothing. The stream and the media library snapshot are the two things held.
+2. **Performance, mostly foobar2000's.** For tags and playlists the component is a messenger, holding nothing. Three things are held on purpose: the stream, the media library snapshot and detached playback sessions.
 3. **Cross-platform where it is free**: portable libraries and `std::` threading over Win32.
 
 Measure on a real install rather than reasoning from a sentence.

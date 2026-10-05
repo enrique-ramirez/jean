@@ -187,8 +187,6 @@ PlayerOutcome Session::play(std::vector<SessionTrack> tracks, size_t index, Cloc
 
     const std::lock_guard<std::mutex> held(mutex_);
 
-    // Provisional, waiting on a measurement: the snapshot has no cap, costs memory linear in the
-    // playlist it was taken from, and is held for the session's life.
     snapshot_ = std::move(tracks);
     cursor_ = startedAt(order_, snapshot_.size(), index, random_);
     queued_.reset();

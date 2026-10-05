@@ -8,6 +8,7 @@ import {
 } from "@/shared/keyboard/keyboardOwner";
 import { ActionPopover } from "./ActionPopover";
 import { ActionSheet } from "./ActionSheet";
+import { SHEET_EXIT_MS } from "./BottomSheet";
 import type { IconComponent } from "./icons";
 
 export interface ActionEntry {
@@ -44,8 +45,6 @@ export interface MenuHeader {
 	subtitle?: string | null;
 	icon?: IconComponent;
 }
-
-const SHEET_EXIT_MS = 220;
 
 export function ActionMenu({
 	isOpen,

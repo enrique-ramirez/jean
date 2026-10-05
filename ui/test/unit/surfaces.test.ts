@@ -31,8 +31,8 @@ const source = filesUnder(SRC, /\.(tsx?|css)$/);
 const MODAL_WITHOUT_ROUTE = [
 	"src/app/CommandPalette.tsx",
 	"src/shared/keyboard/ShortcutSheet.tsx",
-	"src/shared/ui/ActionSheet.tsx",
 	"src/shared/ui/AlertDialog.tsx",
+	"src/shared/ui/BottomSheet.tsx",
 	"src/shared/ui/ModalDialog.tsx",
 ];
 

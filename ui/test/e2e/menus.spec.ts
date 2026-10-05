@@ -1,17 +1,23 @@
-import type { FakePlayer, Page } from "./fixtures.ts";
+import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	dragAcrossTheSheet,
 	dragFromTheScrim,
 	expect,
 	expectSettlesAt,
+	fromTheGrabber,
 	openLibrary,
 	openSidebar,
+	playRequests,
 	pressAndHold,
+	restingBox,
+	scrollTop,
 	sidebar,
 	statusBar,
 	test,
+	touchDrag,
 	trackRow,
 	untilQuiet,
+	watchHowFarItMoves,
 } from "./fixtures.ts";
 
 // `ui/ActionMenu.tsx` is one component with two shapes: a popover at the pointer
@@ -368,6 +374,244 @@ test.describe("an action sheet keeps a touch that begins on it", () => {
 		await expect(sheet).toHaveCount(0);
 		await untilQuiet(player);
 		await expect(page).toHaveURL(/\/tracks$/);
+	});
+});
+
+// The track at the top of the library, whose title a row's sheet is named by.
+const FIRST_TITLE = "Los Calientes";
+
+// Either side of the distance a sheet's grabber has to travel before letting go closes the
+// sheet, each far enough from it that the gesture is unambiguous.
+const SHORT_OF_CLOSING_PX = 50;
+const PAST_CLOSING_PX = 140;
+
+// Enough moves that the browser paints the sheet between them.
+const DRAG_STEPS = 12;
+
+// A box is fractional, so a sheet back at rest can sit a fraction of a pixel off.
+const AT_REST_PX = 1;
+
+// Enough playlists that the filing page is taller than the sheet's limit and scrolls.
+const MORE_PLAYLISTS = 24;
+
+const openRowSheet = async (page: Page) => {
+	await openLibrary(page);
+	await pressAndHold(page, trackRow(page, 0));
+	const sheet = page.getByRole("dialog", { name: FIRST_TITLE });
+	await expect(sheet).toBeVisible();
+	return sheet;
+};
+
+// A sheet on its way out stays drawn until its exit has run, so being visible says nothing about
+// whether it is open. One that answers a press is.
+const expectRowSheetOpen = async (page: Page) => {
+	await menuItem(page, "Add to playlist").click();
+	await expect(menuItem(page, "Favorites")).toBeVisible();
+};
+
+test.describe("a row's action sheet goes by its grabber alone", () => {
+	test.skip(
+		({ isMobile }) => !isMobile,
+		"a sheet is the compact shape, and this is touch",
+	);
+	test.skip(
+		({ browserName }) => browserName !== "chromium",
+		"a finger is driven through CDP",
+	);
+
+	test("the grabber dragged down past the distance closes the sheet", async ({
+		page,
+	}) => {
+		const sheet = await openRowSheet(page);
+
+		await fromTheGrabber(page, sheet, PAST_CLOSING_PX);
+
+		await expect(sheet).toHaveCount(0);
+	});
+
+	test("the grabber dragged a shorter way carries the sheet with it, and letting go leaves it open where it rested", async ({
+		page,
+	}) => {
+		const sheet = await openRowSheet(page);
+		const before = await restingBox(sheet);
+		const furthest = await watchHowFarItMoves(sheet);
+
+		await fromTheGrabber(page, sheet, SHORT_OF_CLOSING_PX);
+
+		// Settled first, or the box read below is one the sheet passed on its way back.
+		const after = await restingBox(sheet);
+		expect(
+			await furthest(),
+			"how far the sheet followed the finger",
+		).toBeGreaterThan(AT_REST_PX);
+		expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(AT_REST_PX);
+		await expectRowSheetOpen(page);
+	});
+
+	test("a downward drag that begins on the sheet's body moves the sheet nowhere and leaves it open", async ({
+		page,
+	}) => {
+		const sheet = await openRowSheet(page);
+		const box = await restingBox(sheet);
+		const furthest = await watchHowFarItMoves(sheet);
+
+		const x = box.x + box.width / 2;
+		const y = box.y + box.height / 2;
+		await touchDrag(page, { x, y }, { x, y: y + PAST_CLOSING_PX }, DRAG_STEPS);
+
+		expect(await furthest(), "how far the sheet moved").toBeLessThanOrEqual(
+			AT_REST_PX,
+		);
+		await expectRowSheetOpen(page);
+	});
+
+	// A sheet that drags from anywhere has to stop a touch on its list from panning, and then
+	// a list longer than the sheet's limit has no way to show its end.
+	test("a drag up the list of a row's sheet scrolls the list and moves the sheet nowhere", async ({
+		page,
+		player,
+	}) => {
+		for (let index = 0; index < MORE_PLAYLISTS; index++)
+			player.addPlaylist(`Crate ${index + 1}`);
+
+		const sheet = await openRowSheet(page);
+		await menuItem(page, "Add to playlist").click();
+		const first = menuItem(page, "Favorites");
+		await expect(first).toBeVisible();
+		const box = await restingBox(sheet);
+		const firstBefore = await restingBox(first);
+		const furthest = await watchHowFarItMoves(sheet);
+
+		const x = box.x + box.width / 2;
+		await touchDrag(
+			page,
+			{ x, y: box.y + box.height * 0.8 },
+			{ x, y: box.y + box.height * 0.3 },
+			DRAG_STEPS,
+		);
+
+		const firstAfter = await restingBox(first);
+		expect(firstAfter.y, "the first playlist, scrolled up").toBeLessThan(
+			firstBefore.y,
+		);
+		expect(await furthest(), "how far the sheet moved").toBeLessThanOrEqual(
+			AT_REST_PX,
+		);
+		await expect(sheet).toBeVisible();
+	});
+});
+
+// The list a finger has already scrolled is the one a tap on the scrim reached through to: once the
+// scrim stops taking pointers on its way out, a browser hit-tests the tap's click again and finds
+// the row under it.
+const SCROLLED_PX = 240;
+
+test.describe("a row's action sheet closes on its scrim", () => {
+	test.skip(
+		({ isMobile }) => !isMobile,
+		"a sheet is the compact shape, and this is touch",
+	);
+	test.skip(
+		({ browserName }) => browserName !== "chromium",
+		"a finger is driven through CDP",
+	);
+
+	test("on a list touched before, a tap on the scrim over another row closes the sheet, plays nothing and moves no cursor", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		const first = (await trackRow(page, 3).boundingBox())!;
+		const from = {
+			x: first.x + first.width / 2,
+			y: first.y + first.height / 2,
+		};
+		await touchDrag(page, from, { x: from.x, y: from.y - SCROLLED_PX }, 8);
+		await expect.poll(() => scrollTop(page)).toBeGreaterThan(0);
+
+		const held = trackRow(page, 10);
+		await pressAndHold(page, held);
+		const sheet = page.getByRole("dialog");
+		await expect(sheet).toBeVisible();
+		const top = (await restingBox(sheet)).y;
+
+		let target: { index: number; x: number; y: number } | null = null;
+		for (let index = 4; index < 10 && !target; index++) {
+			const box = await trackRow(page, index).boundingBox();
+			if (box && box.y > 0 && box.y + box.height < top)
+				target = {
+					index,
+					x: box.x + box.width / 2,
+					y: box.y + box.height / 2,
+				};
+		}
+		expect(target, "a row above the sheet, under its scrim").not.toBeNull();
+		const under = trackRow(page, target!.index);
+
+		await page.touchscreen.tap(target!.x, target!.y);
+
+		await expect(sheet).toHaveCount(0);
+		await expect(under).toHaveAttribute("data-cursor", "false");
+		await expectSettlesAt(player, () => playRequests(player), []);
+	});
+});
+
+// The smallest target a fingertip lands on reliably.
+const FINGER_PX = 44;
+
+// The tile the title stands beside.
+const SHEET_HEADER_TILE_PX = 40;
+
+const fontSizeOf = (target: Locator) =>
+	target.evaluate((element) =>
+		Number.parseFloat(getComputedStyle(element).fontSize),
+	);
+
+test.describe("a row's action sheet is drawn for a phone", () => {
+	test.skip(
+		({ isMobile }) => !isMobile,
+		"a sheet is the compact shape, and these are its proportions",
+	);
+
+	test("every action in a row's sheet is tall enough for a finger", async ({
+		page,
+	}) => {
+		const sheet = await openRowSheet(page);
+		await restingBox(sheet);
+
+		const actions = sheet.getByRole("menuitem");
+		await expect(actions.first()).toBeVisible();
+		const heights = await actions.evaluateAll((items) =>
+			items.map((item) => item.getBoundingClientRect().height),
+		);
+
+		expect(heights.length, "actions in the sheet").toBeGreaterThan(1);
+		expect(Math.min(...heights)).toBeGreaterThanOrEqual(FINGER_PX);
+	});
+
+	test("a row's sheet is headed by the track's title beside its tile, in type no smaller than its actions", async ({
+		page,
+	}) => {
+		const sheet = await openRowSheet(page);
+		await restingBox(sheet);
+
+		const title = sheet.getByText(FIRST_TITLE, { exact: true });
+		await expect(title).toBeVisible();
+		expect(await fontSizeOf(title)).toBeGreaterThanOrEqual(
+			await fontSizeOf(sheet.getByRole("menuitem").first()),
+		);
+
+		// The header has no role of its own, so it is read as the innermost box holding the title.
+		const header = sheet
+			.locator("div")
+			.filter({ has: page.getByText(FIRST_TITLE, { exact: true }) })
+			.last();
+		const box = await restingBox(header);
+		const titleBox = await restingBox(title);
+		expect(
+			titleBox.x - box.x,
+			"the title's distance from the header's edge",
+		).toBeGreaterThan(SHEET_HEADER_TILE_PX);
 	});
 });
 

@@ -12,7 +12,12 @@ export function Toasts({ pinned = null }: { pinned?: ReactNode }) {
 	if (toasts.length === 0 && pinned === null) return null;
 
 	return (
-		<div className={styles.layer} role="status" aria-live="polite">
+		<div
+			className={styles.layer}
+			role="status"
+			aria-live="polite"
+			data-toasts=""
+		>
 			{toasts.map((toast) => {
 				const Icon = ICONS[toast.tone] ?? ICONS.default;
 

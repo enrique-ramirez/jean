@@ -1,11 +1,12 @@
-.popover,
-.sheet {
+.popover {
 	--menu-pad: 5px;
 	--menu-item-height: 34px;
 	--menu-item-gap: 10px;
 	--menu-item-font: 0.8125rem;
 	--menu-icon: 15px;
 
+	position: fixed;
+	z-index: 70;
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
@@ -15,11 +16,6 @@
 	box-shadow:
 		var(--shadow),
 		inset 0 1px 0 oklch(1 0 0 / 0.05);
-}
-
-.popover {
-	position: fixed;
-	z-index: 70;
 	min-width: 216px;
 	max-width: 300px;
 	/* Transparent rather than `visibility: hidden`: placement needs a rendered box, and a hidden
@@ -41,95 +37,12 @@
 	}
 }
 
-.scrim {
-	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-	height: 100dvh;
-	z-index: 70;
-	display: flex;
-	align-items: flex-end;
-	padding: 10px;
-	padding-bottom: max(10px, env(safe-area-inset-bottom));
-	background: oklch(0 0 0 / 0.5);
-}
-
-.scrim[data-state="open"] {
-	animation: fade 0.2s var(--ease) backwards;
-}
-
-/* A separate keyframe name rather than `animation-direction: reverse`: flipping direction on a
-   finished animation updates it in place instead of running it again. */
-.scrim[data-state="closed"] {
-	animation: unfade 0.2s var(--ease) forwards;
-	pointer-events: none;
-}
-
-@keyframes fade {
-	from {
-		opacity: 0;
-	}
-}
-
-@keyframes unfade {
-	to {
-		opacity: 0;
-	}
-}
-
 .sheet {
 	--menu-pad: 6px;
 	--menu-item-height: 52px;
 	--menu-item-gap: 14px;
 	--menu-item-font: 0.9375rem;
 	--menu-icon: 19px;
-
-	width: 100%;
-	max-height: min(76dvh, 100%);
-	border-radius: calc(var(--radius) + 8px);
-}
-
-.sheet[data-state="open"] {
-	animation: rise 0.26s var(--ease) backwards;
-}
-
-.sheet[data-state="closed"] {
-	animation: sink 0.22s var(--ease) forwards;
-}
-
-@keyframes rise {
-	from {
-		transform: translate3d(0, calc(100% + 16px), 0);
-	}
-}
-
-@keyframes sink {
-	to {
-		transform: translate3d(0, calc(100% + 16px), 0);
-	}
-}
-
-.sheet {
-	transition: transform 0.24s var(--ease);
-}
-
-.sheet[data-dragging="true"] {
-	transition: none;
-}
-
-.grabber {
-	display: flex;
-	justify-content: center;
-	padding: 9px 0 5px;
-	touch-action: none;
-}
-
-.handle {
-	width: 34px;
-	height: 4px;
-	border-radius: var(--radius-pill);
-	background: var(--border-strong);
 }
 
 .header {

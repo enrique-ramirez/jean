@@ -16,6 +16,7 @@ import {
 	JEAN_MODE_BY_ORDER,
 } from "../fake-api/fooJean.ts";
 import { createServer, type FakeServer } from "../fake-api/server.ts";
+import { postsToSession } from "../fake-api/sessions.ts";
 import {
 	createState,
 	DEFAULT_PLAYLISTS,
@@ -441,7 +442,9 @@ export const deviceAudio = async (page: Page) => {
 // own clock is the only proof the stream arrived.
 export const listenHere = async (page: Page) => {
 	await choosePlayer(page).click();
-	await page.getByRole("button", { name: "Listen here" }).click();
+	await playingOn(page)
+		.getByRole("button", { name: "Listen here", exact: true })
+		.click();
 	await page.waitForFunction(
 		() => {
 			const audio = document.querySelector("audio");
@@ -450,6 +453,17 @@ export const listenHere = async (page: Page) => {
 		undefined,
 		{ timeout: 60_000 },
 	);
+};
+
+// A compact viewport draws the picker as a modal sheet over the whole app, so a press meant for the
+// app behind it closes the sheet first. The desktop's popover leaves the app pressable.
+export const putThePickerAway = async (page: Page, isCompact: boolean) => {
+	if (!isCompact) return;
+	await page
+		.getByRole("dialog", { name: "Playing on" })
+		.getByRole("button", { name: "Close", exact: true })
+		.click();
+	await expect(page.getByRole("dialog")).toHaveCount(0);
 };
 
 type MediaSessionHandlers = Partial<
@@ -641,6 +655,12 @@ export const countPostsTo = (player: FakePlayer, route: string) =>
 	player.requests.filter(
 		(entry) => entry.method === "POST" && entry.path.split("?")[0] === route,
 	).length;
+
+export const countPostsToSession = (
+	player: FakePlayer,
+	route: string,
+	session: string,
+) => postsToSession(player.requests, route, session);
 
 export const modesSent = (player: FakePlayer) =>
 	player.requests
@@ -1018,6 +1038,43 @@ export const dragTheSheetAwayByItsTopEdge = async (
 		{ x, y: box.y + GRABBER_INSET },
 		{ x, y: box.y + box.height },
 	);
+};
+
+// Enough moves that the browser paints the sheet between them.
+const GRABBER_DRAG_STEPS = 12;
+
+// Straight down from the grabber at the top of a bottom sheet, by `distance` pixels.
+export const fromTheGrabber = async (
+	page: Page,
+	sheet: Locator,
+	distance: number,
+) => {
+	const box = await restingBox(sheet);
+	const x = box.x + box.width / 2;
+	const y = box.y + GRABBER_INSET;
+	await touchDrag(page, { x, y }, { x, y: y + distance }, GRABBER_DRAG_STEPS);
+};
+
+// How far the sheet ever stood from where it rested when this was called, sampled every frame
+// until read. A box read after the finger lifts sees only where the sheet came back to.
+export const watchHowFarItMoves = async (sheet: Locator) => {
+	const watch = await sheet.evaluateHandle((element) => {
+		const rest = element.getBoundingClientRect().top;
+		const seen = { furthest: 0, watching: true };
+		const sample = () => {
+			if (!seen.watching) return;
+			const offset = Math.abs(element.getBoundingClientRect().top - rest);
+			seen.furthest = Math.max(seen.furthest, offset);
+			requestAnimationFrame(sample);
+		};
+		sample();
+		return seen;
+	});
+	return () =>
+		watch.evaluate((seen) => {
+			seen.watching = false;
+			return seen.furthest;
+		});
 };
 
 // Driven with the real mouse rather than dispatched events: pointer capture and

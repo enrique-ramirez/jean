@@ -21,6 +21,7 @@ import {
 import capturedLibrary from "./library.json" with { type: "json" };
 import capturedPlayer from "./player.json" with { type: "json" };
 import { compareText, pathKey } from "./playerOrder.ts";
+import { createSessions, type SessionDevice } from "./sessions.ts";
 
 export type Track = Record<string, string>;
 
@@ -586,6 +587,14 @@ export function createState({
 
 	const fake = fooJeanState(fooJean);
 
+	const sessions = createSessions({ evaluate, marksKept: STREAM_MARKS });
+
+	const sessionHeld = (id: string) => {
+		const session = sessions.find(id);
+		if (!session) throw new Error(`fake fooJean: holds no session ${id}`);
+		return session;
+	};
+
 	let playerVersion = 0;
 	let playlistsRevision = 0;
 	let nextCreatedGuid = FIRST_CREATED_GUID;
@@ -1137,6 +1146,26 @@ export function createState({
 			return track ? coverOfTrack(track) : null;
 		},
 
+		artworkOfTrack: (track: Track | null) =>
+			track ? coverOfTrack(track) : null,
+
+		sessions,
+
+		addSessionListener: (id: string, device: SessionDevice) =>
+			sessionHeld(id).listen(device, fake.streamFormats[0] ?? "opus"),
+
+		addSessionReport(id: string, track: Track) {
+			sessionHeld(id).report("undecodable", track);
+		},
+
+		dropSessionChain(id: string) {
+			sessionHeld(id).dropChain();
+		},
+
+		endSession(id: string) {
+			sessions.end(sessionHeld(id));
+		},
+
 		playItem(playlistId: string, index: number) {
 			const playlist = byId(playlistId);
 			if (playlist) setActive(playlist, index, "playing");
@@ -1440,4 +1469,5 @@ export function createState({
 	};
 }
 
+export { postsToSession } from "./sessions.ts";
 export { allTracks, DEFAULT_PLAYLISTS, LIBRARY, tracksOf };

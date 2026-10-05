@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { after, before, beforeEach, test } from "node:test";
 
+import { NULL_OUTPUT_DEVICE } from "../fake-api/fooJean.ts";
 import { createFooJeanServer } from "../fake-api/server.ts";
 import { createState } from "../fake-api/state.ts";
 
@@ -155,4 +156,34 @@ test("a body sent to a transport command is ignored and the command still runs",
 			`${command} with a body left the player somewhere the bare command does not`,
 		);
 	}
+});
+
+const outputSilentOnThePoll = async () => {
+	const answer = await fetch(`${origin}/api/state`);
+	assert.equal(answer.status, 200);
+	return (await answer.json()).player.outputSilent;
+};
+
+test("the state poll answers outputSilent true on the Null Output, false on any other device, and null on none", async () => {
+	state = createState({ fooJean: { activeOutput: NULL_OUTPUT_DEVICE.id } });
+	assert.strictEqual(await outputSilentOnThePoll(), true);
+
+	state = createState({ fooJean: {} });
+	assert.strictEqual(await outputSilentOnThePoll(), false);
+
+	state = createState({ fooJean: { activeOutput: null } });
+	assert.strictEqual(await outputSilentOnThePoll(), null);
+});
+
+test("a switch to the Null Output made at the player moves outputSilent on the next poll, and a switch away moves it back", async () => {
+	state = createState({ fooJean: {} });
+	const before = state.fooJean.activeOutput;
+	assert.ok(before, "the fake starts on no device");
+	assert.strictEqual(await outputSilentOnThePoll(), false);
+
+	state.setActiveOutput(NULL_OUTPUT_DEVICE.id);
+	assert.strictEqual(await outputSilentOnThePoll(), true);
+
+	state.setActiveOutput(before);
+	assert.strictEqual(await outputSilentOnThePoll(), false);
 });

@@ -56,6 +56,7 @@
 		"src/shared/api/jlib.ts",
 		"src/shared/api/playlists.ts",
 		"src/shared/api/queue.ts",
+		"src/shared/api/sessions.ts",
 		"src/shared/api/state.ts",
 		"src/shared/api/stream.ts",
 		"src/shared/api/tags.ts",
@@ -87,9 +88,13 @@
 		"src/domain/artist/splitCredits.ts",
 		"src/domain/player/position.ts",
 		"src/domain/player/queue.ts",
+		"src/domain/player/session.ts",
+		"src/domain/player/sessionOperations.ts",
+		"src/domain/player/sessionDocument.ts",
 		"src/domain/player/useListener.ts",
 		"src/domain/player/usePlayer.ts",
 		"src/domain/player/playerWrite.ts",
+		"src/domain/player/usePlaybackControl.ts",
 		"src/domain/player/usePlaybackOrder.ts",
 		"src/domain/player/usePlaylists.ts",
 		"src/domain/player/useTransport.ts",
@@ -138,6 +143,8 @@
 		"src/shared/ui/artworkHandles.ts",
 		"src/shared/ui/dnd.ts",
 		"src/shared/ui/toastStore.ts",
-		"playwright.config.ts"
+		"playwright.config.ts",
+		"../contract/shape.ts",
+		"../contract/spec.ts"
 	]
 }

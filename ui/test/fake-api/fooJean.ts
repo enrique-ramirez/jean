@@ -8,10 +8,17 @@ import {
 } from "./aacTone.ts";
 import { empty, json, type RequestHeaders, type Responder } from "./http.ts";
 import type { ArtworkServer } from "./routes.ts";
+import {
+	DETACHED_PLAYBACK_MODES,
+	type DetachedSession,
+	ENGINE_SESSION_ID,
+	type SessionDevice,
+} from "./sessions.ts";
 import type {
 	createState,
 	FakePlaylist,
 	RecordedRequest,
+	StreamMark,
 	Track,
 } from "./state.ts";
 import { evaluate, libraryItemsOf, sortedOrder, trackKey } from "./state.ts";
@@ -194,7 +201,8 @@ export interface FooJeanOptions {
 	// what an unplugged device looks like; `GET /api/outputs`' own `active` answers `null` in that
 	// case instead, per its own description in `contract/openapi.yaml`. A single entry stands for
 	// a machine with only one output, such as no second sound card, where the picker must not be
-	// drawn at all.
+	// drawn at all. `NULL_OUTPUT_DEVICE` as `activeOutput` is a player nobody can hear, and
+	// `GET /api/state` answers `outputSilent: true` for it.
 	outputDevices?: { id: string; name: string }[];
 	activeOutput?: string | null;
 
@@ -202,6 +210,10 @@ export interface FooJeanOptions {
 	// device unplugged between the list landing and the switch arriving; `500` for the player
 	// refusing the write outright.
 	outputSwitchRefusal?: 409 | 500 | null;
+
+	maxSessions?: number;
+	canCreateSessions?: boolean;
+	strictSessions?: boolean;
 
 	canStream?: boolean;
 	// Best first, as the component reports it. An install whose Windows has no AAC
@@ -266,6 +278,19 @@ const DEFAULT_OUTPUT_DEVICES: { id: string; name: string }[] = [
 	},
 ];
 
+// foobar2000's Null Output is an output module of its own, and `foo_jean` reads the module half of
+// the pair rather than the device half: every device under it plays into nothing. Left out of the
+// default list, so a spec that wants a player nobody can hear names it.
+const NULL_OUTPUT_MODULE = "EEEB07DE-C2C8-44C2-985C-C85856D96DA1";
+
+export const NULL_OUTPUT_DEVICE = {
+	id: `${NULL_OUTPUT_MODULE}:5243F9AD-C84F-4723-8194-0788FC021BCC`,
+	name: "Null Output",
+};
+
+const isSilentOutput = (deviceId: string) =>
+	deviceId.startsWith(`${NULL_OUTPUT_MODULE}:`);
+
 const DEFAULTS: FooJeanFake = {
 	ownPlaylists: {},
 	reachable: true,
@@ -301,6 +326,9 @@ const DEFAULTS: FooJeanFake = {
 	knowsPlayingLocation: true,
 	annotatesEveryPlaylist: true,
 	playlistChangeWindow: 32,
+	maxSessions: 0,
+	canCreateSessions: false,
+	strictSessions: false,
 	canStream: true,
 	streamFormats: ["opus", "aac"],
 	playableFormats: ["opus", "aac"],
@@ -817,12 +845,14 @@ const refuseArtwork = (response: Responder, status: number) => {
 	return json(response, ARTWORK_FAILURES[status], status);
 };
 
-// The device an <audio> element belongs to, remembered from the request that
-// minted its ticket: the element itself sends no body and no header.
-const ticketDevices = new Map<
-	string,
-	{ deviceId: string; name: string | null }
->();
+interface TicketHolder extends SessionDevice {
+	session: string | null;
+}
+
+// The device an <audio> element belongs to and the session it hears, remembered
+// from the request that minted its ticket: the element itself sends no body and
+// no header.
+const ticketHolders = new Map<string, TicketHolder>();
 
 const tickets = new Set<string>();
 let ticketSeq = 0;
@@ -830,14 +860,16 @@ let ticketSeq = 0;
 // The count is opaque from here; treat it as the component's own choice, not a
 // number to tune.
 const TICKET_LIMIT = 16;
+const TICKET_SECONDS = 120;
 
-const issue = () => {
+const issue = (holder: TicketHolder) => {
 	ticketSeq += 1;
 	const ticket = `t${ticketSeq}`;
 	tickets.add(ticket);
+	ticketHolders.set(ticket, holder);
 	if (tickets.size > TICKET_LIMIT)
 		tickets.delete(tickets.values().next().value as string);
-	return ticket;
+	return { ticket, expiresIn: TICKET_SECONDS };
 };
 
 const SAMPLE_RATE = 8000;
@@ -886,20 +918,26 @@ function tone(seconds: number, phase: number) {
 const PRERUN_MS = 60_000;
 const startedAt = Date.now() - PRERUN_MS;
 
-function timelineOf(state: FakeState) {
-	const streamTime = (Date.now() - startedAt) / 1000;
+const streamTimeNow = () => (Date.now() - startedAt) / 1000;
 
-	if (state.streamMarks.length > 0) {
-		return {
-			streamTime,
-			marks: state.streamMarks.map((entry) => ({
-				at: Math.max(0, (entry.atMs - startedAt) / 1000),
-				path: entry.path,
-				subsong: entry.subsong,
-				position: entry.position,
-			})),
-		};
-	}
+const onStreamClock = (marks: StreamMark[]) =>
+	marks.map((entry) => ({
+		at: Math.max(0, (entry.atMs - startedAt) / 1000),
+		path: entry.path,
+		subsong: entry.subsong,
+		position: entry.position,
+	}));
+
+const sessionTimelineOf = (session: DetachedSession) => ({
+	streamTime: streamTimeNow(),
+	marks: onStreamClock(session.marks),
+});
+
+function timelineOf(state: FakeState) {
+	const streamTime = streamTimeNow();
+
+	if (state.streamMarks.length > 0)
+		return { streamTime, marks: onStreamClock(state.streamMarks) };
 
 	const item = state.player.activeItem;
 	const playlist = item.index >= 0 ? state.playlistById(item.playlistId) : null;
@@ -1054,6 +1092,7 @@ const OUTPUT_DEVICE_NOT_LISTED = {
 } satisfies components["schemas"]["PlaylistFailed"];
 
 const PLAYBACK_COMMAND_PATHS = new Set([
+	"/api/playback/play",
 	"/api/playback/play-pause",
 	"/api/playback/next",
 	"/api/playback/previous",
@@ -1076,6 +1115,103 @@ const needsPlaybackControl = (method: string, path: string): boolean => {
 	if ((method === "POST" || method === "DELETE") && path === SCRATCH_ITEMS_PATH)
 		return true;
 	return false;
+};
+
+// Every route `contract/openapi.yaml` gives the `session` parameter.
+const SESSION_SCOPED: [string, RegExp][] = [
+	["GET", /^\/api\/state$/],
+	["POST", PLAY_ROW_PATH],
+	["POST", /^\/api\/playback\/(play|play-pause|next|previous|stop|seek|mode)$/],
+	["GET", /^\/api\/queue$/],
+	["POST", /^\/api\/queue$/],
+	["DELETE", /^\/api\/queue$/],
+	["POST", /^\/api\/queue\/move$/],
+	["DELETE", /^\/api\/queue\/[^/]+$/],
+	["GET", /^\/api\/track\/playing$/],
+	["GET", /^\/api\/artwork\/playing$/],
+	["POST", /^\/api\/stream\/ticket$/],
+	["GET", /^\/api\/stream\/listeners$/],
+	["POST", /^\/api\/stream\/leave$/],
+	["GET", /^\/api\/stream\/timeline$/],
+];
+
+const isSessionScoped = (method: string, path: string) =>
+	SESSION_SCOPED.some(
+		([verb, pattern]) => verb === method && pattern.test(path),
+	);
+
+// These two read the device from the body, and `foo_jean` judges the body before the session.
+const DEVICE_IN_BODY = new Set(["/api/stream/ticket", "/api/stream/leave"]);
+
+const SESSION_BY_ID = /^\/api\/sessions\/([^/]+)$/;
+
+const SESSION_QUEUE_LIMIT = 10_000;
+
+const NO_SUCH_SESSION = { error: "no such session" };
+const SESSIONS_UNAVAILABLE = { error: "sessions are not available" };
+const TOO_MANY_SESSIONS = { error: "too many sessions" };
+const DEVICE_ID_REQUIRED = { error: "'deviceId' is required" };
+const SHARED_NOT_BOOLEAN = { error: "'shared' must be true or false" };
+const ENGINE_UNCHANGEABLE = { error: "the engine session cannot be changed" };
+const ENGINE_PLAYS_ROWS = {
+	error: "the engine session plays a playlist row; name a detached session",
+};
+const SESSION_QUEUE_FULL = { error: "the session's queue is full" };
+const MODE_NOT_OFFERED = {
+	error: "this install does not offer that playback mode",
+};
+
+const offersStream = (fake: FooJeanFake) =>
+	fake.canStream && fake.streamFormats.length > 0;
+
+// `canCreateSessions` in `contract/openapi.yaml`: it says nothing about a free place.
+const createsSessions = (fake: FooJeanFake) =>
+	fake.canCreateSessions && fake.maxSessions > 0 && offersStream(fake);
+
+const MAX_LABEL_BYTES = 64;
+
+const bytesOf = (text: string) => new TextEncoder().encode(text).length;
+
+// `sanitised` in `foo_jean`'s `core/device.cpp`: spaces and tabs trimmed, and a label too long or
+// holding an unprintable character reads as none.
+const labelOf = (value: unknown): string => {
+	if (typeof value !== "string") return "";
+	const trimmed = value.replace(/^[ \t]+|[ \t]+$/g, "");
+	return bytesOf(trimmed) > MAX_LABEL_BYTES || /\p{Cc}/u.test(trimmed)
+		? ""
+		: trimmed;
+};
+
+type IdentityRead =
+	| { ok: true; device: SessionDevice }
+	| { ok: false; refusal: string };
+
+// `parseDeviceIdentity` in `foo_jean`'s `core/device.cpp`: a field of the wrong type or too long
+// refuses the request, where an empty or unprintable one only reads as none.
+const readDeviceIdentity = (body: unknown): IdentityRead => {
+	if (typeof body !== "object" || body === null || Array.isArray(body))
+		return { ok: false, refusal: "body is not a JSON object" };
+	const { deviceId = "", name = "" } = body as Record<string, unknown>;
+	if (typeof deviceId !== "string" || typeof name !== "string")
+		return { ok: false, refusal: "deviceId and name must be text" };
+	for (const [field, value] of [
+		["deviceId", deviceId],
+		["name", name],
+	])
+		if (bytesOf(value) > MAX_LABEL_BYTES)
+			return {
+				ok: false,
+				refusal: `${field} may be at most ${MAX_LABEL_BYTES} characters`,
+			};
+	return {
+		ok: true,
+		device: { deviceId: labelOf(deviceId), name: labelOf(name) || null },
+	};
+};
+
+const ANONYMOUS: IdentityRead = {
+	ok: true,
+	device: { deviceId: "", name: null },
 };
 
 // `PlaylistLocked` and `FillConflict` in `contract/openapi.yaml` publish the same two fields for
@@ -1554,6 +1690,58 @@ function parseQueueTracks(
 	};
 }
 
+const LIBRARY_SET_FIELDS = ["structure", "runs", "bitset", "ordinals", "index"];
+
+type ParsedLibrarySet =
+	| { ok: true; ordinals: number[]; index: number }
+	| { ok: false; status: number; body: unknown };
+
+// A moved `structure` is answered before `index` is looked at, as `contract/openapi.yaml` orders it.
+function parseLibrarySet(
+	body: unknown,
+	trackCount: number,
+	expectedStructure: number,
+): ParsedLibrarySet {
+	if (typeof body !== "object" || body === null || Array.isArray(body))
+		return {
+			ok: false,
+			...fillFailure(
+				400,
+				"malformed request",
+				"the body did not parse as JSON",
+			),
+		};
+
+	const record = body as Record<string, unknown>;
+
+	if (!declaresOnly(record, LIBRARY_SET_FIELDS))
+		return { ok: false, ...fillFailure(400, "malformed request") };
+
+	if (!Number.isInteger(record.structure))
+		return {
+			ok: false,
+			...fillFailure(400, "malformed request", "'structure' is required"),
+		};
+
+	if (record.structure !== expectedStructure)
+		return { ok: false, status: 409, body: STRUCTURE_MOVED };
+
+	const selection = decodeSelection(record, trackCount);
+	if (!selection.ok) return selection;
+
+	if (!isNonNegInt(record.index))
+		return {
+			ok: false,
+			status: 400,
+			body: { error: "'index' must be a whole number" },
+		};
+
+	if (record.index >= selection.ordinals.length)
+		return { ok: false, ...fillFailure(400, "that position is past the end") };
+
+	return { ok: true, ordinals: selection.ordinals, index: record.index };
+}
+
 const QUEUE_MOVED = {
 	error: "the queue changed since that revision; read it again",
 	detail: "",
@@ -1861,6 +2049,49 @@ const NOTHING_PLAYING_NAMES = {
 	albumArtist: null,
 };
 
+const namesOf = (track: Track | null) =>
+	track ? nameOf(track) : NOTHING_PLAYING_NAMES;
+
+const addressOf = (
+	state: FakeState,
+	fake: FooJeanFake,
+	track: Track | null,
+) => ({
+	path: track ? String(evaluate(track, "%path%") ?? "") : "",
+	subsong: track ? subsongOf(track) : 0,
+	// The address a write names a library track by, and `null` for a track the
+	// snapshot does not hold. A component with no library to look in holds no
+	// snapshot at all, so it answers `null` for everything.
+	libraryPath:
+		track && fake.canReadLibrary ? state.libraryPathFor(track) : null,
+});
+
+const positionOf = ({
+	seconds,
+	takenAtMs,
+}: {
+	seconds: number;
+	takenAtMs: number;
+}) => ({
+	seconds: Math.max(seconds, 0),
+	ageSeconds: Math.max((Date.now() - takenAtMs) / 1000, 0),
+});
+
+// What `GET /api/state` answers about the player whichever session it names.
+const playerOwnFieldsOf = (state: FakeState, fake: FooJeanFake) => ({
+	volume: state.playerHeld ? -100 : state.player.volume.value,
+	muted: state.playerHeld ? true : state.player.volume.isMuted,
+	currentPlaylistId:
+		state.playlists.find((entry) => entry.isCurrent)?.guid ?? null,
+	// Rides straight through even where it names no device `GET /api/outputs` lists, which is
+	// what an unplugged device looks like: `outputDeviceId` says what the player is set to, not
+	// what a picker can still offer.
+	outputDeviceId: fake.activeOutput,
+	outputSilent:
+		fake.activeOutput === null ? null : isSilentOutput(fake.activeOutput),
+	playlistsRevision: state.playlistsRevision,
+});
+
 // What rides under `player` in `GET /api/state`'s `200`. Position comes from
 // `state.positionMark` rather than from `activeItem.position` directly, since
 // that is where the age the client interpolates from is kept.
@@ -1869,43 +2100,110 @@ const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
 	const playlist =
 		item && item.index >= 0 ? state.playlistById(item.playlistId) : null;
 	const track = state.playingTrack();
-	const { seconds, takenAtMs } = state.positionMark;
 	return {
 		playback: state.player.playbackState,
-		path: track ? String(evaluate(track, "%path%") ?? "") : "",
-		subsong: track ? Number(track["%subsong%"]) || 0 : 0,
-		// The address a write names a library track by, and `null` for a track the
-		// snapshot does not hold. A component with no library to look in holds no
-		// snapshot at all, so it answers `null` for everything.
-		libraryPath:
-			track && fake.canReadLibrary ? state.libraryPathFor(track) : null,
-		position: {
-			seconds: Math.max(seconds, 0),
-			ageSeconds: Math.max((Date.now() - takenAtMs) / 1000, 0),
-		},
+		...addressOf(state, fake, track),
+		position: positionOf(state.positionMark),
 		duration: Math.max(item?.duration ?? 0, 0),
-		volume: state.playerHeld ? -100 : state.player.volume.value,
-		muted: state.playerHeld ? true : state.player.volume.isMuted,
 		playbackMode: jeanModeFor(
 			declaredOrders(state)[state.player.playbackMode] ?? "",
 		),
-		...(track ? nameOf(track) : NOTHING_PLAYING_NAMES),
+		...namesOf(track),
 		playingLocation:
 			fake.knowsPlayingLocation && item && playlist
 				? { playlistId: playlist.guid, index: item.index }
 				: null,
-		currentPlaylistId:
-			state.playlists.find((entry) => entry.isCurrent)?.guid ?? null,
-		// Rides straight through even where it names no device `GET /api/outputs` lists, which is
-		// what an unplugged device looks like: `outputDeviceId` says what the player is set to, not
-		// what a picker can still offer.
-		outputDeviceId: fake.activeOutput,
-		outputSilent: fake.activeOutput === null ? null : false,
+		...playerOwnFieldsOf(state, fake),
 		queueRevision: state.queueRevision,
-		playlistsRevision: state.playlistsRevision,
 		timelineRevision: state.timelineRevision,
 		sessionRevision: 0,
 	};
+};
+
+// `contract/openapi.yaml` answers `playingLocation` `null` here: a detached session plays a
+// snapshot, which stops matching its playlist at the playlist's first edit.
+const sessionPlayerSectionOf = (
+	state: FakeState,
+	fake: FooJeanFake,
+	session: DetachedSession,
+) => {
+	const track = session.playingTrack();
+	return {
+		playback: session.playback(),
+		...addressOf(state, fake, track),
+		position: positionOf(session.position),
+		duration: session.duration(),
+		playbackMode: session.mode,
+		...namesOf(track),
+		playingLocation: null,
+		...playerOwnFieldsOf(state, fake),
+		queueRevision: session.queueRevision,
+		timelineRevision: session.timelineRevision,
+		sessionRevision: session.sessionRevision,
+	};
+};
+
+const engineRoster = (state: FakeState, fake: FooJeanFake) => [
+	...state.streamDevices.values(),
+	...fake.otherListeners.map((device) => ({
+		deviceId: device.deviceId,
+		name: device.name,
+		format: device.format ?? "opus",
+		connections: device.connections ?? 1,
+		listeningFor: device.listeningFor ?? 0,
+	})),
+];
+
+// One `maxConcurrentStreams` bounds every session's sockets together, so each roster counts them all.
+const connectionsOf = (state: FakeState, fake: FooJeanFake) =>
+	engineRoster(state, fake).reduce(
+		(total, device) => total + device.connections,
+		0,
+	) + state.sessions.connections();
+
+const engineDocumentOf = (state: FakeState, fake: FooJeanFake) => {
+	const player = playerSectionOf(state, fake);
+	return {
+		id: ENGINE_SESSION_ID,
+		kind: "engine",
+		shared: true,
+		playback: player.playback,
+		title: player.title,
+		artist: player.artist,
+		album: player.album,
+		albumArtist: player.albumArtist,
+		libraryPath: player.libraryPath,
+		listeners: engineRoster(state, fake).length,
+		playbackModes: playbackModesOf(state),
+		chainDropped: false,
+		reports: [],
+		createdBy: null,
+	};
+};
+
+const sessionDocumentOf = (
+	state: FakeState,
+	fake: FooJeanFake,
+	session: DetachedSession,
+) => {
+	const track = session.playingTrack();
+	return {
+		id: session.id,
+		kind: "detached",
+		shared: session.shared,
+		playback: session.playback(),
+		...namesOf(track),
+		libraryPath: addressOf(state, fake, track).libraryPath,
+		listeners: session.roster().length,
+		playbackModes: [...DETACHED_PLAYBACK_MODES],
+		chainDropped: session.chainDropped,
+		reports: session.reports.map(({ sequence, kind, track: on }) => ({
+			sequence,
+			kind,
+			...addressOf(state, fake, on),
+		})),
+		createdBy: session.createdBy,
+	} satisfies components["schemas"]["Session"];
 };
 
 // One row of `GET /api/queue`, read through the entry's handle. A missing tag is
@@ -1974,16 +2272,32 @@ const tagOf = (state: FakeState, coding: string, since?: string) =>
 const buildTagOf = (build: components["schemas"]["LibraryBuild"] | null) =>
 	build ? `${build.phase}:${build.formatted}/${build.total}` : "x";
 
+const libraryTagOf = (state: FakeState, fake: FooJeanFake) =>
+	`s${state.libraryFeed.structure}-r${state.libraryFeed.revision}-b${buildTagOf(
+		libraryBuildOf(state, fake),
+	)}`;
+
+const configTagOf = (fake: FooJeanFake) =>
+	`g${fake.configGeneration}${fake.mainThreadStalled ? "-stalled" : ""}`;
+
 // `GET /api/state`'s own validator, distinct from the two binary routes'
 // `tagOf`: it folds the player's version and the config generation too, so a
 // poll that only drove the player, or only flipped a switch, still sees the
 // tag move.
 const stateTagOf = (state: FakeState, fake: FooJeanFake, coding: string) =>
-	`"s${state.libraryFeed.structure}-r${state.libraryFeed.revision}-b${buildTagOf(
-		libraryBuildOf(state, fake),
-	)}-p${state.playerVersion}-g${state.fooJean.configGeneration}${
-		fake.mainThreadStalled ? "-stalled" : ""
-	}-${coding}"`;
+	`"${libraryTagOf(state, fake)}-p${state.playerVersion}-${configTagOf(fake)}-${coding}"`;
+
+// `foo_jean`'s `routes_state.cpp` folds what the poll answers about the player, and never the
+// player's own playback, so a track change at the player leaves every session's poll a `304`.
+const sessionStateTagOf = (
+	state: FakeState,
+	fake: FooJeanFake,
+	session: DetachedSession,
+	coding: string,
+) =>
+	`"${libraryTagOf(state, fake)}-${configTagOf(fake)}-o${encodeURIComponent(
+		JSON.stringify(playerOwnFieldsOf(state, fake)),
+	)}-x${session.id}-v${session.version}-${coding}"`;
 
 // `kMainThreadStalledAfter` in `plugins/fb2k/src/core/main_thread_watch.h`: the component calls
 // the main thread stalled only once a check has waited this long.
@@ -2270,12 +2584,14 @@ async function handleState({
 	method,
 	headers,
 	response,
+	session,
 }: {
 	state: FakeState;
 	fake: FooJeanFake;
 	method: string;
 	headers: RequestHeaders;
 	response: Responder;
+	session: DetachedSession | null;
 }) {
 	if (method !== "GET") return json(response, { error: "not found" }, 404);
 	if (fake.failState) {
@@ -2305,7 +2621,9 @@ async function handleState({
 			state.libraryFeed.buildTicks += 1;
 		} else if (fake.libraryReady) state.finishLibraryBuild();
 	}
-	const tag = stateTagOf(state, fake, "identity");
+	const tag = session
+		? sessionStateTagOf(state, fake, session, "identity")
+		: stateTagOf(state, fake, "identity");
 	response.setHeader("Vary", "Origin, Accept-Encoding");
 	response.setHeader("Cache-Control", ASK_EVERY_TIME);
 	response.setHeader("ETag", tag);
@@ -2317,9 +2635,83 @@ async function handleState({
 	return json(response, {
 		configGeneration: fake.configGeneration,
 		library: libraryStateOf(state, fake),
-		player: playerSectionOf(state, fake),
+		player: session
+			? sessionPlayerSectionOf(state, fake, session)
+			: playerSectionOf(state, fake),
 		mainThread: mainThreadSectionOf(fake),
 	});
+}
+
+// `POST` and `GET /api/sessions`, and `GET` and `POST /api/sessions/{id}`, in the order
+// `foo_jean`'s `routes_sessions.cpp` refuses them.
+function handleSessions({
+	state,
+	fake,
+	method,
+	path,
+	url,
+	body,
+	response,
+}: {
+	state: FakeState;
+	fake: FooJeanFake;
+	method: string;
+	path: string;
+	url: URL;
+	body: unknown;
+	response: Responder;
+}) {
+	const deviceId = labelOf(url.searchParams.get("deviceId"));
+
+	if (path === "/api/sessions" && method === "GET")
+		return json(response, {
+			sessions: [
+				engineDocumentOf(state, fake),
+				...state.sessions
+					.list()
+					.filter((session) => session.sees(deviceId))
+					.map((session) => sessionDocumentOf(state, fake, session)),
+			],
+		});
+
+	if (path === "/api/sessions" && method === "POST") {
+		const identity = readDeviceIdentity(body);
+		if (!identity.ok) return json(response, { error: identity.refusal }, 400);
+		if (!identity.device.deviceId)
+			return json(response, DEVICE_ID_REQUIRED, 400);
+		if (!createsSessions(fake))
+			return json(response, SESSIONS_UNAVAILABLE, 503);
+		if (state.sessions.count >= fake.maxSessions)
+			return json(response, TOO_MANY_SESSIONS, 503);
+		const created = state.sessions.create(identity.device);
+		return json(response, sessionDocumentOf(state, fake, created));
+	}
+
+	const id = SESSION_BY_ID.exec(path)?.[1] ?? "";
+
+	if (id && method === "GET") {
+		if (id === ENGINE_SESSION_ID)
+			return json(response, engineDocumentOf(state, fake));
+		const session = state.sessions.visible(id, deviceId);
+		if (!session) return json(response, NO_SUCH_SESSION, 404);
+		return json(response, sessionDocumentOf(state, fake, session));
+	}
+
+	if (id && method === "POST") {
+		if (id === ENGINE_SESSION_ID)
+			return json(response, ENGINE_UNCHANGEABLE, 409);
+		if (!deviceId) return json(response, DEVICE_ID_REQUIRED, 400);
+		const session = state.sessions.visible(id, deviceId);
+		if (!session) return json(response, NO_SUCH_SESSION, 404);
+		const shared = (body as { shared?: unknown } | null)?.shared;
+		if (typeof shared !== "boolean")
+			return json(response, SHARED_NOT_BOOLEAN, 400);
+		session.join(deviceId);
+		session.share(shared);
+		return json(response, sessionDocumentOf(state, fake, session));
+	}
+
+	return json(response, { error: "not found" }, 404);
 }
 
 async function handleLibrary({
@@ -2591,7 +2983,21 @@ export async function handleFooJean({
 	if (method === "POST" && !isJsonContentType(headers))
 		return json(response, SEND_JSON, 415);
 
-	if (!fake.canControlPlayback && needsPlaybackControl(method, path))
+	const scoped = isSessionScoped(method, path);
+	const named = scoped ? (url.searchParams.get("session") ?? "") : "";
+	if (scoped && !named && fake.strictSessions)
+		return json(
+			response,
+			{ error: `strict sessions: ${method} ${path} named no session` },
+			500,
+		);
+	const namesDetached = named !== "" && named !== ENGINE_SESSION_ID;
+
+	if (
+		!fake.canControlPlayback &&
+		!namesDetached &&
+		needsPlaybackControl(method, path)
+	)
 		return json(response, PLAYBACK_DISABLED, 403);
 
 	const bucket = bucketOf(method, path);
@@ -2603,6 +3009,19 @@ export async function handleFooJean({
 		recorded.limited = bucket;
 		return refuseTooFast(response, bucket, path);
 	}
+
+	if (path === "/api/sessions" || SESSION_BY_ID.test(path))
+		return handleSessions({ state, fake, method, path, url, body, response });
+
+	let session: DetachedSession | null = null;
+	if (namesDetached && !DEVICE_IN_BODY.has(path)) {
+		const deviceId = labelOf(url.searchParams.get("deviceId"));
+		session = state.sessions.visible(named, deviceId);
+		if (!session) return json(response, NO_SUCH_SESSION, 404);
+		if (path === "/api/state") session.join(deviceId);
+	}
+
+	const addressed = session ?? state;
 
 	if (path === "/api/status") {
 		return json(response, {
@@ -2629,6 +3048,13 @@ export async function handleFooJean({
 		if (!fake.streamFormats.includes(format))
 			return json(response, { error: "unsupported format" }, 400);
 
+		const device = ticketHolders.get(ticket);
+		const listenedTo = device?.session
+			? state.sessions.visible(device.session, device.deviceId)
+			: null;
+		if (device?.session && !listenedTo)
+			return json(response, NO_SUCH_SESSION, 404);
+
 		state.streamFormats.push(format);
 
 		state.openStreams += 1;
@@ -2637,9 +3063,23 @@ export async function handleFooJean({
 			state.openStreams -= 1;
 		});
 
+		if (listenedTo) {
+			const listening = listenedTo.listen(
+				device?.deviceId ? device : null,
+				format,
+				() => response.end(),
+			);
+			response.on("close", () => listening.close());
+			return serveStream(
+				response,
+				fake,
+				format,
+				() => listenedTo.playback() === "playing",
+			);
+		}
+
 		// One device however many sockets it holds: Safari opens two, and a
 		// reconnect is a third, and none of that is another person.
-		const device = ticketDevices.get(ticket);
 		if (device?.deviceId) {
 			const known = state.streamDevices.get(device.deviceId);
 			state.streamDevices.set(device.deviceId, {
@@ -2669,7 +3109,7 @@ export async function handleFooJean({
 			canCreateAutoPlaylists:
 				fake.canWritePlaylists !== false && fake.maxAutoPlaylists > 0,
 			canReadLibrary: fake.canReadLibrary,
-			canStream: fake.canStream && fake.streamFormats.length > 0,
+			canStream: offersStream(fake),
 			canMuteWhileStreaming: fake.canMuteWhileStreaming,
 			canChangeOutput: fake.canChangeOutput,
 			canControlPlayback: fake.canControlPlayback,
@@ -2680,8 +3120,8 @@ export async function handleFooJean({
 			volumeUnit: state.player.volume.type,
 			playbackModes: playbackModesOf(state),
 			streamFormats: fake.canStream ? fake.streamFormats : [],
-			maxSessions: 0,
-			canCreateSessions: false,
+			maxSessions: fake.maxSessions,
+			canCreateSessions: createsSessions(fake),
 			...(fake.canWritePlaylists === "absent"
 				? null
 				: { canWritePlaylists: fake.canWritePlaylists }),
@@ -2689,29 +3129,54 @@ export async function handleFooJean({
 	}
 
 	if (path === "/api/state")
-		return handleState({ state, fake, method, headers, response });
+		return handleState({ state, fake, method, headers, response, session });
+
+	if (method === "POST" && path === "/api/playback/play") {
+		if (!session) return json(response, ENGINE_PLAYS_ROWS, 409);
+		if (!fake.canReadLibrary)
+			return json(
+				response,
+				{ error: "the media library is not available" },
+				503,
+			);
+		if (!hasLibrarySnapshot(state)) return json(response, NOT_BUILT, 503);
+
+		const parsed = parseLibrarySet(
+			body,
+			state.libraryTracks.length,
+			state.libraryFeed.structure,
+		);
+		if (!parsed.ok) return json(response, parsed.body, parsed.status);
+
+		const ordered = state.ordinalOrder();
+		session.play(
+			parsed.ordinals.map((ordinal) => ordered[ordinal].track),
+			parsed.index,
+		);
+		return empty(response);
+	}
 
 	if (method === "POST" && path === "/api/playback/play-pause") {
 		if (state.latency > 0) await delay(state.latency);
-		state.playPause();
+		addressed.playPause();
 		return empty(response);
 	}
 
 	if (method === "POST" && path === "/api/playback/next") {
 		if (state.latency > 0) await delay(state.latency);
-		state.next();
+		addressed.next();
 		return empty(response);
 	}
 
 	if (method === "POST" && path === "/api/playback/previous") {
 		if (state.latency > 0) await delay(state.latency);
-		state.previous();
+		addressed.previous();
 		return empty(response);
 	}
 
 	if (method === "POST" && path === "/api/playback/stop") {
 		if (state.latency > 0) await delay(state.latency);
-		state.stop();
+		addressed.stop();
 		return empty(response);
 	}
 
@@ -2719,11 +3184,13 @@ export async function handleFooJean({
 		if (state.latency > 0) await delay(state.latency);
 		const parsed = parseSeek(body);
 		if (!parsed.ok) return json(response, parsed.body, parsed.status);
-		state.patchPlayer(
-			parsed.seconds !== undefined
-				? { position: parsed.seconds }
-				: { relativePosition: parsed.relativeSeconds },
-		);
+		if (session) session.seek(parsed);
+		else
+			state.patchPlayer(
+				parsed.seconds !== undefined
+					? { position: parsed.seconds }
+					: { relativePosition: parsed.relativeSeconds },
+			);
 		return empty(response);
 	}
 
@@ -2765,13 +3232,16 @@ export async function handleFooJean({
 				400,
 			);
 
-		const index = orderIndexForMode(state, record.mode as PlaybackMode);
-		if (index === null)
-			return json(
-				response,
-				{ error: "this install does not offer that playback mode" },
-				409,
-			);
+		const mode = record.mode as PlaybackMode;
+		if (session) {
+			if (!DETACHED_PLAYBACK_MODES.includes(mode))
+				return json(response, MODE_NOT_OFFERED, 409);
+			session.setMode(mode);
+			return empty(response);
+		}
+
+		const index = orderIndexForMode(state, mode);
+		if (index === null) return json(response, MODE_NOT_OFFERED, 409);
 
 		state.patchPlayer({ options: [{ id: "playbackOrder", value: index }] });
 		return empty(response);
@@ -2856,12 +3326,16 @@ export async function handleFooJean({
 		);
 	};
 
+	const overfills = (count: number) =>
+		session !== null &&
+		session.queuedEntries().length + count > SESSION_QUEUE_LIMIT;
+
 	if (path === "/api/queue") {
 		if (method === "GET") {
 			if (state.latency > 0) await delay(state.latency);
 			return json(response, {
-				revision: state.queueRevision,
-				entries: state
+				revision: addressed.queueRevision,
+				entries: addressed
 					.queuedEntries()
 					.map((entry) => queuedTrackOf(state, entry)),
 			});
@@ -2886,7 +3360,7 @@ export async function handleFooJean({
 
 				// Judged by the route before the player is involved, which is why a
 				// stale revision outranks an unknown playlist.
-				if (parsed.at && parsed.at.revision !== state.queueRevision)
+				if (parsed.at && parsed.at.revision !== addressed.queueRevision)
 					return json(response, QUEUE_MOVED, 409);
 
 				const playlist = state.playlistByGuid(parsed.playlistId);
@@ -2898,7 +3372,7 @@ export async function handleFooJean({
 				);
 				if (
 					pastEnd !== undefined ||
-					(parsed.at && parsed.at.index > state.queuedEntries().length)
+					(parsed.at && parsed.at.index > addressed.queuedEntries().length)
 				)
 					return json(
 						response,
@@ -2906,7 +3380,10 @@ export async function handleFooJean({
 						400,
 					);
 
-				state.queueInsert(
+				if (overfills(parsed.positions.length))
+					return json(response, SESSION_QUEUE_FULL, 409);
+
+				addressed.queueInsert(
 					parsed.positions.map((position) => ({
 						playlistId: playlist.id,
 						track: playlist.items[position],
@@ -2932,18 +3409,21 @@ export async function handleFooJean({
 			);
 			if (!parsed.ok) return json(response, parsed.body, parsed.status);
 
-			if (parsed.at && parsed.at.revision !== state.queueRevision)
+			if (parsed.at && parsed.at.revision !== addressed.queueRevision)
 				return json(response, QUEUE_MOVED, 409);
 
-			if (parsed.at && parsed.at.index > state.queuedEntries().length)
+			if (parsed.at && parsed.at.index > addressed.queuedEntries().length)
 				return json(
 					response,
 					{ error: "that position is past the end", detail: "" },
 					400,
 				);
 
+			if (overfills(parsed.ordinals.length))
+				return json(response, SESSION_QUEUE_FULL, 409);
+
 			const ordered = state.ordinalOrder();
-			state.queueInsert(
+			addressed.queueInsert(
 				parsed.ordinals.map((ordinal) => ({
 					playlistId: null,
 					track: ordered[ordinal].track,
@@ -2955,7 +3435,7 @@ export async function handleFooJean({
 
 		if (method === "DELETE") {
 			if (state.latency > 0) await delay(state.latency);
-			state.queueClear();
+			addressed.queueClear();
 			return queueChanged();
 		}
 
@@ -2966,10 +3446,10 @@ export async function handleFooJean({
 		const parsed = parseMoveQueue(body);
 		if (!parsed.ok) return json(response, parsed.body, parsed.status);
 
-		if (parsed.revision !== state.queueRevision)
+		if (parsed.revision !== addressed.queueRevision)
 			return json(response, QUEUE_MOVED, 409);
 
-		const length = state.queuedEntries().length;
+		const length = addressed.queuedEntries().length;
 		if (parsed.from >= length || parsed.to >= length)
 			return json(
 				response,
@@ -2977,7 +3457,7 @@ export async function handleFooJean({
 				400,
 			);
 
-		state.queueMove(parsed.from, parsed.to);
+		addressed.queueMove(parsed.from, parsed.to);
 		return queueChanged();
 	}
 
@@ -2989,17 +3469,17 @@ export async function handleFooJean({
 		);
 		if (!parsed.ok) return json(response, parsed.body, parsed.status);
 
-		if (parsed.revision !== state.queueRevision)
+		if (parsed.revision !== addressed.queueRevision)
 			return json(response, QUEUE_MOVED, 409);
 
-		if (parsed.index >= state.queuedEntries().length)
+		if (parsed.index >= addressed.queuedEntries().length)
 			return json(
 				response,
 				{ error: "that position is past the end", detail: "" },
 				400,
 			);
 
-		state.queueRemoveAt(parsed.index);
+		addressed.queueRemoveAt(parsed.index);
 		return queueChanged();
 	}
 
@@ -3042,7 +3522,7 @@ export async function handleFooJean({
 		const refused = refuseColumns(asked);
 		if (refused) return json(response, refused, 400);
 
-		const track = state.playingTrack();
+		const track = addressed.playingTrack();
 		if (!track) return json(response, { error: "nothing is playing" }, 404);
 
 		return json(response, {
@@ -3088,7 +3568,9 @@ export async function handleFooJean({
 		if (fake.failPlayingArtwork)
 			return refuseArtwork(response, fake.failPlayingArtwork);
 
-		const file = state.playingArtwork();
+		const file = session
+			? state.artworkOfTrack(session.playingTrack())
+			: state.playingArtwork();
 		if (!file) return json(response, NO_ARTWORK, 404);
 
 		return sendCover(file, ASK_EVERY_TIME);
@@ -3324,7 +3806,8 @@ export async function handleFooJean({
 				400,
 			);
 
-		state.playItem(playlist.id, index);
+		if (session) session.play(playlist.items, index);
+		else state.playItem(playlist.id, index);
 		return empty(response);
 	}
 
@@ -3879,22 +4362,9 @@ export async function handleFooJean({
 	}
 
 	if (path === "/api/stream/listeners") {
-		const here = [...state.streamDevices.values()];
-		const others = fake.otherListeners.map((device) => ({
-			deviceId: device.deviceId,
-			name: device.name,
-			format: device.format ?? "opus",
-			connections: device.connections ?? 1,
-			listeningFor: device.listeningFor ?? 0,
-		}));
-		const devices = [...here, ...others];
-
 		return json(response, {
-			devices,
-			connections: devices.reduce(
-				(total, device) => total + device.connections,
-				0,
-			),
+			devices: session ? session.roster() : engineRoster(state, fake),
+			connections: connectionsOf(state, fake),
 			maxConnections: 8,
 			playerMuted: state.playerHeld,
 		});
@@ -3914,6 +4384,14 @@ export async function handleFooJean({
 		if (!said.deviceId)
 			return json(response, { error: "deviceId is required" }, 400);
 
+		if (namesDetached) {
+			const deviceId = labelOf(said.deviceId);
+			const left = state.sessions.visible(named, deviceId);
+			if (!left) return json(response, NO_SUCH_SESSION, 404);
+			state.sessions.leave(left, deviceId);
+			return empty(response);
+		}
+
 		state.streamDevices.delete(said.deviceId);
 		// The choice to hear both outputs was scoped to the spell of listening it
 		// was made in, so it goes when the last listener does.
@@ -3924,7 +4402,7 @@ export async function handleFooJean({
 	}
 
 	if (method === "POST" && path === "/api/stream/ticket") {
-		if (!fake.canStream || fake.streamFormats.length === 0)
+		if (!offersStream(fake))
 			return json(
 				response,
 				{ error: "streaming is not available on this install" },
@@ -3938,20 +4416,34 @@ export async function handleFooJean({
 				fake.failTickets,
 			);
 
-		const said = (body ?? {}) as { deviceId?: string; name?: string };
-		const ticket = issue();
-		ticketDevices.set(ticket, {
-			deviceId: said.deviceId ?? "",
-			name: said.name || null,
-		});
+		if (namesDetached) {
+			const identity = bodyBytes === 0 ? ANONYMOUS : readDeviceIdentity(body);
+			if (!identity.ok) return json(response, { error: identity.refusal }, 400);
+			const { device } = identity;
+			const listenedTo = state.sessions.visible(named, device.deviceId);
+			if (!listenedTo) return json(response, NO_SUCH_SESSION, 404);
+			listenedTo.join(device.deviceId);
+			return json(response, issue({ ...device, session: listenedTo.id }));
+		}
 
-		return json(response, { ticket, expiresIn: 120 });
+		const said = (body ?? {}) as { deviceId?: string; name?: string };
+		return json(
+			response,
+			issue({
+				deviceId: said.deviceId ?? "",
+				name: said.name || null,
+				session: null,
+			}),
+		);
 	}
 
 	if (path === "/api/stream/timeline") {
 		if (!fake.canStream)
 			return json(response, { error: "streaming is not available" }, 503);
-		return json(response, timelineOf(state));
+		return json(
+			response,
+			session ? sessionTimelineOf(session) : timelineOf(state),
+		);
 	}
 
 	if (method === "POST" && path === "/api/tags") {

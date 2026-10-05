@@ -9,6 +9,8 @@ import {
 import { type Artist, artistIndex } from "@/domain/artist/artists";
 import { useSplitCredits } from "@/domain/artist/splitCredits";
 import { announcePlaybackRefusal } from "@/domain/player/playerWrite";
+import { useInSession } from "@/domain/player/session";
+import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import { usePlayer } from "@/domain/player/usePlayer";
 import { useResolvedPlaylistId } from "@/domain/player/usePlaylists";
 import { type Album, albumIndex } from "@/domain/track/albums";
@@ -26,7 +28,6 @@ import { EMPTY_VIEW, project } from "@/domain/track/project";
 import { rankEntities } from "@/domain/track/rankEntities";
 import { bestMatches } from "@/domain/track/rankTracks";
 import { switchRefusalOf } from "@/shared/api/client";
-import { permitsPlaybackControl } from "@/shared/api/discovery";
 import { emptyOwnPlaylist } from "@/shared/api/playlists";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
@@ -100,7 +101,9 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		setDraft((current) => current || remembered || "");
 	}, [remembered]);
 
-	const canEmptyScratch = permitsPlaybackControl(discovery);
+	const canControlPlayback = useCanControlPlayback();
+	const isInSession = useInSession();
+	const canEmptyScratch = canControlPlayback && !isInSession;
 
 	const clear = useCallback(() => {
 		setDraft("");

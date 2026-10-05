@@ -1,4 +1,4 @@
-import type { FakePlayer, Page } from "./fixtures.ts";
+import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	choosePlayer,
 	componentOrigin,
@@ -247,10 +247,13 @@ test.describe("a tap outside a status bar popover", () => {
 			const row = trackRow(page, THIRD_TRACK.index);
 			await expect(row).toBeVisible();
 
+			const box = (await row.boundingBox())!;
 			await open(page);
 			await expect(panel(page)).toBeVisible();
 
-			await row.tap();
+			// At the row's own point rather than on the row: on a phone the Playing on picker is a
+			// sheet whose scrim lies over the row, and that scrim is what this tap lands on.
+			await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
 			await expect(panel(page)).toBeHidden();
 			await expect(row).toHaveAttribute("data-cursor", "false");
 			await expectSettlesAt(player, () => playRequests(player), []);
@@ -281,6 +284,82 @@ test.describe("a tap outside a status bar popover", () => {
 			id: libraryGuid(player),
 			index: THIRD_TRACK.index,
 		});
+	});
+
+	// A row plays a click only where its last press was a touch, so the tap that played a track
+	// first is what lets Chromium's second hit test, made once the scrim stops taking pointers,
+	// hand the scrim's tap to the row under it.
+	test("after a track played by a tap, a tap on the Playing on sheet's scrim over another row closes it, plays nothing more and moves no cursor", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		const first = trackRow(page, 0);
+		await touchDrag(page, await centreOf(first), await centreOf(first), 0);
+		await expect(first).toHaveAttribute("data-cursor", "true");
+		await expectSettlesAt(player, () => playRequests(player).length, 1);
+
+		const under = trackRow(page, THIRD_TRACK.index);
+		const point = await centreOf(under);
+		await popovers[0].open(page);
+		const sheet = page.getByRole("dialog", { name: "Playing on" });
+		await expect(sheet).toBeVisible();
+
+		await touchDrag(page, point, point, 0);
+
+		await expect(sheet).toHaveCount(0);
+		await expectSettlesAt(player, () => playRequests(player).length, 1);
+		await expect(under).toHaveAttribute("data-cursor", "false");
+	});
+});
+
+const centreOf = async (target: Locator) => {
+	const box = (await target.boundingBox())!;
+	return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+};
+
+// A touch double tap is two clicks, the second with `detail` 2, and a row answers it by playing
+// once, as a mouse's double click does.
+test.describe("tapping rows in quick succession", () => {
+	test.skip(({ isMobile }) => !isMobile, "these are touch gestures");
+
+	test("a double tap on a row plays it once", async ({ page, player }) => {
+		await openLibrary(page);
+		const row = trackRow(page, THIRD_TRACK.index);
+		await expect(row).toBeVisible();
+		const centre = await centreOf(row);
+
+		await touchDrag(page, centre, centre, 0);
+		await touchDrag(page, centre, centre, 0);
+
+		await expectSettlesAt(player, () => playRequests(player).length, 1);
+		expect(playedFrom(player)).toEqual({
+			id: libraryGuid(player),
+			index: THIRD_TRACK.index,
+		});
+	});
+
+	// Chromium counts a second tap toward a double tap only near the first, so a tap on the next row
+	// down is a click of its own.
+	test("two quick taps on two neighbouring rows play each", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		const first = await centreOf(trackRow(page, THIRD_TRACK.index));
+		const next = await centreOf(trackRow(page, THIRD_TRACK.index + 1));
+
+		await touchDrag(page, first, first, 0);
+		await touchDrag(page, next, next, 0);
+
+		await expectSettlesAt(
+			player,
+			() =>
+				playRequests(player).map((entry) =>
+					Number(/items\/(\d+)\/play/.exec(entry.path)?.[1]),
+				),
+			[THIRD_TRACK.index, THIRD_TRACK.index + 1],
+		);
 	});
 });
 

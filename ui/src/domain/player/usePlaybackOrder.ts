@@ -7,6 +7,7 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Phrase } from "@/shared/i18n/en";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { usePlayerPatch } from "./playerWrite";
+import { useOfferedPlaybackModes } from "./sessionDocument";
 import { usePlayer } from "./usePlayer";
 
 const SHUFFLE_PRIORITY: PlaybackMode[] = ["shuffleTracks", "random"];
@@ -23,8 +24,6 @@ const ORDER_NAME_PHRASE: Record<PlaybackMode, OrderPhrase> = {
 	shuffleFolders: "player.order.shuffleFolders",
 };
 
-const NOT_OFFERED: PlaybackMode[] = [];
-
 const findShuffleMode = (offered: PlaybackMode[]) =>
 	SHUFFLE_PRIORITY.find((mode) => offered.includes(mode)) ?? null;
 
@@ -35,12 +34,9 @@ export function usePlaybackOrder() {
 
 	const player = data?.player;
 
-	const capabilities =
-		discovery.state.kind === "ready" ? discovery.state.capabilities : null;
-
 	const mode = player?.playbackMode ?? null;
 
-	const offeredModes = capabilities?.playbackModes ?? NOT_OFFERED;
+	const offeredModes = useOfferedPlaybackModes();
 	const shuffleMode = useMemo(
 		() => findShuffleMode(offeredModes),
 		[offeredModes],

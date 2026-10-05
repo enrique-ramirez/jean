@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useInSession } from "@/domain/player/session";
 import { useAudiblePlayer } from "@/domain/player/usePlayer";
 import { useResolvedPlaylistId } from "@/domain/player/usePlaylists";
 import type { LibrarySource } from "@/domain/track/librarySource";
@@ -29,25 +30,25 @@ export function useActivePosition({
 		useResolvedPlaylistId(activeItem?.playlistGuid ?? null) ?? null;
 	const index = activeItem?.index ?? -1;
 	const scratchId = scratch.playlist?.id ?? null;
+	const isInSession = useInSession();
 
-	return useMemo(
-		() =>
-			holdsThisView && playlistId === scratchId
-				? index
-				: source.playingPosition(
-						indices,
-						{ path, subsong },
-						{ playlistId, index },
-					),
-		[
-			holdsThisView,
-			scratchId,
-			source,
+	return useMemo(() => {
+		if (isInSession) return -1;
+		if (holdsThisView && playlistId === scratchId) return index;
+		return source.playingPosition(
 			indices,
-			path,
-			subsong,
-			playlistId,
-			index,
-		],
-	);
+			{ path, subsong },
+			{ playlistId, index },
+		);
+	}, [
+		isInSession,
+		holdsThisView,
+		scratchId,
+		source,
+		indices,
+		path,
+		subsong,
+		playlistId,
+		index,
+	]);
 }

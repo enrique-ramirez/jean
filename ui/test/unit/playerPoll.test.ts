@@ -195,6 +195,7 @@ const held = (over: Partial<PlayerState> = {}): PlayerState => ({
 	},
 	playbackMode: "repeatOne",
 	outputDeviceId: HELD_DEVICE,
+	outputSilent: true,
 	playbackState: "stopped",
 	volume: { type: "linear", min: 0, max: 100, value: 80, isMuted: true },
 	...over,
@@ -710,6 +711,47 @@ test("criterion 11: a tick before capabilities have landed still carries the out
 	assert.equal(playerIn(poll.client)?.outputDeviceId, SPEAKERS);
 });
 
+// `null` is foobar2000 set to no device the component can name, and reads as audible.
+test("a tick carries whether the player's output is silent, true, false or null, and the next tick moves it", async (t) => {
+	const poll = harness(
+		t,
+		stateOnly(() => document200("playing", TAG, { outputSilent: false })),
+		CAPABILITIES,
+	);
+	await poll.settle();
+	putInKey(poll.client, held());
+	await poll.ticks(1);
+	assert.strictEqual(playerIn(poll.client)?.outputSilent, false);
+
+	for (const [tag, outputSilent] of [
+		[LATER_TAG, true],
+		['"s1-r4-p9"', null],
+		['"s1-r4-p10"', false],
+	] as const) {
+		poll.answersState(() => document200("playing", tag, { outputSilent }));
+		await poll.ticks(1);
+		assert.strictEqual(playerIn(poll.client)?.outputSilent, outputSilent);
+	}
+});
+
+test("a tick from a player that answers no outputSilent writes null, rather than keeping the last one", async (t) => {
+	const older = () => {
+		const { outputSilent: _, ...player } = stateDocument("playing").player;
+		return Promise.resolve(
+			Response.json(
+				{ ...stateDocument("playing"), player },
+				{ headers: { ETag: TAG } },
+			),
+		);
+	};
+	const poll = harness(t, stateOnly(older), CAPABILITIES);
+	await poll.settle();
+	putInKey(poll.client, held({ outputSilent: true }));
+	await poll.ticks(1);
+
+	assert.strictEqual(playerIn(poll.client)?.outputSilent, null);
+});
+
 test("a 304 tick hands the last announced revisions on again, so a failed queue or playlist read is retried", async (t) => {
 	const REVISIONS = { queueRevision: 7301, playlistsRevision: 7302 };
 	let reachable = false;
@@ -818,7 +860,7 @@ const listeningHarness = async (t: TestContext) => {
 
 	const realAudio = globalThis.Audio;
 	globalThis.Audio = SilentAudio as unknown as typeof Audio;
-	configureListening({ origin: ORIGIN, formats: ["opus"] });
+	configureListening({ origin: ORIGIN, formats: ["opus"], session: null });
 	connect();
 	poll.atTeardown(() => {
 		disconnect();

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { en } from "../../src/shared/i18n/en.ts";
@@ -40,4 +41,28 @@ test("a translation's inherited keys are not phrases", async (t) => {
 	assert.equal(translate("artistInfo.readMore", { source: "X" }), "Mehr auf X");
 	assert.equal(translate("artistInfo.off"), en["artistInfo.off"]);
 	assert.equal(localeState().missing, Object.keys(en).length - 1);
+});
+
+// Each phrase the picker draws for playing on another device. Spanish is held to these, and not to
+// every key in the English catalogue.
+const PLAYING_ELSEWHERE_PHRASES = [
+	"listen.closePicker",
+	"listen.noSpeakers",
+	"settings.playback.offerListening",
+	"settings.playback.offerListeningDetail",
+];
+
+test("the Spanish catalogue holds every phrase the picker draws for playing on another device", () => {
+	const spanish = JSON.parse(
+		readFileSync(
+			new URL("../../public/locales/es.json", import.meta.url),
+			"utf8",
+		),
+	) as Record<string, unknown>;
+
+	const missing = PLAYING_ELSEWHERE_PHRASES.filter(
+		(key) =>
+			!Object.hasOwn(en, key) || !Object.hasOwn(spanish, key) || !spanish[key],
+	);
+	assert.deepEqual(missing, []);
 });

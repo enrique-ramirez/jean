@@ -1,7 +1,10 @@
+import type { DetachedSession } from "../fake-api/sessions.ts";
+import { evaluate, type Track } from "../fake-api/state.ts";
 import {
 	callMediaSessionAction,
 	choosePlayer,
 	countPostsTo,
+	countPostsToSession,
 	expect,
 	expectNothingRefusedSent,
 	expectSettlesAt,
@@ -12,7 +15,10 @@ import {
 	openLibrary,
 	type Page,
 	playingOn,
+	putThePickerAway,
+	REFUSED_ROUTES,
 	recordMediaSessionHandlers,
+	requestsTo,
 	statusBar,
 	test,
 	trackRow,
@@ -28,10 +34,12 @@ const play = async (page: Page) => {
 // and the artist move with it.
 const ANOTHER_ARTIST = { row: 12, title: "Tautou", artist: "Brand New" };
 
-// By its name rather than by its role: the row is a button only where pressing it
-// would do something, which here it does -- this device is the only listener.
-const thePlayer = (page: Page) =>
-	playingOn(page).getByText("foobar2000", { exact: true });
+// Stop takes this name while this device is the player's only listener.
+const handBack = (page: Page) =>
+	playingOn(page).getByRole("button", {
+		name: "Move the sound back to foobar2000",
+		exact: true,
+	});
 
 const session = (page: Page) =>
 	page.evaluate(() => {
@@ -248,10 +256,11 @@ test.describe("the media session", () => {
 			});
 	});
 
-	test("follows the player's transport", async ({ page }) => {
+	test("follows the player's transport", async ({ page, isMobile }) => {
 		await page.goto("/");
 		await play(page);
 		await listenHere(page);
+		await putThePickerAway(page, isMobile);
 		await expect
 			.poll(() => session(page).then((live) => live.state))
 			.toBe("playing");
@@ -393,7 +402,7 @@ test.describe("the media session", () => {
 			.poll(() => session(page).then((live) => live.title))
 			.not.toBeNull();
 
-		await thePlayer(page).click();
+		await handBack(page).click();
 
 		// Cleared rather than left standing: a lock screen still showing Jean's
 		// buttons would be pressing them at a device that has stopped listening.
@@ -438,4 +447,411 @@ test.describe("the media session with playback control off at the player", () =>
 			await expectListeningEnded(page, player);
 			await expectNothingRefusedSent(player);
 		});
+});
+
+// ---- a page listening to a session of its own -------------------------------
+
+const DEVICE = "5f1c0a9e3b7d4e2a8c6b0d1f2e3a4b5c";
+const ANOTHER_DEVICE = {
+	deviceId: "0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a",
+	name: null,
+};
+
+const SESSION_KEY = "jean.session";
+
+const field = (track: Track | null, expression: string) =>
+	track ? String(evaluate(track, expression) ?? "") : null;
+
+const titleOf = (track: Track | null) => field(track, "%title%");
+
+// One track off each of three records, so the player's track and the session's two share no
+// title, artist or cover.
+const threeRecords = (player: FakePlayer) => {
+	const library = player.playlistById("p7")?.items ?? [];
+	const records = new Map<string, Track>();
+	for (const track of library) {
+		const record = field(track, "%album%") ?? "";
+		if (!records.has(record)) records.set(record, track);
+	}
+	const [atThePlayer, first, second] = records.values();
+	if (!second) throw new Error("the library holds fewer than three records");
+	return { library, atThePlayer, first, second };
+};
+
+interface Scene {
+	detached: DetachedSession;
+	atThePlayer: Track;
+	first: Track;
+	second: Track;
+}
+
+// The player plays one record and the session two others, the session from row `at`.
+const sessionBesideThePlayer = (
+	player: FakePlayer,
+	{ at = 0, untitledRecord = false } = {},
+): Scene => {
+	const { library, atThePlayer, first, second } = threeRecords(player);
+	player.playItem("p7", library.indexOf(atThePlayer));
+	const detached = player.sessions.create({ deviceId: DEVICE, name: null });
+	const [one, two] = untitledRecord
+		? [first, second].map((track) => ({ ...track, "%album%": "" }))
+		: [first, second];
+	detached.play([one, two], at);
+	return { detached, atThePlayer, first: one, second: two };
+};
+
+// Strict mode answers `500` to a session-scoped request naming no session, so a page in a session
+// that sends one is caught here whatever it was for.
+const strictRefusals = (page: Page) => {
+	const refused: string[] = [];
+	page.on("response", (response) => {
+		const url = new URL(response.url());
+		if (response.status() === 500 && url.pathname.startsWith("/api/"))
+			refused.push(`${response.request().method()} ${url.pathname}`);
+	});
+	return refused;
+};
+
+// A browser refuses audio without a press, so a page stored as listening comes up waiting for one,
+// and Start playing is that press. The lock screen is exercised only once the stream is rendering.
+const listeningInSession = async (
+	page: Page,
+	player: FakePlayer,
+	detached: DetachedSession,
+) => {
+	await recordMediaSessionHandlers(page);
+	await page.addInitScript(
+		({ key, stored }) => sessionStorage.setItem(key, stored),
+		{
+			key: SESSION_KEY,
+			stored: JSON.stringify({ id: detached.id, listening: true }),
+		},
+	);
+	const refused = strictRefusals(page);
+	player.fooJean.strictSessions = true;
+	await page.goto("/#/search");
+
+	await choosePlayer(page).click();
+	await page.getByRole("button", { name: "Start playing" }).click();
+	await page.waitForFunction(
+		() => {
+			const audio = document.querySelector("audio");
+			return Boolean(audio && audio.currentTime > 0);
+		},
+		undefined,
+		{ timeout: 60_000 },
+	);
+	await expect.poll(() => detached.playback()).toBe("playing");
+	await expect
+		.poll(() => session(page).then((live) => live.state))
+		.toBe("playing");
+	return refused;
+};
+
+const namedSession = (path: string) =>
+	new URL(path, "http://fake").searchParams.get("session");
+
+const namesThePlayer = (path: string) => {
+	const named = namedSession(path);
+	return !named || named === "engine";
+};
+
+// Every command the player would act on that went out naming no session.
+const commandsToThePlayer = (player: FakePlayer) =>
+	player.requests
+		.map((entry) => ({
+			route: `${entry.method} ${entry.path.split("?")[0]}`,
+			path: entry.path,
+		}))
+		.filter(
+			({ route, path }) =>
+				REFUSED_ROUTES.some((pattern) => pattern.test(route)) &&
+				namesThePlayer(path),
+		)
+		.map(({ route }) => route);
+
+const playerAsItStands = (player: FakePlayer) => ({
+	playlist: player.player.activeItem.playlistId,
+	row: player.player.activeItem.index,
+	playback: player.player.playbackState,
+	position: player.positionMark,
+	queue: player.playQueue,
+	version: player.playerVersion,
+});
+
+const stillListening = (player: FakePlayer, detached: DetachedSession) =>
+	player.sessions.find(detached.id) === detached &&
+	detached.roster().some((device) => device.deviceId === DEVICE);
+
+// The browser letting go of the stream and asking to leave, in the order it did them. `foo_jean`
+// ignores a leave from a device still holding a connection, so the close has to go first; when the
+// fake learns of the closed socket is a race the client does not control, so the order is read here.
+const letGoAndLeave = (page: Page) => {
+	const seen: string[] = [];
+	page.on("requestfailed", (request) => {
+		if (new URL(request.url()).pathname === "/api/stream")
+			seen.push("stream closed");
+	});
+	page.on("request", (request) => {
+		if (
+			request.method() === "POST" &&
+			new URL(request.url()).pathname === "/api/stream/leave"
+		)
+			seen.push("leave");
+	});
+	return seen;
+};
+
+interface SessionMove {
+	title: string;
+	action: MediaSessionAction;
+	details?: Omit<MediaSessionActionDetails, "action">;
+	at?: number;
+	before?: (page: Page, scene: Scene) => Promise<void>;
+	read: (scene: Scene) => unknown;
+	expected: (scene: Scene) => unknown;
+	route: string;
+}
+
+const ASKED_OFFSET = 15;
+const ROOM_TO_SEEK_BACK = 60;
+const ASKED_TIME = 30;
+
+const SESSION_MOVES: SessionMove[] = [
+	{
+		title: "play resumes the session where another device paused it",
+		action: "play",
+		before: async (page, { detached }) => {
+			detached.playPause();
+			await expect
+				.poll(() => session(page).then((live) => live.state))
+				.toBe("paused");
+		},
+		read: ({ detached }) => detached.playback(),
+		expected: () => "playing",
+		route: "/api/playback/play-pause",
+	},
+	{
+		title: "pause pauses the session and keeps this device listening to it",
+		action: "pause",
+		read: ({ detached }) => detached.playback(),
+		expected: () => "paused",
+		route: "/api/playback/play-pause",
+	},
+	{
+		title: "next track moves the session to its next track",
+		action: "nexttrack",
+		read: ({ detached }) => titleOf(detached.playingTrack()),
+		expected: ({ second }) => titleOf(second),
+		route: "/api/playback/next",
+	},
+	{
+		title: "previous track asks the session for its previous track",
+		action: "previoustrack",
+		at: 1,
+		read: ({ detached }) => titleOf(detached.playingTrack()),
+		expected: ({ first }) => titleOf(first),
+		route: "/api/playback/previous",
+	},
+	{
+		title: "seek forward moves the session's position on by the offset asked",
+		action: "seekforward",
+		details: { seekOffset: ASKED_OFFSET },
+		read: ({ detached }) => detached.position.seconds,
+		expected: () => ASKED_OFFSET,
+		route: "/api/playback/seek",
+	},
+	{
+		title:
+			"seek backward moves the session's position back by the offset asked",
+		action: "seekbackward",
+		details: { seekOffset: ASKED_OFFSET },
+		before: async (_page, { detached }) =>
+			detached.seek({ seconds: ROOM_TO_SEEK_BACK }),
+		read: ({ detached }) => detached.position.seconds,
+		expected: () => ROOM_TO_SEEK_BACK - ASKED_OFFSET,
+		route: "/api/playback/seek",
+	},
+	{
+		title: "seek to moves the session's position to the time asked",
+		action: "seekto",
+		details: { seekTime: ASKED_TIME },
+		read: ({ detached }) => detached.position.seconds,
+		expected: () => ASKED_TIME,
+		route: "/api/playback/seek",
+	},
+];
+
+for (const canControlPlayback of [true, false])
+	test.describe(`the media session of a page listening to a session of its own, with playback control ${canControlPlayback ? "on" : "off"} at the player`, () => {
+		test.use({
+			fooJean: { maxSessions: 4, canCreateSessions: true, canControlPlayback },
+			settings: { "jean.deviceId": DEVICE },
+		});
+
+		test("holds a handler for every action", async ({ page, player }) => {
+			const { detached } = sessionBesideThePlayer(player);
+			const refused = await listeningInSession(page, player, detached);
+
+			await expectSettlesAt(
+				player,
+				() => mediaSessionActions(page),
+				MEDIA_SESSION_ACTIONS_WITH_CONTROL,
+			);
+			expect(refused).toEqual([]);
+		});
+
+		for (const move of SESSION_MOVES)
+			test(`${move.title}, and the player is left as it was`, async ({
+				page,
+				player,
+			}) => {
+				const scene = sessionBesideThePlayer(player, { at: move.at });
+				const { detached } = scene;
+				const refused = await listeningInSession(page, player, detached);
+				await move.before?.(page, scene);
+				const asItStood = playerAsItStands(player);
+				const sent = countPostsToSession(player, move.route, detached.id);
+
+				await callMediaSessionAction(page, move.action, move.details);
+
+				await expectSettlesAt(
+					player,
+					() => ({
+						moved: move.read(scene),
+						listening: stillListening(player, detached),
+					}),
+					{ moved: move.expected(scene), listening: true },
+				);
+				expect(countPostsToSession(player, move.route, detached.id)).toBe(
+					sent + 1,
+				);
+				expect(
+					countPostsToSession(player, "/api/playback/seek", detached.id),
+				).toBe(move.route === "/api/playback/seek" ? 1 : 0);
+				expect(playerAsItStands(player)).toEqual(asItStood);
+				expect(commandsToThePlayer(player)).toEqual([]);
+				expect(refused).toEqual([]);
+			});
+
+		// A stop sent in the same tick the page goes back to the player names no session, and stops
+		// the house's speakers rather than the session.
+		test("stop closes the stream, then leaves the session, which ends; the page is back on the player without listening, and the player is left as it was", async ({
+			page,
+			player,
+		}) => {
+			const { detached, atThePlayer } = sessionBesideThePlayer(player);
+			const refused = await listeningInSession(page, player, detached);
+			const order = letGoAndLeave(page);
+			const asItStood = playerAsItStands(player);
+
+			// The page goes back to the player, whose requests name no session by design.
+			player.fooJean.strictSessions = false;
+			await callMediaSessionAction(page, "stop");
+
+			await expectSettlesAt(
+				player,
+				() => player.sessions.find(detached.id),
+				null,
+			);
+			expect(countPostsToSession(player, "/api/playback/stop", "engine")).toBe(
+				0,
+			);
+			expect(playerAsItStands(player)).toEqual(asItStood);
+			expect(commandsToThePlayer(player)).toEqual([]);
+			expect(order.slice(0, 2)).toEqual(["stream closed", "leave"]);
+
+			await expect
+				.poll(() => session(page))
+				.toMatchObject({ state: "none", title: null });
+			await expect(choosePlayer(page)).toHaveAccessibleName(
+				/Choose where to play/,
+			);
+			await expect(statusBar(page)).toContainText(titleOf(atThePlayer) ?? "");
+			expect(countPostsToSession(player, "/api/stream/ticket", "engine")).toBe(
+				0,
+			);
+			expect(refused).toEqual([]);
+		});
+
+		test("stop leaves a session another device listens to, and it plays on for that device unchanged", async ({
+			page,
+			player,
+		}) => {
+			const { detached } = sessionBesideThePlayer(player);
+			player.addSessionListener(detached.id, ANOTHER_DEVICE);
+			await listeningInSession(page, player, detached);
+			const asItPlayed = {
+				track: titleOf(detached.playingTrack()),
+				playback: detached.playback(),
+				position: detached.position,
+			};
+			const asItStood = playerAsItStands(player);
+
+			player.fooJean.strictSessions = false;
+			await callMediaSessionAction(page, "stop");
+
+			await expectSettlesAt(
+				player,
+				() => detached.roster().map((device) => device.deviceId),
+				[ANOTHER_DEVICE.deviceId],
+			);
+			expect(player.sessions.find(detached.id)).toBe(detached);
+			expect({
+				track: titleOf(detached.playingTrack()),
+				playback: detached.playback(),
+				position: detached.position,
+			}).toEqual(asItPlayed);
+			expect(playerAsItStands(player)).toEqual(asItStood);
+			expect(commandsToThePlayer(player)).toEqual([]);
+			await expect(choosePlayer(page)).toHaveAccessibleName(
+				/Choose where to play/,
+			);
+		});
+	});
+
+test.describe("the media session of a page listening to a session of its own", () => {
+	test.use({
+		fooJean: { maxSessions: 4, canCreateSessions: true },
+		settings: { "jean.deviceId": DEVICE },
+	});
+
+	// A track whose record is unnamed has no library cover to stand in, so the picture comes off
+	// the playing-cover route, which answers whichever session it names.
+	test("names the session's track, and draws the picture the session's own cover address answers", async ({
+		page,
+		player,
+	}) => {
+		const { detached, first } = sessionBesideThePlayer(player, {
+			untitledRecord: true,
+		});
+		const refused = await listeningInSession(page, player, detached);
+
+		await expect
+			.poll(() =>
+				session(page).then((live) => ({
+					title: live.title,
+					artist: live.artist,
+					isPicture:
+						live.artwork?.startsWith("data:image/jpeg;base64,") ?? false,
+				})),
+			)
+			.toEqual({
+				title: titleOf(first),
+				artist: field(first, "%artist%"),
+				isPicture: true,
+			});
+
+		const asked = requestsTo(player, "/api/artwork/playing").map((entry) => {
+			const query = new URL(entry.path, "http://fake").searchParams;
+			return { session: query.get("session"), deviceId: query.get("deviceId") };
+		});
+		expect(asked.length).toBeGreaterThan(0);
+		expect(
+			asked.filter(
+				(scope) => scope.session !== detached.id || scope.deviceId !== DEVICE,
+			),
+		).toEqual([]);
+		expect(refused).toEqual([]);
+	});
 });

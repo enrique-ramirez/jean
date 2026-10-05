@@ -10,6 +10,7 @@ import {
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
+	putThePickerAway,
 	statusBar,
 	test,
 	touchDrag,
@@ -517,10 +518,12 @@ test.describe("the wheel while the sound is a stream", () => {
 
 	test("holds the identity until the sound arrives, and never pairs it with the wrong sleeve", async ({
 		page,
+		isMobile,
 	}) => {
 		await openLibrary(page);
 		await trackRow(page, 0).dblclick();
 		await listenHere(page);
+		await putThePickerAway(page, isMobile);
 		await openNowPlaying(page);
 
 		const title = nowPlayingScreen(page).locator("h1");

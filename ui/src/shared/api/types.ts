@@ -56,6 +56,9 @@ export interface PlayerState {
 	playbackState: PlaybackState;
 	volume: Volume;
 	outputDeviceId: string | null;
+	// `foo_jean`'s guess at whether the active output reaches no speakers: true on foobar2000's Null
+	// Output, `null` where it cannot tell.
+	outputSilent: boolean | null;
 }
 
 export interface PlaylistInfo {

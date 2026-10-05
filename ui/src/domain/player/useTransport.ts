@@ -19,6 +19,7 @@ import { beginSeek } from "./listenerStore";
 import { PLAYER_KEY, pollPlayerNow } from "./playerPoll";
 import { useCommand, usePlayerPatch } from "./playerWrite";
 import { audibleAt, positionAt } from "./position";
+import { inSession } from "./session";
 
 // `shared/api/README.md`, *What Jean does about playback*, has why.
 const SKIP_APPLY_DELAY_MS = 250;
@@ -116,7 +117,8 @@ export function usePrevious() {
 	return useCallback(
 		(stepBack: () => void = () => skip()) => {
 			const snapshot = queryClient.getQueryData<PlayerSnapshot>(PLAYER_KEY);
-			if (audibleAt(snapshot) > RESTART_AFTER_SECONDS) seek(0);
+			// A detached session in `foo_jean` restarts the track itself on `previous`.
+			if (!inSession() && audibleAt(snapshot) > RESTART_AFTER_SECONDS) seek(0);
 			else stepBack();
 		},
 		[queryClient, seek, skip],

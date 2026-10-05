@@ -31,6 +31,7 @@ export const playableFormats = (offered: readonly string[] | undefined) =>
 export interface ListenTarget {
 	origin: string;
 	formats: string[];
+	session: string | null;
 }
 
 export interface Listener {
@@ -56,7 +57,7 @@ export function resolveListener({ state, origin }: FooJeanDiscovery): Listener {
 	return {
 		canListen: true,
 		formats,
-		target: { origin, formats },
+		target: { origin, formats, session: null },
 	};
 }
 

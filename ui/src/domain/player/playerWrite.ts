@@ -1,4 +1,5 @@
 import {
+	type QueryClient,
 	type QueryKey,
 	useMutation,
 	useQueryClient,
@@ -8,9 +9,26 @@ import { type FooJeanDiscovery, requireFooJean } from "@/shared/api/discovery";
 import type { PlayerSnapshot, PlayerState } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
-import { patchCache } from "@/shared/lib/patchCache";
+import { type CachePatch, patchCache } from "@/shared/lib/patchCache";
 import { pushToast } from "@/shared/ui/toastStore";
 import { PLAYER_KEY } from "./playerPoll";
+import { sessionEpoch } from "./session";
+
+export function patchInSession<T>(
+	client: QueryClient,
+	queryKey: QueryKey,
+	patch: (current: T) => T | null,
+	revision?: () => unknown,
+): CachePatch<T> {
+	const epoch = sessionEpoch();
+	const written = patchCache(client, queryKey, patch, revision);
+	return {
+		previous: written.previous,
+		rollBack: () => {
+			if (sessionEpoch() === epoch) written.rollBack();
+		},
+	};
+}
 
 export function announcePlaybackRefusal(recheck: () => void) {
 	pushToast({ tone: "error", message: translate("player.controlOffToast") });
@@ -37,7 +55,7 @@ export function useOptimisticWrite<TData, TInput, TResult = unknown>(
 
 		onMutate: async (input: TInput) => {
 			await queryClient.cancelQueries({ queryKey });
-			return patchCache<TData>(
+			return patchInSession<TData>(
 				queryClient,
 				queryKey,
 				(previous) => patch(previous, input),

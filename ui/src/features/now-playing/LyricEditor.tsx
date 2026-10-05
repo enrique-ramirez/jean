@@ -20,16 +20,15 @@ import {
 	useState,
 } from "react";
 
+import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import {
 	KEY_SEEK_SECONDS,
 	usePlayPause,
 	useSeek,
 	useSeekBy,
 } from "@/domain/player/useTransport";
-import { permitsPlaybackControl } from "@/shared/api/discovery";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
-import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTabTrap } from "@/shared/hooks/useTabTrap";
 import { Trans } from "@/shared/i18n/Trans";
 import { useTranslate } from "@/shared/i18n/useTranslate";
@@ -121,8 +120,7 @@ export function LyricEditor({
 }) {
 	const t = useTranslate();
 	const { save: saveLyric } = useNowPlayingLyric();
-	const { discovery } = useFooJean();
-	const canControlPlayback = permitsPlaybackControl(discovery);
+	const canControlPlayback = useCanControlPlayback();
 	const seek = useSeek();
 	const seekBy = useSeekBy();
 	const playPause = usePlayPause();

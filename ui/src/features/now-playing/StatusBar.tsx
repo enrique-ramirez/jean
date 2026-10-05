@@ -1,5 +1,6 @@
 import { useAudibleVolume } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
+import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import { useAudiblePlayer, usePlayer } from "@/domain/player/usePlayer";
 import { useResolvedPlaylistId } from "@/domain/player/usePlaylists";
@@ -12,7 +13,7 @@ import {
 import { coverKey } from "@/domain/track/fields";
 import { canonicalPlayingArtworkUrl } from "@/domain/track/librarySource";
 import { playingArtworkUrl } from "@/shared/api/artwork";
-import { isFooJeanReady, permitsPlaybackControl } from "@/shared/api/discovery";
+import { isFooJeanReady } from "@/shared/api/discovery";
 import { readTrack } from "@/shared/api/playerState";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
@@ -78,7 +79,7 @@ export function StatusBar({
 	const { isPending } = usePlayer();
 	const snapshot = useAudiblePlayer();
 	const { discovery } = useFooJean();
-	const canControlPlayback = permitsPlaybackControl(discovery);
+	const canControlPlayback = useCanControlPlayback();
 	const isCompactViewport = useIsCompactViewport();
 	// iOS exposes no level to set, so the fader is dropped rather than drawn dead.
 	const {

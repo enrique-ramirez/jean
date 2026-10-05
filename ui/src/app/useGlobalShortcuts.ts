@@ -1,4 +1,5 @@
 import { useAudibleVolume } from "@/domain/player/useListener";
+import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import {
 	KEY_SEEK_SECONDS,
 	usePlayPause,
@@ -8,8 +9,6 @@ import {
 } from "@/domain/player/useTransport";
 import { useRateShortcut } from "@/domain/track/useRateShortcut";
 import { useNowPlayingRating } from "@/features/now-playing/useNowPlayingRating";
-import { permitsPlaybackControl } from "@/shared/api/discovery";
-import { useFooJean } from "@/shared/hooks/useFooJean";
 import {
 	SETTINGS_KEYBOARD,
 	SHORTCUTS_KEYBOARD,
@@ -32,7 +31,7 @@ interface ShellShortcuts {
 }
 
 function usePlaybackShortcuts() {
-	const { discovery } = useFooJean();
+	const canControlPlayback = useCanControlPlayback();
 	const playPause = usePlayPause();
 	const seekBy = useSeekBy();
 	const previous = usePrevious();
@@ -49,7 +48,7 @@ function usePlaybackShortcuts() {
 			seekBack: () => seekBy.mutate(-KEY_SEEK_SECONDS),
 			seekForward: () => seekBy.mutate(KEY_SEEK_SECONDS),
 		},
-		{ enabled: permitsPlaybackControl(discovery) },
+		{ enabled: canControlPlayback },
 	);
 
 	useKeymap(

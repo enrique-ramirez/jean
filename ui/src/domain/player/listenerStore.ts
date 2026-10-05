@@ -194,7 +194,7 @@ const timelineFollower: FollowRevision = followRevision<TimelineRead>({
 	resource: "timeline",
 	read: async (origin) => {
 		const mine = generation;
-		const timeline = await fetchStreamTimeline(origin);
+		const timeline = await fetchStreamTimeline(origin, target?.session ?? null);
 		return timeline.ok
 			? { ok: true, value: { timeline: timeline.value, mine } }
 			: timeline;
@@ -423,7 +423,11 @@ async function open(next: string) {
 		attempt > 0 ? { kind: "reconnecting", attempt } : { kind: "connecting" },
 	);
 
-	const issued = await issueStreamTicket(target.origin, deviceIdentity());
+	const issued = await issueStreamTicket(
+		target.origin,
+		deviceIdentity(),
+		target.session,
+	);
 	if (mine !== generation) return;
 
 	if (!issued.ok) {
@@ -478,7 +482,11 @@ async function open(next: string) {
 
 export function resume() {
 	const audio = element;
-	if (!audio || phase.kind !== "blocked") return;
+	if (phase.kind !== "blocked") return;
+	if (!audio?.src) {
+		connect();
+		return;
+	}
 	setPhase({ kind: "connecting" });
 	audio.play().catch(() => scheduleReconnect());
 }
@@ -670,7 +678,7 @@ function teardown() {
 	format = null;
 }
 
-export function disconnect() {
+export function disconnect(): Promise<void> {
 	const gone = target;
 	const wasListening = isListening(phase);
 
@@ -679,16 +687,54 @@ export function disconnect() {
 
 	// A closed socket says nothing about why it closed, and the component waits out a linger before
 	// unmuting the player in case it was a reconnect. This is what says it was not one.
-	if (wasListening && gone) leaveStream(gone.origin, deviceId());
+	if (wasListening && gone?.session === null)
+		return leaveStream(gone.origin, deviceId(), null);
+	return Promise.resolve();
+}
+
+const EMPTIED_CEILING_MS = 1000;
+
+// A browser's media element fires `emptied` from `load()` once it has stopped fetching the resource
+// it held, and an element that held none fires nothing.
+function untilEmptied(audio: HTMLAudioElement): Promise<void> {
+	return new Promise((resolve) => {
+		const done = () => {
+			clearTimeout(ceiling);
+			audio.removeEventListener("emptied", done);
+			resolve();
+		};
+		const ceiling = setTimeout(done, EMPTIED_CEILING_MS);
+		audio.addEventListener("emptied", done);
+	});
+}
+
+export function closeStream(): Promise<void> {
+	const letGo = element?.src ? untilEmptied(element) : Promise.resolve();
+	teardown();
+	setPhase({ kind: "off" });
+	return letGo;
+}
+
+export function awaitPress() {
+	teardown();
+	setPhase({ kind: "blocked" });
 }
 
 export function configureListening(next: ListenTarget | null) {
 	const same =
 		target?.origin === next?.origin &&
-		target?.formats.join() === next?.formats.join();
-	if (same) return;
+		target?.formats.join() === next?.formats.join() &&
+		target?.session === next?.session;
+	if (same) {
+		if (next === null && phase.kind === "blocked") setPhase({ kind: "off" });
+		return;
+	}
 
-	if (isListening(phase)) disconnect();
+	if (target && isListening(phase)) {
+		if (target.session === null) void disconnect();
+		else if (next?.session === target.session) awaitPress();
+		else void closeStream();
+	}
 	target = next;
 	dead.clear();
 }

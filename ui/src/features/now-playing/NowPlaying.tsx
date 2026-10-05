@@ -1,7 +1,9 @@
 import { ChevronDown, Mic2, MoreHorizontal } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { useInSession } from "@/domain/player/session";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
+import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import { useAudiblePlayer, usePlayer } from "@/domain/player/usePlayer";
 import { useResolvedPlaylistId } from "@/domain/player/usePlaylists";
@@ -16,7 +18,8 @@ import { coverKey, readValue } from "@/domain/track/fields";
 import { canonicalPlayingArtworkUrl } from "@/domain/track/librarySource";
 import { albumRoute, href, type PanelTab } from "@/domain/track/routes";
 import { playingArtworkUrl } from "@/shared/api/artwork";
-import { isFooJeanReady, permitsPlaybackControl } from "@/shared/api/discovery";
+import { isFooJeanReady } from "@/shared/api/discovery";
+import type { ActiveItem } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { usePresence } from "@/shared/hooks/usePresence";
@@ -52,6 +55,20 @@ const SLIDE_MS = 280;
 
 const NOOP = () => {};
 
+// `foo_jean` names no playing location for a detached session, so there a track is told apart by
+// its file rather than its row.
+const trackKeyOf = (
+	item: ActiveItem | undefined,
+	playlistId: string | null | undefined,
+	isInSession: boolean,
+): string | null => {
+	if (!item) return null;
+	if (isInSession) return item.path ? `${item.path}:${item.subsong}` : null;
+	return item.index >= 0 && playlistId !== undefined
+		? `${playlistId}:${item.index}`
+		: null;
+};
+
 export function NowPlaying({
 	isOpen,
 	isCompactViewport,
@@ -85,7 +102,7 @@ export function NowPlaying({
 	const { data: live } = usePlayer();
 	const { track, details } = useNowPlayingTrack();
 	const { discovery } = useFooJean();
-	const canControlPlayback = permitsPlaybackControl(discovery);
+	const canControlPlayback = useCanControlPlayback();
 
 	const playPause = usePlayPause();
 	const seek = useSeek();
@@ -122,7 +139,6 @@ export function NowPlaying({
 	const player = snapshot?.player;
 	const item = player?.activeItem;
 	const playlistId = useResolvedPlaylistId(item?.playlistGuid ?? null);
-	const hasPosition = Boolean(item && item.index >= 0);
 	const isPlaying = player?.playbackState === "playing";
 
 	const outputsQuery = useOutputs();
@@ -141,10 +157,8 @@ export function NowPlaying({
 	const isReady = isFooJeanReady(discovery);
 	const origin = isReady ? discovery.origin : null;
 
-	const artworkKey =
-		hasPosition && item && playlistId !== undefined
-			? `${playlistId}:${item.index}`
-			: null;
+	const isInSession = useInSession();
+	const artworkKey = trackKeyOf(item, playlistId, isInSession);
 
 	const album = readValue(details?.row[NOW_PLAYING_FIELD.album]);
 	const year = readValue(details?.row[NOW_PLAYING_FIELD.year]);
@@ -182,10 +196,7 @@ export function NowPlaying({
 	const wheel = useCoverWheel({
 		audibleTrackKey: artworkKey,
 		audibleCover: playingCover,
-		playerTrackKey:
-			liveItem && liveItem.index >= 0 && livePlaylistId !== undefined
-				? `${livePlaylistId}:${liveItem.index}`
-				: null,
+		playerTrackKey: trackKeyOf(liveItem, livePlaylistId, isInSession),
 		artwork,
 		neighbourArtworkSrc,
 		alt: coverName,

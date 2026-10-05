@@ -1,3 +1,8 @@
+import type { Request } from "@playwright/test";
+import {
+	DETACHED_PLAYBACK_MODES,
+	type DetachedSession,
+} from "../fake-api/sessions.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	checkedOrderRows,
@@ -1535,3 +1540,144 @@ for (const [offer, declared] of [
 		});
 	});
 }
+
+// ---- in a session -----------------------------------------------------------
+
+const DEVICE = "5f1c0a9e3b7d4e2a8c6b0d1f2e3a4b5c";
+
+const SESSION_KEY = "jean.session";
+
+// The install declares its seven in reverse, so its sequence is neither the session's nor
+// alphabetical, and a list built from the install and filtered to the session's five shows it.
+const DECLARED_IN_REVERSE = [...ORDERS].reverse();
+
+const ORDERS_OF_THE_SESSION = DETACHED_PLAYBACK_MODES.map((mode) => {
+	const order = ORDERS.find((one) => one.mode === mode);
+	if (!order) throw new Error(`no order is named ${mode}`);
+	return order;
+});
+
+const installSequenceOf = (orders: readonly Order[]) =>
+	DECLARED_IN_REVERSE.filter((order) => orders.includes(order));
+
+const documentReadOf = (session: DetachedSession) => (request: Request) =>
+	request.method() === "GET" &&
+	new URL(request.url()).pathname === `/api/sessions/${session.id}`;
+
+// Strict mode answers `500` to a session-scoped request naming no session, so one the page sends
+// while it is in the session is caught here whatever it was for.
+const enterASessionOfItsOwn = async (page: Page, player: FakePlayer) => {
+	const session = player.sessions.create({ deviceId: DEVICE, name: null });
+	await page.addInitScript(
+		({ key, stored }) => sessionStorage.setItem(key, stored),
+		{
+			key: SESSION_KEY,
+			stored: JSON.stringify({ id: session.id, listening: false }),
+		},
+	);
+	const refused: string[] = [];
+	page.on("response", (response) => {
+		const url = new URL(response.url());
+		if (response.status() === 500 && url.pathname.startsWith("/api/"))
+			refused.push(`${response.request().method()} ${url.pathname}`);
+	});
+	player.fooJean.strictSessions = true;
+	return { session, refused };
+};
+
+const modeWrites = (player: FakePlayer) =>
+	player.requests
+		.filter(
+			(entry) =>
+				entry.method === "POST" &&
+				entry.path.split("?")[0] === "/api/playback/mode",
+		)
+		.map((entry) => {
+			const query = new URL(entry.path, "http://fake").searchParams;
+			return {
+				session: query.get("session"),
+				deviceId: query.get("deviceId"),
+				mode: entry.body?.mode,
+			};
+		});
+
+test.describe("a page in a session of its own", () => {
+	test.use({
+		fooJean: { maxSessions: 4, canCreateSessions: true },
+		settings: { "jean.deviceId": DEVICE },
+		playerState: offering(DECLARED_IN_REVERSE, IN_ORDER),
+	});
+
+	test("lists exactly the session's own orders, in the sequence its document lists them", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		expect(installSequenceOf(ORDERS_OF_THE_SESSION)).not.toEqual(
+			ORDERS_OF_THE_SESSION,
+		);
+		const { refused } = await enterASessionOfItsOwn(page, player);
+		await arriveAtTheTransport(page, isMobile);
+
+		await openList(page, isMobile);
+
+		await expect(rows(page)).toHaveText(
+			ORDERS_OF_THE_SESSION.map((order) => order.english),
+		);
+		expect(refused).toEqual([]);
+	});
+
+	test("choosing an order sends it naming the session, moves the session's order and leaves the player's where it was", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const { session, refused } = await enterASessionOfItsOwn(page, player);
+		await arriveAtTheTransport(page, isMobile);
+		await openList(page, isMobile);
+
+		await orderRow(page, REPEAT_TRACK.english).click();
+
+		await expectSettlesAt(player, () => modeWrites(player), [
+			{ session: session.id, deviceId: DEVICE, mode: REPEAT_TRACK.mode },
+		]);
+		expect(session.mode).toBe(REPEAT_TRACK.mode);
+		expect(player.player.playbackMode).toBe(
+			DECLARED_IN_REVERSE.indexOf(IN_ORDER),
+		);
+		await expect(orderButton(page, isMobile)).toHaveAccessibleName(
+			`Playback order: ${REPEAT_TRACK.english}`,
+		);
+		expect(refused).toEqual([]);
+	});
+
+	// The install's capabilities and the session's poll are both in by the time the order button is
+	// looked for, so the only thing it can still be waiting on is the session's document.
+	test("offers no order until the session's document has been read", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const { session, refused } = await enterASessionOfItsOwn(page, player);
+		const read = await holdRequests(page, documentReadOf(session));
+		await arriveAtTheTransport(page, isMobile);
+		await untilTheInstallIsKnown(player);
+		await expect
+			.poll(
+				() =>
+					player.requests.filter(
+						(entry) =>
+							entry.path.split("?")[0] === "/api/state" &&
+							entry.path.includes(`session=${session.id}`),
+					).length,
+			)
+			.toBeGreaterThan(0);
+
+		await expect(orderButton(page, isMobile)).toHaveCount(0);
+		await read.untilHeld();
+
+		read.releaseAll();
+		await expect(orderButton(page, isMobile)).toBeVisible();
+		expect(refused).toEqual([]);
+	});
+});

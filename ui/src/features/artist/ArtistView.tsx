@@ -9,6 +9,7 @@ import {
 	readingNotice,
 } from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
+import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import { albumsOf } from "@/domain/track/albums";
 import { useAvailableFields } from "@/domain/track/fieldAvailability";
 import {
@@ -28,8 +29,6 @@ import {
 } from "@/domain/track/project";
 import { summarise } from "@/domain/track/stats";
 import { ViewHeader } from "@/domain/track/ViewHeader";
-import { permitsPlaybackControl } from "@/shared/api/discovery";
-import { useFooJean } from "@/shared/hooks/useFooJean";
 import { Trans } from "@/shared/i18n/Trans";
 import {
 	type Translate,
@@ -157,8 +156,7 @@ export function ArtistView({
 }) {
 	const t = useTranslate();
 	const format = useFormats();
-	const { discovery } = useFooJean();
-	const canControlPlayback = permitsPlaybackControl(discovery);
+	const canControlPlayback = useCanControlPlayback();
 	const { snapshot } = library;
 
 	const own = useMemo(

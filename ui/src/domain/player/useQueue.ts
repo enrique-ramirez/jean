@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { switchRefusalOf } from "@/shared/api/client";
-import { isFooJeanReady, permitsPlaybackControl } from "@/shared/api/discovery";
+import { isFooJeanReady } from "@/shared/api/discovery";
 import { fetchPlaylistAnnotations } from "@/shared/api/playlists";
 import {
 	moveQueueEntry,
@@ -17,12 +17,13 @@ import { useCacheOnly } from "@/shared/hooks/useCacheOnly";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
 import { moved } from "@/shared/lib/moved";
-import { type CachePatch, patchCache } from "@/shared/lib/patchCache";
+import type { CachePatch } from "@/shared/lib/patchCache";
 import { pushToast } from "@/shared/ui/toastStore";
 import { pollPlayerNow } from "./playerPoll";
-import { announcePlaybackRefusal } from "./playerWrite";
+import { announcePlaybackRefusal, patchInSession } from "./playerWrite";
 import { guidOf, QUEUE_KEY, type QueueSource, readQueue } from "./queue";
 import { askToShowQueue } from "./showQueue";
+import { useCanControlPlayback } from "./usePlaybackControl";
 
 export function useQueue() {
 	const { data } = useCacheOnly<QueueRead>(QUEUE_KEY);
@@ -36,13 +37,13 @@ export function useQueue() {
 export function useQueueActions() {
 	const queryClient = useQueryClient();
 	const { discovery, recheck } = useFooJean();
-	const canControlPlayback = permitsPlaybackControl(discovery);
+	const canControlPlayback = useCanControlPlayback();
 	const canQueue = isFooJeanReady(discovery) && canControlPlayback;
 	const { origin } = discovery;
 
 	const patchEntries = useCallback(
 		(next: (entries: QueueRead["entries"]) => QueueRead["entries"]) =>
-			patchCache<QueueRead>(
+			patchInSession<QueueRead>(
 				queryClient,
 				QUEUE_KEY,
 				(current) => ({ ...current, entries: next(current.entries) }),

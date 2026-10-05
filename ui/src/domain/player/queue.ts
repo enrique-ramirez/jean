@@ -123,3 +123,10 @@ export function followQueue(
 ): void {
 	queueFollower(client).announce(origin, revision);
 }
+
+// TanStack Query's `removeQueries` drops the entry without telling a mounted observer, which goes
+// on drawing what it held; `resetQueries` tells it.
+export function forgetQueue(client: QueryClient): void {
+	queueFollower(client).forget();
+	void client.resetQueries({ queryKey: QUEUE_KEY });
+}

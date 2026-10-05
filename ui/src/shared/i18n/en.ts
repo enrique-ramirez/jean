@@ -318,6 +318,7 @@ export const en = {
 		"The player is already streaming to as many devices as it allows.",
 	"listen.cannotPlay": "Could not play the stream on this device.",
 	"listen.chooseWhere": "Choose where to play",
+	"listen.closePicker": "Close",
 	"listen.connecting": "Connecting…",
 	"listen.driftSecond": "Runs about a second ahead of this device.",
 	"listen.driftSeconds": "Runs about {seconds} seconds ahead of this device.",
@@ -329,10 +330,12 @@ export const en = {
 		"The stream keeps dropping. Check that foobar2000 is running.",
 	"listen.listeningHere": "Listening here",
 	"listen.noDecoder": "Nothing here can play this stream.",
+	"listen.noSpeakers": "{player} is not playing through any speakers.",
 	"listen.onThisDevice": "Playing on this device",
 	"listen.ownLevel": "This device sets its own level. Use its volume buttons.",
 	"listen.playingOn": "Playing on {player}",
 	"listen.playingOnHeading": "Playing on",
+	"listen.playingTrack": "{title} · {artist}",
 	"listen.reconnecting": "The stream dropped. Reconnecting…",
 	"listen.silentForMany": {
 		one: "Silent while {count} device is listening",
@@ -667,6 +670,10 @@ export const en = {
 	"settings.playback.exempt":
 		"Search results are exempt from both. Those rows change under every keystroke, and jumping to the playing track the moment it appears among them would take the view away from what you just typed for.",
 	"settings.playback.help": "About following",
+	"settings.playback.offerListening":
+		"Offer listening here when the player cannot be heard",
+	"settings.playback.offerListeningDetail":
+		"Jean reads from foobar2000 whether its output reaches any speakers. Turn this off if it gets that wrong.",
 	"settings.playback.playbackFollows": "Playback follows cursor",
 	"settings.playback.title": "Playback",
 	"settings.sharedCredits.enable":

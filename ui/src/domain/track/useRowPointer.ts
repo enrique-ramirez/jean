@@ -2,6 +2,7 @@ import {
 	type MouseEvent as ReactMouseEvent,
 	type PointerEvent as ReactPointerEvent,
 	useCallback,
+	useEffect,
 	useRef,
 } from "react";
 import type { AlbumRun } from "./grouping";
@@ -57,8 +58,25 @@ export function useRowPointer({
 	const pointerType = useRef("mouse");
 
 	// A browser counts a click toward the next one's `detail` even when something stopped it before
-	// it reached this list, so a repeat is also one whose press follows the last click this list heard.
+	// it reached this list, or when its press landed elsewhere, such as on a scrim. So a repeat is
+	// also one whose press follows the last click this list heard, after a press this list heard.
 	const pressesSinceClick = useRef(0);
+	const press = useRef({ previousHere: false, currentHere: false });
+
+	// A capturing listener on the window runs before React's, which listen at the root, so every press
+	// is noted before the row's own handler marks it as here.
+	useEffect(() => {
+		const notePress = () => {
+			press.current.previousHere = press.current.currentHere;
+			press.current.currentHere = false;
+		};
+		window.addEventListener("pointerdown", notePress, {
+			capture: true,
+			passive: true,
+		});
+		return () =>
+			window.removeEventListener("pointerdown", notePress, { capture: true });
+	}, []);
 
 	const aimedIndex = useCallback(
 		(event: ReactMouseEvent) =>
@@ -70,7 +88,10 @@ export function useRowPointer({
 	// withholds it when the gesture turns out to be a scroll.
 	const onClick = useCallback(
 		(event: ReactMouseEvent) => {
-			const isRepeat = event.detail > 1 && pressesSinceClick.current === 1;
+			const isRepeat =
+				event.detail > 1 &&
+				pressesSinceClick.current === 1 &&
+				press.current.previousHere;
 			pressesSinceClick.current = 0;
 			if (pointerType.current === "mouse") return;
 			const index = aimedIndex(event);
@@ -106,6 +127,7 @@ export function useRowPointer({
 			onPointerDown: (event: ReactPointerEvent) => {
 				pointerType.current = event.pointerType;
 				pressesSinceClick.current += 1;
+				press.current.currentHere = true;
 				selectAlbum(event);
 			},
 			onPointerUp: resolveCollapse,

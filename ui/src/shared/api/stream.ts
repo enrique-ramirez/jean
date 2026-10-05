@@ -25,13 +25,17 @@ export type TicketResult = { ok: true; ticket: StreamTicket } | TicketFailure;
 const isBusy = (message: string) =>
 	/busy|listener|concurrent|too many/i.test(message);
 
+const naming = (session: string | null) =>
+	session === null ? {} : { params: { query: { session } } };
+
 export async function issueStreamTicket(
 	origin: string,
 	device: DeviceIdentity,
+	session: string | null,
 ): Promise<TicketResult> {
 	const answer = await reach(
 		ask(origin, PROBE_TIMEOUT_MS, (api, init) =>
-			api.POST("/stream/ticket", { ...init, body: device }),
+			api.POST("/stream/ticket", { ...init, ...naming(session), body: device }),
 		),
 	);
 	if (!answer)
@@ -53,9 +57,9 @@ export async function issueStreamTicket(
 export const streamUrl = (origin: string, ticket: string, format: string) =>
 	`${origin}/api/stream?ticket=${encodeURIComponent(ticket)}&format=${encodeURIComponent(format)}`;
 
-export const fetchStreamTimeline = (origin: string) =>
+export const fetchStreamTimeline = (origin: string, session: string | null) =>
 	askResult(origin, PROBE_TIMEOUT_MS, (api, init) =>
-		api.GET("/stream/timeline", init),
+		api.GET("/stream/timeline", { ...init, ...naming(session) }),
 	);
 
 export const fetchStreamListeners = (origin: string) =>
@@ -65,10 +69,18 @@ export const fetchStreamListeners = (origin: string) =>
 
 // Tells a deliberate stop from a dropped connection: both close the socket, and only this one gives
 // the player its sound back now rather than after the component's linger.
-export function leaveStream(origin: string, deviceId: string) {
-	void reach(
+export async function leaveStream(
+	origin: string,
+	deviceId: string,
+	session: string | null,
+): Promise<void> {
+	await reach(
 		ask(origin, PROBE_TIMEOUT_MS, (api, init) =>
-			api.POST("/stream/leave", { ...init, body: { deviceId } }),
+			api.POST("/stream/leave", {
+				...init,
+				...naming(session),
+				body: { deviceId },
+			}),
 		),
 	);
 }

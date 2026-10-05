@@ -1,3 +1,4 @@
+import { useOffersListeningWhenSilent } from "@/domain/player/offersListening";
 import {
 	useCursorFollowsPlayback,
 	usePlaybackFollowsCursor,
@@ -12,6 +13,7 @@ export function Playback() {
 	const t = useTranslate();
 	const [cursorFollows, setCursorFollows] = useCursorFollowsPlayback();
 	const [playbackFollows, setPlaybackFollows] = usePlaybackFollowsCursor();
+	const [offersListening, setOffersListening] = useOffersListeningWhenSilent();
 
 	return (
 		<section className={styles.panel}>
@@ -38,6 +40,13 @@ export function Playback() {
 				checked={playbackFollows}
 				onChange={setPlaybackFollows}
 				label={t("settings.playback.playbackFollows")}
+			/>
+
+			<Switch
+				checked={offersListening}
+				onChange={setOffersListening}
+				label={t("settings.playback.offerListening")}
+				description={t("settings.playback.offerListeningDetail")}
 			/>
 		</section>
 	);

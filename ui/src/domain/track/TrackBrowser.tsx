@@ -10,8 +10,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { permitsPlaybackControl } from "@/shared/api/discovery";
-import { useFooJean } from "@/shared/hooks/useFooJean";
+import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
@@ -100,8 +99,7 @@ export function TrackBrowser({
 }: TrackBrowserProps) {
 	const t = useTranslate();
 	const listRef = useRef<TrackListHandle | null>(null);
-	const { discovery } = useFooJean();
-	const canControlPlayback = permitsPlaybackControl(discovery);
+	const canControlPlayback = useCanControlPlayback();
 
 	const preferences = useListPreferences();
 	const { layout, showHeat, showArtwork, enabledIds } = preferences;

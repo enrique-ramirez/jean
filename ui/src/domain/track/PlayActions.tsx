@@ -1,9 +1,8 @@
 import { Shuffle } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
 
+import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
-import { permitsPlaybackControl } from "@/shared/api/discovery";
-import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
@@ -23,8 +22,7 @@ export function PlayActions({
 	children?: ReactNode;
 }) {
 	const t = useTranslate();
-	const { discovery } = useFooJean();
-	const canControlPlayback = permitsPlaybackControl(discovery);
+	const canControlPlayback = useCanControlPlayback();
 	const order = usePlaybackOrder();
 	const isEmpty = trackCount === 0;
 

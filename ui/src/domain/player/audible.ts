@@ -14,6 +14,10 @@ const DEPTH = 4;
 
 let history: PlayerSnapshot[] = [];
 
+export function forgetHeard(): void {
+	history = [];
+}
+
 const pathOf = (snapshot: PlayerSnapshot | null | undefined) =>
 	readTrack(snapshot?.player)?.path ?? null;
 

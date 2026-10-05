@@ -9,9 +9,8 @@ import {
 } from "react";
 
 import { audibleAt } from "@/domain/player/position";
-import { permitsPlaybackControl } from "@/shared/api/discovery";
+import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import type { PlayerSnapshot } from "@/shared/api/types";
-import { useFooJean } from "@/shared/hooks/useFooJean";
 import { Trans } from "@/shared/i18n/Trans";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { classNames } from "@/shared/lib/classNames";
@@ -59,8 +58,7 @@ export function Synced({
 	isHeard?: boolean;
 }) {
 	const t = useTranslate();
-	const { discovery } = useFooJean();
-	const seek = permitsPlaybackControl(discovery) ? onSeek : undefined;
+	const seek = useCanControlPlayback() ? onSeek : undefined;
 	const [active, setActive] = useState(() =>
 		isHeard ? activeLineAt(lines, audibleAt(snapshot)) : -1,
 	);

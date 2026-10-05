@@ -227,8 +227,14 @@ export async function fetchLibrary(
 			pollMs = Math.min(pollMs * 2, POLL_MAX_MS);
 
 			const polled = await fetchState(origin, null, signal);
-			if (!polled.ok && !TRANSIENT.has(polled.reason)) return polled;
-			if (!polled.ok || polled.kind !== "state") continue;
+			if (!polled.ok) {
+				// `foo_jean` answers `404` here only for a session named and gone, and its library is the
+				// player's whichever session is named.
+				if (polled.reason !== "noSuchSession" && !TRANSIENT.has(polled.reason))
+					return failure(polled.reason, polled.detail);
+				continue;
+			}
+			if (polled.kind !== "state") continue;
 
 			const build = polled.state.library.build;
 			if (!sameBuild(lastBuild, build)) {

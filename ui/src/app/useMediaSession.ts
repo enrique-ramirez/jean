@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { audibleAt } from "@/domain/player/position";
+import { inSession } from "@/domain/player/session";
 import { useListener } from "@/domain/player/useListener";
+import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import {
 	usePlayPause,
 	usePrevious,
@@ -11,7 +13,7 @@ import {
 import { coverKey } from "@/domain/track/fields";
 import { canonicalPlayingArtworkUrl } from "@/domain/track/librarySource";
 import { playingArtworkUrl } from "@/shared/api/artwork";
-import { isFooJeanReady, permitsPlaybackControl } from "@/shared/api/discovery";
+import { isFooJeanReady } from "@/shared/api/discovery";
 import type { NowPlayingTrack, PlayerSnapshot } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { clamp } from "@/shared/lib/math";
@@ -129,7 +131,7 @@ export function useMediaSession(
 
 	const isReady = isFooJeanReady(discovery);
 	const origin = isReady ? discovery.origin : null;
-	const canControlPlayback = permitsPlaybackControl(discovery);
+	const canControlPlayback = useCanControlPlayback();
 
 	const canonical = album
 		? canonicalPlayingArtworkUrl(origin, album, credited || "")
@@ -229,7 +231,7 @@ export function useMediaSession(
 			previoustrack: () => previous(),
 			nexttrack: () => next(),
 			stop: () => {
-				stopPlayer();
+				if (!inSession()) stopPlayer();
 				disconnect();
 			},
 			seekbackward: (action) =>

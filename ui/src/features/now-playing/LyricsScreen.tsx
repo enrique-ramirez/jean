@@ -1,10 +1,9 @@
 import { X } from "lucide-react";
 
+import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import { KEY_SEEK_SECONDS, useSeekBy } from "@/domain/player/useTransport";
-import { permitsPlaybackControl } from "@/shared/api/discovery";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
-import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useKeyboardOwnership } from "@/shared/keyboard/keyboardOwner";
@@ -31,7 +30,7 @@ export function LyricsScreen({
 	useKeyboardOwnership(LYRICS_KEYBOARD);
 	useEscapeCapture(onClose);
 
-	const { discovery } = useFooJean();
+	const canControlPlayback = useCanControlPlayback();
 	const seekBy = useSeekBy();
 	useKeymap(
 		SCOPE.global,
@@ -39,7 +38,7 @@ export function LyricsScreen({
 			seekBack: () => seekBy.mutate(-KEY_SEEK_SECONDS),
 			seekForward: () => seekBy.mutate(KEY_SEEK_SECONDS),
 		},
-		{ enabled: permitsPlaybackControl(discovery), owner: LYRICS_KEYBOARD },
+		{ enabled: canControlPlayback, owner: LYRICS_KEYBOARD },
 	);
 	useKeymap(
 		SCOPE.nowPlaying,

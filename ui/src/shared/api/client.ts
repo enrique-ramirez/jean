@@ -34,6 +34,114 @@ const api = createClient<paths>({
 	fetch: (request) => globalThis.fetch(request),
 });
 
+export interface SessionScope {
+	session: string;
+	deviceId: string;
+}
+
+type QueryOf<Operation> = Operation extends {
+	parameters: { query?: infer Query };
+}
+	? NonNullable<Query>
+	: never;
+
+// openapi-typescript types an operation a path lacks as `never`, and `keyof never` is every key.
+type QueryNamesOf<Path extends keyof paths> = {
+	[Method in keyof paths[Path]]: [QueryOf<paths[Path][Method]>] extends [never]
+		? never
+		: keyof QueryOf<paths[Path][Method]>;
+}[keyof paths[Path]];
+
+type PathsTaking<Name extends string> = {
+	[Path in keyof paths]: Name extends QueryNamesOf<Path> ? Path : never;
+}[keyof paths];
+
+export type SessionScopedPath = PathsTaking<"session">;
+
+export const SESSION_SCOPED = {
+	"/playlists/{id}/items/{index}/play": true,
+	"/playback/play": true,
+	"/playback/play-pause": true,
+	"/playback/next": true,
+	"/playback/previous": true,
+	"/playback/stop": true,
+	"/playback/seek": true,
+	"/playback/mode": true,
+	"/state": true,
+	"/queue": true,
+	"/queue/move": true,
+	"/queue/{index}": true,
+	"/track/playing": true,
+	"/artwork/playing": true,
+	"/stream/ticket": true,
+	"/stream/listeners": true,
+	"/stream/leave": true,
+	"/stream/timeline": true,
+} satisfies Record<SessionScopedPath, true>;
+
+const DEVICE_IN_BODY = {
+	"/stream/ticket": true,
+	"/stream/leave": true,
+} satisfies Record<Exclude<SessionScopedPath, PathsTaking<"deviceId">>, true>;
+
+type Init = { params?: { query?: Record<string, unknown> } } | undefined;
+
+function withScope(path: string, init: Init, scope: SessionScope): Init {
+	if (!Object.hasOwn(SESSION_SCOPED, path)) return init;
+	const query = init?.params?.query ?? {};
+	const named = { ...query, session: query.session ?? scope.session };
+	return {
+		...init,
+		params: {
+			...init?.params,
+			query: Object.hasOwn(DEVICE_IN_BODY, path)
+				? named
+				: { ...named, deviceId: query.deviceId ?? scope.deviceId },
+		},
+	};
+}
+
+const METHODS = [
+	"GET",
+	"PUT",
+	"POST",
+	"DELETE",
+	"OPTIONS",
+	"HEAD",
+	"PATCH",
+	"TRACE",
+] as const;
+
+type Send = (path: string, init: Init) => unknown;
+type SendAs = (method: string, path: string, init: Init) => unknown;
+
+function clientScopedTo(scope: SessionScope): typeof api {
+	const scoped =
+		(send: Send): Send =>
+		(path, init) =>
+			send(path, withScope(path, init, scope));
+	const request = api.request as SendAs;
+	const scopedRequest: SendAs = (method, path, init) =>
+		request(method, path, withScope(path, init, scope));
+	return {
+		...api,
+		request: scopedRequest as unknown as typeof api.request,
+		...Object.fromEntries(
+			METHODS.map((method) => [method, scoped(api[method] as Send)]),
+		),
+	};
+}
+
+let currentScope: SessionScope | null = null;
+
+export function setSessionScope(next: SessionScope | null): void {
+	currentScope = next;
+}
+
+export function sessionScope(): SessionScope | null {
+	return currentScope;
+}
+
 export type Call<T> = (
 	client: typeof api,
 	init: { baseUrl: string; signal: AbortSignal },
@@ -54,7 +162,11 @@ export const ask = <T>(
 ): Promise<T> =>
 	withTimeout(
 		timeoutMs,
-		(signal) => call(api, { baseUrl: `${origin}/api`, signal }),
+		(signal) =>
+			call(currentScope ? clientScopedTo(currentScope) : api, {
+				baseUrl: `${origin}/api`,
+				signal,
+			}),
 		outer,
 	);
 

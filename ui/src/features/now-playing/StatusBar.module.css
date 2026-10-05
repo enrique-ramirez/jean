@@ -197,4 +197,10 @@
 	.skip {
 		padding: 6px;
 	}
+
+	.transport button[aria-expanded] {
+		min-width: 44px;
+		min-height: 44px;
+		margin-inline: -4px;
+	}
 }

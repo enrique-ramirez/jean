@@ -10,8 +10,6 @@ import {
 } from "./listener";
 import {
 	configureListening,
-	connect,
-	disconnect,
 	isListening,
 	type ListenPhase,
 	listeningSnapshot,
@@ -23,6 +21,8 @@ import {
 	subscribeListening,
 	toggleListeningMute,
 } from "./listenerStore";
+import { sessionSnapshot, useSessionId } from "./session";
+import { useSessionActions } from "./sessionOperations";
 import { useVolume } from "./useVolume";
 
 const deviceVolume = (value: number, isMuted: boolean): Volume => ({
@@ -34,23 +34,27 @@ const deviceVolume = (value: number, isMuted: boolean): Volume => ({
 });
 
 export function useListener() {
-	const { discovery } = useFooJean();
+	const { discovery, isDiscovered } = useFooJean();
 
 	const listener = useMemo(() => resolveListener(discovery), [discovery]);
 	const { target } = listener;
 
+	const sessionId = useSessionId();
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `sessionId` fires this; the session is read from the store when it runs.
 	useEffect(() => {
-		configureListening(target);
-	}, [target]);
+		if (!isDiscovered) return;
+		configureListening(target && { ...target, session: sessionSnapshot().id });
+	}, [isDiscovered, target, sessionId]);
 
 	const live = useSyncExternalStore(subscribeListening, listeningSnapshot);
 
 	const isOn = isListening(live.phase);
 
-	const toggle = useCallback(() => {
-		if (isOn) disconnect();
-		else connect();
-	}, [isOn]);
+	const { listen: connect, stop: disconnect } = useSessionActions();
+	const toggle = useCallback(
+		() => (isOn ? disconnect() : connect()),
+		[isOn, connect, disconnect],
+	);
 
 	return {
 		canListen: listener.canListen,

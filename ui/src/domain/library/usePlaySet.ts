@@ -1,13 +1,36 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { reportPlaybackRefusal } from "@/domain/player/playerWrite";
+import { pollPlayerNow } from "@/domain/player/playerPoll";
+import {
+	reportPlaybackRefusal,
+	usePlayerPatch,
+} from "@/domain/player/playerWrite";
+import { inSession } from "@/domain/player/session";
+import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import { usePlayItem } from "@/domain/player/useTransport";
 import type { ScratchKind } from "@/domain/track/jeanPlaylists";
 import type { Refs } from "@/domain/track/project";
-import { isFooJeanReady, permitsPlaybackControl } from "@/shared/api/discovery";
+import { orThrow, type Schema } from "@/shared/api/client";
+import { isFooJeanReady, requireFooJean } from "@/shared/api/discovery";
+import { playLibrarySet } from "@/shared/api/playback";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Library } from "./useLibrary";
 import { useScratchPlaylist } from "./useScratchPlaylist";
+
+const usePlayInSession = () => {
+	const queryClient = useQueryClient();
+	const { discovery } = useFooJean();
+
+	return usePlayerPatch(
+		async (set: Schema["PlayLibrarySetRequest"]) => {
+			const origin = requireFooJean(discovery.origin);
+			orThrow(await playLibrarySet(origin, set));
+			await pollPlayerNow(queryClient, origin);
+		},
+		() => ({ playbackState: "playing" }),
+	);
+};
 
 export function usePlaySet({
 	library,
@@ -18,12 +41,13 @@ export function usePlaySet({
 }) {
 	const { discovery, recheck } = useFooJean();
 	const canPlaySets = isFooJeanReady(discovery);
-	const canControlPlayback = permitsPlaybackControl(discovery);
+	const canControlPlayback = useCanControlPlayback();
 	const scratch = useScratchPlaylist({
 		playlists,
 		canEdit: canPlaySets,
 	});
 	const playItem = usePlayItem();
+	const playInSession = usePlayInSession();
 
 	const play = useCallback(
 		async ({
@@ -38,6 +62,14 @@ export function usePlaySet({
 			position: number;
 		}) => {
 			if (!canControlPlayback) return null;
+			if (inSession()) {
+				if (!canPlaySets || refs.length === 0) return null;
+				const set = await library.source.queueTargets(refs);
+				if (set.kind !== "tracks") return null;
+				return playInSession
+					.mutateAsync({ ...set.request, index: position })
+					.catch(() => null);
+			}
 			let id: string | null;
 			try {
 				id = await scratch.ensure({
@@ -66,8 +98,10 @@ export function usePlaySet({
 			scratch,
 			library.source,
 			playItem.mutateAsync,
+			playInSession.mutateAsync,
 			recheck,
 			canControlPlayback,
+			canPlaySets,
 		],
 	);
 

@@ -737,7 +737,7 @@ test.describe("criterion 23: while listening in this browser", () => {
 		const panel = playingOn(page);
 		const cog = optionsIn(panel);
 		await expect(cog).toBeVisible();
-		const listening = panel.getByRole("button", { name: /listening here/i });
+		const listening = panel.getByText("Listening here", { exact: true });
 		expect(
 			(await cog.boundingBox())!.y + (await cog.boundingBox())!.height,
 			"the cog is not in the player's row",
@@ -770,7 +770,8 @@ test.describe("criterion 23: while listening in this browser", () => {
 	}) => {
 		await withNoListOnScreen(page);
 		await listenHere(page);
-		const bar = statusBar(page);
+		// A phone draws the picker as a sheet over the whole page rather than inside the status bar.
+		const bar = page.locator("body");
 
 		await expect(optionsIn(playingOn(page))).toBeVisible();
 		await optionsIn(playingOn(page)).click();
@@ -1221,7 +1222,8 @@ test.describe("criterion 22 and 23: paging with the keyboard", () => {
 	}) => {
 		await withNoListOnScreen(page);
 		await listenHere(page);
-		const bar = statusBar(page);
+		// A phone draws the picker as a sheet over the whole page rather than inside the status bar.
+		const bar = page.locator("body");
 
 		await expect(optionsIn(playingOn(page))).toBeVisible();
 		await optionsIn(playingOn(page)).focus();

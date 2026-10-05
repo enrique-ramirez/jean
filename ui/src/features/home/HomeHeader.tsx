@@ -1,8 +1,7 @@
 import { ChevronRight, Shuffle } from "lucide-react";
+import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import { href, ROUTE } from "@/domain/track/routes";
 import { spellDuration } from "@/domain/track/stats";
-import { permitsPlaybackControl } from "@/shared/api/discovery";
-import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Phrase } from "@/shared/i18n/en";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
@@ -44,8 +43,7 @@ export function HomeHeader({
 	canShuffle: boolean;
 }) {
 	const t = useTranslate();
-	const { discovery } = useFooJean();
-	const canControlPlayback = permitsPlaybackControl(discovery);
+	const canControlPlayback = useCanControlPlayback();
 	const playLabel = t("player.play");
 	const shuffleLabel = t("player.shuffle");
 	const duration = spellDuration(stats.seconds);

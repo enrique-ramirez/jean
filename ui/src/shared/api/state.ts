@@ -4,7 +4,11 @@ export type StateDocument = Schema["State"];
 
 const STATE_TIMEOUT_MS = 5_000;
 
-export type StateFailureReason = "unavailable" | "unreachable" | "failed";
+export type StateFailureReason =
+	| "unavailable"
+	| "unreachable"
+	| "failed"
+	| "noSuchSession";
 
 export interface StateFailure {
 	ok: false;
@@ -18,6 +22,7 @@ export type StateResult =
 	| StateFailure;
 
 const STATE_REFUSALS: Partial<Record<number, StateFailureReason>> = {
+	404: "noSuchSession",
 	503: "unavailable",
 };
 

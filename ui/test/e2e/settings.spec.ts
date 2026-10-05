@@ -1,3 +1,4 @@
+import { NULL_OUTPUT_DEVICE } from "../fake-api/fooJean.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
@@ -443,5 +444,122 @@ test.describe("foo_jean allowing playback control", () => {
 
 		await expect(fooJeanPanel(page)).toContainText("Connected to foo_jean.");
 		await expect(fooJeanPanel(page)).not.toContainText(/control ?playback/i);
+	});
+});
+
+const OFFER_LISTENING = "Offer listening here when the player cannot be heard";
+const OFFER_LISTENING_DETAIL =
+	"Jean reads from foobar2000 whether its output reaches any speakers. Turn this off if it gets that wrong.";
+const NO_SPEAKERS = "foobar2000 is not playing through any speakers.";
+
+// A switch is named by everything it holds, its description included, so each is found by how its
+// name begins.
+const settingsSwitch = (page: Page, label: string) =>
+	settingsDialog(page).getByRole("switch", {
+		name: new RegExp(`^${label}`),
+	});
+
+const offerSwitch = (page: Page) => settingsSwitch(page, OFFER_LISTENING);
+
+const closeSettings = async (page: Page) => {
+	await page.getByRole("button", { name: "Close settings" }).click();
+	await expect(settingsDialog(page)).toBeHidden();
+};
+
+const pickerOpener = (page: Page) =>
+	statusBar(page).getByRole("button", { name: /Choose where to play/ });
+
+const playerFace = (page: Page) =>
+	page
+		.getByRole("group", { name: "Playing on" })
+		.getByRole("button", { name: "Listen here", exact: true });
+
+// The fader's level arrives on the same poll as `outputSilent`, so once it is drawn the picker has
+// read whether the player can be heard.
+const openThePicker = async (page: Page) => {
+	await pickerOpener(page).click();
+	await expect(playerFace(page)).toBeVisible();
+	await expect(
+		page
+			.getByRole("group", { name: "Playing on" })
+			.getByRole("slider", { name: "Volume on foobar2000" }),
+	).toBeVisible();
+};
+
+const closeThePicker = async (page: Page) => {
+	await page.keyboard.press("Escape");
+	await expect(page.getByRole("group", { name: "Playing on" })).toBeHidden();
+};
+
+test.describe("offering listening here when the player cannot be heard", () => {
+	test.use({
+		fooJean: {
+			outputDevices: [
+				{
+					id: "5B0C0E5E-3C1D-4D6A-8E2F-1A2B3C4D5E6F:1F2E3D4C-5B6A-4978-8A9B-0C1D2E3F4A5B",
+					name: "Speakers [WASAPI]",
+				},
+				NULL_OUTPUT_DEVICE,
+			],
+			activeOutput: NULL_OUTPUT_DEVICE.id,
+		},
+	});
+
+	test("is the third switch in Playback, after the two following switches, says what it reads, and is on by default", async ({
+		page,
+	}) => {
+		await openSettings(page);
+
+		const switches = settingsDialog(page).getByRole("switch");
+		await expect(offerSwitch(page)).toBeVisible();
+		const names = await switches.evaluateAll((all) =>
+			all.map((one) => one.textContent ?? ""),
+		);
+		const at = (label: string) =>
+			names.findIndex((name) => name.startsWith(label));
+		const cursorFollows = at("Cursor follows playback");
+		expect(cursorFollows).toBeGreaterThanOrEqual(0);
+		expect(at("Playback follows cursor")).toBe(cursorFollows + 1);
+		expect(at(OFFER_LISTENING)).toBe(cursorFollows + 2);
+
+		await expect(offerSwitch(page)).toContainText(OFFER_LISTENING_DETAIL);
+		await expect(offerSwitch(page)).toBeChecked();
+	});
+
+	test("turned off, it stays off after a reload, and the picker no longer offers listening first", async ({
+		page,
+	}) => {
+		await openSettings(page);
+		await offerSwitch(page).click();
+		await expect(offerSwitch(page)).not.toBeChecked();
+
+		await page.reload();
+		await openSettings(page);
+		await expect(offerSwitch(page)).not.toBeChecked();
+		await closeSettings(page);
+
+		await openThePicker(page);
+		await expect(page.getByText(NO_SPEAKERS, { exact: true })).toHaveCount(0);
+	});
+
+	test("turned off and on again, the picker offers listening first again", async ({
+		page,
+	}) => {
+		await openSettings(page);
+		await offerSwitch(page).click();
+		await expect(offerSwitch(page)).not.toBeChecked();
+		await closeSettings(page);
+
+		await openThePicker(page);
+		await expect(page.getByText(NO_SPEAKERS, { exact: true })).toHaveCount(0);
+		await closeThePicker(page);
+
+		await openSettings(page);
+		await offerSwitch(page).click();
+		await expect(offerSwitch(page)).toBeChecked();
+		await closeSettings(page);
+
+		await openThePicker(page);
+		await expect(playerFace(page)).toContainText(NO_SPEAKERS);
 	});
 });

@@ -4,6 +4,7 @@ import {
 	BODYLESS_POST,
 	type Call,
 	PATIENT_TIMEOUT_MS,
+	type Schema,
 } from "./client";
 import type { PlaybackMode } from "./types";
 
@@ -46,6 +47,12 @@ export const stop = (origin: string) =>
 	command(origin, (api, init) =>
 		api.POST("/playback/stop", { ...init, headers: BODYLESS_POST }),
 	);
+
+export const playLibrarySet = (
+	origin: string,
+	body: Schema["PlayLibrarySetRequest"],
+) =>
+	command(origin, (api, init) => api.POST("/playback/play", { ...init, body }));
 
 export const seekTo = (origin: string, position: number) =>
 	command(origin, (api, init) =>

@@ -6,6 +6,7 @@ import {
 	openLibrary,
 	openNowPlaying,
 	openSidebar,
+	putThePickerAway,
 	requestsTo,
 	sidebar,
 	sidebarToggle,
@@ -465,6 +466,7 @@ test.describe("a lyric read through the stream", () => {
 		// lag and one line rather than the whole opening of the track.
 		player.patchPlayer({ position: 12 });
 		await listenHere(page);
+		await putThePickerAway(page, isMobile);
 
 		await openNowPlaying(page);
 		const panel = await openPanels(page, isMobile);

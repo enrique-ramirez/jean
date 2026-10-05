@@ -18,6 +18,7 @@ import { useConnection } from "@/domain/player/connection";
 import { usePlayerPoll } from "@/domain/player/playerPoll";
 import { queueShown, useShowQueueAsked } from "@/domain/player/showQueue";
 import { useOutputs } from "@/domain/player/useOutputs";
+import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import { useIsPlaying, usePlayer } from "@/domain/player/usePlayer";
 import {
@@ -43,7 +44,6 @@ import { TagWriterProvider } from "@/domain/track/useTagWriter";
 import { useHomePlayback } from "@/features/home/useHomePlayback";
 import { StatusBar } from "@/features/now-playing/StatusBar";
 import { QueuePanel } from "@/features/queue/QueuePanel";
-import { permitsPlaybackControl } from "@/shared/api/discovery";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
@@ -157,7 +157,7 @@ function Shell() {
 	const searchQuery = isSearch ? view.query : null;
 
 	const { discovery } = useFooJean();
-	const canControlPlayback = permitsPlaybackControl(discovery);
+	const canControlPlayback = useCanControlPlayback();
 	const connection = useConnection();
 	usePlayerPoll(
 		discovery.origin,

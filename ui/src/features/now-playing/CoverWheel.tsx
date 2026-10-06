@@ -53,7 +53,7 @@ export function useCoverWheel({
 	alt: string;
 	nextArtwork: NeighbourArtwork | null;
 	previousArtwork: NeighbourArtwork | null;
-	onSkip: (by: number) => void;
+	onSkip: (by: number) => boolean;
 }) {
 	const ref = useRef<HTMLDivElement | null>(null);
 	const [position, setPosition] = useState(0);
@@ -181,7 +181,8 @@ export function useCoverWheel({
 	);
 
 	const skip = useCallback(
-		(by: number) => {
+		(by: number): boolean => {
+			if (!onSkip(by)) return false;
 			const to = position + by;
 			turnTo(to);
 
@@ -195,8 +196,7 @@ export function useCoverWheel({
 				setIsAwaiting(false);
 				turnTo(pending.from);
 			}, ASKED_MS);
-
-			onSkip(by);
+			return true;
 		},
 		[position, onSkip, turnTo],
 	);
@@ -214,7 +214,7 @@ export function useCoverWheel({
 				return;
 			}
 
-			skip(dx < 0 ? 1 : -1);
+			if (!skip(dx < 0 ? 1 : -1)) paint(false);
 		},
 		[skip, paint],
 	);

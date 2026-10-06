@@ -131,9 +131,12 @@ export function NowPlaying({
 	const settledPath = details?.path ?? null;
 
 	const sendSkip = useCallback(
-		(by: number) =>
-			by > 0 ? transport.next.mutate() : transport.previous.mutate(),
-		[transport.next.mutate, transport.previous.mutate],
+		(by: number): boolean => {
+			if (by < 0) return previous(() => transport.previous.mutate());
+			transport.next.mutate();
+			return true;
+		},
+		[previous, transport.next.mutate, transport.previous.mutate],
 	);
 
 	const player = snapshot?.player;
@@ -396,9 +399,7 @@ export function NowPlaying({
 									aria-disabled={canControlPlayback ? undefined : "true"}
 									aria-label={previousLabel}
 									onClick={
-										canControlPlayback
-											? () => previous(() => wheel.skip(-1))
-											: undefined
+										canControlPlayback ? () => wheel.skip(-1) : undefined
 									}
 								>
 									<SkipBackIcon size={22} />

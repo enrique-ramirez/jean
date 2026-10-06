@@ -109,19 +109,54 @@ export const useSeekBy = () => {
 
 const RESTART_AFTER_SECONDS = 5;
 
+// `foo_jean` restarts a detached session's track itself on `previous` past `kPreviousRestartsAfter`,
+// three seconds in.
+const SESSION_RESTART_AFTER_SECONDS = 3;
+
+const useRestart = () => {
+	const queryClient = useQueryClient();
+	const { discovery } = useFooJean();
+	return usePlayerPatch<void>(
+		async () => {
+			const origin = requireFooJean(discovery.origin);
+			orThrow(await previousTrack(origin));
+			await sleep(SKIP_APPLY_DELAY_MS);
+			await pollPlayerNow(queryClient, origin);
+		},
+		(player) => {
+			if (!player.activeItem) return null;
+			beginSeek(0);
+			return { activeItem: { ...player.activeItem, position: 0 } };
+		},
+	);
+};
+
 export function usePrevious() {
 	const queryClient = useQueryClient();
 	const seek = useSeek().mutate;
+	const restart = useRestart().mutate;
 	const skip = useSkip(previousTrack).mutate;
 
 	return useCallback(
-		(stepBack: () => void = () => skip()) => {
+		(stepBack: () => void = () => skip()): boolean => {
 			const snapshot = queryClient.getQueryData<PlayerSnapshot>(PLAYER_KEY);
-			// A detached session in `foo_jean` restarts the track itself on `previous`.
-			if (!inSession() && audibleAt(snapshot) > RESTART_AFTER_SECONDS) seek(0);
-			else stepBack();
+			const heard = audibleAt(snapshot);
+			if (inSession()) {
+				if (heard <= SESSION_RESTART_AFTER_SECONDS) {
+					stepBack();
+					return true;
+				}
+				restart();
+				return false;
+			}
+			if (heard > RESTART_AFTER_SECONDS) {
+				seek(0);
+				return false;
+			}
+			stepBack();
+			return true;
 		},
-		[queryClient, seek, skip],
+		[queryClient, seek, restart, skip],
 	);
 }
 

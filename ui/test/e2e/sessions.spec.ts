@@ -712,6 +712,10 @@ const CONTROL_OFF = {
 
 const REASON_LINE = "Playback control is off.";
 
+// Long enough that a wheel turned to a neighbour would still be showing it, and short of the
+// time an unanswered turn waits before springing back.
+const WHILE_A_TURN_WOULD_SHOW_MS = 1500;
+
 const PLAY_PAUSE = /^(Play|Pause)\b/;
 const PREVIOUS = /^Previous track\b/;
 const NEXT = /^Next track\b/;
@@ -954,8 +958,9 @@ test.describe("with playback control off, the transport of a tab in a session of
 	});
 
 	// Jean restarts a track itself past five seconds on the player, by seeking to 0. A session
-	// restarts its own track, so the seek would be a second restart racing the session's.
-	test("Previous well past five seconds into the session's track sends previous to the session, and no seek", async ({
+	// restarts its own track past three, so the seek would be a second restart racing the
+	// session's, and a turn of the wheel would wait for a track that is not coming.
+	test("Previous well past the session's restart into its track sends previous to the session and no seek, and draws the same track from the start", async ({
 		page,
 		player,
 		isMobile,
@@ -991,6 +996,21 @@ test.describe("with playback control off, the transport of a tab in a session of
 				).length,
 			0,
 		);
+		const position = isMobile
+			? nowPlayingScreen(page).getByRole("slider", { name: POSITION })
+			: seekBar(page);
+		await expect
+			.poll(async () => Number(await position.getAttribute("aria-valuenow")))
+			.toBeLessThan(PAST_FIVE_SECONDS);
+		if (isMobile) {
+			await page.waitForTimeout(WHILE_A_TURN_WOULD_SHOW_MS);
+			await expect(nowPlayingScreen(page).locator("h1")).toHaveText(
+				titleOf(scene.cast.inTheSession),
+			);
+			await expect(
+				nowPlayingScreen(page).locator("[data-awaiting='true']"),
+			).toHaveCount(0);
+		}
 		expect(refused).toEqual([]);
 	});
 });

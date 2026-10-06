@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useInSession } from "@/domain/player/session";
 import { useAudiblePlayer } from "@/domain/player/usePlayer";
 import {
 	usePlaylists,
@@ -21,9 +22,10 @@ export function usePlayingFrom() {
 	);
 	const scratch = playlists.find(isScratchPlaylist) ?? null;
 	const landed = useLandedScratch(scratch);
+	const isInSession = useInSession();
 
 	return useMemo(() => {
-		if (!scratch) return null;
+		if (isInSession || !scratch) return null;
 
 		const held = scratchContentsOf(titledAsLanded(scratch, landed));
 		if (!held) return null;
@@ -36,5 +38,5 @@ export function usePlayingFrom() {
 			itemCount: scratch.itemCount,
 			isPlaying: activePlaylistId === scratch.id,
 		};
-	}, [scratch, activePlaylistId, t, landed]);
+	}, [isInSession, scratch, activePlaylistId, t, landed]);
 }

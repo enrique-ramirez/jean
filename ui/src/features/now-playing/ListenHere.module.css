@@ -149,6 +149,122 @@ button.face:focus-visible {
 	color: var(--on-accent);
 }
 
+.disc,
+.newDisc {
+	display: grid;
+	place-items: center;
+	width: 30px;
+	height: 30px;
+	border-radius: 50%;
+	font-size: 0.75rem;
+	font-weight: 700;
+	line-height: 1;
+}
+
+.disc {
+	background: color-mix(in oklab, var(--text) 11%, transparent);
+	color: var(--text);
+}
+
+.disc[data-hears="true"] {
+	background: var(--accent-text);
+	color: var(--on-accent);
+}
+
+.newDisc {
+	border: 1px dashed var(--border-strong);
+	color: var(--muted);
+}
+
+.words {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+}
+
+.sub {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	min-width: 0;
+	font-size: 0.6875rem;
+	line-height: 1.35;
+	color: var(--muted);
+}
+
+.mine {
+	flex: 0 0 auto;
+	font-weight: 600;
+	color: var(--accent-text);
+}
+
+.what {
+	overflow: hidden;
+	min-width: 0;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.mine + .what::before {
+	content: "· ";
+	color: var(--faint);
+}
+
+.count {
+	flex: 0 0 auto;
+	margin-left: auto;
+	font-variant-numeric: tabular-nums;
+}
+
+.row > .start {
+	grid-column: 1 / -1;
+}
+
+.listed {
+	row-gap: 1px;
+}
+
+.listed > .disc {
+	grid-row: span 2;
+}
+
+.listed > .sub {
+	grid-column: 2 / -1;
+}
+
+.ended .disc {
+	background: none;
+	box-shadow: inset 0 0 0 1px var(--border-strong);
+	color: var(--faint);
+}
+
+.rows > li:first-child:not(:only-child) {
+	position: relative;
+	margin-bottom: 9px;
+}
+
+.rows > li:first-child:not(:only-child)::after {
+	content: "";
+	position: absolute;
+	right: 8px;
+	bottom: -7px;
+	left: 8px;
+	height: 1px;
+	background: var(--border);
+}
+
+.button .openerDisc {
+	width: 21px;
+	height: 21px;
+	margin: -2px;
+	font-size: 0.625rem;
+}
+
+.button .openerDisc:not([data-hears="true"]) {
+	box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
 .title {
 	display: flex;
 	align-items: center;
@@ -241,6 +357,10 @@ button.face:focus-visible {
 	white-space: nowrap;
 }
 
+.ended .name {
+	color: var(--muted);
+}
+
 .note {
 	margin: -4px 0 4px;
 	padding: 0 12px 0 var(--indent);
@@ -251,6 +371,68 @@ button.face:focus-visible {
 
 .note[data-tone="failed"] {
 	color: var(--danger, var(--accent-text));
+}
+
+.standing {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	margin: 0 4px;
+	padding: 0 12px 6px 4px;
+	font-size: 0.6875rem;
+	line-height: 1.35;
+	text-wrap: pretty;
+	color: var(--muted);
+}
+
+.standing .mark {
+	height: 15px;
+	color: var(--muted);
+}
+
+.standing[data-tone="caution"] .mark {
+	color: var(--caution);
+}
+
+.private {
+	gap: 5px;
+	font-size: 0.6875rem;
+	font-weight: 550;
+	color: var(--muted);
+}
+
+.share {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-height: 44px;
+	margin: 4px 4px 0;
+	padding: 6px 4px 2px;
+	border-top: 1px solid oklch(var(--tint-l) var(--tint-c) var(--tint-h) / 0.32);
+}
+
+.share .mark {
+	color: var(--muted);
+}
+
+.share .words {
+	flex: 1;
+}
+
+.share label {
+	cursor: pointer;
+}
+
+.toggle {
+	display: grid;
+	place-items: center;
+	flex: 0 0 auto;
+	width: 44px;
+	height: 32px;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: none;
 }
 
 .fader {
@@ -327,6 +509,11 @@ button.face:focus-visible {
 	color: var(--muted);
 }
 
+.openerDisc ~ .badge {
+	top: calc(50% - 19px);
+	right: calc(50% - 19px);
+}
+
 .unblock {
 	display: flex;
 	align-items: center;
@@ -345,6 +532,12 @@ button.face:focus-visible {
 
 .unblock:hover {
 	background: var(--surface-sunken);
+}
+
+.listening[data-only-controls="true"] .mark,
+.listening[data-only-controls="true"] .name {
+	font-weight: 500;
+	color: var(--muted);
 }
 
 .level {
@@ -410,6 +603,14 @@ button.face:focus-visible {
 
 	.listener {
 		padding: 8px 12px 8px 8px;
+	}
+
+	.share {
+		min-height: 52px;
+	}
+
+	.toggle {
+		height: 44px;
 	}
 }
 

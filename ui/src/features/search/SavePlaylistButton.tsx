@@ -23,7 +23,7 @@ export function SavePlaylistButton({
 	library,
 	scratch,
 	holdsResults,
-	canWritePlaylists,
+	canSave,
 	isOpen,
 	onOpenChange,
 	onOpenPlaylist,
@@ -32,7 +32,7 @@ export function SavePlaylistButton({
 	library: Library;
 	scratch: ReturnType<typeof useScratchPlaylist>;
 	holdsResults: boolean;
-	canWritePlaylists: boolean;
+	canSave: boolean;
 	isOpen: boolean;
 	onOpenChange: (isOpen: boolean) => void;
 	onOpenPlaylist: (id: string) => void;
@@ -87,7 +87,7 @@ export function SavePlaylistButton({
 		if (title.trim().length > 0 && !save.isPending) save.mutate();
 	};
 
-	if (!canWritePlaylists) return null;
+	if (!canSave) return null;
 
 	return (
 		<Menu

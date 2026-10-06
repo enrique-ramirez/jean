@@ -43,26 +43,79 @@ test("a translation's inherited keys are not phrases", async (t) => {
 	assert.equal(localeState().missing, Object.keys(en).length - 1);
 });
 
-// Each phrase the picker draws for playing on another device. Spanish is held to these, and not to
-// every key in the English catalogue.
-const PLAYING_ELSEWHERE_PHRASES = [
+const PLAYING_ELSEWHERE_PHRASES: readonly string[] = [
 	"listen.closePicker",
+	"listen.control",
+	"listen.controlNamed",
+	"listen.controlling",
+	"listen.ended",
+	"listen.endedOwn",
+	"listen.endedUnknown",
+	"listen.goneBeforeJoin",
+	"listen.handBack",
+	"listen.join",
+	"listen.joinNamed",
+	"listen.joinRefused",
+	"listen.leave",
+	"listen.leaveNamed",
+	"listen.listenerCount",
+	"listen.listeningNow",
 	"listen.noSpeakers",
+	"listen.nobodyListening",
+	"listen.nobodyNow",
+	"listen.onStarted",
+	"listen.onlyListener",
+	"listen.playerBusy",
+	"listen.playingTrack",
+	"listen.private",
+	"listen.share",
+	"listen.shareOff",
+	"listen.shareOn",
+	"listen.skipped",
+	"listen.start",
+	"listen.startDetail",
+	"listen.takenBack",
+	"listen.withoutEffects",
 	"settings.playback.offerListening",
 	"settings.playback.offerListeningDetail",
 ];
 
-test("the Spanish catalogue holds every phrase the picker draws for playing on another device", () => {
-	const spanish = JSON.parse(
-		readFileSync(
-			new URL("../../public/locales/es.json", import.meta.url),
-			"utf8",
-		),
-	) as Record<string, unknown>;
+const spanish = JSON.parse(
+	readFileSync(
+		new URL("../../public/locales/es.json", import.meta.url),
+		"utf8",
+	),
+) as Record<string, unknown>;
 
+test("the Spanish catalogue holds every phrase the picker draws for playing on another device", () => {
 	const missing = PLAYING_ELSEWHERE_PHRASES.filter(
 		(key) =>
 			!Object.hasOwn(en, key) || !Object.hasOwn(spanish, key) || !spanish[key],
 	);
 	assert.deepEqual(missing, []);
+});
+
+const MECHANISM = /\b(?:engines?|detached|sessions?|sesi[oó]n|sesiones)\b/i;
+
+function wordings(value: unknown): string[] {
+	if (typeof value === "string") return [value];
+	if (value && typeof value === "object")
+		return Object.values(value).flatMap(wordings);
+	return [];
+}
+
+test("no phrase the picker draws for playing on another device names the mechanism, in English or Spanish", () => {
+	const naming = PLAYING_ELSEWHERE_PHRASES.flatMap((key) =>
+		(
+			[
+				["en", (en as Record<string, unknown>)[key]],
+				["es", spanish[key]],
+			] as const
+		).flatMap(([language, value]) =>
+			wordings(value)
+				.filter((wording) => MECHANISM.test(wording.replace(/\{[^}]*\}/g, "")))
+				.map((wording) => `${key} (${language}): ${wording}`),
+		),
+	);
+	assert.deepEqual(naming, []);
 });

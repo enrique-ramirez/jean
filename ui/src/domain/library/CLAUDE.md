@@ -2,7 +2,7 @@
 
 ## The scratch playlist
 
-- `foo_jean` answers the library, and no playlist stands in for it. Playing a set fills the component's scratch playlist, found by the role `foo_jean` marks (`jeanPlaylists.ts`) and never by its `#Jean` title. A user's playlist titled `#Jean…` is shown like any other.
+- `foo_jean` answers the library, and no playlist stands in for it. On the player, playing a set fills the component's scratch playlist (`ui/src/shared/api/README.md`, *What Jean does about playback*, says why), found by the role `foo_jean` marks (`jeanPlaylists.ts`) and never by its `#Jean` title; in a session nothing reads or writes it. A user's playlist titled `#Jean…` is shown like any other.
 - The scratch holds the last set played, not what is on screen. Filling it, asking whether it is a given set and reading the player's index in it share one key, bound once in `useViewPlayback`.
 - `Default Playlist` holds nothing of Jean's: selecting an album in foobar2000's library view replaces its contents.
 - Browsing and playing write nothing to a user's playlist; only an explicit edit does.
@@ -12,9 +12,8 @@
 ## Search
 
 - Search filters client-side and writes nothing. In `useLibrarySearch` the draft reaches only the field and its dropdown, and `query` moves on a commitment; nothing outside the field reads the draft.
-- Playing results materialises them into the scratch, once per set, for the reason `ui/src/shared/api/README.md`, *What Jean does about playback*, gives.
 - The scratch is hidden from the sidebar, the palette, the library and the routing fallback, so a reorder among visible rows is translated through the hidden one.
-- Dismissing a search empties the scratch unless the player is on it, and a GUID `useResolvedPlaylistId` has not resolved yet counts as playing.
+- On the player, dismissing a search empties the scratch unless the player is on it, and a GUID `useResolvedPlaylistId` has not resolved yet counts as playing.
 - A device trusts the title of its own last fill over the scratch's live title while the scratch's `structure` is the one that fill left (`useScratchPlaylist.ts`).
 - Escape backs out one rung per press (panel, edit, caret) and never ends the search. The draft reverts on a press outside (`useDismissable`), never on blur. Space is a character.
 

@@ -10,6 +10,7 @@ import type {
 import { useCacheOnly } from "@/shared/hooks/useCacheOnly";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { forgetHeard, rememberSnapshot } from "./audible";
+import { AUDIENCE_POLL_MS } from "./audience";
 import {
 	notePlayerAnswering,
 	notePlayerReached,
@@ -21,6 +22,7 @@ import {
 	listeningSnapshot,
 	notePlaybackState,
 } from "./listenerStore";
+import { watchForNobodyListening } from "./nobodyListening";
 import { followQueue, forgetQueue } from "./queue";
 import {
 	noteSessionGone,
@@ -237,6 +239,7 @@ async function applyPoll(
 	// Asked on every tick the player answers, not only on one that carries a change: a quiet player
 	// answers `304` forever, and a read lost under it has nothing else coming to carry its value.
 	follower.answered(origin);
+	void watchForNobodyListening(client, origin, result.kind !== "unchanged");
 	const answersNewerAsk = ask > drawn.drawn;
 	if (result.kind === "unchanged") {
 		if (answersNewerAsk && tag === drawn.tag) drawn.drawn = ask;
@@ -308,6 +311,7 @@ export function startPlayerPoll(
 ): () => void {
 	drawnAnswerOf(client).tag = null;
 	let inFlight = false;
+	let lastAskedAt = Number.NEGATIVE_INFINITY;
 	let lastGeneration: number | undefined;
 
 	const readCapabilities = () =>
@@ -319,14 +323,18 @@ export function startPlayerPoll(
 		lastGeneration = generation;
 	};
 
+	const isDueWhileHidden = (now: number) =>
+		isListening(listeningSnapshot().phase) ||
+		(sessionSnapshot().role === "controlling" &&
+			now - lastAskedAt >= AUDIENCE_POLL_MS.background);
+
 	const tick = async () => {
 		if (inFlight) return;
-		if (
-			document.visibilityState !== "visible" &&
-			!isListening(listeningSnapshot().phase)
-		)
+		const now = performance.now();
+		if (document.visibilityState !== "visible" && !isDueWhileHidden(now))
 			return;
 
+		lastAskedAt = now;
 		inFlight = true;
 		try {
 			await applyPoll(

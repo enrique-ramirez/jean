@@ -90,11 +90,12 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const scratch = playlists.find(isScratchPlaylist) ?? null;
 	const landed = useLandedScratch(scratch);
+	const isInSession = useInSession();
 
 	const remembered = useMemo(() => {
-		if (!scratch || scratch.itemCount === 0) return null;
+		if (isInSession || !scratch || scratch.itemCount === 0) return null;
 		return queryOfScratchPlaylist(titledAsLanded(scratch, landed)) || null;
-	}, [scratch, landed]);
+	}, [isInSession, scratch, landed]);
 
 	const restore = useCallback(() => {
 		setQuery((current) => current || remembered || "");
@@ -102,7 +103,6 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	}, [remembered]);
 
 	const canControlPlayback = useCanControlPlayback();
-	const isInSession = useInSession();
 	const canEmptyScratch = canControlPlayback && !isInSession;
 
 	const clear = useCallback(() => {

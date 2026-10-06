@@ -1,4 +1,10 @@
-import { ask, reach, refusalOf, type Schema } from "./client";
+import {
+	ask,
+	reach,
+	refusalOf,
+	type Schema,
+	type SessionScope,
+} from "./client";
 
 export type StateDocument = Schema["State"];
 
@@ -30,8 +36,9 @@ export async function fetchState(
 	origin: string,
 	tag: string | null,
 	signal?: AbortSignal,
+	scope?: SessionScope,
 ): Promise<StateResult> {
-	const answer = await reach(askState(origin, tag, signal), signal);
+	const answer = await reach(askState(origin, tag, signal, scope), signal);
 	if (!answer) return { ok: false, reason: "unreachable", detail: "" };
 	const { data, error, response } = answer;
 
@@ -57,6 +64,7 @@ const askState = (
 	origin: string,
 	tag: string | null,
 	signal: AbortSignal | undefined,
+	scope: SessionScope | undefined,
 ) =>
 	ask(
 		origin,
@@ -64,6 +72,7 @@ const askState = (
 		(api, init) =>
 			api.GET("/state", {
 				...init,
+				params: scope ? { query: scope } : undefined,
 				headers: tag ? { "If-None-Match": tag } : undefined,
 				cache: "no-store",
 			}),

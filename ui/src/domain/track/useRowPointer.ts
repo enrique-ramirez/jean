@@ -57,7 +57,7 @@ export function useRowPointer({
 	// and Safari but a plain MouseEvent in Firefox, where every desktop click would read as a tap.
 	const pointerType = useRef("mouse");
 
-	// A browser counts a click toward the next one's `detail` even when something stopped it before
+	// Blink counts a click toward the next one's `detail` even when something stopped it before
 	// it reached this list, or when its press landed elsewhere, such as on a scrim. So a repeat is
 	// also one whose press follows the last click this list heard, after a press this list heard.
 	const pressesSinceClick = useRef(0);

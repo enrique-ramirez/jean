@@ -59,7 +59,7 @@ test("a poll naming a session answers that session under player, and the player'
 		assert.deepEqual(answer.body[section], player.body[section], section);
 });
 
-test("naming no session, an empty one or engine reaches the player as before", async () => {
+test("naming no session, an empty one or engine acts on the player and leaves the session where it was", async () => {
 	const { state, session, scope } = await heardSession();
 	await playRow(scope, "p5", 0);
 	state.playItem("p7", 0);
@@ -596,7 +596,7 @@ test("in strict mode a request naming a session is served", async () => {
 	}
 });
 
-test("strict mode leaves every route that takes no session answering as before", async () => {
+test("strict mode answers every route that takes no session the way it does with strict mode off", async () => {
 	const state = fresh({ maxSessions: 8 });
 	const session = await create("device-a");
 	const routes: [string, string, unknown?][] = [

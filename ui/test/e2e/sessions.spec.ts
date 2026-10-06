@@ -3,6 +3,7 @@ import {
 	artistRoute,
 	genreRoute,
 } from "../../src/domain/track/routes.ts";
+import { PROBE_TIMEOUT_MS } from "../../src/shared/api/client.ts";
 import type { DetachedSession } from "../fake-api/sessions.ts";
 import { evaluate, type Track } from "../fake-api/state.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
@@ -11,6 +12,8 @@ import {
 	countPostsToSession,
 	coversFromTheComponent,
 	dragFrom,
+	dragTo,
+	drawing,
 	expect,
 	expectDisabledWithReason,
 	expectNothingRefusedSent,
@@ -24,6 +27,7 @@ import {
 	openSettings,
 	openSidebar,
 	playedFrom,
+	playingOn,
 	pressAndHold,
 	REASON,
 	REFUSED_ROUTES,
@@ -37,8 +41,11 @@ import {
 	sidebar,
 	statusBar,
 	test,
+	toasts,
+	tokenColourIn,
 	trackRow,
 	untilQuiet,
+	untilTheInstallIsKnown,
 	viewHeader,
 	withNoListOnScreen,
 } from "./fixtures.ts";
@@ -2097,6 +2104,328 @@ const LISTS: ListOfTracks[] = [
 	},
 ];
 
+const playingFromAnArtistSet = (player: FakePlayer) => {
+	const library = player.playlistById("p7")?.items ?? [];
+	const rows = library.flatMap((track, row) =>
+		field(track, "%artist%") === ARTIST ? [row] : [],
+	);
+	if (rows.length === 0) throw new Error(`the library holds no ${ARTIST}`);
+	const { id } = player.addPlaylist(`#Jean [artist: ${ARTIST}]`);
+	player.fooJean.ownPlaylists.scratch = id;
+	player.copyItems("p7", id, rows);
+	player.playItem(id, 0);
+};
+
+const sessionOfAnotherArtist = (player: FakePlayer) => {
+	const library = player.playlistById("p7")?.items ?? [];
+	const tracks = library.filter(
+		(track) =>
+			!JSON.stringify(track).toLowerCase().includes(QUERY) &&
+			field(track, "%artist%") !== ARTIST,
+	);
+	if (tracks.length < 2)
+		throw new Error(`the library holds too little besides ${ARTIST}`);
+	return {
+		playing: tracks[0],
+		session: sessionPlaying(player, tracks.slice(0, 2)),
+	};
+};
+
+const openInSessionAt = async (
+	route: string,
+	page: Page,
+	player: FakePlayer,
+	session: DetachedSession,
+) => {
+	await storeForThisTab(page, { id: session.id, listening: false });
+	const refused = refusalsFrom(page);
+	player.fooJean.strictSessions = true;
+	await page.goto(route);
+	return refused;
+};
+
+const sidebarRowNamed = (page: Page, name: string) =>
+	sidebar(page)
+		.getByRole("button")
+		.filter({ has: page.getByText(name, { exact: true }) });
+
+const untilTheSidebarIsDrawn = async (page: Page, player: FakePlayer) => {
+	await openSidebar(page);
+	await expect(sidebarRowNamed(page, "Favorites")).toBeVisible();
+	await untilQuiet(player);
+};
+
+const palette = (page: Page) => page.getByRole("dialog", { name: "Go to" });
+
+const paletteEntries = (page: Page) => palette(page).getByRole("option");
+
+const openPalette = async (page: Page) => {
+	await openLibrary(page);
+	await page.keyboard.press("g");
+	await expect(palette(page)).toBeVisible();
+};
+
+const everyPlaylistAndAllMusic = (player: FakePlayer) =>
+	player.playlists.length;
+
+const saveAsPlaylist = (page: Page) =>
+	viewHeader(page).getByRole("button", { name: /Save as playlist/ });
+
+test.describe("in a tab in a session of its own, while the player plays from a set Jean filled", () => {
+	test.use(IN_SESSIONS);
+
+	test("the sidebar draws no row for the player's set", async ({
+		page,
+		player,
+	}) => {
+		playingFromAnArtistSet(player);
+		const { playing, session } = sessionOfAnotherArtist(player);
+		const refused = await openInSession(page, player, session);
+		await expect(statusBar(page)).toContainText(titleOf(playing));
+
+		await untilTheSidebarIsDrawn(page, player);
+
+		expect(await sidebarRowNamed(page, ARTIST).count()).toBe(0);
+		expect(refused).toEqual([]);
+	});
+
+	test("on the player, the sidebar draws a row for the set it plays", async ({
+		page,
+		player,
+	}) => {
+		playingFromAnArtistSet(player);
+		await withNoListOnScreen(page);
+
+		await openSidebar(page);
+		await expect(sidebarRowNamed(page, ARTIST)).toBeVisible();
+	});
+
+	test("the sidebar draws no search row named for the player's search", async ({
+		page,
+		player,
+	}) => {
+		playingFromTheScratch(player);
+		const { playing, session } = sessionOfAnotherArtist(player);
+		const refused = await openInSessionAt("/#/home", page, player, session);
+		await expect(statusBar(page)).toContainText(titleOf(playing));
+
+		await untilTheSidebarIsDrawn(page, player);
+
+		expect(await sidebarRowNamed(page, QUERY).count()).toBe(0);
+		expect(refused).toEqual([]);
+	});
+
+	test("on the player, the sidebar draws the search it plays under its query", async ({
+		page,
+		player,
+	}) => {
+		playingFromTheScratch(player);
+		await page.goto("/#/home");
+
+		await openSidebar(page);
+		await expect(sidebarRowNamed(page, QUERY)).toBeVisible();
+	});
+
+	test("the palette offers no entry for the player's set", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "the palette is opened by a key, and a phone has none");
+
+		playingFromAnArtistSet(player);
+		const { playing, session } = sessionOfAnotherArtist(player);
+		const refused = await openInSession(page, player, session);
+		await expect(statusBar(page)).toContainText(titleOf(playing));
+
+		await openPalette(page);
+		await expect(
+			paletteEntries(page).filter({ hasText: "Favorites" }),
+		).toBeVisible();
+
+		const entries = await paletteEntries(page).allTextContents();
+		expect(entries).not.toContainEqual(expect.stringContaining(ARTIST));
+		expect(entries).toHaveLength(everyPlaylistAndAllMusic(player));
+		expect(refused).toEqual([]);
+	});
+
+	test("on the player, the palette offers the set it plays first", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "the palette is opened by a key, and a phone has none");
+
+		playingFromAnArtistSet(player);
+
+		await openPalette(page);
+		await expect(paletteEntries(page)).toHaveCount(
+			everyPlaylistAndAllMusic(player) + 1,
+		);
+		await expect(paletteEntries(page).first()).toHaveText(
+			new RegExp(`^${ARTIST}`),
+		);
+	});
+
+	test("the search route, opened fresh, restores no search from the player's", async ({
+		page,
+		player,
+	}) => {
+		playingFromTheScratch(player);
+		const { playing, session } = sessionOfAnotherArtist(player);
+		const refused = await openInSession(page, player, session);
+		await expect(statusBar(page)).toContainText(titleOf(playing));
+		await untilTheSidebarIsDrawn(page, player);
+
+		await revealSearch(page);
+		await expect(searchField(page)).toHaveValue("");
+		expect(
+			await page.getByRole("heading", { level: 1, name: QUERY }).count(),
+		).toBe(0);
+		expect(await page.locator('main [role="row"]').count()).toBe(0);
+		expect(refused).toEqual([]);
+	});
+
+	test("on the player, the search route opened fresh restores the search it plays", async ({
+		page,
+		player,
+	}) => {
+		playingFromTheScratch(player);
+		await page.goto(ROUTE_WITH_NO_LIST);
+
+		await expect(
+			page.getByRole("heading", { level: 1, name: QUERY }),
+		).toBeVisible();
+		await expect(trackRow(page, 0)).toBeAttached();
+		await revealSearch(page);
+		await expect(searchField(page)).toHaveValue(QUERY);
+	});
+
+	test("search results draw no Save as playlist", async ({ page, player }) => {
+		playingFromTheScratch(player);
+		const { playing, session } = sessionOfAnotherArtist(player);
+		const refused = await openInSession(page, player, session);
+		await expect(statusBar(page)).toContainText(titleOf(playing));
+
+		await searchFor(page, QUERY);
+		await expect(trackRow(page, 0)).toBeAttached();
+		await expect(
+			viewHeader(page).getByRole("button", { name: "Play", exact: true }),
+		).toBeVisible();
+		await untilQuiet(player);
+
+		expect(await saveAsPlaylist(page).count()).toBe(0);
+		expect(refused).toEqual([]);
+	});
+
+	test("on the player, search results draw Save as playlist", async ({
+		page,
+		player,
+	}) => {
+		playingFromTheScratch(player);
+		await page.goto("/#/home");
+
+		await searchFor(page, QUERY);
+		await expect(saveAsPlaylist(page)).toBeVisible();
+	});
+
+	test("the save key on search results opens nothing, then or once the session has ended", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "the key needs a keyboard, and a phone has none");
+
+		playingFromTheScratch(player);
+		const { playing, session } = sessionOfAnotherArtist(player);
+		const refused = await openInSession(page, player, session);
+		await expect(statusBar(page)).toContainText(titleOf(playing));
+		await searchFor(page, QUERY);
+		await expect(trackRow(page, 0)).toBeAttached();
+
+		await searchField(page).click();
+		await searchField(page).press("End");
+		await page.keyboard.press("ControlOrMeta+s");
+		await page.keyboard.press("x");
+		await expect(searchField(page)).toHaveValue(`${QUERY}x`);
+		await untilQuiet(player);
+
+		const nameField = page.getByRole("textbox", { name: "Playlist name" });
+		expect(await nameField.count()).toBe(0);
+		expect(refused).toEqual([]);
+
+		player.fooJean.strictSessions = false;
+		player.endSession(session.id);
+		await expect(saveAsPlaylist(page)).toBeVisible();
+		await untilQuiet(player);
+
+		expect(await nameField.count()).toBe(0);
+		await expect(saveAsPlaylist(page)).toHaveAttribute(
+			"aria-expanded",
+			"false",
+		);
+	});
+});
+
+const watchTheRoute = (page: Page) =>
+	page.addInitScript(() => {
+		const visited = [location.hash];
+		Object.assign(window, { routesVisited: visited });
+		addEventListener("hashchange", () => visited.push(location.hash));
+	});
+
+const routesVisited = (page: Page) =>
+	page.evaluate(
+		() => (window as unknown as { routesVisited: string[] }).routesVisited,
+	);
+
+test.describe("a tab in a session of its own, loaded at its root", () => {
+	test.use(IN_SESSIONS);
+
+	for (const [state, heard] of [
+		["plays", true],
+		["is paused on", false],
+	] as const)
+		test(`opens the now-playing screen on the track the session ${state}`, async ({
+			page,
+			player,
+		}) => {
+			const { cast, session } = setTheScene(player, { heard });
+			const refused = await openInSessionAt("/", page, player, session);
+
+			await expect(nowPlayingScreen(page)).toBeVisible();
+			await expect(nowPlayingScreen(page)).toContainText(
+				titleOf(cast.inTheSession),
+			);
+			expect(refused).toEqual([]);
+		});
+
+	test("stays at the root where the session has nothing playing, though the player plays", async ({
+		page,
+		player,
+	}) => {
+		setTheScene(player);
+		const session = player.sessions.create({ deviceId: DEVICE, name: null });
+		await watchTheRoute(page);
+		const refused = await openInSessionAt("/", page, player, session);
+
+		await expect(statusBar(page)).toContainText("Nothing playing");
+		await expect
+			.poll(
+				() =>
+					statePolls(player).filter(
+						({ session: named }) => named === session.id,
+					).length,
+			)
+			.toBeGreaterThan(2);
+		await untilQuiet(player);
+
+		expect(await routesVisited(page)).toEqual([""]);
+		expect(await nowPlayingScreen(page).count()).toBe(0);
+		expect(refused).toEqual([]);
+	});
+});
+
 test.describe("the playing row, in a tab in a session of its own", () => {
 	test.use(IN_SESSIONS);
 
@@ -2321,6 +2650,1999 @@ test.describe("with Playback follows cursor on, All music in a tab in a session 
 
 		await expectSettlesAt(player, () => playsSince(player, from), []);
 		expect(sessionPlays(session)).toBe(titleOf(next));
+		expect(refused).toEqual([]);
+	});
+});
+
+const DEVICE_NAME = "Den laptop";
+
+const OFFERING_SESSIONS = {
+	fooJean: { maxSessions: 4, canCreateSessions: true },
+	settings: { "jean.deviceId": DEVICE, "jean.deviceName": DEVICE_NAME },
+};
+
+const PLAYER_NAME = "foobar2000";
+const START = "Play something else here";
+const START_DETAIL = `${PLAYER_NAME} carries on as it is.`;
+const LISTENING_HERE = "Listening here";
+const LEAVE_NAMED = `Leave, and go back to ${PLAYER_NAME}`;
+const ONLY_LISTENER = "Only this device is listening, so leaving ends it.";
+const STARTED_HERE = `Playing what ${DEVICE_NAME} started`;
+const THIS_DEVICE = "This device";
+const ON_THE_PLAYER_NAME = "Choose where to play";
+
+const opener = (page: Page) =>
+	statusBar(page).getByRole("button", {
+		name: /^(Choose where to play|Playing on this device|Playing what .+ started)/,
+	});
+
+const openPicker = async (page: Page) => {
+	await opener(page).click();
+	await expect(playingOn(page)).toBeVisible();
+};
+
+const rows = (page: Page) =>
+	playingOn(page).getByRole("listitem").and(page.locator("li:not(li li)"));
+
+const playerRowOf = (page: Page) =>
+	rows(page).filter({ has: page.getByText(PLAYER_NAME, { exact: true }) });
+
+const ownRow = (page: Page) => rows(page).filter({ hasText: THIS_DEVICE });
+
+const startButton = (page: Page) =>
+	playingOn(page).getByRole("button", { name: START, exact: true });
+
+const leaveButton = (page: Page) =>
+	playingOn(page).getByRole("button", { name: LEAVE_NAMED, exact: true });
+
+const thePlayersFace = (page: Page) =>
+	playingOn(page).getByRole("button", { name: "Listen here", exact: true });
+
+const waysOut = (scope: Locator) =>
+	scope.getByRole("button", {
+		name: /^(Leave\b|Stop\b|Stop listening here)/,
+	});
+
+// WAI-ARIA reads `aria-current="false"` as not current, the same as no attribute.
+const currentRows = (page: Page) =>
+	rows(page).and(page.locator('[aria-current]:not([aria-current="false"])'));
+
+const startedBy = (player: FakePlayer) => {
+	const [started, ...more] = player.sessions.list();
+	if (!started || more.length > 0)
+		throw new Error(`the fake holds ${player.sessions.list().length} sessions`);
+	return started;
+};
+
+const thePlayerPlays = (player: FakePlayer) => {
+	const cast = castOf(player);
+	player.playItem("p7", cast.rowOf(cast.atThePlayer));
+	return cast;
+};
+
+const howItPlays = (session: DetachedSession) => ({
+	track: sessionPlays(session),
+	playback: session.playback(),
+	position: session.position,
+});
+
+const listensIn = (session: DetachedSession) =>
+	session.roster().some((device) => device.deviceId === DEVICE);
+
+const connectionsIn = (session: DetachedSession) =>
+	session.roster().find((device) => device.deviceId === DEVICE)?.connections ??
+	0;
+
+const postsTo = (player: FakePlayer, route: string) =>
+	player.requests.filter(
+		(entry) => entry.method === "POST" && entry.path.split("?")[0] === route,
+	);
+
+const streamsOpened = (player: FakePlayer) =>
+	player.requests.filter(
+		(entry) =>
+			entry.method === "GET" && entry.path.split("?")[0] === "/api/stream",
+	).length;
+
+const strictOnceSettled = async (player: FakePlayer) => {
+	await untilQuiet(player);
+	player.fooJean.strictSessions = true;
+	return {
+		release() {
+			player.fooJean.strictSessions = false;
+		},
+	};
+};
+
+const browserSaw = (page: Page) => {
+	const seen: string[] = [];
+	const routeOf = (request: { method: () => string; url: () => string }) =>
+		`${request.method()} ${new URL(request.url()).pathname}`;
+	page.on("response", (response) => {
+		if (routeOf(response.request()) === "POST /api/sessions")
+			seen.push("created");
+	});
+	page.on("request", (request) => {
+		const route = routeOf(request);
+		if (route === "POST /api/stream/ticket") seen.push("ticket");
+		if (route === "POST /api/stream/leave") seen.push("leave");
+		if (route === "GET /api/stream") seen.push("stream");
+	});
+	const letGo = (request: { method: () => string; url: () => string }) => {
+		if (routeOf(request) === "GET /api/stream") seen.push("stream closed");
+	};
+	page.on("requestfailed", letGo);
+	page.on("requestfinished", letGo);
+	return seen;
+};
+
+const openOnThePlayer = async (page: Page) => {
+	const refused = refusalsFrom(page);
+	await page.goto(ROUTE_WITH_NO_LIST);
+	await expect(opener(page)).toBeVisible();
+	return refused;
+};
+
+const startHere = async (page: Page, player: FakePlayer) => {
+	await openPicker(page);
+	await expect(startButton(page)).toBeVisible();
+	await startButton(page).click();
+	await expect.poll(() => player.sessions.list().length).toBe(1);
+	const started = startedBy(player);
+	await expect.poll(() => listensIn(started)).toBe(true);
+	return started;
+};
+
+const inStartedSession = async (page: Page, player: FakePlayer) => {
+	const refused = await openOnThePlayer(page);
+	const started = await startHere(page, player);
+	const strict = await strictOnceSettled(player);
+	return { strict, refused, started };
+};
+
+const PAST_THE_SECOND_LEAVE_MS = 3_000;
+
+test.describe("the start row, where sessions are offered", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test(`is the picker's last row, a button reading "${START}" over "${START_DETAIL}", with the player's row still first`, async ({
+		page,
+		player,
+	}) => {
+		await openOnThePlayer(page);
+		await openPicker(page);
+
+		await expect(rows(page)).toHaveCount(2);
+		await expect(
+			rows(page).first().getByText(PLAYER_NAME, { exact: true }),
+		).toBeVisible();
+		await expect(rows(page).last().getByRole("button")).toHaveAccessibleName(
+			START,
+		);
+		await expect(rows(page).last()).toContainText(START_DETAIL);
+		await expect(startButton(page)).toBeVisible();
+		await untilQuiet(player);
+		expect(player.sessions.list()).toEqual([]);
+	});
+});
+
+test.describe("the start row, where the install lets no session be created", () => {
+	test.use({
+		...OFFERING_SESSIONS,
+		fooJean: { maxSessions: 4, canCreateSessions: false },
+	});
+
+	test("is not drawn, and the picker holds the player's row alone", async ({
+		page,
+		player,
+	}) => {
+		await openOnThePlayer(page);
+		await untilTheInstallIsKnown(player);
+		await openPicker(page);
+
+		await expect(thePlayersFace(page)).toBeVisible();
+		await expect(rows(page)).toHaveCount(1);
+		await expect(playingOn(page).getByText(START)).toHaveCount(0);
+		await expect(playingOn(page).getByText(START_DETAIL)).toHaveCount(0);
+	});
+});
+
+test.describe("the start row, where the install cannot stream", () => {
+	test.use({
+		...OFFERING_SESSIONS,
+		fooJean: { maxSessions: 4, canCreateSessions: true, canStream: false },
+	});
+
+	test("is nowhere, since the picker is not drawn at all", async ({
+		page,
+		player,
+	}) => {
+		await page.goto(ROUTE_WITH_NO_LIST);
+		await expect(statusBar(page)).toBeVisible();
+		await untilTheInstallIsKnown(player);
+
+		await expect(opener(page)).toHaveCount(0);
+		await expect(page.getByText(START)).toHaveCount(0);
+	});
+});
+
+test.describe("starting from the picker", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test("sends one create carrying this device's id and name, then one ticket naming what it made, and opens the stream in it", async ({
+		page,
+		player,
+	}) => {
+		const refused = await openOnThePlayer(page);
+		const order = browserSaw(page);
+
+		const started = await startHere(page, player);
+		const strict = await strictOnceSettled(player);
+
+		await expectSettlesAt(
+			player,
+			() => postsTo(player, "/api/sessions").map((entry) => entry.body),
+			[{ deviceId: DEVICE, name: DEVICE_NAME }],
+		);
+		expect(postsTo(player, "/api/stream/ticket").length).toBe(1);
+		expect(countPostsToSession(player, "/api/stream/ticket", started.id)).toBe(
+			1,
+		);
+		expect(postsTo(player, "/api/stream/ticket")[0].body).toMatchObject({
+			deviceId: DEVICE,
+		});
+		expect(
+			order.filter((step) => step !== "stream closed").slice(0, 3),
+		).toEqual(["created", "ticket", "stream"]);
+		expect(listensIn(started)).toBe(true);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("puts the page in what it started: its poll names it and this device, and the tab keeps it as listening", async ({
+		page,
+		player,
+	}) => {
+		const { strict, refused, started } = await inStartedSession(page, player);
+
+		await expect.poll(() => statePolls(player).at(-1)).toEqual(inThe(started));
+		await expect
+			.poll(async () => JSON.parse((await storedForThisTab(page)) ?? "null"))
+			.toEqual({ id: started.id, listening: true });
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("sends nothing to the player and moves nothing it holds", async ({
+		page,
+		player,
+	}) => {
+		const cast = thePlayerPlays(player);
+		const refused = await openOnThePlayer(page);
+		await expect(statusBar(page)).toContainText(titleOf(cast.atThePlayer));
+		await untilQuiet(player);
+		const before = heldAtThePlayer(player);
+
+		await startHere(page, player);
+		const strict = await strictOnceSettled(player);
+
+		await expectThePlayerUntouched(player, before);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("leaves the picker open, the desktop's popover and the phone's sheet alike", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const { strict, refused } = await inStartedSession(page, player);
+
+		await expect(leaveButton(page)).toBeVisible();
+		await untilQuiet(player);
+		await expect(playingOn(page)).toBeVisible();
+		if (isMobile)
+			await expect(
+				page.getByRole("dialog", { name: "Playing on" }),
+			).toBeVisible();
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+});
+
+test.describe("starting from the picker while the create is slow to answer", () => {
+	test.use({
+		...OFFERING_SESSIONS,
+		fooJean: {
+			...OFFERING_SESSIONS.fooJean,
+			routeLatency: { "POST /api/sessions": { ms: 1_000 } },
+		},
+	});
+
+	test("a second press before the answer sends no second create", async ({
+		page,
+		player,
+	}) => {
+		const refused = await openOnThePlayer(page);
+		await openPicker(page);
+
+		await startButton(page).click();
+		await expect.poll(() => postsTo(player, "/api/sessions").length).toBe(1);
+		await startButton(page).click();
+
+		await expect.poll(() => player.sessions.list().length).toBe(1);
+		await expect.poll(() => listensIn(startedBy(player))).toBe(true);
+		const strict = await strictOnceSettled(player);
+		await expectSettlesAt(
+			player,
+			() => postsTo(player, "/api/sessions").length,
+			1,
+		);
+		expect(player.sessions.list()).toHaveLength(1);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+});
+
+test.describe("this device's own row, while the page listens to what it started", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test(`comes after the player's row and before the start row, carries this device's name and "${THIS_DEVICE}", and is the row this tab is in`, async ({
+		page,
+		player,
+	}) => {
+		const { strict, refused } = await inStartedSession(page, player);
+
+		await expect(rows(page)).toHaveCount(3);
+		await expect(rows(page).nth(1)).toContainText(DEVICE_NAME);
+		await expect(rows(page).nth(1)).toContainText(THIS_DEVICE);
+		await expect(ownRow(page)).toContainText(DEVICE_NAME);
+		await expect(currentRows(page)).toHaveCount(1);
+		await expect(currentRows(page)).toContainText(THIS_DEVICE);
+		await expect(rows(page).last().getByRole("button")).toHaveAccessibleName(
+			START,
+		);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("its face is no button, since this device hears it", async ({
+		page,
+		player,
+	}) => {
+		const { strict, refused } = await inStartedSession(page, player);
+
+		await expect(ownRow(page)).toBeVisible();
+		await expect(
+			ownRow(page).getByRole("button").filter({ hasText: DEVICE_NAME }),
+		).toHaveCount(0);
+		await expect(
+			ownRow(page).getByRole("button", { name: /listen/i }),
+		).toHaveCount(0);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test(`its listening line reads "${LISTENING_HERE}" with exactly one way out, Leave, named "${LEAVE_NAMED}"`, async ({
+		page,
+		player,
+	}) => {
+		const { strict, refused } = await inStartedSession(page, player);
+
+		await expect(ownRow(page)).toContainText(LISTENING_HERE);
+		await expect(waysOut(ownRow(page))).toHaveCount(1);
+		await expect(waysOut(playingOn(page))).toHaveCount(1);
+		await expect(waysOut(ownRow(page))).toHaveAccessibleName(LEAVE_NAMED);
+		await expect(waysOut(ownRow(page))).toHaveText("Leave");
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test(`says "${ONLY_LISTENER}" while nobody else listens`, async ({
+		page,
+		player,
+	}) => {
+		const { strict, refused } = await inStartedSession(page, player);
+
+		await expect(ownRow(page).getByText(ONLY_LISTENER)).toBeVisible();
+		await expect(playingOn(page).getByText(ONLY_LISTENER)).toHaveCount(1);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("does not say leaving ends it while another device listens too", async ({
+		page,
+		player,
+	}) => {
+		const { strict, refused, started } = await inStartedSession(page, player);
+		player.addSessionListener(started.id, ANOTHER_DEVICE);
+
+		await expect(ownRow(page).getByText("Also listening")).toBeVisible();
+		await expect(playingOn(page).getByText(ONLY_LISTENER)).toHaveCount(0);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("on a phone, names what it plays once something plays in it", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(
+			!isMobile,
+			"the desktop's popover leaves the status bar in view, and nothing decides this row's second line there",
+		);
+		const cast = thePlayerPlays(player);
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await expect(ownRow(page)).toBeVisible();
+
+		started.play([cast.inTheSession, cast.nextInTheSession], 0);
+
+		await expect(ownRow(page)).toContainText(titleOf(cast.inTheSession));
+		await expect(ownRow(page)).toContainText(
+			field(cast.inTheSession, "%artist%"),
+		);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+});
+
+test.describe("the player's row while the page is in what it started", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test("is still first, offers no Listen here, and is not the row this tab is in; the start row is still last", async ({
+		page,
+		player,
+	}) => {
+		const { strict, refused } = await inStartedSession(page, player);
+
+		await expect(ownRow(page)).toBeVisible();
+		await expect(
+			rows(page).first().getByText(PLAYER_NAME, { exact: true }),
+		).toBeVisible();
+		await expect(playingOn(page).getByText("Listen here")).toHaveCount(0);
+		await expect(currentRows(page)).toHaveCount(1);
+		await expect(currentRows(page)).not.toContainText(PLAYER_NAME, {
+			useInnerText: true,
+		});
+		await expect(startButton(page)).toBeVisible();
+		await expect(rows(page).last().getByRole("button")).toHaveAccessibleName(
+			START,
+		);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("its face is no button", async ({ page, player }) => {
+		const { strict, refused } = await inStartedSession(page, player);
+
+		await expect(ownRow(page)).toBeVisible();
+		await expect(playerRowOf(page)).toHaveCount(1);
+		await expect(
+			playerRowOf(page).getByRole("button").filter({ hasText: PLAYER_NAME }),
+		).toHaveCount(0);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("its fader moves the player, naming no session, and what the page started stays as it was", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const cast = thePlayerPlays(player);
+		const { strict, refused, started } = await inStartedSession(page, player);
+		started.play([cast.inTheSession, cast.nextInTheSession], 0);
+		await expect(ownRow(page)).toBeVisible();
+		await untilQuiet(player);
+		const asItPlayed = {
+			track: sessionPlays(started),
+			playback: started.playback(),
+			position: started.position,
+		};
+		const volumeBefore = player.player.volume.value;
+		const volumesBefore = postsTo(player, "/api/volume").length;
+
+		const fader = playerRowOf(page).getByRole("slider", {
+			name: `Volume on ${PLAYER_NAME}`,
+		});
+		await expect(fader).toBeVisible();
+		if (isMobile) {
+			const box = (await fader.boundingBox())!;
+			await fader.tap({ position: { x: box.width * 0.2, y: box.height / 2 } });
+		} else await dragTo(page, fader, 0.2);
+
+		await expect
+			.poll(() => postsTo(player, "/api/volume").length)
+			.toBeGreaterThan(volumesBefore);
+		await untilQuiet(player);
+		expect(
+			postsTo(player, "/api/volume").map(
+				(entry) => scopeIn(entry.path).session,
+			),
+		).toEqual(postsTo(player, "/api/volume").map(() => null));
+		expect(player.player.volume.value).not.toBe(volumeBefore);
+		expect({
+			track: sessionPlays(started),
+			playback: started.playback(),
+			position: started.position,
+		}).toEqual(asItPlayed);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+});
+
+test.describe("the opener, as the page starts and leaves", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test(`is named "${STARTED_HERE}" while the page is in what it started, and as today on the player`, async ({
+		page,
+		player,
+	}) => {
+		const refused = await openOnThePlayer(page);
+		await expect(opener(page)).toHaveAccessibleName(ON_THE_PLAYER_NAME);
+
+		await startHere(page, player);
+		const strict = await strictOnceSettled(player);
+		await expect(opener(page)).toHaveAccessibleName(STARTED_HERE);
+
+		strict.release();
+		await leaveButton(page).click();
+		await expect.poll(() => player.sessions.list()).toEqual([]);
+		await expect(opener(page)).toHaveAccessibleName(ON_THE_PLAYER_NAME);
+		expect(refused).toEqual([]);
+	});
+});
+
+test.describe("leaving what this device started", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test("Leave lets go of the stream before it asks to leave, and what it started ends", async ({
+		page,
+		player,
+	}) => {
+		const { strict, started } = await inStartedSession(page, player);
+		const order = browserSaw(page);
+
+		strict.release();
+		await leaveButton(page).click();
+
+		await expectSettlesAt(player, () => player.sessions.find(started.id), null);
+		expect(order.filter((step) => step !== "stream").slice(0, 2)).toEqual([
+			"stream closed",
+			"leave",
+		]);
+		expect(countPostsToSession(player, "/api/stream/leave", started.id)).toBe(
+			postsTo(player, "/api/stream/leave").length,
+		);
+	});
+
+	test("Leave puts the page back on the player without listening: its poll names no session, the tab keeps nothing, and no ticket or stream is taken for the player", async ({
+		page,
+		player,
+	}) => {
+		const { strict, started } = await inStartedSession(page, player);
+		await untilQuiet(player);
+		const opened = streamsOpened(player);
+
+		strict.release();
+		await leaveButton(page).click();
+
+		await expect.poll(() => player.sessions.find(started.id)).toBeNull();
+		await expect.poll(() => statePolls(player).at(-1)).toEqual(ON_THE_PLAYER);
+		await expect.poll(() => storedForThisTab(page)).toBeNull();
+		await expectSettlesAt(
+			player,
+			() => countPostsToSession(player, "/api/stream/ticket", "engine"),
+			0,
+		);
+		expect(streamsOpened(player)).toBe(opened);
+	});
+
+	test("after Leave the picker offers the player's face again and the start row, and nothing was sent to the player", async ({
+		page,
+		player,
+	}) => {
+		const cast = thePlayerPlays(player);
+		await openOnThePlayer(page);
+		await expect(statusBar(page)).toContainText(titleOf(cast.atThePlayer));
+		await untilQuiet(player);
+		const before = heldAtThePlayer(player);
+		const started = await startHere(page, player);
+		const strict = await strictOnceSettled(player);
+
+		strict.release();
+		await leaveButton(page).click();
+
+		await expect.poll(() => player.sessions.find(started.id)).toBeNull();
+		await expect(thePlayersFace(page)).toBeVisible();
+		await expect(startButton(page)).toBeVisible();
+		await expect(rows(page)).toHaveCount(2);
+		await expect(currentRows(page)).toContainText(PLAYER_NAME);
+		await expectThePlayerUntouched(player, before);
+	});
+});
+
+test.describe("a page listening to what it started, loaded again", () => {
+	test.use(OFFERING_SESSIONS);
+
+	const STREAM_ROUTES = new Set([
+		"POST /api/stream/ticket",
+		"GET /api/stream",
+		"POST /api/stream/leave",
+	]);
+
+	const streamAsks = (player: FakePlayer) =>
+		player.requests
+			.map((entry) => `${entry.method} ${entry.path.split("?")[0]}`)
+			.filter((route) => STREAM_ROUTES.has(route));
+
+	test("names it from its first poll, and sends no ticket, opens no stream and sends no leave", async ({
+		page,
+		player,
+	}) => {
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await untilQuiet(player);
+		const asked = streamAsks(player).length;
+		const polls = statePollsSentBy(page);
+
+		await page.reload();
+		await expect(opener(page)).toBeVisible();
+		await expect.poll(() => polls.length).toBeGreaterThan(1);
+
+		expect(polls).toEqual(polls.map(() => inThe(started)));
+		await expectSettlesAt(player, () => streamAsks(player).length, asked);
+		expect(player.sessions.find(started.id)).toBe(started);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("offers Start playing on its row's listening line, and pressing it takes one ticket naming it and opens the stream", async ({
+		page,
+		player,
+	}) => {
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await page.reload();
+		await openPicker(page);
+		await untilQuiet(player);
+		const tickets = postsTo(player, "/api/stream/ticket").length;
+
+		await expect(ownRow(page)).toContainText(LISTENING_HERE);
+		const startPlaying = ownRow(page).getByRole("button", {
+			name: "Start playing",
+			exact: true,
+		});
+		await expect(startPlaying).toBeVisible();
+		await startPlaying.click();
+
+		await expect.poll(() => listensIn(started)).toBe(true);
+		await expectSettlesAt(
+			player,
+			() => postsTo(player, "/api/stream/ticket").length,
+			tickets + 1,
+		);
+		expect(countPostsToSession(player, "/api/stream/ticket", started.id)).toBe(
+			2,
+		);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+});
+
+test.describe("a second page of the browser that started something", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test("opens on the player while the first page stays in what it started", async ({
+		page,
+		player,
+	}) => {
+		const firstPagePolls = statePollsSentBy(page);
+		const { strict, started } = await inStartedSession(page, player);
+
+		strict.release();
+		const second = await page.context().newPage();
+		const secondPagePolls = statePollsSentBy(second);
+		await second.goto(ROUTE_WITH_NO_LIST);
+		await expect(opener(second)).toHaveAccessibleName(ON_THE_PLAYER_NAME);
+
+		expect(await storedForThisTab(second)).toBeNull();
+		const firstFrom = firstPagePolls.length;
+		await expect.poll(() => secondPagePolls.length).toBeGreaterThan(2);
+		await expect.poll(() => firstPagePolls.length).toBeGreaterThan(firstFrom);
+
+		expect(secondPagePolls.filter((poll) => poll.session !== null)).toEqual([]);
+		expect(firstPagePolls.slice(firstFrom)).toEqual(
+			firstPagePolls.slice(firstFrom).map(() => inThe(started)),
+		);
+		expect(listensIn(started)).toBe(true);
+	});
+});
+
+const listeningBeside = async (
+	page: Page,
+	player: FakePlayer,
+	session: DetachedSession,
+) => {
+	const beside = await page.context().newPage();
+	await storeForThisTab(beside, { id: session.id, listening: true });
+	const refused = refusalsFrom(beside);
+	const polls = statePollsSentBy(beside);
+	await beside.goto(ROUTE_WITH_NO_LIST);
+	await openPicker(beside);
+	await playingOn(beside)
+		.getByRole("button", { name: "Start playing", exact: true })
+		.click();
+	return { beside, refused, polls };
+};
+
+test.describe("two pages of one browser listening to what one of them started", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test("the first page's Leave ends nothing, leaves the second page's stream and poll on it, and raises no toast saying it ended", async ({
+		page,
+		player,
+	}) => {
+		await watchTheToasts(page);
+		const cast = castOf(player);
+		const { strict, started } = await inStartedSession(page, player);
+		started.play([cast.inTheSession, cast.nextInTheSession], 0);
+		const { refused, polls } = await listeningBeside(page, player, started);
+		await expect.poll(() => connectionsIn(started)).toBe(2);
+		await untilQuiet(player);
+		const tickets = countPostsToSession(
+			player,
+			"/api/stream/ticket",
+			started.id,
+		);
+		const asItPlayed = howItPlays(started);
+
+		strict.release();
+		await leaveButton(page).click();
+		await expect(thePlayersFace(page)).toBeVisible();
+		await expect
+			.poll(() => countPostsToSession(player, "/api/stream/leave", started.id))
+			.toBeGreaterThan(0);
+		await page.waitForTimeout(PAST_THE_SECOND_LEAVE_MS);
+		await untilQuiet(player);
+		const from = polls.length;
+		await expect.poll(() => polls.length).toBeGreaterThan(from + 1);
+
+		expect(player.sessions.find(started.id)).toBe(started);
+		expect(connectionsIn(started)).toBe(1);
+		expect(howItPlays(started)).toEqual(asItPlayed);
+		expect(countPostsToSession(player, "/api/stream/ticket", started.id)).toBe(
+			tickets,
+		);
+		expect(polls.slice(from)).toEqual(
+			polls.slice(from).map(() => inThe(started)),
+		);
+		expect(
+			(await toastsRaised(page)).filter((said) => /ended/i.test(said)),
+		).toEqual([]);
+		expect(refused).toEqual([]);
+	});
+
+	test("the second page's Leave, after the first's, ends it", async ({
+		page,
+		player,
+	}) => {
+		const { strict, started } = await inStartedSession(page, player);
+		const { beside } = await listeningBeside(page, player, started);
+		await expect.poll(() => connectionsIn(started)).toBe(2);
+
+		strict.release();
+		await leaveButton(page).click();
+		await expect(thePlayersFace(page)).toBeVisible();
+		await page.waitForTimeout(PAST_THE_SECOND_LEAVE_MS);
+		expect(player.sessions.find(started.id)).toBe(started);
+
+		await leaveButton(beside).click();
+
+		await expect.poll(() => player.sessions.find(started.id)).toBeNull();
+		await expect(thePlayersFace(beside)).toBeVisible();
+	});
+});
+
+test.describe("two pages of one browser in two sessions", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test("a Leave in one leaves the other's session, poll and stream untouched", async ({
+		page,
+		player,
+	}) => {
+		const { cast } = setTheScene(player);
+		const elsewhere = startedBy(player);
+		await openOnThePlayer(page);
+		await openPicker(page);
+		await startButton(page).click();
+		await expect.poll(() => player.sessions.list().length).toBe(2);
+		const [started] = player.sessions
+			.list()
+			.filter((session) => session !== elsewhere);
+		await expect.poll(() => listensIn(started)).toBe(true);
+		const strict = await strictOnceSettled(player);
+		elsewhere.play([cast.nextInTheSession, cast.inTheSession], 0);
+		const { beside, refused, polls } = await listeningBeside(
+			page,
+			player,
+			elsewhere,
+		);
+		await expect.poll(() => listensIn(elsewhere)).toBe(true);
+		await untilQuiet(player);
+		const tickets = countPostsToSession(
+			player,
+			"/api/stream/ticket",
+			elsewhere.id,
+		);
+		const asItPlayed = howItPlays(elsewhere);
+
+		strict.release();
+		await leaveButton(page).click();
+		await expect.poll(() => player.sessions.find(started.id)).toBeNull();
+		await page.waitForTimeout(PAST_THE_SECOND_LEAVE_MS);
+		await untilQuiet(player);
+		const from = polls.length;
+		await expect.poll(() => polls.length).toBeGreaterThan(from + 1);
+
+		expect(player.sessions.find(elsewhere.id)).toBe(elsewhere);
+		expect(connectionsIn(elsewhere)).toBe(1);
+		expect(howItPlays(elsewhere)).toEqual(asItPlayed);
+		expect(countPostsToSession(player, "/api/stream/leave", elsewhere.id)).toBe(
+			0,
+		);
+		expect(
+			countPostsToSession(player, "/api/stream/ticket", elsewhere.id),
+		).toBe(tickets);
+		expect(polls.slice(from)).toEqual(
+			polls.slice(from).map(() => inThe(elsewhere)),
+		);
+		await expect(statusBar(beside)).toContainText(
+			titleOf(cast.nextInTheSession),
+		);
+		expect(refused).toEqual([]);
+	});
+});
+
+const ICON_WATCH_MS = 1_200;
+
+const iconsDrawnOver = (page: Page) =>
+	page.evaluate(
+		(ms) =>
+			new Promise<number>((resolve) => {
+				const seen = new Set<string>();
+				const look = () => {
+					const link =
+						document.querySelector<HTMLLinkElement>("link[rel='icon']");
+					if (link) seen.add(link.href);
+				};
+				look();
+				const timer = setInterval(look, 25);
+				setTimeout(() => {
+					clearInterval(timer);
+					look();
+					resolve(seen.size);
+				}, ms);
+			}),
+		ICON_WATCH_MS,
+	);
+
+const iconIsDrawn = (page: Page) =>
+	expect
+		.poll(() =>
+			page.evaluate(
+				() =>
+					document
+						.querySelector<HTMLLinkElement>("link[rel='icon']")
+						?.href.startsWith("data:") ?? false,
+			),
+		)
+		.toBe(true);
+
+const SESSION_PUBLISHER = "Discos Aparte";
+const PLAYER_PUBLISHER = "Discos de la Casa";
+
+test.describe("the tab's icon and the details panel of a tab in a session follow the session", () => {
+	test.use(IN_SESSIONS);
+
+	test("the tab's icon turns while the session plays, though the player is paused", async ({
+		page,
+		player,
+	}) => {
+		const { cast, session } = setTheScene(player, { heard: true });
+		player.patchPlayer({ playbackState: "paused" });
+		const refused = await openInSession(page, player, session);
+		await expect(statusBar(page)).toContainText(titleOf(cast.inTheSession));
+		await untilQuiet(player);
+		await iconIsDrawn(page);
+
+		expect(await iconsDrawnOver(page)).toBeGreaterThan(2);
+		expect(refused).toEqual([]);
+	});
+
+	test("the tab's icon holds still while the session is paused, though the player plays", async ({
+		page,
+		player,
+	}) => {
+		const { cast, session } = setTheScene(player);
+		expect(session.playback()).toBe("paused");
+		expect(player.player.playbackState).toBe("playing");
+		const refused = await openInSession(page, player, session);
+		await expect(statusBar(page)).toContainText(titleOf(cast.inTheSession));
+		await untilQuiet(player);
+		await iconIsDrawn(page);
+
+		expect(await iconsDrawnOver(page)).toBe(1);
+		expect(refused).toEqual([]);
+	});
+
+	test("the details panel shows the session's track, and never the player's", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const { cast, session } = setTheScene(player, { heard: true });
+		player.retagPlaying({ "%publisher%": PLAYER_PUBLISHER });
+		session.play(
+			[
+				{ ...cast.inTheSession, "%publisher%": SESSION_PUBLISHER },
+				cast.nextInTheSession,
+			],
+			0,
+		);
+		await watchFor(page, [PLAYER_PUBLISHER]);
+		const refused = await openInSession(page, player, session);
+		await expect(statusBar(page)).toContainText(titleOf(cast.inTheSession));
+
+		await openNowPlaying(page);
+		const panel = await openPanels(page, isMobile);
+		await panelTab(panel, "Details").click();
+		await expect(panel).toContainText(SESSION_PUBLISHER);
+
+		expect(await everShown(page)).toEqual([]);
+		expect(refused).toEqual([]);
+	});
+});
+
+test.describe("the picker from the keyboard, starting and leaving", () => {
+	test.use(OFFERING_SESSIONS);
+	test.skip(({ isMobile }) => isMobile, "a phone has no keyboard to drive it");
+
+	const whereFocusSettles = (page: Page) =>
+		expect.poll(() =>
+			playingOn(page).evaluate((group) => {
+				const focused = document.activeElement;
+				if (!focused || focused === document.body) return "body";
+				return group.parentElement?.contains(focused)
+					? "the picker"
+					: "elsewhere";
+			}),
+		);
+
+	test("Enter on the start row leaves focus on Leave, and Enter on Leave leaves it on the player's face, from where Escape gives it back to the opener", async ({
+		page,
+		player,
+	}) => {
+		const refused = await openOnThePlayer(page);
+		await opener(page).focus();
+		await page.keyboard.press("Enter");
+		await expect(thePlayersFace(page)).toBeFocused();
+
+		await startButton(page).focus();
+		await page.keyboard.press("Enter");
+		await expect.poll(() => player.sessions.list().length).toBe(1);
+		await expect(leaveButton(page)).toBeVisible();
+		await whereFocusSettles(page).toBe("the picker");
+		await expect(leaveButton(page)).toBeFocused();
+		const strict = await strictOnceSettled(player);
+		await expect(leaveButton(page)).toBeFocused();
+
+		strict.release();
+		await page.keyboard.press("Enter");
+		await expect(thePlayersFace(page)).toBeVisible();
+		await whereFocusSettles(page).toBe("the picker");
+		await expect(thePlayersFace(page)).toBeFocused();
+
+		await page.keyboard.press("Escape");
+		await expect(playingOn(page)).toBeHidden();
+		await expect(opener(page)).toBeFocused();
+		expect(refused).toEqual([]);
+	});
+
+	test("in what it started, Enter on the opener focuses Leave, Tab goes on to the start row, and Shift+Tab from Leave reaches the player's row", async ({
+		page,
+		player,
+	}) => {
+		const { strict, refused } = await inStartedSession(page, player);
+		await page.keyboard.press("Escape");
+		await expect(playingOn(page)).toBeHidden();
+
+		await opener(page).focus();
+		await page.keyboard.press("Enter");
+		await expect(leaveButton(page)).toBeFocused();
+		const shareSwitch = playingOn(page).getByRole("switch", {
+			name: "Let others join",
+			exact: true,
+		});
+
+		await page.keyboard.press("Tab");
+		await expect(shareSwitch).toBeFocused();
+		await page.keyboard.press("Tab");
+		await expect(startButton(page)).toBeFocused();
+		await page.keyboard.press("Shift+Tab");
+		await expect(shareSwitch).toBeFocused();
+		await page.keyboard.press("Shift+Tab");
+		await expect(leaveButton(page)).toBeFocused();
+		await page.keyboard.press("Shift+Tab");
+		await expect
+			.poll(() =>
+				playerRowOf(page).evaluate((row) =>
+					row.contains(document.activeElement),
+				),
+			)
+			.toBe(true);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+});
+
+const BUSY = `${PLAYER_NAME} is busy. A place frees up when somebody leaves.`;
+const ENDED_OWN = `What you started here has ended, so Jean is back on ${PLAYER_NAME}.`;
+const ENDED_UNKNOWN = `What an unknown device started has ended, so Jean is back on ${PLAYER_NAME}.`;
+const KITCHEN = "Kitchen iPad";
+const ENDED_KITCHEN = `What ${KITCHEN} started has ended, so Jean is back on ${PLAYER_NAME}.`;
+
+const ONE_PLACE_TAKEN = {
+	...OFFERING_SESSIONS,
+	fooJean: { maxSessions: 1, canCreateSessions: true },
+};
+
+const takeTheOnePlace = (player: FakePlayer) =>
+	player.sessions.create({ deviceId: ANOTHER_DEVICE.deviceId, name: null });
+
+const startRowItem = (page: Page) =>
+	rows(page).filter({
+		has: page.getByRole("button", { name: START, exact: true }),
+	});
+
+const busyLine = (page: Page) =>
+	startRowItem(page).getByText(BUSY, { exact: true });
+
+const pressStart = async (
+	page: Page,
+	press: () => Promise<void> = () => startButton(page).click(),
+) => {
+	const answered = page.waitForResponse(
+		(response) =>
+			response.request().method() === "POST" &&
+			new URL(response.url()).pathname === "/api/sessions",
+	);
+	await press();
+	const response = await answered;
+	return { status: response.status(), body: await response.json() };
+};
+
+const TOO_MANY = { status: 503, body: { error: "too many sessions" } };
+const NOT_AVAILABLE = {
+	status: 503,
+	body: { error: "sessions are not available" },
+};
+
+const expectBusyUnderTheStartRow = async (page: Page) => {
+	await expect(busyLine(page)).toBeVisible();
+	await expect(playingOn(page).getByText(BUSY)).toHaveCount(1);
+	const button = await startButton(page).boundingBox();
+	const line = await busyLine(page).boundingBox();
+	if (!button || !line) throw new Error("the start row or its line has no box");
+	expect(line.y).toBeGreaterThanOrEqual(button.y + button.height - 1);
+};
+
+const expectStillOpen = async (page: Page, isMobile: boolean) => {
+	await expect(playingOn(page)).toBeVisible();
+	if (isMobile)
+		await expect(
+			page.getByRole("dialog", { name: "Playing on" }),
+		).toBeVisible();
+};
+
+const sessionsCreatedHere = (player: FakePlayer) =>
+	player.sessions
+		.list()
+		.filter((session) => session.createdBy.deviceId === DEVICE);
+
+test.describe("a create answered too many sessions, from the player", () => {
+	test.use(ONE_PLACE_TAKEN);
+
+	test(`says "${BUSY}" under the start row, and the page stays on the player with the picker open`, async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		takeTheOnePlace(player);
+		const refused = await openOnThePlayer(page);
+		await openPicker(page);
+
+		expect(await pressStart(page)).toEqual(TOO_MANY);
+
+		await expectBusyUnderTheStartRow(page);
+		await expectSettlesAt(
+			player,
+			() => postsTo(player, "/api/sessions").length,
+			1,
+		);
+		await expectStillOpen(page, isMobile);
+		await expect(rows(page)).toHaveCount(2);
+		await expect(thePlayersFace(page)).toBeVisible();
+		await expect(currentRows(page)).toContainText(PLAYER_NAME);
+		expect(
+			statePolls(player).filter(
+				(poll) => poll.session !== null || poll.deviceId !== null,
+			),
+		).toEqual([]);
+		expect(await storedForThisTab(page)).toBeNull();
+		expect(postsTo(player, "/api/stream/ticket")).toEqual([]);
+		expect(streamsOpened(player)).toBe(0);
+		expect(sessionsCreatedHere(player)).toEqual([]);
+		expect(refused).toEqual([]);
+	});
+
+	test("the line is gone once a later press on the start row starts something", async ({
+		page,
+		player,
+	}) => {
+		takeTheOnePlace(player);
+		const refused = await openOnThePlayer(page);
+		await openPicker(page);
+		expect(await pressStart(page)).toEqual(TOO_MANY);
+		await expect(busyLine(page)).toBeVisible();
+		await untilQuiet(player);
+		expect(await busyLine(page).count()).toBe(1);
+
+		player.fooJean.maxSessions = 2;
+		await startButton(page).click();
+		await expect.poll(() => sessionsCreatedHere(player).length).toBe(1);
+		const [started] = sessionsCreatedHere(player);
+		await expect.poll(() => listensIn(started)).toBe(true);
+		const strict = await strictOnceSettled(player);
+
+		await expect(leaveButton(page)).toBeVisible();
+		await expect(playingOn(page).getByText(BUSY)).toHaveCount(0);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+});
+
+test.describe("a create answered too many sessions, from inside what the page started", () => {
+	test.use({
+		...OFFERING_SESSIONS,
+		fooJean: { maxSessions: 1, canCreateSessions: true },
+	});
+
+	test(`says "${BUSY}" under the start row, and the page stays in its session, listening on the same stream`, async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await expect(ownRow(page)).toContainText(LISTENING_HERE);
+		const tickets = postsTo(player, "/api/stream/ticket").length;
+		const streams = streamsOpened(player);
+
+		expect(await pressStart(page)).toEqual(TOO_MANY);
+
+		await expectBusyUnderTheStartRow(page);
+		await expectSettlesAt(
+			player,
+			() => postsTo(player, "/api/sessions").length,
+			2,
+		);
+		await expectStillOpen(page, isMobile);
+		await expect(ownRow(page)).toContainText(LISTENING_HERE);
+		await expect(leaveButton(page)).toBeVisible();
+		expect(statePolls(player).at(-1)).toEqual(inThe(started));
+		expect(JSON.parse((await storedForThisTab(page)) ?? "null")).toEqual({
+			id: started.id,
+			listening: true,
+		});
+		expect(connectionsIn(started)).toBe(1);
+		expect(streamsOpened(player)).toBe(streams);
+		expect(postsTo(player, "/api/stream/ticket").length).toBe(tickets);
+		expect(postsTo(player, "/api/stream/leave")).toEqual([]);
+		expect(player.sessions.list()).toEqual([started]);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+});
+
+const holdDiscovery = async (page: Page) => {
+	let release!: () => void;
+	const released = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	await page.route("**/api/capabilities", async (route) => {
+		await released;
+		await route.continue().catch(() => {});
+	});
+	return release;
+};
+
+test.describe("a create answered sessions are not available", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test("removes the start row with the picker open and the page on the player, until discovery answers again", async ({
+		page,
+		player,
+	}) => {
+		const refused = await openOnThePlayer(page);
+		await untilTheInstallIsKnown(player);
+		await openPicker(page);
+		await expect(startButton(page)).toBeVisible();
+		const release = await holdDiscovery(page);
+		player.fooJean.canCreateSessions = false;
+
+		expect(await pressStart(page)).toEqual(NOT_AVAILABLE);
+		player.fooJean.canCreateSessions = true;
+
+		await expect(startButton(page)).toHaveCount(0, {
+			timeout: PROBE_TIMEOUT_MS / 2,
+		});
+		await expect(playingOn(page)).toBeVisible();
+		await expect(thePlayersFace(page)).toBeVisible();
+		await expect(rows(page)).toHaveCount(1);
+		await expect(playingOn(page).getByText(START_DETAIL)).toHaveCount(0);
+		expect(await storedForThisTab(page)).toBeNull();
+		expect(statePolls(player).at(-1)).toEqual(ON_THE_PLAYER);
+		expect(postsTo(player, "/api/stream/ticket")).toEqual([]);
+		expect(streamsOpened(player)).toBe(0);
+
+		player.fooJean.configGeneration += 1;
+		release();
+
+		await expect(startButton(page)).toBeVisible();
+		await expect(rows(page)).toHaveCount(2);
+		expect(refused).toEqual([]);
+	});
+});
+
+test.describe("the start row from the keyboard, refused and then let through", () => {
+	test.use(ONE_PLACE_TAKEN);
+	test.skip(({ isMobile }) => isMobile, "a phone has no keyboard to drive it");
+
+	test("Enter refused for want of a place leaves focus on the start row, and Enter once a place is free leaves it on Leave", async ({
+		page,
+		player,
+	}) => {
+		takeTheOnePlace(player);
+		const refused = await openOnThePlayer(page);
+		await opener(page).focus();
+		await page.keyboard.press("Enter");
+		await expect(thePlayersFace(page)).toBeFocused();
+		await startButton(page).focus();
+
+		expect(await pressStart(page, () => page.keyboard.press("Enter"))).toEqual(
+			TOO_MANY,
+		);
+		await untilQuiet(player);
+		expect(
+			await startButton(page).evaluate(
+				(button) => button === document.activeElement,
+			),
+		).toBe(true);
+
+		player.fooJean.maxSessions = 2;
+		await page.keyboard.press("Enter");
+		await expect.poll(() => sessionsCreatedHere(player).length).toBe(1);
+		await expect(leaveButton(page)).toBeFocused();
+		const strict = await strictOnceSettled(player);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("Enter refused inside what the page started leaves focus on the start row when that session later ends", async ({
+		page,
+		player,
+	}) => {
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await startButton(page).focus();
+		expect(await pressStart(page, () => page.keyboard.press("Enter"))).toEqual(
+			TOO_MANY,
+		);
+		await untilQuiet(player);
+		await expect(startButton(page)).toBeFocused();
+
+		await endedUnderThePage(player, started, strict);
+		await expect(thePlayersFace(page)).toBeVisible();
+		await untilQuiet(player);
+
+		expect(
+			await startButton(page).evaluate(
+				(button) => button === document.activeElement,
+			),
+		).toBe(true);
+		expect(refused).toEqual([]);
+	});
+});
+
+const recordEveryToast = (page: Page) =>
+	page.addInitScript(() => {
+		const raised: string[] = [];
+		const seen = new WeakSet<Element>();
+		Object.assign(window, { everyToast: raised });
+		new MutationObserver(() => {
+			for (const dismiss of document.querySelectorAll(
+				'[role="status"] button[aria-label="Dismiss"]',
+			)) {
+				const toast = dismiss.parentElement;
+				if (!toast || seen.has(toast)) continue;
+				seen.add(toast);
+				raised.push(toast.textContent ?? "");
+			}
+		}).observe(document, { subtree: true, childList: true });
+	});
+
+const endedToastsRaised = (page: Page) =>
+	page.evaluate(() =>
+		(window as unknown as { everyToast: string[] }).everyToast.filter((said) =>
+			/has ended, so Jean is back on/.test(said),
+		),
+	);
+
+const toastSaying = (page: Page, text: string) =>
+	toasts(page).locator("xpath=..").filter({ hasText: text });
+
+const closePicker = async (page: Page, isMobile: boolean) => {
+	if (isMobile)
+		await page
+			.getByRole("dialog", { name: "Playing on" })
+			.getByRole("button", { name: "Close", exact: true })
+			.click();
+	else await page.keyboard.press("Escape");
+	await expect(playingOn(page)).toBeHidden();
+};
+
+const morePolls = async (player: FakePlayer, count: number) => {
+	const from = statePolls(player).length;
+	await expect
+		.poll(() => statePolls(player).length)
+		.toBeGreaterThanOrEqual(from + count);
+};
+
+const endedUnderThePage = async (
+	player: FakePlayer,
+	session: DetachedSession,
+	strict: { release: () => void },
+) => {
+	strict.release();
+	player.endSession(session.id);
+	await expect.poll(() => statePolls(player).at(-1)).toEqual(ON_THE_PLAYER);
+};
+
+const inAnothersSession = async (
+	page: Page,
+	player: FakePlayer,
+	name: string | null,
+) => {
+	const session = player.sessions.create({
+		deviceId: ANOTHER_DEVICE.deviceId,
+		name,
+	});
+	session.join(DEVICE);
+	await storeForThisTab(page, { id: session.id, listening: false });
+	const refused = refusalsFrom(page);
+	await page.goto(ROUTE_WITH_NO_LIST);
+	await expect(opener(page)).toHaveAccessibleName(
+		`Playing what ${name ?? "Unknown device"} started`,
+	);
+	const strict = await strictOnceSettled(player);
+	return { session, strict, refused };
+};
+
+test.describe("what this device started, ended under the page", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test(`with the picker closed, says "${ENDED_OWN}" once, and the page stops listening and follows the player without a ticket, a stream or a leave`, async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await recordEveryToast(page);
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await closePicker(page, isMobile);
+		await untilQuiet(player);
+		const tickets = postsTo(player, "/api/stream/ticket").length;
+		const streams = streamsOpened(player);
+		const leaves = postsTo(player, "/api/stream/leave").length;
+
+		await endedUnderThePage(player, started, strict);
+
+		await expect(toastSaying(page, ENDED_OWN)).toBeVisible();
+		await expect(opener(page)).toHaveAccessibleName(ON_THE_PLAYER_NAME);
+		await page.waitForTimeout(PAST_THE_SECOND_LEAVE_MS);
+		await morePolls(player, 2);
+		await untilQuiet(player);
+		expect(await endedToastsRaised(page)).toEqual([ENDED_OWN]);
+		expect(statePolls(player).slice(-2)).toEqual([
+			ON_THE_PLAYER,
+			ON_THE_PLAYER,
+		]);
+		expect(postsTo(player, "/api/stream/ticket").length).toBe(tickets);
+		expect(streamsOpened(player)).toBe(streams);
+		expect(postsTo(player, "/api/stream/leave").length).toBe(leaves);
+		expect(await storedForThisTab(page)).toBeNull();
+		expect(refused).toEqual([]);
+	});
+
+	test(`with the picker open, says "${ENDED_OWN}" once, and the picker shows the player's row as current, offering Listen here`, async ({
+		page,
+		player,
+	}) => {
+		await recordEveryToast(page);
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await expect(ownRow(page)).toBeVisible();
+
+		await endedUnderThePage(player, started, strict);
+
+		await expect(toastSaying(page, ENDED_OWN)).toBeVisible();
+		await expect(playingOn(page)).toBeVisible();
+		await expect(thePlayersFace(page)).toBeVisible();
+		await expect(currentRows(page)).toHaveCount(1);
+		await expect(currentRows(page)).toContainText(PLAYER_NAME);
+		await expect(ownRow(page)).toHaveCount(0);
+		await untilQuiet(player);
+		expect(await endedToastsRaised(page)).toEqual([ENDED_OWN]);
+		expect(refused).toEqual([]);
+	});
+
+	test("says it once: not again over later polls, a picker opened and closed, or a reload", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await recordEveryToast(page);
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await closePicker(page, isMobile);
+
+		await endedUnderThePage(player, started, strict);
+		await expect(toastSaying(page, ENDED_OWN)).toBeVisible();
+
+		await morePolls(player, 3);
+		await openPicker(page);
+		await expect(thePlayersFace(page)).toBeVisible();
+		await closePicker(page, isMobile);
+		await morePolls(player, 2);
+		await untilQuiet(player);
+		expect(await endedToastsRaised(page)).toEqual([ENDED_OWN]);
+
+		await page.reload();
+		await expect(opener(page)).toHaveAccessibleName(ON_THE_PLAYER_NAME);
+		await morePolls(player, 2);
+		await untilQuiet(player);
+		expect(await endedToastsRaised(page)).toEqual([]);
+		expect(refused).toEqual([]);
+	});
+
+	test("is said in neither the error tone nor the plain toast's", async ({
+		page,
+		player,
+	}) => {
+		const { strict, started } = await inStartedSession(page, player);
+
+		await endedUnderThePage(player, started, strict);
+
+		const toast = toastSaying(page, ENDED_OWN);
+		await expect(toast).toBeVisible();
+		const glyphs = toast.locator("svg");
+		const drawnGlyphs = await glyphs.evaluateAll((svgs) =>
+			svgs.map((svg) => svg.getAttribute("class") ?? ""),
+		);
+		expect(
+			drawnGlyphs.filter((names) => drawing("triangle-alert").test(names)),
+		).toEqual([]);
+		expect(drawnGlyphs.filter((names) => drawing("check").test(names))).toEqual(
+			[],
+		);
+		const danger = await tokenColourIn(toast, "--danger");
+		const colours = await glyphs.evaluateAll((svgs) =>
+			svgs.map((svg) => getComputedStyle(svg).stroke),
+		);
+		expect(colours).not.toContain(danger);
+	});
+});
+
+test.describe("what another device started, ended under the page", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test(`says "${ENDED_KITCHEN}" once, naming the device that started it`, async ({
+		page,
+		player,
+	}) => {
+		await recordEveryToast(page);
+		const { session, strict, refused } = await inAnothersSession(
+			page,
+			player,
+			KITCHEN,
+		);
+
+		await endedUnderThePage(player, session, strict);
+
+		await expect(toastSaying(page, ENDED_KITCHEN)).toBeVisible();
+		await morePolls(player, 2);
+		await untilQuiet(player);
+		expect(await endedToastsRaised(page)).toEqual([ENDED_KITCHEN]);
+		expect(refused).toEqual([]);
+	});
+
+	test(`says "${ENDED_UNKNOWN}" once where the device that started it has no name`, async ({
+		page,
+		player,
+	}) => {
+		await recordEveryToast(page);
+		const { session, strict, refused } = await inAnothersSession(
+			page,
+			player,
+			null,
+		);
+
+		await endedUnderThePage(player, session, strict);
+
+		await expect(toastSaying(page, ENDED_UNKNOWN)).toBeVisible();
+		await morePolls(player, 2);
+		await untilQuiet(player);
+		expect(await endedToastsRaised(page)).toEqual([ENDED_UNKNOWN]);
+		expect(refused).toEqual([]);
+	});
+});
+
+test.describe("a page loaded into a stored session the player no longer holds", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test(`says "${ENDED_UNKNOWN}" once`, async ({ page, player }) => {
+		await recordEveryToast(page);
+		await storeForThisTab(page, { id: "no-longer-held", listening: false });
+		await page.goto(ROUTE_WITH_NO_LIST);
+
+		await expect.poll(() => storedForThisTab(page)).toBeNull();
+		await expect(toastSaying(page, ENDED_UNKNOWN)).toBeVisible();
+		await morePolls(player, 2);
+		await untilQuiet(player);
+		expect(await endedToastsRaised(page)).toEqual([ENDED_UNKNOWN]);
+	});
+});
+
+test.describe("the output cog on the player's row", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test("is drawn while this device listens to the player", async ({
+		page,
+		player,
+	}) => {
+		const refused = await openOnThePlayer(page);
+		await untilTheInstallIsKnown(player);
+		await openPicker(page);
+		await thePlayersFace(page).click();
+
+		await expect(
+			playerRowOf(page).getByRole("button", {
+				name: "Output options",
+				exact: true,
+			}),
+		).toBeVisible();
+		expect(refused).toEqual([]);
+	});
+
+	test("is not drawn while this device listens to what it started", async ({
+		page,
+		player,
+	}) => {
+		const { strict, refused } = await inStartedSession(page, player);
+		await expect(ownRow(page)).toContainText(LISTENING_HERE);
+		await expect(playerRowOf(page)).toHaveCount(1);
+		await untilQuiet(player);
+
+		expect(
+			await playingOn(page)
+				.getByRole("button", {
+					name: "Output options",
+					exact: true,
+					includeHidden: true,
+				})
+				.count(),
+		).toBe(0);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+});
+
+const skipped = (track: string) =>
+	`Could not play “${track}”, so it was skipped.`;
+
+const WITHOUT_EFFECTS =
+	/^Playing without foobar2000['’]s effects, because one of them failed\.$/;
+const WITHOUT_EFFECTS_OPENING = "Playing without foobar2000";
+
+const REPORTED_FIRST = "The Future";
+const REPORTED_SECOND = "Deep, Deep";
+
+// Tracks foobar2000 played from outside its media library, so `foo_jean` reports them with a `path`
+// and no `libraryPath`.
+const OFF_THE_LIBRARY: Track = {
+	"%path%": "C:\\Elsewhere\\Dragged in\\07. Not In The Library.flac",
+	"%subsong%": "0",
+};
+const WITH_NO_DIRECTORY: Track = {
+	"%path%": "Loose Track.flac",
+	"%subsong%": "0",
+};
+const SKIPPED_OFF_THE_LIBRARY =
+	/^Could not play “07\. Not In The Library(\.flac)?”, so it was skipped\.$/;
+const SKIPPED_WITH_NO_DIRECTORY =
+	/^Could not play “Loose Track(\.flac)?”, so it was skipped\.$/;
+
+const libraryTrackTitled = (player: FakePlayer, title: string) => {
+	const track = player
+		.playlistById("p7")
+		?.items.find((held) => titleOf(held) === title);
+	if (!track || player.libraryPathFor(track) === null)
+		throw new Error(`the library holds no "${title}"`);
+	return track;
+};
+
+const skippedToastsRaised = (page: Page) =>
+	page.evaluate(() =>
+		(window as unknown as { everyToast: string[] }).everyToast.filter((said) =>
+			said.includes("skipped"),
+		),
+	);
+
+const documentReads = (player: FakePlayer, session: DetachedSession) =>
+	player.requests.filter(
+		(entry) =>
+			entry.method === "GET" &&
+			entry.path.split("?")[0] === `/api/sessions/${session.id}`,
+	).length;
+
+const moreDocumentReads = async (
+	player: FakePlayer,
+	session: DetachedSession,
+	count: number,
+) => {
+	const from = documentReads(player, session);
+	await expect
+		.poll(() => documentReads(player, session))
+		.toBeGreaterThanOrEqual(from + count);
+};
+
+const expectErrorTone = async (toast: Locator) => {
+	const danger = await tokenColourIn(toast, "--danger");
+	await expect
+		.poll(() =>
+			toast
+				.locator("svg")
+				.evaluateAll((svgs) =>
+					svgs.map((svg) => [
+						svg.getAttribute("class") ?? "",
+						getComputedStyle(svg).stroke,
+					]),
+				),
+		)
+		.toContainEqual([expect.stringMatching(drawing("triangle-alert")), danger]);
+};
+
+test.describe("a track the session this page listens to could not play", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test(`with the picker closed, raises one toast "${skipped("{title}")}" in the error tone, naming the track by the title the library holds for its path`, async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await recordEveryToast(page);
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await closePicker(page, isMobile);
+		await untilQuiet(player);
+
+		player.addSessionReport(
+			started.id,
+			libraryTrackTitled(player, REPORTED_SECOND),
+		);
+
+		const toast = toastSaying(page, skipped(REPORTED_SECOND));
+		await expect(toast).toBeVisible();
+		await expectErrorTone(toast);
+		await untilQuiet(player);
+		expect(await skippedToastsRaised(page)).toEqual([skipped(REPORTED_SECOND)]);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("names a track the library does not hold by its file's name, whether its path has directories or none", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await recordEveryToast(page);
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await closePicker(page, isMobile);
+		await untilQuiet(player);
+
+		player.addSessionReport(started.id, OFF_THE_LIBRARY);
+		await expect.poll(() => skippedToastsRaised(page)).toHaveLength(1);
+		player.addSessionReport(started.id, WITH_NO_DIRECTORY);
+		await expect.poll(() => skippedToastsRaised(page)).toHaveLength(2);
+
+		await untilQuiet(player);
+		expect(await skippedToastsRaised(page)).toEqual([
+			expect.stringMatching(SKIPPED_OFF_THE_LIBRARY),
+			expect.stringMatching(SKIPPED_WITH_NO_DIRECTORY),
+		]);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("two reports read together raise two toasts, one each, in the order they were reported", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await recordEveryToast(page);
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await closePicker(page, isMobile);
+		await untilQuiet(player);
+		const reads = documentReads(player, started);
+
+		player.addSessionReport(
+			started.id,
+			libraryTrackTitled(player, REPORTED_FIRST),
+		);
+		player.addSessionReport(
+			started.id,
+			libraryTrackTitled(player, REPORTED_SECOND),
+		);
+
+		await expect.poll(() => skippedToastsRaised(page)).toHaveLength(2);
+		await untilQuiet(player);
+		expect(documentReads(player, started)).toBe(reads + 1);
+		expect(await skippedToastsRaised(page)).toEqual([
+			skipped(REPORTED_FIRST),
+			skipped(REPORTED_SECOND),
+		]);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("raises it once: not again on later reads of the document, nor after a reload", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await recordEveryToast(page);
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await closePicker(page, isMobile);
+		await untilQuiet(player);
+		player.addSessionReport(
+			started.id,
+			libraryTrackTitled(player, REPORTED_SECOND),
+		);
+		await expect(toastSaying(page, skipped(REPORTED_SECOND))).toBeVisible();
+
+		started.share(true);
+		await moreDocumentReads(player, started, 1);
+		started.share(false);
+		await moreDocumentReads(player, started, 1);
+		await morePolls(player, 2);
+		await untilQuiet(player);
+		expect(await skippedToastsRaised(page)).toEqual([skipped(REPORTED_SECOND)]);
+
+		const reads = documentReads(player, started);
+		await page.reload();
+		await expect(opener(page)).toHaveAccessibleName(STARTED_HERE);
+		await expect
+			.poll(() => documentReads(player, started))
+			.toBeGreaterThan(reads);
+		await morePolls(player, 2);
+		await untilQuiet(player);
+		expect(started.reports).toHaveLength(1);
+		expect(await skippedToastsRaised(page)).toEqual([]);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("with the picker open, raises the toast and leaves the picker open", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await recordEveryToast(page);
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await untilQuiet(player);
+
+		player.addSessionReport(
+			started.id,
+			libraryTrackTitled(player, REPORTED_SECOND),
+		);
+
+		await expect(toastSaying(page, skipped(REPORTED_SECOND))).toBeVisible();
+		await untilQuiet(player);
+		await expectStillOpen(page, isMobile);
+		expect(await skippedToastsRaised(page)).toEqual([skipped(REPORTED_SECOND)]);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+});
+
+test.describe("reports already in a session's document when the page enters it", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test("raise nothing, and a report made after the page entered raises one", async ({
+		page,
+		player,
+	}) => {
+		await recordEveryToast(page);
+		const session = player.sessions.create({
+			deviceId: ANOTHER_DEVICE.deviceId,
+			name: KITCHEN,
+		});
+		session.join(DEVICE);
+		player.addSessionReport(
+			session.id,
+			libraryTrackTitled(player, REPORTED_FIRST),
+		);
+		player.addSessionReport(session.id, OFF_THE_LIBRARY);
+		await storeForThisTab(page, { id: session.id, listening: true });
+		const refused = refusalsFrom(page);
+
+		await page.goto(ROUTE_WITH_NO_LIST);
+		await expect(opener(page)).toHaveAccessibleName(
+			`Playing what ${KITCHEN} started`,
+		);
+		const strict = await strictOnceSettled(player);
+		await morePolls(player, 2);
+		await untilQuiet(player);
+		expect(await skippedToastsRaised(page)).toEqual([]);
+
+		player.addSessionReport(
+			session.id,
+			libraryTrackTitled(player, REPORTED_SECOND),
+		);
+		await expect(toastSaying(page, skipped(REPORTED_SECOND))).toBeVisible();
+		await untilQuiet(player);
+		expect(await skippedToastsRaised(page)).toEqual([skipped(REPORTED_SECOND)]);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+});
+
+test.describe("two pages of one browser showing one session", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test("each raise a report once", async ({ page, player }) => {
+		await recordEveryToast(page);
+		const { strict, refused, started } = await inStartedSession(page, player);
+		const beside = await page.context().newPage();
+		await recordEveryToast(beside);
+		await storeForThisTab(beside, { id: started.id, listening: true });
+		const refusedBeside = refusalsFrom(beside);
+		await beside.goto(ROUTE_WITH_NO_LIST);
+		await expect(opener(beside)).toHaveAccessibleName(STARTED_HERE);
+		await untilQuiet(player);
+
+		player.addSessionReport(
+			started.id,
+			libraryTrackTitled(player, REPORTED_SECOND),
+		);
+
+		await expect(toastSaying(page, skipped(REPORTED_SECOND))).toBeVisible();
+		await expect(toastSaying(beside, skipped(REPORTED_SECOND))).toBeVisible();
+		await morePolls(player, 2);
+		await untilQuiet(player);
+		expect(await skippedToastsRaised(page)).toEqual([skipped(REPORTED_SECOND)]);
+		expect(await skippedToastsRaised(beside)).toEqual([
+			skipped(REPORTED_SECOND),
+		]);
+		strict.release();
+		expect(refused).toEqual([]);
+		expect(refusedBeside).toEqual([]);
+	});
+});
+
+const chainDroppedUnder = async (
+	player: FakePlayer,
+	session: DetachedSession,
+) => {
+	const cast = castOf(player);
+	session.play([cast.inTheSession, cast.nextInTheSession], 0);
+	await untilQuiet(player);
+	player.dropSessionChain(session.id);
+	await moreDocumentReads(player, session, 1);
+};
+
+test.describe("while the session's document reads chainDropped", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test("the row this tab is in says the session plays without foobar2000's effects, once and in no other row, and no toast says a track was skipped", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await recordEveryToast(page);
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await closePicker(page, isMobile);
+		await chainDroppedUnder(player, started);
+
+		await openPicker(page);
+		await expect(playingOn(page).getByText(WITHOUT_EFFECTS)).toBeVisible();
+		await expect(playingOn(page).getByText(WITHOUT_EFFECTS)).toHaveCount(1);
+		await expect(currentRows(page).getByText(WITHOUT_EFFECTS)).toHaveCount(1);
+		await expect(playerRowOf(page).getByText(WITHOUT_EFFECTS)).toHaveCount(0);
+		await untilQuiet(player);
+		expect(await skippedToastsRaised(page)).toEqual([]);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("the line still stands after a reload", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await closePicker(page, isMobile);
+		await chainDroppedUnder(player, started);
+		await openPicker(page);
+		await expect(playingOn(page).getByText(WITHOUT_EFFECTS)).toBeVisible();
+
+		await page.reload();
+		await openPicker(page);
+
+		await expect(currentRows(page).getByText(WITHOUT_EFFECTS)).toBeVisible();
+		await expect(playingOn(page).getByText(WITHOUT_EFFECTS)).toHaveCount(1);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+
+	test("the line is never drawn while the document reads chainDropped false, though it holds a report", async ({
+		page,
+		player,
+	}) => {
+		await watchFor(page, [WITHOUT_EFFECTS_OPENING]);
+		await recordEveryToast(page);
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await untilQuiet(player);
+
+		player.addSessionReport(
+			started.id,
+			libraryTrackTitled(player, REPORTED_SECOND),
+		);
+		await expect(toastSaying(page, skipped(REPORTED_SECOND))).toBeVisible();
+		await untilQuiet(player);
+
+		await expect(ownRow(page)).toContainText(LISTENING_HERE);
+		expect(await everShown(page)).toEqual([]);
+		strict.release();
+		expect(refused).toEqual([]);
+	});
+});
+
+test.describe("the without-effects line, once the page is back on the player", () => {
+	test.use(OFFERING_SESSIONS);
+
+	test("is gone from every row once the page leaves a session whose chain dropped", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await closePicker(page, isMobile);
+		await chainDroppedUnder(player, started);
+		await openPicker(page);
+		await expect(playingOn(page).getByText(WITHOUT_EFFECTS)).toBeVisible();
+
+		strict.release();
+		await leaveButton(page).click();
+		await expect(thePlayersFace(page)).toBeVisible();
+		await expect.poll(() => statePolls(player).at(-1)).toEqual(ON_THE_PLAYER);
+		await untilQuiet(player);
+
+		expect(await playingOn(page).getByText(WITHOUT_EFFECTS).count()).toBe(0);
 		expect(refused).toEqual([]);
 	});
 });

@@ -50,18 +50,22 @@ A file whose home is unclear is usually in the wrong tier. Shared infrastructure
 
 ## Where state lives
 
-**TanStack Query holds state whose authority lives outside Jean.** `useQuery` is a pure cache reader everywhere; what writes into a key is named per row below, through `setQueryData`.
+**TanStack Query holds state whose authority lives outside Jean.** `useQuery` reads the cache and writes nothing, except for the rows below that name their own `queryFn`; what writes into every other key is named per row, through `setQueryData`.
 
 | Key | Holds | Written by |
 |---|---|---|
-| `["player"]` | player state and `activeItem` | `applyPoll`, from `startPlayerPoll`'s tick and from `pollPlayerNow` |
+| `["player"]` | player state and `activeItem`; in a session, the session's, with volume, mute, output and the playlist fields still the player's | `applyPoll`, from `startPlayerPoll`'s tick and from `pollPlayerNow` |
 | `["playlists"]` | the playlist list | `followPlaylists`, off the poll's `playlistsRevision` |
-| `["queue"]` | the whole queue, from `foo_jean` | `followQueue`, off the poll's `queueRevision` |
-| `["fooJean"]` | the discovery result | backoff while retryable, focus otherwise |
-| `["fooJeanPlaylists", …]` | which playlists the player fills itself | when the playlist count changes |
-| `["artistInfo", artist]` | MusicBrainz and Wikipedia | never; off unless switched on in Settings |
+| `["queue"]` | the whole queue, from `foo_jean`; in a session, the session's | `followQueue`, off the poll's `queueRevision` |
+| `["session"]` | the document of the session the tab is in | `followSessionDocument`, off the poll's `sessionRevision`; the create and the sharing switch hand it their answer |
+| `["sessions"]` | the sessions this device may see | its own `queryFn` in `useSessions`, only while the picker is open |
+| `["fooJean"]` | the discovery result | its own `queryFn`: backoff while retryable, focus otherwise |
+| `["fooJeanPlaylists", …]` | which playlists the player fills itself | its own `queryFn`, when the playlist count changes |
+| `["artistInfo", artist]` | MusicBrainz and Wikipedia | its own `queryFn`; off unless switched on in Settings |
 
-**`["player"]` has one writer: `applyPoll`.** `startPlayerPoll`'s tick calls it once a second, `pollPlayerNow` calls it again after `usePlayItem` posts a write, and once more `MARK_FOLLOW_UP_MS` after a track change or seek while listening and its `timelineRevision` has not already moved, so nothing lags a whole tick behind. Either way it reads `GET /api/state` and builds the whole snapshot from that document and `capabilities` through `mergePlayer`, but only from an answer to a read asked after the one already drawn. The tick always revalidates against the drawn answer's `ETag`. `watch()` in `domain/player/listenerStore.ts` reads `playbackState` off this same write through `notePlaybackState`, skipping a poll of its own.
+**`["player"]` is written by `applyPoll`, bar two exceptions.** `forgetSession` clears it on a change of session, and the optimistic patches in `playerWrite.ts` edit it ahead of the answer, which the next poll replaces. `startPlayerPoll`'s tick calls it once a second, `pollPlayerNow` calls it again after `usePlayItem` posts a write, and once more `MARK_FOLLOW_UP_MS` after a track change or seek while listening and its `timelineRevision` has not already moved, so nothing lags a whole tick behind. Either way it reads `GET /api/state` and builds the whole snapshot from that document and `capabilities` through `mergePlayer`, but only from an answer to a read asked after the one already drawn. The tick always revalidates against the drawn answer's `ETag`. `watch()` in `domain/player/listenerStore.ts` reads `playbackState` off this same write through `notePlaybackState`, skipping a poll of its own.
+
+**A change of session is forgotten before anything is drawn under it.** The poll names the session a tab is in and this device, so following one costs no second poll. When the session store's epoch moves, `forgetSession` in `playerPoll.ts` drops the drawn `ETag` and revisions, the queue, the document and the audible history, and leaves `["player"]` with only the fields that answer the player whatever session is named. The poll drops an answer asked under the old epoch, and `audience.ts` drops a roster read asked before the listener's target moved. A tab only controlling a session reads its document at the roster's cadence and after every `200`, through `nobodyListening.ts`, and leaves once nobody has listened for longer than the component's linger.
 
 **A poll's playlist is already `foo_jean`'s own GUID, and so is every entry `["playlists"]` holds.** `useResolvedPlaylistId` confirms the GUID the poll answers still names a playlist the list carries, rather than resolving one address into another. **It answers `undefined` rather than `null` while `["playlists"]` has not caught up with the revision the poll last announced, and `null` once it has and the guid still is not there**, so a reader can tell a confirmation with no answer yet from one that has answered absent; everywhere but the app's front-door resume and the cover key `StatusBar` and `NowPlaying` build from it, the two collapse to the same absence. `usePlaylistsCaughtUp` carries that distinction by comparing the revision a caller has seen against the one `followPlaylists` last fetched, since `["playlists"]` takes no `queryFn` of its own for `status` or `isFetching` to mean anything. `["fooJeanPlaylists", …]` is a separate concern, `isAutoPlaylist` rather than the playing set, and refetches on its own schedule when `useAutoPlaylists.ts`'s effect sees the playlist count move.
 
@@ -71,7 +75,7 @@ A file whose home is unclear is usually in the wrong tier. Shared infrastructure
 
 **A stored setting is shared by its key, not copied per caller.** `useStoredState` reads through one map and one listener set, so every hook naming a key sees one value and every write. A `useState` per caller makes a live pair out of every key with two readers. Its snapshot returns the same reference until something writes. `useSyncExternalStore` requires that, and a fresh object each call is an infinite render loop rather than a stale value.
 
-Every Jean setting lives in `localStorage`, on the device that set it.
+Every Jean setting lives in `localStorage`, on the device that set it. Which session a tab is in lives in `sessionStorage` (`session.ts`), so a reload keeps it and another tab does not share it; so does the mark of which of that session's reports a toast has raised (`sessionDocument.ts`). Belonging to a session and listening to it are the browser's, since every tab sends `foo_jean` the one `deviceId` in `localStorage`.
 
 ## The library is one array
 
@@ -124,7 +128,7 @@ A fact the player may spell two ways gets an *alternative* rather than a branch,
 
 Both answer rather than throw. `NO_WRITER.write` resolves to a refusal carrying a message, so a caller renders the same failure path whether writing is switched off at the player, the component is unreachable, or the write was declined.
 
-**Every switch behind either seam is the player owner's**, held in `config.json` and reloaded live from the Permissions page; Jean neither grants nor stores one. **Playing a set is playback, not a playlist edit.** Filling the scratch playlist to play an arbitrary row follows `controlPlayback`, never `writePlaylists`, however much it looks like a playlist write from here.
+**Every switch behind either seam is the player owner's**, held in `config.json` and reloaded live from the Permissions page; Jean neither grants nor stores one. **Playing a set is playback, not a playlist edit.** On the player, filling the scratch playlist to play an arbitrary row follows `controlPlayback`, never `writePlaylists`, however much it looks like a playlist write from here. In a session nothing is filled, and `foo_jean`'s `controlPlayback` governs the player's own session alone, so `useCanControlPlayback()` answers true there whatever the switch says.
 
 **`write` is handed an address, never a filesystem path.** A track is named by one of three forms. Where the media library holds it, by its library-relative path with the subsong inside the file it names, or by its ordinal in the snapshot with the generation that ordinal was read at. Where the library does not hold it, by a playlist GUID, a position and the structure generation those rows were read at. A source answers the forms for its own rows out of tables it already holds, so nothing between a star and the write resolves anything, and the component matches each of them against what the player itself produced. A row the media library holds takes a library form even where it was read from a playlist: a relative path survives a reorder and a rebuild, a position survives neither, and what stops a stale position writing to somebody else's file is the component comparing that generation and answering `409`. No filesystem path crosses the wire at all, which is what makes a library on a UNC share rateable.
 
@@ -135,6 +139,8 @@ Both are fed by one discovery, in `src/shared/api/discovery.ts`, deduped through
 ## Requests
 
 Every request to `foo_jean` goes through `ask` in `src/shared/api/client.ts`: one `openapi-fetch` client typed from `fooJeanSchema.d.ts`, a deadline, and the caller's own signal. **A call never answers `null` for a failure and throws only when its caller aborted it; it resolves to a `Result`**, `{ ok: true, value }` or a `Failure` that is either `unreachable` or `refused` with the status, the body's `error`, a message and, on a `429`, how long to wait. `settle` builds it and `askResult` is the two together. A resource module whose callers act on particular refusals names them in a union of its own on the same `ok` discriminant, as `tags.ts`, `state.ts`, `queue.ts` and the stream ticket do. A caller that has to throw, which is any React Query function, throws a `FooJeanFailed`, through `orThrow` wherever every failure is a throw, and reads the failure back off it: `retryWhenTooFast`, `refusedStatusOf` and `switchRefusalThrown` are those readers. What a browser loads by itself, artwork and the stream, is built as a URL and never requested here.
+
+While a tab is in a session, `ask` hands each call a copy of the client scoped to it (`setSessionScope`), which names the session and this device on every path `SESSION_SCOPED` lists. A call's own `session` or `deviceId` wins over the scope.
 
 ## The `foo_jean` security model
 
@@ -210,4 +216,4 @@ What a browser does that several files here depend on.
 
 - **No Web Worker and no IndexedDB persistence**, so a cold start re-fetches and re-indexes.
 - **No folder tree.** The library browses as one flat list.
-- **Nothing Jean holds survives a reload**, artwork included. Covers persist in the browser's own HTTP cache, which is the component's to control through `Cache-Control` and `ETag`.
+- **Nothing Jean fetches survives a reload**, artwork included. Covers persist in the browser's own HTTP cache, which is the component's to control through `Cache-Control` and `ETag`.

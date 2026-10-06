@@ -73,6 +73,7 @@ import { useRouteView } from "./useRouteView";
 import { useScrollMemory } from "./useScrollMemory";
 import { useSearchBar } from "./useSearchBar";
 import { useSelectedPlaylist } from "./useSelectedPlaylist";
+import { useSessionNotices } from "./useSessionNotices";
 
 const loadNowPlaying = () => import("@/features/now-playing/NowPlaying");
 const loadSettings = () => import("@/features/settings/SettingsDialog");
@@ -116,6 +117,7 @@ export function App() {
 function Shell() {
 	const t = useTranslate();
 	useDocumentIdentity();
+	useSessionNotices();
 
 	const { data: playlists = [], isSuccess: hasPlaylists } = usePlaylists();
 	const { data: playerState } = usePlayer();

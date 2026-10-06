@@ -3,7 +3,7 @@ import { useCallback } from "react";
 
 import { discoverFooJean, type FooJeanDiscovery } from "@/shared/api/discovery";
 
-const KEY = "fooJean";
+export const FOO_JEAN_KEY = ["fooJean"];
 
 const UNCHECKED: FooJeanDiscovery = {
 	state: { kind: "unreachable" },
@@ -22,7 +22,7 @@ export function useFooJean() {
 	const queryClient = useQueryClient();
 
 	const query = useQuery({
-		queryKey: [KEY],
+		queryKey: FOO_JEAN_KEY,
 		// Widened here rather than in `refetchInterval`, which react-query is free to consult more than
 		// once per cycle.
 		queryFn: async () => {
@@ -44,13 +44,14 @@ export function useFooJean() {
 
 	const recheck = useCallback(() => {
 		retryMs = MIN_RETRY_MS;
-		queryClient.invalidateQueries({ queryKey: [KEY] });
+		queryClient.invalidateQueries({ queryKey: FOO_JEAN_KEY });
 	}, [queryClient]);
 
 	return {
 		discovery: query.data ?? UNCHECKED,
 		isDiscovered: query.data !== undefined,
 		isChecking: query.isFetching,
+		answeredAt: query.dataUpdatedAt,
 		recheck,
 	};
 }

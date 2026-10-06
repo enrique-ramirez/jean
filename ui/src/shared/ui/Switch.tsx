@@ -1,4 +1,5 @@
 import styles from "./Switch.module.css";
+import { SwitchTrack } from "./SwitchTrack";
 
 export function Switch({
 	checked,
@@ -29,9 +30,7 @@ export function Switch({
 				) : null}
 			</span>
 
-			<span className={styles.track} aria-hidden="true">
-				<span className={styles.thumb} />
-			</span>
+			<SwitchTrack checked={checked} />
 		</button>
 	);
 }

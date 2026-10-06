@@ -21,7 +21,7 @@ import {
 	subscribeListening,
 	toggleListeningMute,
 } from "./listenerStore";
-import { sessionSnapshot, useSessionId } from "./session";
+import { sessionSnapshot, useInSession, useSessionId } from "./session";
 import { useSessionActions } from "./sessionOperations";
 import { useVolume } from "./useVolume";
 
@@ -83,6 +83,7 @@ export function useAudibleVolume() {
 	const listener = useListener();
 	const player = useVolume();
 	const { discovery } = useFooJean();
+	const inSession = useInSession();
 
 	const isHere = listener.isOn;
 	const volume = isHere ? listener.volume : player.volume;
@@ -99,10 +100,10 @@ export function useAudibleVolume() {
 
 	return {
 		isHere,
-		canMove: isHere || permitsPlaybackControl(discovery),
+		canMove: isHere || (!inSession && permitsPlaybackControl(discovery)),
 		volume,
 		setValue,
-		hasFader: !isHere || Boolean(listener.volume),
+		hasFader: isHere ? Boolean(listener.volume) : !inSession,
 		toggleMute: isHere ? listener.toggleMute : player.toggleMuted,
 		up: () => nudge(DEVICE_VOLUME_STEP_DB),
 		down: () => nudge(-DEVICE_VOLUME_STEP_DB),

@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-import { settle } from "@/shared/api/client";
+import { type Schema, settle } from "@/shared/api/client";
 import {
 	readSession,
 	type SessionDocument,
@@ -11,7 +11,8 @@ import { useCacheOnly } from "@/shared/hooks/useCacheOnly";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { deviceId } from "./device";
 import { type FollowRevision, followRevision } from "./followRevision";
-import { useInSession } from "./session";
+import { sessionEpoch, useInSession } from "./session";
+import { SESSIONS_KEY } from "./sessionList";
 
 export const SESSION_DOCUMENT_KEY = ["session"];
 export const SESSION_RAISED_KEY = "jean.session.raised";
@@ -80,8 +81,30 @@ function markEntered(document: SessionDocument): void {
 	markRaised(document.id, highestSequence(document));
 }
 
-function holdDocument(client: QueryClient, document: SessionDocument): void {
+export type SessionCreator = SessionDocument["createdBy"];
+
+let lastCreator: { session: string; createdBy: SessionCreator } | null = null;
+
+export const creatorOf = (session: string): SessionCreator | undefined =>
+	lastCreator?.session === session ? lastCreator.createdBy : undefined;
+
+function rememberCreator(document: SessionDocument): void {
+	lastCreator = { session: document.id, createdBy: document.createdBy };
+}
+
+export function rememberListedCreator(client: QueryClient, id: string): void {
+	const listed = client
+		.getQueryData<Schema["Sessions"]>(SESSIONS_KEY)
+		?.sessions.find((document) => document.id === id);
+	if (listed) rememberCreator(listed);
+}
+
+export function holdDocument(
+	client: QueryClient,
+	document: SessionDocument,
+): void {
 	markEntered(document);
+	rememberCreator(document);
 	client.setQueryData(SESSION_DOCUMENT_KEY, document);
 }
 
@@ -131,6 +154,20 @@ export function followSessionDocument(
 	following.follower.announce(origin, revision);
 }
 
+export async function readSessionDocument(
+	client: QueryClient,
+	origin: string,
+	session: string,
+): Promise<SessionDocument | null> {
+	const asked = sessionEpoch();
+	const answer = await settle<SessionDocument | undefined>(
+		readSession(origin, session, deviceId()),
+	);
+	if (!answer.ok || !answer.value || asked !== sessionEpoch()) return null;
+	holdDocument(client, answer.value);
+	return answer.value;
+}
+
 // TanStack Query's `removeQueries` drops the entry without telling a mounted observer, which goes
 // on drawing what it held; `resetQueries` tells it.
 export function forgetSessionDocument(client: QueryClient): void {
@@ -153,13 +190,30 @@ export function seedSessionDocument(
 export const useSessionDocument = (): SessionDocument | undefined =>
 	useCacheOnly<SessionDocument>(SESSION_DOCUMENT_KEY).data;
 
+export function useDocumentOf(
+	sessionId: string | null,
+): SessionDocument | undefined {
+	const sessionDocument = useSessionDocument();
+	return sessionId !== null && sessionDocument?.id === sessionId
+		? sessionDocument
+		: undefined;
+}
+
 const NOT_OFFERED: PlaybackMode[] = [];
+
+const EVERY_SESSION_OFFERS: PlaybackMode[] = [
+	"inOrder",
+	"repeatAll",
+	"repeatOne",
+	"random",
+	"shuffleTracks",
+];
 
 export function useOfferedPlaybackModes(): PlaybackMode[] {
 	const isInSession = useInSession();
 	const document = useSessionDocument();
 	const { discovery } = useFooJean();
-	if (isInSession) return document?.playbackModes ?? NOT_OFFERED;
+	if (isInSession) return document?.playbackModes ?? EVERY_SESSION_OFFERS;
 	return discovery.state.kind === "ready"
 		? discovery.state.capabilities.playbackModes
 		: NOT_OFFERED;

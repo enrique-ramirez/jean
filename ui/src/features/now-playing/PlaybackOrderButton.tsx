@@ -8,15 +8,12 @@ import {
 	Repeat1,
 	Shuffle,
 } from "lucide-react";
-import {
-	type KeyboardEvent as ReactKeyboardEvent,
-	useRef,
-	useState,
-} from "react";
+import { useRef, useState } from "react";
 import type { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import type { PlaybackMode } from "@/shared/api/types";
 import type { Point } from "@/shared/hooks/useLongPress";
 import { useTranslate } from "@/shared/i18n/useTranslate";
+import { keepPressFromBindings } from "@/shared/keyboard/keepPress";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
@@ -34,10 +31,6 @@ const ORDER_ICON: Record<PlaybackMode, IconComponent> = {
 
 const toneOf = (mode: PlaybackMode | null) =>
 	mode === null || mode === "inOrder" ? undefined : "accent";
-
-const keepKeyFromGlobalBindings = (event: ReactKeyboardEvent) => {
-	if (event.key === "Enter" || event.key === " ") event.stopPropagation();
-};
 
 export function PlaybackOrderButton({
 	order,
@@ -100,7 +93,7 @@ export function PlaybackOrderButton({
 				data-tone={toneOf(order.mode)}
 				title={name}
 				onClick={disabled ? undefined : press}
-				onKeyDown={keepKeyFromGlobalBindings}
+				onKeyDown={keepPressFromBindings}
 			>
 				<Icon size={size} strokeWidth={2} />
 			</button>

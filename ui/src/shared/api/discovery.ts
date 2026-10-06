@@ -38,6 +38,10 @@ export const permitsOutputChange = (discovery: FooJeanDiscovery) =>
 	discovery.state.kind !== "ready" ||
 	discovery.state.capabilities.canChangeOutput !== false;
 
+export const offersSessions = (discovery: FooJeanDiscovery) =>
+	discovery.state.kind === "ready" &&
+	discovery.state.capabilities.canCreateSessions === true;
+
 export const isFooJeanReady = (discovery: FooJeanDiscovery) =>
 	discovery.state.kind === "ready";
 

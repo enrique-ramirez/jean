@@ -1,10 +1,10 @@
-import { Check, TriangleAlert, X } from "lucide-react";
+import { Check, Info, TriangleAlert, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import styles from "./Toasts.module.css";
 import { dismissToast, useToasts } from "./toastStore";
 
-const ICONS = { default: Check, error: TriangleAlert };
+const ICONS = { default: Check, error: TriangleAlert, neutral: Info };
 
 export function Toasts({ pinned = null }: { pinned?: ReactNode }) {
 	const t = useTranslate();

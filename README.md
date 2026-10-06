@@ -47,7 +47,7 @@ Anything your library cannot support is not drawn. No ratings, no starred shelf.
 
 **Rate a track from the browser.** The stars stop being read-only, and a rating you set here is written into the file's own tags, where every other program that reads your library will find it.
 
-**Send the sound to whatever you are holding.** A control beside the volume plays what the player is playing, here, in this tab, and mutes the player as it hands over, so the music follows you to the kitchen instead of doubling. It names who else is listening, and it can put the speakers back on alongside everyone.
+**Send the sound to whatever you are holding.** A control beside the volume plays what the player is playing, here, in this tab, and mutes the player as it hands over, so the music follows you to the kitchen instead of doubling. It names who else is listening, and it can put the speakers back on alongside everyone. It can also play something else on the device in your hand while the player carries on as it is, and once you let others join, anyone in the house can listen along or take the controls.
 <!-- /site:extra -->
 
 ## Requirements

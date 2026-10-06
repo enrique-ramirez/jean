@@ -43,6 +43,10 @@
 	color: var(--danger);
 }
 
+.toast[data-tone="neutral"] .icon {
+	color: var(--muted);
+}
+
 .message {
 	flex: 1;
 	min-width: 0;

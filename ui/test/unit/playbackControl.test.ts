@@ -15,8 +15,9 @@ const filesUnder = (folder: string, keep: RegExp): string[] =>
 	});
 
 // `foo_jean` never refuses a detached session's command for `controlPlayback`, so a file reading the
-// permission straight refuses in a session what the player would take. The three still to move to
-// the hook are named here, and the task that moves one takes its name off.
+// permission straight refuses in a session what the player would take. `useListener.ts` is the one
+// that stays: `POST /api/volume` takes no session and always moves the player, so its fader answers
+// to the permission itself.
 const READERS = [
 	"src/domain/player/useListener.ts",
 	"src/domain/player/usePlaybackControl.ts",

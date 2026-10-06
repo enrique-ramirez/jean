@@ -10,7 +10,7 @@ export interface Toast {
 	id: number;
 	message: string;
 	action: ToastAction | null;
-	tone: "default" | "error";
+	tone: "default" | "error" | "neutral";
 }
 
 const MAX_VISIBLE = 3;

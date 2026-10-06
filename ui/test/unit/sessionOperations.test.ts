@@ -483,3 +483,42 @@ test("a session reported gone while its start waits on the player's leave is fol
 		notice: { kind: "ended", id },
 	});
 });
+
+test("Leave pressed while a sharing change is on its way leaves this device in nothing once both have settled: not a member, no connection, the tab on the player", async (t) => {
+	const store = await harness.begin(t);
+	const other = { deviceId: OTHER_DEVICE, name: "Kitchen tablet" };
+	const kept = store.fake.state.sessions.create(other);
+	kept.share(true);
+	const othersStream = store.fake.state.addSessionListener(kept.id, other);
+	const joined = await operations.joinToListen(store.context, kept.id);
+	await store.settle();
+	assert.deepEqual(joined, { ok: true }, "the join never landed");
+	const inIt = () =>
+		kept.roster().some((device) => device.deviceId === store.thisDevice());
+	assert.ok(inIt(), "this device never listened");
+
+	const changes = store.hold(
+		(request) =>
+			request.method === "POST" && named(`/api/sessions/${kept.id}`)(request),
+	);
+	const sharing = operations.setSessionShared(store.context, false);
+	await changes.reached;
+	const leaving = operations.leaveSession(store.context);
+	await store.settle();
+	await store.advance(operations.LEAVE_RETRY_MS + POLL_MS);
+	changes.release();
+	await Promise.all([sharing, leaving]);
+	await store.settle();
+	await store.advance(operations.LEAVE_RETRY_MS + POLL_MS);
+
+	assert.deepEqual(session.sessionSnapshot(), ON_THE_PLAYER);
+	assert.equal(inIt(), false, "this device still holds a connection");
+	assert.equal(store.openStreams(), 0, "this device's stream is still open");
+	othersStream.close();
+	store.fake.state.sessions.leave(kept, OTHER_DEVICE);
+	assert.equal(
+		store.fake.state.sessions.find(kept.id),
+		null,
+		"this device is still a member of the session it left",
+	);
+});

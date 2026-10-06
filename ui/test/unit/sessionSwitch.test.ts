@@ -23,11 +23,6 @@ import type { QueueRead } from "../../src/shared/api/queue.ts";
 import { fetchState, type StateDocument } from "../../src/shared/api/state.ts";
 import type { PlayerSnapshot } from "../../src/shared/api/types.ts";
 
-// `sessions.spec.ts` holds what a page shows in a session. What stays here is what no page can
-// reach before the picker exists: a switch from one session to another inside one load, an answer
-// that crosses that switch, and what the stored value does at load when it is not one the
-// component holds.
-
 const ORIGIN = "http://player.invalid:8881";
 const PLAYER_KEY = ["player"];
 const QUEUE_KEY = ["queue"];
@@ -40,12 +35,8 @@ const PLAYER_TRACK = "/music/On the player/01 House.flac";
 const FIRST_TRACK = "/music/First session/01 One.flac";
 const SECOND_TRACK = "/music/Second session/04 Four.flac";
 
-// What a component answers about the player whichever session is named, so it is what the fader
-// draws through a switch.
 const PLAYER_VOLUME = -6;
 
-// Both sessions answer one validator and one queue revision: what a switch must not let carry the
-// first session's track or queue into the second.
 const ONE_TAG = '"t-shared"';
 const ONE_QUEUE_REVISION = 3;
 
@@ -140,7 +131,6 @@ const never = () => new Promise<Response>(() => {});
 const noSuchSession = () =>
 	Promise.resolve(Response.json({ error: "no such session" }, { status: 404 }));
 
-// Anything sent outside a case is refused here rather than reaching the network.
 const outsideACase: Answer = () =>
 	Promise.reject(new TypeError("a request outside a case"));
 
@@ -182,7 +172,6 @@ const settle = async () => {
 	for (let step = 0; step < 5; step += 1) await flush();
 };
 
-// The reads a revision sets off, answered as an install with no playlists would.
 const withReads =
 	(state: Answer, queues: Record<string, string[]> = {}): Answer =>
 	(one) => {
@@ -305,7 +294,6 @@ test("entering a session scopes the very next poll to it and this device, and go
 
 	assert.deepEqual(sessionScope(), thisDevice(FIRST));
 	await settle();
-	// Sent at the commit rather than at the next tick, so the switch costs no wait for the interval.
 	const atEntering = poll.statesAskedFrom(enteredAt);
 	assert.ok(atEntering.length > 0, "nothing was asked at the commit");
 	assert.deepEqual(
@@ -326,8 +314,6 @@ test("entering a session scopes the very next poll to it and this device, and go
 	);
 });
 
-// The read sent at the switch is lost, as a phone at the edge of the wifi loses one, so the next
-// tick is the first answer the second session gets to give.
 test("a second session answering the first one's validator and queue revision still draws its own track and queue", async (t) => {
 	let secondAsked = 0;
 	const poll = await polling(
@@ -686,8 +672,7 @@ test("the snapshot keeps its identity between commits, and a commit hands every 
 	assert.equal(sessionSnapshot(), seen[0]);
 });
 
-// `session.ts` reads the stored value once, as the module is evaluated, so each of these loads a
-// fresh copy of it. Node keys a module by its whole URL, query included.
+// Node keys a module by its whole URL, query included, so a fresh query loads a fresh `session.ts`.
 let loads = 0;
 const loadWithStored = async (
 	t: TestContext,
@@ -736,7 +721,6 @@ const NOT_A_SESSION: [string, string][] = [
 	["no role", JSON.stringify({ id: FIRST })],
 	["a role that is not a boolean", JSON.stringify({ id: FIRST, listening: 1 })],
 	["an id that is not a string", JSON.stringify({ id: 7, listening: false })],
-	// The id `contract/openapi.yaml` gives the player's own session.
 	[
 		"the player's own session",
 		JSON.stringify({ id: "engine", listening: true }),

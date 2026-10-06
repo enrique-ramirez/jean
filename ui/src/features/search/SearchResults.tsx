@@ -9,6 +9,7 @@ import {
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import { useViewPlayback } from "@/domain/library/useViewPlayback";
+import { useInSession } from "@/domain/player/session";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
 import { summarise } from "@/domain/track/stats";
@@ -44,6 +45,8 @@ export function SearchResults({
 
 	const { discovery } = useFooJean();
 	const canWritePlaylists = permitsPlaylistWrites(discovery);
+	const isInSession = useInSession();
+	const canSave = canWritePlaylists && !isInSession;
 
 	const results = search.results;
 	const { indices, heat, patina, playedCount } = results;
@@ -64,7 +67,7 @@ export function SearchResults({
 	useKeymap(
 		SCOPE.search,
 		{ saveSearch: () => setIsSaving(true) },
-		{ enabled: canWritePlaylists && results.length > 0 && !library.isLoading },
+		{ enabled: canSave && results.length > 0 && !library.isLoading },
 	);
 
 	const notice = libraryNoticeFor(library);
@@ -125,7 +128,7 @@ export function SearchResults({
 					library={library}
 					scratch={scratch}
 					holdsResults={holdsThisView}
-					canWritePlaylists={canWritePlaylists}
+					canSave={canSave}
 					isOpen={isSaving}
 					onOpenChange={setIsSaving}
 					onOpenPlaylist={onOpenPlaylist}

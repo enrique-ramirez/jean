@@ -3,8 +3,10 @@ import {
 	issueStreamTicket,
 	leaveStream,
 	type StreamMark,
+	type StreamTicket,
 	type StreamTimeline,
 	streamUrl,
+	type TicketResult,
 } from "@/shared/api/stream";
 import type { PlaybackState } from "@/shared/api/types";
 import {
@@ -104,6 +106,8 @@ let hasRendered = false;
 let knownPlaybackState: PlaybackState | null = null;
 let isHeld = false;
 let resumedHereAt = 0;
+let issuedTicket: StreamTicket | null = null;
+let targetMoves = 0;
 // Bumps on every connect, so a ticket or timeline settling after its connection was torn down is
 // discarded.
 let generation = 0;
@@ -396,12 +400,20 @@ function forgetStreamClock() {
 	pendingSeek = null;
 }
 
-export function connect() {
+export function connect(ticket?: StreamTicket) {
 	if (!target) return;
 	teardown();
+	issuedTicket = ticket ?? null;
 	attempt = 0;
 	stalledThisSession = false;
 	nextFormat();
+}
+
+function takeTicket(to: ListenTarget): Promise<TicketResult> {
+	const ticket = issuedTicket;
+	issuedTicket = null;
+	if (ticket) return Promise.resolve({ ok: true, ticket });
+	return issueStreamTicket(to.origin, deviceIdentity(), to.session);
 }
 
 export function retry() {
@@ -423,11 +435,7 @@ async function open(next: string) {
 		attempt > 0 ? { kind: "reconnecting", attempt } : { kind: "connecting" },
 	);
 
-	const issued = await issueStreamTicket(
-		target.origin,
-		deviceIdentity(),
-		target.session,
-	);
+	const issued = await takeTicket(target);
 	if (mine !== generation) return;
 
 	if (!issued.ok) {
@@ -441,6 +449,11 @@ async function open(next: string) {
 		}
 		if (issued.reason === "unreachable") {
 			scheduleReconnect();
+			return;
+		}
+		if (issued.reason === "gone") {
+			teardown();
+			setPhase({ kind: "off" });
 			return;
 		}
 		setPhase({ kind: "failed", message: issued.message });
@@ -661,6 +674,7 @@ function stopStream() {
 	watchdogTimer = null;
 	forgetStreamClock();
 	isHeld = false;
+	issuedTicket = null;
 
 	releaseStream();
 
@@ -736,8 +750,13 @@ export function configureListening(next: ListenTarget | null) {
 		else void closeStream();
 	}
 	target = next;
+	targetMoves += 1;
 	dead.clear();
+	listeners.notify();
 }
+
+export const listenedSession = (): string | null => target?.session ?? null;
+export const targetEpoch = (): number => targetMoves;
 
 // The source is chosen when a connection opens, so a change to `LOW_LATENCY_KEY` takes effect only
 // through this.

@@ -68,7 +68,7 @@ export interface PathCollector {
 
 // The player reports library paths forward-slashed and its own paths with the platform separator, so
 // the split takes whichever came last rather than a configured one.
-const afterLastSeparator = (path: string) =>
+export const afterLastSeparator = (path: string) =>
 	Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1;
 
 export function pathCollector(): PathCollector {

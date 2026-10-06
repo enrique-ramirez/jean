@@ -1,4 +1,3 @@
-import type { Request } from "@playwright/test";
 import {
 	DETACHED_PLAYBACK_MODES,
 	type DetachedSession,
@@ -32,12 +31,15 @@ import {
 	playbackCommands,
 	playerDeclaring,
 	playRequests,
+	putThePickerAway,
 	restingBox,
 	statusBar,
 	test,
 	tokenColourIn,
 	trackRow,
+	untilQuiet,
 	untilTheInstallIsKnown,
+	viewHeader,
 } from "./fixtures.ts";
 
 // foobar2000's stock playback orders, in the sequence its own Order menu lists them and the fake
@@ -1560,29 +1562,124 @@ const ORDERS_OF_THE_SESSION = DETACHED_PLAYBACK_MODES.map((mode) => {
 const installSequenceOf = (orders: readonly Order[]) =>
 	DECLARED_IN_REVERSE.filter((order) => orders.includes(order));
 
-const documentReadOf = (session: DetachedSession) => (request: Request) =>
-	request.method() === "GET" &&
-	new URL(request.url()).pathname === `/api/sessions/${session.id}`;
-
 // Strict mode answers `500` to a session-scoped request naming no session, so one the page sends
 // while it is in the session is caught here whatever it was for.
-const enterASessionOfItsOwn = async (page: Page, player: FakePlayer) => {
-	const session = player.sessions.create({ deviceId: DEVICE, name: null });
-	await page.addInitScript(
-		({ key, stored }) => sessionStorage.setItem(key, stored),
-		{
-			key: SESSION_KEY,
-			stored: JSON.stringify({ id: session.id, listening: false }),
-		},
-	);
+const watchRefusals = (page: Page) => {
 	const refused: string[] = [];
 	page.on("response", (response) => {
 		const url = new URL(response.url());
 		if (response.status() === 500 && url.pathname.startsWith("/api/"))
 			refused.push(`${response.request().method()} ${url.pathname}`);
 	});
+	return refused;
+};
+
+const enterASessionOfItsOwn = async (
+	page: Page,
+	player: FakePlayer,
+	{ listening = false } = {},
+) => {
+	const session = player.sessions.create({ deviceId: DEVICE, name: null });
+	await page.addInitScript(
+		({ key, stored }) => sessionStorage.setItem(key, stored),
+		{
+			key: SESSION_KEY,
+			stored: JSON.stringify({ id: session.id, listening }),
+		},
+	);
+	const refused = watchRefusals(page);
 	player.fooJean.strictSessions = true;
 	return { session, refused };
+};
+
+const holdTheDocumentListing = async (
+	page: Page,
+	session: DetachedSession,
+	playbackModes: readonly string[],
+) => {
+	let holding = true;
+	const waiting: (() => void)[] = [];
+	let answered = 0;
+	await page.route(
+		(url) => url.pathname === `/api/sessions/${session.id}`,
+		async (route) => {
+			if (route.request().method() !== "GET") return route.fallback();
+			if (holding) await new Promise<void>((go) => waiting.push(go));
+			const response = await route.fetch().catch(() => null);
+			if (!response) return;
+			if (response.status() !== 200) {
+				await route.fulfill({ response }).catch(() => {});
+				return;
+			}
+			const document = await response.json();
+			const { "content-length": _, ...headers } = response.headers();
+			await route
+				.fulfill({ response, headers, json: { ...document, playbackModes } })
+				.catch(() => {});
+			answered += 1;
+		},
+	);
+	return {
+		untilHeld: () => expect.poll(() => waiting.length).toBeGreaterThan(0),
+		released: () => answered > 0,
+		release: () => {
+			holding = false;
+			for (const go of waiting.splice(0)) go();
+		},
+	};
+};
+
+const answerTheStartListing = (page: Page, playbackModes: readonly string[]) =>
+	page.route(
+		(url) => url.pathname === "/api/sessions",
+		async (route) => {
+			if (route.request().method() !== "POST") return route.fallback();
+			const response = await route.fetch();
+			if (!response.ok()) return route.fulfill({ response });
+			const document = await response.json();
+			const { "content-length": _, ...headers } = response.headers();
+			await route.fulfill({
+				response,
+				headers,
+				json: { ...document, playbackModes },
+			});
+		},
+	);
+
+const OTHER_THAN_THE_FIVE = [
+	SHUFFLE_TRACKS,
+	REPEAT_TRACK,
+	REPEAT_PLAYLIST,
+	IN_ORDER,
+];
+
+const headerShuffle = (page: Page) =>
+	viewHeader(page).getByRole("button", { name: "Shuffle", exact: true });
+
+const START = "Play something else here";
+
+const startASessionFromThePicker = async (
+	page: Page,
+	player: FakePlayer,
+	isCompact: boolean,
+) => {
+	await statusBar(page)
+		.getByRole("button", { name: /^Choose where to play/ })
+		.click();
+	await page.getByRole("button", { name: START, exact: true }).click();
+	await expect
+		.poll(() =>
+			player.sessions
+				.list()
+				.flatMap((session) => session.roster())
+				.some((device) => device.deviceId === DEVICE),
+		)
+		.toBe(true);
+	if (isCompact) await putThePickerAway(page, true);
+	else await page.keyboard.press("Escape");
+	const [session] = player.sessions.list();
+	if (!session) throw new Error("the start made no session");
+	return session;
 };
 
 const modeWrites = (player: FakePlayer) =>
@@ -1651,33 +1748,70 @@ test.describe("a page in a session of its own", () => {
 		expect(refused).toEqual([]);
 	});
 
-	// The install's capabilities and the session's poll are both in by the time the order button is
-	// looked for, so the only thing it can still be waiting on is the session's document.
-	test("offers no order until the session's document has been read", async ({
+	test("loaded again while listening, offers the contract's five before the document is read, and the document's list once it is", async ({
 		page,
 		player,
 		isMobile,
 	}) => {
-		const { session, refused } = await enterASessionOfItsOwn(page, player);
-		const read = await holdRequests(page, documentReadOf(session));
-		await arriveAtTheTransport(page, isMobile);
-		await untilTheInstallIsKnown(player);
-		await expect
-			.poll(
-				() =>
-					player.requests.filter(
-						(entry) =>
-							entry.path.split("?")[0] === "/api/state" &&
-							entry.path.includes(`session=${session.id}`),
-					).length,
-			)
-			.toBeGreaterThan(0);
-
-		await expect(orderButton(page, isMobile)).toHaveCount(0);
+		const { session, refused } = await enterASessionOfItsOwn(page, player, {
+			listening: true,
+		});
+		const read = await holdTheDocumentListing(
+			page,
+			session,
+			OTHER_THAN_THE_FIVE.map((order) => order.mode),
+		);
+		await openLibrary(page);
 		await read.untilHeld();
 
-		read.releaseAll();
-		await expect(orderButton(page, isMobile)).toBeVisible();
+		await expect(headerShuffle(page)).toBeEnabled();
+		await globalControls(page, isMobile);
+		await openList(page, isMobile);
+		await expect(rows(page)).toHaveText(
+			ORDERS_OF_THE_SESSION.map((order) => order.english),
+		);
+		expect(read.released()).toBe(false);
+		await page.keyboard.press("Escape");
+		await expectNothingOpened(page);
+
+		read.release();
+		await expect.poll(() => read.released()).toBe(true);
+		await openList(page, isMobile);
+		await expect(rows(page)).toHaveText(
+			OTHER_THAN_THE_FIVE.map((order) => order.english),
+		);
+		expect(refused).toEqual([]);
+	});
+
+	test("after a start, offers the list the start's answer carried, with no read of its document answered", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const refused = watchRefusals(page);
+		await answerTheStartListing(
+			page,
+			OTHER_THAN_THE_FIVE.map((order) => order.mode),
+		);
+		const reads = await holdRequests(
+			page,
+			(request) =>
+				request.method() === "GET" &&
+				/^\/api\/sessions\/[^/]+$/.test(new URL(request.url()).pathname),
+		);
+		await openLibrary(page);
+		await startASessionFromThePicker(page, player, isMobile);
+		await untilQuiet(player);
+		player.fooJean.strictSessions = true;
+
+		await expect(headerShuffle(page)).toBeEnabled();
+		await globalControls(page, isMobile);
+		await openList(page, isMobile);
+
+		await expect(rows(page)).toHaveText(
+			OTHER_THAN_THE_FIVE.map((order) => order.english),
+		);
+		reads.releaseAll();
 		expect(refused).toEqual([]);
 	});
 });

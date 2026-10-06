@@ -1,13 +1,13 @@
 # Shared UI
 
-The pieces every feature draws with. `ui/ARCHITECTURE.md`, *Facts about the browser*, has the browser behaviour most of these rules answer.
+The pieces every feature draws with.
 
 ## Menus and controls
 
-- `ActionMenu.tsx` draws a popover, confirmation or phone action sheet from actions; `BottomSheet.tsx` is that sheet's modal shell for any content; `Menu.tsx`, a button's dropdown.
+- `ActionMenu.tsx` draws a popover, confirmation or phone action sheet from actions; `BottomSheet.tsx` is that sheet's modal shell for any content; `Menu.tsx`, a dropdown anchored to a visible button.
 - An exit animation's closing flag is derived during render, never set in an effect, or the remount steals focus from whatever the chosen action focused. `usePresence` follows the same rule, and the duration it is given matches the stylesheet.
 - A menu returns focus on close only if it still has it.
-- A disabled control carries its reason in its own label (`columns.unavailable`, `track.queueLimited`). With `canControlPlayback` off a playback control stays drawn with `aria-disabled`; with `writePlaylists` off a playlist-editing control is absent. `switch-changes.spec.ts` holds both.
+- A disabled control carries its reason in its own label (`columns.unavailable`, `track.queueLimited`). With `useCanControlPlayback()` false a playback control stays drawn with `aria-disabled`; with `writePlaylists` off a playlist-editing control is absent. `switch-changes.spec.ts` holds both.
 - Toasts are for what the user cannot already see.
 
 ## Pointer, touch, dragging

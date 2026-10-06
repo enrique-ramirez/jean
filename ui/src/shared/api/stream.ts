@@ -18,7 +18,8 @@ export type DeviceIdentity = Schema["DeviceIdentity"];
 export type TicketFailure =
 	| { ok: false; reason: "busy"; message: string }
 	| { ok: false; reason: "unavailable"; message: string }
-	| { ok: false; reason: "unreachable"; message: string };
+	| { ok: false; reason: "unreachable"; message: string }
+	| { ok: false; reason: "gone"; message: string };
 
 export type TicketResult = { ok: true; ticket: StreamTicket } | TicketFailure;
 
@@ -51,6 +52,7 @@ export async function issueStreamTicket(
 			reason: isBusy(message) ? "busy" : "unavailable",
 			message,
 		};
+	if (response.status === 404) return { ok: false, reason: "gone", message };
 	return { ok: false, reason: "unreachable", message };
 }
 

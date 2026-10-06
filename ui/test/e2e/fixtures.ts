@@ -423,7 +423,7 @@ export const expectDrawnIn = (icon: Locator, colour: string) =>
 
 export const choosePlayer = (page: Page) =>
 	statusBar(page).getByRole("button", {
-		name: /Choose where to play|Playing on this device/,
+		name: /Choose where to play|Playing on this device|Playing what .+ started/,
 	});
 
 export const playingOn = (page: Page) =>

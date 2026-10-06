@@ -111,6 +111,13 @@ export function noteSessionGone(id: string): void {
 	commitSession(ON_PLAYER, { kind: "ended", id });
 }
 
+export function acknowledgeNotice(notice: SessionNotice): boolean {
+	if (snapshot.notice !== notice) return false;
+	snapshot = { ...snapshot, notice: null };
+	listeners.notify();
+	return true;
+}
+
 export const useSession = (): SessionSnapshot =>
 	useSyncExternalStore(subscribeSession, sessionSnapshot);
 

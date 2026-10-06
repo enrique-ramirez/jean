@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-// A browser sends `click` after a touch whatever its `pointerdown` listeners did, so the tap that
+// Blink sends `click` after a touch whatever its `pointerdown` listeners did, so the tap that
 // dismissed is caught at the window before anything under it can act. A touch that became a scroll
 // ends in `pointercancel` and sends no `click`. Added while this press is still bubbling, a
 // capturing `pointerdown` listener on the window first hears the next press.

@@ -37,7 +37,7 @@ const ANOTHER_ARTIST = { row: 12, title: "Tautou", artist: "Brand New" };
 // Stop takes this name while this device is the player's only listener.
 const handBack = (page: Page) =>
 	playingOn(page).getByRole("button", {
-		name: "Move the sound back to foobar2000",
+		name: "Stop, and move the sound back to foobar2000",
 		exact: true,
 	});
 

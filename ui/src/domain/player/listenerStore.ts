@@ -89,6 +89,7 @@ let watchdogTimer: ReturnType<typeof setInterval> | null = null;
 
 let anchor: number | null = null;
 let reading: StreamReading | null = null;
+let connectReading: StreamReading | null = null;
 let connectAt = 0;
 let marks: StreamMark[] = [];
 let audiblePath: string | null = null;
@@ -207,6 +208,7 @@ const timelineFollower: FollowRevision = followRevision<TimelineRead>({
 		if (mine !== generation || !element) return;
 		marks = timeline.marks;
 		reading = { streamTime: timeline.streamTime, readAt: performance.now() };
+		connectReading ??= reading;
 		deriveAnchor();
 	},
 	active: () => isListening(phase),
@@ -395,6 +397,7 @@ function nextFormat() {
 function forgetStreamClock() {
 	anchor = null;
 	reading = null;
+	connectReading = null;
 	marks = [];
 	audiblePath = null;
 	pendingSeek = null;
@@ -554,7 +557,6 @@ function watch() {
 		currentTime: audio.currentTime,
 		lastTime,
 		lastAdvance,
-		connectAt,
 		hasRendered,
 		isLowLatency: mse !== null,
 		isPaused: audio.paused,
@@ -582,9 +584,11 @@ function watch() {
 }
 
 // Retried from `playing`, from every `timeupdate` and from every poll: the two terms arrive in
-// either order.
+// either order. Always from the connection's first reading: foo_jean's stream clock stands still
+// while the player is quiet, so a later reading run back to the connection over such a spell lands
+// short by its whole length.
 function deriveAnchor() {
-	if (anchor !== null || reading === null || !element) return;
+	if (anchor !== null || connectReading === null || !element) return;
 
 	// On the low-latency path the muxer's own clock starts at zero on connect, so the origin is known
 	// rather than measured. Read from `buffered` it would be a race: the trim moves `start(0)`
@@ -592,7 +596,7 @@ function deriveAnchor() {
 	const origin = mse ? 0 : bufferedStart(element);
 	if (origin === null) return;
 
-	anchor = anchorOf(streamTimeAt(reading, connectAt), origin);
+	anchor = anchorOf(streamTimeAt(connectReading, connectAt), origin);
 }
 
 export function listeningPosition(
@@ -660,6 +664,7 @@ if (import.meta.env?.DEV) {
 			bufferedEnd:
 				ranges && ranges.length > 0 ? ranges.end(ranges.length - 1) : null,
 			lagSeconds: listeningLagSeconds(),
+			connectReading,
 			audiblePath,
 			marks,
 		};

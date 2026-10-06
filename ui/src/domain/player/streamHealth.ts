@@ -13,7 +13,6 @@ export interface Watched {
 	currentTime: number;
 	lastTime: number;
 	lastAdvance: number;
-	connectAt: number;
 	hasRendered: boolean;
 	isLowLatency: boolean;
 	isPaused: boolean;
@@ -29,22 +28,20 @@ export type StallVerdict =
 
 export function stallVerdict(watched: Watched): StallVerdict {
 	const { now, lastAdvance, hasRendered } = watched;
-
-	if (
-		watched.isLowLatency &&
-		!hasRendered &&
-		now - watched.connectAt > MSE_START_MS
-	)
-		return "retire low latency";
+	const isPlayerQuiet =
+		watched.playerState !== null && watched.playerState !== "playing";
 
 	if (watched.currentTime !== watched.lastTime) return "advanced";
-	if (watched.isPaused || now - lastAdvance < STALL_MS) return "wait";
+	if (watched.isPaused) return "wait";
 
-	// A stopped player and a broken stream look identical from the stream: headers arrive and then
+	// A stopped player and a broken stream look identical from foo_jean's stream: headers arrive and then
 	// nothing. Only the player's own state can say which.
-	if (watched.playerState !== null && watched.playerState !== "playing")
-		return "player silent";
+	if (isPlayerQuiet && !hasRendered) return "player silent";
 
+	if (watched.isLowLatency && !hasRendered && now - lastAdvance > MSE_START_MS)
+		return "retire low latency";
+	if (now - lastAdvance < STALL_MS) return "wait";
+	if (isPlayerQuiet) return "player silent";
 	if (!hasRendered && now - lastAdvance < START_MS) return "wait";
 	return "reconnect";
 }

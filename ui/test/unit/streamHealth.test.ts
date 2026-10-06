@@ -14,7 +14,6 @@ const playing: Watched = {
 	currentTime: 42,
 	lastTime: 42,
 	lastAdvance: 100_000,
-	connectAt: 0,
 	hasRendered: true,
 	isLowLatency: false,
 	isPaused: false,
@@ -37,7 +36,11 @@ test("audio stuck while the player plays is a dead stream, and reconnects", () =
 	assert.equal(stallVerdict({ ...playing, lastAdvance: 90_000 }), "reconnect");
 });
 
-test("audio stuck while the player has stopped is the player, not the stream", () => {
+test("audio stuck while the player has stopped is the player, not the stream, after the same grace a stall gets", () => {
+	assert.equal(
+		stallVerdict({ ...playing, lastAdvance: 97_000, playerState: "paused" }),
+		"wait",
+	);
 	assert.equal(
 		stallVerdict({ ...playing, lastAdvance: 90_000, playerState: "paused" }),
 		"player silent",
@@ -55,15 +58,30 @@ test("a stream that has not started yet is given longer than one that went quiet
 	assert.equal(stallVerdict({ ...starting, lastAdvance: 60_000 }), "reconnect");
 });
 
-test("the low-latency path that never produced a sound is retired", () => {
+test("the low-latency path that never produced a sound is retired, counted from the last advance rather than the connection", () => {
+	const unheard = { ...playing, hasRendered: false, isLowLatency: true };
 	assert.equal(
-		stallVerdict({
-			...playing,
-			hasRendered: false,
-			isLowLatency: true,
-			connectAt: 90_000,
-		}),
+		stallVerdict({ ...unheard, lastAdvance: 90_000 }),
 		"retire low latency",
+	);
+	assert.equal(stallVerdict({ ...unheard, lastAdvance: 96_000 }), "wait");
+});
+
+// foo_jean sends no audio for a session with no track yet, or for a stopped player, so a stream
+// that has not sounded says nothing about the short buffer.
+test("a stream that has never sounded while the player is quiet is silent at once, and the low-latency path is not retired", () => {
+	const unheard = {
+		...playing,
+		hasRendered: false,
+		playerState: "stopped" as const,
+	};
+	assert.equal(
+		stallVerdict({ ...unheard, lastAdvance: 99_500 }),
+		"player silent",
+	);
+	assert.equal(
+		stallVerdict({ ...unheard, isLowLatency: true, lastAdvance: 90_000 }),
+		"player silent",
 	);
 });
 

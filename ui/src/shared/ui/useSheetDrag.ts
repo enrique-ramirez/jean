@@ -10,7 +10,6 @@ interface Touching {
 	isTheSheets: boolean | null;
 }
 
-// Bounded by the sheet, unlike `ownsTouch`: the scrim around it carries `data-owns-touch` itself.
 const ownedInside = (target: Element, sheet: HTMLElement) => {
 	const owner = target.closest("[data-owns-touch]");
 	return owner !== null && sheet.contains(owner);

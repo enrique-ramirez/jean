@@ -396,6 +396,28 @@ TEST_CASE("a session cap outside 0 to 8 falls back to four and logs the value it
     CHECK(lineWith({"maxSessions", "four", "4"}));
 }
 
+TEST_CASE("an absent openBrowserAtStart opens nothing, and the file says so") {
+    CHECK_FALSE(Settings().openBrowserAtStart);
+    CHECK_FALSE(parseFresh("{}").openBrowserAtStart);
+    CHECK(json::parse(serialiseSettings(parseFresh("{}")))["openBrowserAtStart"] == false);
+}
+
+TEST_CASE("openBrowserAtStart is read as written and refused as text") {
+    CHECK(parseFresh(R"({"openBrowserAtStart": true})").openBrowserAtStart);
+    CHECK_FALSE(logged("'openBrowserAtStart'"));
+
+    CHECK_FALSE(parseFresh(R"({"openBrowserAtStart": "yes"})").openBrowserAtStart);
+    CHECK(logged("'openBrowserAtStart'"));
+}
+
+TEST_CASE("the local address is loopback for a bind to every interface, and the bind otherwise") {
+    CHECK(localUrl(parseFresh("{}")) == "http://127.0.0.1:8881/");
+    CHECK(localUrl(parseFresh(R"({"port": 9000})")) == "http://127.0.0.1:9000/");
+    CHECK(localUrl(parseFresh(R"({"bindAddress": "127.0.0.1"})")) == "http://127.0.0.1:8881/");
+    CHECK(localUrl(parseFresh(R"({"bindAddress": "192.168.1.20", "port": 8080})")) ==
+          "http://192.168.1.20:8080/");
+}
+
 TEST_CASE("maxSessions survives a round trip through the file format") {
     Settings original;
     original.maxSessions = 7;

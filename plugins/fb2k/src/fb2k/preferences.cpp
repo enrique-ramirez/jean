@@ -61,6 +61,8 @@ constexpr Control kMainControls[] = {{IDC_PORT, &SettingsForm::port},
                                      {IDC_BIND, &SettingsForm::bindAddress},
                                      {IDC_ORIGINS, &SettingsForm::allowedOrigins}};
 
+constexpr BoolControl kMainBoolControls[] = {{IDC_OPEN_BROWSER, &SettingsForm::openBrowserAtStart}};
+
 constexpr Control kPermissionsControls[] = {
     {IDC_FIELDS, &SettingsForm::allowedFields},
     {IDC_MAX_AUTOPLAYLISTS, &SettingsForm::maxAutoPlaylists},
@@ -81,7 +83,8 @@ struct Page {
     bool configPath;
 };
 
-constexpr Page kMainPage{kPageName, IDD_PREFERENCES, Controls(kMainControls), BoolControls(), true};
+constexpr Page kMainPage{kPageName, IDD_PREFERENCES, Controls(kMainControls),
+                         BoolControls(kMainBoolControls), true};
 constexpr Page kPermissionsPage{kPermissionsName, IDD_PERMISSIONS, Controls(kPermissionsControls),
                                 BoolControls(kPermissionsBoolControls), false};
 

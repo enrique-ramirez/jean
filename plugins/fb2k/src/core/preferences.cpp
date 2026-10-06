@@ -75,7 +75,8 @@ bool operator==(const SettingsForm& a, const SettingsForm& b) {
            a.allowedOrigins == b.allowedOrigins && a.allowedFields == b.allowedFields &&
            a.writePlaylists == b.writePlaylists && a.controlPlayback == b.controlPlayback &&
            a.changeOutput == b.changeOutput && a.streamingEnabled == b.streamingEnabled &&
-           a.maxAutoPlaylists == b.maxAutoPlaylists && a.allowedHosts == b.allowedHosts;
+           a.maxAutoPlaylists == b.maxAutoPlaylists && a.allowedHosts == b.allowedHosts &&
+           a.openBrowserAtStart == b.openBrowserAtStart;
 }
 
 SettingsForm toForm(const Settings& settings) {
@@ -90,6 +91,7 @@ SettingsForm toForm(const Settings& settings) {
     form.streamingEnabled = settings.streamingEnabled;
     form.maxAutoPlaylists = std::to_string(settings.maxAutoPlaylists);
     form.allowedHosts = joinLines(settings.allowedHosts);
+    form.openBrowserAtStart = settings.openBrowserAtStart;
     return form;
 }
 
@@ -155,6 +157,7 @@ FormReading readForm(const SettingsForm& form, const Settings& unshown) {
     settings.streamingEnabled = form.streamingEnabled;
     settings.maxAutoPlaylists = maxAutoPlaylistsValue;
     settings.allowedHosts = std::move(allowedHosts);
+    settings.openBrowserAtStart = form.openBrowserAtStart;
 
     FormReading reading;
     reading.settings = std::move(settings);

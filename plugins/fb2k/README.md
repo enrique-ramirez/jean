@@ -71,13 +71,14 @@ Everything is a file. `<profile>/foo_jean/config.json` is written on first start
   "maxConcurrentStreams": 8,
   "streamTicketTtlSeconds": 120,
   "muteWhileStreaming": true,
-  "maxSessions": 4
+  "maxSessions": 4,
+  "openBrowserAtStart": false
 }
 ```
 
 Every key is optional. An absent key keeps its default; a present but malformed one logs a line naming it, the value it refused and the default it took, so a single bad edit cannot stop a headless player coming up and never leaves silent about what happened. A key that is not a setting at all is reported too, because a typo like `bindaddress` otherwise changes nothing and says nothing.
 
-`controlPlayback`, `writePlaylists`, `allowedFields`, `changeOutput`, `streamingEnabled`, `maxAutoPlaylists`, `allowedHosts` and `allowedOrigins` take effect on the next request once the file changes on disk, with no restart. `port`, `bindAddress`, `opusBitrate`, `aacBitrate`, `maxConcurrentStreams`, `streamTicketTtlSeconds`, `muteWhileStreaming` and `maxSessions` keep their running values until foobar2000 restarts, because nothing rebinds a listening socket, reopens a stream already open or resizes the session cap the listener started with.
+`controlPlayback`, `writePlaylists`, `allowedFields`, `changeOutput`, `streamingEnabled`, `maxAutoPlaylists`, `allowedHosts` and `allowedOrigins` take effect on the next request once the file changes on disk, with no restart. `port`, `bindAddress`, `opusBitrate`, `aacBitrate`, `maxConcurrentStreams`, `streamTicketTtlSeconds`, `muteWhileStreaming`, `maxSessions` and `openBrowserAtStart` keep their running values until foobar2000 restarts, because nothing rebinds a listening socket, reopens a stream already open or resizes the session cap the listener started with, and the browser is opened once, at start.
 
 | key | meaning |
 |---|---|
@@ -97,10 +98,11 @@ Every key is optional. An absent key keeps its default; a present but malformed 
 | `streamTicketTtlSeconds` | How long a stream ticket stays valid, between 10 and 3600. A ticket is **not** single-use, for that same reason; the window is what bounds a leaked URL. |
 | `maxSessions` | How many detached playback sessions this component will keep at once, between 0 and 8; the player's own session is never counted. One past the cap is a `503` saying so, and `0` switches creating them off. |
 | `muteWhileStreaming` | Silences the player while anybody is listening to the player's own session, so the sound moves rather than doubles. A listener to a detached session never silences it. `false` makes the player one more speaker alongside every listener: fine a room away, an echo in the same room, because the stream runs a second or two behind. |
+| `openBrowserAtStart` | `false` by default. `true` opens Jean in this machine's default browser once the listener is up, at `http://127.0.0.1:<port>/`, or at the `bindAddress` where one names a single interface. A browser treats a loopback address over plain HTTP as a secure context, so no certificate is involved. For an install somebody double-clicks rather than browses to: a portable foobar2000 on a USB stick, with `bindAddress` at `127.0.0.1` so Windows Firewall never asks about it. Nothing opens when the port could not be bound. |
 
 ### The preferences page
 
-**Preferences → Tools → Jean** edits the port, the bind address and `allowedOrigins`; its **Permissions** child page holds everything else: a checkbox each for `controlPlayback`, `writePlaylists`, `changeOutput` and `streamingEnabled`, the `allowedFields` list, `maxAutoPlaylists`, and the `allowedHosts` list. Two pages rather than one because foobar2000 sizes a preferences page to the host window and does not scroll it, so a tall page has content nobody can reach. Between them they write `config.json` and nothing else, so a headless install loses nothing by never opening the page, and a key the page has no control for is carried through untouched rather than reset.
+**Preferences → Tools → Jean** edits the port, the bind address, `allowedOrigins` and `openBrowserAtStart`; its **Permissions** child page holds everything else: a checkbox each for `controlPlayback`, `writePlaylists`, `changeOutput` and `streamingEnabled`, the `allowedFields` list, `maxAutoPlaylists`, and the `allowedHosts` list. Two pages rather than one because foobar2000 sizes a preferences page to the host window and does not scroll it, so a tall page has content nobody can reach. Between them they write `config.json` and nothing else, so a headless install loses nothing by never opening the page, and a key the page has no control for is carried through untouched rather than reset.
 
 The page is stricter than the file parser, deliberately: a hand-edited file must never stop a headless player coming up, so a bad key there falls back to a default, while the dialog refuses and says what to type.
 

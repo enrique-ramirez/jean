@@ -52,6 +52,7 @@ const std::vector<RestartKey>& restartKeys() {
         {"maxConcurrentStreams", [](const Settings& s) { return json(s.maxConcurrentStreams); }},
         {"maxSessions", [](const Settings& s) { return json(s.maxSessions); }},
         {"muteWhileStreaming", [](const Settings& s) { return json(s.muteWhileStreaming); }},
+        {"openBrowserAtStart", [](const Settings& s) { return json(s.openBrowserAtStart); }},
         {"opusBitrate", [](const Settings& s) { return json(s.opusBitrate); }},
         {"port", [](const Settings& s) { return json(s.port); }},
         {"streamTicketTtlSeconds",

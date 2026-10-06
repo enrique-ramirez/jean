@@ -11,6 +11,7 @@
 #include "core/version.h"
 #include "fb2k/artwork.h"
 #include "fb2k/autoplaylists.h"
+#include "fb2k/browser.h"
 #include "fb2k/config_file.h"
 #include "fb2k/config_watch.h"
 #include "fb2k/decoder_source.h"
@@ -247,6 +248,11 @@ public:
           configWatch_(server_, settings_) {
         if (status_.listening) {
             logInfo("listening on " + settings_.bindAddress + ":" + std::to_string(settings_.port));
+            if (settings_.openBrowserAtStart) {
+                const auto url = localUrl(settings_);
+                logInfo("opening " + url + " in the default browser");
+                openInBrowser(url);
+            }
         } else {
             logError(status_.error);
             if (status_.portInUse)

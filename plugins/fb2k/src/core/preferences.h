@@ -20,6 +20,7 @@ struct SettingsForm {
     bool streamingEnabled = true;
     std::string maxAutoPlaylists;
     std::string allowedHosts;
+    bool openBrowserAtStart = false;
 };
 
 bool operator==(const SettingsForm& a, const SettingsForm& b);

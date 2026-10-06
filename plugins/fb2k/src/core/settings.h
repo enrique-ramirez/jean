@@ -41,6 +41,8 @@ struct Settings {
     // Off makes the player one more speaker alongside every listener, rather than one that
     // steps aside for them.
     bool muteWhileStreaming = true;
+
+    bool openBrowserAtStart = false;
 };
 
 constexpr int kMuteLingerSeconds = 8;
@@ -82,5 +84,7 @@ SettingsParse parseSettingsLogging(const std::string& text);
 Settings parseSettings(const std::string& text);
 
 std::string serialiseSettings(const Settings& settings);
+
+std::string localUrl(const Settings& settings);
 
 }  // namespace jean

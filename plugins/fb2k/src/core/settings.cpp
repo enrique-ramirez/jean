@@ -169,6 +169,7 @@ SettingsParse parseSettingsLogging(const std::string& text) {
     keys.read("streamTicketTtlSeconds", settings.streamTicketTtlSeconds);
     keys.read("muteWhileStreaming", settings.muteWhileStreaming);
     keys.read("maxSessions", settings.maxSessions);
+    keys.read("openBrowserAtStart", settings.openBrowserAtStart);
 
     keys.warnAboutLeftovers();
 
@@ -207,9 +208,15 @@ std::string serialiseSettings(const Settings& settings) {
                     {"maxConcurrentStreams", settings.maxConcurrentStreams},
                     {"streamTicketTtlSeconds", settings.streamTicketTtlSeconds},
                     {"muteWhileStreaming", settings.muteWhileStreaming},
-                    {"maxSessions", settings.maxSessions}};
+                    {"maxSessions", settings.maxSessions},
+                    {"openBrowserAtStart", settings.openBrowserAtStart}};
 
     return root.dump(2) + "\n";
+}
+
+std::string localUrl(const Settings& settings) {
+    const auto host = settings.bindAddress == "0.0.0.0" ? "127.0.0.1" : settings.bindAddress;
+    return "http://" + host + ":" + std::to_string(settings.port) + "/";
 }
 
 }  // namespace jean

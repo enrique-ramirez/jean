@@ -226,6 +226,11 @@ TEST_CASE("two forms differ if any one control does") {
             f.allowedFields = "";
             return f;
         },
+        [] {
+            auto f = goodForm();
+            f.openBrowserAtStart = true;
+            return f;
+        },
     };
 
     CHECK(goodForm() == goodForm());
@@ -338,6 +343,20 @@ std::string lowered(std::string text) {
 }
 
 }  // namespace
+
+TEST_CASE("the startup checkbox is read from the form rather than from what was saved") {
+    Settings opening;
+    opening.openBrowserAtStart = true;
+    CHECK(toForm(opening).openBrowserAtStart);
+
+    const auto ticked = readForm(toForm(opening), Settings());
+    REQUIRE(ticked.ok());
+    CHECK(ticked.settings.openBrowserAtStart);
+
+    const auto cleared = readForm(toForm(Settings()), opening);
+    REQUIRE(cleared.ok());
+    CHECK_FALSE(cleared.settings.openBrowserAtStart);
+}
 
 TEST_CASE("the form carries no token") {
     CHECK_FALSE(HasAuthToken<SettingsForm>::value);
@@ -543,6 +562,12 @@ TEST_CASE("each restart-only key that differs from what is running needs a resta
          [&] {
              auto s = running;
              s.maxSessions = 2;
+             return s;
+         }()},
+        {"openBrowserAtStart",
+         [&] {
+             auto s = running;
+             s.openBrowserAtStart = true;
              return s;
          }()},
     };

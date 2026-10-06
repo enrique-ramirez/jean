@@ -391,6 +391,9 @@ const DRAG_STEPS = 12;
 // A box is fractional, so a sheet back at rest can sit a fraction of a pixel off.
 const AT_REST_PX = 1;
 
+// Longer than a sheet on its way out stays drawn, so one still there after it was never closed.
+const PAST_ITS_EXIT_MS = 600;
+
 // Enough playlists that the filing page is taller than the sheet's limit and scrolls.
 const MORE_PLAYLISTS = 24;
 
@@ -409,7 +412,7 @@ const expectRowSheetOpen = async (page: Page) => {
 	await expect(menuItem(page, "Favorites")).toBeVisible();
 };
 
-test.describe("a row's action sheet goes by its grabber alone", () => {
+test.describe("a row's action sheet goes by a drag down", () => {
 	test.skip(
 		({ isMobile }) => !isMobile,
 		"a sheet is the compact shape, and this is touch",
@@ -448,21 +451,59 @@ test.describe("a row's action sheet goes by its grabber alone", () => {
 		await expectRowSheetOpen(page);
 	});
 
-	test("a downward drag that begins on the sheet's body moves the sheet nowhere and leaves it open", async ({
+	test("a downward drag that begins on the sheet's body, past the distance, closes the sheet", async ({
 		page,
 	}) => {
 		const sheet = await openRowSheet(page);
 		const box = await restingBox(sheet);
-		const furthest = await watchHowFarItMoves(sheet);
 
 		const x = box.x + box.width / 2;
 		const y = box.y + box.height / 2;
 		await touchDrag(page, { x, y }, { x, y: y + PAST_CLOSING_PX }, DRAG_STEPS);
 
+		await expect(sheet).toHaveCount(0);
+	});
+
+	test("a downward drag on a list scrolled away from its top scrolls it back and moves the sheet nowhere", async ({
+		page,
+		player,
+	}) => {
+		for (let index = 0; index < MORE_PLAYLISTS; index++)
+			player.addPlaylist(`Crate ${index + 1}`);
+
+		const sheet = await openRowSheet(page);
+		await menuItem(page, "Add to playlist").click();
+		const first = menuItem(page, "Favorites");
+		await expect(first).toBeVisible();
+		const box = await restingBox(sheet);
+		const x = box.x + box.width / 2;
+		await touchDrag(
+			page,
+			{ x, y: box.y + box.height * 0.8 },
+			{ x, y: box.y + box.height * 0.3 },
+			DRAG_STEPS,
+		);
+		const scrolled = await restingBox(first);
+		expect(scrolled.y, "the first playlist, scrolled up").toBeLessThan(box.y);
+		const furthest = await watchHowFarItMoves(sheet);
+
+		await touchDrag(
+			page,
+			{ x, y: box.y + box.height * 0.3 },
+			{ x, y: box.y + box.height * 0.3 + PAST_CLOSING_PX },
+			DRAG_STEPS,
+		);
+
+		const after = await restingBox(first);
+		expect(after.y, "the first playlist, scrolled back").toBeGreaterThan(
+			scrolled.y,
+		);
 		expect(await furthest(), "how far the sheet moved").toBeLessThanOrEqual(
 			AT_REST_PX,
 		);
-		await expectRowSheetOpen(page);
+		await page.waitForTimeout(PAST_ITS_EXIT_MS);
+		await expect(sheet).toHaveCount(1);
+		await expect(first).toBeVisible();
 	});
 
 	// A sheet that drags from anywhere has to stop a touch on its list from panning, and then

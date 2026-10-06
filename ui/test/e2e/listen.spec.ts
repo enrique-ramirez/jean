@@ -1474,6 +1474,9 @@ const PAST_CLOSING_PX = 140;
 // A box is fractional, so a sheet back at rest can sit a fraction of a pixel off.
 const AT_REST_PX = 1;
 
+// Enough moves that the browser paints the sheet between them.
+const DRAG_STEPS = 12;
+
 // The smallest target a fingertip lands on reliably, and the taller one the design gives a face.
 const FINGER_PX = 44;
 const FACE_PX = 52;
@@ -1725,7 +1728,7 @@ test.describe("the picker on a phone is a bottom sheet", () => {
 	});
 });
 
-test.describe("the picker's sheet goes by its grabber", () => {
+test.describe("the picker's sheet goes by a drag down", () => {
 	test.use({ fooJean: {} });
 	test.skip(({ isMobile }) => !isMobile, "the desktop keeps its popover");
 	test.skip(
@@ -1740,6 +1743,20 @@ test.describe("the picker's sheet goes by its grabber", () => {
 		const sheet = await openTheSheet(page);
 
 		await fromTheGrabber(page, sheet, PAST_CLOSING_PX);
+
+		await expect(page.getByRole("dialog")).toHaveCount(0);
+	});
+
+	test("a downward drag that begins on its body, past the distance, closes it", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		const sheet = await openTheSheet(page);
+		const heading = await restingBox(sheet.getByRole("heading").first());
+
+		const x = heading.x + heading.width / 2;
+		const y = heading.y + heading.height / 2;
+		await touchDrag(page, { x, y }, { x, y: y + PAST_CLOSING_PX }, DRAG_STEPS);
 
 		await expect(page.getByRole("dialog")).toHaveCount(0);
 	});
@@ -1837,19 +1854,51 @@ test.describe("the picker's sheet holding more than fits", () => {
 		await expect(closeButton(page)).toBeInViewport();
 	});
 
-	test("a downward drag begun on its body moves the sheet nowhere and leaves it open", async ({
+	test("a downward drag begun on its body, with its list at the top, closes it", async ({
 		page,
 		browserName,
 	}) => {
 		test.skip(browserName !== "chromium", "a finger is driven through CDP");
 		const sheet = await openItFull(page);
 		const box = await restingBox(sheet);
-		const furthest = await watchHowFarItMoves(sheet);
 
 		const x = box.x + box.width / 2;
 		const y = box.y + box.height / 2;
 		await touchDrag(page, { x, y }, { x, y: y + PAST_CLOSING_PX }, 12);
 
+		await expect(page.getByRole("dialog")).toHaveCount(0);
+	});
+
+	test("a downward drag begun on its list scrolled away from the top scrolls it back and moves the sheet nowhere", async ({
+		page,
+		browserName,
+	}) => {
+		test.skip(browserName !== "chromium", "a finger is driven through CDP");
+		const sheet = await openItFull(page);
+		const box = await restingBox(sheet);
+		const first = roster(page).getByRole("listitem").first();
+		const x = box.x + box.width / 2;
+		await touchDrag(
+			page,
+			{ x, y: box.y + box.height * 0.8 },
+			{ x, y: box.y + box.height * 0.3 },
+			12,
+		);
+		const scrolled = await restingBox(first);
+		expect(scrolled.y, "the first listener, scrolled up").toBeLessThan(box.y);
+		const furthest = await watchHowFarItMoves(sheet);
+
+		await touchDrag(
+			page,
+			{ x, y: box.y + box.height * 0.5 },
+			{ x, y: box.y + box.height * 0.5 + PAST_CLOSING_PX },
+			12,
+		);
+
+		const after = await restingBox(first);
+		expect(after.y, "the first listener, scrolled back").toBeGreaterThan(
+			scrolled.y,
+		);
 		expect(await furthest(), "how far the sheet moved").toBeLessThanOrEqual(
 			AT_REST_PX,
 		);

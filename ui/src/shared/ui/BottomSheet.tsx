@@ -1,14 +1,11 @@
 import { X } from "lucide-react";
-import type {
-	KeyboardEventHandler,
-	ReactNode,
-	PointerEvent as ReactPointerEvent,
-} from "react";
-import { useRef, useState } from "react";
+import type { KeyboardEventHandler, ReactNode } from "react";
+import { useRef } from "react";
 import { useDismissable } from "@/shared/hooks/useDismissable";
 import { useVisualViewport } from "@/shared/hooks/useVisualViewport";
 import styles from "./BottomSheet.module.css";
 import { useFocusCapture } from "./menuKeys";
+import { useSheetDrag } from "./useSheetDrag";
 
 const SHEET_DISMISS_PX = 92;
 
@@ -46,36 +43,13 @@ export function BottomSheet({
 		tapOutsideOnlyDismisses: true,
 	});
 	const scrimRef = useRef<HTMLDivElement | null>(null);
-	const [dragY, setDragY] = useState(0);
-	const from = useRef<number | null>(null);
+	const dragY = useSheetDrag(ref, onDismiss, SHEET_DISMISS_PX);
 
 	useFocusCapture(ref, true, initialFocus);
 
 	// The scrim is the sheet's containing block, so tracking the visual viewport here is what lifts
 	// the sheet clear of the keyboard.
 	useVisualViewport(scrimRef);
-
-	const grabber = {
-		onPointerDown: (event: ReactPointerEvent) => {
-			event.currentTarget.setPointerCapture(event.pointerId);
-			from.current = event.clientY;
-		},
-		onPointerMove: (event: ReactPointerEvent) => {
-			if (from.current === null) return;
-			setDragY(Math.max(0, event.clientY - from.current));
-		},
-		onPointerUp: (event: ReactPointerEvent) => {
-			if (from.current === null) return;
-			const travelled = event.clientY - from.current;
-			from.current = null;
-			setDragY(0);
-			if (travelled > SHEET_DISMISS_PX) onDismiss();
-		},
-		onPointerCancel: () => {
-			from.current = null;
-			setDragY(0);
-		},
-	};
 
 	const state = isLeaving ? "closed" : "open";
 
@@ -102,7 +76,7 @@ export function BottomSheet({
 				onKeyDown={onKeyDown}
 				onPointerDown={(event) => event.stopPropagation()}
 			>
-				<div className={styles.grabber} {...grabber}>
+				<div className={styles.grabber}>
 					<span className={styles.handle} aria-hidden="true" />
 				</div>
 				{closeLabel ? (

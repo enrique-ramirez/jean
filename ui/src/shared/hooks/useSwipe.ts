@@ -4,7 +4,7 @@ import { scrollParentOf } from "@/shared/lib/scrollParent";
 import { ownsTouch } from "./useDragFraction";
 
 const FLICK_MS = 600;
-const AXIS_LOCK = 8;
+export const AXIS_LOCK = 8;
 const BOTTOM_SLACK_PX = 1;
 
 // Touch events rather than pointer events: the browser cancels the pointer stream the moment it

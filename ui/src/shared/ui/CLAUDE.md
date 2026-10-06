@@ -17,7 +17,7 @@ The pieces every feature draws with.
 - Capture the pointer only once the gesture is a drag, except on a small handle.
 - A sortable row's key is its identity plus an occurrence counter, never its position, and its `style` is composed after the sortable spread, which owns `transform`.
 - The track list does not subscribe to the drag store.
-- `useSwipe.ts` reads touch events, settles a gesture that competes with scrolling by scroll position, and ignores a touch that begins under `data-owns-touch`.
+- `useSwipe.ts` and `useSheetDrag.ts` read touch events, settle a gesture that competes with scrolling by scroll position, and ignore a touch that begins under `data-owns-touch`.
 - A layered surface passes a boundary to `scrollParent.ts`, or the walk returns the scroller underneath.
 - A write driven by a drag goes through `useCoalescedWrite`.
 

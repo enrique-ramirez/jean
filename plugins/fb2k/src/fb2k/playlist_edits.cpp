@@ -74,7 +74,7 @@ std::vector<bool> alreadyHeld(size_t index, const metadb_handle_list& items,
         tracks.insert(rows[at].get_ptr());
 
     for (size_t at = 0; at < held.size(); ++at)
-        held[at] = tracks.count(items[at].get_ptr()) != 0;
+        held[at] = tracks.contains(items[at].get_ptr());
 
     return held;
 }

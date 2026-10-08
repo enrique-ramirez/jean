@@ -4,8 +4,8 @@
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\lib\download.ps1"
 
-$version = '2025-03-07'
-$sha = 'CCDA3C5840E66E0E28A7E4FE36407C4E78581AA30C40C362A188FCBAAE799A3E'
+$version = '2026-10-01'
+$sha = 'D4C55077336FAE81BF8DF0259B5B2748FA45EA84132C656EAD93EB123CBCDC26'
 
 $root = Split-Path -Parent $PSScriptRoot
 $sdk = Join-Path $root 'sdk'

@@ -55,7 +55,7 @@ if ($Files.Count -eq 0) {
 # /imsvc marks a directory as a system one to clang-tidy, so warnings in the SDK, WTL and the
 # vendored libraries stay out of the findings.
 $flags = @(
-  '/std:c++17', '/EHsc', '/MT',
+  '/std:c++20', '/EHsc', '/MT',
   '/DUNICODE', '/D_UNICODE', '/DNOMINMAX', '/DCPPHTTPLIB_ZLIB_SUPPORT', '/DNDEBUG', '/D_WINDLL',
   "/I`"$src`"",
   "/imsvc`"$root`"",

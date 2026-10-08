@@ -31,11 +31,8 @@ if ((Split-Path -Leaf $proj) -eq 'foo_jean.vcxproj') {
 
 Write-Output "Building $Project ($Configuration|$Platform)"
 
-# PlatformToolset is forced to v143 on the command line: the SDK's projects target v142 and fail MSB8020 under VS 2022 alone.
-# Overriding here rather than retargeting keeps sdk/ exactly as downloaded.
 $cmd = "`"$vcvars`" >nul && msbuild `"$proj`"" +
        " /p:Configuration=$Configuration /p:Platform=$Platform" +
-       " /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0" +
        " /v:minimal /nologo /m"
 
 $output = cmd /c $cmd 2>&1

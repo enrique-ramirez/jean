@@ -95,7 +95,7 @@ Player resolving(FakePlayer* player) {
         player->asked.push_back(write);
 
         if (const auto& library = write.track.library) {
-            if (player->heldTwice.count(library->track) != 0)
+            if (player->heldTwice.contains(library->track))
                 return outcomeForAnAddressNamingTwoTracks().value();
 
             const auto file = player->snapshot.find(library->track);

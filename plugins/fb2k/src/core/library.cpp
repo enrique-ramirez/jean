@@ -31,7 +31,7 @@ struct ColumnFacts {
 ColumnFacts factsOf(const Column& column) {
     ColumnFacts facts;
     facts.distinct = column.dictionary.values.size();
-    facts.hasUnresolved = column.dictionary.ids.count(kUnresolved) > 0;
+    facts.hasUnresolved = column.dictionary.ids.contains(kUnresolved);
     facts.allUnresolved = facts.distinct == 1 && facts.hasUnresolved;
     return facts;
 }

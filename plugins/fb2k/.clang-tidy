@@ -6,7 +6,7 @@
 #   scripts/lint.sh src/core/text.cpp   one file
 #
 # The selection leans on bugprone, cert and the analyzer. cppcoreguidelines and modernize
-# are included only where they say something about this codebase: it is already C++17,
+# are included only where they say something about this codebase: it is already modern C++,
 # already uses smart pointers, and does not need to be told about trailing return types.
 #
 # Every check turned off below is turned off for a reason, and the reason is written

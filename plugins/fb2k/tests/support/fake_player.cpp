@@ -74,7 +74,7 @@ std::vector<bool> alreadyHeld(const std::vector<FakeRow>& held, const std::vecto
 
     std::vector<bool> answer;
     std::transform(rows.begin(), rows.end(), std::back_inserter(answer),
-                   [&tracks](const FakeRow& row) { return tracks.count(trackOf(row)) != 0; });
+                   [&tracks](const FakeRow& row) { return tracks.contains(trackOf(row)); });
     return answer;
 }
 
@@ -358,7 +358,7 @@ int FakePlayer::writes() const {
 
     const Lock guard(mutex_);
     return static_cast<int>(std::count_if(asked_.begin(), asked_.end(), [](const Asked& asked) {
-        return reads.count(asked.call) == 0;
+        return !reads.contains(asked.call);
     }));
 }
 

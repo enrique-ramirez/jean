@@ -157,7 +157,7 @@ Player reading(FakeLibrary* library) {
         library->asked.push_back({track, subsong, std::nullopt, columns});
 
         LibraryTrackRead read;
-        if (library->heldTwice.count(track) != 0) {
+        if (library->heldTwice.contains(track)) {
             read.outcome = outcomeForAnAddressNamingTwoTracks().value();
             return read;
         }

@@ -74,7 +74,10 @@ constexpr int kRockMatches = 412;
 constexpr uint64_t kPreviewedStructure = 4294967337ULL;
 
 // Fewer than kRockMatches: a match the snapshot does not hold is left out.
-const std::vector<uint32_t> kRockOrdinals = {12, 13, 407};
+const std::vector<uint32_t>& rockOrdinals() {
+    static const std::vector<uint32_t> ordinals = {12, 13, 407};
+    return ordinals;
+}
 
 // The autoplaylist this component made, and the answers foobar2000 gives a preview of its query
 // and of one it cannot parse.
@@ -86,7 +89,7 @@ void holdingAnAutoPlaylist(FakePlayer& player) {
     matching.matches = kRockMatches;
     matching.libraryEnabled = true;
     matching.structure = kPreviewedStructure;
-    matching.ordinals = kRockOrdinals;
+    matching.ordinals = rockOrdinals();
     player.answerPreview("%genre% IS Rock", matching);
 
     PreviewResult unparsed;
@@ -902,10 +905,9 @@ std::vector<Write> playlistAndRowWrites() {
                                      "sorting a playlist"};
 
     auto writes = playlistWrites(0);
-    writes.erase(
-        std::remove_if(writes.begin(), writes.end(),
-                       [&kept](const Write& write) { return kept.count(write.name) == 0; }),
-        writes.end());
+    writes.erase(std::remove_if(writes.begin(), writes.end(),
+                                [&kept](const Write& write) { return !kept.contains(write.name); }),
+                 writes.end());
 
     REQUIRE(writes.size() == kept.size());
     return writes;
@@ -2822,7 +2824,7 @@ TEST_CASE(
         {"a negative to", withTo(-1)},
         {"a to written as digits", withTo("1")},
         {"a to with a fraction", withTo(1.5)},
-        {"a to past 32 bits", withTo(uint64_t{1} << 32)},
+        {"a to past 32 bits", withTo(uint64_t{1} << 32U)},
         {"a bitset", moveRowsBody(kRowsStructure, json{{"bitset", "Aw=="}}, 0).dump()},
         {"a pattern, which is the sort's field",
          moveRowsBody(kRowsStructure,
@@ -3309,7 +3311,7 @@ TEST_CASE(
     // A number, as GET /state's library.structure is, so a client compares the two directly.
     CHECK(body.at("structure").is_number_unsigned());
     CHECK(body.at("structure") == kPreviewedStructure);
-    CHECK(body.at("ordinals") == json(kRockOrdinals));
+    CHECK(body.at("ordinals") == json(rockOrdinals()));
 
     CHECK(foobar.previewsAskingRows() == std::vector<bool>{true});
 }

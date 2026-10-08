@@ -111,7 +111,7 @@ function Read-CompileFlags {
 
   $list -split "`n" | ForEach-Object { ($_ -replace '#.*$', '').Trim().Trim('"') } | Where-Object { $_ } | ForEach-Object {
     $flag = $_.Replace('$vendor_include', '-I').Replace('$root', $root)
-    if ($flag -eq '-std=c++17') { '/std:c++17' }
+    if ($flag -eq '-std=c++20') { '/std:c++20' }
     elseif ($flag.StartsWith('-D')) { "/D$($flag.Substring(2))" }
     elseif ($flag.StartsWith('-I')) { "/I`"$($flag.Substring(2))`"" }
     else { throw "scripts/lib/compile-flags.sh holds '$flag', which this script does not know how to hand to cl." }

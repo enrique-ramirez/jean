@@ -55,7 +55,7 @@ std::vector<uint32_t> sorted(std::vector<uint32_t> positions) {
 
 bool shareAValue(const std::set<uint64_t>& left, const std::set<uint64_t>& right) {
     return std::any_of(left.begin(), left.end(),
-                       [&right](uint64_t value) { return right.count(value) != 0; });
+                       [&right](uint64_t value) { return right.contains(value); });
 }
 
 constexpr uint32_t kRowsEach = 1000;
@@ -414,7 +414,7 @@ TEST_CASE("a client following a playlist while the player writes to it misses no
 
     size_t missed = 0;
     for (uint32_t change = 0; change < kChanges; ++change)
-        missed += caught.count(change) == 0 ? 1 : 0;
+        missed += caught.contains(change) ? 0 : 1;
 
     CHECK(refusals == 0);
     CHECK(missed == 0);

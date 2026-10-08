@@ -16,7 +16,7 @@
 : "${vendor_include:=-I}"
 
 compile_flags=(
-  -std=c++17
+  -std=c++20
   # Defined once for the whole build, never per file: third_party/README.md has why.
   -DCPPHTTPLIB_ZLIB_SUPPORT
   "$vendor_include$root"

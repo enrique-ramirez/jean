@@ -154,7 +154,7 @@ public:
     // Called on a connection's thread once its bytes are sent; true once it may end.
     void awaitLetGo(const std::string& key) {
         std::unique_lock<std::mutex> held(mutex_);
-        changed_.wait(held, [this, &key] { return closing_ || held_.count(key) == 0; });
+        changed_.wait(held, [this, &key] { return closing_ || !held_.contains(key); });
     }
 
     // The format each stream of `key` was opened in, in the order opened.

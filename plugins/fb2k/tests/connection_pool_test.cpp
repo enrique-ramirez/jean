@@ -128,7 +128,8 @@ std::future<void> writeInBackground(const TestServer& server, Answers& answers) 
         client.set_read_timeout(30, 0);
         const auto response =
             client.Post("/api/tags", ratingWrite(kTrackAddress), "application/json");
-        answers.record(response ? response->status : kConnectionClosedUnanswered);
+        answers.record(response.error() == httplib::Error::Success ? response->status
+                                                                   : kConnectionClosedUnanswered);
     });
 }
 

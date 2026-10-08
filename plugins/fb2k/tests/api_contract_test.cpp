@@ -136,7 +136,7 @@ bool publishesError(const std::string& schema, const std::string& error) {
 std::string unsendable(const std::string& schema, const std::set<std::string>& described) {
     std::vector<std::string> missing;
     for (const auto& published : publishedEnum(schema, "error"))
-        if (described.count(unquoted(published)) == 0)
+        if (!described.contains(unquoted(published)))
             missing.push_back(published);
 
     return listed(missing);
@@ -201,7 +201,7 @@ bool publishes(const std::string& method, const std::string& path, int status) {
         return published.method == method && published.path == path;
     });
 
-    return route != routes.end() && route->statuses.count(status) != 0;
+    return route != routes.end() && route->statuses.contains(status);
 }
 
 }  // namespace

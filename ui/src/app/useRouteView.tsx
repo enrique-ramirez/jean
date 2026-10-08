@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo } from "react";
+import { useMemo } from "react";
 import { type ArtistTracks, refsOfArtist } from "@/domain/artist/artists";
 import { useSplitCredits } from "@/domain/artist/splitCredits";
 import type { Library } from "@/domain/library/useLibrary";
@@ -17,6 +17,7 @@ import {
 	wholeLibrary,
 } from "@/domain/track/project";
 import { type ArtistTab, href, ROUTE } from "@/domain/track/routes";
+import type { PageHeading } from "@/domain/track/TrackPage";
 import { buildShelves, refsOfShelf } from "@/features/home/shelves";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Crumb } from "@/shared/ui/Crumb";
@@ -26,8 +27,7 @@ export interface ListPage {
 	view: TrackView;
 	kind: ScratchKind;
 	label: string;
-	eyebrow: ReactNode;
-	title: string;
+	heading: PageHeading & { title: string };
 	emptyNotice: string;
 }
 
@@ -101,8 +101,7 @@ export function useRouteView(route: RouteView, library: Library) {
 				view: shelfView ?? EMPTY_VIEW,
 				kind: SCRATCH_KIND.shelf,
 				label: t(shelf.title),
-				eyebrow: t("route.shelf"),
-				title: t(shelf.title),
+				heading: { eyebrow: t("route.shelf"), title: t(shelf.title) },
 				emptyNotice: t("library.empty"),
 			}
 		: genre
@@ -110,10 +109,12 @@ export function useRouteView(route: RouteView, library: Library) {
 					view: genreView ?? EMPTY_VIEW,
 					kind: SCRATCH_KIND.genre,
 					label: genre,
-					eyebrow: (
-						<Crumb href={href(ROUTE.genres)}>{t("home.allGenres")}</Crumb>
-					),
-					title: genre,
+					heading: {
+						eyebrow: (
+							<Crumb href={href(ROUTE.genres)}>{t("home.allGenres")}</Crumb>
+						),
+						title: genre,
+					},
 					emptyNotice: t("library.noGenre", { genre }),
 				}
 			: albumTracks
@@ -121,8 +122,10 @@ export function useRouteView(route: RouteView, library: Library) {
 						view: albumView ?? EMPTY_VIEW,
 						kind: SCRATCH_KIND.album,
 						label: albumLabel(albumTracks.artist, albumTracks.album),
-						eyebrow: <AlbumCrumb artist={albumTracks.artist} />,
-						title: albumTracks.album,
+						heading: {
+							eyebrow: <AlbumCrumb artist={albumTracks.artist} />,
+							title: albumTracks.album,
+						},
 						emptyNotice: t("library.noAlbum"),
 					}
 				: route.kind === "all"
@@ -130,8 +133,10 @@ export function useRouteView(route: RouteView, library: Library) {
 							view: allMusic,
 							kind: SCRATCH_KIND.all,
 							label: "",
-							eyebrow: t("home.yourLibrary"),
-							title: t("library.allMusic"),
+							heading: {
+								eyebrow: t("home.yourLibrary"),
+								title: t("library.allMusic"),
+							},
 							emptyNotice: t("library.empty"),
 						}
 					: null;

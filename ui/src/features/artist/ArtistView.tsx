@@ -27,7 +27,7 @@ import {
 	type Refs,
 	type TrackView,
 } from "@/domain/track/project";
-import { albumRoute, href } from "@/domain/track/routes";
+import { type ArtistTab, albumRoute, href } from "@/domain/track/routes";
 import { summarise } from "@/domain/track/stats";
 import { ViewHeader } from "@/domain/track/ViewHeader";
 import { Trans } from "@/shared/i18n/Trans";
@@ -54,6 +54,8 @@ const recordsOf = (view: TrackView | null) =>
 		: [];
 
 type AlbumRecord = ReturnType<typeof recordsOf>[number];
+
+export type SlideDirection = 1 | -1 | 0;
 
 function Records({
 	heading,
@@ -136,7 +138,10 @@ export function ArtistView({
 	name,
 	library,
 	tracks,
+	tab,
+	direction,
 	tabs,
+	tracksPanel,
 	onPlay,
 	onShuffle,
 	canPlay,
@@ -145,7 +150,10 @@ export function ArtistView({
 	name: string;
 	library: Library;
 	tracks: ArtistTracks;
+	tab: ArtistTab;
+	direction: SlideDirection;
 	tabs: ReactNode;
+	tracksPanel: ReactNode;
 	onPlay: (refs: Refs, position: number) => void;
 	onShuffle: (refs: Refs) => void;
 	canPlay: boolean;
@@ -203,70 +211,8 @@ export function ArtistView({
 	const { status } = library;
 	const isReading = isLibraryReading(status);
 
-	return (
-		<div className={styles.artist}>
-			<ViewHeader
-				eyebrow={t("artist.eyebrow")}
-				title={name}
-				stats={stats}
-				hasPlayCounts={hasPlayCounts}
-				tabs={tabs}
-				leading={
-					<Trans
-						phrase="artist.albumCount"
-						count={discography.length}
-						total={<b>{format.number(discography.length)}</b>}
-					/>
-				}
-				aside={
-					own && discography.length > 0 ? (
-						<Mosaic source={library.source} rows={own} seed={name} size={176} />
-					) : undefined
-				}
-				actions={
-					held > 0 ? (
-						<>
-							<Button
-								variant="primary"
-								icon={Play}
-								onClick={
-									canControlPlayback ? () => onPlay(allRefs, 0) : undefined
-								}
-								disabled={canControlPlayback && !canPlay}
-								aria-disabled={canControlPlayback ? undefined : "true"}
-								aria-label={
-									canControlPlayback
-										? undefined
-										: say("player.controlOffName", {
-												control: say("player.play"),
-											})
-								}
-							>
-								{t("player.play")}
-							</Button>
-							{canShuffle ? (
-								<Button
-									icon={Shuffle}
-									onClick={
-										canControlPlayback ? () => onShuffle(allRefs) : undefined
-									}
-									aria-disabled={canControlPlayback ? undefined : "true"}
-									aria-label={
-										canControlPlayback
-											? undefined
-											: t("player.controlOffName", {
-													control: t("player.shuffle"),
-												})
-									}
-								>
-									{t("player.shuffle")}
-								</Button>
-							) : null}
-						</>
-					) : null
-				}
-			/>
-
+	const overview = (
+		<div className={styles.overview}>
 			{held === 0 ? (
 				<p className={styles.notice}>
 					{isReading
@@ -372,6 +318,76 @@ export function ArtistView({
 					</ul>
 				</section>
 			) : null}
+		</div>
+	);
+
+	return (
+		<div>
+			<ViewHeader
+				eyebrow={t("artist.eyebrow")}
+				title={name}
+				stats={stats}
+				hasPlayCounts={hasPlayCounts}
+				tabs={tabs}
+				leading={
+					<Trans
+						phrase="artist.albumCount"
+						count={discography.length}
+						total={<b>{format.number(discography.length)}</b>}
+					/>
+				}
+				aside={
+					own && discography.length > 0 ? (
+						<Mosaic source={library.source} rows={own} seed={name} size={176} />
+					) : undefined
+				}
+				actions={
+					held > 0 ? (
+						<>
+							<Button
+								variant="primary"
+								icon={Play}
+								onClick={
+									canControlPlayback ? () => onPlay(allRefs, 0) : undefined
+								}
+								disabled={canControlPlayback && !canPlay}
+								aria-disabled={canControlPlayback ? undefined : "true"}
+								aria-label={
+									canControlPlayback
+										? undefined
+										: say("player.controlOffName", {
+												control: say("player.play"),
+											})
+								}
+							>
+								{t("player.play")}
+							</Button>
+							{canShuffle ? (
+								<Button
+									icon={Shuffle}
+									onClick={
+										canControlPlayback ? () => onShuffle(allRefs) : undefined
+									}
+									aria-disabled={canControlPlayback ? undefined : "true"}
+									aria-label={
+										canControlPlayback
+											? undefined
+											: t("player.controlOffName", {
+													control: t("player.shuffle"),
+												})
+									}
+								>
+									{t("player.shuffle")}
+								</Button>
+							) : null}
+						</>
+					) : null
+				}
+			/>
+
+			<div key={tab} className={styles.panel} data-direction={direction}>
+				{tab === "tracks" ? tracksPanel : overview}
+			</div>
 		</div>
 	);
 }

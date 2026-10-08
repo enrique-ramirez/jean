@@ -1,12 +1,48 @@
-.artist {
+.overview {
 	display: flex;
 	flex-direction: column;
 	gap: 30px;
+	padding-top: 30px;
 	padding-bottom: 40px;
 }
 
-/* `ViewHeader` carries its own gutter and draws to its own edges, so insetting it here leaves a gap
- down the sides and none along the top -- which reads as a broken box the moment the page scrolls. */
+/* `translateX` only: `getBoundingClientRect`, which the track list uses to find its offset within the
+ scroller, includes transforms, so a vertical one would shift the measurement. */
+.panel[data-direction="1"] {
+	animation: panel-in-right 0.24s var(--ease);
+}
+
+.panel[data-direction="-1"] {
+	animation: panel-in-left 0.24s var(--ease);
+}
+
+@keyframes panel-in-right {
+	from {
+		opacity: 0;
+		transform: translateX(14%);
+	}
+}
+
+@keyframes panel-in-left {
+	from {
+		opacity: 0;
+		transform: translateX(-14%);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.panel[data-direction="1"],
+	.panel[data-direction="-1"] {
+		animation: panel-fade 0.14s var(--ease);
+	}
+
+	@keyframes panel-fade {
+		from {
+			opacity: 0;
+		}
+	}
+}
+
 .section,
 .notice {
 	max-width: 1180px;
@@ -160,8 +196,9 @@
 }
 
 @media (max-width: 720px) {
-	.artist {
+	.overview {
 		gap: 24px;
+		padding-top: 24px;
 		padding-bottom: 32px;
 	}
 

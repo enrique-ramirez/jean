@@ -1,10 +1,4 @@
-import {
-	type ReactNode,
-	type RefObject,
-	useCallback,
-	useMemo,
-	useState,
-} from "react";
+import { type RefObject, useCallback, useMemo, useState } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import type { usePlaySet } from "@/domain/library/usePlaySet";
@@ -12,7 +6,8 @@ import type { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { Refs } from "@/domain/track/project";
 import { type ArtistTab, artistRoute } from "@/domain/track/routes";
-import { ArtistView } from "@/features/artist/ArtistView";
+import type { PageHeading } from "@/domain/track/TrackPage";
+import { ArtistView, type SlideDirection } from "@/features/artist/ArtistView";
 import { GenresView } from "@/features/genres/GenresView";
 import { HomeView } from "@/features/home/HomeView";
 import type { useHomePlayback } from "@/features/home/useHomePlayback";
@@ -28,7 +23,7 @@ import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Tabs } from "@/shared/ui/Tabs";
 import styles from "./App.module.css";
 import type { RouteView } from "./routes";
-import type { ArtistPage, useRouteView } from "./useRouteView";
+import type { ArtistPage, ListPage, useRouteView } from "./useRouteView";
 
 const ARTIST_TABS = [
 	{ value: "overview", label: "artist.overview" },
@@ -37,7 +32,7 @@ const ARTIST_TABS = [
 
 interface TabMotion {
 	tab: ArtistTab;
-	direction: number;
+	direction: SlideDirection;
 }
 
 interface MainViewProps {
@@ -117,8 +112,6 @@ export function MainView({
 		[artistName, artistTab, showArtistTab, t],
 	);
 
-	// Left is the next tab, as it is on the now-playing panels. Touch only, and on `main` rather than
-	// a wrapper of its own: the track list takes its scroll element from there.
 	const artistSwipe = useSwipe({
 		onLeft: () => showArtistTab("tracks"),
 		onRight: () => showArtistTab("overview"),
@@ -150,15 +143,16 @@ export function MainView({
 		[playSet, artistName],
 	);
 
-	const listPage = (shown: NonNullable<typeof list>, tabs?: ReactNode) => (
+	const listPage = (
+		shown: Omit<ListPage, "heading">,
+		heading?: PageHeading,
+	) => (
 		<LibraryListView
 			library={library}
 			view={shown.view}
 			kind={shown.kind}
 			label={shown.label}
-			eyebrow={shown.eyebrow}
-			title={shown.title}
-			tabs={tabs}
+			heading={heading}
 			playlists={playlists}
 			scrollRef={scrollRef}
 			isCompactViewport={isCompactViewport}
@@ -167,34 +161,29 @@ export function MainView({
 		/>
 	);
 
-	const artistContent = (shown: ArtistPage) =>
-		shown.tab === "tracks" ? (
-			listPage(
-				{
-					view: shown.view,
-					kind: SCRATCH_KIND.artist,
-					label: shown.name,
-					eyebrow: t("artist.eyebrow"),
-					title: shown.name,
-					emptyNotice: t("library.noArtist", { artist: shown.name }),
-				},
-				artistTabs,
-			)
-		) : (
-			<ArtistView
-				tabs={artistTabs}
-				name={shown.name}
-				library={library}
-				tracks={shown.tracks}
-				onPlay={playArtist}
-				onShuffle={(refs) => {
-					playbackMode.enableShuffle();
-					playArtist(refs, Math.floor(Math.random() * refs.length));
-				}}
-				canPlay={home.canPlay}
-				canShuffle={home.canShuffle}
-			/>
-		);
+	const artistPage = (shown: ArtistPage) => (
+		<ArtistView
+			name={shown.name}
+			library={library}
+			tracks={shown.tracks}
+			tab={shown.tab}
+			direction={shownTab.direction}
+			tabs={artistTabs}
+			tracksPanel={listPage({
+				view: shown.view,
+				kind: SCRATCH_KIND.artist,
+				label: shown.name,
+				emptyNotice: t("library.noArtist", { artist: shown.name }),
+			})}
+			onPlay={playArtist}
+			onShuffle={(refs) => {
+				playbackMode.enableShuffle();
+				playArtist(refs, Math.floor(Math.random() * refs.length));
+			}}
+			canPlay={home.canPlay}
+			canShuffle={home.canShuffle}
+		/>
+	);
 
 	return (
 		<main
@@ -216,7 +205,7 @@ export function MainView({
 			) : route.kind === "genres" ? (
 				<GenresView library={library} onOpenRoute={onOpenRoute} />
 			) : list ? (
-				listPage(list)
+				listPage(list, list.heading)
 			) : route.kind === "search" ? (
 				<SearchResults
 					search={search}
@@ -227,13 +216,7 @@ export function MainView({
 					onOpenPlaylist={onOpenPlaylist}
 				/>
 			) : artist ? (
-				<div
-					key={artist.tab}
-					className={styles.artistTab}
-					data-direction={shownTab.direction}
-				>
-					{artistContent(artist)}
-				</div>
+				artistPage(artist)
 			) : (
 				<PlaylistView
 					playlist={playlist}

@@ -260,7 +260,7 @@ function Shell() {
 			: view.kind === "genres"
 				? t("home.allGenres")
 				: page.list
-					? page.list.title
+					? page.list.heading.title
 					: isSearch
 						? t("search.title")
 						: (page.artist?.name ?? playlist?.title ?? "");

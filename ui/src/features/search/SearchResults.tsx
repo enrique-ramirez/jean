@@ -117,8 +117,7 @@ export function SearchResults({
 			emptyNotice={t("search.noMatch")}
 			loadingNotice={isReading ? "" : undefined}
 			progressLabel={isReading ? readingText : undefined}
-			eyebrow={t("search.resultsEyebrow")}
-			title={search.query}
+			heading={{ eyebrow: t("search.resultsEyebrow"), title: search.query }}
 			stats={stats}
 			mosaicSeed={search.viewKey}
 			canPlaySets={canPlaySets}

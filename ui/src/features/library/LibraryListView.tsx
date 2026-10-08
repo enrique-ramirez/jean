@@ -12,7 +12,7 @@ import type { TrackBrowserHandle } from "@/domain/track/listTypes";
 import type { TrackView } from "@/domain/track/project";
 import { href, ROUTE } from "@/domain/track/routes";
 import { summarise } from "@/domain/track/stats";
-import { TrackPage } from "@/domain/track/TrackPage";
+import { type PageHeading, TrackPage } from "@/domain/track/TrackPage";
 import { useFinder } from "@/domain/track/useFinder";
 import type { PlaylistInfo } from "@/shared/api/types";
 import type { Phrase } from "@/shared/i18n/en";
@@ -34,9 +34,7 @@ export function LibraryListView({
 	view,
 	kind,
 	label,
-	title,
-	eyebrow,
-	tabs,
+	heading,
 	playlists,
 	scrollRef,
 	isCompactViewport,
@@ -47,9 +45,7 @@ export function LibraryListView({
 	view: TrackView;
 	kind: ScratchKind;
 	label: string | null;
-	title: ReactNode;
-	eyebrow?: ReactNode;
-	tabs?: ReactNode;
+	heading?: PageHeading;
 	playlists: PlaylistInfo[];
 	scrollRef: RefObject<HTMLElement | null>;
 	isCompactViewport: boolean;
@@ -113,9 +109,7 @@ export function LibraryListView({
 			emptyNotice={emptyNotice}
 			loadingNotice={readingText}
 			progressLabel={readingText}
-			eyebrow={eyebrow}
-			title={title}
-			tabs={tabs}
+			heading={heading}
 			stats={stats}
 			allGenresHref={kind === SCRATCH_KIND.all ? href(ROUTE.genres) : undefined}
 			mosaicSeed={`${kind}:${label}`}

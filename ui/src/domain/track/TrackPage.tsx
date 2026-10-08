@@ -8,14 +8,17 @@ import type { TrackStats } from "./stats";
 import { TrackBrowser, type TrackBrowserProps } from "./TrackBrowser";
 import { ViewHeader } from "./ViewHeader";
 
+export interface PageHeading {
+	eyebrow?: ReactNode;
+	title: ReactNode;
+}
+
 type TrackPageProps = Omit<
 	TrackBrowserProps,
 	"ref" | "isPlaying" | "header"
 > & {
 	browserRef: RefObject<TrackBrowserHandle | null>;
-	eyebrow?: ReactNode;
-	title: ReactNode;
-	tabs?: ReactNode;
+	heading?: PageHeading;
 	stats: TrackStats;
 	allGenresHref?: string;
 	mosaicSeed: string;
@@ -25,9 +28,7 @@ type TrackPageProps = Omit<
 
 export function TrackPage({
 	browserRef,
-	eyebrow,
-	title,
-	tabs,
+	heading,
 	stats,
 	allGenresHref,
 	mosaicSeed,
@@ -44,30 +45,31 @@ export function TrackPage({
 			ref={browserRef}
 			isPlaying={isPlaying}
 			header={
-				<ViewHeader
-					eyebrow={eyebrow}
-					title={title}
-					tabs={tabs}
-					stats={stats}
-					hasPlayCounts={hasPlayCounts}
-					allGenresHref={allGenresHref}
-					aside={
-						<Mosaic
-							source={browser.source}
-							rows={browser.rows}
-							seed={mosaicSeed}
-						/>
-					}
-					actions={
-						<PlayActions
-							browserRef={browserRef}
-							trackCount={browser.rows.length}
-							canPlaySets={canPlaySets}
-						>
-							{actions}
-						</PlayActions>
-					}
-				/>
+				heading ? (
+					<ViewHeader
+						eyebrow={heading.eyebrow}
+						title={heading.title}
+						stats={stats}
+						hasPlayCounts={hasPlayCounts}
+						allGenresHref={allGenresHref}
+						aside={
+							<Mosaic
+								source={browser.source}
+								rows={browser.rows}
+								seed={mosaicSeed}
+							/>
+						}
+						actions={
+							<PlayActions
+								browserRef={browserRef}
+								trackCount={browser.rows.length}
+								canPlaySets={canPlaySets}
+							>
+								{actions}
+							</PlayActions>
+						}
+					/>
+				) : undefined
 			}
 		/>
 	);

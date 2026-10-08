@@ -136,8 +136,10 @@ export function PlaylistView({
 				) : null
 			}
 			emptyNotice={t("playlist.empty")}
-			eyebrow={t(activeItem ? "playlist.playingFrom" : "playlist.eyebrow")}
-			title={playlist.title}
+			heading={{
+				eyebrow: t(activeItem ? "playlist.playingFrom" : "playlist.eyebrow"),
+				title: playlist.title,
+			}}
 			stats={stats}
 			mosaicSeed={playlist.id}
 			toolbarLeading={finder.toolbarLeading}

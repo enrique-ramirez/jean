@@ -193,7 +193,7 @@ test.describe("two views of one artist", () => {
 	test("a tab slides in from the side it was asked for, and a history step moves nothing", async ({
 		page,
 	}) => {
-		const body = page.locator("main > [data-direction]");
+		const body = page.locator("main [data-direction]");
 		await openArtist(page, ARTIST);
 
 		await tab(page, "Tracks").click();

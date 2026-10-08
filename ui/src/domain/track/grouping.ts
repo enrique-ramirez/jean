@@ -1,4 +1,3 @@
-import type { Translate } from "@/shared/i18n/locale";
 import { artistGroups, FIELD, readValue, tagGroups, tagKey } from "./fields";
 import { byValue, type LibraryColumns } from "./libraryColumns";
 import type { TrackRows } from "./project";
@@ -11,8 +10,8 @@ export interface DiscRun {
 
 export interface AlbumRun {
 	key: string;
-	album: string;
-	albumArtist: string;
+	album: string | null;
+	albumArtist: string | null;
 	year: string | null;
 	start: number;
 	count: number;
@@ -45,7 +44,7 @@ const discsWorthDrawing = (discs: DiscRun[]): DiscRun[] | null =>
 
 // Contiguous runs only, never reordering: the player decides what comes next, so reordering here
 // would desync the view from playback.
-export function groupByAlbum(rows: TrackRows, t: Translate): AlbumRun[] {
+export function groupByAlbum(rows: TrackRows): AlbumRun[] {
 	const { columns } = rows;
 	const album = columns.fields[FIELD.album];
 	const year = columns.fields[FIELD.year];
@@ -78,17 +77,15 @@ export function groupByAlbum(rows: TrackRows, t: Translate): AlbumRun[] {
 			continue;
 		}
 
-		const name =
-			albumGroup < 0 ? t("track.unknownAlbum") : albums.names[albumGroup];
-		const credit =
-			artistGroup < 0 ? t("track.unknownArtist") : artists.names[artistGroup];
+		const name = albumGroup < 0 ? null : albums.names[albumGroup];
+		const credit = artistGroup < 0 ? null : artists.names[artistGroup];
 
 		const record = albumGroup < 0 ? -1 : artists.pairedWith(ref, albumGroup);
 		const cover = albumGroup < 0 ? index : (coverOf.get(record) ?? index);
 		if (albumGroup >= 0) coverOf.set(record, cover);
 
 		built.push({
-			key: `${credit} ${name} ${index}`,
+			key: `${credit ?? ""} ${name ?? ""} ${index}`,
 			album: name,
 			albumArtist: credit,
 			albumGroup,

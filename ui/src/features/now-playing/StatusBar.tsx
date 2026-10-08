@@ -12,6 +12,7 @@ import {
 } from "@/domain/player/useTransport";
 import { coverKey } from "@/domain/track/fields";
 import { canonicalPlayingArtworkUrl } from "@/domain/track/librarySource";
+import { usePlayingTrackDragSource } from "@/domain/track/useTrackDragSource";
 import { playingArtworkUrl } from "@/shared/api/artwork";
 import { isFooJeanReady } from "@/shared/api/discovery";
 import { readTrack } from "@/shared/api/playerState";
@@ -105,6 +106,13 @@ export function StatusBar({
 	const origin = isFooJeanReady(discovery) ? discovery.origin : null;
 	const outputsQuery = useOutputs();
 
+	const track = readTrack(snapshot?.player);
+	const playingDrag = usePlayingTrackDragSource({
+		playlistId: playlistId ?? null,
+		index: snapshot?.player?.activeItem?.index ?? -1,
+		title: track?.title ?? null,
+	});
+
 	if (isPending || !snapshot) {
 		return (
 			<footer className={styles.statusbar}>
@@ -125,7 +133,6 @@ export function StatusBar({
 					onOpen: outputsQuery.refetch,
 				}
 			: undefined;
-	const track = readTrack(player);
 	const item = player.activeItem;
 	const isPlaying = player.playbackState === "playing";
 	const hasTrack = Boolean(item && item.index >= 0);
@@ -163,7 +170,10 @@ export function StatusBar({
 					type="button"
 					className={styles.now}
 					aria-label={t("player.showCurrentTrack")}
-					onClick={onOpenNowPlaying}
+					onClick={() => {
+						if (!playingDrag.didDrag()) onOpenNowPlaying();
+					}}
+					{...playingDrag.dragProps}
 				>
 					<Artwork
 						key={

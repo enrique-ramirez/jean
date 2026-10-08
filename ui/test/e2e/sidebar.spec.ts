@@ -21,6 +21,7 @@ import {
 	scrollUntilMounted,
 	searchFor,
 	sidebar,
+	statusBar,
 	test,
 	titlesIn,
 	touchDrag,
@@ -1517,6 +1518,53 @@ test.describe("dragging tracks onto a playlist", () => {
 			() => requestsTo(player, "/items/copy").length,
 			0,
 		);
+	});
+});
+
+test.describe("dragging the playing track off the status bar", () => {
+	test.skip(
+		({ isMobile }) => isMobile,
+		"drag is mouse-only; touch has the menu",
+	);
+
+	test("the playing track dropped on a playlist is copied there from the playlist it plays in", async ({
+		page,
+		player,
+	}) => {
+		await openApp(page);
+		const before = titlesIn(player, "p2");
+		const library = player.playlists.find((entry) => entry.title === LIBRARY)!;
+		const index = library.items.findIndex(
+			(track) => !before.includes(track["%title%"]),
+		);
+		const title = String(library.items[index]["%title%"]);
+		await scrollUntilMounted(page, trackRow(page, index));
+		await trackRow(page, index).dblclick();
+
+		const playing = statusBar(page).getByRole("button", {
+			name: "Show current track",
+		});
+		await expect(playing).toContainText(title);
+
+		const target = row(page, FAVORITES);
+		await dragFrom(page, playing, target);
+		await expect(target).toHaveAttribute("data-drop-over", "true");
+		await page.mouse.up();
+
+		const copyRequests = () =>
+			requestsTo(player, "/items/copy").filter(
+				(entry) => entry.method === "POST",
+			);
+		await expectSettlesAt(player, () => copyRequests().length, 1);
+		expect(copyRequests()[0].body).toEqual({
+			source: library.guid,
+			runs: [[index, 1]],
+			duplicates: "skip",
+		});
+
+		await expect.poll(() => titlesIn(player, "p2")).toEqual([...before, title]);
+		await expect(page.getByRole("status")).toContainText(FAVORITES);
+		await expect(nowPlayingScreen(page)).toBeHidden();
 	});
 });
 

@@ -108,7 +108,7 @@ export function TrackBrowser({
 	const selection = useTrackSelection(rows.length, viewKey);
 	const { isAvailable, hasPlayCounts } = useAvailableFields();
 
-	const groups = useMemo(() => groupByAlbum(rows, t), [rows, t]);
+	const groups = useMemo(() => groupByAlbum(rows), [rows]);
 	const hasDiscs = useMemo(() => groups.some((group) => group.discs), [groups]);
 
 	const { optional, template, albumTemplate } = useMemo(

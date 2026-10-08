@@ -7,6 +7,7 @@ import { ArtistLinks } from "./ArtistLinks";
 import { coverIdentity, FIELD, featuring, sameTagValue, value } from "./fields";
 import type { AlbumRun } from "./grouping";
 import type { TrackRenderProps } from "./listTypes";
+import { albumRoute, href } from "./routes";
 import { TrackRow } from "./TrackRow";
 
 export const ALBUM_COVER = 160;
@@ -30,6 +31,7 @@ export function AlbumGroup({
 }: TrackRenderProps & { group: AlbumRun }) {
 	const t = useTranslate();
 	const coverSize = isCompactViewport ? ALBUM_COVER_COMPACT : ALBUM_COVER;
+	const title = group.album ?? t("track.unknownAlbum");
 
 	const runs = group.discs ?? [
 		{ number: null, start: group.start, count: group.count },
@@ -77,13 +79,28 @@ export function AlbumGroup({
 						identity={coverIdentity(rows.at(group.cover))}
 						size={coverSize}
 						className={styles.art}
-						alt={t("album.coverAlt", { album: group.album })}
+						alt={t("album.coverAlt", { album: title })}
 					/>
 				</div>
 				<div className={styles.caption}>
-					<div className={styles.title}>{group.album}</div>
+					<div className={styles.title}>
+						{group.album ? (
+							<a
+								className="tag-link"
+								href={href(albumRoute(group.albumArtist, group.album))}
+							>
+								{title}
+							</a>
+						) : (
+							title
+						)}
+					</div>
 					<div className={styles.meta}>
-						<ArtistLinks credit={group.albumArtist} />
+						{group.albumArtist ? (
+							<ArtistLinks credit={group.albumArtist} />
+						) : (
+							t("track.unknownArtist")
+						)}
 						{group.year ? ` · ${group.year}` : ""}
 					</div>
 				</div>

@@ -1,3 +1,5 @@
+import { albumRoute } from "../../src/domain/track/routes.ts";
+import { evaluate } from "../fake-api/state.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	dragFrom,
@@ -166,4 +168,23 @@ test("double-clicking a cover plays its album from the first track", async ({
 			id: guidOfPlaylist(player, FAVORITES),
 			index: SECOND_ALBUM.start,
 		});
+});
+
+test("the title beside a cover opens the album's own page", async ({
+	page,
+	player,
+}) => {
+	await openFavorites(page, player);
+	const firstTrack = player.playlists.find((entry) => entry.id === FAVORITES)!
+		.items[SECOND_ALBUM.start];
+	const title = String(evaluate(firstTrack, "%album%"));
+	const credit = String(evaluate(firstTrack, "$if2(%album artist%,%artist%)"));
+
+	const link = album(page, 1).getByRole("link", { name: title, exact: true });
+	await expect(link).toHaveAttribute("href", `#/${albumRoute(credit, title)}`);
+	await link.click();
+
+	await expect(
+		page.getByRole("heading", { level: 1, name: title }),
+	).toBeVisible();
 });

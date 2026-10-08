@@ -2,7 +2,7 @@ import { Fragment, type ReactNode } from "react";
 
 import type { en, Phrase } from "./en";
 import { numbersIn, pluralsIn } from "./format";
-import { messageFor } from "./locale";
+import { messageFor, shown } from "./locale";
 import { type FieldsOf, formOf, type Slot, segmentsOf } from "./message";
 import { useLocale } from "./useTranslate";
 
@@ -49,7 +49,7 @@ export function Trans<Key extends Phrase>({
 				// biome-ignore lint/suspicious/noArrayIndexKey: segments are positions in one fixed string.
 				<Fragment key={at}>
 					{typeof segment === "string"
-						? segment
+						? shown(segment)
 						: drawn(segment, values, numbers)}
 				</Fragment>
 			))}

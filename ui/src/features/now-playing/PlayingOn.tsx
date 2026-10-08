@@ -33,7 +33,11 @@ import { useOutputs } from "@/domain/player/useOutputs";
 import { useIsPlaying, usePlayer } from "@/domain/player/usePlayer";
 import { useVolume } from "@/domain/player/useVolume";
 import { readTrack } from "@/shared/api/playerState";
-import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
+import {
+	type Translate,
+	useSpoken,
+	useTranslate,
+} from "@/shared/i18n/useTranslate";
 import { classNames } from "@/shared/lib/classNames";
 import { rovedIndex } from "@/shared/lib/rove";
 import { Equalizer } from "@/shared/ui/Equalizer";
@@ -171,6 +175,7 @@ export function PlayingOn({
 	isOpen: boolean;
 }) {
 	const t = useTranslate();
+	const say = useSpoken();
 	const { isOn, phase, canSetVolume, connect, disconnect, resume, retry } =
 		useListener();
 	const outputsQuery = useOutputs();
@@ -295,7 +300,7 @@ export function PlayingOn({
 				{playerAudible && !inSession && !isOffered ? (
 					<span className={styles.playing}>
 						<Equalizer
-							label={t("listen.playingOn", { player: playerName })}
+							label={say("listen.playingOn", { player: playerName })}
 							paused={!isPlaying}
 						/>
 					</span>
@@ -520,7 +525,7 @@ export function PlayingOn({
 		// biome-ignore lint/a11y/useSemanticElements: a fieldset would bring a form control's styling and legend into a menu that is neither
 		<div
 			role="group"
-			aria-label={showsHeading ? undefined : t("listen.playingOnHeading")}
+			aria-label={showsHeading ? undefined : say("listen.playingOnHeading")}
 			aria-labelledby={showsHeading ? headingId : undefined}
 			ref={groupRef}
 			onKeyDown={(event) => roveRows(event, rowsRef.current)}

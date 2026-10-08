@@ -6,7 +6,11 @@ import { useSessionId } from "@/domain/player/session";
 import { creatorOf, useDocumentOf } from "@/domain/player/sessionDocument";
 import type { ListedSession } from "@/domain/player/sessionList";
 import type { SessionDocument } from "@/shared/api/sessions";
-import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
+import {
+	type Translate,
+	useSpoken,
+	useTranslate,
+} from "@/shared/i18n/useTranslate";
 import { classNames } from "@/shared/lib/classNames";
 import { SwitchTrack } from "@/shared/ui/SwitchTrack";
 import styles from "./ListenHere.module.css";
@@ -363,6 +367,7 @@ export function StartRow({
 	onStart: () => void;
 }) {
 	const t = useTranslate();
+	const say = useSpoken();
 	const detailId = useId();
 	const busyId = useId();
 
@@ -372,7 +377,7 @@ export function StartRow({
 				<button
 					type="button"
 					className={classNames(styles.face, styles.start)}
-					aria-label={t("listen.start")}
+					aria-label={say("listen.start")}
 					aria-describedby={isPlayerFull ? `${detailId} ${busyId}` : detailId}
 					onClick={onStart}
 					data-row-stop=""

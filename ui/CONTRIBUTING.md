@@ -83,6 +83,7 @@ Commands run from the repository root and the root `package.json` delegates them
 3. **A sentence with something drawn inside it is one phrase**, rendered through `<Trans>`, so word order stays the translator's.
 4. **Plurals come from the catalogue.** A value written as an object is selected by `Intl.PluralRules` on `count`, and `other` is the only form required.
 5. **Figures and dates go through `useFormats()`**, never `toLocaleString()` or a bare `Intl` constructor, which follow the browser rather than the language showing. Sorting and grouping go through `collatorIn`.
+6. **`t()` is for what is drawn, and once a year it respells the word play.** An `aria-label` or a `title` that carries that word goes through `useSpoken()`, which is the catalogue as written on any day.
 
 ## 7. Comments
 

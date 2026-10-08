@@ -25,7 +25,7 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import { usePresence } from "@/shared/hooks/usePresence";
 import { useResettingState } from "@/shared/hooks/useResettingState";
 import { useSwipe } from "@/shared/hooks/useSwipe";
-import { useTranslate } from "@/shared/i18n/useTranslate";
+import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
 import { useKeyboardOwner } from "@/shared/keyboard/keyboardOwner";
 import { Artwork } from "@/shared/ui/Artwork";
 import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";
@@ -91,6 +91,7 @@ export function NowPlaying({
 	onSelectTab: (tab: PanelTab) => void;
 }) {
 	const t = useTranslate();
+	const say = useSpoken();
 	const isPresent = usePresence(isOpen, SLIDE_MS);
 	const [isInfoOpen, setIsInfoOpen] = useResettingState(false, [
 		isOpen,
@@ -263,7 +264,7 @@ export function NowPlaying({
 					<button
 						type="button"
 						className={styles.dismiss}
-						aria-label={t("player.closeNowPlaying")}
+						aria-label={say("player.closeNowPlaying")}
 						onClick={onDismiss}
 					>
 						<ChevronDown size={20} strokeWidth={2} />

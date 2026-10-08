@@ -6,7 +6,7 @@ import {
 	useSeekBy,
 } from "@/domain/player/useTransport";
 import type { PlayerSnapshot } from "@/shared/api/types";
-import { useTranslate } from "@/shared/i18n/useTranslate";
+import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
 import { formatTime } from "@/shared/lib/time";
 import { KeyCap } from "./KeyCap";
 import styles from "./LyricTransport.module.css";
@@ -70,7 +70,7 @@ export function EditorTransport({
 	canControlPlayback: boolean;
 	notPlaying: string | null;
 }) {
-	const t = useTranslate();
+	const say = useSpoken();
 	const seekBy = useSeekBy();
 	const playPause = usePlayPause();
 
@@ -87,10 +87,13 @@ export function EditorTransport({
 				aria-disabled={canSeek ? undefined : "true"}
 				aria-label={
 					!canControlPlayback
-						? t("player.controlOffName", { control: t(phrase) })
+						? say("player.controlOffName", { control: say(phrase) })
 						: notPlaying === null
-							? t(phrase)
-							: t("lyrics.inertName", { control: t(phrase), title: notPlaying })
+							? say(phrase)
+							: say("lyrics.inertName", {
+									control: say(phrase),
+									title: notPlaying,
+								})
 				}
 				onClick={canSeek ? () => seekBy.mutate(by) : undefined}
 			>
@@ -126,6 +129,7 @@ export function StampButton({
 	onStamp: () => void;
 }) {
 	const t = useTranslate();
+	const say = useSpoken();
 
 	return (
 		<button
@@ -137,8 +141,8 @@ export function StampButton({
 			aria-label={
 				notPlaying === null
 					? undefined
-					: t("lyrics.inertName", {
-							control: t("lyrics.stamp"),
+					: say("lyrics.inertName", {
+							control: say("lyrics.stamp"),
 							title: notPlaying,
 						})
 			}

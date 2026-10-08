@@ -10,6 +10,7 @@ import type { TrackColumns } from "@/shared/api/types";
 import {
 	type Formats,
 	useFormats,
+	useSpoken,
 	useTranslate,
 } from "@/shared/i18n/useTranslate";
 import { formatTime } from "@/shared/lib/time";
@@ -196,6 +197,7 @@ function TrackRowComponent({
 	onGripPointerDown?: (event: ReactPointerEvent) => void;
 }) {
 	const t = useTranslate();
+	const say = useSpoken();
 	const row = rows.at(index);
 	const title = titleOf(row, t);
 	const artist = artistOf(row, t);
@@ -232,7 +234,7 @@ function TrackRowComponent({
 		>
 			<span className={`${styles.index} tabular`}>
 				{isActive && isPlaying ? (
-					<Equalizer label={t("player.nowPlaying")} />
+					<Equalizer label={say("player.nowPlaying")} />
 				) : disc !== null ? (
 					`${disc}.${trackNumber}`
 				) : (

@@ -2,7 +2,11 @@ import type { LucideIcon } from "lucide-react";
 import { GripVertical, ListMusic, Volume2, WandSparkles } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import type { PlaylistInfo } from "@/shared/api/types";
-import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
+import {
+	useFormats,
+	useSpoken,
+	useTranslate,
+} from "@/shared/i18n/useTranslate";
 import { matchesBinding } from "@/shared/keyboard/keymap";
 import { mergeHandlers, type PropBag } from "@/shared/lib/mergeHandlers";
 import styles from "./Sidebar.module.css";
@@ -32,7 +36,7 @@ export function NavRow({
 	itemProps?: PropBag;
 	children?: ReactNode;
 }) {
-	const t = useTranslate();
+	const say = useSpoken();
 	return (
 		<div className={styles.row} {...rowProps}>
 			<button
@@ -65,7 +69,7 @@ export function NavRow({
 						size={15}
 						strokeWidth={2}
 						className={styles.playing}
-						aria-label={t("sidebar.playingFromHere")}
+						aria-label={say("sidebar.playingFromHere")}
 					/>
 				) : (
 					<Icon size={15} strokeWidth={2} aria-hidden="true" />

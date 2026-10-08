@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { useTranslate } from "@/shared/i18n/useTranslate";
+import { useLongPress } from "@/shared/hooks/useLongPress";
+import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
 import { classNames } from "@/shared/lib/classNames";
 import { PauseIcon, PlayIcon } from "@/shared/ui/icons";
+import { pushToast } from "@/shared/ui/toastStore";
 import styles from "./PlayToggle.module.css";
 
 const MOTIONS = ["equalizer", "fluid"];
@@ -21,7 +23,12 @@ export function PlayToggle({
 	disabled?: boolean;
 }) {
 	const t = useTranslate();
+	const say = useSpoken();
 	const [motion, setMotion] = useState(MOTIONS[0]);
+	const longPress = useLongPress(
+		() => pushToast({ message: t("player.palyyy"), tone: "neutral" }),
+		{ withMouse: true },
+	);
 
 	useEffect(() => {
 		if (!isPlaying) {
@@ -39,10 +46,11 @@ export function PlayToggle({
 		return () => clearInterval(timer);
 	}, [isPlaying]);
 
-	const baseLabel = t(isPlaying ? "player.pause" : "player.play");
+	const baseLabel = say(isPlaying ? "player.pause" : "player.play");
 
 	return (
 		<button
+			{...longPress}
 			type="button"
 			className={classNames(styles.toggle, className)}
 			data-size={variant}
@@ -51,7 +59,7 @@ export function PlayToggle({
 			aria-disabled={disabled || undefined}
 			aria-label={
 				disabled
-					? t("player.controlOffName", { control: baseLabel })
+					? say("player.controlOffName", { control: baseLabel })
 					: baseLabel
 			}
 			onClick={disabled ? undefined : onToggle}

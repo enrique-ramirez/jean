@@ -31,7 +31,7 @@ import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useTabTrap } from "@/shared/hooks/useTabTrap";
 import { Trans } from "@/shared/i18n/Trans";
-import { useTranslate } from "@/shared/i18n/useTranslate";
+import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
 import { useKeyboardOwnership } from "@/shared/keyboard/keyboardOwner";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
@@ -119,6 +119,7 @@ export function LyricEditor({
 	onClose: () => void;
 }) {
 	const t = useTranslate();
+	const say = useSpoken();
 	const { save: saveLyric } = useNowPlayingLyric();
 	const canControlPlayback = useCanControlPlayback();
 	const seek = useSeek();
@@ -513,9 +514,9 @@ export function LyricEditor({
 						aria-disabled={isSongPlaying ? undefined : "true"}
 						aria-label={
 							isSongPlaying
-								? t("lyrics.playFrom", { time: clockOf(playFromAt) })
-								: t("lyrics.inertName", {
-										control: t("lyrics.playFrom", {
+								? say("lyrics.playFrom", { time: clockOf(playFromAt) })
+								: say("lyrics.inertName", {
+										control: say("lyrics.playFrom", {
 											time: clockOf(playFromAt),
 										}),
 										title: target.title,

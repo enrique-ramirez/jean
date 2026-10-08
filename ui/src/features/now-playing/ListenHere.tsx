@@ -24,7 +24,11 @@ import { useDismissable } from "@/shared/hooks/useDismissable";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { usePresence } from "@/shared/hooks/usePresence";
-import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
+import {
+	type Translate,
+	useSpoken,
+	useTranslate,
+} from "@/shared/i18n/useTranslate";
 import { keepPressFromBindings } from "@/shared/keyboard/keepPress";
 import {
 	PLAYING_ON_SHEET_KEYBOARD,
@@ -63,6 +67,7 @@ const withOthers = (label: string, others: number, t: Translate) =>
 
 export function ListenHere({ playerName }: { playerName: string }) {
 	const t = useTranslate();
+	const say = useSpoken();
 	const { canListen, isOn } = useListener();
 	const [isOpen, setIsOpen] = useState(false);
 	const noSpeakersId = useId();
@@ -150,7 +155,7 @@ export function ListenHere({ playerName }: { playerName: string }) {
 			{isCompact && isSheetPresent
 				? createPortal(
 						<BottomSheet
-							label={t("listen.playingOnHeading")}
+							label={say("listen.playingOnHeading")}
 							closeLabel={t("listen.closePicker")}
 							isLeaving={isLeaving}
 							layer="picker"

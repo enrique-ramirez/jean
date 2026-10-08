@@ -2,7 +2,7 @@ import { Flame, LayoutList, ListMusic } from "lucide-react";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import type { Phrase } from "@/shared/i18n/en";
-import { useTranslate } from "@/shared/i18n/useTranslate";
+import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
 import type { IconComponent } from "@/shared/ui/icons";
 import { Menu } from "@/shared/ui/Menu";
@@ -34,6 +34,7 @@ export function TrackToolbar({
 	hasPlayCounts: boolean;
 }) {
 	const t = useTranslate();
+	const say = useSpoken();
 	const layouts = useMemo(
 		() => LAYOUTS.map((option) => ({ ...option, label: t(option.label) })),
 		[t],
@@ -75,8 +76,8 @@ export function TrackToolbar({
 						<Button
 							icon={Flame}
 							aria-pressed={preferences.showHeat}
-							aria-label={t("heat.show")}
-							title={t("heat.title")}
+							aria-label={say("heat.show")}
+							title={say("heat.title")}
 							onClick={() => {
 								preferences.toggleHeat();
 								if (isHeatInfoOpen) dismissHeatInfo();

@@ -534,6 +534,7 @@ export const en = {
 	"player.outputDeviceList": "Output device",
 	"player.outputOptions": "Output options",
 	"player.outputSwitchFailed": "We couldn’t switch the output device",
+	"player.palyyy": "Palyyy",
 	"player.pause": "Pause",
 	"player.paused": "Paused",
 	"player.play": "Play",

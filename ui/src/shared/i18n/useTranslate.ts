@@ -5,6 +5,7 @@ import {
 	type Fields,
 	type LocaleState,
 	localeState,
+	spoken,
 	subscribeToLocale,
 	type Translate,
 	translate,
@@ -23,6 +24,18 @@ export function useTranslate(): Translate {
 		() =>
 			<Key extends Phrase>(key: Key, ...args: Fields<Key>) =>
 				translate(key, ...args),
+		[state],
+	);
+}
+
+export function useSpoken(): Translate {
+	const state = useLocale();
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `state` fires this rather than being read in it.
+	return useMemo(
+		() =>
+			<Key extends Phrase>(key: Key, ...args: Fields<Key>) =>
+				spoken(key, ...args),
 		[state],
 	);
 }

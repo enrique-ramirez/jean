@@ -3,7 +3,7 @@ import type { ReactNode, RefObject } from "react";
 
 import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
-import { useTranslate } from "@/shared/i18n/useTranslate";
+import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Button } from "@/shared/ui/Button";
@@ -22,6 +22,7 @@ export function PlayActions({
 	children?: ReactNode;
 }) {
 	const t = useTranslate();
+	const say = useSpoken();
 	const canControlPlayback = useCanControlPlayback();
 	const order = usePlaybackOrder();
 	const isEmpty = trackCount === 0;
@@ -61,7 +62,7 @@ export function PlayActions({
 					aria-label={
 						canControlPlayback
 							? undefined
-							: t("player.controlOffName", { control: playLabel })
+							: say("player.controlOffName", { control: say("player.play") })
 					}
 				>
 					{playLabel}

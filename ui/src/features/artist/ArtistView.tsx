@@ -33,6 +33,7 @@ import { Trans } from "@/shared/i18n/Trans";
 import {
 	type Translate,
 	useFormats,
+	useSpoken,
 	useTranslate,
 } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
@@ -155,6 +156,7 @@ export function ArtistView({
 	canShuffle: boolean;
 }) {
 	const t = useTranslate();
+	const say = useSpoken();
 	const format = useFormats();
 	const canControlPlayback = useCanControlPlayback();
 	const { snapshot } = library;
@@ -239,7 +241,9 @@ export function ArtistView({
 								aria-label={
 									canControlPlayback
 										? undefined
-										: t("player.controlOffName", { control: t("player.play") })
+										: say("player.controlOffName", {
+												control: say("player.play"),
+											})
 								}
 							>
 								{t("player.play")}

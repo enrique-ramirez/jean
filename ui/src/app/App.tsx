@@ -49,7 +49,7 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useTheme } from "@/shared/hooks/useTheme";
-import { useTranslate } from "@/shared/i18n/useTranslate";
+import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
 import { workWhenIdle } from "@/shared/lib/idle";
 import { animateScrollTo } from "@/shared/ui/animateScroll";
 import { Confirmations } from "@/shared/ui/Confirmations";
@@ -116,6 +116,7 @@ export function App() {
 
 function Shell() {
 	const t = useTranslate();
+	const say = useSpoken();
 	useDocumentIdentity();
 	useSessionNotices();
 
@@ -606,7 +607,7 @@ function Shell() {
 			) : null}
 
 			<span className="visually-hidden" aria-live="polite">
-				{t(isPlaying ? "player.playing" : "player.paused")}
+				{say(isPlaying ? "player.playing" : "player.paused")}
 			</span>
 		</div>
 	);

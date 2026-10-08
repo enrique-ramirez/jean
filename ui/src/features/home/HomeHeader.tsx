@@ -3,7 +3,11 @@ import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import { href, ROUTE } from "@/domain/track/routes";
 import { spellDuration } from "@/domain/track/stats";
 import type { Phrase } from "@/shared/i18n/en";
-import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
+import {
+	useFormats,
+	useSpoken,
+	useTranslate,
+} from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import { Button } from "@/shared/ui/Button";
 import { PlayIcon } from "@/shared/ui/icons";
@@ -44,6 +48,7 @@ export function HomeHeader({
 }) {
 	const t = useTranslate();
 	const canControlPlayback = useCanControlPlayback();
+	const say = useSpoken();
 	const playLabel = t("player.play");
 	const shuffleLabel = t("player.shuffle");
 	const duration = spellDuration(stats.seconds);
@@ -131,7 +136,9 @@ export function HomeHeader({
 							aria-label={
 								canControlPlayback
 									? undefined
-									: t("player.controlOffName", { control: playLabel })
+									: say("player.controlOffName", {
+											control: say("player.play"),
+										})
 							}
 						>
 							{playLabel}

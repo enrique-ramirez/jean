@@ -10,8 +10,10 @@ import {
 	fill,
 	formOf,
 	type Message,
+	segmentsOf,
 	type Values,
 } from "./message";
+import { isPalyyyDay, respelled } from "./palyyy";
 
 export const ENGLISH = "en";
 
@@ -209,6 +211,30 @@ export type Translate = <Key extends Phrase>(
 	...args: Fields<Key>
 ) => string;
 
+export const shown = (text: string): string =>
+	state.active === ENGLISH && isPalyyyDay() ? respelled(text) : text;
+
+const shownAroundFields = (text: string): string =>
+	segmentsOf(text)
+		.map((segment) =>
+			typeof segment === "string" ? shown(segment) : `{${segment.field}}`,
+		)
+		.join("");
+
+function rendered<Key extends Phrase>(
+	key: Key,
+	args: Fields<Key>,
+	spell: (text: string) => string,
+): string {
+	const values = (args[0] ?? {}) as Values;
+	const { active } = state;
+	return fill(
+		spell(formOf(messageFor(key), values, pluralsIn(active))),
+		values,
+		numbersIn(active),
+	);
+}
+
 /**
  * For anything outside a render: a toast raised from a store, the document title. A component uses
  * `useTranslate`, which re-renders when the language changes where this does not.
@@ -217,11 +243,12 @@ export function translate<Key extends Phrase>(
 	key: Key,
 	...args: Fields<Key>
 ): string {
-	const values = (args[0] ?? {}) as Values;
-	const { active } = state;
-	return fill(
-		formOf(messageFor(key), values, pluralsIn(active)),
-		values,
-		numbersIn(active),
-	);
+	return rendered(key, args, shownAroundFields);
+}
+
+export function spoken<Key extends Phrase>(
+	key: Key,
+	...args: Fields<Key>
+): string {
+	return rendered(key, args, (text) => text);
 }

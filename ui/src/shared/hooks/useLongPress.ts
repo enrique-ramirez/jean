@@ -28,11 +28,13 @@ export function useLongPress(
 	{
 		enabled = true,
 		holdMs = HOLD_MS,
-	}: { enabled?: boolean; holdMs?: number } = {},
+		withMouse = false,
+	}: { enabled?: boolean; holdMs?: number; withMouse?: boolean } = {},
 ) {
 	const timer = useRef<number | null>(null);
 	const echoTimer = useRef<number | null>(null);
 	const origin = useRef<Point | null>(null);
+	const held = useRef(false);
 	const justFired = useRef(false);
 	const latest = useRef(onLongPress);
 	latest.current = onLongPress;
@@ -43,6 +45,19 @@ export function useLongPress(
 		origin.current = null;
 	}, []);
 
+	const release = useCallback(() => {
+		cancel();
+		if (!held.current) return;
+		held.current = false;
+		// Time-boxed from the release rather than cleared by whichever echo arrives: Android suppresses
+		// the click once it has fired contextmenu and iOS sends the click and no contextmenu, so
+		// waiting for a specific one leaves the guard stuck on.
+		clearTimeout(echoTimer.current ?? undefined);
+		echoTimer.current = setTimeout(() => {
+			justFired.current = false;
+		}, ECHO_MS);
+	}, [cancel]);
+
 	useEffect(
 		() => () => {
 			clearTimeout(timer.current ?? undefined);
@@ -52,10 +67,12 @@ export function useLongPress(
 	);
 
 	const onPointerDown = (event: ReactPointerEvent) => {
-		if (!enabled || event.pointerType === "mouse" || !event.isPrimary) return;
+		if (!enabled || !event.isPrimary || event.button !== 0) return;
+		if (event.pointerType === "mouse" && !withMouse) return;
 		if (ownsTouch(event.target)) return;
 
 		cancel();
+		held.current = false;
 		justFired.current = false;
 		const point = { x: event.clientX, y: event.clientY };
 		origin.current = point;
@@ -63,14 +80,8 @@ export function useLongPress(
 		timer.current = setTimeout(() => {
 			timer.current = null;
 			origin.current = null;
+			held.current = true;
 			justFired.current = true;
-			// Time-boxed rather than cleared by whichever echo arrives: Android suppresses the click once
-			// it has fired contextmenu and iOS sends the click and no contextmenu, so waiting for a
-			// specific one leaves the guard stuck on.
-			clearTimeout(echoTimer.current ?? undefined);
-			echoTimer.current = setTimeout(() => {
-				justFired.current = false;
-			}, ECHO_MS);
 			navigator.vibrate?.(8);
 			latest.current(point);
 		}, holdMs);
@@ -87,9 +98,9 @@ export function useLongPress(
 		style: PRESSABLE,
 		onPointerDown,
 		onPointerMove,
-		onPointerUp: cancel,
-		onPointerCancel: cancel,
-		onPointerLeave: cancel,
+		onPointerUp: release,
+		onPointerCancel: release,
+		onPointerLeave: release,
 
 		onClickCapture: (event: ReactMouseEvent) => {
 			if (!justFired.current) return;

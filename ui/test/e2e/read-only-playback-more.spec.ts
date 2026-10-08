@@ -126,16 +126,6 @@ test.describe("with playback control off at the player", () => {
 		await expectNothingRefusedSent(player);
 	});
 
-	test("choosing a record in an artist's discography plays nothing", async ({
-		page,
-		player,
-	}) => {
-		await openArtist(page, ARTIST);
-		await page.locator("main").getByText("Jessico", { exact: true }).click();
-
-		await expectNothingRefusedSent(player);
-	});
-
 	test.describe("an artist who is a guest elsewhere", () => {
 		test.use({
 			retagged: {

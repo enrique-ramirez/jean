@@ -27,11 +27,35 @@ export interface ScratchContents {
 	label: string;
 }
 
-export const scratchName = (
+const ALBUM_LABEL_SEPARATOR = " · ";
+
+// foobar2000 shows the playlist's title on its own tab, so the label reads as the two tags, not as an encoded route.
+export const albumLabel = (
+	artistTag: string | null | undefined,
+	album: string,
+) => `${artistTag ?? ""}${ALBUM_LABEL_SEPARATOR}${album}`;
+
+export function albumOfLabel(label: string): {
+	artist: string | null;
+	album: string;
+} {
+	const at = label.indexOf(ALBUM_LABEL_SEPARATOR);
+	if (at === -1) return { artist: null, album: label };
+	return {
+		artist: label.slice(0, at) || null,
+		album: label.slice(at + ALBUM_LABEL_SEPARATOR.length),
+	};
+}
+
+export function scratchName(
 	held: ScratchContents | null | undefined,
 	t: Translate,
-) =>
-	held?.kind === SCRATCH_KIND.all ? t("library.allMusic") : held?.label || null;
+) {
+	if (held?.kind === SCRATCH_KIND.all) return t("library.allMusic");
+	if (held?.kind === SCRATCH_KIND.album)
+		return albumOfLabel(held.label).album || null;
+	return held?.label || null;
+}
 
 export const scratchTitle = (kind: ScratchKind, label?: string | null) =>
 	`${SCRATCH_PREFIX}${label ? `${kind}: ${label}` : kind}${SCRATCH_SUFFIX}`;

@@ -640,6 +640,7 @@ export const en = {
 	},
 	"rating.title": "Rating",
 	"rating.unrated": "Unrated",
+	"route.album": "Album",
 	"route.artist": "Artist",
 	"route.genre": "Genre",
 	"route.home": "Home",

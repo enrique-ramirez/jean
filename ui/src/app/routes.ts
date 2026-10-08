@@ -1,5 +1,9 @@
 import type { Suggestion } from "@/domain/library/useLibrarySearch";
-import { SCRATCH_KIND, type ScratchKind } from "@/domain/track/jeanPlaylists";
+import {
+	albumOfLabel,
+	SCRATCH_KIND,
+	type ScratchKind,
+} from "@/domain/track/jeanPlaylists";
 import {
 	type ArtistTab,
 	albumOfRoute,
@@ -34,6 +38,7 @@ export interface PlayingRoute extends PlayingSet {
 type KindPhrase = Extract<Phrase, `route.${string}`>;
 
 export const KIND_LABEL: Partial<Record<ScratchKind, KindPhrase>> = {
+	[SCRATCH_KIND.album]: "route.album",
 	[SCRATCH_KIND.artist]: "route.artist",
 	[SCRATCH_KIND.genre]: "route.genre",
 	[SCRATCH_KIND.shelf]: "route.shelf",
@@ -109,6 +114,12 @@ export function routeOfPlayingSet(
 		return playing.label
 			? { ...playing, route: genreRoute(playing.label), temporaryRow: true }
 			: null;
+	if (playing.kind === SCRATCH_KIND.album) {
+		const { artist, album } = albumOfLabel(playing.label ?? "");
+		return album
+			? { ...playing, route: albumRoute(artist, album), temporaryRow: true }
+			: null;
+	}
 	if (playing.kind !== SCRATCH_KIND.shelf) return null;
 
 	// The label on the player is the shelf's title as it read when the set was played, so a language

@@ -27,6 +27,7 @@ import {
 	type Refs,
 	type TrackView,
 } from "@/domain/track/project";
+import { albumRoute, href } from "@/domain/track/routes";
 import { summarise } from "@/domain/track/stats";
 import { ViewHeader } from "@/domain/track/ViewHeader";
 import { Trans } from "@/shared/i18n/Trans";
@@ -59,13 +60,11 @@ function Records({
 	records,
 	library,
 	showsCredit,
-	onOpenAlbum,
 }: {
 	heading: string;
 	records: AlbumRecord[];
 	library: Library;
 	showsCredit: boolean;
-	onOpenAlbum: (refs: Refs, position: number) => void;
 }) {
 	const t = useTranslate();
 	if (records.length === 0) return null;
@@ -75,11 +74,10 @@ function Records({
 			<h2 className={styles.heading}>{heading}</h2>
 			<div className={styles.records}>
 				{records.map((album) => (
-					<button
+					<a
 						key={album.key}
-						type="button"
 						className={styles.record}
-						onClick={() => onOpenAlbum(album.refs, 0)}
+						href={href(albumRoute(album.artistTag, album.album))}
 					>
 						<span className={styles.sleeve}>
 							<Artwork
@@ -103,7 +101,7 @@ function Records({
 								})}
 							</span>
 						</span>
-					</button>
+					</a>
 				))}
 			</div>
 		</section>
@@ -141,7 +139,6 @@ export function ArtistView({
 	tabs,
 	onPlay,
 	onShuffle,
-	onOpenAlbum,
 	canPlay,
 	canShuffle,
 }: {
@@ -151,7 +148,6 @@ export function ArtistView({
 	tabs: ReactNode;
 	onPlay: (refs: Refs, position: number) => void;
 	onShuffle: (refs: Refs) => void;
-	onOpenAlbum: (refs: Refs, position: number) => void;
 	canPlay: boolean;
 	canShuffle: boolean;
 }) {
@@ -335,7 +331,6 @@ export function ArtistView({
 				records={discography}
 				library={library}
 				showsCredit={false}
-				onOpenAlbum={onOpenAlbum}
 			/>
 
 			<Records
@@ -343,7 +338,6 @@ export function ArtistView({
 				records={withOthers}
 				library={library}
 				showsCredit
-				onOpenAlbum={onOpenAlbum}
 			/>
 
 			{guest && guest.length > 0 ? (

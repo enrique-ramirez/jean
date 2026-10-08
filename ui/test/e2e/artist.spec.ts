@@ -1,9 +1,11 @@
+import { albumRoute } from "../../src/domain/track/routes.ts";
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
 	expectPlayingFrom,
 	openLibrary,
 	playedFrom,
+	playRequests,
 	scratchOf,
 	test,
 	trackPlayed,
@@ -207,14 +209,24 @@ test.describe("two views of one artist", () => {
 		await expect(body).toHaveAttribute("data-direction", "0");
 	});
 
-	test("choosing a record opens the tracks and lands on it", async ({
+	test("choosing a record opens its page, and nothing plays until a track is chosen", async ({
 		page,
+		player,
 	}) => {
 		await openArtist(page, ARTIST);
-		await page.locator("main").getByText("Jessico", { exact: true }).click();
+		await page
+			.locator("main")
+			.getByRole("link", { name: /Jessico/ })
+			.click();
 
-		expect(await page.evaluate(() => location.hash)).toContain("/tracks");
-		await expect(trackRow(page, 0)).toBeAttached();
+		await expect(
+			page.getByRole("heading", { level: 1, name: "Jessico" }),
+		).toBeVisible();
+		expect(await page.evaluate(() => location.hash)).toBe(
+			`#/${albumRoute(ARTIST, "Jessico")}`,
+		);
+		await untilQuiet(player);
+		expect(playRequests(player)).toEqual([]);
 	});
 });
 
@@ -350,7 +362,7 @@ test.describe("the pictures on an artist's page", () => {
 		await openArtist(page, ARTIST);
 		await expect(page.getByText("An Argentine rock band.")).toBeVisible();
 		await expect(
-			page.locator("main").getByRole("button", { name: /Jessico/ }),
+			page.locator("main").getByRole("link", { name: /Jessico/ }),
 		).toBeVisible();
 		await untilQuiet(player);
 

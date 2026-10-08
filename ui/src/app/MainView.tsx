@@ -11,7 +11,6 @@ import type { usePlaySet } from "@/domain/library/usePlaySet";
 import type { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { Refs } from "@/domain/track/project";
-import { askToReveal } from "@/domain/track/revealTrack";
 import { type ArtistTab, artistRoute } from "@/domain/track/routes";
 import { ArtistView } from "@/features/artist/ArtistView";
 import { GenresView } from "@/features/genres/GenresView";
@@ -191,12 +190,6 @@ export function MainView({
 				onShuffle={(refs) => {
 					playbackMode.enableShuffle();
 					playArtist(refs, Math.floor(Math.random() * refs.length));
-				}}
-				onOpenAlbum={(refs) => {
-					const at = Array.prototype.indexOf.call(shown.tracks.all, refs[0]);
-					askToReveal(refs[0]);
-					showArtistTab("tracks");
-					if (at >= 0) playArtist(shown.tracks.all, at);
 				}}
 				canPlay={home.canPlay}
 				canShuffle={home.canShuffle}

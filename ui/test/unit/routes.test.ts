@@ -1,13 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { resolveRoute } from "../../src/app/routes.ts";
+import { resolveRoute, routeOfPlayingSet } from "../../src/app/routes.ts";
+import {
+	albumLabel,
+	SCRATCH_KIND,
+} from "../../src/domain/track/jeanPlaylists.ts";
 import {
 	albumRoute,
 	artistRoute,
 	genreRoute,
 	searchRoute,
 } from "../../src/domain/track/routes.ts";
+import type { Translate } from "../../src/shared/i18n/useTranslate.ts";
 
 test("an empty route and home are both the home screen", () => {
 	for (const route of ["", "home"])
@@ -66,4 +71,20 @@ test("a shelf resolves by its id, and an id no shelf has is a playlist's route",
 test("a playlist's route is not the library's, and neither is one that does not decode", () => {
 	for (const route of ["p7", genreRoute("x").replace("x", "%E0%A4%A")])
 		assert.deepEqual(resolveRoute(route), { kind: "playlist", id: route });
+});
+
+test("an album being played has a row of its own, routed to the record's page", () => {
+	const t = ((key: string) => key) as Translate;
+	const playing = routeOfPlayingSet(
+		{
+			kind: SCRATCH_KIND.album,
+			label: albumLabel("Babasónicos", "Jessico"),
+			name: "Jessico",
+			itemCount: 12,
+			isPlaying: true,
+		},
+		t,
+	);
+	assert.equal(playing?.route, albumRoute("Babasónicos", "Jessico"));
+	assert.equal(playing?.temporaryRow, true);
 });

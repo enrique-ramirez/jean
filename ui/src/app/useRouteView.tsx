@@ -4,7 +4,11 @@ import { useSplitCredits } from "@/domain/artist/splitCredits";
 import type { Library } from "@/domain/library/useLibrary";
 import { AlbumCrumb } from "@/domain/track/AlbumCrumb";
 import { albumsOf, refsOfAlbum } from "@/domain/track/albums";
-import { SCRATCH_KIND, type ScratchKind } from "@/domain/track/jeanPlaylists";
+import {
+	albumLabel,
+	SCRATCH_KIND,
+	type ScratchKind,
+} from "@/domain/track/jeanPlaylists";
 import {
 	EMPTY_VIEW,
 	project,
@@ -116,7 +120,7 @@ export function useRouteView(route: RouteView, library: Library) {
 				? {
 						view: albumView ?? EMPTY_VIEW,
 						kind: SCRATCH_KIND.album,
-						label: albumTracks.album,
+						label: albumLabel(albumTracks.artist, albumTracks.album),
 						eyebrow: <AlbumCrumb artist={albumTracks.artist} />,
 						title: albumTracks.album,
 						emptyNotice: t("library.noAlbum"),

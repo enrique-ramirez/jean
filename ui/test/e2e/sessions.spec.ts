@@ -1638,6 +1638,7 @@ const activate = (row: Locator, isMobile: boolean) =>
 	isMobile ? row.tap() : row.dblclick();
 
 const ARTIST = "Babasónicos";
+const ALBUM = "Jessico";
 const RECORD = /^Jessico/;
 const GENRE = "Post Rock";
 const QUERY = "babasonicos";
@@ -1658,6 +1659,14 @@ const openArtist = async (page: Page) => {
 	await expect(
 		page.getByRole("heading", { level: 1, name: ARTIST }),
 	).toBeVisible();
+};
+
+const openAlbum = async (page: Page) => {
+	await page.goto(`/#/${albumRoute(ARTIST, ALBUM)}`);
+	await expect(
+		page.getByRole("heading", { level: 1, name: ALBUM }),
+	).toBeVisible();
+	await expect(trackRow(page, 0)).toBeAttached();
 };
 
 const openGenre = async (page: Page) => {
@@ -1683,8 +1692,8 @@ interface SetPress {
 	press: (page: Page, isMobile: boolean) => Promise<void>;
 }
 
-// Each place Jean plays a set from. Jessico is not first on Most played, and the result is the third,
-// so two of these start past the set's first track.
+// Each place Jean plays a set from. Jessico is not first on Most played, and the record's track and
+// the result are both the third, so three of these start past the set's first track.
 const SET_PRESSES: SetPress[] = [
 	{
 		name: "an album card on Home",
@@ -1695,12 +1704,9 @@ const SET_PRESSES: SetPress[] = [
 		press: (page) => pressWhenOffered(albumCard(page)),
 	},
 	{
-		name: "a record on an artist's page",
-		open: openArtist,
-		press: (page) =>
-			pressWhenOffered(
-				page.locator("main").getByRole("button", { name: RECORD }),
-			),
+		name: "a track activated on a record's page",
+		open: openAlbum,
+		press: (page, isMobile) => activate(trackRow(page, 2), isMobile),
 	},
 	{
 		name: "an artist's Play",

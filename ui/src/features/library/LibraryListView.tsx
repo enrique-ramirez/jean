@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { libraryNoticeFor } from "@/domain/library/LibraryNotice";
 import {
 	isLibraryReading,
@@ -10,7 +10,6 @@ import { useViewPlayback } from "@/domain/library/useViewPlayback";
 import { SCRATCH_KIND, type ScratchKind } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
 import type { TrackView } from "@/domain/track/project";
-import { revealed, useRevealAsked } from "@/domain/track/revealTrack";
 import { href, ROUTE } from "@/domain/track/routes";
 import { summarise } from "@/domain/track/stats";
 import { TrackPage } from "@/domain/track/TrackPage";
@@ -60,21 +59,6 @@ export function LibraryListView({
 	const t = useTranslate();
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
 	const { indices, heat, patina, playedCount } = view;
-
-	// Asked from somewhere with no list of its own -- an album on the artist's overview, which opens
-	// the tracks tab and expects to land on that record.
-	const revealing = useRevealAsked();
-	useEffect(() => {
-		if (revealing === null) return;
-		const position = Array.prototype.indexOf.call(indices, revealing);
-		if (position < 0) return;
-
-		revealed();
-		browserRef.current?.scrollToTrack(position, {
-			align: "start",
-			animate: true,
-		});
-	}, [revealing, indices]);
 
 	const isGenre = kind === SCRATCH_KIND.genre;
 

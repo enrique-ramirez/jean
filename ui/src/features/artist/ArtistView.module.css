@@ -43,10 +43,8 @@
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	padding: 0;
-	border: 0;
-	background: none;
-	text-align: left;
+	color: inherit;
+	text-decoration: none;
 }
 
 /* The square is the wrapper's, since `Artwork` writes its own width and height inline when it is

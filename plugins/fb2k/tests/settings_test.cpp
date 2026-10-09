@@ -92,6 +92,17 @@ TEST_CASE("a key of the wrong type keeps its default, names itself, and spoils n
     CHECK(settings.bindAddress == "0.0.0.0");
 }
 
+TEST_CASE("a number that is not a whole int keeps its default and names itself") {
+    for (const auto* text : {R"({"streamTicketTtlSeconds": 1e20})", R"({"port": 2.5})",
+                             R"({"port": 4294967296})", R"({"maxSessions": 9223372036854775808})",
+                             R"({"maxSessions": -9223372036854775808})", R"({"port": true})"}) {
+        const auto settings = parseFresh(text);
+
+        CHECK(settings == Settings());
+        CHECK(logged("is not valid"));
+    }
+}
+
 TEST_CASE("a port outside the legal range falls back and says so") {
     for (const auto* text : {R"({"port": 0})", R"({"port": -1})", R"({"port": 70000})"}) {
         const auto settings = parseFresh(text);

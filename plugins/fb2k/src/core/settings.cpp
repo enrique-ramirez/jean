@@ -4,8 +4,12 @@
 #include "core/log.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <numeric>
 #include <optional>
+#include <string>
+#include <type_traits>
 
 using nlohmann::json;
 
@@ -15,6 +19,25 @@ namespace {
 
 void ignoring(std::vector<std::string>& log, const std::string& key, const std::string& why) {
     log.push_back("config: ignoring '" + key + "': " + why);
+}
+
+bool fitsInt(const json& value) {
+    if (value.is_number_unsigned())
+        return value.get<uint64_t>() <= static_cast<uint64_t>(std::numeric_limits<int>::max());
+    const auto wide = value.get<int64_t>();
+    return wide >= std::numeric_limits<int>::min() && wide <= std::numeric_limits<int>::max();
+}
+
+template <typename T>
+bool holds(const json& value) {
+    if constexpr (std::is_same_v<T, bool>) {
+        return value.is_boolean();
+    } else if constexpr (std::is_same_v<T, int>) {
+        return value.is_number_integer() && fitsInt(value);
+    } else {
+        static_assert(std::is_same_v<T, std::string>);
+        return value.is_string();
+    }
 }
 
 class ConfigDocument {
@@ -27,11 +50,11 @@ public:
         if (!value)
             return;
 
-        try {
-            out = value->get<T>();
-        } catch (const std::exception&) {
+        if (!holds<T>(*value)) {
             ignoring(log_, key, value->dump() + " is not valid; using " + json(out).dump());
+            return;
         }
+        out = value->get<T>();
     }
 
     void readList(const char* key, std::vector<std::string>& out) {

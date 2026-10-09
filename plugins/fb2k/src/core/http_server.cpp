@@ -220,9 +220,9 @@ void fillInEmptyErrors(httplib::Server& server) {
 
 void reportFailuresWithoutLeaking(httplib::Server& server) {
     server.set_exception_handler(
-        [](const httplib::Request&, httplib::Response& res, std::exception_ptr thrown) {
+        [](const httplib::Request&, httplib::Response& res, const std::exception_ptr& thrown) {
             try {
-                std::rethrow_exception(std::move(thrown));
+                std::rethrow_exception(thrown);
             } catch (const std::exception& e) {
                 logError(std::string("request handler threw: ") + e.what());
             } catch (...) {

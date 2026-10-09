@@ -285,7 +285,8 @@ RowsEdited moveRowsOnMainThread(const std::string& playlistId, uint64_t structur
 
     std::optional<std::vector<uint32_t>> order;
     if (!facts.noSuchPlaylist) {
-        order = moveOrder(manager->playlist_get_item_count(index), positions, to);
+        order = moveOrder(static_cast<uint32_t>(manager->playlist_get_item_count(index)), positions,
+                          to);
         facts.positionPastEnd = !order.has_value();
     }
 

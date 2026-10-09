@@ -1,5 +1,5 @@
 # The foobar2000 SDK is fetched, never vendored -- its licence does not permit
-# redistribution. scripts/fetch-sdk.ps1 puts it here.
+# redistribution. scripts/fetch-sdk.ps1 and scripts/fetch-sdk.sh put it here.
 sdk/*
 !sdk/.gitkeep
 

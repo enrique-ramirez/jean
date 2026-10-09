@@ -81,7 +81,7 @@ void StateRoute::addTo(httplib::Server& server) {
         if (named.which == SessionAnswer::Which::none)
             return;
 
-        const auto generation = configGeneration_.load(std::memory_order_relaxed);
+        const auto generation = configGeneration_.load(std::memory_order_acquire);
         const auto state = library_ ? library_->state() : Library::State{};
         const auto published = playerState_ ? playerState_->read() : PlayerStateStore::Published{};
         const auto mainThread = checkMainThread_ ? checkMainThread_(clock_()) : MainThreadHealth{};

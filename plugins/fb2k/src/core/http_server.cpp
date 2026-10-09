@@ -335,7 +335,7 @@ struct HttpServer::Impl {
                 return key != "allowedHosts" && key != "allowedOrigins";
             });
         if (movesGeneration)
-            configGeneration.fetch_add(1, std::memory_order_relaxed);
+            configGeneration.fetch_add(1, std::memory_order_release);
     }
 
     bool originAllowed(const std::string& origin) const {

@@ -39,6 +39,20 @@ jobs:
 
       - run: plugins/fb2k/scripts/test.sh
 
+  address-sanitizer:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: plugins/fb2k/scripts/fetch-opus.sh
+      - run: plugins/fb2k/scripts/test.sh --sanitize=address
+
+  thread-sanitizer:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: plugins/fb2k/scripts/fetch-opus.sh
+      - run: plugins/fb2k/scripts/test.sh --sanitize=thread
+
   format:
     runs-on: ubuntu-24.04
     steps:
@@ -97,4 +111,7 @@ jobs:
       - uses: ./.github/actions/windows-llvm
 
       - run: .\scripts\build.ps1 -Project src\foo_jean.vcxproj
+        working-directory: plugins/fb2k
+
+      - run: .\scripts\test.ps1
         working-directory: plugins/fb2k

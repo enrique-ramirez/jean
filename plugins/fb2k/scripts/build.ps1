@@ -43,6 +43,10 @@ $errors = $output | Select-String -Pattern 'error|fatal' -CaseSensitive:$false
 if ($errors) { "--- errors ---"; $errors | Select-Object -First 15 }
 else { $output | Select-Object -Last 10 }
 
+# No other compiler ever sees src\fb2k, so a warning hidden here is hidden everywhere.
+$warnings = $output | Select-String -Pattern 'warning C' -CaseSensitive:$false | Sort-Object -Unique
+if ($warnings) { "--- warnings ($($warnings.Count)) ---"; $warnings | Select-Object -First 15 }
+
 if ($failed) { throw "Build failed (exit $LASTEXITCODE)." }
 
 if ((Split-Path -Leaf $proj) -eq 'foo_jean.vcxproj') {

@@ -45,7 +45,36 @@ Checks: >
   -performance-enum-size,
   -portability-avoid-pragma-once
 
-# Why the last five are off:
+# Why each is off:
+#
+#   bugprone-easily-swappable-parameters
+#     Fires on every pair of parameters of one type, and the fix it wants is a strong
+#     type per parameter, which is structure this tree declines until a second caller
+#     asks for it.
+#
+#   misc-include-cleaner
+#     Wants every header a file uses included by that file, where this tree includes
+#     what a file reads and lets core/json.h and its kin re-export the rest; .clangd
+#     turns off its own copy of the same check for the same reason. The cost is that an
+#     include a platform's standard library happens to pull in shows up on the next
+#     platform, which the macOS build will find.
+#
+#   misc-non-private-member-variables-in-classes
+#     Snapshot, Settings and the documents are structs of public fields on purpose.
+#
+#   readability-braces-around-statements
+#     A one-line body goes without braces here, the way the tree already reads.
+#
+#   readability-identifier-length
+#     `at`, `id` and `n` are the right names where they appear.
+#
+#   readability-magic-numbers
+#     A number that is a decision is a named constant already; what is left is an HTTP
+#     status or a size at the one line that uses it.
+#
+#   readability-function-cognitive-complexity
+#     A route handler reads as one flow from check to answer, and splitting it to score
+#     lower would hide the order the checks run in.
 #
 #   misc-use-anonymous-namespace, misc-static-initialization-cycle
 #     Both fire once per doctest TEST_CASE, on the DOCTEST_ANON_FUNC_n and
@@ -66,7 +95,7 @@ Checks: >
 #     not the compiler's -- and that exception carries its own comment.
 
 WarningsAsErrors: ''
-HeaderFilterRegex: '.*[/\\]src[/\\](core|fb2k)[/\\].*'
+HeaderFilterRegex: '.*[/\\](src[/\\](core|fb2k)|tests[/\\]support)[/\\].*'
 
 CheckOptions:
   # camelCase for functions and variables, PascalCase for types, kThing for constants,

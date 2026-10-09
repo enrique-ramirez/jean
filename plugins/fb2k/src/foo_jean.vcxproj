@@ -73,6 +73,7 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <ConformanceMode>true</ConformanceMode>
       <!--
         Three roots. src/ so our own headers are reached as "core/..." and
         "fb2k/..."; the repo root so vendored headers are reached as

@@ -44,6 +44,8 @@ if (-not (Test-Path (Join-Path $sdk 'foobar2000'))) { throw "The foobar2000 SDK 
 if ($Files.Count -eq 0) {
   $Files = Get-ChildItem (Join-Path $src 'fb2k') -Filter *.cpp | Where-Object Name -ne 'PCH.cpp' |
     Sort-Object Name | ForEach-Object FullName
+  # The one core file with _WIN32 branches, which no other lint reaches.
+  $Files += Join-Path $src 'core\http_server.cpp'
 } else {
   $Files = $Files | ForEach-Object {
     $file = if ([IO.Path]::IsPathRooted($_)) { $_ } else { Join-Path $root $_ }

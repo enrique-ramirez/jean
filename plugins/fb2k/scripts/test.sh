@@ -122,17 +122,24 @@ build_zlib_archive_if_missing() {
 
 # Only what changed since the last run is compiled, in parallel; scripts/lib/tests.mk has how.
 build_tests() {
-  # -Wno-unused-function because doctest's SUBCASE machinery generates some.
-  local cxxflags="-g -O0 -Wall -Wextra -Wno-unused-function $instrument ${compile_flags[*]}"
+  # -Wno-unused-function because doctest's SUBCASE machinery generates some. The hardening
+  # defines make libc++ and libstdc++ check bounds that AddressSanitizer cannot see inside one
+  # live allocation.
+  local cxxflags="-g -O0 -Wall -Wextra -Werror -Wno-unused-function \
+    -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE -D_GLIBCXX_ASSERTIONS \
+    $instrument ${compile_flags[*]}"
+  local core_cxxflags="-Wunused-function -Wpedantic -Wshadow -Wold-style-cast \
+    -Wzero-as-null-pointer-constant -Wnon-virtual-dtor -Woverloaded-virtual"
   local flags="$out/obj/flags"
 
   mkdir -p "$out/obj"
-  if [ ! -f "$flags" ] || [ "$(cat "$flags")" != "$CXX $cxxflags" ]; then
-    printf '%s' "$CXX $cxxflags" >"$flags"
+  if [ ! -f "$flags" ] || [ "$(cat "$flags")" != "$CXX $cxxflags $core_cxxflags" ]; then
+    printf '%s' "$CXX $cxxflags $core_cxxflags" >"$flags"
   fi
 
   make -s -j "$(getconf _NPROCESSORS_ONLN)" -f "$root/scripts/lib/tests.mk" \
     ROOT="$root" OUT="$out" CXX="$CXX" CXXFLAGS="$cxxflags" LDFLAGS="-g $instrument" \
+    CORE_CXXFLAGS="$core_cxxflags" \
     SOURCES="$(echo "$root"/tests/*.cpp "$root"/tests/support/*.cpp "$root"/src/core/*.cpp)" \
     LIBS="$codec/libcodec.a $deflate/libz.a" FLAGS="$flags"
 }

@@ -61,8 +61,8 @@ typedef uint64_t ogg_uint64_t;
 TYPES
 }
 
-# The cached objects in bin/codec belong to whatever version was here before.
-rm -rf "$root/bin/codec"
+# The cached archives, one per sanitizer, belong to whatever version was here before.
+rm -rf "$root"/bin/codec "$root"/bin/codec-*
 
 mkdir -p "$third_party"
 fetch opus "https://downloads.xiph.org/releases/opus/opus-$opus_version.tar.gz" \

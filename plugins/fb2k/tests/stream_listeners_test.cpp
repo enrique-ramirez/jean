@@ -340,7 +340,9 @@ TEST_CASE("asking for both outputs reaches the hold") {
 
     // Idempotent, and it says nothing about whether there was a hold: with nobody listening
     // there is nothing to release and nothing has gone wrong.
-    CHECK(server.client().Delete("/api/stream/hold")->status == 204);
+    const auto dropped = server.client().Delete("/api/stream/hold");
+    REQUIRE(dropped);
+    CHECK(dropped->status == 204);
 }
 
 TEST_CASE("an install that never mutes says so rather than answering as though it did") {
@@ -361,7 +363,9 @@ TEST_CASE("canMuteWhileStreaming says in advance what the hold route will answer
         const TestServer server(servingSettings(), source.player({}, [] {}));
 
         CHECK(capabilityToMute(server) == true);
-        CHECK(server.client().Delete("/api/stream/hold")->status == 204);
+        const auto released = server.client().Delete("/api/stream/hold");
+        REQUIRE(released);
+        CHECK(released->status == 204);
     }
 
     // muteWhileStreaming is on by default, so a component that never started an encoder has
@@ -371,7 +375,9 @@ TEST_CASE("canMuteWhileStreaming says in advance what the hold route will answer
         const TestServer server(servingSettings(), source.player());
 
         CHECK(capabilityToMute(server) == false);
-        CHECK(server.client().Delete("/api/stream/hold")->status == 503);
+        const auto refused = server.client().Delete("/api/stream/hold");
+        REQUIRE(refused);
+        CHECK(refused->status == 503);
     }
 }
 

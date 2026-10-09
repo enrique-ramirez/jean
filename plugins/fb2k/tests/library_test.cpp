@@ -6,10 +6,12 @@
 
 #include "core/failures.h"
 #include "core/library.h"
+#include "support/eventually.h"
 #include "support/wire.h"
 #include "third_party/json.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <string>
 #include <thread>
 #include <vector>
@@ -395,14 +397,17 @@ TEST_CASE("progress reported from one thread reads back whole from another") {
     static constexpr size_t kReports = 4000;
 
     Library library;
-    std::thread worker([&library] {
+    std::atomic<bool> reported{false};
+    std::thread worker([&library, &reported] {
         for (size_t formatted = 1; formatted <= kReports; ++formatted)
             library.reportBuild({BuildPhase::formatting, formatted, kReports});
+        reported.store(true);
     });
 
     size_t torn = 0;
     size_t latest = 0;
-    for (size_t read = 0; read < kReports; ++read) {
+    REQUIRE(eventually([&library] { return library.state().build.has_value(); }));
+    while (!reported.load()) {
         const auto build = library.state().build;
         if (!build)
             continue;
@@ -483,6 +488,7 @@ TEST_CASE("an export racing a row change always reads one whole revision") {
             library.apply({{0, track("a/", "1.mp3", {std::to_string(plays)})}});
     });
 
+    REQUIRE(eventually([&library] { return library.state().revision > 1; }));
     size_t torn = 0;
     for (int read = 0; read < kChanges; ++read) {
         const auto exported = library.exported();

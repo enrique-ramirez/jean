@@ -3,6 +3,7 @@
 #include "third_party/doctest.h"
 
 #include "core/http_server.h"
+#include "support/eventually.h"
 #include "support/test_server.h"
 #include "third_party/httplib.h"
 
@@ -20,9 +21,6 @@ using namespace jean;
 using namespace jean::testing;
 
 namespace {
-
-// A bound on each wait below, so a regression fails the case rather than hanging the suite.
-constexpr auto kLongerThanAnyHealthyWait = std::chrono::seconds(20);
 
 struct HeldWriter {
     std::mutex mutex;
@@ -42,9 +40,10 @@ struct HeldWriter {
     }
 
     bool waitUntilHolding(size_t count) {
-        std::unique_lock<std::mutex> lock(mutex);
-        return changed.wait_for(lock, kLongerThanAnyHealthyWait,
-                                [this, count] { return holding >= count; });
+        return eventually([this, count] {
+            const std::lock_guard<std::mutex> lock(mutex);
+            return holding >= count;
+        });
     }
 
     void release() {
@@ -63,18 +62,16 @@ constexpr int kConnectionClosedUnanswered = 0;
 
 struct Answers {
     std::mutex mutex;
-    std::condition_variable arrived;
     std::vector<int> statuses;
 
     void record(int status) {
         const std::lock_guard<std::mutex> lock(mutex);
         statuses.push_back(status);
-        arrived.notify_all();
     }
 
     bool waitForAnUnanswered() {
-        std::unique_lock<std::mutex> lock(mutex);
-        return arrived.wait_for(lock, kLongerThanAnyHealthyWait, [this] {
+        return eventually([this] {
+            const std::lock_guard<std::mutex> lock(mutex);
             return std::find(statuses.begin(), statuses.end(), kConnectionClosedUnanswered) !=
                    statuses.end();
         });
@@ -128,8 +125,7 @@ std::future<void> writeInBackground(const TestServer& server, Answers& answers) 
         client.set_read_timeout(30, 0);
         const auto response =
             client.Post("/api/tags", ratingWrite(kTrackAddress), "application/json");
-        answers.record(response.error() == httplib::Error::Success ? response->status
-                                                                   : kConnectionClosedUnanswered);
+        answers.record(response ? response->status : kConnectionClosedUnanswered);
     });
 }
 

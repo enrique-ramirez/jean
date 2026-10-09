@@ -1,5 +1,7 @@
 #include "third_party/doctest.h"
 
+#include "support/eventually.h"
+
 #include "core/playlists.h"
 
 #include <algorithm>
@@ -391,7 +393,12 @@ TEST_CASE("a client following a playlist while the player writes to it misses no
         writing.store(false);
     });
 
-    std::thread connection([&versions, &writing, &caught, &refusals, start] {
+    std::atomic<bool> sawTheFirstWrite{false};
+    std::thread connection([&versions, &writing, &caught, &refusals, &sawTheFirstWrite, start] {
+        sawTheFirstWrite = jean::testing::eventually(
+            [&versions, start] { return versions.of(kAlbums).revision > start.revision; });
+        if (!sawTheFirstWrite)
+            return;
         uint64_t cursor = start.revision;
 
         const auto catchUp = [&] {
@@ -411,6 +418,7 @@ TEST_CASE("a client following a playlist while the player writes to it misses no
 
     player.join();
     connection.join();
+    REQUIRE(sawTheFirstWrite);
 
     size_t missed = 0;
     for (uint32_t change = 0; change < kChanges; ++change)

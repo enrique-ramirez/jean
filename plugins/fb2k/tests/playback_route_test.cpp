@@ -310,6 +310,10 @@ TEST_CASE(
     const TestServer server(servingSettings(), commanding(&commands));
 
     CHECK(checkRefused(server, commands, kSeek, R"({"seconds": -1})", 400) == "unacceptable seek");
+    CHECK(checkRefused(server, commands, kSeek, R"({"seconds": 1e300})", 400) ==
+          "unacceptable seek");
+    CHECK(checkRefused(server, commands, kSeek, R"({"relativeSeconds": -1e300})", 400) ==
+          "unacceptable seek");
     CHECK(commands.count() == 0);
 
     checkAnswered(post(server, kSeek, R"({"seconds": 0})"));

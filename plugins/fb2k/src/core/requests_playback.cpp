@@ -5,10 +5,15 @@
 #include "core/text.h"
 
 #include <array>
+#include <cmath>
 
 namespace jean {
 
 namespace {
+
+// A position no track reaches, so a larger one is a mistake, and far past it a double no longer
+// converts to the sample count foobar2000's input seeks by.
+constexpr double kMaxSeekSeconds = 1e9;
 
 // Exactly the fields contract/openapi.yaml declares for each request body below.
 constexpr std::array<const char*, 2> kSeekFields{"seconds", "relativeSeconds"};
@@ -48,14 +53,16 @@ SeekRequest parseSeek(const JsonObject& body) {
     if (!absolute && !relative)
         return refuse("send exactly one of 'seconds' and 'relativeSeconds'");
 
-    const auto& field = root.at(absolute ? "seconds" : "relativeSeconds");
+    const std::string name = absolute ? "seconds" : "relativeSeconds";
+    const auto& field = root.at(name);
     if (!field.is_number())
-        return refuse("'" + std::string(absolute ? "seconds" : "relativeSeconds") +
-                      "' must be a number");
+        return refuse("'" + name + "' must be a number");
 
     const auto seconds = field.get<double>();
     if (absolute && seconds < 0)
         return refuse("'seconds' must not be negative");
+    if (!std::isfinite(seconds) || std::abs(seconds) > kMaxSeekSeconds)
+        return refuse("'" + name + "' is beyond any track");
 
     SeekRequest request;
     request.seconds = seconds;

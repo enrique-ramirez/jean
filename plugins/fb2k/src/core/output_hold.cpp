@@ -2,7 +2,9 @@
 
 #include "core/log.h"
 
+#include <exception>
 #include <optional>
+#include <string>
 #include <utility>
 
 namespace jean {
@@ -32,7 +34,13 @@ void OutputHold::watch() {
 
     while (audience_.awaitChangeFrom(applied)) {
         applied = audience_.anyListening(Clock::now());
-        apply(applied ? Listening::somebody : Listening::nobody);
+        try {
+            apply(applied ? Listening::somebody : Listening::nobody);
+        } catch (const std::exception& e) {
+            logError(std::string("the mute hold failed: ") + e.what());
+        } catch (...) {
+            logError("the mute hold failed with an unknown exception");
+        }
     }
 }
 

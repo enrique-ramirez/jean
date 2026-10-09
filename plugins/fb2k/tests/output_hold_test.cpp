@@ -15,12 +15,14 @@
 
 #include "support/eventually.h"
 #include "support/fixtures.h"
+#include "support/log_capture.h"
 
 #include <atomic>
 #include <chrono>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <thread>
 
 using namespace jean;
@@ -107,6 +109,41 @@ TEST_CASE("the player is silenced while somebody listens and given its sound bac
     // The same level it was on before, rather than whatever the player's own unmute would
     // have remembered from the last time somebody pressed it.
     CHECK(player.level == doctest::Approx(-10.0F));
+}
+
+TEST_CASE("a player that throws at the hold is logged, and the next listener is tried again") {
+    clearLog();
+    Audience audience(8, 0s);
+    FakePlayer player;
+    OutputHold::Player seam = player.seam();
+    const auto setMuted = seam.setMuted;
+    const auto isMuted = seam.isMuted;
+    std::atomic<int> refusals{0};
+    std::atomic<int> decisions{0};
+    seam.setMuted = [&setMuted, &refusals](bool value) {
+        if (value && refusals++ == 0)
+            throw std::runtime_error("no output device");
+        setMuted(value);
+    };
+    seam.isMuted = [&isMuted, &decisions] {
+        ++decisions;
+        return isMuted();
+    };
+    const OutputHold hold(audience, seam, true);
+
+    {
+        const auto first = audience.join(phone(), "opus", Audience::Clock::now());
+        REQUIRE(eventually([&refusals] { return refusals.load() == 1; }));
+    }
+    REQUIRE(eventually([] { return logged("the mute hold failed: no output device"); }));
+    REQUIRE(eventually([&decisions] { return decisions.load() == 2; }));
+    CHECK_FALSE(player.muted);
+
+    {
+        const auto second = audience.join(laptop(), "opus", Audience::Clock::now());
+        REQUIRE(becomes(player.muted, true));
+    }
+    REQUIRE(becomes(player.muted, false));
 }
 
 TEST_CASE("a player left silent by hand mid-listen gets the level back it started on") {

@@ -343,7 +343,8 @@ TEST_CASE("runs resolving past the row ceiling are refused on a removal and on a
     // the comment on its sum loop.
     for (const std::string& form :
          {runsOf(0, uint64_t{kRowCeiling} + 1),
-          R"("runs": [[0, )" + std::to_string(kRowCeiling) + R"(], [0, 1]])"}) {
+          R"("runs": [[0, )" + std::to_string(kRowCeiling) + R"(], [0, 1]])",
+          std::string(R"("runs": [[0, 1], [0, 18446744073709551615]])")}) {
         INFO("form: ", form);
 
         const auto removal = removing(form);

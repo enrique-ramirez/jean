@@ -119,9 +119,10 @@ SelectionResult decodeSelection(const json& root, size_t limit) {
                 !run[1].is_number_unsigned())
                 return {PlaylistRefusal::badOrdinals, {}};
 
-            total += run[1].get<uint64_t>();
-            if (total > limit)
+            const auto count = run[1].get<uint64_t>();
+            if (count > limit - total)
                 return {PlaylistRefusal::badOrdinals, {}};
+            total += count;
         }
 
         for (const auto& run : *runs) {

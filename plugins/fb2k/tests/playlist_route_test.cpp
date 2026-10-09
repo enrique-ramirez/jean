@@ -3769,7 +3769,7 @@ TEST_CASE("a fill resolved against a generation the library has moved past inser
     buildLibrary(library);
     const uint64_t exported = library.state().structure;
 
-    buildLibrary(library);
+    moveLibraryStructure(library);
 
     FakePlayer foobar(&library);
     holdingForAFill(foobar);
@@ -3846,7 +3846,7 @@ TEST_CASE("the title a fill carries lands with its rows and never ahead of them"
     }
 
     SUBCASE("a view refused for a moved generation leaves the title where it was") {
-        buildLibrary(library);
+        moveLibraryStructure(library);
 
         const auto refused = post(server, kScratchFill, ownBody("#Jean Indie Rock", exported));
 

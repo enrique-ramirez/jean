@@ -34,6 +34,7 @@ private:
 
     void readTrack(const httplib::Request& req, httplib::Response& res);
     bool readingTooFast(httplib::Response& res);
+    bool readingChangesTooFast(httplib::Response& res);
 
     bool writingTagsTooFast(httplib::Response& res);
 
@@ -48,6 +49,7 @@ private:
     Throttle rebuilds_;
     Throttle tagWrites_;
     Throttle trackReads_;
+    Throttle deltaReads_;
 
     GzipOnce packedExport_;
 

@@ -61,7 +61,7 @@ info:
 
     `GET /state` is a small JSON document a client polls, carrying the library's two generations under `library`. The library itself is a binary snapshot from `GET /library/export`, patched afterwards by `GET /library/changes`. There is no paged route: a client holds the whole library and asks the questions locally. `GET /track/library` is the one per-entity route, and it reads a single track back after a write rather than standing in for a browse.
 
-    Two generations say what changed. `structure` moves when tracks are added or removed, which shifts every ordinal after the change, so a client throws its arrays away and exports again. `revision` moves when rows change in place, which leaves ordinals alone, so a client fetches a delta and patches. Modifications are constant, roughly one per track played; additions and removals are rare and the user just caused them.
+    Two generations say what changed. `structure` moves when tracks are added or removed, which shifts every ordinal after the change, so a client throws its arrays away and exports again. It also moves when the column set changes. A rebuild that finds the same tracks and columns keeps `structure` and moves `revision` only for the rows whose values changed, so a refresh costs a client still inside the retained window a delta rather than an export. `revision` moves when rows change in place, which leaves ordinals alone, so a client fetches a delta and patches. Modifications are constant, roughly one per track played; additions and removals are rare and the user just caused them.
 
     An **ordinal** is a track's position in the snapshot, counted from zero, and it is the only handle these routes use. Ordinals are in library-relative path order, compared the way the player compares paths itself rather than byte by byte: a run of digits counts as a number and case does not count at all, so `2 Mello` comes before `10cc`. Ties are broken by subsong and then by the player's own canonical path, so the order is total and does not shuffle between rebuilds. An ordinal means nothing across a `structure` change.
 
@@ -2526,6 +2526,7 @@ paths:
         "409": { $ref: "#/components/responses/LibraryConflict" }
         "410": { $ref: "#/components/responses/LibraryRevisionGone" }
         "413": { $ref: "#/components/responses/LibraryTooLarge" }
+        "429": { $ref: "#/components/responses/LibraryChangesTooFast" }
         "503": { $ref: "#/components/responses/LibraryUnavailable" }
 
   /library/refresh:
@@ -2534,13 +2535,13 @@ paths:
       operationId: refreshLibrary
       summary: Rebuild the snapshot from the player.
       description: |
-        Asks foobar2000 to walk its media library again and replaces the snapshot with the result. This is the hand on the wheel behind the two automatic mechanisms, the player's own change notifications and the re-read of every track as it stops playing, and it is what recovers a value neither of those can see.
+        Asks foobar2000 to walk its media library again and patches the snapshot with the result: where the tracks and the columns are the same, `structure` holds and only the rows whose values changed move `revision`. This is the hand on the wheel behind the two automatic mechanisms, the player's own change notifications and the re-read of every track as it stops playing, and it is what recovers a value neither of those can see.
 
         It rebuilds the column set last declared by an export, so it takes no body. On a component nothing has declared to since it started, it rebuilds the set already built, which is why a refresh cannot cost a client the snapshot it is using.
 
         Expensive: it re-queries and re-formats every track. Rate limited to a burst of three, refilling one every thirty seconds, which is what a person pressing a button needs and a looping client does not get.
 
-        The answer is `202` rather than `200`. The rebuild may still be running, and the body carries the generations as they stand at the moment of the request, so a client watches `GET /state`'s `library.structure` for it to move past them. It MUST NOT treat the answer as the finished rebuild.
+        The answer is `202` rather than `200`. The rebuild may still be running, and the body carries the generations as they stand at the moment of the request, so a client watches `GET /state`'s `library.build` to clear and its generations for what moved, if anything did. It MUST NOT treat the answer as the finished rebuild.
       responses:
         "202":
           description: |
@@ -3891,6 +3892,20 @@ components:
           examples:
             default:
               value: { error: too many track reads }
+
+    LibraryChangesTooFast:
+      description: |
+        Deltas are being asked for faster than this component will answer them: a burst of 200, refilling one every 50 milliseconds, the budget `GET /track/library` has. A client asks once per `revision` it sees move and never meets it; a client stuck in a loop would otherwise hold the library's lock against every state poll. A request refused for what it asks is refused for that first and spends nothing. `Retry-After` is sent in seconds.
+      headers:
+        Retry-After:
+          schema: { type: string }
+          description: Seconds to wait.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            default:
+              value: { error: too many library delta reads }
 
     PlayingTrackReadTooFast:
       description: |

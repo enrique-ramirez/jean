@@ -32,6 +32,10 @@ constexpr auto kTagWriteRefill = std::chrono::milliseconds(50);
 constexpr int kTrackReadBurst = kTagWriteBurst;
 constexpr auto kTrackReadRefill = kTagWriteRefill;
 
+// A delta is asked for once per revision a client sees move, so the track read's depth is ample.
+constexpr int kDeltaReadBurst = kTrackReadBurst;
+constexpr auto kDeltaReadRefill = kTrackReadRefill;
+
 // The snapshot and the deltas. Opaque bytes with a magic number of their own, so nothing on
 // the way to the client sniffs, transcodes or reformats them; contract/openapi.yaml is the
 // only description of what is inside.
@@ -121,6 +125,10 @@ LibraryRoutes::LibraryRoutes(const LibraryCalls& calls, const Library* library,
       trackReads_(kTrackReadBurst, kTrackReadRefill,
                   "refusing library track reads: they are arriving faster than this component "
                   "will answer them, which usually means a client is looping",
+                  clock),
+      deltaReads_(kDeltaReadBurst, kDeltaReadRefill,
+                  "refusing library delta reads: they are arriving faster than this component "
+                  "will answer them, which usually means a client is looping",
                   clock) {}
 
 void LibraryRoutes::declare(std::vector<std::string> columns) {
@@ -147,6 +155,14 @@ bool LibraryRoutes::readingTooFast(httplib::Response& res) {
         return false;
 
     respondTooFast(res, trackReads_, errorDocument(kReadingTracksTooFast));
+    return true;
+}
+
+bool LibraryRoutes::readingChangesTooFast(httplib::Response& res) {
+    if (!deltaReads_.refuses())
+        return false;
+
+    respondTooFast(res, deltaReads_, errorDocument(kReadingChangesTooFast));
     return true;
 }
 
@@ -291,6 +307,9 @@ void LibraryRoutes::addTo(httplib::Server& server) {
             respondUnavailable(res, kNoLibrary);
             return;
         }
+
+        if (readingChangesTooFast(res))
+            return;
 
         const auto state = library_->state();
         const auto name = snapshotTag(state, runId_) + "-f" + std::to_string(request.since);

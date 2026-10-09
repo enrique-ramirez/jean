@@ -256,7 +256,7 @@ Three mechanisms, in descending order of trust, and one promise none of them mak
 
 ### Two generations
 
-`structure` moves when tracks are added or removed. Ordinals shift, a client's arrays mean nothing, and it exports again. `revision` moves when a row changes in place. Ordinals hold, so a client asks for a delta and patches what it already has.
+`structure` moves when tracks are added or removed. Ordinals shift, a client's arrays mean nothing, and it exports again. `revision` moves when a row changes in place. Ordinals hold, so a client asks for a delta and patches what it already has. A rebuild that finds the same tracks and columns is installed as row changes instead, so `structure` holds and `revision` moves only where a value changed; one that finds nothing changed moves neither.
 
 They are two because the two kinds of churn are nothing alike. A modification lands once per play, all day. An add or a remove is rare and is something the user just did, so paying for one with a re-download charges it at the moment somebody expects to wait.
 

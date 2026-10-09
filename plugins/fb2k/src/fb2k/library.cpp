@@ -448,9 +448,10 @@ private:
         if (stopping_)
             return false;
 
-        ordered->structure = library_.nextStructure();
+        Snapshot snapshot = builder.finish();
+        ordered->structure = library_.structureAfter(snapshot);
         publish(ordered);
-        library_.replace(builder.finish());
+        library_.replace(std::move(snapshot));
         built_ = true;
 
         logInfo("built a library snapshot of " + std::to_string(count) + " track(s) and " +

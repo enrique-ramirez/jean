@@ -1006,13 +1006,13 @@ export interface paths {
         put?: never;
         /**
          * Rebuild the snapshot from the player.
-         * @description Asks foobar2000 to walk its media library again and replaces the snapshot with the result. This is the hand on the wheel behind the two automatic mechanisms, the player's own change notifications and the re-read of every track as it stops playing, and it is what recovers a value neither of those can see.
+         * @description Asks foobar2000 to walk its media library again and patches the snapshot with the result: where the tracks and the columns are the same, `structure` holds and only the rows whose values changed move `revision`. This is the hand on the wheel behind the two automatic mechanisms, the player's own change notifications and the re-read of every track as it stops playing, and it is what recovers a value neither of those can see.
          *
          *     It rebuilds the column set last declared by an export, so it takes no body. On a component nothing has declared to since it started, it rebuilds the set already built, which is why a refresh cannot cost a client the snapshot it is using.
          *
          *     Expensive: it re-queries and re-formats every track. Rate limited to a burst of three, refilling one every thirty seconds, which is what a person pressing a button needs and a looping client does not get.
          *
-         *     The answer is `202` rather than `200`. The rebuild may still be running, and the body carries the generations as they stand at the moment of the request, so a client watches `GET /state`'s `library.structure` for it to move past them. It MUST NOT treat the answer as the finished rebuild.
+         *     The answer is `202` rather than `200`. The rebuild may still be running, and the body carries the generations as they stand at the moment of the request, so a client watches `GET /state`'s `library.build` to clear and its generations for what moved, if anything did. It MUST NOT treat the answer as the finished rebuild.
          */
         post: operations["refreshLibrary"];
         delete?: never;
@@ -3218,6 +3218,17 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Deltas are being asked for faster than this component will answer them: a burst of 200, refilling one every 50 milliseconds, the budget `GET /track/library` has. A client asks once per `revision` it sees move and never meets it; a client stuck in a loop would otherwise hold the library's lock against every state poll. A request refused for what it asks is refused for that first and spends nothing. `Retry-After` is sent in seconds. */
+        LibraryChangesTooFast: {
+            headers: {
+                /** @description Seconds to wait. */
+                "Retry-After"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Reads of the playing track are arriving faster than this component will answer them: a burst of 60, refilling one every 250 milliseconds, a budget of its own. A client reading once per track change, and again while it waits for lyrics, never meets it, however many tabs it has open; a client stuck in a loop does. A request refused for what it asks is refused for that first and spends nothing. The player was not asked. `Retry-After` is sent in seconds, and `Cache-Control` is `private, no-cache` here as on every answer from this route. */
         PlayingTrackReadTooFast: {
             headers: {
@@ -5196,6 +5207,7 @@ export interface operations {
             409: components["responses"]["LibraryConflict"];
             410: components["responses"]["LibraryRevisionGone"];
             413: components["responses"]["LibraryTooLarge"];
+            429: components["responses"]["LibraryChangesTooFast"];
             503: components["responses"]["LibraryUnavailable"];
         };
     };

@@ -218,9 +218,11 @@ class Library {
 public:
     explicit Library(size_t retainedRevisions = kRetainedRevisions);
 
+    // One thread, the snapshot worker, is the only caller of this and of apply(), so what
+    // structureAfter() announced is what this lands on and no row change lands between the two.
     void replace(Snapshot snapshot);
 
-    uint64_t nextStructure() const;
+    uint64_t structureAfter(const Snapshot& next) const;
 
     // The revision after the change, which does not move when no id did.
     uint64_t apply(const std::vector<RowChange>& changes);
@@ -273,7 +275,9 @@ private:
         std::vector<uint32_t> dictionarySizes;
     };
 
-    uint64_t nextStructureLocked() const;
+    static bool sameShape(const Snapshot& current, const Snapshot& next);
+    static std::vector<RowChange> rowChangesBetween(const Snapshot& current, const Snapshot& next);
+    std::shared_ptr<const Snapshot> current() const;
 
     const size_t retainedRevisions_;
 

@@ -161,7 +161,7 @@ bool FakePlayer::libraryAt(uint64_t structure) {
         return false;
 
     if (libraryRebuildsFirst_)
-        buildLibrary(*library_, library_->state().trackCount);
+        moveLibraryStructure(*library_);
 
     return library_->state().structure == structure;
 }

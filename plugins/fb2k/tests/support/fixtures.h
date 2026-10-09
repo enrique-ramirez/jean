@@ -65,6 +65,8 @@ constexpr size_t kLibraryTracks = 8;
 // builtTrackPath and titled builtTrackTitle.
 void buildLibrary(Library& library, size_t trackCount = kLibraryTracks);
 
+void moveLibraryStructure(Library& library);
+
 std::string builtTrackPath(size_t ordinal);
 std::string builtTrackTitle(size_t ordinal);
 

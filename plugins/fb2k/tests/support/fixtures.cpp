@@ -37,6 +37,10 @@ void buildLibrary(Library& library, size_t trackCount) {
     library.replace(builder.finish());
 }
 
+void moveLibraryStructure(Library& library) {
+    buildLibrary(library, library.state().trackCount + 1);
+}
+
 std::string builtTrackPath(size_t ordinal) {
     return kBuiltFolder + std::to_string(ordinal) + ".flac";
 }

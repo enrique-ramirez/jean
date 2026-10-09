@@ -266,11 +266,64 @@ TEST_CASE("installing a snapshot moves both generations and reports the columns 
 
 TEST_CASE("the structure announced ahead of a replace is the one the replace lands on") {
     Library library;
-    CHECK(library.nextStructure() == 1);
+    const auto first = built({"%artist%"}, {track("a/", "1.mp3", {"One"})});
+    CHECK(library.structureAfter(first) == 1);
 
-    library.replace(built({"%artist%"}, {track("a/", "1.mp3", {"One"})}));
+    library.replace(first);
     CHECK(library.state().structure == 1);
-    CHECK(library.nextStructure() == 2);
+
+    const auto same = built({"%artist%"}, {track("a/", "1.mp3", {"Someone Else"})});
+    CHECK(library.structureAfter(same) == 1);
+
+    const auto grown =
+        built({"%artist%"}, {track("a/", "1.mp3", {"One"}), track("a/", "2.mp3", {"Two"})});
+    CHECK(library.structureAfter(grown) == 2);
+}
+
+TEST_CASE("a rebuild finding the same tracks keeps the structure and patches only what moved") {
+    Library library;
+    library.replace(built({"%play_count%", "%title%"}, {track("a/", "1.mp3", {"1", "One"}),
+                                                        track("a/", "2.mp3", {"5", "Two"})}));
+    const auto before = library.state();
+
+    library.replace(built({"%play_count%", "%title%"}, {track("a/", "1.mp3", {"2", "One"}),
+                                                        track("a/", "2.mp3", {"5", "Two"})}));
+    const auto after = library.state();
+
+    CHECK(after.structure == before.structure);
+    CHECK(after.revision == before.revision + 1);
+
+    const auto changes = library.changes(before.revision);
+    REQUIRE(changes.outcome == DeltaOutcome::ok);
+    const Wire delta = decode(serialiseDelta(changes.delta));
+    CHECK(columnNames(delta.header) == std::vector<std::string>{"%play_count%"});
+    CHECK(ids(delta, namedColumn(delta, "%play_count%").at("ordinals")) ==
+          std::vector<uint32_t>{0});
+}
+
+TEST_CASE("a rebuild finding nothing changed moves neither generation") {
+    Library library;
+    library.replace(built({"%title%"}, {track("a/", "1.mp3", {"One"})}));
+    const auto before = library.state();
+
+    library.replace(built({"%title%"}, {track("a/", "1.mp3", {"One"})}));
+    CHECK(library.state().structure == before.structure);
+    CHECK(library.state().revision == before.revision);
+}
+
+TEST_CASE("a rebuild with another column set, or another track order, moves the structure") {
+    Library library;
+    library.replace(
+        built({"%title%"}, {track("a/", "1.mp3", {"One"}), track("a/", "2.mp3", {"Two"})}));
+    const auto before = library.state();
+
+    library.replace(
+        built({"%artist%"}, {track("a/", "1.mp3", {"One"}), track("a/", "2.mp3", {"Two"})}));
+    CHECK(library.state().structure == before.structure + 1);
+
+    library.replace(
+        built({"%artist%"}, {track("a/", "2.mp3", {"Two"}), track("a/", "1.mp3", {"One"})}));
+    CHECK(library.state().structure == before.structure + 2);
 }
 
 TEST_CASE("a library nobody is building carries no build progress") {

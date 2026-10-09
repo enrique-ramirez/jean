@@ -315,19 +315,74 @@ std::string serialiseDelta(const Delta& delta) {
 
 Library::Library(size_t retainedRevisions) : retainedRevisions_(retainedRevisions) {}
 
-uint64_t Library::nextStructure() const {
-    const std::lock_guard<std::mutex> lock(mutex_);
-    return nextStructureLocked();
+bool Library::sameShape(const Snapshot& current, const Snapshot& next) {
+    if (current.structure == 0 || current.columns.size() != next.columns.size() ||
+        current.trackCount() != next.trackCount())
+        return false;
+
+    for (size_t field = 0; field < current.columns.size(); ++field)
+        if (current.columns[field].name != next.columns[field].name)
+            return false;
+
+    const size_t count = current.trackCount();
+    for (size_t field = 0; field < kSpineFieldCount; ++field) {
+        const Column& was = current.columns[field];
+        const Column& is = next.columns[field];
+        for (size_t ordinal = 0; ordinal < count; ++ordinal)
+            if (was.dictionary.values[was.ids[ordinal]] != is.dictionary.values[is.ids[ordinal]])
+                return false;
+    }
+
+    return true;
 }
 
-uint64_t Library::nextStructureLocked() const {
-    return snapshot_->structure + 1;
+std::vector<RowChange> Library::rowChangesBetween(const Snapshot& current, const Snapshot& next) {
+    std::vector<RowChange> changes;
+    const size_t count = next.trackCount();
+
+    for (size_t ordinal = 0; ordinal < count; ++ordinal) {
+        bool moved = false;
+        for (size_t field = 0; field < next.columns.size() && !moved; ++field) {
+            const Column& was = current.columns[field];
+            const Column& is = next.columns[field];
+            moved =
+                was.dictionary.values[was.ids[ordinal]] != is.dictionary.values[is.ids[ordinal]];
+        }
+        if (!moved)
+            continue;
+
+        RowChange change;
+        change.ordinal = static_cast<uint32_t>(ordinal);
+        std::transform(next.columns.begin(), next.columns.end(), std::back_inserter(change.values),
+                       [ordinal](const Column& column) {
+                           return column.dictionary.values[column.ids[ordinal]];
+                       });
+        changes.push_back(std::move(change));
+    }
+
+    return changes;
+}
+
+std::shared_ptr<const Snapshot> Library::current() const {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    return snapshot_;
+}
+
+uint64_t Library::structureAfter(const Snapshot& next) const {
+    const auto now = current();
+    return sameShape(*now, next) ? now->structure : now->structure + 1;
 }
 
 void Library::replace(Snapshot snapshot) {
+    const auto now = current();
+    if (sameShape(*now, snapshot)) {
+        apply(rowChangesBetween(*now, snapshot));
+        return;
+    }
+
     const std::lock_guard<std::mutex> lock(mutex_);
 
-    snapshot.structure = nextStructureLocked();
+    snapshot.structure = snapshot_->structure + 1;
     snapshot.revision = snapshot_->revision + 1;
     structureBegan_ = snapshot.revision;
 

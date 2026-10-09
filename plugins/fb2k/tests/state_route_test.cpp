@@ -10,6 +10,7 @@
 #include "core/player_state.h"
 #include "core/text.h"
 #include "core/timeline.h"
+#include "support/fixtures.h"
 #include "support/keys.h"
 #include "support/log_capture.h"
 #include "support/spec.h"
@@ -1441,8 +1442,8 @@ TEST_CASE("either library generation moving invalidates what a client was holdin
     SUBCASE("a track's data changed") {
         playOne(library, "5");
     }
-    SUBCASE("the snapshot was rebuilt") {
-        fill(library);
+    SUBCASE("the snapshot was rebuilt with a track more") {
+        moveLibraryStructure(library);
     }
 
     const auto again = getHolding(server, "/api/state", tag);
@@ -1532,6 +1533,45 @@ TEST_CASE("the export is the snapshot, framed as contract/openapi.yaml describes
     CHECK(columnNames(header) == std::vector<std::string>{kTitle, kPlays});
     CHECK(header["spine"]["directory"]["distinct"] == 2);
     CHECK(header["columns"][1]["hasUnresolved"] == true);
+}
+
+TEST_CASE(
+    "a client looping on the delta route is refused, and a refusal for what it asks spends "
+    "nothing") {
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library);
+    const auto from = playOne(library, "5") - 1;
+    const std::string path = "/api/library/changes?since=" + std::to_string(from);
+
+    auto client = server.client();
+    int refusals = 0;
+    std::string retryAfter;
+    std::string error;
+    constexpr int kAttempts = 250;
+    for (int attempt = 0; attempt < kAttempts; ++attempt) {
+        const auto response = client.Get(path);
+        REQUIRE(response);
+        if (response->status != 429)
+            continue;
+
+        ++refusals;
+        retryAfter = response->get_header_value("Retry-After");
+        error = json::parse(response->body).at("error").get<std::string>();
+    }
+
+    CHECK(refusals > 0);
+    CHECK(retryAfter == "1");
+    CHECK(error == "too many library delta reads");
+
+    const auto malformed = client.Get("/api/library/changes?since=soon");
+    REQUIRE(malformed);
+    CHECK(malformed->status == 400);
+
+    server.advanceRateLimits(std::chrono::seconds(1));
+    const auto answered = client.Get(path);
+    REQUIRE(answered);
+    CHECK(answered->status == 200);
 }
 
 TEST_CASE("both binary routes are gzipped for a client that offers it") {

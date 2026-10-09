@@ -51,6 +51,7 @@ constexpr char kRefreshingTooFast[] = "too many library refreshes";
 constexpr char kPollingTooFast[] = "too many state polls";
 constexpr char kFetchingArtworkTooFast[] = "too many artwork requests";
 constexpr char kReadingTracksTooFast[] = "too many track reads";
+constexpr char kReadingChangesTooFast[] = "too many library delta reads";
 
 // The `detail` beside PlaylistRefusal::tooFast where a route names which budget ran out.
 constexpr char kChangingPlaylistsTooFast[] =

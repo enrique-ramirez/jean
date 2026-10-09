@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 
+#include <exception>
 #include <future>
 #include <mutex>
 #include <string>
@@ -72,14 +73,24 @@ void MainThreadQueue::enqueue(std::function<void()> work, std::function<void()> 
     if (!needsPosting)
         return;
 
-    calls_.post([weak = std::weak_ptr<State>(state_)] {
-        const auto state = weak.lock();
-        if (!state)
-            return;  // destroyed between posting and running
+    try {
+        calls_.post([weak = std::weak_ptr<State>(state_)] {
+            const auto state = weak.lock();
+            if (!state)
+                return;
 
-        for (const Pending& item : state->take())
-            runReportingFailures(item.work);
-    });
+            for (const Pending& item : state->take())
+                runReportingFailures(item.work);
+        });
+        return;
+    } catch (const std::exception& e) {
+        logError(std::string("could not reach the main thread: ") + e.what());
+    } catch (...) {
+        logError("could not reach the main thread: unknown exception");
+    }
+
+    for (const Pending& item : state_->take())
+        runReportingFailures(item.abandon);
 }
 
 void MainThreadQueue::close() {

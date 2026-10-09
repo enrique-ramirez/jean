@@ -152,6 +152,35 @@ TEST_CASE("closing the queue answers every waiting caller rather than timing out
     CHECK_FALSE(ran);
 }
 
+TEST_CASE("a post the main thread refuses answers the caller rather than wedging the queue") {
+    clearLog();
+    MainThreadStandIn mainThread;
+    MainThreadCalls calls = mainThread.calls();
+    const auto post = calls.post;
+    int refusals = 0;
+    calls.post = [&post, &refusals](std::function<void()> callback) {
+        if (refusals++ == 0)
+            throw std::runtime_error("message loop gone");
+        post(std::move(callback));
+    };
+    MainThreadQueue queue(calls);
+
+    bool ran = false;
+    CHECK(askFor(queue, [&ran](const AnswerPtr<int>& reply) {
+              ran = true;
+              reply->set(kAnswered);
+          }) == kTimedOut);
+    CHECK_FALSE(ran);
+    CHECK(logged("could not reach the main thread: message loop gone"));
+
+    std::thread player([&mainThread] {
+        mainThread.awaitPosted();
+        mainThread.pump();
+    });
+    CHECK(askFor(queue, [](const AnswerPtr<int>& reply) { reply->set(kAnswered); }) == kAnswered);
+    player.join();
+}
+
 TEST_CASE("a question asked after closing is answered at once and never queued") {
     MainThreadStandIn mainThread;
     MainThreadQueue queue(mainThread.calls());

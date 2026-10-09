@@ -92,6 +92,7 @@ void publishLocation(PlayerStateStore& store, PlaylistVersions& versions,
 std::mutex g_queueTargetMutex;
 MainThreadQueue* g_queueTargetMainThread = nullptr;
 PlayerStateStore* g_queueTargetStore = nullptr;
+bool g_queueReadQueued = false;
 
 void publishQueueTarget(MainThreadQueue* mainThread, PlayerStateStore* store) {
     const std::lock_guard<std::mutex> lock(g_queueTargetMutex);
@@ -105,11 +106,22 @@ void publishQueueTarget(MainThreadQueue* mainThread, PlayerStateStore* store) {
 // already torn down.
 void deferQueueRead() {
     const std::lock_guard<std::mutex> lock(g_queueTargetMutex);
-    if (g_queueTargetMainThread == nullptr || g_queueTargetStore == nullptr)
+    if (g_queueTargetMainThread == nullptr || g_queueTargetStore == nullptr || g_queueReadQueued)
         return;
 
+    g_queueReadQueued = true;
     g_queueTargetMainThread->enqueue(
-        [store = g_queueTargetStore] { store->queueChanged(currentQueue()); }, [] {});
+        [store = g_queueTargetStore] {
+            {
+                const std::lock_guard<std::mutex> clearing(g_queueTargetMutex);
+                g_queueReadQueued = false;
+            }
+            store->queueChanged(currentQueue());
+        },
+        [] {
+            const std::lock_guard<std::mutex> clearing(g_queueTargetMutex);
+            g_queueReadQueued = false;
+        });
 }
 
 // The foobar2000 SDK gives playback_queue_callback no impl_base and no register/unregister

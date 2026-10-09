@@ -264,6 +264,15 @@ TEST_CASE("installing a snapshot moves both generations and reports the columns 
     CHECK(state.columns == std::vector<std::string>{"%artist%"});
 }
 
+TEST_CASE("the structure announced ahead of a replace is the one the replace lands on") {
+    Library library;
+    CHECK(library.nextStructure() == 1);
+
+    library.replace(built({"%artist%"}, {track("a/", "1.mp3", {"One"})}));
+    CHECK(library.state().structure == 1);
+    CHECK(library.nextStructure() == 2);
+}
+
 TEST_CASE("a library nobody is building carries no build progress") {
     const Library library;
 

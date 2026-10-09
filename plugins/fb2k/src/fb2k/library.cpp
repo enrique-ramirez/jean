@@ -433,9 +433,9 @@ private:
         if (stopping_)
             return false;
 
-        library_.replace(builder.finish());
-        ordered->structure = library_.state().structure;
+        ordered->structure = library_.nextStructure();
         publish(ordered);
+        library_.replace(builder.finish());
         built_ = true;
 
         logInfo("built a library snapshot of " + std::to_string(count) + " track(s) and " +

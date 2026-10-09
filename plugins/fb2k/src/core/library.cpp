@@ -301,10 +301,19 @@ std::string serialiseDelta(const Delta& delta) {
 
 Library::Library(size_t retainedRevisions) : retainedRevisions_(retainedRevisions) {}
 
+uint64_t Library::nextStructure() const {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    return nextStructureLocked();
+}
+
+uint64_t Library::nextStructureLocked() const {
+    return snapshot_->structure + 1;
+}
+
 void Library::replace(Snapshot snapshot) {
     const std::lock_guard<std::mutex> lock(mutex_);
 
-    snapshot.structure = snapshot_->structure + 1;
+    snapshot.structure = nextStructureLocked();
     snapshot.revision = snapshot_->revision + 1;
     structureBegan_ = snapshot.revision;
 

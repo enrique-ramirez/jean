@@ -215,6 +215,8 @@ public:
 
     void replace(Snapshot snapshot);
 
+    uint64_t nextStructure() const;
+
     // The revision after the change, which does not move when no id did.
     uint64_t apply(const std::vector<RowChange>& changes);
 
@@ -265,6 +267,8 @@ private:
         // Per column, the dictionary length a client holding the previous revision has.
         std::vector<uint32_t> dictionarySizes;
     };
+
+    uint64_t nextStructureLocked() const;
 
     const size_t retainedRevisions_;
 

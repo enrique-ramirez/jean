@@ -44,7 +44,8 @@ std::string joinLines(const std::vector<std::string>& entries) {
                            [](std::string out, const std::string& entry) {
                                if (!out.empty())
                                    out += kLineBreak;
-                               return out += entry;
+                               out += entry;
+                               return out;
                            });
 }
 

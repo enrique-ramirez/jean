@@ -310,6 +310,31 @@ TEST_CASE("c5 a path carrying .., a backslash or a NUL in any spelling is refuse
     CHECK(pages.asked.empty());
 }
 
+// Windows resolves a segment whose stem is a DOS device name to the device itself, so `www\con.js`
+// opens the console and a connection thread can sit on it. The seam holds a file under each
+// spelling, so a check that let one through is answered with its bytes.
+TEST_CASE("c5 a DOS device name in any segment, under any case or extension, is refused unread") {
+    FakePages pages = aBuild();
+    for (const char* held : {"con", "CON", "assets/nul.js", "com1.js", "Aux.css", "lpt9", "CONOUT$",
+                             "con .txt", "com\xC2\xB9.js"})
+        pages.files[held] = kIndex;
+
+    const TestServer server(servingSettings(), serving(&pages));
+
+    for (const char* path : {"/con", "/CON", "/assets/nul.js", "/com1.js", "/Aux.css", "/lpt9",
+                             "/CONOUT$", "/con%20.txt", "/com\xC2\xB9.js", "/com%C2%B9.js"}) {
+        INFO("path: ", path);
+
+        const auto response = server.client().Get(path);
+
+        REQUIRE(response);
+        CHECK(response->status == 404);
+        CHECK(json::parse(response->body) == notFound());
+    }
+
+    CHECK(pages.asked.empty());
+}
+
 // Win32 path normalisation drops a trailing dot or space from every path segment, so on Windows
 // `www\assets.\x.js` opens `www\assets\x.js` and `www\api.\` opens `www\api\`. Both seams hold a
 // file under each decoded spelling, so a check that let one through is answered with its bytes.
@@ -822,10 +847,9 @@ TEST_CASE(
 
     REQUIRE(response);
     auto policy = directivesOf(response->get_header_value("Content-Security-Policy"));
-    CHECK(policy["connect-src"] == std::set<std::string>{"'self'", "https://musicbrainz.org",
-                                                         "https://www.wikidata.org",
-                                                         "https://en.wikipedia.org",
-                                                         "https://lrclib.net"});
+    CHECK(policy["connect-src"] ==
+          std::set<std::string>{"'self'", "https://musicbrainz.org", "https://www.wikidata.org",
+                                "https://en.wikipedia.org", "https://lrclib.net"});
 }
 
 TEST_CASE(

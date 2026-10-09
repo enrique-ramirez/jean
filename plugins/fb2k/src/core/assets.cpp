@@ -9,13 +9,13 @@ namespace jean {
 
 namespace {
 
-bool hasDotSegment(const std::string& path) {
+template <typename Predicate>
+bool anySegment(const std::string& path, Predicate matches) {
     size_t start = 0;
     while (start <= path.size()) {
         const auto slash = path.find('/', start);
         const auto stop = slash == std::string::npos ? path.size() : slash;
-        const std::string segment = path.substr(start, stop - start);
-        if (segment == "." || segment == "..")
+        if (matches(path.substr(start, stop - start)))
             return true;
 
         if (slash == std::string::npos)
@@ -26,23 +26,41 @@ bool hasDotSegment(const std::string& path) {
     return false;
 }
 
+bool hasDotSegment(const std::string& path) {
+    return anySegment(path,
+                      [](const std::string& segment) { return segment == "." || segment == ".."; });
+}
+
 bool hasTrailingDotOrSpaceSegment(const std::string& path) {
-    size_t start = 0;
-    while (start <= path.size()) {
-        const auto slash = path.find('/', start);
-        const auto stop = slash == std::string::npos ? path.size() : slash;
-        if (stop > start) {
-            const char last = path[stop - 1];
-            if (last == '.' || last == ' ')
-                return true;
-        }
+    return anySegment(path, [](const std::string& segment) {
+        return !segment.empty() && (segment.back() == '.' || segment.back() == ' ');
+    });
+}
 
-        if (slash == std::string::npos)
-            break;
-        start = slash + 1;
-    }
+// Windows reads the superscript digits as 1, 2 and 3 in a port name, and drops the spaces
+// between a stem and its extension before comparing.
+bool isDeviceName(std::string stem) {
+    while (!stem.empty() && stem.back() == ' ')
+        stem.pop_back();
 
-    return false;
+    const std::string name = toLower(stem);
+    if (name == "con" || name == "prn" || name == "aux" || name == "nul" || name == "conin$" ||
+        name == "conout$")
+        return true;
+    if (name.compare(0, 3, "com") != 0 && name.compare(0, 3, "lpt") != 0)
+        return false;
+
+    const std::string port = name.substr(3);
+    return (port.size() == 1 && port[0] >= '0' && port[0] <= '9') || port == "\xC2\xB9" ||
+           port == "\xC2\xB2" || port == "\xC2\xB3";
+}
+
+// Windows opens a device for any path segment whose stem is a DOS device name, whatever its
+// extension or directory: `www\con.js` is the console, not a file.
+bool hasDeviceNameSegment(const std::string& path) {
+    return anySegment(path, [](const std::string& segment) {
+        return isDeviceName(segment.substr(0, segment.find('.')));
+    });
 }
 
 std::string extensionOf(const std::string& path) {
@@ -92,6 +110,9 @@ std::optional<std::string> resolvePagePath(const std::string& requestPath) {
         return std::nullopt;
 
     if (hasTrailingDotOrSpaceSegment(relative))
+        return std::nullopt;
+
+    if (hasDeviceNameSegment(relative))
         return std::nullopt;
 
     return relative;

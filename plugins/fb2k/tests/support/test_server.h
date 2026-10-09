@@ -91,7 +91,8 @@ public:
 private:
     struct OnOneClock {};
 
-    TestServer(OnOneClock, Settings settings, const Player& player, const TicketMint& mint);
+    TestServer(OnOneClock /*oneClock*/, Settings settings, const Player& player,
+               const TicketMint& mint);
 
     void listen(const Player& player, Library* library, const TicketMint& mint,
                 PlayerStateStore* playerState, NowPlayingArtwork* nowPlayingArtwork);

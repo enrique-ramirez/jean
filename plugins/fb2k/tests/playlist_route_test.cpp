@@ -3033,10 +3033,13 @@ TEST_CASE("what the player says about a playlist maps onto a status a client can
 TEST_CASE("a component with no player refuses honestly rather than pretending it did the work") {
     const TestServer server;
 
-    CHECK(server.client().Get("/api/playlists")->status == 503);
-    CHECK(post(server, "/api/autoplaylists", kCreate)->status == 503);
-    CHECK(post(server, "/api/autoplaylists/preview", R"({"query": "a"})")->status == 503);
-    CHECK(server.client().Delete(std::string("/api/autoplaylists/") + kPlaylistId)->status == 503);
+    for (const auto& response :
+         {server.client().Get("/api/playlists"), post(server, "/api/autoplaylists", kCreate),
+          post(server, "/api/autoplaylists/preview", R"({"query": "a"})"),
+          server.client().Delete(std::string("/api/autoplaylists/") + kPlaylistId)}) {
+        REQUIRE(response);
+        CHECK(response->status == 503);
+    }
 }
 
 // A create, a rename, a delete and a move all answer PlayerOutcome::unavailable when there is
@@ -3181,12 +3184,45 @@ TEST_CASE("updating an autoplaylist this component did not make spends nothing o
     REQUIRE(created);
     CHECK(created->status == 200);
 
+    const auto held = foobar.playlists().size();
     const auto refused = post(server, "/api/autoplaylists", kCreate);
     REQUIRE(refused);
     CHECK(refused->status == 409);
     CHECK(json::parse(refused->body) ==
           json{{"error", describe(PlayerOutcome::tooMany)},
                {"detail", "this install allows 2 and already has 2"}});
+    CHECK(foobar.playlists().size() == held);
+}
+
+TEST_CASE("a cap of zero refuses a create before the player is asked") {
+    auto settings = servingSettings();
+    settings.maxAutoPlaylists = 0;
+
+    FakePlayer foobar;
+    const TestServer server(settings, foobar.player());
+
+    const auto refused = post(server, "/api/autoplaylists", kCreate);
+    REQUIRE(refused);
+    CHECK(refused->status == 503);
+    CHECK(json::parse(refused->body)["error"] == describe(PlayerOutcome::unavailable));
+    CHECK(foobar.count(Call::createAutoPlaylist) == 0);
+}
+
+TEST_CASE(
+    "updating an autoplaylist with a query the player cannot compile is a 400 that changes "
+    "nothing") {
+    FakePlayer foobar;
+    holdingAnAutoPlaylist(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    const auto title = titleOf(server, kPlaylistId);
+    const auto refused = post(server, autoPlaylistPath(kPlaylistId),
+                              R"({"title": "#Jean Nonsense", "query": "bad"})");
+
+    REQUIRE(refused);
+    CHECK(refused->status == 400);
+    CHECK(json::parse(refused->body)["error"] == describe(PlayerOutcome::queryInvalid));
+    CHECK(titleOf(server, kPlaylistId) == title);
 }
 
 TEST_CASE("an autoplaylist this component did not make is deleted as one it made is") {
@@ -3439,7 +3475,9 @@ TEST_CASE("a client stuck in a loop is slowed down rather than obeyed") {
     CHECK(complaints == 1);
 
     // Reading changes nothing, so it is not limited and a different route cannot spend it.
-    CHECK(server.client().Get("/api/playlists")->status == 200);
+    const auto listed = server.client().Get("/api/playlists");
+    REQUIRE(listed);
+    CHECK(listed->status == 200);
 }
 
 // Somebody typing a query into an editor that does not debounce asks for a preview per keystroke,
@@ -3575,7 +3613,9 @@ TEST_CASE("a client looping any playlist or row write is slowed down rather than
 TEST_CASE("an install that allows no autoplaylists says so before a client offers to make one") {
     SUBCASE("the default install can create, and says how many") {
         const TestServer server(servingSettings());
-        const auto body = json::parse(server.client().Get("/api/capabilities")->body);
+        const auto capabilities = server.client().Get("/api/capabilities");
+        REQUIRE(capabilities);
+        const auto body = json::parse(capabilities->body);
 
         CHECK(body["canCreateAutoPlaylists"] == true);
         CHECK(body["maxAutoPlaylists"] == Settings().maxAutoPlaylists);
@@ -3586,7 +3626,9 @@ TEST_CASE("an install that allows no autoplaylists says so before a client offer
         settings.maxAutoPlaylists = 0;
 
         const TestServer server(settings);
-        const auto body = json::parse(server.client().Get("/api/capabilities")->body);
+        const auto capabilities = server.client().Get("/api/capabilities");
+        REQUIRE(capabilities);
+        const auto body = json::parse(capabilities->body);
 
         CHECK(body["canCreateAutoPlaylists"] == false);
         CHECK(body["maxAutoPlaylists"] == 0);

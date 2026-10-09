@@ -860,6 +860,10 @@ Player FakePlayer::player() {
             if (keyTaken(listing(), spec.key, id))
                 return playlistFailure(PlayerOutcome::keyInUse, spec.key);
 
+            if (const auto preview = previews_.find(spec.query);
+                preview != previews_.end() && !preview->second.valid)
+                return playlistFailure(PlayerOutcome::queryInvalid, preview->second.error);
+
             found->entry.managed = spec;
         }
 

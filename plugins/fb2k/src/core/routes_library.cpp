@@ -362,6 +362,12 @@ void LibraryRoutes::addTo(httplib::Server& server) {
         if (writingTagsTooFast(res))
             return;
 
+        const auto& ordinal = request.write.track.ordinal;
+        if (ordinal && library_ && ordinal->structure != library_->state().structure) {
+            respondOutcome(res, TagWriteOutcome::libraryRebuilt);
+            return;
+        }
+
         const auto outcome = calls_.writeTags(request.write);
         if (outcome != TagWriteOutcome::written) {
             respondOutcome(res, outcome);

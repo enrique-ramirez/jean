@@ -191,9 +191,6 @@ PreviewResult previewOnMainThread(const std::string& query, bool withRows,
 AutoPlaylistCreator makeAutoPlaylistCreator(MainThreadQueue& mainThread,
                                             const PlaylistVersions& versions) {
     return [&mainThread, &versions](const AutoPlaylistSpec& spec, int maxAutoPlaylists) {
-        if (maxAutoPlaylists <= 0)
-            return playlistFailure(PlayerOutcome::unavailable);
-
         return askForOutcome<PlaylistResult>(
             mainThread, "creating an autoplaylist", [spec, &versions, maxAutoPlaylists] {
                 return createOnMainThread(spec, versions, maxAutoPlaylists);

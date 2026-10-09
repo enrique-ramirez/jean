@@ -2,6 +2,7 @@
 
 #include "third_party/doctest.h"
 
+#include "support/fixtures.h"
 #include "support/log_capture.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
@@ -277,6 +278,22 @@ TEST_CASE("a playlist address reaches the writer whole, and comes back without i
     CHECK(player.written.at(kSecondRow).at("rating") == kRating);
 }
 
+TEST_CASE(
+    "a write by ordinal against a structure the library moved past is a 409 that never "
+    "reaches the writer") {
+    Library library;
+    buildLibrary(library);
+    TestServer::WriterLog log;
+    const TestServer server(servingSettings(), TestServer::recordingWriter(&log), &library);
+
+    const auto response = write(server, ratingWriteAtOrdinal(0, library.state().structure + 1));
+
+    REQUIRE(response);
+    CHECK(response->status == 409);
+    CHECK(json::parse(response->body)["error"] == describe(TagWriteOutcome::libraryRebuilt));
+    CHECK(log.calls.empty());
+}
+
 // The address a client holding a library row already has, so a rating refused as ambiguous can
 // be retried precisely. The route resolves nothing itself, so what it owes an ordinal is to
 // carry it to the writer rather than turn it away for naming no track and no playlist.
@@ -383,10 +400,9 @@ TEST_CASE("a field outside the allowlist is refused without involving the player
     CHECK(log.calls.empty());
 }
 
-TEST_CASE("a malformed body is a 400 rather than a 500") {
-    const TestServer server(servingSettings(), TestServer::writing([](const TagWrite&) {
-                                return TagWriteOutcome::written;
-                            }));
+TEST_CASE("a malformed body is a 400 rather than a 500, and never reaches the writer") {
+    TestServer::WriterLog log;
+    const TestServer server(servingSettings(), TestServer::recordingWriter(&log));
 
     for (const char* body : {"not json", "[1,2,3]", R"({"track": "a.flac"})", "{}"}) {
         const auto response = write(server, body);
@@ -395,6 +411,8 @@ TEST_CASE("a malformed body is a 400 rather than a 500") {
         REQUIRE(response);
         CHECK(response->status == 400);
     }
+
+    CHECK(log.calls.empty());
 }
 
 TEST_CASE("what the player says maps onto a status a client can act on") {

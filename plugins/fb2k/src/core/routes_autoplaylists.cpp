@@ -94,6 +94,11 @@ void AutoPlaylistRoutes::addTo(httplib::Server& server) {
         if (playlistWritesRefused(*settings_.current(), res))
             return;
 
+        if (settings_.current()->maxAutoPlaylists <= 0) {
+            respondOutcome(res, PlayerOutcome::unavailable);
+            return;
+        }
+
         const auto request = parseAutoPlaylist(req.body, Need::required);
         if (refusedBeforeAsking(res, request, autoPlaylists_.create != nullptr))
             return;

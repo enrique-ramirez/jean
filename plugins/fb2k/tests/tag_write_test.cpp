@@ -214,6 +214,12 @@ TEST_CASE("a whole number is as good as a string") {
     CHECK(request.write.fields.at("rating") == "4");
 }
 
+TEST_CASE("a whole number keeps its digits past the signed range and below zero") {
+    CHECK(parse(writing(R"({"rating": 18446744073709551615})")).write.fields.at("rating") ==
+          "18446744073709551615");
+    CHECK(parse(writing(R"({"rating": -1})")).write.fields.at("rating") == "-1");
+}
+
 TEST_CASE("an empty value is kept, because clearing a tag is a real instruction") {
     const auto request = parse(writing(R"({"rating": ""})"));
 

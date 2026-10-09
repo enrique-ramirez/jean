@@ -55,8 +55,13 @@ void OutputHold::apply(Listening listening) {
             return;
 
         levelBefore_ = player_.volume();
-        player_.setMuted(true);
         held_ = true;
+        try {
+            player_.setMuted(true);
+        } catch (...) {
+            held_ = false;
+            throw;
+        }
         logInfo("muted the player while somebody is listening to the stream");
         return;
     }

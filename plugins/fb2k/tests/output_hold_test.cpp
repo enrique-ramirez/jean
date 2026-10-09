@@ -257,13 +257,18 @@ TEST_CASE("the hold's own mute does not read as somebody taking the player back"
     // call that caused it has returned.
     player.onSetMuted = [&player](bool muted) { player.watcher(muted); };
 
+    std::atomic<bool> heldWhenAnnounced{false};
     OutputHold hold(audience, player.seam(), true);
-    player.watcher = [&hold](bool muted) { hold.playerVolumeChanged(muted); };
+    player.watcher = [&hold, &heldWhenAnnounced](bool muted) {
+        heldWhenAnnounced = hold.held();
+        hold.playerVolumeChanged(muted);
+    };
 
     const auto held = audience.join(phone(), "opus", Audience::Clock::now());
     REQUIRE(becomes(player.muted, true));
 
     CHECK(hold.held());
+    CHECK(heldWhenAnnounced);
 }
 
 TEST_CASE("a reconnect inside the linger does not let the player back") {

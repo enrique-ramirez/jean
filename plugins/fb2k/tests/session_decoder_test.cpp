@@ -429,6 +429,33 @@ TEST_CASE("closing stops the attached stream once, after waking the decoder, out
     CHECK(stops == 1);
 }
 
+TEST_CASE("a replaced stream dies with the session's lock let go, so what it holds may call in") {
+    struct OnDrop {
+        std::function<void()> call;
+        ~OnDrop() { call(); }
+    };
+
+    Sessions sessions;
+    const auto session = sessions.create();
+
+    std::unique_ptr<Probe> probe;
+    auto guard = std::make_shared<OnDrop>();
+    guard->call = [&probe, &session] {
+        probe = std::make_unique<Probe>([&session] { static_cast<void>(session->running()); });
+    };
+    {
+        SessionStream first;
+        first.stop = [guard = std::move(guard)] {};
+        session->attach(std::move(first));
+    }
+    CHECK_FALSE(probe);
+
+    session->attach(SessionStream{});
+
+    REQUIRE(probe);
+    CHECK(probe->reached);
+}
+
 TEST_CASE("a session with no stream attached closes without calling anything") {
     Sessions sessions;
     const auto session = sessions.create();

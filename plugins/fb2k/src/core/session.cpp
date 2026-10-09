@@ -636,8 +636,11 @@ bool Session::advanceLocked(Advance why, Clock::time_point now) {
 }
 
 void Session::attach(SessionStream stream) {
-    const std::lock_guard<std::mutex> held(mutex_);
-    stream_ = std::move(stream);
+    SessionStream replaced;
+    {
+        const std::lock_guard<std::mutex> held(mutex_);
+        replaced = std::exchange(stream_, std::move(stream));
+    }
 }
 
 OpenedStream Session::open(const std::string& format) {

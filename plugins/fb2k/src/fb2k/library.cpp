@@ -91,6 +91,8 @@ struct LibraryFeed::State {
           compiler_(std::move(compiler)),
           worker_([this] { run(); }) {}
 
+    ~State() { stop(); }
+
     void rebuild(std::vector<std::string> columns, RebuildReason why) {
         {
             const std::lock_guard<std::mutex> lock(mutex_);

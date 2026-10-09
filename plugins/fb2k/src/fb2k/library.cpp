@@ -349,7 +349,7 @@ private:
     void settleLocked(std::unique_lock<std::mutex>& lock) {
         auto seen = queue_.dataMoves();
         while (queue_.wantedForDataAlone() && !stopping_) {
-            wake_.wait_for(lock, kRebuildSettle, [this] { return stopping_; });
+            wake_.wait_for(lock, kRebuildSettle, [this] { return stopping_.load(); });
             if (queue_.dataMoves() == seen)
                 return;
             seen = queue_.dataMoves();

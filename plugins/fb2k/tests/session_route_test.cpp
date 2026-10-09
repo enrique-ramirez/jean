@@ -13,6 +13,7 @@
 #include "core/session.h"
 #include "core/settings.h"
 #include "support/fake_player.h"
+#include "support/http.h"
 #include "support/keys.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
@@ -267,7 +268,7 @@ public:
             trackColumns_.push_back(columns);
             const auto unread = unnamed_.find(nameOf(playing));
             if (unread != unnamed_.end() && unread->second != PlayerOutcome::done)
-                return SessionTrackRead{unread->second};
+                return SessionTrackRead{.outcome = unread->second};
 
             auto read = namesOf(playing, columns);
             const auto length = lengths_.find(nameOf(playing));
@@ -526,11 +527,6 @@ json shared(const TestServer& server, const std::string& id, const std::string& 
     REQUIRE(response);
     REQUIRE(response->status == 200);
     return json::parse(response->body);
-}
-
-// Zero where nothing answered, which no case expects.
-int statusOf(const httplib::Result& response) {
-    return response ? response->status : 0;
 }
 
 const Keys& documentKeys() {
@@ -1104,17 +1100,6 @@ std::string rowPlayPath(const std::string& playlistId, size_t index) {
     return "/api/playlists/" + playlistId + "/items/" + std::to_string(index) + "/play";
 }
 
-// `path` naming `session` and `deviceId`, each left out where it is empty.
-std::string scoped(const std::string& path, const std::string& session,
-                   const std::string& deviceId) {
-    std::string query;
-    if (!session.empty())
-        query += "session=" + session;
-    if (!deviceId.empty())
-        query += (query.empty() ? "" : "&") + std::string("deviceId=") + deviceId;
-    return query.empty() ? path : path + "?" + query;
-}
-
 struct Route {
     std::string path;
     std::string body;
@@ -1148,13 +1133,6 @@ void checkDone(const httplib::Result& response) {
     REQUIRE(response);
     CHECK(response->status == 204);
     CHECK(response->body.empty());
-}
-
-void checkSameAnswer(const httplib::Result& asked, const httplib::Result& expected) {
-    REQUIRE(asked);
-    REQUIRE(expected);
-    CHECK(asked->status == expected->status);
-    CHECK(asked->body == expected->body);
 }
 
 // What an id nobody issued answers, which a refusal for a private session must not differ from.
@@ -1644,14 +1622,6 @@ json polled(const TestServer& server, const std::string& session, const std::str
 json playerPolled(const TestServer& server, const std::string& session,
                   const std::string& deviceId) {
     return polled(server, session, deviceId)["player"];
-}
-
-std::string tagOf(const httplib::Result& response) {
-    REQUIRE(response);
-    REQUIRE(response->status == 200);
-    auto tag = response->get_header_value("ETag");
-    REQUIRE_FALSE(tag.empty());
-    return tag;
 }
 
 void checkUnchanged(const httplib::Result& response, const std::string& tag) {

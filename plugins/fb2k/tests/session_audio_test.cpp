@@ -9,6 +9,7 @@
 #include "core/session.h"
 #include "core/session_audio.h"
 
+#include "support/fixtures.h"
 #include "support/test_server.h"
 
 #include <algorithm>
@@ -34,11 +35,6 @@ constexpr auto kLongAfterBoot = std::chrono::hours(24 * 365 * 10);
 
 using Time = Audience::Clock::time_point;
 
-SessionRandom countingUp() {
-    const auto drawn = std::make_shared<size_t>(0);
-    return [drawn](size_t bound) { return (*drawn)++ % bound; };
-}
-
 // Each row carries all three things a report names, each different from row to row.
 std::vector<SessionTrack> rows(size_t count) {
     std::vector<SessionTrack> made(count);
@@ -57,9 +53,7 @@ SessionTrack queuedTrack(const std::string& name) {
 }
 
 struct Sessions {
-    Sessions() : engine(8, 30s, [this] { return clock.now(); }) {
-        clock.advance(kLongAfterBoot);
-    }
+    Sessions() : engine(8, 30s, [this] { return clock.now(); }) { clock.advance(kLongAfterBoot); }
 
     Time now() const { return clock.now(); }
 

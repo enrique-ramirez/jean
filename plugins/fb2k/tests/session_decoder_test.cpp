@@ -44,11 +44,6 @@ Session::Clock::time_point farOff() {
     return Session::Clock::now() + 1h;
 }
 
-SessionRandom countingUp() {
-    const auto drawn = std::make_shared<size_t>(0);
-    return [drawn](size_t bound) { return (*drawn)++ % bound; };
-}
-
 std::vector<SessionTrack> rows(size_t count) {
     std::vector<SessionTrack> made(count);
     for (size_t row = 0; row < count; ++row)

@@ -1,5 +1,7 @@
 #include "support/spec.h"
 
+#include "support/fixtures.h"
+
 #include "third_party/doctest.h"
 
 #include <algorithm>
@@ -518,6 +520,21 @@ std::set<std::string> publishedStatePlayerExample(const std::string& example) {
     REQUIRE_MESSAGE(!keys.empty(), "contract/openapi.yaml's ", example,
                     " example has no player section");
     return keys;
+}
+
+std::string dialable(const std::string& path) {
+    std::string filled = "/api" + path;
+    for (auto open = filled.find('{'); open != std::string::npos; open = filled.find('{')) {
+        const auto close = filled.find('}', open);
+        const auto name = filled.substr(open, close - open + 1);
+        const char* value = "0";
+        if (name == "{id}")
+            value = kPlaylistId;
+        else if (name == "{role}")
+            value = "scratch";
+        filled.replace(open, name.size(), value);
+    }
+    return filled;
 }
 
 }  // namespace jean::testing

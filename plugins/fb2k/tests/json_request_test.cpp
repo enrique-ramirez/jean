@@ -91,17 +91,6 @@ TicketMint countingMint(const std::shared_ptr<int>& calls) {
     };
 }
 
-std::string dialable(std::string path) {
-    for (const auto& [placeholder, value] : std::vector<std::pair<std::string, std::string>>{
-             {"{id}", kPlaylistId}, {"{role}", "scratch"}, {"{index}", "0"}}) {
-        const auto at = path.find(placeholder);
-        if (at != std::string::npos)
-            path.replace(at, placeholder.size(), value);
-    }
-
-    return "/api" + path;
-}
-
 std::vector<std::string> publishedPosts() {
     std::vector<std::string> posts;
     for (const auto& route : publishedRoutes())

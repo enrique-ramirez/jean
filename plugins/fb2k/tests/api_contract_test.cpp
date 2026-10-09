@@ -16,11 +16,14 @@
 #include "third_party/json.hpp"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <iterator>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace jean;
@@ -183,16 +186,6 @@ void checkPublishedAsSent(const std::vector<std::string>& schemas) {
         CHECK_MESSAGE(published.count(status) == 1, "contract/openapi.yaml publishes it under ",
                       listed(published));
     }
-}
-
-std::string dialable(const std::string& path) {
-    std::string filled = "/api" + path;
-    for (auto open = filled.find('{'); open != std::string::npos; open = filled.find('{')) {
-        const auto close = filled.find('}', open);
-        const auto name = filled.substr(open, close - open + 1);
-        filled.replace(open, name.size(), name == "{id}" ? kPlaylistId : "0");
-    }
-    return filled;
 }
 
 bool publishes(const std::string& method, const std::string& path, int status) {
@@ -1010,6 +1003,73 @@ TEST_CASE("no stream route answers a status contract/openapi.yaml does not docum
 // just as happily for an operation that was published and never given a handler. What the router
 // answers for a path nothing serves is learned rather than restated, so rewording it cannot turn
 // this into a check that never fires.
+namespace {
+
+std::string coreDirectory() {
+    std::string self = __FILE__;
+    std::replace(self.begin(), self.end(), '\\', '/');
+    const std::string tail = "tests/api_contract_test.cpp";
+    REQUIRE(self.size() > tail.size());
+    return self.substr(0, self.size() - tail.size()) + "src/core/";
+}
+
+std::string withHoles(std::string path) {
+    for (auto open = path.find('('); open != std::string::npos; open = path.find('(')) {
+        const auto close = path.find(')', open);
+        REQUIRE(close != std::string::npos);
+        path.replace(open, close - open + 1, "*");
+    }
+    for (auto open = path.find('{'); open != std::string::npos; open = path.find('{')) {
+        const auto close = path.find('}', open);
+        REQUIRE(close != std::string::npos);
+        path.replace(open, close - open + 1, "*");
+    }
+    return path;
+}
+
+std::set<std::string> registeredPaths() {
+    constexpr std::string_view kApiPrefix = "/api/";
+    std::set<std::string> paths;
+    for (const auto& entry : std::filesystem::directory_iterator(coreDirectory())) {
+        if (entry.path().extension() != ".cpp")
+            continue;
+
+        std::ifstream source(entry.path());
+        REQUIRE_MESSAGE(source.is_open(), "cannot read ", entry.path().string());
+        const std::string text((std::istreambuf_iterator<char>(source)),
+                               std::istreambuf_iterator<char>());
+
+        for (size_t at = text.find(kApiPrefix); at != std::string::npos;
+             at = text.find(kApiPrefix, at + 1)) {
+            const bool raw = at >= 3 && text.compare(at - 3, 3, "R\"(") == 0;
+            const bool plain = at >= 1 && text[at - 1] == '"';
+            if (!raw && !plain)
+                continue;
+
+            const auto end = raw ? text.find(")\"", at) : text.find('"', at);
+            const auto quoted = text.substr(at, end - at);
+            if (quoted.size() > kApiPrefix.size() && quoted.back() != '/')
+                paths.insert(withHoles(quoted.substr(kApiPrefix.size() - 1)));
+        }
+    }
+    return paths;
+}
+
+}  // namespace
+
+TEST_CASE("every route src/core registers is one contract/openapi.yaml publishes") {
+    std::set<std::string> published;
+    for (const auto& route : publishedRoutes())
+        published.insert(withHoles(route.path));
+
+    const auto registered = registeredPaths();
+    REQUIRE_FALSE(registered.empty());
+    for (const auto& path : registered) {
+        INFO("registered: ", path);
+        CHECK(published.contains(path));
+    }
+}
+
 TEST_CASE("every operation contract/openapi.yaml publishes has a route behind it") {
     const TestServer server;
 

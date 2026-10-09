@@ -41,11 +41,6 @@ DeviceIdentity device(std::string id) {
 
 // Each script below cycles through every value under a bound, so an implementation that draws
 // again until it gets a row other than the last one still finishes.
-SessionRandom countingUp() {
-    const auto drawn = std::make_shared<size_t>(0);
-    return [drawn](size_t bound) { return (*drawn)++ % bound; };
-}
-
 SessionRandom countingDown() {
     const auto drawn = std::make_shared<size_t>(0);
     return [drawn](size_t bound) { return bound - 1 - ((*drawn)++ % bound); };
@@ -128,9 +123,9 @@ std::optional<size_t> rowPlaying(const Session& session, const std::vector<Sessi
     if (!turn)
         return std::nullopt;
 
-    const auto found =
-        std::find_if(rows.begin(), rows.end(),
-                     [&turn](const SessionTrack& row) { return row.path == turn->track.path; });
+    const auto found = std::find_if(rows.begin(), rows.end(), [&turn](const SessionTrack& row) {
+        return row.path == turn->track.path;
+    });
     if (found == rows.end())
         return std::nullopt;
 

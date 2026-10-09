@@ -7,6 +7,8 @@
 #include "core/player_outcome.h"
 #include "core/session.h"
 
+#include "support/fixtures.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -17,16 +19,12 @@
 #include <vector>
 
 using namespace jean;
+using namespace jean::testing;
 using namespace std::chrono_literals;
 
 namespace {
 
 using Time = Audience::Clock::time_point;
-
-SessionRandom countingUp() {
-    const auto drawn = std::make_shared<size_t>(0);
-    return [drawn](size_t bound) { return (*drawn)++ % bound; };
-}
 
 SessionTrack track(const std::string& name) {
     SessionTrack made;
@@ -255,8 +253,8 @@ TEST_CASE("a track queued at a position goes in there, and at the end for the qu
           std::vector<std::string>{"queued a", "queued x", "queued y", "queued b"});
 
     CHECK(session->enqueueAt(queued({"z"}), 4, session->queue().revision) == PlayerOutcome::done);
-    CHECK(names(session->queue()) == std::vector<std::string>{"queued a", "queued x", "queued y",
-                                                              "queued b", "queued z"});
+    CHECK(names(session->queue()) ==
+          std::vector<std::string>{"queued a", "queued x", "queued y", "queued b", "queued z"});
 }
 
 TEST_CASE("moving a queued track puts it where it is told, counted once it is taken out") {
@@ -265,16 +263,13 @@ TEST_CASE("moving a queued track puts it where it is told, counted once it is ta
     session->enqueue(queued({"a", "b", "c"}));
 
     CHECK(session->moveQueued(0, 2, session->queue().revision) == PlayerOutcome::done);
-    CHECK(names(session->queue()) ==
-          std::vector<std::string>{"queued b", "queued c", "queued a"});
+    CHECK(names(session->queue()) == std::vector<std::string>{"queued b", "queued c", "queued a"});
 
     CHECK(session->moveQueued(2, 0, session->queue().revision) == PlayerOutcome::done);
-    CHECK(names(session->queue()) ==
-          std::vector<std::string>{"queued a", "queued b", "queued c"});
+    CHECK(names(session->queue()) == std::vector<std::string>{"queued a", "queued b", "queued c"});
 
     CHECK(session->moveQueued(1, 2, session->queue().revision) == PlayerOutcome::done);
-    CHECK(names(session->queue()) ==
-          std::vector<std::string>{"queued a", "queued c", "queued b"});
+    CHECK(names(session->queue()) == std::vector<std::string>{"queued a", "queued c", "queued b"});
 }
 
 TEST_CASE("removing a queued track takes out that one and leaves the rest in order") {

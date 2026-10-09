@@ -80,4 +80,9 @@ TicketMint countingMint() {
     return [issued] { return "ticket-" + std::to_string(++*issued); };
 }
 
+SessionRandom countingUp() {
+    const auto drawn = std::make_shared<size_t>(0);
+    return [drawn](size_t bound) { return (*drawn)++ % bound; };
+}
+
 }  // namespace jean::testing

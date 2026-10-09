@@ -4,6 +4,7 @@
 
 #include "third_party/doctest.h"
 
+#include "support/http.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
@@ -39,13 +40,6 @@ StreamOpener opensWith(std::vector<std::string> chunks, std::string contentType 
             ++*opens;
         return {contentType, std::make_unique<FiniteStream>(chunks)};
     };
-}
-
-std::string ticketFrom(const TestServer& server) {
-    const auto response = server.client().Post("/api/stream/ticket", "", "application/json");
-    REQUIRE(response);
-    REQUIRE(response->status == 200);
-    return json::parse(response->body)["ticket"].get<std::string>();
 }
 
 httplib::Result listen(const TestServer& server, const std::string& ticket) {

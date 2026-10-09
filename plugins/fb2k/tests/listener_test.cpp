@@ -23,16 +23,6 @@ using nlohmann::json;
 
 namespace {
 
-// The spec writes paths against a server whose base is /api, and a templated one has to be
-// filled in with something the router will match before it can be dialled at all.
-std::string dialable(std::string path) {
-    const auto templated = path.find("{id}");
-    if (templated != std::string::npos)
-        path.replace(templated, 4, kPlaylistId);
-
-    return "/api" + path;
-}
-
 httplib::Result anonymously(const TestServer& server, const std::string& method,
                             const std::string& path) {
     if (method == "GET")

@@ -1,5 +1,6 @@
 #include "third_party/doctest.h"
 
+#include "support/http.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
@@ -55,13 +56,6 @@ public:
 private:
     int sent_ = 0;
 };
-
-std::string ticketFrom(const TestServer& server) {
-    const auto response = server.client().Post("/api/stream/ticket", "", "application/json");
-    REQUIRE(response);
-    REQUIRE(response->status == 200);
-    return json::parse(response->body)["ticket"].get<std::string>();
-}
 
 }  // namespace
 

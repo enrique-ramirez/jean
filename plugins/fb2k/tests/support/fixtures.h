@@ -4,6 +4,7 @@
 #include "core/documents.h"
 #include "core/http_server.h"
 #include "core/library.h"
+#include "core/session.h"
 #include "core/settings.h"
 #include "core/stream_ticket.h"
 
@@ -87,5 +88,7 @@ ListenerStatus listeningStatus();
 
 // Predictable tickets, so a test can tell a rejected one from a reused one.
 TicketMint countingMint();
+
+SessionRandom countingUp();
 
 }  // namespace jean::testing

@@ -11,6 +11,7 @@
 #include "core/session.h"
 #include "support/eventually.h"
 #include "support/fixtures.h"
+#include "support/http.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
@@ -271,29 +272,8 @@ bool holdsDevice(const Audience& audience, const std::string& deviceId) {
     return audience.holds(deviceId, audience.now());
 }
 
-std::string scoped(const std::string& path, const std::string& session,
-                   const std::string& deviceId) {
-    std::string query;
-    if (!session.empty())
-        query += "session=" + session;
-    if (!deviceId.empty())
-        query += (query.empty() ? "" : "&") + std::string("deviceId=") + deviceId;
-    return query.empty() ? path : path + "?" + query;
-}
-
 std::string bodyNaming(const std::string& deviceId) {
     return deviceId.empty() ? std::string() : json{{"deviceId", deviceId}}.dump();
-}
-
-int statusOf(const httplib::Result& response) {
-    return response ? response->status : 0;
-}
-
-void checkSameAnswer(const httplib::Result& asked, const httplib::Result& expected) {
-    REQUIRE(asked);
-    REQUIRE(expected);
-    CHECK(asked->status == expected->status);
-    CHECK(asked->body == expected->body);
 }
 
 std::string createdBy(const TestServer& server, const std::string& deviceId) {
@@ -1095,14 +1075,6 @@ json playerOf(const httplib::Result& response) {
     REQUIRE(response);
     REQUIRE(response->status == 200);
     return json::parse(response->body)["player"];
-}
-
-std::string tagOf(const httplib::Result& response) {
-    REQUIRE(response);
-    REQUIRE(response->status == 200);
-    auto tag = response->get_header_value("ETag");
-    REQUIRE_FALSE(tag.empty());
-    return tag;
 }
 
 // A connection is counted on the session under the session's own lock, a moment after the audience

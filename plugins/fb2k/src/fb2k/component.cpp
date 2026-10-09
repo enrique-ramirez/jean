@@ -35,9 +35,9 @@
 #include "fb2k/ticket_mint.h"
 #include "fb2k/ui_assets.h"
 
-#include <atomic>
 #include <chrono>
 #include <memory>
+#include <mutex>
 
 // Exactly one per DLL: several make foobar2000's update finder read the version as "0"
 // and treat the component as permanently out of date.
@@ -68,18 +68,23 @@ std::unique_ptr<Streamer> makeStreamer(const Settings& settings, PlayerStateStor
         [&playerState] { playerState.timelineMarked(); }, engineCapture());
 }
 
-// The foobar2000 SDK does not say which thread delivers dsp_config_callback or the ReplayGain
-// notify, so the pointer is atomic and PlayerAudioSettings locks. Null while the component is not
-// running.
-std::atomic<PlayerAudioSettings*> g_playerAudio{nullptr};
+// The foobar2000 SDK does not say which thread delivers dsp_config_callback.
+std::mutex g_playerAudioMutex;
+PlayerAudioSettings* g_playerAudio = nullptr;
+
+void publishPlayerAudio(PlayerAudioSettings* settings) {
+    const std::lock_guard<std::mutex> lock(g_playerAudioMutex);
+    g_playerAudio = settings;
+}
 
 // The foobar2000 SDK registers a dsp_config_callback only as a service, found at load, so it
 // reaches the settings through g_playerAudio.
 class ChainCallback : public dsp_config_callback {
 public:
     void on_core_settings_change(const dsp_chain_config& chain) override {
-        if (PlayerAudioSettings* const settings = g_playerAudio.load())
-            settings->chainChanged(chain);
+        const std::lock_guard<std::mutex> lock(g_playerAudioMutex);
+        if (g_playerAudio != nullptr)
+            g_playerAudio->chainChanged(chain);
     }
 };
 
@@ -89,7 +94,7 @@ class PlayerAudioWatch : public replaygain_core_settings_notify {
 public:
     explicit PlayerAudioWatch(PlayerAudioSettings& settings)
         : settings_(settings), replayGain_(replaygain_manager_v2::tryGet()) {
-        g_playerAudio = &settings_;
+        publishPlayerAudio(&settings_);
         if (replayGain_.is_valid())
             replayGain_->add_notify(this);
     }
@@ -97,7 +102,7 @@ public:
     ~PlayerAudioWatch() {
         if (replayGain_.is_valid())
             replayGain_->remove_notify(this);
-        g_playerAudio = nullptr;
+        publishPlayerAudio(nullptr);
     }
 
     void on_changed(const t_replaygain_config& config) override {

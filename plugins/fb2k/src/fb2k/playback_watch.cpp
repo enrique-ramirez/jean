@@ -104,18 +104,12 @@ void publishQueueTarget(MainThreadQueue* mainThread, PlayerStateStore* store) {
 // isn't running, which covers both a `Plugin` construction that never got this far and one
 // already torn down.
 void deferQueueRead() {
-    MainThreadQueue* mainThread;
-    PlayerStateStore* store;
-    {
-        const std::lock_guard<std::mutex> lock(g_queueTargetMutex);
-        mainThread = g_queueTargetMainThread;
-        store = g_queueTargetStore;
-    }
-
-    if (mainThread == nullptr || store == nullptr)
+    const std::lock_guard<std::mutex> lock(g_queueTargetMutex);
+    if (g_queueTargetMainThread == nullptr || g_queueTargetStore == nullptr)
         return;
 
-    mainThread->enqueue([store] { store->queueChanged(currentQueue()); }, [] {});
+    g_queueTargetMainThread->enqueue(
+        [store = g_queueTargetStore] { store->queueChanged(currentQueue()); }, [] {});
 }
 
 // The foobar2000 SDK gives playback_queue_callback no impl_base and no register/unregister

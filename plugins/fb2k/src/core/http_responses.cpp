@@ -253,11 +253,15 @@ std::string snapshotTag(const Library::State& state, uint64_t runId, uint64_t pl
 
 namespace {
 
+std::string currentTag(const httplib::Request& req, const std::string& name) {
+    return quoted(name + (acceptsGzip(req) ? kGzipSuffix : kIdentitySuffix));
+}
+
 void sendBodyIfChanged(const httplib::Request& req, httplib::Response& res, const std::string& name,
                        const char* contentType, const std::function<SharedBytes()>& produce,
                        const std::function<SharedBytes(const SharedBytes&)>& pack) {
     const bool offered = acceptsGzip(req);
-    const auto tag = quoted(name + (offered ? kGzipSuffix : kIdentitySuffix));
+    const auto tag = currentTag(req, name);
 
     if (alreadyHolds(req, tag)) {
         revalidatePerEncoding(res, tag);
@@ -284,6 +288,14 @@ void sendBodyIfChanged(const httplib::Request& req, httplib::Response& res, cons
     res.set_header("Content-Encoding", "gzip");
     sendHeld(res, packed, contentType);
 }
+
+}  // namespace
+
+bool alreadyHoldsCurrent(const httplib::Request& req, const std::string& name) {
+    return alreadyHolds(req, currentTag(req, name));
+}
+
+namespace {
 
 SharedBytes packedNow(const SharedBytes& plain) {
     auto packed = gzipped(*plain);

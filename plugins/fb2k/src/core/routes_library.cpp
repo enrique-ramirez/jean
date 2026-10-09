@@ -293,15 +293,19 @@ void LibraryRoutes::addTo(httplib::Server& server) {
         }
 
         const auto state = library_->state();
-        const auto changes = library_->changes(request.since);
-        if (changes.outcome != DeltaOutcome::ok) {
-            respondOutcome(res, changes.outcome);
-            return;
+        const auto name = snapshotTag(state, runId_) + "-f" + std::to_string(request.since);
+
+        std::optional<Library::Changes> missed;
+        if (!alreadyHoldsCurrent(req, name)) {
+            missed = library_->changes(request.since);
+            if (missed->outcome != DeltaOutcome::ok) {
+                respondOutcome(res, missed->outcome);
+                return;
+            }
         }
 
-        const auto name = snapshotTag(state, runId_) + "-f" + std::to_string(request.since);
         sendIfChanged(req, res, name, kLibraryBytes,
-                      [&changes] { return serialiseDelta(changes.delta); });
+                      [&missed] { return serialiseDelta(missed->delta); });
     });
 
     server.Post("/api/library/refresh", [this](const httplib::Request&, httplib::Response& res) {

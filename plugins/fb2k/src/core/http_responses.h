@@ -92,6 +92,8 @@ constexpr char kAskEveryTime[] = "private, no-cache";
 // else answers the conditional request itself.
 bool alreadyHolds(const httplib::Request& req, const std::string& tag);
 
+bool alreadyHoldsCurrent(const httplib::Request& req, const std::string& name);
+
 // Names the snapshot and this run of the component, so a validator from before a restart never
 // matches.
 std::string snapshotTag(const Library::State& state, uint64_t runId, uint64_t playerVersion = 0);

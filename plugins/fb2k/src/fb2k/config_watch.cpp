@@ -9,6 +9,8 @@
 #include "fb2k/running_settings.h"
 
 #include <chrono>
+#include <exception>
+#include <string>
 #include <system_error>
 
 namespace jean {
@@ -40,7 +42,13 @@ void ConfigWatch::run() {
     std::unique_lock<std::mutex> lock(mutex_);
     while (!wake_.wait_for(lock, std::chrono::seconds(1), [this] { return stopping_; })) {
         lock.unlock();
-        pollOnce();
+        try {
+            pollOnce();
+        } catch (const std::exception& e) {
+            logError(std::string("config watch failed: ") + e.what());
+        } catch (...) {
+            logError("config watch failed with an unknown exception");
+        }
         lock.lock();
     }
 }

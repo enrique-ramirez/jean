@@ -59,11 +59,12 @@ public:
     PcmRing& operator=(const PcmRing&) = delete;
 
 private:
-    double bufferedLocked() const;
+    PcmBlock takeFrontLocked();
 
     mutable std::mutex mutex_;
     std::condition_variable ready_;
     std::deque<PcmBlock> blocks_;
+    double bufferedSeconds_ = 0.0;
     const double capacitySeconds_;
     bool closed_ = false;
     size_t waiting_ = 0;

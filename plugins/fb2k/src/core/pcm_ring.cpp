@@ -29,10 +29,11 @@ void PcmRing::write(PcmBlock block) {
         if (closed_)
             return;
 
+        bufferedSeconds_ += block.seconds();
         blocks_.push_back(std::move(block));
 
-        while (blocks_.size() > 1 && bufferedLocked() > capacitySeconds_)
-            blocks_.pop_front();
+        while (blocks_.size() > 1 && bufferedSeconds_ > capacitySeconds_)
+            static_cast<void>(takeFrontLocked());
     }
 
     ready_.notify_one();
@@ -43,7 +44,7 @@ double PcmRing::roomSeconds() const {
     if (closed_)
         return 0.0;
 
-    return std::max(0.0, capacitySeconds_ - bufferedLocked());
+    return std::max(0.0, capacitySeconds_ - bufferedSeconds_);
 }
 
 bool PcmRing::read(PcmBlock& out) {
@@ -55,8 +56,7 @@ bool PcmRing::read(PcmBlock& out) {
     if (blocks_.empty())
         return false;
 
-    out = std::move(blocks_.front());
-    blocks_.pop_front();
+    out = takeFrontLocked();
     return true;
 }
 
@@ -74,10 +74,11 @@ size_t PcmRing::waitingReaders() const {
     return waiting_;
 }
 
-double PcmRing::bufferedLocked() const {
-    return std::accumulate(
-        blocks_.begin(), blocks_.end(), 0.0,
-        [](double total, const PcmBlock& block) { return total + block.seconds(); });
+PcmBlock PcmRing::takeFrontLocked() {
+    PcmBlock block = std::move(blocks_.front());
+    blocks_.pop_front();
+    bufferedSeconds_ = blocks_.empty() ? 0.0 : bufferedSeconds_ - block.seconds();
+    return block;
 }
 
 }  // namespace jean

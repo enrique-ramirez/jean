@@ -220,13 +220,13 @@ void StreamRoutes::openStream(const httplib::Request& req, httplib::Response& re
     // has, and not by anything here.
     res.set_chunked_content_provider(
         opened.contentType,
-        [this, listener, held = std::move(membership)](size_t, httplib::DataSink& sink) {
+        [this, listener, held = std::move(membership), bytes = std::vector<std::uint8_t>()](
+            size_t, httplib::DataSink& sink) mutable {
             if (!settings_.current()->streamingEnabled) {
                 sink.done();
                 return true;
             }
 
-            std::vector<std::uint8_t> bytes;
             if (!listener->next(bytes)) {
                 sink.done();
                 return true;

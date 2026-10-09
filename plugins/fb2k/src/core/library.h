@@ -266,10 +266,6 @@ private:
         std::vector<uint32_t> dictionarySizes;
     };
 
-    // An export may still be reading the snapshot it was handed after mutex_ is let go, so a
-    // change made meanwhile writes to a copy instead.
-    Snapshot& writableSnapshotLocked();
-
     const size_t retainedRevisions_;
 
     mutable std::mutex mutex_;
@@ -282,8 +278,6 @@ private:
     bool building_ = false;
     BuildProgress build_;
 
-    // Held by one export at a time and never with mutex_, so two clients exporting one revision
-    // at once serialise it once between them.
     mutable std::mutex exportLock_;
     mutable Export lastExport_;
 };

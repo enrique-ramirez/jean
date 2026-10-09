@@ -314,11 +314,12 @@ void Library::replace(Snapshot snapshot) {
 }
 
 uint64_t Library::apply(const std::vector<RowChange>& changes) {
+    const std::lock_guard<std::mutex> exporting(exportLock_);
     const std::lock_guard<std::mutex> lock(mutex_);
     if (snapshot_->structure == 0)
         return 0;
 
-    Snapshot& snapshot = writableSnapshotLocked();
+    Snapshot& snapshot = *snapshot_;
 
     Retained entry;
     entry.ordinals.resize(snapshot.columns.size());
@@ -409,16 +410,6 @@ Library::Export Library::exported() const {
     lastExport_.revision = reading->revision;
     lastExport_.bytes = std::make_shared<const std::string>(serialiseSnapshot(*reading));
     return lastExport_;
-}
-
-// std::shared_ptr::use_count is only approximate while other threads copy or release the
-// pointer. Every copy of snapshot_ is taken under mutex_, which this runs under, so a count of
-// one means no export holds it, and an export letting go at the same moment costs at worst a
-// copy nobody needed.
-Snapshot& Library::writableSnapshotLocked() {
-    if (snapshot_.use_count() > 1)
-        snapshot_ = std::make_shared<Snapshot>(*snapshot_);
-    return *snapshot_;
 }
 
 Library::Changes Library::changes(uint64_t since) const {

@@ -52,12 +52,17 @@ enum class IdWidth : uint8_t { one = 1, two = 2, four = 4 };
 // The narrowest of the three holding every id from 0 to distinctValues - 1.
 IdWidth widthFor(size_t distinctValues);
 
+struct TransparentStringHash {
+    using is_transparent = void;
+    size_t operator()(std::string_view text) const { return std::hash<std::string_view>{}(text); }
+};
+
 // Distinct values in the order they were first seen, and the id each was given.
 struct Dictionary {
     std::vector<std::string> values;
-    std::unordered_map<std::string, uint32_t> ids;
+    std::unordered_map<std::string, uint32_t, TransparentStringHash, std::equal_to<>> ids;
 
-    uint32_t intern(std::string value);
+    uint32_t intern(std::string_view value);
 };
 
 // A dictionary and one id per row. Nothing here parses, types or normalises: `?`, `''` and
@@ -316,7 +321,11 @@ public:
 
     void dataMoved();
 
+    uint64_t dataMoves() const;
+
     bool wanted() const;
+
+    bool wantedForDataAlone() const;
 
     bool startIfWanted();
 
@@ -329,6 +338,7 @@ private:
 
     bool forColumns_ = false;
     bool forData_ = false;
+    uint64_t dataMoves_ = 0;
     std::optional<std::vector<std::string>> asked_;
     std::optional<std::vector<std::string>> building_;
     std::vector<std::string> columns_;

@@ -31,6 +31,7 @@ namespace jean {
 namespace {
 
 constexpr size_t kMaxPendingDirty = 4096;
+constexpr auto kRebuildSettle = std::chrono::seconds(2);
 constexpr size_t kQuerySlice = 8192;
 
 enum class DirtiedBy { change, displayHook };
@@ -315,6 +316,10 @@ private:
                 if (stopping_)
                     return;
 
+                settleLocked(lock);
+                if (stopping_)
+                    return;
+
                 rebuilding = queue_.startIfWanted();
 
                 if (rebuilding) {
@@ -338,6 +343,16 @@ private:
                 const std::lock_guard<std::mutex> lock(mutex_);
                 queue_.finished();
             }
+        }
+    }
+
+    void settleLocked(std::unique_lock<std::mutex>& lock) {
+        auto seen = queue_.dataMoves();
+        while (queue_.wantedForDataAlone() && !stopping_) {
+            wake_.wait_for(lock, kRebuildSettle, [this] { return stopping_; });
+            if (queue_.dataMoves() == seen)
+                return;
+            seen = queue_.dataMoves();
         }
     }
 

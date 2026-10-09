@@ -817,6 +817,36 @@ std::vector<std::string> runOne(RebuildQueue& queue) {
 
 }  // namespace
 
+TEST_CASE("every data move is counted, so a worker can tell a burst from a quiet library") {
+    RebuildQueue queue;
+    CHECK(queue.dataMoves() == 0);
+
+    queue.dataMoved();
+    queue.dataMoved();
+    CHECK(queue.dataMoves() == 2);
+    CHECK(queue.wanted());
+
+    REQUIRE(queue.startIfWanted());
+    CHECK(queue.dataMoves() == 2);
+}
+
+TEST_CASE("a rebuild wanted by data alone may wait, and one a declaration waits on may not") {
+    RebuildQueue queue;
+    CHECK_FALSE(queue.wantedForDataAlone());
+
+    queue.dataMoved();
+    CHECK(queue.wantedForDataAlone());
+
+    queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
+    CHECK(queue.wanted());
+    CHECK_FALSE(queue.wantedForDataAlone());
+
+    REQUIRE(queue.startIfWanted());
+    queue.finished();
+    queue.ask(declaring("%album%"), RebuildReason::dataChanged);
+    CHECK(queue.wantedForDataAlone());
+}
+
 TEST_CASE("a declaration with nothing running queues a build of it") {
     RebuildQueue queue;
     queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);

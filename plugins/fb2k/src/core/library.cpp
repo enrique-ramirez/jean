@@ -17,6 +17,7 @@ namespace {
 // multiple of four, and a client's offsets are absolute, so the header is padded to keep the
 // blob's own start aligned as well as every section inside it.
 constexpr size_t kAlignment = 4;
+constexpr size_t kHeaderBytesPerColumn = 320;
 
 constexpr char kMagic[] = "JLIB";
 constexpr size_t kMagicBytes = sizeof(kMagic) - 1;
@@ -94,20 +95,29 @@ json placeColumn(std::string& blob, const std::vector<uint32_t>& ids, size_t dis
                 {"allUnresolved", facts.allUnresolved}};
 }
 
-std::string frame(const json& header, const std::string& blob) {
+std::string frame(const json& header, std::string blob) {
     // nlohmann's dump() throws on text that is not valid UTF-8, and a column expression comes
     // from a client, so the replacement handler keeps a malformed one from becoming a 500.
     std::string text = header.dump(-1, ' ', false, json::error_handler_t::replace);
     text.append(paddingTo(kAlignment, kMagicBytes + kHeaderLengthBytes + text.size()), ' ');
 
-    std::string message;
-    message.reserve(kMagicBytes + kHeaderLengthBytes + text.size() + blob.size());
-    message.append(kMagic, kMagicBytes);
-    appendLittleEndian(message, text.size(), kHeaderLengthBytes);
-    message.append(text);
-    message.append(blob);
+    std::string prefix;
+    prefix.reserve(kMagicBytes + kHeaderLengthBytes + text.size());
+    prefix.append(kMagic, kMagicBytes);
+    appendLittleEndian(prefix, text.size(), kHeaderLengthBytes);
+    prefix.append(text);
 
-    return message;
+    blob.insert(0, prefix);
+    return blob;
+}
+
+size_t messageBytesFor(const Column& column) {
+    const size_t text = std::accumulate(
+        column.dictionary.values.begin(), column.dictionary.values.end(), size_t{0},
+        [](size_t total, const std::string& value) { return total + value.size(); });
+    return (column.ids.size() * sizeof(uint32_t)) + text +
+           (column.dictionary.values.size() * sizeof(uint32_t)) + (3 * kAlignment) +
+           column.name.size() + kHeaderBytesPerColumn;
 }
 
 void ensureEveryIdResolves(Column& column) {
@@ -139,13 +149,14 @@ IdWidth widthFor(size_t distinctValues) {
     return IdWidth::four;
 }
 
-uint32_t Dictionary::intern(std::string value) {
-    const auto next = static_cast<uint32_t>(values.size());
-    const auto placed = ids.emplace(value, next);
-    if (placed.second)
-        values.push_back(std::move(value));
+uint32_t Dictionary::intern(std::string_view value) {
+    if (const auto found = ids.find(value); found != ids.end())
+        return found->second;
 
-    return placed.first->second;
+    const auto next = static_cast<uint32_t>(values.size());
+    ids.emplace(std::string(value), next);
+    values.emplace_back(value);
+    return next;
 }
 
 size_t Snapshot::trackCount() const {
@@ -242,6 +253,9 @@ Snapshot LibraryBuilder::finish() {
 
 std::string serialiseSnapshot(const Snapshot& snapshot) {
     std::string blob;
+    blob.reserve(std::accumulate(
+        snapshot.columns.begin(), snapshot.columns.end(), size_t{0},
+        [](size_t total, const Column& column) { return total + messageBytesFor(column); }));
     json columns = json::array();
     json spine = json::object();
 
@@ -265,7 +279,7 @@ std::string serialiseSnapshot(const Snapshot& snapshot) {
                       {"trackCount", snapshot.trackCount()},
                       {"columns", std::move(columns)},
                       {"spine", std::move(spine)}},
-                 blob);
+                 std::move(blob));
 }
 
 std::string serialiseDelta(const Delta& delta) {
@@ -296,7 +310,7 @@ std::string serialiseDelta(const Delta& delta) {
                       {"trackCount", delta.trackCount},
                       {"columns", std::move(columns)},
                       {"spine", std::move(spine)}},
-                 blob);
+                 std::move(blob));
 }
 
 Library::Library(size_t retainedRevisions) : retainedRevisions_(retainedRevisions) {}
@@ -539,10 +553,19 @@ void RebuildQueue::ask(std::vector<std::string> columns, RebuildReason why) {
 
 void RebuildQueue::dataMoved() {
     forData_ = true;
+    ++dataMoves_;
+}
+
+uint64_t RebuildQueue::dataMoves() const {
+    return dataMoves_;
 }
 
 bool RebuildQueue::wanted() const {
     return forColumns_ || forData_;
+}
+
+bool RebuildQueue::wantedForDataAlone() const {
+    return forData_ && !forColumns_;
 }
 
 bool RebuildQueue::startIfWanted() {

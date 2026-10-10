@@ -9,7 +9,6 @@
 	color: var(--muted);
 	transition:
 		border-color 0.15s var(--ease),
-		box-shadow 0.15s var(--ease),
 		color 0.15s var(--ease);
 }
 
@@ -96,4 +95,14 @@
 
 .well .input {
 	position: relative;
+}
+
+@media (pointer: coarse) {
+	.field[data-size="lg"] {
+		padding-block: 1px;
+	}
+
+	.field[data-size="lg"] .input {
+		min-height: var(--touch-target);
+	}
 }

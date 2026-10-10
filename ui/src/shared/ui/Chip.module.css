@@ -1,4 +1,5 @@
 .chip {
+	composes: hitArea from "../styles/hitArea.module.css";
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;

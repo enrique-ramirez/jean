@@ -310,6 +310,15 @@ export function TrackBrowser({
 		{ enabled: keysEnabled && removeRows !== undefined },
 	);
 
+	const openMenuAtCursor = () => {
+		const index = selection.cursor;
+		if (index < 0 || index >= rows.length) return;
+		scrollToTrack(index, { align: "auto", ifNeeded: true });
+		listRef.current?.whenRowMounted(index, (row) =>
+			trackMenu.openForRow(index, row),
+		);
+	};
+
 	useFollowPlayback({
 		rowCount: rows.length,
 		viewKey,
@@ -339,6 +348,10 @@ export function TrackBrowser({
 			cursorTop: () => keyMoveTo(0),
 			cursorBottom: () => keyMoveTo(rows.length - 1),
 			playCursor: () => play(selection.cursor),
+			openRowMenu: () => {
+				if (document.activeElement?.closest("[data-nav-row]")) return;
+				openMenuAtCursor();
+			},
 			extendDown: () => keyMove(1, { extend: true }),
 			extendUp: () => keyMove(-1, { extend: true }),
 			selectAll: selection.selectAll,

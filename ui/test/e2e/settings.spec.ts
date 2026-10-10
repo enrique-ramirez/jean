@@ -3,13 +3,16 @@ import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectSettlesAt,
+	focusedEndOf,
 	openLibrary,
 	openSettings,
 	playedFrom,
 	playRequests,
 	pressAndHold,
 	requestsTo,
+	searchField,
 	settingsDialog,
+	sidebar,
 	statusBar,
 	test,
 	times,
@@ -74,14 +77,41 @@ test.describe("the settings dialog", () => {
 		await expect(settingsDialog(page)).toBeHidden();
 	});
 
-	test("the close button says which key does the same", async ({ page }) => {
+	test("the close button says which key does the same, except on a phone, which has no Esc", async ({
+		page,
+		isMobile,
+	}) => {
 		await openLibrary(page);
 		await openSettings(page);
 
 		const close = page.getByRole("button", { name: "Close settings" });
-		await expect(close).toContainText("Esc");
+		if (isMobile) await expect(close.locator("kbd")).toBeHidden();
+		else await expect(close.locator("kbd")).toHaveText("Esc");
 		await close.click();
 		await expect(settingsDialog(page)).toBeHidden();
+	});
+
+	test("Tab wraps inside the dialog, and closing it gives focus back to the button that opened it", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "Tab is a keyboard route");
+
+		await openLibrary(page);
+		await openSettings(page);
+		const close = page.getByRole("button", { name: "Close settings" });
+
+		await close.focus();
+		await page.keyboard.press("Shift+Tab");
+		await expect.poll(() => focusedEndOf(settingsDialog(page))).toBe("last");
+		await page.keyboard.press("Tab");
+		await expect(close).toBeFocused();
+
+		await page.keyboard.press("Escape");
+		await expect(settingsDialog(page)).toBeHidden();
+		await expect(
+			page.getByRole("button", { name: "Settings", exact: true }),
+		).toBeFocused();
 	});
 
 	test("the app behind it does not answer the keyboard", async ({
@@ -397,6 +427,84 @@ const playbackRemedy = (page: Page) =>
 	fooJeanPanel(page)
 		.locator("p")
 		.filter({ hasText: /control ?playback/i });
+
+test.describe("single-key shortcuts", () => {
+	test.skip(({ isMobile }) => isMobile, "a keyboard setting");
+
+	const palette = (page: Page) => page.getByRole("dialog", { name: "Go to" });
+	const sheet = (page: Page) =>
+		page.getByRole("dialog", { name: "Keyboard shortcuts" });
+	const sheetButton = (page: Page) =>
+		page.getByRole("button", { name: "Keyboard shortcuts" });
+	const findButton = (page: Page) =>
+		page.getByRole("button", { name: "Find in this playlist" });
+	const singleKeys = (page: Page) =>
+		settingsDialog(page).getByRole("switch", { name: "Single-key shortcuts" });
+
+	test("off, G does nothing and the sheet stops listing it; Mod+K and the arrows still work; on again, G works", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await openSettings(page);
+		await expect(singleKeys(page)).toBeChecked();
+		await singleKeys(page).click();
+		await expect(singleKeys(page)).not.toBeChecked();
+		await page.keyboard.press("Escape");
+		await expect(settingsDialog(page)).toBeHidden();
+
+		await page.keyboard.press("g");
+		await page.keyboard.press("ArrowDown");
+		await expect(cursorRow(page)).toHaveAttribute("data-row", "1");
+		await expect(palette(page)).toHaveCount(0);
+
+		await expect(sidebar(page).locator("kbd")).toHaveCount(0);
+		await expect(findButton(page).locator("kbd")).toHaveCount(0);
+
+		await page.keyboard.press("ControlOrMeta+k");
+		await expect(searchField(page)).toBeFocused();
+		await searchField(page).blur();
+
+		await sheetButton(page).click();
+		await expect(sheet(page)).toBeVisible();
+		await expect(
+			sheet(page).getByText("Go to a playlist or a shelf"),
+		).toHaveCount(0);
+		await expect(
+			sheet(page).getByRole("heading", { name: "Rating" }),
+		).toHaveCount(0);
+		await expect(sheet(page).getByText("Next track")).toBeVisible();
+		await page.keyboard.press("Escape");
+		await expect(sheet(page)).toBeHidden();
+
+		await openSettings(page);
+		await singleKeys(page).click();
+		await expect(singleKeys(page)).toBeChecked();
+		await page.keyboard.press("Escape");
+		await expect(settingsDialog(page)).toBeHidden();
+
+		await expect(sidebar(page).locator("kbd")).toHaveText("G");
+		await expect(findButton(page).locator("kbd")).toHaveText("/");
+		await page.keyboard.press("g");
+		await expect(palette(page)).toBeVisible();
+	});
+
+	test.describe("stored off", () => {
+		test.use({ settings: { "jean.singleKeyShortcuts": false } });
+
+		test("the setting is this device's, read before the first key", async ({
+			page,
+		}) => {
+			await openLibrary(page);
+			await page.keyboard.press("g");
+			await sheetButton(page).click();
+			await expect(sheet(page)).toBeVisible();
+			await expect(palette(page)).toHaveCount(0);
+			await expect(
+				sheet(page).getByText("Go to a playlist or a shelf"),
+			).toHaveCount(0);
+		});
+	});
+});
 
 test.describe("foo_jean refusing playback control", () => {
 	test.use({ fooJean: { canControlPlayback: false } });

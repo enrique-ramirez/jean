@@ -1,5 +1,15 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
-import { expect, openLibrary, statusBar, test } from "./fixtures.ts";
+import {
+	expect,
+	nowPlayingScreen,
+	openLibrary,
+	openNowPlaying,
+	scrollTo,
+	scrollTop,
+	statusBar,
+	test,
+	trackRow,
+} from "./fixtures.ts";
 
 const TOGGLE = 'footer button[aria-label="Pause"]';
 
@@ -76,6 +86,32 @@ const startPlaying = async (page: Page) => {
 	await entrancesFinished(page);
 };
 
+const FAR_DOWN_PX = 2000;
+
+const offsetsAfterBackToTop = async (page: Page, frames: number) => {
+	await openLibrary(page);
+	await expect(trackRow(page, 0)).toBeAttached();
+	await scrollTo(page, FAR_DOWN_PX);
+	await expect.poll(() => scrollTop(page)).toBeGreaterThan(0);
+
+	await page.keyboard.press("ControlOrMeta+Home");
+	return overFrames(
+		page,
+		frames,
+		() => (document.querySelector("main") as HTMLElement).scrollTop,
+	);
+};
+
+test("back to top jumps rather than scrolling when motion is reduced", async ({
+	page,
+	isMobile,
+}) => {
+	test.skip(isMobile, "Mod+Home is a keyboard route");
+
+	const offsets = await offsetsAfterBackToTop(page, 6);
+	expect(offsets).toEqual(offsets.map(() => 0));
+});
+
 test("the toggle comes to rest when motion is reduced", async ({ page }) => {
 	await startPlaying(page);
 
@@ -92,6 +128,19 @@ test("the toggle comes to rest when motion is reduced", async ({ page }) => {
 
 test.describe("with motion allowed", () => {
 	test.use({ motion: "allow" });
+
+	test("back to top really does scroll, so the jump above means something", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "Mod+Home is a keyboard route");
+
+		const offsets = await offsetsAfterBackToTop(page, 12);
+		expect(
+			offsets.some((offset) => offset > 0 && offset < FAR_DOWN_PX),
+			"no sampled frame was between the start and the top",
+		).toBe(true);
+	});
 
 	test("it really is animating, so the test above means something", async ({
 		page,
@@ -235,5 +284,148 @@ test.describe("the now-playing arrow", () => {
 		// a set of nulls has one member: the transform has to have been read.
 		expect(seen.every((frame) => frame.arrow !== null)).toBe(true);
 		expect(new Set(seen.map((frame) => frame.arrow)).size).toBe(1);
+	});
+});
+
+// A bar grown by `height` lays the row out again every frame; grown by `scaleY` it is painted
+// alone, so its layout height holds still while its drawn height moves.
+test.describe("the playing row's equalizer", () => {
+	const bar = () => {
+		const element = document.querySelector(
+			'[data-row] [role="img"] i',
+		) as HTMLElement | null;
+		if (!element) return null;
+		return {
+			laidOut: element.offsetHeight,
+			painted: Number(element.getBoundingClientRect().height.toFixed(2)),
+		};
+	};
+
+	test.describe("with motion allowed", () => {
+		test.use({ motion: "allow" });
+
+		test("the bars move in paint and hold still in layout", async ({
+			page,
+		}) => {
+			await startPlaying(page);
+			const seen = await overFrames(page, 24, bar);
+			expect(seen.every((frame) => frame !== null)).toBe(true);
+			expect(new Set(seen.map((frame) => frame?.painted)).size).toBeGreaterThan(
+				1,
+			);
+			expect(new Set(seen.map((frame) => frame?.laidOut)).size).toBe(1);
+		});
+	});
+
+	test("the bars come to rest when motion is reduced", async ({ page }) => {
+		await startPlaying(page);
+		const seen = await overFrames(page, 12, bar);
+		expect(seen.every((frame) => frame !== null)).toBe(true);
+		expect(new Set(seen.map((frame) => frame?.painted)).size).toBe(1);
+	});
+});
+
+test.describe("the queue panel", () => {
+	const panel = (page: Page) =>
+		page.getByRole("complementary", { name: "Queue" });
+
+	// The status bar carries the button on a desktop; a phone reaches it through Now Playing.
+	const revealQueueButton = async (page: Page) => {
+		await openLibrary(page);
+		if (
+			await statusBar(page)
+				.getByRole("button", { name: /^Queue/ })
+				.count()
+		)
+			return;
+		await openNowPlaying(page);
+		await expect(
+			nowPlayingScreen(page).getByRole("button", { name: /^Queue/ }),
+		).toBeVisible();
+	};
+
+	// Clicked from inside the page in the tick the sampling starts: Playwright's own click
+	// checks the target first, and the slide can be over before they finish.
+	const transformsAsItOpens = (page: Page) =>
+		page.evaluate(
+			(frames) =>
+				new Promise<string[]>((resolve) => {
+					const opener = Array.from(
+						document.querySelectorAll<HTMLButtonElement>("button[aria-label]"),
+					).find((button) => /^Queue/.test(button.ariaLabel ?? ""));
+					const panel = document.querySelector('aside[aria-label="Queue"]');
+					const seen: string[] = [];
+					const tick = () => {
+						seen.push(panel ? getComputedStyle(panel).transform : "missing");
+						if (seen.length < frames) requestAnimationFrame(tick);
+						else resolve(seen);
+					};
+					opener?.click();
+					requestAnimationFrame(tick);
+				}),
+			10,
+		);
+
+	test("is in place on the next frame when motion is reduced", async ({
+		page,
+	}) => {
+		await revealQueueButton(page);
+		const seen = await transformsAsItOpens(page);
+		await expect(panel(page)).toHaveAttribute("data-open", "true");
+		// Closed, then open: one step and no frame in between.
+		expect(new Set(seen).size).toBeLessThanOrEqual(2);
+	});
+
+	test.describe("with motion allowed", () => {
+		test.use({ motion: "allow" });
+
+		test("slides in, so the case above means something", async ({ page }) => {
+			await revealQueueButton(page);
+			const seen = await transformsAsItOpens(page);
+			expect(new Set(seen).size).toBeGreaterThan(2);
+		});
+	});
+});
+
+test.describe("a Home shelf's arrows", () => {
+	test.skip(
+		({ isMobile }) => isMobile,
+		"a coarse pointer scrolls the shelf by touch and the arrows are not drawn",
+	);
+	// Narrow enough that the fixture's five albums overflow the shelf, wide enough to stay
+	// above the compact breakpoint.
+	test.use({ viewport: { width: 900, height: 860 } });
+
+	const scrollLeftOfShelf = () => {
+		const scroller = document.querySelector(
+			"[data-more-end], [data-more-start]",
+		) as HTMLElement | null;
+		return scroller ? Math.round(scroller.scrollLeft) : null;
+	};
+
+	const forward = (page: Page) =>
+		page.getByRole("button", { name: /^Scroll .* forward$/ }).first();
+
+	test("jump rather than glide when motion is reduced", async ({ page }) => {
+		await page.goto("/");
+		await expect(forward(page)).toBeEnabled();
+		const sampling = overFrames(page, 10, scrollLeftOfShelf);
+		await forward(page).click();
+		const seen = await sampling;
+		expect(seen.every((frame) => frame !== null)).toBe(true);
+		expect(new Set(seen).size).toBeLessThanOrEqual(2);
+	});
+
+	test.describe("with motion allowed", () => {
+		test.use({ motion: "allow" });
+
+		test("glide, so the case above means something", async ({ page }) => {
+			await page.goto("/");
+			await expect(forward(page)).toBeEnabled();
+			const sampling = overFrames(page, 10, scrollLeftOfShelf);
+			await forward(page).click();
+			const seen = await sampling;
+			expect(new Set(seen).size).toBeGreaterThan(2);
+		});
 	});
 });

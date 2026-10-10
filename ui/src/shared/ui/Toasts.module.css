@@ -73,6 +73,7 @@
 }
 
 .close {
+	composes: hitArea from "../styles/hitArea.module.css";
 	display: grid;
 	flex: 0 0 auto;
 	place-items: center;

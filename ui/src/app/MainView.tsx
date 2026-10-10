@@ -43,6 +43,7 @@ interface MainViewProps {
 	playlists: PlaylistInfo[];
 	playlist: PlaylistInfo | null;
 	scrollRef: RefObject<HTMLDivElement | null>;
+	isBehindDrawer: boolean;
 	isCompactViewport: boolean;
 	home: ReturnType<typeof useHomePlayback>;
 	playSet: ReturnType<typeof usePlaySet>["play"];
@@ -54,6 +55,7 @@ interface MainViewProps {
 }
 
 export function MainView({
+	isBehindDrawer,
 	route,
 	page,
 	library,
@@ -189,6 +191,7 @@ export function MainView({
 		<main
 			className={styles.main}
 			ref={scrollRef}
+			inert={isBehindDrawer ? true : undefined}
 			{...(artist ? artistSwipe : null)}
 		>
 			{route.kind === "home" ? (

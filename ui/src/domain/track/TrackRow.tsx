@@ -244,6 +244,7 @@ function TrackRowComponent({
 			data-match={isMatch}
 			data-reorderable={onGripPointerDown ? "" : undefined}
 			role="row"
+			aria-haspopup="menu"
 			aria-selected={isSelected}
 			onPointerDown={(event) => {
 				// Secondary click must leave the selection alone, or a multi-track selection is emptied

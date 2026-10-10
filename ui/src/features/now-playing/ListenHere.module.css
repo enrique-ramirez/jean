@@ -4,6 +4,7 @@
 }
 
 .button {
+	composes: hitArea from "../../shared/styles/hitArea.module.css";
 	position: relative;
 	display: grid;
 	place-items: center;

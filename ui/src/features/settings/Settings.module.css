@@ -217,7 +217,6 @@
 	color: var(--muted);
 	transition:
 		border-color 0.15s var(--ease),
-		box-shadow 0.15s var(--ease),
 		color 0.15s var(--ease);
 }
 

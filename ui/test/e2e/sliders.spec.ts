@@ -158,6 +158,23 @@ test.describe("the mute button", () => {
 	});
 });
 
+const LOS_CALIENTES_LENGTH = "4:37";
+
+test.describe("what the seek bar tells a screen reader", () => {
+	test("the position reads as elapsed and total time, not a count of seconds", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await trackRow(page, 0).dblclick();
+		await expect(seekBar(page)).toHaveAttribute("data-seekable", "true");
+
+		await expect(seekBar(page)).toHaveAttribute(
+			"aria-valuetext",
+			new RegExp(`^\\d+:\\d\\d of ${LOS_CALIENTES_LENGTH}$`),
+		);
+	});
+});
+
 test.describe("the seek bar", () => {
 	test.skip(({ isMobile }) => isMobile, "scrubbing is a mouse gesture");
 

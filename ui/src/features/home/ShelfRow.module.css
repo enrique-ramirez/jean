@@ -159,3 +159,15 @@
 		gap: 12px;
 	}
 }
+
+@media (pointer: coarse) {
+	.open {
+		position: relative;
+	}
+
+	.open::before {
+		content: "";
+		position: absolute;
+		inset: -16px 0 -8px;
+	}
+}

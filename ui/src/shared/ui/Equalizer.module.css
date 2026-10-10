@@ -8,8 +8,10 @@
 
 .equalizer i {
 	width: 2px;
+	height: 11px;
 	border-radius: 1px;
 	background: var(--accent);
+	transform-origin: bottom;
 	animation: bars 900ms var(--ease) infinite alternate;
 }
 
@@ -23,38 +25,38 @@
 
 @keyframes bars {
 	from {
-		height: 3px;
+		transform: scaleY(0.27);
 	}
 	to {
-		height: 11px;
+		transform: scaleY(1);
 	}
 }
 
 @media (prefers-reduced-motion: reduce) {
 	.equalizer i {
-		height: 7px;
+		transform: scaleY(0.64);
 		animation: none;
 	}
 
 	.equalizer i:nth-child(2) {
-		height: 11px;
+		transform: scaleY(1);
 	}
 
 	.equalizer i:nth-child(3) {
-		height: 5px;
+		transform: scaleY(0.45);
 	}
 }
 
 .equalizer[data-paused="true"] i {
-	height: 5px;
+	transform: scaleY(0.45);
 	opacity: 0.55;
 	animation: none;
 }
 
 .equalizer[data-paused="true"] i:nth-child(2) {
-	height: 8px;
+	transform: scaleY(0.73);
 }
 
 .equalizer[data-paused="true"] i:nth-child(3) {
-	height: 4px;
+	transform: scaleY(0.36);
 }

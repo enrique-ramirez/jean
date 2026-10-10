@@ -1,4 +1,5 @@
 .bar {
+	composes: hitArea from "../../shared/styles/hitArea.module.css";
 	position: relative;
 	display: flex;
 	align-items: center;
@@ -23,7 +24,7 @@
 	inset-inline: 0;
 	height: 3px;
 	background: var(--surface-sunken);
-	transition: height 0.12s var(--ease);
+	transition: scale 0.12s var(--ease);
 }
 
 .fill {
@@ -32,7 +33,7 @@
 	height: 3px;
 	background: var(--accent);
 	transform-origin: left;
-	transition: height 0.12s var(--ease);
+	transition: scale 0.12s var(--ease);
 }
 
 .thumb {
@@ -56,7 +57,7 @@
 .bar[data-scrubbing="true"] .fill,
 .bar:focus-visible .rail,
 .bar:focus-visible .fill {
-	height: 5px;
+	scale: 1 1.6667;
 }
 
 .bar[data-seekable="true"]:hover .thumb,

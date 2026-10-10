@@ -19,7 +19,6 @@
 	min-height: 0;
 	position: relative;
 	overflow: hidden;
-	transition: grid-template-columns 0.22s var(--ease);
 }
 
 .body[data-collapsed="true"] {
@@ -44,6 +43,7 @@
 }
 
 .brand {
+	composes: hitArea from "../shared/styles/hitArea.module.css";
 	flex: 0 0 auto;
 	margin: 0 6px 0 2px;
 	font-family: var(--font-display);
@@ -119,5 +119,15 @@
 
 	.topbar {
 		gap: 6px;
+	}
+}
+
+@media (pointer: coarse) {
+	.topbar {
+		padding-block: 4px;
+	}
+
+	.place {
+		min-height: var(--touch-target);
 	}
 }

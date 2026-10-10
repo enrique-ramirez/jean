@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
@@ -29,20 +29,11 @@ export function AlertDialog({
 	const titleId = useId();
 	const bodyId = useId();
 	const dialog = useRef<HTMLDivElement | null>(null);
-	const [opener] = useState(() => document.activeElement as HTMLElement | null);
 	const fallback = actions.find((action) => action.isDefault) ?? actions[0];
 
 	useKeyboardOwnership(ALERT_DIALOG_KEYBOARD);
 	useEscapeCapture(fallback.onSelect);
-	useTabTrap(dialog);
-
-	useEffect(() => {
-		dialog.current?.querySelector<HTMLElement>("[data-default]")?.focus();
-
-		return () => {
-			if (opener?.isConnected) opener.focus();
-		};
-	}, [opener]);
+	useTabTrap(dialog, "[data-default]");
 
 	return createPortal(
 		<div className={styles.scrim}>

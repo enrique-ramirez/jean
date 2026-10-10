@@ -78,7 +78,7 @@ function Notice({
 	switch (state.kind) {
 		case "unreadable":
 			return (
-				<div className={styles.notice} data-tone="error">
+				<div className={styles.notice} data-tone="error" role="alert">
 					<p className={styles.problem}>{t("autoplaylist.queryFailed")}</p>
 					<code className={styles.message}>{state.error}</code>
 				</div>
@@ -94,7 +94,11 @@ function Notice({
 		case "empty":
 			return <p className={styles.notice}>{t("autoplaylist.noMatches")}</p>;
 		case "failed":
-			return <p className={styles.notice}>{t("genre.previewFailed")}</p>;
+			return (
+				<p className={styles.notice} role="alert">
+					{t("genre.previewFailed")}
+				</p>
+			);
 		case "pending":
 			return (
 				<p className={styles.notice}>
@@ -103,6 +107,9 @@ function Notice({
 			);
 	}
 }
+
+const isAlert = (state: Previewed) =>
+	state.kind === "unreadable" || state.kind === "failed";
 
 export type IdlePhrase = "autoplaylist.typeQuery" | "autoplaylist.foreignQuery";
 
@@ -129,7 +136,12 @@ export function Results({
 
 	return (
 		<>
-			<p className={styles.stats} data-stats data-stale={isStale || undefined}>
+			<p
+				className={styles.stats}
+				role="status"
+				data-stats
+				data-stale={isStale || undefined}
+			>
 				{state.kind === "matches"
 					? [
 							t("autoplaylist.stats.albumArtists", {
@@ -151,11 +163,16 @@ export function Results({
 				data-stale={isStale || undefined}
 				aria-busy={isStale}
 			>
+				<div role="status">
+					{state.kind === "matches" || isAlert(state) ? null : (
+						<Notice state={state} idle={idle} />
+					)}
+				</div>
 				{state.kind === "matches" ? (
 					<Rows view={state.view} scroller={scroller} />
-				) : (
+				) : isAlert(state) ? (
 					<Notice state={state} idle={idle} />
-				)}
+				) : null}
 			</div>
 		</>
 	);

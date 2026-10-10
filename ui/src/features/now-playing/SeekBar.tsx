@@ -3,6 +3,7 @@ import { audibleAt } from "@/domain/player/position";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useDragFraction } from "@/shared/hooks/useDragFraction";
 import { useTranslate } from "@/shared/i18n/useTranslate";
+import { formatTime } from "@/shared/lib/time";
 import styles from "./SeekBar.module.css";
 
 const useTickingPosition = (
@@ -86,6 +87,10 @@ export function SeekBar({
 			aria-valuemin={0}
 			aria-valuemax={Math.round(duration)}
 			aria-valuenow={Math.round(progress * duration)}
+			aria-valuetext={t("player.positionOf", {
+				elapsed: formatTime(progress * duration),
+				total: formatTime(duration),
+			})}
 			{...handlers}
 		>
 			<span className={styles.rail} />

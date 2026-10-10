@@ -45,10 +45,7 @@ const closeButton = (dialog: Locator) =>
 const results = (dialog: Locator) => dialog.locator("[data-results]");
 const resultRows = (dialog: Locator) =>
 	results(dialog).locator("[data-result-row]");
-const statsLine = (dialog: Locator) =>
-	dialog
-		.locator('[data-stats], [role="status"]')
-		.filter({ hasText: /tracks?/ });
+const statsLine = (dialog: Locator) => dialog.locator("[data-stats]");
 
 const previews = (player: FakePlayer) =>
 	player.requests.filter(
@@ -253,9 +250,12 @@ test.describe("the autoplaylist dialog", () => {
 		await expect(statsLine(dialog)).toContainText("7 tracks");
 		await expect(createButton(dialog)).toBeEnabled();
 
+		await expect(statsLine(dialog)).toHaveAttribute("role", "status");
+
 		await queryField(dialog).fill(INVALID);
 
 		await expect(dialog.getByText(QUERY_FAILED)).toBeVisible();
+		await expect(dialog.getByRole("alert")).toContainText(QUERY_FAILED);
 		await expect(dialog.getByText("Query syntax error")).toBeVisible();
 		// Read once the refusal is on screen, so the rows had their chance to go.
 		await expect(resultRows(dialog)).toHaveCount(0);

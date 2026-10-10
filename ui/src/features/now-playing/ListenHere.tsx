@@ -29,7 +29,6 @@ import {
 	useSpoken,
 	useTranslate,
 } from "@/shared/i18n/useTranslate";
-import { keepPressFromBindings } from "@/shared/keyboard/keepPress";
 import {
 	PLAYING_ON_SHEET_KEYBOARD,
 	useKeyboardOwnership,
@@ -93,8 +92,6 @@ export function ListenHere({ playerName }: { playerName: string }) {
 		if (event.key === "Escape") {
 			event.stopPropagation();
 			closePopover();
-		} else if (event.target instanceof HTMLButtonElement) {
-			keepPressFromBindings(event);
 		}
 	};
 	useFocusCapture(popoverRef, isPopoverOpen, TAKES_FOCUS);
@@ -184,7 +181,6 @@ export function ListenHere({ playerName }: { playerName: string }) {
 				data-listening={isOn}
 				data-offered={isOffered}
 				onClick={() => setIsOpen((open) => !open)}
-				onKeyDown={keepPressFromBindings}
 			>
 				{startedBy ? (
 					<SessionDisc

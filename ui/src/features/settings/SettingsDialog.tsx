@@ -3,6 +3,7 @@ import { SETTINGS_KEYBOARD } from "@/shared/keyboard/keyboardOwner";
 import { ModalDialog } from "@/shared/ui/ModalDialog";
 import { Appearance } from "./Appearance";
 import { ArtistInformation } from "./ArtistInformation";
+import { Keyboard } from "./Keyboard";
 import { Language } from "./Language";
 import { Playback } from "./Playback";
 import styles from "./Settings.module.css";
@@ -25,6 +26,7 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 				<Appearance />
 				<Language />
 				<Playback />
+				<Keyboard />
 				<ThisDevice />
 				<ArtistInformation />
 				<SharedCredits />

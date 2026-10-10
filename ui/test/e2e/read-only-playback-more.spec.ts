@@ -91,21 +91,21 @@ test.describe("with playback control off at the player", () => {
 		expect(scratchOf(player)).toBeUndefined();
 	});
 
-	test("a top track on Home plays nothing, from a pointer or the keyboard", async ({
+	test("a top track on Home is disabled with the reason, and pressing it stays on Home and plays nothing", async ({
 		page,
 		player,
 		isMobile,
 	}) => {
 		await page.goto("/");
 		const first = topTracks(page).getByRole("button").first();
-		await expect(first).toBeVisible();
+
+		await expectDisabledWithReason(first);
 
 		await first.click({ force: true });
-		if (!isMobile) {
-			await page.goto("/");
-			await topTracks(page).getByRole("button").first().press("Enter");
-		}
+		if (!isMobile) await first.press("Enter");
+		await expect(topTracks(page)).toBeVisible();
 		await expectNothingRefusedSent(player);
+		expect(scratchOf(player)).toBeUndefined();
 	});
 
 	test("an artist's Play and Shuffle stay drawn, disabled with the reason, and pressing them sends nothing", async ({

@@ -126,7 +126,7 @@ export function SavePlaylistButton({
 				/>
 
 				{save.error ? (
-					<p className={styles.error}>
+					<p className={styles.error} role="alert">
 						{t("search.saveFailed", { message: save.error.message })}
 					</p>
 				) : null}

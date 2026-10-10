@@ -1,8 +1,9 @@
 import { X } from "lucide-react";
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef } from "react";
 
-import { focusableIn } from "@/shared/hooks/useTabTrap";
+import { useTabTrap } from "@/shared/hooks/useTabTrap";
 import { useKeyboardOwnership } from "@/shared/keyboard/keyboardOwner";
+import { KeyCap } from "./KeyCap";
 import styles from "./ModalDialog.module.css";
 
 export function ModalDialog({
@@ -24,53 +25,29 @@ export function ModalDialog({
 }) {
 	const dialogRef = useRef<HTMLDivElement | null>(null);
 	const titleId = useId();
-	// Read while rendering: React runs a child's `autoFocus` before any effect here, and it would be recorded instead.
-	const [opener] = useState(() => document.activeElement as HTMLElement | null);
 
 	useKeyboardOwnership(keyboardOwner);
+	useTabTrap(dialogRef);
 
 	const dismiss = useRef(onDismiss);
 	dismiss.current = onDismiss;
 
 	useEffect(() => {
-		const dialog = dialogRef.current;
-		if (!dialog?.contains(document.activeElement)) dialog?.focus();
-
 		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") {
-				// The ARIA combobox pattern: Escape closes an expanded popup before it closes anything else.
-				const isExpandedCombobox =
-					event.target instanceof Element &&
-					event.target.matches('[role="combobox"][aria-expanded="true"]');
-				if (isExpandedCombobox) return;
-				event.preventDefault();
-				event.stopPropagation();
-				dismiss.current();
-				return;
-			}
-
-			if (event.key !== "Tab" || !dialog) return;
-
-			const focusable = focusableIn(dialog);
-			const first = focusable[0];
-			const last = focusable[focusable.length - 1];
-			if (!first || !last) return;
-
-			if (event.shiftKey && document.activeElement === first) {
-				event.preventDefault();
-				last.focus();
-			} else if (!event.shiftKey && document.activeElement === last) {
-				event.preventDefault();
-				first.focus();
-			}
+			if (event.key !== "Escape") return;
+			// The ARIA combobox pattern: Escape closes an expanded popup before it closes anything else.
+			const isExpandedCombobox =
+				event.target instanceof Element &&
+				event.target.matches('[role="combobox"][aria-expanded="true"]');
+			if (isExpandedCombobox) return;
+			event.preventDefault();
+			event.stopPropagation();
+			dismiss.current();
 		};
 
 		document.addEventListener("keydown", onKeyDown, true);
-		return () => {
-			document.removeEventListener("keydown", onKeyDown, true);
-			if (opener?.isConnected) opener.focus();
-		};
-	}, [opener]);
+		return () => document.removeEventListener("keydown", onKeyDown, true);
+	}, []);
 
 	return (
 		// biome-ignore lint/a11y/noStaticElementInteractions: a dismissal scrim, not a control
@@ -104,7 +81,7 @@ export function ModalDialog({
 						onClick={onDismiss}
 						aria-label={closeLabel}
 					>
-						<kbd className={styles.cap}>Esc</kbd>
+						<KeyCap label="Esc" />
 						<X size={16} strokeWidth={2} aria-hidden="true" />
 					</button>
 

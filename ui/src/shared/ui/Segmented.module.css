@@ -7,6 +7,7 @@
 }
 
 .option {
+	composes: hitArea from "../styles/hitArea.module.css";
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;
@@ -34,5 +35,11 @@
 
 	.option {
 		padding: 6px 12px;
+	}
+}
+
+@media (pointer: coarse) {
+	.option {
+		min-width: var(--touch-target);
 	}
 }

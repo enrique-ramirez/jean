@@ -1,7 +1,6 @@
 import { Disc3, ListMusic, Search } from "lucide-react";
 import {
 	type KeyboardEvent as ReactKeyboardEvent,
-	useEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -9,6 +8,7 @@ import {
 
 import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
 import { useResettingState } from "@/shared/hooks/useResettingState";
+import { useTabTrap } from "@/shared/hooks/useTabTrap";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
 import { Input } from "@/shared/ui/Input";
@@ -33,7 +33,7 @@ export function CommandPalette({
 }) {
 	const t = useTranslate();
 	const format = useFormats();
-	const inputRef = useRef<HTMLInputElement | null>(null);
+	const paletteRef = useRef<HTMLDivElement | null>(null);
 	const [query, setQuery] = useState("");
 	const [active, setActive] = useResettingState(0, [query]);
 
@@ -55,9 +55,7 @@ export function CommandPalette({
 
 	const aimedAt = useEarnedHover(results);
 
-	useEffect(() => {
-		inputRef.current?.focus();
-	}, []);
+	useTabTrap(paletteRef, "input");
 
 	const onKeyDown = (event: ReactKeyboardEvent) => {
 		if (event.key === "ArrowDown") {
@@ -111,6 +109,7 @@ export function CommandPalette({
 			}}
 		>
 			<div
+				ref={paletteRef}
 				className={styles.palette}
 				role="dialog"
 				aria-modal="true"
@@ -119,7 +118,6 @@ export function CommandPalette({
 				<Input
 					size="md"
 					className={styles.field}
-					inputRef={inputRef}
 					value={query}
 					onChange={(event) => setQuery(event.target.value)}
 					onKeyDown={onKeyDown}

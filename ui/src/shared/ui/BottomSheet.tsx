@@ -2,9 +2,9 @@ import { X } from "lucide-react";
 import type { KeyboardEventHandler, ReactNode } from "react";
 import { useRef } from "react";
 import { useDismissable } from "@/shared/hooks/useDismissable";
+import { useTabTrap } from "@/shared/hooks/useTabTrap";
 import { useVisualViewport } from "@/shared/hooks/useVisualViewport";
 import styles from "./BottomSheet.module.css";
-import { useFocusCapture } from "./menuKeys";
 import { useSheetDrag } from "./useSheetDrag";
 
 const SHEET_DISMISS_PX = 92;
@@ -45,7 +45,7 @@ export function BottomSheet({
 	const scrimRef = useRef<HTMLDivElement | null>(null);
 	const dragY = useSheetDrag(ref, onDismiss, SHEET_DISMISS_PX);
 
-	useFocusCapture(ref, true, initialFocus);
+	useTabTrap(ref, initialFocus);
 
 	// The scrim is the sheet's containing block, so tracking the visual viewport here is what lifts
 	// the sheet clear of the keyboard.

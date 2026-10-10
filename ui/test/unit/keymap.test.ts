@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { KEYMAP, SCOPE } from "../../src/shared/keyboard/keymap.ts";
+import {
+	isSingleKeyBinding,
+	KEYMAP,
+	SCOPE,
+} from "../../src/shared/keyboard/keymap.ts";
 
 // The layout rule is a pure invariant over the array, and Playwright cannot see
 // it at all: Chromium synthesises US QWERTY codes, so `Shift+/` and `Shift+?`
@@ -85,6 +89,52 @@ test("a binding with two registrations tells the sheet what one key to draw", ()
 		assert.ok(
 			binding.shown,
 			`${binding.id} has ${binding.keys.length} registrations and no \`shown\``,
+		);
+	}
+});
+
+test("the single-key switch covers the bare characters and nothing with a modifier or a named key", () => {
+	const NAMED =
+		/^(Space|Enter|Escape|Tab|Backspace|Delete|Home|End|Page(Up|Down)|Arrow\w+|F\d+|ContextMenu)$/;
+	const BARE = /^(Shift\+)?[^+]$/;
+
+	for (const binding of KEYMAP) {
+		const spellings = binding.keys.map(String);
+		const hasChord = spellings.some((key) =>
+			/^(Mod|Ctrl|Control|Alt|Meta)\+/.test(key),
+		);
+		const hasNamed = spellings.some((key) =>
+			NAMED.test(key.replace(/^Shift\+/, "")),
+		);
+		const allBare = spellings.every((key) => BARE.test(key));
+
+		if (hasChord || hasNamed)
+			assert.equal(
+				isSingleKeyBinding(binding),
+				false,
+				`${binding.id} (${spellings.join(", ")}) is classified single`,
+			);
+		if (allBare)
+			assert.equal(
+				isSingleKeyBinding(binding),
+				true,
+				`${binding.id} (${spellings.join(", ")}) is not classified single`,
+			);
+	}
+
+	for (const id of [
+		"openPalette",
+		"rate3",
+		"volumeUp",
+		"volumeDown",
+		"showShortcuts",
+	]) {
+		const binding = KEYMAP.find((entry) => entry.id === id);
+		assert.ok(binding, `${id} is not in the keymap`);
+		assert.equal(
+			isSingleKeyBinding(binding),
+			true,
+			`${id} is not classified single`,
 		);
 	}
 });

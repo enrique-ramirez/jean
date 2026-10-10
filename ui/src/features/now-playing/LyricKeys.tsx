@@ -1,6 +1,6 @@
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { type BindingId, KEYMAP } from "@/shared/keyboard/keymap";
-import { KeyCap } from "./KeyCap";
+import { KeyCap } from "@/shared/ui/KeyCap";
 import styles from "./LyricKeys.module.css";
 
 type LegendPhrase =

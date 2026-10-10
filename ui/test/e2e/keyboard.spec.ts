@@ -28,6 +28,7 @@ import {
 	scrollUntilMounted,
 	searchField,
 	searchFor,
+	settingsDialog,
 	sidebar,
 	sidebarToggle,
 	test,
@@ -91,12 +92,24 @@ test.describe("playback", () => {
 	test.beforeEach(({ page }) => openLibrary(page));
 
 	test("Space plays and pauses", async ({ page, player }) => {
-		// Focus is on the body: Space on a focused button activates the button
-		// instead.
 		await page.keyboard.press("Space");
 		await expect
 			.poll(() => commandsTo(player, "/api/playback/play-pause"))
 			.toHaveLength(1);
+	});
+
+	test("Space on a focused button presses it and does not play", async ({
+		page,
+		player,
+	}) => {
+		await page.getByRole("button", { name: "Settings", exact: true }).focus();
+		await page.keyboard.press("Space");
+		await expect(settingsDialog(page)).toBeVisible();
+		await expectSettlesAt(
+			player,
+			() => commandsTo(player, "/api/playback/play-pause").length,
+			0,
+		);
 	});
 
 	test("Mod with the horizontal arrows changes track", async ({
@@ -581,6 +594,27 @@ test.describe("navigation and appearance", () => {
 		).toHaveCount(0);
 	});
 
+	// The sheet has no control of its own, so Tab has nowhere to go but out of it: it stays on
+	// the sheet instead, and Escape is the route out.
+	test("the sheet takes focus, keeps Tab, and gives focus back to the button that opened it", async ({
+		page,
+	}) => {
+		const opener = page.getByRole("button", { name: "Keyboard shortcuts" });
+		const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+
+		await opener.click();
+		await expect(sheet).toBeFocused();
+
+		await page.keyboard.press("Tab");
+		await expect(sheet).toBeFocused();
+		await page.keyboard.press("Shift+Tab");
+		await expect(sheet).toBeFocused();
+
+		await page.keyboard.press("Escape");
+		await expect(sheet).toBeHidden();
+		await expect(opener).toBeFocused();
+	});
+
 	test("the sheet draws one keycap per key, not one per chord", async ({
 		page,
 	}) => {
@@ -768,29 +802,26 @@ test.describe("navigation and appearance", () => {
 		await expect.poll(surface).toBe(before);
 		await expect.poll(offered).toBe(wasOffered);
 	});
+
+	// The playlist scope binds Enter to playing the cursor row, on `document`, where a focused
+	// button's Enter arrives too. The button's click is the browser's default for that key, so the
+	// binding must neither prevent it nor play on top of it.
+	test("Enter on a focused top-bar button is its click, with a playlist up", async ({
+		page,
+		player,
+	}) => {
+		await page.getByRole("button", { name: "Keyboard shortcuts" }).focus();
+		await page.keyboard.press("Tab");
+		await expect(
+			page.getByRole("button", { name: "Settings", exact: true }),
+		).toBeFocused();
+
+		await page.keyboard.press("Enter");
+		await expect(settingsDialog(page)).toBeVisible();
+		await expectSettlesAt(player, () => playRequests(player), []);
+	});
 });
 
-test.describe("moving the cursor in a playlist", () => {
-	test.beforeEach(({ page }) => openLibrary(page));
-
-	test("the arrows move it, and nothing else has to", async ({ page }) => {
-		await cursorAt(page, 0);
-
-		await page.keyboard.press("ArrowDown");
-		await cursorAt(page, 1);
-		await page.keyboard.press("ArrowDown");
-		await cursorAt(page, 2);
-
-		await page.keyboard.press("ArrowUp");
-		await cursorAt(page, 1);
-
-		// j is not bound; the arrows are the only spelling.
-		await page.keyboard.press("j");
-		await cursorAt(page, 1);
-	});
-
-	test("Home and End reach both ends", async ({ page }) => {
-		await page.keyboard.press("End");
 // `detectPlatform` reads `navigator.platform` and the user agent, so both say Windows here.
 test.describe("the sheet on a machine with a Menu key", () => {
 	test.beforeEach(async ({ page }) => {
@@ -850,6 +881,27 @@ test.describe("the sheet on a Mac", () => {
 	});
 });
 
+test.describe("moving the cursor in a playlist", () => {
+	test.beforeEach(({ page }) => openLibrary(page));
+
+	test("the arrows move it, and nothing else has to", async ({ page }) => {
+		await cursorAt(page, 0);
+
+		await page.keyboard.press("ArrowDown");
+		await cursorAt(page, 1);
+		await page.keyboard.press("ArrowDown");
+		await cursorAt(page, 2);
+
+		await page.keyboard.press("ArrowUp");
+		await cursorAt(page, 1);
+
+		// j is not bound; the arrows are the only spelling.
+		await page.keyboard.press("j");
+		await cursorAt(page, 1);
+	});
+
+	test("Home and End reach both ends", async ({ page }) => {
+		await page.keyboard.press("End");
 		await cursorAt(page, 53);
 
 		await page.keyboard.press("Home");
@@ -872,6 +924,74 @@ test.describe("the sheet on a Mac", () => {
 		await cursorAt(page, 0);
 	});
 });
+
+// Both layouts: the album layout virtualises groups rather than rows, so whether the cursor row is
+// mounted is a different question there.
+for (const layout of ["compact", "album"] as const) {
+	test.describe(`the grid, as a screen reader hears it, in the ${layout} layout`, () => {
+		test.use({ settings: { "jean.layout": layout } });
+		test.beforeEach(({ page }) => openLibrary(page));
+
+		const grid = (page: Page) => page.getByRole("grid");
+
+		// DOM focus stays on the grid and the cursor stays an index in state, so the attribute is the
+		// one thing a reader has to go on for which track Enter will play.
+		test("Tab reaches the grid from the toolbar, and the arrows move what it names", async ({
+			page,
+		}) => {
+			await page.getByRole("button", { name: "View options" }).focus();
+			await page.keyboard.press("Tab");
+			await expect(grid(page)).toBeFocused();
+
+			await page.keyboard.press("ArrowDown");
+			await cursorAt(page, 1);
+			await expect(grid(page)).toBeFocused();
+			await expect(grid(page)).toHaveAttribute(
+				"aria-activedescendant",
+				(await cursorRow(page).getAttribute("id")) ?? "",
+			);
+			// Rows are virtualised, so a reader counting what is mounted would place this one wrong.
+			await expect(cursorRow(page)).toHaveAttribute("aria-rowindex", "2");
+			await expect(cursorRow(page).getByRole("gridcell")).toContainText([
+				"2",
+				"Fizz",
+			]);
+		});
+
+		test("a click on a row puts focus on the grid, not the row", async ({
+			page,
+		}) => {
+			await trackRow(page, 2).click();
+			await expect(grid(page)).toBeFocused();
+			await cursorAt(page, 2);
+			await expect(grid(page)).toHaveAttribute(
+				"aria-activedescendant",
+				(await trackRow(page, 2).getAttribute("id")) ?? "",
+			);
+		});
+
+		// A reference to an element that is not in the document is worse than none.
+		test("the name goes while the cursor row is scrolled out of the list, and comes back with it", async ({
+			page,
+		}) => {
+			test.skip(
+				layout === "album",
+				"five albums all stay mounted, so no row of this fixture ever leaves the document",
+			);
+			await trackRow(page, 0).click();
+			await scrollUntilMounted(page, trackRow(page, 53));
+			await expect(trackRow(page, 0)).toHaveCount(0);
+			await expect(grid(page)).not.toHaveAttribute("aria-activedescendant");
+
+			await page.keyboard.press("ArrowDown");
+			await cursorAt(page, 1);
+			await expect(grid(page)).toHaveAttribute(
+				"aria-activedescendant",
+				(await trackRow(page, 1).getAttribute("id")) ?? "",
+			);
+		});
+	});
+}
 
 test.describe("selecting in a playlist", () => {
 	test.beforeEach(({ page }) => openLibrary(page));
@@ -953,74 +1073,6 @@ test.describe("selecting in a playlist", () => {
 		await field.evaluate((input: HTMLInputElement) =>
 			input.setSelectionRange(4, 4),
 		);
-// Both layouts: the album layout virtualises groups rather than rows, so whether the cursor row is
-// mounted is a different question there.
-for (const layout of ["compact", "album"] as const) {
-	test.describe(`the grid, as a screen reader hears it, in the ${layout} layout`, () => {
-		test.use({ settings: { "jean.layout": layout } });
-		test.beforeEach(({ page }) => openLibrary(page));
-
-		const grid = (page: Page) => page.getByRole("grid");
-
-		// DOM focus stays on the grid and the cursor stays an index in state, so the attribute is the
-		// one thing a reader has to go on for which track Enter will play.
-		test("Tab reaches the grid from the toolbar, and the arrows move what it names", async ({
-			page,
-		}) => {
-			await page.getByRole("button", { name: "View options" }).focus();
-			await page.keyboard.press("Tab");
-			await expect(grid(page)).toBeFocused();
-
-			await page.keyboard.press("ArrowDown");
-			await cursorAt(page, 1);
-			await expect(grid(page)).toBeFocused();
-			await expect(grid(page)).toHaveAttribute(
-				"aria-activedescendant",
-				(await cursorRow(page).getAttribute("id")) ?? "",
-			);
-			// Rows are virtualised, so a reader counting what is mounted would place this one wrong.
-			await expect(cursorRow(page)).toHaveAttribute("aria-rowindex", "2");
-			await expect(cursorRow(page).getByRole("gridcell")).toContainText([
-				"2",
-				"Fizz",
-			]);
-		});
-
-		test("a click on a row puts focus on the grid, not the row", async ({
-			page,
-		}) => {
-			await trackRow(page, 2).click();
-			await expect(grid(page)).toBeFocused();
-			await cursorAt(page, 2);
-			await expect(grid(page)).toHaveAttribute(
-				"aria-activedescendant",
-				(await trackRow(page, 2).getAttribute("id")) ?? "",
-			);
-		});
-
-		// A reference to an element that is not in the document is worse than none.
-		test("the name goes while the cursor row is scrolled out of the list, and comes back with it", async ({
-			page,
-		}) => {
-			test.skip(
-				layout === "album",
-				"five albums all stay mounted, so no row of this fixture ever leaves the document",
-			);
-			await trackRow(page, 0).click();
-			await scrollUntilMounted(page, trackRow(page, 53));
-			await expect(trackRow(page, 0)).toHaveCount(0);
-			await expect(grid(page)).not.toHaveAttribute("aria-activedescendant");
-
-			await page.keyboard.press("ArrowDown");
-			await cursorAt(page, 1);
-			await expect(grid(page)).toHaveAttribute(
-				"aria-activedescendant",
-				(await trackRow(page, 1).getAttribute("id")) ?? "",
-			);
-		});
-	});
-}
-
 
 		const caret = () =>
 			field.evaluate((input: HTMLInputElement) => input.selectionStart);

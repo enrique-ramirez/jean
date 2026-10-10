@@ -2,7 +2,7 @@
 
 **Bindings live in `keymap.ts` and nowhere else.** Register a binding in the component that draws its button. The transport's keys are global and no scope takes one.
 
-**The manager listens on `document` at bubble and fires every enabled registration matching a key.** A focus region that answers its own keys handles them on the element and stops propagation. Enter is stopped without being prevented, since the browser's default on a focused button is the click. Space is play and pause everywhere; only a control it presses, or a menu, stops it.
+**The manager listens on `document` at bubble and fires every enabled registration matching a key.** A focus region that answers its own keys handles them on the element and stops propagation. An Enter or Space binding is `leavesControls`: never prevented, standing down on a focused control, whose default is the click. Space is play and pause everywhere but a menu.
 
 **A virtualised list's active row is an index in state.** DOM focus goes when a row scrolls out.
 

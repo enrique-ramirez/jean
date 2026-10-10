@@ -27,3 +27,5 @@ export function useMediaQuery(query: string): boolean {
 }
 
 export const useIsCompactViewport = () => useMediaQuery("(max-width: 860px)");
+export const usePrefersReducedMotion = () =>
+	useMediaQuery("(prefers-reduced-motion: reduce)");

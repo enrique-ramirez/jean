@@ -8,7 +8,7 @@ import {
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
 import { formatTime } from "@/shared/lib/time";
-import { KeyCap } from "./KeyCap";
+import { KeyCap } from "@/shared/ui/KeyCap";
 import styles from "./LyricTransport.module.css";
 import { clockOfTenths } from "./lyricDraft";
 import { PlayToggle } from "./PlayToggle";

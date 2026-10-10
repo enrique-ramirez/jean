@@ -204,3 +204,13 @@
 		margin-inline: -4px;
 	}
 }
+
+@media (pointer: coarse) {
+	.transport {
+		gap: 8px;
+	}
+
+	.statusbar > [role="slider"]::before {
+		content: none;
+	}
+}

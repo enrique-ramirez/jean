@@ -170,6 +170,16 @@ const openFinder = async (page: Page) => {
 				await expect(matchedRows(page).first()).toBeVisible();
 			});
 
+			test("says how many it found, where a screen reader hears it", async ({
+				page,
+			}) => {
+				await finder(page).fill(ACCENTED.query);
+				await expect(results(page)).toHaveCount(ACCENTED.matches);
+
+				const said = page.getByRole("status").filter({ hasText: /match/ });
+				await expect(said).toContainText(`${ACCENTED.matches} matches`);
+			});
+
 			test("matches through the accents, not around them", async ({ page }) => {
 				// Both sides fold, so both spellings work.
 				await finder(page).fill(ACCENTED.query);

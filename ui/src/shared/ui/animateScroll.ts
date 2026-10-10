@@ -11,6 +11,9 @@ const easeInOutCubic = (t: number) =>
 // not a decision; a decaying tail never reaches this and deliberate scrolling does at once.
 const CANCEL_DELTA_PX = 40;
 
+const prefersReducedMotion = () =>
+	window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 export function animateScrollTo(
 	element: HTMLElement,
 	getTarget: () => number | null | undefined,
@@ -19,6 +22,10 @@ export function animateScrollTo(
 	const from = element.scrollTop;
 	const initialTarget = getTarget();
 	if (initialTarget == null) return () => {};
+	if (prefersReducedMotion()) {
+		element.scrollTop = initialTarget;
+		return () => {};
+	}
 
 	const duration = clamp(Math.abs(initialTarget - from) / 8, minMs, maxMs);
 	const started = performance.now();

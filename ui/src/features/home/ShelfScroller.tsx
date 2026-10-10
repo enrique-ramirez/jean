@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CoveredAlbum } from "@/domain/track/albums";
+import { usePrefersReducedMotion } from "@/shared/hooks/useMediaQuery";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { AlbumCard } from "./AlbumCard";
 import styles from "./ShelfRow.module.css";
@@ -15,6 +16,7 @@ export function ShelfScroller({
 }) {
 	const t = useTranslate();
 	const format = useFormats();
+	const reducesMotion = usePrefersReducedMotion();
 	const scrollerRef = useRef<HTMLDivElement | null>(null);
 	const [more, setMore] = useState({ start: false, end: false });
 
@@ -45,7 +47,7 @@ export function ShelfScroller({
 		if (!element) return;
 		element.scrollBy({
 			left: direction * (element.clientWidth * 0.85),
-			behavior: "smooth",
+			behavior: reducesMotion ? "instant" : "smooth",
 		});
 	};
 

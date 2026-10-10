@@ -42,6 +42,25 @@ test.describe("the command palette", () => {
 		await expect(palette(page)).toBeVisible();
 	});
 
+	test("Tab wraps between the field and the last result, and Escape gives focus back to where it was", async ({
+		page,
+	}) => {
+		await page.keyboard.press("Escape");
+		await expect(palette(page)).toHaveCount(0);
+		await sidebarLink(page, "Home").focus();
+		await page.keyboard.press("g");
+		await expect(paletteField(page)).toBeFocused();
+
+		await page.keyboard.press("Shift+Tab");
+		await expect(results(page).last()).toBeFocused();
+		await page.keyboard.press("Tab");
+		await expect(paletteField(page)).toBeFocused();
+
+		await page.keyboard.press("Escape");
+		await expect(palette(page)).toHaveCount(0);
+		await expect(sidebarLink(page, "Home")).toBeFocused();
+	});
+
 	test("it opens with the field ready and every playlist listed", async ({
 		page,
 		player,

@@ -506,6 +506,7 @@ function Shell() {
 				/>
 
 				<MainView
+					isBehindDrawer={sidebar.isDrawerOpen}
 					route={view}
 					page={page}
 					library={library}

@@ -108,6 +108,9 @@ test.describe("creating one from a genre", () => {
 		await createButton(page).click();
 
 		await expect(page.getByText(/The player matches 13 tracks/)).toBeVisible();
+		await expect(
+			page.getByRole("status").filter({ hasText: /The player matches/ }),
+		).toContainText("The player matches 13 tracks.");
 		expect(posts(player, "/autoplaylists/preview").length).toBe(1);
 		// Nothing is created by looking -- the only post so far is the preview itself.
 		expect(posts(player, "/autoplaylists").length).toBe(1);
@@ -151,6 +154,25 @@ test.describe("creating one from a genre", () => {
 			"Post Rock",
 		);
 		await expect.poll(() => player.playlists.at(-1)?.title).toBe("Post Rock");
+	});
+
+	test.describe("when the player refuses to make it", () => {
+		test.use({ fooJean: { maxAutoPlaylists: 100, failCreate: 409 } });
+
+		test("the refusal to create the autoplaylist is said where a screen reader hears it", async ({
+			page,
+		}) => {
+			await page.goto("/#/genre/Post%20Rock");
+			await createButton(page).click();
+			await expect(
+				page.getByText(/The player matches 13 tracks/),
+			).toBeVisible();
+			await page.getByRole("button", { name: "Create", exact: true }).click();
+
+			await expect(page.getByRole("alert")).toContainText(
+				"Could not create it",
+			);
+		});
 	});
 
 	test("the query matches the tag whole, quoted", async ({ page, player }) => {

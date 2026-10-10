@@ -36,8 +36,8 @@ import { useKeyboardOwnership } from "@/shared/keyboard/keyboardOwner";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Button } from "@/shared/ui/Button";
+import { KeyCap } from "@/shared/ui/KeyCap";
 import { Segmented } from "@/shared/ui/Segmented";
-import { KeyCap } from "./KeyCap";
 import styles from "./LyricEditor.module.css";
 import { LyricKeys } from "./LyricKeys";
 import { LyricRow, Playhead } from "./LyricRow";
@@ -190,14 +190,6 @@ export function LyricEditor({
 	useTabTrap(layer);
 	const rows = useRef<(HTMLDivElement | null)[]>([]);
 	const hasPlaced = useRef(false);
-
-	const [opener] = useState(() => document.activeElement as HTMLElement | null);
-	useEffect(() => {
-		layer.current?.focus();
-		return () => {
-			if (opener?.isConnected) opener.focus();
-		};
-	}, [opener]);
 
 	const playheadSlot = useAudibleValue(
 		clock,

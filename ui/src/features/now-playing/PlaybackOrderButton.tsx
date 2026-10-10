@@ -13,7 +13,6 @@ import type { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import type { PlaybackMode } from "@/shared/api/types";
 import type { Point } from "@/shared/hooks/useLongPress";
 import { useTranslate } from "@/shared/i18n/useTranslate";
-import { keepPressFromBindings } from "@/shared/keyboard/keepPress";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
@@ -93,7 +92,6 @@ export function PlaybackOrderButton({
 				data-tone={toneOf(order.mode)}
 				title={name}
 				onClick={disabled ? undefined : press}
-				onKeyDown={keepPressFromBindings}
 			>
 				<Icon size={size} strokeWidth={2} />
 			</button>

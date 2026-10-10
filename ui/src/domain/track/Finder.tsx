@@ -111,9 +111,16 @@ export function Finder({
 				leading={<Search size={15} strokeWidth={2} aria-hidden="true" />}
 				trailing={
 					<>
-						{matches ? (
-							<span className={styles.count}>{matches.size}</span>
-						) : null}
+						<span role="status" className={matches ? styles.count : undefined}>
+							{matches ? (
+								<>
+									<span aria-hidden="true">{matches.size}</span>
+									<span className="visually-hidden">
+										{t("finder.matches", { count: matches.size })}
+									</span>
+								</>
+							) : null}
+						</span>
 						<button
 							type="button"
 							className={styles.close}

@@ -8,6 +8,8 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { hintFor } from "@/shared/keyboard/keymap";
+import { useSingleKeyShortcuts } from "@/shared/keyboard/useKeymap";
 import { Button } from "@/shared/ui/Button";
 import { Finder } from "./Finder";
 import type { TrackBrowserHandle } from "./listTypes";
@@ -25,6 +27,8 @@ export function useFinder({
 	label: string;
 }) {
 	const [isFinding, setIsFinding] = useState(false);
+	const [singleKeys] = useSingleKeyShortcuts();
+	const finderHint = hintFor("openFinder", singleKeys);
 	const [query, setQuery] = useState("");
 
 	// The field updates instantly and the scan runs off the deferred copy, or a keystroke carries a
@@ -80,7 +84,9 @@ export function useFinder({
 	) : (
 		<Button icon={Search} onClick={open}>
 			{label}
-			<kbd className={styles.hint}>/</kbd>
+			{finderHint === null ? null : (
+				<kbd className={styles.hint}>{finderHint}</kbd>
+			)}
 		</Button>
 	);
 

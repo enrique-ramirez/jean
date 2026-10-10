@@ -539,12 +539,14 @@ button.pick {
 }
 
 .ghost {
+	transform-origin: top;
 	animation: close-over 0.16s var(--ease) 0.3s forwards;
 }
 
 @keyframes close-over {
 	to {
-		height: 0;
+		transform: scaleY(0);
+		opacity: 0;
 	}
 }
 

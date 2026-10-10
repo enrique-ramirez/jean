@@ -86,3 +86,9 @@
 		padding: 8px 10px;
 	}
 }
+
+@media (pointer: coarse) {
+	.tab {
+		min-height: var(--touch-target);
+	}
+}

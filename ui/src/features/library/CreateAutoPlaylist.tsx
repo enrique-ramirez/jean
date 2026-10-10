@@ -129,7 +129,7 @@ export function CreateAutoPlaylist({
 					autoFocus
 				/>
 
-				<p className={styles.preview}>
+				<p className={styles.preview} role="status">
 					{previewSays(t, {
 						preview,
 						failed: isError && !isFetching,
@@ -140,7 +140,7 @@ export function CreateAutoPlaylist({
 				<p className={styles.note}>{t("genre.keptFilled", { genre })}</p>
 
 				{create.error ? (
-					<p className={styles.error}>
+					<p className={styles.error} role="alert">
 						{t("genre.createFailed", { message: create.error.message })}
 					</p>
 				) : null}

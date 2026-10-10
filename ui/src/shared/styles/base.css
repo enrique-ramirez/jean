@@ -69,28 +69,42 @@ input {
 	font-size: 0.8125rem;
 }
 
+/* `:where()` carries no specificity, so a host that is already absolutely positioned keeps it. */
+:where(.loading) {
+	position: relative;
+}
+
 .loading {
-	background:
-		linear-gradient(
-			100deg,
-			transparent 20%,
-			var(--loading-sheen) 50%,
-			transparent 80%
-		)
-		var(--loading) 0 0 / 250% 100% no-repeat;
-	animation: loading-sheen 1400ms ease-in-out infinite;
+	isolation: isolate;
+	overflow: hidden;
 	border-radius: var(--radius-sm);
+	background: var(--loading);
 	color: transparent;
+}
+
+.loading::before {
+	content: "";
+	position: absolute;
+	inset: 0 auto 0 0;
+	z-index: -1;
+	width: 250%;
+	background: linear-gradient(
+		100deg,
+		transparent 20%,
+		var(--loading-sheen) 50%,
+		transparent 80%
+	);
+	animation: loading-sheen 1400ms ease-in-out infinite;
 }
 
 @keyframes loading-sheen {
 	to {
-		background-position: 100% 0;
+		transform: translateX(-60%);
 	}
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.loading {
+	.loading::before {
 		animation: none;
 	}
 }

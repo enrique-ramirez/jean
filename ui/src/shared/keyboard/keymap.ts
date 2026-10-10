@@ -1,4 +1,5 @@
 import {
+	detectPlatform,
 	formatForDisplay,
 	type Hotkey,
 	matchesKeyboardEvent,
@@ -12,6 +13,20 @@ export type ShortcutName = Extract<Phrase, `shortcut.${string}`>;
 export type ShortcutGroup = Extract<Phrase, `shortcutGroup.${string}`>;
 
 const shifted = (key: string) => `Shift+${key}` as RegisterableHotkey;
+
+const MENU_KEYS = [
+	"Shift+F10",
+	// Chromium drops the native `contextmenu` the Menu key would fire once its keydown is prevented,
+	// which every matched binding does, so one press is one menu.
+	"ContextMenu",
+	"Mod+Shift+\\" as RegisterableHotkey,
+] as const;
+// A Mac keyboard has no Menu key and Chromium on macOS fires nothing for Shift+F10, so a Mac is shown
+// the chord alone.
+const MENU_KEYS_SHOWN =
+	detectPlatform() === "mac"
+		? [formatForDisplay("Mod+Shift+\\")]
+		: [formatForDisplay("Shift+F10"), "Menu", formatForDisplay("Mod+Shift+\\")];
 
 // TanStack Hotkeys fires a Ctrl or Meta binding inside a text field unless told otherwise, and there
 // a chord that edits text belongs to the field.
@@ -39,6 +54,7 @@ export interface Binding {
 	keys: readonly RegisterableHotkey[];
 	shown?: readonly string[];
 	hidden?: boolean;
+	leavesControls?: boolean;
 	options?: { ignoreInputs?: boolean };
 }
 
@@ -49,6 +65,7 @@ const DECLARED = [
 		group: "shortcutGroup.playback",
 		name: "shortcut.playPause",
 		keys: ["Space"],
+		leavesControls: true,
 	},
 	{
 		id: "nextTrack",
@@ -424,6 +441,14 @@ const DECLARED = [
 		name: "shortcut.movePlaylistDown",
 		keys: ["Alt+ArrowDown"],
 	},
+	{
+		id: "openPlaylistMenu",
+		scope: SCOPE.sidebar,
+		group: "shortcutGroup.sidebar",
+		name: "shortcut.openPlaylistMenu",
+		keys: MENU_KEYS,
+		shown: MENU_KEYS_SHOWN,
+	},
 
 	{
 		id: "previousTab",
@@ -510,6 +535,7 @@ const DECLARED = [
 		group: "shortcutGroup.playlist",
 		name: "shortcut.playCursor",
 		keys: ["Enter"],
+		leavesControls: true,
 	},
 	{
 		id: "extendDown",
@@ -566,6 +592,14 @@ const DECLARED = [
 		shown: ["Del"],
 	},
 	{
+		id: "openRowMenu",
+		scope: SCOPE.playlist,
+		group: "shortcutGroup.playlist",
+		name: "shortcut.openRowMenu",
+		keys: MENU_KEYS,
+		shown: MENU_KEYS_SHOWN,
+	},
+	{
 		id: "toggleLayout",
 		scope: SCOPE.playlist,
 		group: "shortcutGroup.playlist",
@@ -613,6 +647,7 @@ const DECLARED = [
 		group: "shortcutGroup.finder",
 		name: "shortcut.finderConfirm",
 		keys: ["Enter"],
+		leavesControls: true,
 		options: { ignoreInputs: false },
 	},
 	{
@@ -657,6 +692,21 @@ export function isTypedAsAnother(
 	);
 }
 
+const isBareCharacter = (hotkey: RegisterableHotkey) => {
+	const { key, ctrl, alt, meta, shift } =
+		typeof hotkey === "string" ? parseHotkey(hotkey) : hotkey;
+	const isChord = ctrl || alt || meta;
+	const isOneCharacter = key !== undefined && [...key].length === 1;
+	const isShiftedPunctuation = shift && isOneCharacter && PUNCTUATION.test(key);
+	return isOneCharacter && !isChord && (!shift || isShiftedPunctuation);
+};
+
+export const isSingleKeyBinding = (binding: Binding) =>
+	binding.keys.every(isBareCharacter);
+
+export const isAvailable = (binding: Binding, singleKeys: boolean) =>
+	singleKeys || !isSingleKeyBinding(binding);
+
 export const matchesBinding = (event: KeyboardEvent, id: BindingId) =>
 	KEYMAP.find((binding) => binding.id === id)?.keys.some(
 		(key) =>
@@ -673,10 +723,8 @@ export const KEYMAP_GROUPS = [
 export const bindingsIn = (group: ShortcutGroup) =>
 	documented.filter((binding) => binding.group === group);
 
-// What to print on a keycap drawn beside the thing a binding opens, so a hint cannot come to
-// advertise a key the keymap no longer answers to.
-export function hintFor(id: BindingId): string | null {
+export function hintFor(id: BindingId, singleKeys: boolean): string | null {
 	const binding = KEYMAP.find((entry) => entry.id === id);
-	if (!binding) return null;
+	if (!binding || !isAvailable(binding, singleKeys)) return null;
 	return binding.shown?.[0] ?? formatForDisplay(binding.keys[0]);
 }

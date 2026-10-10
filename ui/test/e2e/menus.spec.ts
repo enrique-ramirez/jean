@@ -4,6 +4,7 @@ import {
 	dragFromTheScrim,
 	expect,
 	expectSettlesAt,
+	focusedEndOf,
 	fromTheGrabber,
 	openLibrary,
 	openSidebar,
@@ -11,8 +12,8 @@ import {
 	pressAndHold,
 	restingBox,
 	scrollTop,
-	sidebar,
 	scrollUntilMounted,
+	sidebar,
 	statusBar,
 	test,
 	touchDrag,
@@ -304,13 +305,14 @@ test.describe("while a menu is open", () => {
 		});
 	}
 
-	// The menu stops the keys typed inside it, and Shift+Tab is one press out of it. On a phone
-	// the keys are an attached keyboard's.
+	// The menu stops the keys typed inside it, and Shift+Tab is one press out of it.
 	test("once focus has left it, no key reaches the player and Escape still closes it", async ({
 		page,
 		isMobile,
 		player,
 	}) => {
+		test.skip(isMobile, "a sheet is modal, and keeps Tab inside it");
+
 		await openLibrary(page);
 		await openTrackMenu(page, isMobile);
 		await page.keyboard.press("Shift+Tab");
@@ -327,6 +329,27 @@ test.describe("while a menu is open", () => {
 
 		await page.keyboard.press("Escape");
 		await expect(page.getByRole("menu")).toHaveCount(0);
+	});
+});
+
+// On a phone the keys are an attached keyboard's.
+test.describe("the action sheet, from a keyboard", () => {
+	test.skip(({ isMobile }) => !isMobile, "a sheet is the compact shape");
+
+	test("Tab from the last control wraps to the first, and Shift+Tab from the first to the last", async ({
+		page,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		await openTrackMenu(page, isMobile);
+		const sheet = page.getByRole("dialog");
+
+		await page.keyboard.press("Tab");
+		await expect.poll(() => focusedEndOf(sheet)).toBe("first");
+		await page.keyboard.press("Shift+Tab");
+		await expect.poll(() => focusedEndOf(sheet)).toBe("last");
+		await page.keyboard.press("Tab");
+		await expect.poll(() => focusedEndOf(sheet)).toBe("first");
 	});
 });
 

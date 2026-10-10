@@ -156,7 +156,14 @@
 	}
 
 	.item {
+		min-height: var(--touch-target);
 		padding-right: 34px;
+	}
+
+	.add {
+		width: var(--touch-target);
+		height: var(--touch-target);
+		margin-right: -6px;
 	}
 }
 

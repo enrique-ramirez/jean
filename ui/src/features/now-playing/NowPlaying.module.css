@@ -84,6 +84,7 @@
 }
 
 .more {
+	composes: hitArea from "../../shared/styles/hitArea.module.css";
 	display: grid;
 	place-items: center;
 	width: 38px;
@@ -105,6 +106,7 @@
 }
 
 .dismiss {
+	composes: hitArea from "../../shared/styles/hitArea.module.css";
 	display: grid;
 	place-items: center;
 	width: 34px;
@@ -302,6 +304,18 @@
 	justify-self: end;
 }
 
+@media (pointer: coarse) {
+	.outputs {
+		gap: 15px;
+	}
+}
+
+@media (max-width: 360px) {
+	.transport {
+		gap: 0;
+	}
+}
+
 .order,
 .skip {
 	display: grid;
@@ -396,6 +410,7 @@
 }
 
 .lyricsButton {
+	composes: hitArea from "../../shared/styles/hitArea.module.css";
 	flex: none;
 	display: flex;
 	align-items: center;

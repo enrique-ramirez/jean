@@ -5,6 +5,7 @@
 }
 
 .button {
+	composes: hitArea from "../../shared/styles/hitArea.module.css";
 	display: grid;
 	place-items: center;
 	padding: 6px;
@@ -59,8 +60,7 @@
 	position: absolute;
 	border-radius: var(--radius-pill);
 	transition:
-		height 0.12s var(--ease),
-		width 0.12s var(--ease),
+		scale 0.12s var(--ease),
 		background 0.12s var(--ease);
 }
 
@@ -119,7 +119,7 @@
 [data-orientation="horizontal"]:hover .fill,
 [data-orientation="horizontal"][data-dragging="true"] .rail,
 [data-orientation="horizontal"][data-dragging="true"] .fill {
-	height: 5px;
+	scale: 1 1.6667;
 }
 
 [data-orientation="vertical"] .thumb {

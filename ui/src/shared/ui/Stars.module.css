@@ -26,6 +26,7 @@
 .fill {
 	color: var(--star);
 	fill: currentColor;
+	stroke: var(--star-outline);
 }
 
 @media (max-width: 720px) {

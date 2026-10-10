@@ -131,3 +131,33 @@ for (const theme of ["dark", "light"] as const) {
 		});
 	});
 }
+
+const MIN_OUTLINE_DARKENING = 0.1;
+
+test.describe("a filled star on the light theme", () => {
+	test.use({
+		...RATED,
+		settings: { ...SHOWING_RATINGS, "jean.theme": "light" },
+	});
+
+	// Gold stays under 3:1 on the light ground, so the edge is what the fill reads by.
+	test("draws an outline darker than its fill", async ({ page }) => {
+		await openLibrary(page);
+		await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+		await expect
+			.poll(async () => (await filledStarColours(page, 0))[0])
+			.toMatch(OKLCH);
+
+		const [fill, stroke] = await stars(page, 0).evaluate((root) => {
+			const glyph = Array.from(root.querySelectorAll("svg"))
+				.map((svg) => getComputedStyle(svg))
+				.find((style) => style.fill !== "none");
+			return [glyph?.fill ?? "", glyph?.stroke ?? ""];
+		});
+		expect(stroke, "the outline's colour in oklch()").toMatch(OKLCH);
+		const lightnessOf = (colour: string) => Number(OKLCH.exec(colour)?.[1]);
+		expect(lightnessOf(stroke)).toBeLessThan(
+			lightnessOf(fill) - MIN_OUTLINE_DARKENING,
+		);
+	});
+});

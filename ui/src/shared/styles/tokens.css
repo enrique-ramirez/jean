@@ -8,6 +8,7 @@
 	--tint-h: 70.17;
 
 	--star: oklch(0.8238 0.1408 70.17);
+	--star-outline: var(--star);
 
 	--bg: oklch(0.1722 0.007 258);
 	--surface: oklch(0.2125 0.0109 260);
@@ -17,7 +18,7 @@
 	--border-strong: oklch(0.36 0.018 260);
 	--text: oklch(0.9417 0.0052 248);
 	--muted: oklch(0.676 0.0193 253);
-	--faint: oklch(0.52 0.015 255);
+	--faint: oklch(0.625 0.015 255);
 
 	--album-ground: oklch(0.1722 0.007 258);
 
@@ -44,13 +45,13 @@
 
 	--bg: oklch(0.985 0.003 262);
 	--surface: oklch(0.967 0.005 262);
-	--surface-raised: oklch(1 0 0);
+	--surface-raised: oklch(0.994 0.002 262);
 	--surface-sunken: oklch(0.94 0.006 262);
 	--border: oklch(0.9 0.007 262);
 	--border-strong: oklch(0.83 0.009 262);
 	--text: oklch(0.26 0.012 260);
 	--muted: oklch(0.5 0.014 258);
-	--faint: oklch(0.62 0.012 258);
+	--faint: oklch(0.555 0.012 258);
 
 	--loading: oklch(0.925 0.007 262);
 	--loading-sheen: oklch(0.985 0.003 262);
@@ -58,12 +59,13 @@
 	--album-ground: oklch(0.945 0.012 250);
 
 	--star: oklch(0.78 0.165 72);
+	--star-outline: oklch(0.6 0.15 72);
 
 	--accent-text: oklch(0.46 0.12 250);
 
 	--on-accent: oklch(1 0 0);
 	--danger: oklch(0.53 0.2 27);
-	--caution: oklch(0.64 0.16 60);
+	--caution: oklch(0.535 0.16 60);
 	--positive: oklch(0.5 0.13 155);
 	--shadow:
 		0 1px 2px oklch(0.4 0.02 260 / 0.1), 0 8px 24px oklch(0.4 0.02 260 / 0.1);

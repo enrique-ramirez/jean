@@ -795,8 +795,6 @@ export const en = {
 	"shortcut.movePlaylistDown": "Move playlist down",
 	"shortcut.movePlaylistUp": "Move playlist up",
 	"shortcut.moveRowsDown": "Move selection down",
-	"shortcut.openPlaylistMenu": "Open the playlist's menu",
-	"shortcut.openRowMenu": "Open the selected track's menu",
 	"shortcut.moveRowsUp": "Move selection up",
 	"shortcut.nextTab": "Next tab",
 	"shortcut.nextTrack": "Next track",

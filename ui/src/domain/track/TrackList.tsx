@@ -6,6 +6,7 @@ import {
 	useEffect,
 	useEffectEvent,
 	useImperativeHandle,
+	useId,
 	useLayoutEffect,
 	useMemo,
 	useRef,
@@ -282,6 +283,19 @@ export function TrackList({
 		onActiveDirectionChange?.(next);
 	});
 
+	const listId = useId();
+	const rowId = (index: number) => `${listId}-${index}`;
+
+	const isCursorMounted = virtualItems.some(({ index }) => {
+		if (!isAlbumLayout) return index === cursor;
+		const group = groups[index];
+		return (
+			group !== undefined &&
+			group.start <= cursor &&
+			cursor < group.start + group.count
+		);
+	});
+
 	return (
 		// biome-ignore lint/a11y/useSemanticElements: rows are absolutely positioned by the virtualiser, which table layout cannot express
 		<div
@@ -326,7 +340,9 @@ export function TrackList({
 							onSelect={onSelect}
 							isCompactViewport={isCompactViewport}
 						/>
+			tabIndex={0}
 					) : (
+			aria-activedescendant={isCursorMounted ? rowId(cursor) : undefined}
 						<TrackRow
 							rows={rows}
 							index={virtualRow.index}
@@ -353,3 +369,5 @@ export function TrackList({
 		</div>
 	);
 }
+							rowId={rowId}
+							id={rowId(virtualRow.index)}

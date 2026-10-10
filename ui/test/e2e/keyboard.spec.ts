@@ -894,6 +894,74 @@ test.describe("selecting in a playlist", () => {
 		await field.evaluate((input: HTMLInputElement) =>
 			input.setSelectionRange(4, 4),
 		);
+// Both layouts: the album layout virtualises groups rather than rows, so whether the cursor row is
+// mounted is a different question there.
+for (const layout of ["compact", "album"] as const) {
+	test.describe(`the grid, as a screen reader hears it, in the ${layout} layout`, () => {
+		test.use({ settings: { "jean.layout": layout } });
+		test.beforeEach(({ page }) => openLibrary(page));
+
+		const grid = (page: Page) => page.getByRole("grid");
+
+		// DOM focus stays on the grid and the cursor stays an index in state, so the attribute is the
+		// one thing a reader has to go on for which track Enter will play.
+		test("Tab reaches the grid from the toolbar, and the arrows move what it names", async ({
+			page,
+		}) => {
+			await page.getByRole("button", { name: "View options" }).focus();
+			await page.keyboard.press("Tab");
+			await expect(grid(page)).toBeFocused();
+
+			await page.keyboard.press("ArrowDown");
+			await cursorAt(page, 1);
+			await expect(grid(page)).toBeFocused();
+			await expect(grid(page)).toHaveAttribute(
+				"aria-activedescendant",
+				(await cursorRow(page).getAttribute("id")) ?? "",
+			);
+			// Rows are virtualised, so a reader counting what is mounted would place this one wrong.
+			await expect(cursorRow(page)).toHaveAttribute("aria-rowindex", "2");
+			await expect(cursorRow(page).getByRole("gridcell")).toContainText([
+				"2",
+				"Fizz",
+			]);
+		});
+
+		test("a click on a row puts focus on the grid, not the row", async ({
+			page,
+		}) => {
+			await trackRow(page, 2).click();
+			await expect(grid(page)).toBeFocused();
+			await cursorAt(page, 2);
+			await expect(grid(page)).toHaveAttribute(
+				"aria-activedescendant",
+				(await trackRow(page, 2).getAttribute("id")) ?? "",
+			);
+		});
+
+		// A reference to an element that is not in the document is worse than none.
+		test("the name goes while the cursor row is scrolled out of the list, and comes back with it", async ({
+			page,
+		}) => {
+			test.skip(
+				layout === "album",
+				"five albums all stay mounted, so no row of this fixture ever leaves the document",
+			);
+			await trackRow(page, 0).click();
+			await scrollUntilMounted(page, trackRow(page, 53));
+			await expect(trackRow(page, 0)).toHaveCount(0);
+			await expect(grid(page)).not.toHaveAttribute("aria-activedescendant");
+
+			await page.keyboard.press("ArrowDown");
+			await cursorAt(page, 1);
+			await expect(grid(page)).toHaveAttribute(
+				"aria-activedescendant",
+				(await trackRow(page, 1).getAttribute("id")) ?? "",
+			);
+		});
+	});
+}
+
 
 		const caret = () =>
 			field.evaluate((input: HTMLInputElement) => input.selectionStart);

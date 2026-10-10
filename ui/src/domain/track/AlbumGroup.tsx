@@ -28,7 +28,8 @@ export function AlbumGroup({
 	matches,
 	onSelect,
 	isCompactViewport,
-}: TrackRenderProps & { group: AlbumRun }) {
+	rowId,
+}: TrackRenderProps & { group: AlbumRun; rowId: (index: number) => string }) {
 	const t = useTranslate();
 	const coverSize = isCompactViewport ? ALBUM_COVER_COMPACT : ALBUM_COVER;
 	const title = group.album ?? t("track.unknownAlbum");
@@ -44,6 +45,7 @@ export function AlbumGroup({
 		return (
 			<TrackRow
 				key={index}
+				id={rowId(index)}
 				rows={rows}
 				index={index}
 				itemIndex={rows.ref(index)}

@@ -3,6 +3,7 @@ import {
 	type CSSProperties,
 	memo,
 	type MouseEvent as ReactMouseEvent,
+	type ReactNode,
 	type PointerEvent as ReactPointerEvent,
 } from "react";
 import { spellValues } from "@/shared/api/multiValue";
@@ -13,11 +14,12 @@ import {
 	useSpoken,
 	useTranslate,
 } from "@/shared/i18n/useTranslate";
+import { classNames } from "@/shared/lib/classNames";
 import { formatTime } from "@/shared/lib/time";
 import { Artwork } from "@/shared/ui/Artwork";
 import { Equalizer } from "@/shared/ui/Equalizer";
 import { Stars, StarsInput } from "@/shared/ui/Stars";
-import type { Column } from "./columns";
+import type { Column, ColumnKind } from "./columns";
 import {
 	artistOf,
 	coverIdentity,
@@ -77,6 +79,54 @@ function shortDate(row: TrackColumns, format: Formats) {
 	return format.date(played, { year: "numeric", month: "short" });
 }
 
+function cellText(column: Column, row: TrackColumns, format: Formats) {
+	switch (column.kind) {
+		case "duration": {
+			const seconds = numberOf(row, FIELD.duration);
+			return seconds === null ? "--" : formatTime(seconds);
+		}
+		case "playCount": {
+			const plays = playCountOf(row) ?? 0;
+			return plays === 0 ? "--" : plays;
+		}
+		case "date":
+			return shortDate(row, format) ?? "--";
+		case "bitrate":
+			return numberOf(row, FIELD.bitrate) ?? "--";
+		default: {
+			const text = value(row, column.field);
+			return (
+				(column.kind === "values" && text ? spellValues(text) : text) ?? "--"
+			);
+		}
+	}
+}
+
+const PROSE_KINDS: ReadonlySet<ColumnKind> = new Set([
+	"text",
+	"values",
+	"rating",
+]);
+
+function GridCell({
+	className,
+	children,
+	...rest
+}: {
+	className: string;
+	children: ReactNode;
+	"data-zero"?: boolean;
+	"data-inline"?: boolean;
+}) {
+	return (
+		// biome-ignore lint/a11y/useSemanticElements: rows are absolutely positioned by the virtualiser, which table layout cannot express
+		// biome-ignore lint/a11y/useFocusableInteractive: the grid holds focus and names the cursor row through aria-activedescendant; a cell never takes it
+		<span className={className} role="gridcell" {...rest}>
+			{children}
+		</span>
+	);
+}
+
 function Cell({
 	column,
 	columns,
@@ -91,69 +141,35 @@ function Cell({
 	itemIndex: number;
 }) {
 	const format = useFormats();
-	const className = [
-		styles.cell,
-		column.align === "right" ? styles.numeric : null,
-	]
-		.filter(Boolean)
-		.join(" ");
+	const plays = column.kind === "playCount" ? (playCountOf(row) ?? 0) : null;
 
-	if (column.kind === "rating") {
-		return (
-			<span className={className}>
+	return (
+		<GridCell
+			className={classNames(
+				styles.cell,
+				column.align === "right" && styles.numeric,
+				!PROSE_KINDS.has(column.kind) && "tabular",
+			)}
+			data-zero={plays === null ? undefined : plays === 0}
+		>
+			{column.kind === "rating" ? (
 				<Rating
 					columns={columns}
 					row={row}
 					source={source}
 					itemIndex={itemIndex}
 				/>
-			</span>
-		);
-	}
-
-	if (column.kind === "duration") {
-		const seconds = numberOf(row, FIELD.duration);
-		return (
-			<span className={`${className} tabular`}>
-				{seconds === null ? "--" : formatTime(seconds)}
-			</span>
-		);
-	}
-
-	if (column.kind === "playCount") {
-		const plays = playCountOf(row) ?? 0;
-		return (
-			<span className={`${className} tabular`} data-zero={plays === 0}>
-				{plays === 0 ? "--" : plays}
-			</span>
-		);
-	}
-
-	if (column.kind === "date") {
-		return (
-			<span className={`${className} tabular`}>
-				{shortDate(row, format) ?? "--"}
-			</span>
-		);
-	}
-
-	if (column.kind === "bitrate") {
-		const rate = numberOf(row, FIELD.bitrate);
-		return (
-			<span className={`${className} tabular`}>
-				{rate === null ? "--" : rate}
-			</span>
-		);
-	}
-
-	const text = value(row, column.field);
-	const shown = column.kind === "values" && text ? spellValues(text) : text;
-	return <span className={className}>{shown ?? "--"}</span>;
+			) : (
+				cellText(column, row, format)
+			)}
+		</GridCell>
+	);
 }
 
 const stopClick = (event: ReactMouseEvent) => event.stopPropagation();
 
 function TrackRowComponent({
+	id,
 	rows,
 	index,
 	itemIndex,
@@ -175,6 +191,7 @@ function TrackRowComponent({
 	onSelect,
 	onGripPointerDown,
 }: {
+	id: string;
 	rows: TrackRows;
 	index: number;
 	itemIndex: number;
@@ -218,6 +235,8 @@ function TrackRowComponent({
 					"--patina": patina,
 				} as CSSProperties
 			}
+			id={id}
+			aria-rowindex={index + 1}
 			data-row={index}
 			data-active={isActive}
 			data-selected={isSelected}
@@ -232,7 +251,7 @@ function TrackRowComponent({
 				if (event.button === 0) onSelect(index, event);
 			}}
 		>
-			<span className={`${styles.index} tabular`}>
+			<GridCell className={`${styles.index} tabular`}>
 				{isActive && isPlaying ? (
 					<Equalizer label={say("player.nowPlaying")} />
 				) : disc !== null ? (
@@ -240,7 +259,7 @@ function TrackRowComponent({
 				) : (
 					(trackNumber ?? index + 1)
 				)}
-			</span>
+			</GridCell>
 
 			{showArtwork ? (
 				<Artwork
@@ -250,11 +269,11 @@ function TrackRowComponent({
 				/>
 			) : null}
 
-			<span className={styles.names} data-inline={note !== null}>
+			<GridCell className={styles.names} data-inline={note !== null}>
 				<span className={styles.title}>{title}</span>
 				{note === null ? null : <span className={styles.note}>{note}</span>}
 				{showArtist ? <span className={styles.artist}>{artist}</span> : null}
-			</span>
+			</GridCell>
 
 			{columns.map((column) => (
 				<Cell

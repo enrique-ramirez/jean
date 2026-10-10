@@ -141,6 +141,7 @@ export function PlaylistRow({
 				label={playlist.title}
 				count={format.number(playlist.itemCount)}
 				rowProps={{ ref, style: dragStyle, ...rowState }}
+				itemProps={{ "data-playlist": playlist.id }}
 			/>
 		);
 	}
@@ -154,7 +155,7 @@ export function PlaylistRow({
 			isCurrent={isSelected}
 			onClick={onSelect}
 			onPlay={onPlay}
-			itemProps={{ onFocus, onBlur }}
+			itemProps={{ "data-playlist": playlist.id, onFocus, onBlur }}
 			rowProps={{
 				ref,
 				style: { ...pressableStyle, ...dragStyle },

@@ -321,6 +321,10 @@ for (const { how, fooJean, newPlaylist } of WAYS_IN) {
 			await field.fill("Road trip");
 			await page.keyboard.press("Enter");
 			await expect.poll(() => titlesInOrder(player)).toContain("Road trip");
+
+			// The row Jean drew before the player answered is redrawn under the player's own id once
+			// it has, and focus has to come across with it.
+			await expect(link(page, "Road trip")).toBeFocused();
 		});
 
 		test("a second one does not take the same name", async ({
@@ -546,6 +550,7 @@ test.describe("renaming a playlist", () => {
 		await page.keyboard.press("Enter");
 
 		await expect(link(page, "Bangers")).toBeVisible();
+		await expect(link(page, "Bangers")).toBeFocused();
 		await expect.poll(() => titlesInOrder(player)).toContain("Bangers");
 	});
 
@@ -586,6 +591,7 @@ test.describe("renaming a playlist", () => {
 
 		// Escape has to beat the blur that follows it, or cancelling commits.
 		await expect(link(page, FAVORITES)).toBeVisible();
+		await expect(link(page, FAVORITES)).toBeFocused();
 		expect(titlesInOrder(player)).toContain(FAVORITES);
 		expect(titlesInOrder(player)).not.toContain("Bangers");
 	});

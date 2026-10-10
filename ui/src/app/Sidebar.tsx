@@ -156,16 +156,24 @@ export function Sidebar({
 	);
 
 	const focusAsked = useSidebarFocusAsked();
+	// @tanstack/query-core's notifyManager hands cache updates to observers in a setTimeout(0),
+	// so the ask for a created playlist arrives a render before the list carries its row.
 	useEffect(() => {
 		if (!focusAsked) return;
-		sidebarFocusAnswered();
-
 		const rows = navRows();
+		if (focusAsked.playlist !== null) {
+			if (!shown.some((entry) => entry.id === focusAsked.playlist)) return;
+			sidebarFocusAnswered();
+			if (document.activeElement !== document.body) return;
+			rows.find((row) => row.dataset.playlist === focusAsked.playlist)?.focus();
+			return;
+		}
+		sidebarFocusAnswered();
 		const current = rows.find(
 			(row) => row.getAttribute("aria-current") === "true",
 		);
 		(current ?? rows[0])?.focus();
-	}, [focusAsked, navRows]);
+	}, [focusAsked, navRows, shown]);
 
 	const onArrows = (event: ReactKeyboardEvent) => {
 		if (event.altKey) return;

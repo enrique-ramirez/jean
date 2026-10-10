@@ -17,6 +17,7 @@ import { useTranslate } from "@/shared/i18n/useTranslate";
 import { randomId } from "@/shared/lib/randomId";
 import type { ActionNode } from "@/shared/ui/ActionMenu";
 import { pushToast } from "@/shared/ui/toastStore";
+import { askToFocusSidebar } from "./sidebarFocus";
 
 const refused = (message: string) => () =>
 	pushToast({ tone: "error", message });
@@ -159,22 +160,21 @@ export function usePlaylistEditing({
 
 	const commitRename = (playlist: PlaylistInfo, title: string | null) => {
 		setRenamingId(null);
+		askToFocusSidebar(playlist.id);
 
 		const pending = pendingCreates.get(playlist.id);
 		if (pending) {
-			if (title) {
-				pending.then((id) => {
-					if (id && title !== playlist.title)
-						rename.mutate(
-							{ id, title },
-							{
-								onError: refused(
-									t("playlist.renameFailed", { playlist: title }),
-								),
-							},
-						);
-				});
-			}
+			pending.then((id) => {
+				if (!id) return;
+				askToFocusSidebar(id);
+				if (title && title !== playlist.title)
+					rename.mutate(
+						{ id, title },
+						{
+							onError: refused(t("playlist.renameFailed", { playlist: title })),
+						},
+					);
+			});
 			return;
 		}
 

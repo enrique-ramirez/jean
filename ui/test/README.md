@@ -18,7 +18,7 @@ pnpm test:e2e --project=desktop -g "double-clicking"   # one test
 
 `locales.test.ts` checks every translation in `public/locales/` against the English catalogue: unknown keys, plural forms, and fields the English does not carry. Nothing in a browser can see any of that: a wrong key falls back to English silently and a wrong field renders as `{prot}` on a screen nobody has opened.
 
-`pnpm test:e2e` builds first. `globalSetup` in `playwright.config.ts` runs `test/e2e/build.ts`, which is `vite build` alone, and serves that build from the fake, since that is the component's own arrangement: one origin answering both the app and `/api`. There is no `webServer` block; the fake is a worker fixture and `baseURL` is set per worker to the port it landed on.
+`pnpm test:e2e` builds first. `globalSetup` in `playwright.config.ts` runs `test/e2e/build.ts`, which is `vite build` alone, and serves that build from the fake, since that is the component's own arrangement: one origin answering both the app and `/api`. `JEAN_DIST=/some/dir pnpm test:e2e` builds and serves from that directory instead, so a second run, or a `pnpm build`, cannot rewrite the files the first is serving. There is no `webServer` block; the fake is a worker fixture and `baseURL` is set per worker to the port it landed on.
 
 Both projects, `desktop` and `mobile` (Pixel 7, touch on), run every spec. Skip explicitly when a gesture has no equivalent on the other surface, and say why.
 

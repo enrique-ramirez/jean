@@ -1,6 +1,3 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import type {
 	APIRequestContext,
 	CDPSession,
@@ -24,6 +21,7 @@ import {
 	libraryOfShape,
 	type Track,
 } from "../fake-api/state.ts";
+import { distDir } from "./dist.ts";
 
 export type FakePlayer = FakeServer["state"];
 
@@ -52,7 +50,7 @@ interface JeanFixtures {
 	unaskedRateLimits: undefined;
 }
 
-const DIST = join(dirname(fileURLToPath(import.meta.url)), "../../dist");
+const DIST = distDir();
 
 // The component's own origin, for a spec that talks to it directly rather than through the app.
 // One server answers both now, so this is `baseURL` -- fetched rather than read off the config,
@@ -738,6 +736,19 @@ export const expectDisabledWithReason = async (control: Locator) => {
 	await control.focus();
 	await expect(control).toBeFocused();
 };
+
+export const focusedEndOf = (dialog: Locator) =>
+	dialog.evaluate((root) => {
+		const stops = [
+			...root.querySelectorAll<HTMLElement>(
+				'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+			),
+		].filter((element) => element.getClientRects().length > 0);
+		const focused = document.activeElement;
+		if (focused === stops[0]) return "first";
+		if (focused === stops[stops.length - 1]) return "last";
+		return "neither";
+	});
 
 // Ticks handed over one at a time. A change made at the player reaches Jean on
 // the poll and nowhere else, so what "within one poll" can be measured against

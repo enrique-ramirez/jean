@@ -30,9 +30,11 @@ export interface ScrollToTrackOptions {
 
 export interface TrackListHandle {
 	scrollToTrack: (index: number, options?: ScrollToTrackOptions) => void;
+	whenRowMounted: (index: number, run: (row: HTMLElement) => void) => void;
 }
 
-export interface TrackBrowserHandle extends TrackListHandle {
+export interface TrackBrowserHandle
+	extends Pick<TrackListHandle, "scrollToTrack"> {
 	play: (position: number) => void;
 	preview: (position: number) => void;
 }

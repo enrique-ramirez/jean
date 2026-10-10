@@ -17,7 +17,7 @@ import type { TrackRows } from "./project";
 import { isWritableScale, rawRatingWith, starsOf } from "./rating";
 import { useWrittenRating } from "./ratingStore";
 import { ratingItems, trackActions } from "./trackActions";
-import { targetsFrom } from "./trackTargets";
+import { positionsOf, targetsFrom } from "./trackTargets";
 import { useAddTracks } from "./useAddTracks";
 import { useQueueTracks } from "./useQueueTracks";
 import { RATING_FIELD, useTagWriting } from "./useTagWriter";
@@ -56,17 +56,24 @@ export function useTrackContextMenu({
 	const rawRating =
 		rated === undefined ? null : rawRatingWith(rows.at(positions[0]), written);
 
+	const choose = (chosen: number[]) =>
+		setPositions((current) => (sameList(current, chosen) ? current : chosen));
+
 	// `adopt` is off for the hold: claiming the selection on pointer-down would undo the shift-click
 	// in the same event.
 	const aim = (event: ReactMouseEvent, { adopt }: { adopt: boolean }) => {
 		const aimed = targetsFrom(event, rows.length, selection);
 		if (!aimed) return false;
 
-		const chosen = adopt ? aimed.positions : [aimed.index];
 		if (adopt && !selection.has(aimed.index)) onSelectOnly(aimed.index);
-
-		setPositions((current) => (sameList(current, chosen) ? current : chosen));
+		choose(adopt ? aimed.positions : [aimed.index]);
 		return true;
+	};
+
+	const openForRow = (index: number, row: HTMLElement) => {
+		if (!selection.has(index)) onSelectOnly(index);
+		choose(positionsOf(index, selection));
+		menu.openBeside(row);
 	};
 
 	const triggerProps = {
@@ -175,5 +182,5 @@ export function useTrackContextMenu({
 		/>
 	);
 
-	return { triggerProps, element };
+	return { triggerProps, element, openForRow };
 }

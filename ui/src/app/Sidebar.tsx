@@ -15,13 +15,15 @@ import { isSearchRoute, ROUTE } from "@/domain/track/routes";
 import { permitsPlaylistWrites } from "@/shared/api/discovery";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useContextMenu } from "@/shared/hooks/useContextMenu";
+import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Point } from "@/shared/hooks/useLongPress";
 import { useSortableList } from "@/shared/hooks/useSortableList";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
+import { useKeyboardOwner } from "@/shared/keyboard/keyboardOwner";
 import { hintFor, SCOPE } from "@/shared/keyboard/keymap";
-import { useKeymap } from "@/shared/keyboard/useKeymap";
+import { useKeymap, useSingleKeyShortcuts } from "@/shared/keyboard/useKeymap";
 import { rovedIndex } from "@/shared/lib/rove";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
 import { useDragState } from "@/shared/ui/dnd";
@@ -30,8 +32,6 @@ import styles from "./Sidebar.module.css";
 import { NavRow, PlaylistRow } from "./SidebarRows";
 import { sidebarFocusAnswered, useSidebarFocusAsked } from "./sidebarFocus";
 import { usePlaylistEditing } from "./usePlaylistEditing";
-
-const PALETTE_HINT = hintFor("openPalette");
 
 export type PlayableRow =
 	| { kind: "all" }
@@ -85,6 +85,8 @@ export function Sidebar({
 	const autoPlaylists = useAutoPlaylists();
 
 	const menu = useContextMenu({ disabled: !canEdit });
+	const [singleKeys] = useSingleKeyShortcuts();
+	const paletteHint = hintFor("openPalette", singleKeys);
 	const swipe = useSwipe({ onLeft: onDismiss });
 	const [targetId, setTargetId] = useState<string | null>(null);
 	const [focusedId, setFocusedId] = useState<string | null>(null);
@@ -142,6 +144,13 @@ export function Sidebar({
 		{
 			movePlaylistUp: () => moveFocused(-1),
 			movePlaylistDown: () => moveFocused(1),
+			openPlaylistMenu: () => {
+				const row =
+					document.activeElement?.closest<HTMLElement>("[data-nav-row]");
+				if (!row || focusedId === null) return;
+				setTargetId(focusedId);
+				menu.openBeside(row);
+			},
 		},
 		{ enabled: canEdit && focusedIndex >= 0 },
 	);
@@ -154,6 +163,9 @@ export function Sidebar({
 		],
 		[sortable.scrollRef],
 	);
+
+	const keyboardOwner = useKeyboardOwner();
+	useEscapeCapture(isOpen && keyboardOwner === null ? onDismiss : null);
 
 	const focusAsked = useSidebarFocusAsked();
 	// @tanstack/query-core's notifyManager hands cache updates to observers in a setTimeout(0),
@@ -177,12 +189,6 @@ export function Sidebar({
 
 	const onArrows = (event: ReactKeyboardEvent) => {
 		if (event.altKey) return;
-
-		// Stopped rather than prevented: the default here is the click a focused button gets, and the track list binds Enter to playing its cursor row with a preventDefault that would cancel it.
-		if (event.key === "Enter") {
-			event.stopPropagation();
-			return;
-		}
 
 		const rows = navRows();
 		const next = rovedIndex(
@@ -280,9 +286,9 @@ export function Sidebar({
 				<div className={styles.sectionHeader}>
 					<p className={styles.heading}>
 						{t("sidebar.playlists")}
-						{PALETTE_HINT ? (
-							<kbd className={styles.hint}>{PALETTE_HINT}</kbd>
-						) : null}
+						{paletteHint === null ? null : (
+							<kbd className={styles.hint}>{paletteHint}</kbd>
+						)}
 					</p>
 					{canEdit ? (
 						<button

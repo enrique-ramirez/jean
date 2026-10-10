@@ -3,10 +3,11 @@ import {
 	type PointerEvent as ReactPointerEvent,
 	type Ref,
 	type RefObject,
+	useCallback,
 	useEffect,
 	useEffectEvent,
-	useImperativeHandle,
 	useId,
+	useImperativeHandle,
 	useLayoutEffect,
 	useMemo,
 	useRef,
@@ -170,6 +171,18 @@ export function TrackList({
 
 	const cancelScroll = useRef<(() => void) | null>(null);
 
+	const rowElement = useCallback(
+		(index: number) =>
+			scrollRef.current?.querySelector<HTMLElement>(`[data-row="${index}"]`) ??
+			null,
+		[scrollRef],
+	);
+
+	const rowAsk = useRef<{
+		index: number;
+		run: (row: HTMLElement) => void;
+	} | null>(null);
+
 	useImperativeHandle(
 		ref,
 		() => ({
@@ -181,6 +194,7 @@ export function TrackList({
 					ifNeeded = false,
 				}: ScrollToTrackOptions = {},
 			) {
+				rowAsk.current = null;
 				const target = isAlbumLayout
 					? groups.findIndex((entry) => index < entry.start + entry.count)
 					: index;
@@ -190,9 +204,7 @@ export function TrackList({
 				if (!element) return;
 
 				const rowRect = () =>
-					element
-						.querySelector(`[data-row="${index}"]`)
-						?.getBoundingClientRect() ?? null;
+					rowElement(index)?.getBoundingClientRect() ?? null;
 
 				if (ifNeeded) {
 					const seen = rowRect();
@@ -231,11 +243,36 @@ export function TrackList({
 
 				cancelScroll.current = animateScrollTo(element, offsetFor);
 			},
+			whenRowMounted(index, run) {
+				const row = rowElement(index);
+				if (row) run(row);
+				else rowAsk.current = { index, run };
+			},
 		}),
-		[isAlbumLayout, groups, virtualizer, scrollRef],
+		[isAlbumLayout, groups, virtualizer, scrollRef, rowElement],
 	);
 
-	useEffect(() => () => cancelScroll.current?.(), []);
+	useEffect(
+		() => () => {
+			cancelScroll.current?.();
+			rowAsk.current = null;
+		},
+		[],
+	);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a change of rows fires the clear rather than being read in it
+	useEffect(() => {
+		rowAsk.current = null;
+	}, [rows]);
+
+	useEffect(() => {
+		const ask = rowAsk.current;
+		if (!ask) return;
+		const row = rowElement(ask.index);
+		if (!row) return;
+		rowAsk.current = null;
+		ask.run(row);
+	});
 
 	const remeasure = useEffectEvent(() => virtualizer.measure());
 
@@ -245,6 +282,19 @@ export function TrackList({
 	}, [isAlbumLayout, isCompactViewport]);
 
 	const virtualItems = virtualizer.getVirtualItems();
+
+	const listId = useId();
+	const rowId = (index: number) => `${listId}-${index}`;
+
+	const isCursorMounted = virtualItems.some(({ index }) => {
+		if (!isAlbumLayout) return index === cursor;
+		const group = groups[index];
+		return (
+			group !== undefined &&
+			group.start <= cursor &&
+			cursor < group.start + group.count
+		);
+	});
 
 	// Rendered is not visible: overscan mounts rows past the fold, so a mounted row is measured
 	// against the scroll container and only an absent one falls back to the index range.
@@ -283,19 +333,6 @@ export function TrackList({
 		onActiveDirectionChange?.(next);
 	});
 
-	const listId = useId();
-	const rowId = (index: number) => `${listId}-${index}`;
-
-	const isCursorMounted = virtualItems.some(({ index }) => {
-		if (!isAlbumLayout) return index === cursor;
-		const group = groups[index];
-		return (
-			group !== undefined &&
-			group.start <= cursor &&
-			cursor < group.start + group.count
-		);
-	});
-
 	return (
 		// biome-ignore lint/a11y/useSemanticElements: rows are absolutely positioned by the virtualiser, which table layout cannot express
 		<div
@@ -303,7 +340,9 @@ export function TrackList({
 			className={showHeat ? styles.list : `${styles.list} heat-off`}
 			style={{ height: virtualizer.getTotalSize() }}
 			role="grid"
+			tabIndex={0}
 			aria-rowcount={rows.length}
+			aria-activedescendant={isCursorMounted ? rowId(cursor) : undefined}
 			data-drop-target={
 				reorderRows === undefined ? undefined : REORDER_DROP_TARGET
 			}
@@ -339,11 +378,11 @@ export function TrackList({
 							matches={matches}
 							onSelect={onSelect}
 							isCompactViewport={isCompactViewport}
+							rowId={rowId}
 						/>
-			tabIndex={0}
 					) : (
-			aria-activedescendant={isCursorMounted ? rowId(cursor) : undefined}
 						<TrackRow
+							id={rowId(virtualRow.index)}
 							rows={rows}
 							index={virtualRow.index}
 							itemIndex={rows.ref(virtualRow.index)}
@@ -369,5 +408,3 @@ export function TrackList({
 		</div>
 	);
 }
-							rowId={rowId}
-							id={rowId(virtualRow.index)}

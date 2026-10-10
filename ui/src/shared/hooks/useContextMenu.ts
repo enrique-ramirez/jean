@@ -6,6 +6,9 @@ import {
 
 import { type Point, useLongPress } from "./useLongPress";
 
+const BESIDE_INSET_X = 16;
+const BESIDE_OVERLAP_Y = 4;
+
 // `triggerProps` carries a style from `useLongPress`, so an element with its own must merge rather
 // than overwrite.
 export function useContextMenu({ disabled = false } = {}) {
@@ -13,6 +16,18 @@ export function useContextMenu({ disabled = false } = {}) {
 
 	const openAt = useCallback((point: Point) => setAnchor(point), []);
 	const close = useCallback(() => setAnchor(null), []);
+
+	const openBeside = useCallback(
+		(element: HTMLElement) => {
+			if (disabled) return;
+			const rect = element.getBoundingClientRect();
+			setAnchor({
+				x: rect.left + BESIDE_INSET_X,
+				y: rect.bottom - BESIDE_OVERLAP_Y,
+			});
+		},
+		[disabled],
+	);
 
 	const longPress = useLongPress(openAt, { enabled: !disabled });
 
@@ -22,8 +37,7 @@ export function useContextMenu({ disabled = false } = {}) {
 
 		// The Menu key's `contextmenu` carries no coordinates.
 		if (event.clientX === 0 && event.clientY === 0) {
-			const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-			openAt({ x: rect.left + 16, y: rect.bottom - 4 });
+			openBeside(event.currentTarget as HTMLElement);
 			return;
 		}
 
@@ -34,6 +48,7 @@ export function useContextMenu({ disabled = false } = {}) {
 		isOpen: anchor !== null,
 		anchor,
 		openAt,
+		openBeside,
 		close,
 		triggerProps: { ...longPress, onContextMenu },
 	};

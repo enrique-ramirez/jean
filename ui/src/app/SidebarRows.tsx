@@ -155,7 +155,12 @@ export function PlaylistRow({
 			isCurrent={isSelected}
 			onClick={onSelect}
 			onPlay={onPlay}
-			itemProps={{ "data-playlist": playlist.id, onFocus, onBlur }}
+			itemProps={{
+				"data-playlist": playlist.id,
+				"aria-haspopup": canEdit ? "menu" : undefined,
+				onFocus,
+				onBlur,
+			}}
 			rowProps={{
 				ref,
 				style: { ...pressableStyle, ...dragStyle },

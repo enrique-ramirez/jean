@@ -795,6 +795,8 @@ export const en = {
 	"shortcut.playAll": "Play from the top",
 	"shortcut.playCursor": "Play the selected track",
 	"shortcut.playPause": "Play / pause",
+	"shortcut.openPlaylistMenu": "Open the playlist's menu",
+	"shortcut.openRowMenu": "Open the selected track's menu",
 	"shortcut.playbackOrder": "Playback order",
 	"shortcut.previousTab": "Previous tab",
 	"shortcut.previousTrack": "Previous track",

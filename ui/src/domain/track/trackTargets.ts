@@ -15,12 +15,13 @@ export function targetsFrom(
 	const index = Number(element.dataset.row);
 	if (!Number.isInteger(index) || index < 0 || index >= length) return null;
 
-	const positions =
-		selection.has(index) && selection.size > 1
-			? [...selection].sort((a, b) => a - b)
-			: [index];
+	return { index, positions: positionsOf(index, selection) };
+}
 
-	return { index, positions };
+export function positionsOf(index: number, selection: Set<number>) {
+	return selection.has(index) && selection.size > 1
+		? [...selection].sort((a, b) => a - b)
+		: [index];
 }
 
 export function albumFrom(

@@ -479,6 +479,49 @@ test.describe("the + where an autoplaylist can be made too", () => {
 	});
 });
 
+// A Mac has no Menu key and fires nothing for Shift+F10, so the menu's keyboard route is a binding
+// on the focused row rather than the browser's `contextmenu`.
+test.describe("the playlist menu from the keyboard", () => {
+	for (const key of ["Shift+F10", "ContextMenu", "ControlOrMeta+Shift+\\"]) {
+		test(`${key} on a focused row opens its menu, and Escape puts focus back`, async ({
+			page,
+		}) => {
+			await openApp(page);
+			await link(page, FAVORITES).focus();
+			await expect(link(page, FAVORITES)).toHaveAttribute(
+				"aria-haspopup",
+				"menu",
+			);
+
+			await page.keyboard.press(key);
+			await expect(
+				page.getByRole("menuitem", { name: "Rename" }),
+			).toBeVisible();
+			await expect(
+				page.getByRole("menuitem", { name: "Delete" }),
+			).toBeVisible();
+
+			await page.keyboard.press("Escape");
+			await expect(page.getByRole("menuitem", { name: "Rename" })).toHaveCount(
+				0,
+			);
+			await expect(link(page, FAVORITES)).toBeFocused();
+		});
+	}
+
+	test("the key does nothing while the component refuses playlist edits", async ({
+		page,
+	}) => {
+		await refusePlaylistWrites(page);
+		await openApp(page);
+		await link(page, FAVORITES).focus();
+		await expect(link(page, FAVORITES)).not.toHaveAttribute("aria-haspopup");
+
+		await page.keyboard.press("Shift+F10");
+		await expect(page.getByRole("menuitem")).toHaveCount(0);
+	});
+});
+
 test.describe("Edit autoplaylist in a playlist's menu (criteria 29 and 37)", () => {
 	// Favorites is an autoplaylist Jean made, Rock en Español one Jean keeps for a purpose of its
 	// own, and Recently Added one foobar2000 made. Default Playlist stays plain.
@@ -741,6 +784,44 @@ test.describe("the drawer", () => {
 		);
 
 		await expect(link(page, LIBRARY)).toBeHidden();
+	});
+
+	// On a phone the keys are an attached keyboard's.
+	test("Escape closes it", async ({ page }) => {
+		await openApp(page);
+		await expect(link(page, LIBRARY)).toBeVisible();
+
+		await page.keyboard.press("Escape");
+		await expect(link(page, LIBRARY)).toBeHidden();
+	});
+
+	test("Escape with a row's menu open closes the menu and leaves the drawer", async ({
+		page,
+		isMobile,
+	}) => {
+		await openApp(page);
+		await menuFor(page, FAVORITES, isMobile);
+
+		await page.keyboard.press("Escape");
+		await expect(page.getByRole("menuitem", { name: "Rename" })).toHaveCount(0);
+		await expect(link(page, LIBRARY)).toBeVisible();
+	});
+
+	test("the page behind it is out of reach while it is open", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		const main = page.locator("main");
+		const behind = main.locator("button").first();
+		await expect(main).not.toHaveAttribute("inert");
+
+		await openSidebar(page);
+		await expect(main).toHaveAttribute("inert", "");
+		await behind.focus();
+		await expect(behind).not.toBeFocused();
+
+		await closeSidebar(page);
+		await expect(main).not.toHaveAttribute("inert");
 	});
 });
 

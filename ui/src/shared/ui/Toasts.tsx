@@ -2,14 +2,13 @@ import { Check, Info, TriangleAlert, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import styles from "./Toasts.module.css";
-import { dismissToast, useToasts } from "./toastStore";
+import { dismissToast, holdToast, releaseToast, useToasts } from "./toastStore";
 
 const ICONS = { default: Check, error: TriangleAlert, neutral: Info };
 
 export function Toasts({ pinned = null }: { pinned?: ReactNode }) {
 	const t = useTranslate();
 	const toasts = useToasts();
-	if (toasts.length === 0 && pinned === null) return null;
 
 	return (
 		<div
@@ -22,7 +21,16 @@ export function Toasts({ pinned = null }: { pinned?: ReactNode }) {
 				const Icon = ICONS[toast.tone] ?? ICONS.default;
 
 				return (
-					<div key={toast.id} className={styles.toast} data-tone={toast.tone}>
+					// biome-ignore lint/a11y/noStaticElementInteractions: a pointer resting on it or focus inside it holds the timer; nothing here is pressed
+					<div
+						key={toast.id}
+						className={styles.toast}
+						data-tone={toast.tone}
+						onMouseEnter={() => holdToast(toast.id)}
+						onMouseLeave={() => releaseToast(toast.id)}
+						onFocus={() => holdToast(toast.id)}
+						onBlur={() => releaseToast(toast.id)}
+					>
 						<Icon
 							className={styles.icon}
 							size={15}

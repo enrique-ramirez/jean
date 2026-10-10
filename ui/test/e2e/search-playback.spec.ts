@@ -551,7 +551,11 @@ test.describe("a scratch renamed or deleted at the player", () => {
 
 		expect(player.player.playbackState).toBe("playing");
 		await expect(statusBar(page)).toContainText("Los Calientes");
-		await expectSettlesAt(player, () => page.getByRole("status").count(), 0);
+		await expectSettlesAt(
+			player,
+			() => page.locator("[data-toasts]").textContent(),
+			"",
+		);
 
 		await searchFor(page, NARROWER.text);
 		await trackRow(page, 0).dblclick();
@@ -788,6 +792,27 @@ test.describe("saving results as a playlist", () => {
 		const create = page.getByRole("button", { name: "Create" });
 		await expect(create).toBeVisible();
 		await expect(create).toBeInViewport();
+	});
+});
+
+test.describe("a save the player refuses", () => {
+	test("the refusal to save the search is said where a screen reader hears it", async ({
+		page,
+	}) => {
+		await search(page, QUERY.text);
+		const refused = await page.request.post("/__control/failPlaylistWrites", {
+			data: { status: 500 },
+		});
+		expect(
+			refused.ok(),
+			"the fake needs a control that fails a playlist write mid-test",
+		).toBe(true);
+
+		await page.getByRole("button", { name: "Save as playlist" }).click();
+		await page.getByRole("textbox", { name: "Playlist name" }).fill("Keepers");
+		await page.getByRole("button", { name: "Create" }).click();
+
+		await expect(page.getByRole("alert")).toContainText("Could not save");
 	});
 });
 

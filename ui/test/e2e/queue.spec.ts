@@ -505,7 +505,7 @@ test.describe("queueing opens the panel", () => {
 
 		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
 		await expect(queueRows(page)).toHaveCount(1);
-		await expect(page.getByRole("status")).toHaveCount(0);
+		await expect(page.getByRole("status")).toBeEmpty();
 	});
 
 	test("a press outside puts away the overlay and leaves the dock", async ({

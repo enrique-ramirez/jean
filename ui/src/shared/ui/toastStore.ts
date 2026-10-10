@@ -17,16 +17,53 @@ const MAX_VISIBLE = 3;
 const WITH_ACTION_MS = 9000;
 const PLAIN_MS = 5000;
 
+interface Countdown {
+	hold: () => void;
+	release: () => void;
+	stop: () => void;
+}
+
+const countdown = (ms: number, onElapsed: () => void): Countdown => {
+	let handle: ReturnType<typeof setTimeout> | null = setTimeout(onElapsed, ms);
+	let startedAt = performance.now();
+	let left = ms;
+	let holds = 0;
+
+	return {
+		hold: () => {
+			holds += 1;
+			if (handle === null) return;
+			clearTimeout(handle);
+			handle = null;
+			left -= performance.now() - startedAt;
+		},
+		release: () => {
+			holds = Math.max(0, holds - 1);
+			if (holds > 0 || handle !== null) return;
+			startedAt = performance.now();
+			handle = setTimeout(onElapsed, Math.max(0, left));
+		},
+		stop: () => {
+			if (handle !== null) clearTimeout(handle);
+			handle = null;
+		},
+	};
+};
+
 const listeners = subscribers();
-const timers = new Map<number, ReturnType<typeof setTimeout>>();
+const timers = new Map<number, Countdown>();
 
 let toasts: Toast[] = [];
 let nextId = 1;
 
 const stopTimer = (id: number): void => {
-	clearTimeout(timers.get(id));
+	timers.get(id)?.stop();
 	timers.delete(id);
 };
+
+export const holdToast = (id: number): void => timers.get(id)?.hold();
+
+export const releaseToast = (id: number): void => timers.get(id)?.release();
 
 export function dismissToast(id: number) {
 	const next = toasts.filter((toast) => toast.id !== id);
@@ -60,7 +97,7 @@ export function pushToast({
 	if (ms > 0)
 		timers.set(
 			id,
-			setTimeout(() => dismissToast(id), ms),
+			countdown(ms, () => dismissToast(id)),
 		);
 
 	listeners.notify();

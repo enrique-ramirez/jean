@@ -1187,7 +1187,7 @@ test.describe("an edit the component refuses", () => {
 			.fill("Bangers");
 		await page.keyboard.press("Enter");
 
-		await expect(page.getByRole("status")).toBeVisible();
+		await expect(page.getByRole("status")).not.toBeEmpty();
 		await expect(link(page, FAVORITES)).toBeVisible();
 		await expect(link(page, "Bangers")).toHaveCount(0);
 		expect(titlesInOrder(player)).toContain(FAVORITES);
@@ -1205,7 +1205,7 @@ test.describe("an edit the component refuses", () => {
 		await page.getByRole("menuitem", { name: "Delete" }).click();
 		await page.getByRole("menuitem", { name: "Delete playlist" }).click();
 
-		await expect(page.getByRole("status")).toBeVisible();
+		await expect(page.getByRole("status")).not.toBeEmpty();
 		await expect(link(page, FAVORITES)).toBeVisible();
 		expect(titlesInOrder(player)).toContain(FAVORITES);
 	});
@@ -1223,7 +1223,7 @@ test.describe("an edit the component refuses", () => {
 		await link(page, DEFAULT_PLAYLIST).focus();
 		await page.keyboard.press("Alt+ArrowDown");
 
-		await expect(page.getByRole("status")).toBeVisible();
+		await expect(page.getByRole("status")).not.toBeEmpty();
 		await expect.poll(() => playlistsDrawn(page)).toEqual(PLAYLIST_TITLES);
 		expect(titlesInOrder(player).slice(0, 2)).toEqual([
 			DEFAULT_PLAYLIST,
@@ -1285,7 +1285,7 @@ test.describe("an edit the component refuses", () => {
 	}) => {
 		await refuseSlowlyWhileTheListMoves(page, player, isMobile);
 
-		await expect(page.getByRole("status")).toBeVisible();
+		await expect(page.getByRole("status")).not.toBeEmpty();
 
 		// A tick past the refusal, so a sidebar that went back to the list this
 		// edit started from has had a poll to notice and put itself right.
@@ -1303,7 +1303,7 @@ test.describe("an edit the component refuses", () => {
 		isMobile,
 	}) => {
 		await refuseSlowlyWhileTheListMoves(page, player, isMobile);
-		await expect(page.getByRole("status")).toBeVisible();
+		await expect(page.getByRole("status")).not.toBeEmpty();
 
 		// Nothing in Jean asks for the list again, so what the poll says about the
 		// revision is the only thing that can bring this rename over.
@@ -1470,7 +1470,7 @@ test.describe("dragging tracks onto a playlist", () => {
 			() => requestsTo(player, "/items/copy").length,
 			0,
 		);
-		await expect(page.getByRole("status")).toHaveCount(0);
+		await expect(page.getByRole("status")).toBeEmpty();
 		expect(
 			player.playlists.find((entry) => entry.title === AUTO)!.items,
 		).toHaveLength(5);

@@ -15,6 +15,7 @@ import {
 	rowByTitle,
 	scrollUntilMounted,
 	test,
+	times,
 	titlesIn,
 	trackRow,
 } from "./fixtures.ts";
@@ -363,7 +364,7 @@ for (const [view, open] of [
 			await question(page).getByRole("button", { name: "Skip" }).click();
 
 			await expect(question(page)).toHaveCount(0);
-			await expect(toast(page)).toHaveCount(0);
+			await expect(toast(page)).toBeEmpty();
 			await expectSettlesAt(player, () => titlesIn(player, SPANISH.id), held);
 		});
 
@@ -609,10 +610,10 @@ test.describe("undoing it", () => {
 		isMobile,
 	}) => {
 		await addToTarget(page, 0, isMobile);
-		await expect(toast(page)).toBeVisible();
+		await expect(toast(page)).not.toBeEmpty();
 
 		await toast(page).getByRole("button", { name: "Dismiss" }).click();
-		await expect(toast(page)).toHaveCount(0);
+		await expect(toast(page)).toBeEmpty();
 
 		await expectSettlesAt(
 			player,
@@ -622,6 +623,65 @@ test.describe("undoing it", () => {
 		expect(
 			player.playlists.find((entry) => entry.id === TARGET.id)!.items,
 		).toHaveLength(TARGET.itemCount + 1);
+	});
+});
+
+const CLOCK_STEP_MS = 250;
+
+const runClockFor = (page: Page, ms: number) =>
+	times(Math.ceil(ms / CLOCK_STEP_MS), () => page.clock.runFor(CLOCK_STEP_MS));
+
+const LONGER_THAN_A_TOAST_LIVES_MS = 15_000;
+
+// Screen readers announce what changes inside a live region that was already on the page, and
+// read one that arrives already holding its first toast unreliably or not at all (WAI-ARIA 1.2,
+// aria-live). So the region is on the page from the start, and a toast somebody is reading
+// waits for them (WCAG 2.2.1, Timing Adjustable).
+test.describe("saying it", () => {
+	test.beforeEach(({ page }) => openLibrary(page));
+
+	test("the region a toast is said in is on the page before anything is said", async ({
+		page,
+	}) => {
+		await expect(toast(page)).toHaveCount(1);
+		await expect(toast(page)).toBeEmpty();
+	});
+
+	test("a toast waits while the pointer rests on it, and goes once it leaves", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "a finger does not rest on a toast");
+
+		await page.clock.install();
+		await addToTarget(page, 0, isMobile);
+		const undo = toast(page).getByRole("button", { name: "Undo" });
+		await expect(undo).toBeVisible();
+
+		await toast(page).getByText(TARGET.title).hover();
+		await runClockFor(page, LONGER_THAN_A_TOAST_LIVES_MS);
+		await expect(undo).toBeVisible();
+
+		await page.mouse.move(0, 0);
+		await runClockFor(page, LONGER_THAN_A_TOAST_LIVES_MS);
+		await expect(toast(page)).toBeEmpty();
+	});
+
+	test("a toast waits while focus is inside it, and goes once focus leaves", async ({
+		page,
+		isMobile,
+	}) => {
+		await page.clock.install();
+		await addToTarget(page, 0, isMobile);
+		const undo = toast(page).getByRole("button", { name: "Undo" });
+		await undo.focus();
+
+		await runClockFor(page, LONGER_THAN_A_TOAST_LIVES_MS);
+		await expect(undo).toBeFocused();
+
+		await undo.blur();
+		await runClockFor(page, LONGER_THAN_A_TOAST_LIVES_MS);
+		await expect(toast(page)).toBeEmpty();
 	});
 });
 
@@ -866,6 +926,6 @@ test.describe("what does not get a toast", () => {
 			page.getByRole("textbox", { name: "Rename New playlist" }),
 		).toBeFocused();
 
-		await expect(toast(page)).toHaveCount(0);
+		await expect(toast(page)).toBeEmpty();
 	});
 });

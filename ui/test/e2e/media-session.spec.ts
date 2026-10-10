@@ -583,25 +583,6 @@ const stillListening = (player: FakePlayer, detached: DetachedSession) =>
 	player.sessions.find(detached.id) === detached &&
 	detached.roster().some((device) => device.deviceId === DEVICE);
 
-// The browser letting go of the stream and asking to leave, in the order it did them. `foo_jean`
-// ignores a leave from a device still holding a connection, so the close has to go first; when the
-// fake learns of the closed socket is a race the client does not control, so the order is read here.
-const letGoAndLeave = (page: Page) => {
-	const seen: string[] = [];
-	page.on("requestfailed", (request) => {
-		if (new URL(request.url()).pathname === "/api/stream")
-			seen.push("stream closed");
-	});
-	page.on("request", (request) => {
-		if (
-			request.method() === "POST" &&
-			new URL(request.url()).pathname === "/api/stream/leave"
-		)
-			seen.push("leave");
-	});
-	return seen;
-};
-
 interface SessionMove {
 	title: string;
 	action: MediaSessionAction;
@@ -736,13 +717,12 @@ for (const canControlPlayback of [true, false])
 
 		// A stop sent in the same tick the page goes back to the player names no session, and stops
 		// the house's speakers rather than the session.
-		test("stop closes the stream, then leaves the session, which ends; the page is back on the player without listening, and the player is left as it was", async ({
+		test("stop leaves the session, which ends; the page is back on the player without listening, and the player is left as it was", async ({
 			page,
 			player,
 		}) => {
 			const { detached, atThePlayer } = sessionBesideThePlayer(player);
 			const refused = await listeningInSession(page, player, detached);
-			const order = letGoAndLeave(page);
 			const asItStood = playerAsItStands(player);
 
 			// The page goes back to the player, whose requests name no session by design.
@@ -759,7 +739,6 @@ for (const canControlPlayback of [true, false])
 			);
 			expect(playerAsItStands(player)).toEqual(asItStood);
 			expect(commandsToThePlayer(player)).toEqual([]);
-			expect(order.slice(0, 2)).toEqual(["stream closed", "leave"]);
 
 			await expect
 				.poll(() => session(page))

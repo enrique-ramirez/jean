@@ -254,11 +254,11 @@ test.describe("the picker's list, where sessions are offered", () => {
 		await expect(rowLabelled(page, "Study desk")).toHaveCount(1);
 
 		startedElsewhere(player, "Attic radio");
-		await advance(page, OPEN_CADENCE_MS);
+		await advanceSettled(page, player, OPEN_CADENCE_MS);
 		await expect(rowLabelled(page, "Attic radio")).toHaveCount(1);
 
 		player.endSession(leaving.id);
-		await advance(page, OPEN_CADENCE_MS);
+		await advanceSettled(page, player, OPEN_CADENCE_MS);
 		await expect(rowLabelled(page, "Study desk")).toHaveCount(0);
 		await expect(rowLabelled(page, "Attic radio")).toHaveCount(1);
 		await expect(playingOn(page)).toBeVisible();

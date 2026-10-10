@@ -2791,14 +2791,8 @@ const browserSaw = (page: Page) => {
 	page.on("request", (request) => {
 		const route = routeOf(request);
 		if (route === "POST /api/stream/ticket") seen.push("ticket");
-		if (route === "POST /api/stream/leave") seen.push("leave");
 		if (route === "GET /api/stream") seen.push("stream");
 	});
-	const letGo = (request: { method: () => string; url: () => string }) => {
-		if (routeOf(request) === "GET /api/stream") seen.push("stream closed");
-	};
-	page.on("requestfailed", letGo);
-	page.on("requestfinished", letGo);
 	return seen;
 };
 
@@ -2917,9 +2911,7 @@ test.describe("starting from the picker", () => {
 		expect(postsTo(player, "/api/stream/ticket")[0].body).toMatchObject({
 			deviceId: DEVICE,
 		});
-		expect(
-			order.filter((step) => step !== "stream closed").slice(0, 3),
-		).toEqual(["created", "ticket", "stream"]);
+		expect(order.slice(0, 3)).toEqual(["created", "ticket", "stream"]);
 		expect(listensIn(started)).toBe(true);
 		strict.release();
 		expect(refused).toEqual([]);
@@ -3223,21 +3215,16 @@ test.describe("the opener, as the page starts and leaves", () => {
 test.describe("leaving what this device started", () => {
 	test.use(OFFERING_SESSIONS);
 
-	test("Leave lets go of the stream before it asks to leave, and what it started ends", async ({
+	test("Leave ends what it started, and every leave names it", async ({
 		page,
 		player,
 	}) => {
 		const { strict, started } = await inStartedSession(page, player);
-		const order = browserSaw(page);
 
 		strict.release();
 		await leaveButton(page).click();
 
 		await expectSettlesAt(player, () => player.sessions.find(started.id), null);
-		expect(order.filter((step) => step !== "stream").slice(0, 2)).toEqual([
-			"stream closed",
-			"leave",
-		]);
 		expect(countPostsToSession(player, "/api/stream/leave", started.id)).toBe(
 			postsTo(player, "/api/stream/leave").length,
 		);

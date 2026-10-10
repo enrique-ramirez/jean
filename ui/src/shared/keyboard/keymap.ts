@@ -648,6 +648,7 @@ export function isTypedAsAnother(
 	const declared =
 		typeof hotkey === "string" ? parseHotkey(hotkey).key : hotkey.key;
 	return (
+		declared !== undefined &&
 		!event.shiftKey &&
 		!event.altKey &&
 		PUNCTUATION.test(declared) &&

@@ -13,6 +13,7 @@ import {
 	restingBox,
 	scrollTop,
 	scrollUntilMounted,
+	scrollUntilMounted,
 	sidebar,
 	statusBar,
 	test,
@@ -867,6 +868,118 @@ test.describe("an install whose component allows playlist edits", () => {
 		await add.click();
 		await expect(menuItem(page, "Favorites")).toBeVisible();
 	});
+
+// The cursor is an index in state and no row takes focus, so the keyboard's way to a row's menu is
+// a binding that opens it at the cursor row, not the browser's own `contextmenu`. Three spellings,
+// since a Mac has no Menu key and fires nothing for Shift+F10.
+test.describe("the row menu from the keyboard", () => {
+	const cursorRow = (page: Page) =>
+		page.locator('[role="row"][data-cursor="true"]');
+	const BESIDE_PX = 48;
+
+	test.beforeEach(async ({ page }) => {
+		await openLibrary(page);
+		await page.keyboard.press("ArrowDown");
+		await page.keyboard.press("ArrowDown");
+		await expect(cursorRow(page)).toHaveAttribute("data-row", "2");
+		await expect(cursorRow(page)).toHaveAttribute("aria-haspopup", "menu");
+	});
+
+	for (const key of ["Shift+F10", "ContextMenu", "ControlOrMeta+Shift+\\"]) {
+		test(`${key} opens the cursor row's menu, and Escape closes it with the cursor where it was`, async ({
+			page,
+		}) => {
+			await page.keyboard.press(key);
+
+			const menu = page
+				.locator("body > div")
+				.filter({ has: menuItem(page, "Add to playlist") });
+			await expect(menu).toContainText("Deléctrico");
+			await expect(menuItem(page, "Add to queue")).toBeVisible();
+			await expect(menuItem(page, "Add to playlist")).toBeVisible();
+
+			await page.keyboard.press("Escape");
+			await expect(menuItem(page, "Add to playlist")).toHaveCount(0);
+			await expect(cursorRow(page)).toHaveAttribute("data-row", "2");
+		});
+	}
+
+	test("a selection goes with the cursor, as it does under a right-click", async ({
+		page,
+	}) => {
+		await page.keyboard.press("Shift+ArrowDown");
+		await page.keyboard.press("Shift+ArrowDown");
+		await expect(
+			page.locator('[role="row"][data-selected="true"]'),
+		).toHaveCount(3);
+
+		await page.keyboard.press("Shift+F10");
+		await expect(page.getByText("3 tracks")).toBeVisible();
+	});
+
+	test("the menu opens beside the row rather than wherever the pointer last was", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(
+			isMobile,
+			"a compact viewport draws the menu as a sheet, anchored to nothing",
+		);
+
+		await page.keyboard.press("Shift+F10");
+		await expect(menuItem(page, "Add to playlist")).toBeVisible();
+		const row = await cursorRow(page).boundingBox();
+		// The panel rather than the `menu` role inside it, which sits under the header.
+		const menu = await page
+			.locator("body > div")
+			.filter({ has: menuItem(page, "Add to playlist") })
+			.boundingBox();
+		expect(row).not.toBeNull();
+		expect(menu).not.toBeNull();
+		if (!row || !menu) return;
+
+		// Opened at the row's lower left; a flip at the window's edge puts the menu's far edge there
+		// instead of its near one.
+		const anchor = { x: row.x, y: row.y + row.height };
+		const nearest = (edges: number[], to: number) =>
+			Math.min(...edges.map((edge) => Math.abs(edge - to)));
+		expect(nearest([menu.y, menu.y + menu.height], anchor.y)).toBeLessThan(
+			BESIDE_PX,
+		);
+		expect(nearest([menu.x, menu.x + menu.width], anchor.x)).toBeLessThan(
+			BESIDE_PX,
+		);
+	});
+
+	// With the cursor row scrolled out, the key scrolls to it and the menu waits for the row to be
+	// drawn. Rows that change in between must drop that wait, or the menu opens on whatever track
+	// takes the index next. Delete removes a row in the same tick, ahead of the frame that would draw
+	// it, so the two keys go in one synchronous script; two round trips would land after the draw.
+	test("a menu asked for a row that is removed before it draws does not open on the row that takes its place", async ({
+		page,
+	}) => {
+		await scrollUntilMounted(page, trackRow(page, 53));
+		await expect(trackRow(page, 2)).toHaveCount(0);
+
+		await page.evaluate(() => {
+			for (const init of [
+				{ key: "F10", code: "F10", shiftKey: true },
+				{ key: "Delete", code: "Delete" },
+			])
+				document.body.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						...init,
+						bubbles: true,
+						cancelable: true,
+					}),
+				);
+		});
+
+		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "53");
+		await expect(trackRow(page, 2)).toBeAttached();
+		await expect(page.getByRole("menuitem")).toHaveCount(0);
+	});
+});
 });
 
 // The cursor is an index in state and no row takes focus, so the keyboard's way to a row's menu is

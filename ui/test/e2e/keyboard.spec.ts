@@ -791,6 +791,65 @@ test.describe("navigation and appearance", () => {
 				.getByRole("button", { name: /Switch to (light|dark) theme/ })
 				.getAttribute("aria-label");
 
+// `detectPlatform` reads `navigator.platform` and the user agent, so both say Windows here.
+test.describe("the sheet on a machine with a Menu key", () => {
+	test.beforeEach(async ({ page }) => {
+		await page.addInitScript(() => {
+			Object.defineProperty(Navigator.prototype, "platform", {
+				get: () => "Win32",
+			});
+			Object.defineProperty(Navigator.prototype, "userAgent", {
+				get: () =>
+					"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+			});
+		});
+		await openLibrary(page);
+	});
+
+	test("lists Shift+F10 and Menu beside the chord", async ({ page }) => {
+		await page.keyboard.press("Shift+?");
+		const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+		const row = sheet
+			.locator("div")
+			.filter({ hasText: /^Open the playlist's menu/ })
+			.last();
+
+		await expect(row.locator("kbd")).toHaveText([
+			"Shift+F10",
+			"Menu",
+			"Ctrl+Shift+\\",
+		]);
+	});
+});
+
+test.describe("the sheet on a Mac", () => {
+	test.beforeEach(async ({ page }) => {
+		await page.addInitScript(() => {
+			Object.defineProperty(Navigator.prototype, "platform", {
+				get: () => "MacIntel",
+			});
+			Object.defineProperty(Navigator.prototype, "userAgent", {
+				get: () =>
+					"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+			});
+		});
+		await openLibrary(page);
+	});
+
+	test("lists the one menu chord it can press, without Shift+F10 or Menu", async ({
+		page,
+	}) => {
+		await page.keyboard.press("Shift+?");
+		const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+		const row = sheet
+			.locator("div")
+			.filter({ hasText: /^Open the selected track's menu/ })
+			.last();
+
+		await expect(row.locator("kbd")).toHaveText(["⇧", "⌘", "\\"]);
+	});
+});
+
 		const before = await surface();
 		const wasOffered = await offered();
 

@@ -1,5 +1,8 @@
 import { ChevronRight, Shuffle } from "lucide-react";
-import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
+import {
+	useCanControlPlayback,
+	whenControllable,
+} from "@/domain/player/usePlaybackControl";
 import { href, ROUTE } from "@/domain/track/routes";
 import { spellDuration } from "@/domain/track/stats";
 import type { Phrase } from "@/shared/i18n/en";
@@ -131,15 +134,12 @@ export function HomeHeader({
 						<Button
 							variant="primary"
 							icon={PlayIcon}
-							onClick={canControlPlayback ? onPlayEverything : undefined}
-							aria-disabled={canControlPlayback ? undefined : "true"}
-							aria-label={
-								canControlPlayback
-									? undefined
-									: say("player.controlOffName", {
-											control: say("player.play"),
-										})
-							}
+							{...whenControllable(
+								canControlPlayback,
+								onPlayEverything,
+								say("player.play"),
+								say,
+							)}
 						>
 							{playLabel}
 						</Button>
@@ -147,13 +147,12 @@ export function HomeHeader({
 					{canShuffle ? (
 						<Button
 							icon={Shuffle}
-							onClick={canControlPlayback ? onShuffleEverything : undefined}
-							aria-disabled={canControlPlayback ? undefined : "true"}
-							aria-label={
-								canControlPlayback
-									? undefined
-									: t("player.controlOffName", { control: shuffleLabel })
-							}
+							{...whenControllable(
+								canControlPlayback,
+								onShuffleEverything,
+								shuffleLabel,
+								t,
+							)}
 						>
 							{shuffleLabel}
 						</Button>

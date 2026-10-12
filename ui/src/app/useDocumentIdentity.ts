@@ -1,13 +1,40 @@
 import { useEffect } from "react";
 
-import { useConnection } from "@/domain/player/connection";
+import {
+	type ConnectionState,
+	useConnection,
+} from "@/domain/player/connection";
 import { useAudiblePlayer } from "@/domain/player/usePlayer";
-import { readTrack } from "@/shared/api/playerState";
-import { useTranslate } from "@/shared/i18n/useTranslate";
+import { namedTrack } from "@/domain/track/fields";
+import { playingTrack } from "@/shared/api/playerState";
+import type { NowPlayingTrack, PlaybackState } from "@/shared/api/types";
+import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
 import { type PlaybackBadge, setFavicon } from "./favicon";
 import { useMediaSession } from "./useMediaSession";
 
 const NAME = "Jean";
+
+function badgeOf(
+	isDisconnected: boolean,
+	playbackState: PlaybackState | undefined,
+	hasTrack: boolean,
+): PlaybackBadge {
+	if (isDisconnected) return "offline";
+	if (playbackState === "playing") return "playing";
+	return hasTrack && playbackState === "paused" ? "paused" : "idle";
+}
+
+function titleOf(
+	connection: ConnectionState,
+	track: NowPlayingTrack | null,
+	t: Translate,
+): string {
+	if (connection === "playerUnresponsive")
+		return `${t("player.unresponsive")} · ${NAME}`;
+	if (connection !== "connected")
+		return `${t("player.disconnected")} · ${NAME}`;
+	return track ? `${track.title} — ${track.artist} · ${NAME}` : NAME;
+}
 
 export function useDocumentIdentity() {
 	const t = useTranslate();
@@ -16,22 +43,11 @@ export function useDocumentIdentity() {
 	const snapshot = useAudiblePlayer();
 
 	const player = snapshot?.player;
-	const track = readTrack(player);
+	const track = namedTrack(playingTrack(player), t);
 	const hasTrack = Boolean(track);
 
-	const badge: PlaybackBadge = isDisconnected
-		? "offline"
-		: player?.playbackState === "playing"
-			? "playing"
-			: hasTrack && player?.playbackState === "paused"
-				? "paused"
-				: "idle";
-
-	const title = isDisconnected
-		? `${t(connection === "playerUnresponsive" ? "player.unresponsive" : "player.disconnected")} · ${NAME}`
-		: hasTrack
-			? `${track?.title} — ${track?.artist} · ${NAME}`
-			: NAME;
+	const badge = badgeOf(isDisconnected, player?.playbackState, hasTrack);
+	const title = titleOf(connection, track, t);
 
 	useEffect(() => {
 		document.title = title;

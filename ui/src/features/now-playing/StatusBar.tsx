@@ -1,6 +1,9 @@
 import { useAudibleVolume } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
-import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
+import {
+	useCanControlPlayback,
+	whenControllable,
+} from "@/domain/player/usePlaybackControl";
 import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import { useAudiblePlayer, usePlayer } from "@/domain/player/usePlayer";
 import { useResolvedPlaylistId } from "@/domain/player/usePlaylists";
@@ -10,12 +13,12 @@ import {
 	useSeek,
 	useTransport,
 } from "@/domain/player/useTransport";
-import { coverKey } from "@/domain/track/fields";
+import { coverKey, namedTrack } from "@/domain/track/fields";
 import { canonicalPlayingArtworkUrl } from "@/domain/track/librarySource";
 import { usePlayingTrackDragSource } from "@/domain/track/useTrackDragSource";
 import { playingArtworkUrl } from "@/shared/api/artwork";
 import { isFooJeanReady } from "@/shared/api/discovery";
-import { readTrack } from "@/shared/api/playerState";
+import { playingTrack } from "@/shared/api/playerState";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
@@ -106,7 +109,7 @@ export function StatusBar({
 	const origin = isFooJeanReady(discovery) ? discovery.origin : null;
 	const outputsQuery = useOutputs();
 
-	const track = readTrack(snapshot?.player);
+	const track = namedTrack(playingTrack(snapshot?.player), t);
 	const playingDrag = usePlayingTrackDragSource({
 		playlistId: playlistId ?? null,
 		index: snapshot?.player?.activeItem?.index ?? -1,
@@ -150,12 +153,8 @@ export function StatusBar({
 			? coverKey(credited, album)
 			: coverKey(track.artist, track.title, "track");
 
-	const previousLabel = canControlPlayback
-		? t("shortcut.previousTrack")
-		: t("player.controlOffName", { control: t("shortcut.previousTrack") });
-	const nextLabel = canControlPlayback
-		? t("shortcut.nextTrack")
-		: t("player.controlOffName", { control: t("shortcut.nextTrack") });
+	const previousLabel = t("shortcut.previousTrack");
+	const nextLabel = t("shortcut.nextTrack");
 
 	return (
 		<footer className={styles.statusbar}>
@@ -207,9 +206,13 @@ export function StatusBar({
 							<button
 								type="button"
 								className={styles.skip}
-								aria-disabled={canControlPlayback ? undefined : "true"}
 								aria-label={previousLabel}
-								onClick={canControlPlayback ? () => previous() : undefined}
+								{...whenControllable(
+									canControlPlayback,
+									() => previous(),
+									previousLabel,
+									t,
+								)}
 							>
 								<SkipBackIcon size={18} />
 							</button>
@@ -242,11 +245,13 @@ export function StatusBar({
 							<button
 								type="button"
 								className={styles.skip}
-								aria-disabled={canControlPlayback ? undefined : "true"}
 								aria-label={nextLabel}
-								onClick={
-									canControlPlayback ? () => transport.next.mutate() : undefined
-								}
+								{...whenControllable(
+									canControlPlayback,
+									() => transport.next.mutate(),
+									nextLabel,
+									t,
+								)}
 							>
 								<SkipForwardIcon size={18} />
 							</button>

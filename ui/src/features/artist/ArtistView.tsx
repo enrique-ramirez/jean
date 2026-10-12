@@ -9,7 +9,10 @@ import {
 	readingNotice,
 } from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
-import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
+import {
+	useCanControlPlayback,
+	whenControllable,
+} from "@/domain/player/usePlaybackControl";
 import { albumsOf } from "@/domain/track/albums";
 import { useAvailableFields } from "@/domain/track/fieldAvailability";
 import {
@@ -347,35 +350,25 @@ export function ArtistView({
 							<Button
 								variant="primary"
 								icon={Play}
-								onClick={
-									canControlPlayback ? () => onPlay(allRefs, 0) : undefined
-								}
 								disabled={canControlPlayback && !canPlay}
-								aria-disabled={canControlPlayback ? undefined : "true"}
-								aria-label={
-									canControlPlayback
-										? undefined
-										: say("player.controlOffName", {
-												control: say("player.play"),
-											})
-								}
+								{...whenControllable(
+									canControlPlayback,
+									() => onPlay(allRefs, 0),
+									say("player.play"),
+									say,
+								)}
 							>
 								{t("player.play")}
 							</Button>
 							{canShuffle ? (
 								<Button
 									icon={Shuffle}
-									onClick={
-										canControlPlayback ? () => onShuffle(allRefs) : undefined
-									}
-									aria-disabled={canControlPlayback ? undefined : "true"}
-									aria-label={
-										canControlPlayback
-											? undefined
-											: t("player.controlOffName", {
-													control: t("player.shuffle"),
-												})
-									}
+									{...whenControllable(
+										canControlPlayback,
+										() => onShuffle(allRefs),
+										t("player.shuffle"),
+										t,
+									)}
 								>
 									{t("player.shuffle")}
 								</Button>

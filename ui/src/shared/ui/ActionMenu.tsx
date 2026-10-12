@@ -2,49 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Point } from "@/shared/hooks/useLongPress";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
-import {
-	ACTION_MENU_KEYBOARD,
-	useKeyboardOwnership,
-} from "@/shared/keyboard/keyboardOwner";
+import { useKeyboardOwnership } from "@/shared/keyboard/keyboardOwner";
 import { ActionPopover } from "./ActionPopover";
 import { ActionSheet } from "./ActionSheet";
+import type { ActionNode, MenuHeader } from "./actionPanel";
 import { SHEET_EXIT_MS } from "./BottomSheet";
-import type { IconComponent } from "./icons";
 
-export interface ActionEntry {
-	type?: undefined;
-	id: string;
-	label: string;
-	icon?: IconComponent;
-	shortcut?: string;
-	danger?: boolean;
-	checked?: boolean;
-	iconTone?: "accent";
-	disabled?: boolean;
-	onSelect?: () => void;
-	keepOpen?: boolean;
-	items?: ActionNode[];
-	filter?: string;
-}
-
-interface ActionSeparator {
-	type: "separator";
-	id?: string;
-}
-
-interface ActionMessage {
-	type: "message";
-	text: string;
-	id?: string;
-}
-
-export type ActionNode = ActionEntry | ActionSeparator | ActionMessage;
-
-export interface MenuHeader {
-	title: string;
-	subtitle?: string | null;
-	icon?: IconComponent;
-}
+const ACTION_MENU_KEYBOARD = "actionMenu";
 
 export function ActionMenu({
 	isOpen,

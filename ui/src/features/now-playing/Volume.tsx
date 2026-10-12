@@ -1,5 +1,6 @@
 import { ChevronUp, Volume1, Volume2, VolumeX } from "lucide-react";
 import { type ButtonHTMLAttributes, useState } from "react";
+import { whenControllable } from "@/domain/player/usePlaybackControl";
 import {
 	fractionToVolume,
 	volumePercent,
@@ -56,14 +57,9 @@ function VolumeButton({
 		<button
 			type="button"
 			className={styles.button}
-			onClick={disabled ? undefined : onPress}
 			aria-pressed={Boolean(volume?.isMuted)}
-			aria-disabled={disabled || undefined}
-			aria-label={
-				disabled
-					? t("player.controlOffName", { control: baseLabel })
-					: baseLabel
-			}
+			aria-label={baseLabel}
+			{...whenControllable(!disabled, onPress, baseLabel, t)}
 			title={
 				volume?.isMuted
 					? t("player.muted")

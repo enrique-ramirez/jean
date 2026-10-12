@@ -1,5 +1,4 @@
 import {
-	lazy,
 	Suspense,
 	useCallback,
 	useEffect,
@@ -33,14 +32,7 @@ import {
 	withoutScratchPlaylist,
 } from "@/domain/track/jeanPlaylists";
 import { askToJump } from "@/domain/track/jumpToPlaying";
-import {
-	isPlayingRoute,
-	type PanelTab,
-	panelOfRoute,
-	ROUTE,
-	playingRoute as routeOfPanel,
-	searchRoute,
-} from "@/domain/track/routes";
+import { panelOfRoute, ROUTE, searchRoute } from "@/domain/track/routes";
 import { TagWriterProvider } from "@/domain/track/useTagWriter";
 import { useHomePlayback } from "@/features/home/useHomePlayback";
 import { StatusBar } from "@/features/now-playing/StatusBar";
@@ -50,7 +42,11 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useTheme } from "@/shared/hooks/useTheme";
-import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
+import {
+	type Translate,
+	useSpoken,
+	useTranslate,
+} from "@/shared/i18n/useTranslate";
 import { workWhenIdle } from "@/shared/lib/idle";
 import { animateScrollTo } from "@/shared/ui/animateScroll";
 import { Confirmations } from "@/shared/ui/Confirmations";
@@ -58,8 +54,15 @@ import { DragGhost } from "@/shared/ui/DragGhost";
 import { Toasts } from "@/shared/ui/Toasts";
 import styles from "./App.module.css";
 import { ConnectionNotice } from "./ConnectionNotice";
+import { NowPlaying, preloadLayers } from "./lazyLayers";
 import { MainView } from "./MainView";
-import { resolveRoute, routeOfPlayingSet, routeOfSuggestion } from "./routes";
+import {
+	type RouteView,
+	resolveRoute,
+	routeOfPlayingSet,
+	routeOfSuggestion,
+} from "./routes";
+import { ShellModals } from "./ShellModals";
 import { type PlayableRow, Sidebar } from "./Sidebar";
 import { askToFocusSidebar } from "./sidebarFocus";
 import { TopBar } from "./TopBar";
@@ -69,43 +72,38 @@ import { useGlobalShortcuts } from "./useGlobalShortcuts";
 import { useHashRoute } from "./useHashRoute";
 import { useIsAtTop } from "./useIsAtTop";
 import { useModals } from "./useModals";
+import { useNowPlayingLayer } from "./useNowPlayingLayer";
 import { useResponsivePanel } from "./useResponsivePanel";
 import { useRouteView } from "./useRouteView";
 import { useScrollMemory } from "./useScrollMemory";
 import { useSearchBar } from "./useSearchBar";
+import { useSearchFollowsRoute } from "./useSearchFollowsRoute";
 import { useSelectedPlaylist } from "./useSelectedPlaylist";
 import { useSessionNotices } from "./useSessionNotices";
 
-const loadNowPlaying = () => import("@/features/now-playing/NowPlaying");
-const loadSettings = () => import("@/features/settings/SettingsDialog");
-const loadAutoPlaylist = () =>
-	import("@/features/autoplaylist/AutoPlaylistDialog");
-const loadShortcuts = () => import("@/shared/keyboard/ShortcutSheet");
-const loadPalette = () => import("./CommandPalette");
+function placeName(
+	view: RouteView,
+	page: ReturnType<typeof useRouteView>,
+	playlist: PlaylistInfo | null,
+	t: Translate,
+): string {
+	if (view.kind === "home") return t("route.home");
+	if (view.kind === "genres") return t("home.allGenres");
+	if (page.list) return page.list.heading.title;
+	if (view.kind === "search") return t("search.title");
+	return page.artist?.name ?? playlist?.title ?? "";
+}
 
-const NowPlaying = lazy(() =>
-	loadNowPlaying().then((module) => ({ default: module.NowPlaying })),
-);
-const SettingsDialog = lazy(() =>
-	loadSettings().then((module) => ({ default: module.SettingsDialog })),
-);
-const AutoPlaylistDialog = lazy(() =>
-	loadAutoPlaylist().then((module) => ({ default: module.AutoPlaylistDialog })),
-);
-const ShortcutSheet = lazy(() =>
-	loadShortcuts().then((module) => ({ default: module.ShortcutSheet })),
-);
-const CommandPalette = lazy(() =>
-	loadPalette().then((module) => ({ default: module.CommandPalette })),
-);
-
-const preloadLayers = () => {
-	void loadNowPlaying();
-	void loadSettings();
-	void loadShortcuts();
-	void loadPalette();
-	return true;
-};
+function scrollMemoryKey(
+	view: RouteView,
+	searchKey: string,
+	shellRoute: string,
+	selectedId: string,
+): string {
+	if (view.kind === "search") return searchKey;
+	if (view.kind === "playlist") return `playlist:${selectedId}`;
+	return `library:${shellRoute}`;
+}
 
 export function App() {
 	return (
@@ -146,13 +144,8 @@ function Shell() {
 
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 
-	const isNowPlaying = isPlayingRoute(route);
-	const [hasOpenedNowPlaying, setHasOpenedNowPlaying] = useState(isNowPlaying);
-	if (isNowPlaying && !hasOpenedNowPlaying) setHasOpenedNowPlaying(true);
-	const [openedFrom, setOpenedFrom] = useState("");
-	// `history.back()` is wrong: a reload can land straight on `#/playing` with no entry behind it, and back would leave Jean.
-	if (!isNowPlaying && openedFrom !== route) setOpenedFrom(route);
-	const shellRoute = isNowPlaying ? openedFrom : route;
+	const nowPlaying = useNowPlayingLayer(route, navigate);
+	const { isOpen: isNowPlaying, shellRoute, setOpenedFrom } = nowPlaying;
 	const view = useMemo(() => resolveRoute(shellRoute), [shellRoute]);
 	const isLibrary = view.kind !== "playlist";
 	const isSearch = view.kind === "search";
@@ -193,26 +186,6 @@ function Shell() {
 		[playlists],
 	);
 
-	const palettePlaylists = useMemo(
-		() =>
-			browsable.map((playlist) => ({
-				route: playlist.id,
-				title: playlist.title,
-				count: playlist.itemCount,
-			})),
-		[browsable],
-	);
-
-	const paletteViews = useMemo(
-		() => [
-			...(playingFrom?.temporaryRow
-				? [{ route: playingFrom.route, title: playingFrom.name }]
-				: []),
-			{ route: ROUTE.all, title: t("library.allMusic") },
-		],
-		[playingFrom, t],
-	);
-
 	const playingPlaylist = browsable.find(
 		(entry) => entry.id === playingPlaylistId,
 	);
@@ -232,43 +205,9 @@ function Shell() {
 		navigate,
 	});
 
-	const restoredSearch = useRef(false);
-	const {
-		hasQuery,
-		query: committedQuery,
-		commit: commitSearch,
-		remembered: rememberedQuery,
-		restore: restoreSearch,
-	} = search;
+	useSearchFollowsRoute(search, isSearch, searchQuery);
 
-	useEffect(() => {
-		if (!searchQuery || searchQuery === committedQuery) return;
-		commitSearch(searchQuery);
-	}, [searchQuery, committedQuery, commitSearch]);
-
-	useEffect(() => {
-		if (
-			restoredSearch.current ||
-			!isSearch ||
-			hasQuery ||
-			searchQuery ||
-			!rememberedQuery
-		)
-			return;
-		restoredSearch.current = true;
-		restoreSearch();
-	}, [isSearch, hasQuery, searchQuery, rememberedQuery, restoreSearch]);
-
-	const place =
-		view.kind === "home"
-			? t("route.home")
-			: view.kind === "genres"
-				? t("home.allGenres")
-				: page.list
-					? page.list.heading.title
-					: isSearch
-						? t("search.title")
-						: (page.artist?.name ?? playlist?.title ?? "");
+	const place = placeName(view, page, playlist, t);
 
 	const cancelScroll = useRef<(() => void) | null>(null);
 	const backToTop = useCallback(() => {
@@ -290,11 +229,7 @@ function Shell() {
 
 	useScrollMemory(
 		scrollRef,
-		isSearch
-			? search.viewKey
-			: isLibrary
-				? `library:${shellRoute}`
-				: `playlist:${selectedId}`,
+		scrollMemoryKey(view, search.viewKey, shellRoute, selectedId),
 		{ restore: !arrivingAtPlayingTrack },
 	);
 
@@ -395,7 +330,7 @@ function Shell() {
 			setOpenedFrom(from);
 			if (from === playingPlaylistId) remember(from);
 		},
-		[playingPlaylistId, remember],
+		[setOpenedFrom, playingPlaylistId, remember],
 	);
 
 	useFrontDoor({
@@ -412,23 +347,6 @@ function Shell() {
 		openModal("settings");
 		setSettingsSeen(true);
 	}, [settingsSeen, hasPlaylists, setSettingsSeen, openModal]);
-
-	// Replaced rather than pushed: the panel behind a track is not somewhere the reader asked to
-	// travel back through, and the track settling picks one on its own.
-	const selectPanel = useCallback(
-		(tab: PanelTab) => navigate(`/${routeOfPanel(tab)}`, { replace: true }),
-		[navigate],
-	);
-
-	const closeNowPlaying = useCallback(
-		() => navigate(`/${openedFrom}`),
-		[navigate, openedFrom],
-	);
-
-	const toggleNowPlaying = useCallback(
-		() => (isNowPlaying ? closeNowPlaying() : navigate(`/${ROUTE.playing}`)),
-		[isNowPlaying, closeNowPlaying, navigate],
-	);
 
 	useGlobalShortcuts({
 		toggleSettings: () => modals.toggle("settings"),
@@ -452,7 +370,7 @@ function Shell() {
 			askToFocusSidebar();
 		},
 		toggleQueue: queue.toggle,
-		toggleNowPlaying,
+		toggleNowPlaying: nowPlaying.toggle,
 		goToPlaying: () => {
 			if (!playingRoute) return;
 			if (
@@ -529,12 +447,12 @@ function Shell() {
 					onEditAutoPlaylist={editAutoPlaylist}
 				/>
 
-				{hasOpenedNowPlaying ? (
+				{nowPlaying.hasOpened ? (
 					<Suspense fallback={null}>
 						<NowPlaying
 							isOpen={isNowPlaying}
 							tab={panelOfRoute(route)}
-							onSelectTab={selectPanel}
+							onSelectTab={nowPlaying.selectPanel}
 							isCompactViewport={isCompactViewport}
 							isQueueOpen={queue.isOpen}
 							onToggleQueue={queue.toggle}
@@ -542,7 +460,7 @@ function Shell() {
 							onOpenPlayingFrom={
 								playingRoute ? () => openPlayingFrom(playingRoute) : undefined
 							}
-							onDismiss={closeNowPlaying}
+							onDismiss={nowPlaying.close}
 						/>
 					</Suspense>
 				) : null}
@@ -568,49 +486,23 @@ function Shell() {
 				<StatusBar
 					isQueueOpen={queue.isOpen}
 					onToggleQueue={queue.toggle}
-					onOpenNowPlaying={toggleNowPlaying}
+					onOpenNowPlaying={nowPlaying.toggle}
 					onRevealNowPlaying={() => navigate(`/${ROUTE.playing}`)}
 				/>
 			)}
 
 			<DragGhost />
 
-			{modals.isOpen.palette ? (
-				<Suspense fallback={null}>
-					<CommandPalette
-						views={paletteViews}
-						playlists={palettePlaylists}
-						onSelect={openFromPalette}
-						onDismiss={() => modals.close("palette")}
-					/>
-				</Suspense>
-			) : null}
-
-			{modals.isOpen.shortcuts ? (
-				<Suspense fallback={null}>
-					<ShortcutSheet onDismiss={() => modals.close("shortcuts")} />
-				</Suspense>
-			) : null}
-
-			{modals.isOpen.settings ? (
-				<Suspense fallback={null}>
-					<SettingsDialog onDismiss={() => modals.close("settings")} />
-				</Suspense>
-			) : null}
-
-			{modals.isOpen.autoplaylist ? (
-				<Suspense fallback={null}>
-					<AutoPlaylistDialog
-						library={library}
-						editing={editedAutoPlaylist ?? undefined}
-						onOpenPlaylist={openPlaylist}
-						onDismiss={() => {
-							modals.close("autoplaylist");
-							setEditedAutoPlaylist(null);
-						}}
-					/>
-				</Suspense>
-			) : null}
+			<ShellModals
+				modals={modals}
+				browsable={browsable}
+				playingFrom={playingFrom}
+				library={library}
+				editedAutoPlaylist={editedAutoPlaylist}
+				onOpenFromPalette={openFromPalette}
+				onOpenPlaylist={openPlaylist}
+				onAutoPlaylistDismissed={() => setEditedAutoPlaylist(null)}
+			/>
 
 			<span className="visually-hidden" aria-live="polite">
 				{say(isPlaying ? "player.playing" : "player.paused")}

@@ -111,6 +111,11 @@ export type TrackAddress =
 	| { kind: "ordinal"; ordinal: number; structure: number }
 	| { kind: "playlist"; playlist: string; index: number; structure: string };
 
+export interface PlayingTrack extends TrackIdentity {
+	artist: string | null;
+	title: string | null;
+}
+
 export interface NowPlayingTrack extends TrackIdentity {
 	artist: string;
 	title: string;

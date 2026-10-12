@@ -3,7 +3,7 @@ import { type ArtistTracks, refsOfArtist } from "@/domain/artist/artists";
 import { useSplitCredits } from "@/domain/artist/splitCredits";
 import type { Library } from "@/domain/library/useLibrary";
 import { AlbumCrumb } from "@/domain/track/AlbumCrumb";
-import { albumsOf, refsOfAlbum } from "@/domain/track/albums";
+import { type AlbumTracks, albumsOf, refsOfAlbum } from "@/domain/track/albums";
 import {
 	albumLabel,
 	SCRATCH_KIND,
@@ -19,7 +19,7 @@ import {
 import { type ArtistTab, href, ROUTE } from "@/domain/track/routes";
 import type { PageHeading } from "@/domain/track/TrackPage";
 import { buildShelves, refsOfShelf } from "@/features/home/shelves";
-import { useTranslate } from "@/shared/i18n/useTranslate";
+import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
 import { Crumb } from "@/shared/ui/Crumb";
 import type { RouteView } from "./routes";
 
@@ -44,6 +44,70 @@ const EMPTY_ARTIST_TRACKS: ArtistTracks = {
 	guest: new Int32Array(0),
 	all: new Int32Array(0),
 };
+
+interface ListViews {
+	allMusic: TrackView;
+	shelfView: TrackView | null;
+	genreView: TrackView | null;
+	albumView: TrackView | null;
+	albumTracks: AlbumTracks | null;
+}
+
+function listPageOf(
+	route: RouteView,
+	{ allMusic, shelfView, genreView, albumView, albumTracks }: ListViews,
+	t: Translate,
+): ListPage | null {
+	switch (route.kind) {
+		case "shelf":
+			return {
+				view: shelfView ?? EMPTY_VIEW,
+				kind: SCRATCH_KIND.shelf,
+				label: t(route.shelf.title),
+				heading: { eyebrow: t("route.shelf"), title: t(route.shelf.title) },
+				emptyNotice: t("library.empty"),
+			};
+		case "genre":
+			if (!route.genre) return null;
+			return {
+				view: genreView ?? EMPTY_VIEW,
+				kind: SCRATCH_KIND.genre,
+				label: route.genre,
+				heading: {
+					eyebrow: (
+						<Crumb href={href(ROUTE.genres)}>{t("home.allGenres")}</Crumb>
+					),
+					title: route.genre,
+				},
+				emptyNotice: t("library.noGenre", { genre: route.genre }),
+			};
+		case "album":
+			if (!albumTracks) return null;
+			return {
+				view: albumView ?? EMPTY_VIEW,
+				kind: SCRATCH_KIND.album,
+				label: albumLabel(albumTracks.artist, albumTracks.album),
+				heading: {
+					eyebrow: <AlbumCrumb artist={albumTracks.artist} />,
+					title: albumTracks.album,
+				},
+				emptyNotice: t("library.noAlbum"),
+			};
+		case "all":
+			return {
+				view: allMusic,
+				kind: SCRATCH_KIND.all,
+				label: "",
+				heading: {
+					eyebrow: t("home.yourLibrary"),
+					title: t("library.allMusic"),
+				},
+				emptyNotice: t("library.empty"),
+			};
+		default:
+			return null;
+	}
+}
 
 export function useRouteView(route: RouteView, library: Library) {
 	const t = useTranslate();
@@ -96,50 +160,11 @@ export function useRouteView(route: RouteView, library: Library) {
 		[artist, snapshot, artistTracks.all],
 	);
 
-	const list: ListPage | null = shelf
-		? {
-				view: shelfView ?? EMPTY_VIEW,
-				kind: SCRATCH_KIND.shelf,
-				label: t(shelf.title),
-				heading: { eyebrow: t("route.shelf"), title: t(shelf.title) },
-				emptyNotice: t("library.empty"),
-			}
-		: genre
-			? {
-					view: genreView ?? EMPTY_VIEW,
-					kind: SCRATCH_KIND.genre,
-					label: genre,
-					heading: {
-						eyebrow: (
-							<Crumb href={href(ROUTE.genres)}>{t("home.allGenres")}</Crumb>
-						),
-						title: genre,
-					},
-					emptyNotice: t("library.noGenre", { genre }),
-				}
-			: albumTracks
-				? {
-						view: albumView ?? EMPTY_VIEW,
-						kind: SCRATCH_KIND.album,
-						label: albumLabel(albumTracks.artist, albumTracks.album),
-						heading: {
-							eyebrow: <AlbumCrumb artist={albumTracks.artist} />,
-							title: albumTracks.album,
-						},
-						emptyNotice: t("library.noAlbum"),
-					}
-				: route.kind === "all"
-					? {
-							view: allMusic,
-							kind: SCRATCH_KIND.all,
-							label: "",
-							heading: {
-								eyebrow: t("home.yourLibrary"),
-								title: t("library.allMusic"),
-							},
-							emptyNotice: t("library.empty"),
-						}
-					: null;
+	const list = listPageOf(
+		route,
+		{ allMusic, shelfView, genreView, albumView, albumTracks },
+		t,
+	);
 
 	const artistPage: ArtistPage | null = artist
 		? {

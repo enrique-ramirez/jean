@@ -1,4 +1,7 @@
-import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
+import {
+	useCanControlPlayback,
+	whenControllable,
+} from "@/domain/player/usePlaybackControl";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./TopTracks.module.css";
@@ -32,15 +35,12 @@ export function TopTracks({
 								type="button"
 								className={styles.row}
 								title={artistAndTitle}
-								onClick={
-									canControlPlayback ? () => onPlayTrack(track.ref) : undefined
-								}
-								aria-disabled={canControlPlayback ? undefined : "true"}
-								aria-label={
-									canControlPlayback
-										? undefined
-										: t("player.controlOffName", { control: artistAndTitle })
-								}
+								{...whenControllable(
+									canControlPlayback,
+									() => onPlayTrack(track.ref),
+									artistAndTitle,
+									t,
+								)}
 							>
 								<span className={styles.rank}>{at + 1}</span>
 								<Artwork

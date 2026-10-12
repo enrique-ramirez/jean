@@ -114,12 +114,6 @@ const derive = (byKey: Map<string, Draft>): Genre[] =>
 		)
 		.sort((a, b) => b.trackCount - a.trackCount || inKeyOrder(a.key, b.key));
 
-export function genresOf(rows: TrackRows): Genre[] {
-	const byKey = new Map<string, Draft>();
-	absorb(byKey, rows, 0);
-	return derive(byKey);
-}
-
 const GROUPED = [FIELD.genre, FIELD.album, FIELD.albumArtist, FIELD.artist];
 
 export const genreIndex = growingIndex(GROUPED, absorb, derive);

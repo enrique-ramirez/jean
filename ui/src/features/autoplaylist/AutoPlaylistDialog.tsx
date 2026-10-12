@@ -12,7 +12,6 @@ import { requireFooJean } from "@/shared/api/discovery";
 import { createAutoPlaylist, updateAutoPlaylist } from "@/shared/api/playlists";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
-import { AUTOPLAYLIST_KEYBOARD } from "@/shared/keyboard/keyboardOwner";
 import { Button } from "@/shared/ui/Button";
 import { Input } from "@/shared/ui/Input";
 import { ModalDialog } from "@/shared/ui/ModalDialog";
@@ -21,6 +20,8 @@ import { QueryField } from "./QueryField";
 import { Results } from "./Results";
 import { usePreviewedQuery } from "./usePreviewedQuery";
 import { valueSourceOf } from "./valueSource";
+
+const AUTOPLAYLIST_KEYBOARD = "autoplaylist";
 
 export function AutoPlaylistDialog({
 	library,

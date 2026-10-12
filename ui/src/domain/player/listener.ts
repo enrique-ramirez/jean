@@ -136,8 +136,3 @@ export const DEVICE_VOLUME_STEP_DB = 2;
 
 export const amplitudeOf = (db: number) =>
 	db <= DEVICE_VOLUME_FLOOR_DB ? 0 : clamp(10 ** (db / 20), 0, 1);
-
-export const decibelsOf = (amplitude: number) =>
-	amplitude <= 0
-		? DEVICE_VOLUME_FLOOR_DB
-		: clamp(20 * Math.log10(amplitude), DEVICE_VOLUME_FLOOR_DB, 0);

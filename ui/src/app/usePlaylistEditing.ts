@@ -8,14 +8,12 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { isEditableAutoPlaylist } from "@/domain/player/editableAutoPlaylist";
-import {
-	untitledPlaylistName,
-	usePlaylistActions,
-} from "@/domain/player/usePlaylists";
+import { usePlaylistActions } from "@/domain/player/usePlaylistActions";
+import { untitledPlaylistName } from "@/domain/player/usePlaylists";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { randomId } from "@/shared/lib/randomId";
-import type { ActionNode } from "@/shared/ui/ActionMenu";
+import type { ActionNode } from "@/shared/ui/actionPanel";
 import { pushToast } from "@/shared/ui/toastStore";
 import { askToFocusSidebar } from "./sidebarFocus";
 

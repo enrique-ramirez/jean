@@ -6,7 +6,11 @@ import {
 	valuesIn,
 } from "@/shared/api/multiValue";
 import { RATING_EXPRESSION } from "@/shared/api/rating";
-import type { TrackColumns } from "@/shared/api/types";
+import type {
+	NowPlayingTrack,
+	PlayingTrack,
+	TrackColumns,
+} from "@/shared/api/types";
 import type { Translate } from "@/shared/i18n/locale";
 import {
 	byValue,
@@ -131,6 +135,16 @@ export const titleOf = (row: TrackColumns, t: Translate) =>
 export const artistOf = (row: TrackColumns, t: Translate) =>
 	value(row, FIELD.artist) ?? t("track.unknownArtist");
 
+export const namedTrack = (
+	track: PlayingTrack | null,
+	t: Translate,
+): NowPlayingTrack | null =>
+	track && {
+		...track,
+		title: track.title ?? t("track.unknownTitle"),
+		artist: track.artist ?? t("track.unknownArtist"),
+	};
+
 // 'YYYY-MM-DD HH:MM:SS', with a trailing space from some components. Not every engine parses the
 // space separator, hence the swap for 'T'.
 export function readTimestamp(raw: string | undefined): number | null {
@@ -189,14 +203,35 @@ function tagGrouper(): TagGrouper {
 	};
 }
 
-export interface TagGroups extends TagGrouper {
-	readonly of: Int32Array;
+function perColumn<T extends object>(build: (column: JlibColumn) => T) {
+	const built = new WeakMap<JlibColumn, T>();
+
+	return (column: JlibColumn): T => {
+		const held = built.get(column);
+		if (held) return held;
+
+		const fresh = build(column);
+		built.set(column, fresh);
+		return fresh;
+	};
 }
 
-export function tagGroups(column: JlibColumn): TagGroups {
-	const grouper = tagGrouper();
-	return { ...grouper, of: grouper.over(column) };
+export interface TagGroups {
+	readonly keys: readonly string[];
+	readonly names: readonly string[];
+	readonly of: Int32Array;
+	readonly group: (key: string) => number;
 }
+
+export const tagGroups = perColumn((column): TagGroups => {
+	const grouper = tagGrouper();
+	return {
+		keys: grouper.keys,
+		names: grouper.names,
+		of: grouper.over(column),
+		group: grouper.group,
+	};
+});
 
 export interface GenreGroups {
 	readonly keys: string[];
@@ -219,16 +254,26 @@ export function genreGroups(column: JlibColumn): GenreGroups {
 // Album artist first: it is missing far more often than artist is, so a record credited to it groups
 // correctly and one without it still falls back to whoever the tracks are by.
 export interface ArtistGroups {
-	readonly names: string[];
+	readonly names: readonly string[];
 	readonly at: (ref: number) => number;
 	readonly pairedWith: (ref: number, group: number) => number;
 	readonly group: (key: string) => number;
 }
 
-export function artistGroups(columns: LibraryColumns): ArtistGroups {
+const artistGroupsOver = perColumn((albumArtist) =>
+	perColumn((artist) => groupedArtists(albumArtist, artist)),
+);
+
+export const artistGroups = (columns: LibraryColumns): ArtistGroups =>
+	artistGroupsOver(columns.fields[FIELD.albumArtist])(
+		columns.fields[FIELD.artist],
+	);
+
+function groupedArtists(
+	albumArtist: JlibColumn,
+	artist: JlibColumn,
+): ArtistGroups {
 	const grouper = tagGrouper();
-	const albumArtist = columns.fields[FIELD.albumArtist];
-	const artist = columns.fields[FIELD.artist];
 	const byAlbumArtist = grouper.over(albumArtist);
 	const byArtist = grouper.over(artist);
 

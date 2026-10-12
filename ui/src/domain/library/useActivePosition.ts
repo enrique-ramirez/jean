@@ -4,7 +4,7 @@ import { useAudiblePlayer } from "@/domain/player/usePlayer";
 import { useResolvedPlaylistId } from "@/domain/player/usePlaylists";
 import type { LibrarySource } from "@/domain/track/librarySource";
 import type { Refs } from "@/domain/track/project";
-import { readTrack } from "@/shared/api/playerState";
+import { playingTrack } from "@/shared/api/playerState";
 import type { useScratchPlaylist } from "./useScratchPlaylist";
 
 export function useActivePosition({
@@ -21,7 +21,7 @@ export function useActivePosition({
 	const snapshot = useAudiblePlayer();
 
 	const activeItem = snapshot?.player?.activeItem;
-	const playing = readTrack(snapshot?.player);
+	const playing = playingTrack(snapshot?.player);
 
 	// Read by value: a player message arrives for every volume nudge, each carrying a new `activeItem` object, and the memo below sweeps every ref in the view.
 	const path = playing?.path ?? null;

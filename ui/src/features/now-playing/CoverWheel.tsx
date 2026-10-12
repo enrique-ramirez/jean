@@ -66,31 +66,38 @@ export function useCoverWheel({
 	const unanswered = useRef<{ to: number; from: number } | null>(null);
 	const undo = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	const paint = useCallback((isFree: boolean) => {
-		const wheel = ref.current;
-		if (!wheel) return;
-		wheel.toggleAttribute("data-free", isFree);
-		wheel.style.setProperty(
+	const paintTurn = useCallback(() => {
+		ref.current?.style.setProperty(
 			"--turn",
 			`${settled.current + dragging.current}deg`,
 		);
 	}, []);
 
+	const followFinger = useCallback(() => {
+		ref.current?.setAttribute("data-free", "");
+		paintTurn();
+	}, [paintTurn]);
+
+	const easeToRest = useCallback(() => {
+		ref.current?.removeAttribute("data-free");
+		paintTurn();
+	}, [paintTurn]);
+
 	const attach = useCallback(
 		(node: HTMLDivElement | null) => {
 			ref.current = node;
-			if (node) paint(false);
+			if (node) easeToRest();
 		},
-		[paint],
+		[easeToRest],
 	);
 
 	const turnTo = useCallback(
 		(at: number) => {
 			settled.current = -at * STEP;
 			setPosition(at);
-			paint(false);
+			easeToRest();
 		},
-		[paint],
+		[easeToRest],
 	);
 
 	const seen = useRef<string | null>(null);
@@ -175,9 +182,9 @@ export function useCoverWheel({
 			const past = Math.max(0, Math.abs(of) - 1);
 			dragging.current =
 				Math.sign(of) * (Math.min(Math.abs(of), 1) + past * GIVE) * STEP;
-			paint(true);
+			followFinger();
 		},
-		[paint],
+		[followFinger],
 	);
 
 	const skip = useCallback(
@@ -210,13 +217,13 @@ export function useCoverWheel({
 			const far = across > 0 && Math.abs(dx / across) >= 0.5;
 			const flicked = wasFlick && Math.abs(dx) >= FLICK_PX;
 			if (!far && !flicked) {
-				paint(false);
+				easeToRest();
 				return;
 			}
 
-			if (!skip(dx < 0 ? 1 : -1)) paint(false);
+			if (!skip(dx < 0 ? 1 : -1)) easeToRest();
 		},
-		[skip, paint],
+		[skip, easeToRest],
 	);
 
 	return {

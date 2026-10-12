@@ -1,19 +1,5 @@
-import {
-	Headphones,
-	Loader2,
-	MonitorSpeaker,
-	Play,
-	RotateCcw,
-	TriangleAlert,
-	VolumeOff,
-} from "lucide-react";
-import {
-	type KeyboardEvent as ReactKeyboardEvent,
-	useId,
-	useLayoutEffect,
-	useRef,
-	useState,
-} from "react";
+import { Play, RotateCcw, TriangleAlert } from "lucide-react";
+import { useId, useRef, useState } from "react";
 
 import {
 	type Audience,
@@ -32,16 +18,15 @@ import { type ListenPhase, useListener } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
 import { useIsPlaying, usePlayer } from "@/domain/player/usePlayer";
 import { useVolume } from "@/domain/player/useVolume";
-import { readTrack } from "@/shared/api/playerState";
+import { namedTrack } from "@/domain/track/fields";
+import { playingTrack } from "@/shared/api/playerState";
 import {
 	type Translate,
 	useSpoken,
 	useTranslate,
 } from "@/shared/i18n/useTranslate";
-import { classNames } from "@/shared/lib/classNames";
-import { rovedIndex } from "@/shared/lib/rove";
-import { Equalizer } from "@/shared/ui/Equalizer";
 import styles from "./ListenHere.module.css";
+import { ListeningLine, OtherListeners } from "./ListeningLines";
 import {
 	OutputCog,
 	OutputDeviceList,
@@ -50,20 +35,19 @@ import {
 import {
 	EndedRow,
 	ListedRow,
-	ROW_BESIDE,
-	ROW_STOP,
+	PlayerRow,
 	SessionRow,
 	ShareRow,
 	StandingLine,
 	type StartedBy,
 	StartRow,
-	usePressedRows,
 	useStartedBy,
 	whatPlaysIn,
 } from "./PickerRows";
+import { roveRows } from "./roveRows";
+import { useFocusAfterPress } from "./useFocusAfterPress";
+import { usePressedRows } from "./usePressedRows";
 import { VolumeGlyph, VolumeSlider } from "./Volume";
-
-export const TAKES_FOCUS = "[data-takes-focus]";
 
 function explain(phase: ListenPhase, t: Translate): string | null {
 	switch (phase.kind) {
@@ -96,64 +80,15 @@ function silentFor(
 	return t("listen.silentForMany", { count: others.length });
 }
 
-const isBusy = (phase: ListenPhase) =>
-	phase.kind === "connecting" || phase.kind === "reconnecting";
+const SAYS_A_SECOND_UNDER = 1.5;
 
-const drift = (lagSeconds: number | null, t: Translate) =>
-	lagSeconds === null
-		? t("listen.driftUnknown")
-		: lagSeconds < 1.5
-			? t("listen.driftSecond")
-			: t("listen.driftSeconds", { seconds: Math.round(lagSeconds) });
-
-function forHowLong(seconds: number, t: Translate): string {
-	if (seconds < 60) return t("listen.forJustNow");
-	const minutes = Math.round(seconds / 60);
-	if (minutes < 60) return t("span.minutesShort", { count: minutes });
-	return t("span.hoursShort", { count: Math.round(minutes / 60) });
+function drift(lagSeconds: number | null, t: Translate): string {
+	if (lagSeconds === null) return t("listen.driftUnknown");
+	if (lagSeconds < SAYS_A_SECOND_UNDER) return t("listen.driftSecond");
+	return t("listen.driftSeconds", { seconds: Math.round(lagSeconds) });
 }
 
 const NO_SESSIONS: readonly ListedSession[] = [];
-
-type FocusAfter = "ifLost" | { awayFrom: string | null };
-
-const ARROWS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
-
-function acrossRow(row: Element, key: string, from: EventTarget) {
-	const face = row.querySelector<HTMLElement>(ROW_STOP);
-	const beside = row.querySelector<HTMLElement>(ROW_BESIDE);
-	if (key === "ArrowRight" && from === face) return beside;
-	if (key === "ArrowLeft" && from === beside) return face;
-	return null;
-}
-
-function roveRows(event: ReactKeyboardEvent, list: HTMLUListElement | null) {
-	if (!ARROWS.has(event.key) || !list) return;
-	if (
-		event.target instanceof HTMLElement &&
-		event.target.getAttribute("role") === "slider"
-	)
-		return;
-	event.stopPropagation();
-	event.preventDefault();
-
-	if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-		const row = [...list.children].find((held) =>
-			held.contains(event.target as Node),
-		);
-		if (row) acrossRow(row, event.key, event.target)?.focus();
-		return;
-	}
-
-	const stops = [...list.children].flatMap(
-		(row) => row.querySelector<HTMLElement>(ROW_STOP) ?? [],
-	);
-	const at = stops.findIndex((stop) =>
-		stop.closest("li")?.contains(event.target as Node),
-	);
-	const next = rovedIndex(event.key, at, stops.length, { wrap: true });
-	if (next !== null) stops[next]?.focus();
-}
 
 export function PlayingOn({
 	playerName,
@@ -199,19 +134,11 @@ export function PlayingOn({
 	} = usePressedRows(list?.sessions ?? NO_SESSIONS);
 
 	const headingId = useId();
-	const othersId = useId();
-	const secondLineId = useId();
 	const deviceNoteId = useId();
 	const onlyListenerId = useId();
-	const noSpeakersId = useId();
 
 	const groupRef = useRef<HTMLDivElement | null>(null);
 	const rowsRef = useRef<HTMLUListElement | null>(null);
-	const focusAfter = useRef<FocusAfter | null>(null);
-	const swapByPress = (act: () => void) => {
-		focusAfter.current = "ifLost";
-		act();
-	};
 	const [isPlayerFull, setIsPlayerFull] = useState(false);
 	const [refusedInEpoch, setRefusedInEpoch] = useState<number | null>(null);
 	const listenWhereControlled = async () => {
@@ -227,27 +154,11 @@ export function PlayingOn({
 			setIsPlayerFull(!outcome.ok && outcome.reason === "full");
 		return outcome;
 	};
-	const moveByPress = (act: () => Promise<SessionOutcome>) => {
-		const awaiting = { awayFrom: session.id };
-		focusAfter.current = awaiting;
-		void act().then((outcome) => {
-			const isStillAwaited = focusAfter.current === awaiting;
-			if (!outcome.ok && outcome.reason !== "pending" && isStillAwaited)
-				focusAfter.current = null;
-		});
-	};
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: `isOn` fires this rather than being read in it.
-	useLayoutEffect(() => {
-		const after = focusAfter.current;
-		if (after === null) return;
-		if (after !== "ifLost" && after.awayFrom === session.id) return;
-		focusAfter.current = null;
-		if (after === "ifLost" && document.activeElement !== document.body) return;
-		groupRef.current
-			?.querySelector<HTMLElement>(TAKES_FOCUS)
-			?.focus({ preventScroll: true });
-	}, [isOn, session.id]);
+	const { swapByPress, moveByPress } = useFocusAfterPress(
+		groupRef,
+		isOn,
+		session.id,
+	);
 
 	if (outputPage.showsOutputs)
 		return (
@@ -276,7 +187,9 @@ export function PlayingOn({
 	const isOnlyListener =
 		inSession && isOn && audience.listeners !== null && others.length === 0;
 
-	const track = namesWhatPlays ? readTrack(snapshot?.player) : null;
+	const track = namesWhatPlays
+		? namedTrack(playingTrack(snapshot?.player), t)
+		: null;
 	const whatPlays = track
 		? t("listen.playingTrack", { title: track.title, artist: track.artist })
 		: null;
@@ -289,30 +202,6 @@ export function PlayingOn({
 		else if (held && others.length > 0) secondLine = silentFor(isOn, others, t);
 		secondLine ??= whatPlays;
 	}
-
-	const playerFace = (
-		<>
-			<span className={styles.tile} data-hears={!inSession && isOn}>
-				<MonitorSpeaker size={16} strokeWidth={2} aria-hidden="true" />
-			</span>
-			<span className={styles.title}>
-				<span className={styles.name}>{playerName}</span>
-				{playerAudible && !inSession && !isOffered ? (
-					<span className={styles.playing}>
-						<Equalizer
-							label={say("listen.playingOn", { player: playerName })}
-							paused={!isPlaying}
-						/>
-					</span>
-				) : null}
-			</span>
-		</>
-	);
-
-	const faceDescribedBy =
-		[isOffered ? noSpeakersId : null, secondLine ? secondLineId : null]
-			.filter(Boolean)
-			.join(" ") || undefined;
 
 	const hasListeningLine = inSession || isOn;
 	const hasInside = hasListeningLine || note !== null || others.length > 0;
@@ -358,23 +247,14 @@ export function PlayingOn({
 	const inside = hasInside ? (
 		<div className={styles.inside}>
 			{hasListeningLine ? (
-				<div className={styles.listening} data-only-controls={onlyControls}>
-					<span className={styles.mark}>
-						{isBusy(phase) ? (
-							<Loader2 size={14} strokeWidth={2.5} className={styles.spin} />
-						) : phase.kind === "playing" ? (
-							<Equalizer paused={!isPlaying} />
-						) : onlyControls ? (
-							<VolumeOff size={14} strokeWidth={2.2} aria-hidden="true" />
-						) : null}
-					</span>
-					{listensHere ? (
-						<span className={styles.name}>{t("listen.listeningHere")}</span>
-					) : onlyControls ? (
-						<span className={styles.name}>{t("listen.controlling")}</span>
-					) : null}
+				<ListeningLine
+					phase={phase}
+					isPlaying={isPlaying}
+					listensHere={listensHere}
+					onlyControls={onlyControls}
+				>
 					{wayOut}
-				</div>
+				</ListeningLine>
 			) : null}
 
 			{nobodyListens ? (
@@ -429,29 +309,11 @@ export function PlayingOn({
 			) : null}
 
 			{others.length > 0 ? (
-				<>
-					<p
-						className={classNames(styles.heading, styles.subhead)}
-						id={othersId}
-					>
-						{onlyControls
-							? t("listen.listeningNow")
-							: t("listen.alsoListening")}
-					</p>
-					<ul className={styles.roster} aria-labelledby={othersId}>
-						{others.map((device) => (
-							<li className={styles.listener} key={device.deviceId}>
-								<span className={styles.mark}>
-									<Equalizer paused={!isPlaying} />
-								</span>
-								<span className={styles.listenerName}>{device.label}</span>
-								<span className={styles.listenerFor}>
-									{forHowLong(device.listeningFor, t)}
-								</span>
-							</li>
-						))}
-					</ul>
-				</>
+				<OtherListeners
+					others={others}
+					isPlaying={isPlaying}
+					onlyControls={onlyControls}
+				/>
 			) : null}
 
 			{isShared !== undefined ? (
@@ -459,6 +321,31 @@ export function PlayingOn({
 			) : null}
 		</div>
 	) : null;
+
+	const playerControls =
+		volume || showOutputCog ? (
+			<span className={styles.cell}>
+				{volume ? (
+					<span className={styles.fader}>
+						<VolumeGlyph volume={volume} />
+						<VolumeSlider
+							volume={volume}
+							onChange={setValue}
+							className={styles.slider}
+							label={t("listen.volumeOn", { player: playerName })}
+							disabled={!canControlPlayback}
+						/>
+					</span>
+				) : null}
+
+				{showOutputCog ? (
+					<OutputCog
+						onClick={() => outputPage.open(outputsQuery.refetch)}
+						autoFocus={outputPage.returnFocus}
+					/>
+				) : null}
+			</span>
+		) : null;
 
 	const listedHere = listed.find(
 		({ session: entry }) => entry.document.id === session.id,
@@ -537,75 +424,19 @@ export function PlayingOn({
 			) : null}
 
 			<ul className={styles.rows} ref={rowsRef}>
-				<li
-					className={styles.place}
-					aria-current={inSession ? undefined : "true"}
+				<PlayerRow
+					playerName={playerName}
+					isCurrent={!inSession}
+					hears={!inSession && isOn}
+					isOffered={isOffered}
+					showsPlaying={playerAudible && !inSession && !isOffered}
+					isPlaying={isPlaying}
+					secondLine={secondLine}
+					onListen={hasListeningLine ? null : () => swapByPress(connect)}
+					beside={playerControls}
 				>
-					<div className={styles.row} data-offered={isOffered}>
-						{hasListeningLine ? (
-							<div className={styles.face}>{playerFace}</div>
-						) : (
-							<button
-								type="button"
-								className={styles.face}
-								aria-label={t("listen.here")}
-								aria-describedby={faceDescribedBy}
-								data-takes-focus=""
-								data-row-stop=""
-								onClick={() => swapByPress(connect)}
-							>
-								{playerFace}
-								<span className={styles.verb}>
-									{isOffered ? (
-										<Headphones
-											size={13}
-											strokeWidth={2.5}
-											aria-hidden="true"
-										/>
-									) : null}
-									{t("listen.here")}
-								</span>
-								{isOffered ? (
-									<span className={styles.noSpeakers} id={noSpeakersId}>
-										{t("listen.noSpeakers", { player: playerName })}
-									</span>
-								) : null}
-							</button>
-						)}
-
-						{volume || showOutputCog ? (
-							<span className={styles.cell}>
-								{volume ? (
-									<span className={styles.fader}>
-										<VolumeGlyph volume={volume} />
-										<VolumeSlider
-											volume={volume}
-											onChange={setValue}
-											className={styles.slider}
-											label={t("listen.volumeOn", { player: playerName })}
-											disabled={!canControlPlayback}
-										/>
-									</span>
-								) : null}
-
-								{showOutputCog ? (
-									<OutputCog
-										onClick={() => outputPage.open(outputsQuery.refetch)}
-										autoFocus={outputPage.returnFocus}
-									/>
-								) : null}
-							</span>
-						) : null}
-
-						{secondLine ? (
-							<p className={styles.secondLine} id={secondLineId}>
-								{secondLine}
-							</p>
-						) : null}
-					</div>
-
 					{inSession ? null : inside}
-				</li>
+				</PlayerRow>
 
 				{sessionRows}
 

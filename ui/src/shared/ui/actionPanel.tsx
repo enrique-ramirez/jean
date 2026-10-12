@@ -10,10 +10,45 @@ import {
 } from "react";
 import { translate } from "@/shared/i18n/locale";
 import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
-import type { ActionEntry, ActionNode, MenuHeader } from "./ActionMenu";
 import styles from "./ActionMenu.module.css";
 import { Input } from "./Input";
+import type { IconComponent } from "./icons";
 import { handleMenuKeys } from "./menuKeys";
+
+export interface ActionEntry {
+	type?: undefined;
+	id: string;
+	label: string;
+	icon?: IconComponent;
+	shortcut?: string;
+	danger?: boolean;
+	checked?: boolean;
+	iconTone?: "accent";
+	disabled?: boolean;
+	onSelect?: () => void;
+	keepOpen?: boolean;
+	items?: ActionNode[];
+	filter?: string;
+}
+
+interface ActionSeparator {
+	type: "separator";
+	id?: string;
+}
+
+interface ActionMessage {
+	type: "message";
+	text: string;
+	id?: string;
+}
+
+export type ActionNode = ActionEntry | ActionSeparator | ActionMessage;
+
+export interface MenuHeader {
+	title: string;
+	subtitle?: string | null;
+	icon?: IconComponent;
+}
 
 export interface Page {
 	id: string;

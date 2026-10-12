@@ -1,6 +1,5 @@
 import { useMemo, useSyncExternalStore } from "react";
 
-import { readTrack } from "@/shared/api/playerState";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { samePlayerPath } from "./listener";
 import {
@@ -19,7 +18,7 @@ export function forgetHeard(): void {
 }
 
 const pathOf = (snapshot: PlayerSnapshot | null | undefined) =>
-	readTrack(snapshot?.player)?.path ?? null;
+	snapshot?.player?.activeItem?.path || null;
 
 const positionOf = (snapshot: PlayerSnapshot) =>
 	snapshot.player?.activeItem?.position ?? 0;

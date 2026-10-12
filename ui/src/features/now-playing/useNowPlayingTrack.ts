@@ -7,9 +7,9 @@ import { useCallback, useEffect } from "react";
 
 import { useAudiblePlayer } from "@/domain/player/usePlayer";
 import { usePlaylists } from "@/domain/player/usePlaylists";
-import { readValue } from "@/domain/track/fields";
+import { namedTrack, readValue } from "@/domain/track/fields";
 import { orThrow, retryWhenTooFast } from "@/shared/api/client";
-import { readTrack } from "@/shared/api/playerState";
+import { playingTrack } from "@/shared/api/playerState";
 import { fetchPlayingTrack } from "@/shared/api/tracks";
 import type {
 	ActiveItem,
@@ -18,6 +18,7 @@ import type {
 	TrackColumns,
 } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { NOW_PLAYING_EXPRESSIONS, NOW_PLAYING_FIELD } from "./nowPlayingFields";
 
 const keyOf = (path: string | null, subsong: number) =>
@@ -116,9 +117,10 @@ function addressesOfPlaying(
 }
 
 export function useNowPlayingTrack({ enabled = true } = {}) {
+	const t = useTranslate();
 	const snapshot = useAudiblePlayer();
 	const { data: playlists = [] } = usePlaylists();
-	const track = readTrack(snapshot?.player);
+	const track = namedTrack(playingTrack(snapshot?.player), t);
 	const nothingPlaying = snapshot !== undefined && track === null;
 	const path = track?.path ?? null;
 	const subsong = track?.subsong ?? 0;

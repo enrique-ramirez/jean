@@ -29,16 +29,16 @@ import {
 	useSpoken,
 	useTranslate,
 } from "@/shared/i18n/useTranslate";
-import {
-	PLAYING_ON_SHEET_KEYBOARD,
-	useKeyboardOwnership,
-} from "@/shared/keyboard/keyboardOwner";
+import { useKeyboardOwnership } from "@/shared/keyboard/keyboardOwner";
 import { BottomSheet, SHEET_EXIT_MS } from "@/shared/ui/BottomSheet";
 import { useFocusCapture } from "@/shared/ui/menuKeys";
 import styles from "./ListenHere.module.css";
 import { useOutputPage } from "./OutputDevices";
 import { SessionDisc, type StartedBy, useStartedBy } from "./PickerRows";
-import { PlayingOn, TAKES_FOCUS } from "./PlayingOn";
+import { PlayingOn } from "./PlayingOn";
+import { TAKES_FOCUS } from "./useFocusAfterPress";
+
+const PLAYING_ON_SHEET_KEYBOARD = "playingOnSheet";
 
 function whereLabel(
 	startedBy: StartedBy | null,

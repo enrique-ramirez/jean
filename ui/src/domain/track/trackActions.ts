@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import type { PlaylistInfo } from "@/shared/api/types";
 import type { Translate } from "@/shared/i18n/locale";
-import type { ActionNode } from "@/shared/ui/ActionMenu";
+import type { ActionNode } from "@/shared/ui/actionPanel";
 import { creditedArtists, namesAnArtist } from "./fields";
 import { withoutScratchPlaylist } from "./jeanPlaylists";
 import type { LibrarySource } from "./librarySource";

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { whenControllable } from "@/domain/player/usePlaybackControl";
 import { useLongPress } from "@/shared/hooks/useLongPress";
 import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
 import { classNames } from "@/shared/lib/classNames";
@@ -56,13 +57,8 @@ export function PlayToggle({
 			data-size={variant}
 			data-playing={isPlaying}
 			data-motion={motion}
-			aria-disabled={disabled || undefined}
-			aria-label={
-				disabled
-					? say("player.controlOffName", { control: baseLabel })
-					: baseLabel
-			}
-			onClick={disabled ? undefined : onToggle}
+			aria-label={baseLabel}
+			{...whenControllable(!disabled, onToggle, baseLabel, say)}
 		>
 			{isPlaying ? <PauseIcon /> : <PlayIcon />}
 		</button>

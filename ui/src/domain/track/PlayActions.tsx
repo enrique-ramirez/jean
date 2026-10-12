@@ -1,7 +1,10 @@
 import { Shuffle } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
 
-import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
+import {
+	useCanControlPlayback,
+	whenControllable,
+} from "@/domain/player/usePlaybackControl";
 import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
@@ -56,14 +59,13 @@ export function PlayActions({
 				<Button
 					variant="primary"
 					icon={PlayIcon}
-					onClick={canControlPlayback ? () => play(0) : undefined}
 					disabled={canControlPlayback && isEmpty}
-					aria-disabled={canControlPlayback ? undefined : "true"}
-					aria-label={
-						canControlPlayback
-							? undefined
-							: say("player.controlOffName", { control: say("player.play") })
-					}
+					{...whenControllable(
+						canControlPlayback,
+						() => play(0),
+						say("player.play"),
+						say,
+					)}
 				>
 					{playLabel}
 				</Button>
@@ -73,13 +75,12 @@ export function PlayActions({
 				<Button
 					icon={Shuffle}
 					disabled={canControlPlayback && (isEmpty || !order.canShuffle)}
-					aria-disabled={canControlPlayback ? undefined : "true"}
-					aria-label={
-						canControlPlayback
-							? undefined
-							: t("player.controlOffName", { control: shuffleLabel })
-					}
-					onClick={canControlPlayback ? shufflePlay : undefined}
+					{...whenControllable(
+						canControlPlayback,
+						shufflePlay,
+						shuffleLabel,
+						t,
+					)}
 				>
 					{shuffleLabel}
 				</Button>

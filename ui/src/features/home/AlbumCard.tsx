@@ -1,4 +1,7 @@
-import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
+import {
+	useCanControlPlayback,
+	whenControllable,
+} from "@/domain/player/usePlaybackControl";
 import type { CoveredAlbum } from "@/domain/track/albums";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
@@ -20,13 +23,7 @@ export function AlbumCard({
 		<button
 			type="button"
 			className={styles.card}
-			onClick={canControlPlayback ? onPlay : undefined}
-			aria-disabled={canControlPlayback ? undefined : "true"}
-			aria-label={
-				canControlPlayback
-					? undefined
-					: t("player.controlOffName", { control: title })
-			}
+			{...whenControllable(canControlPlayback, onPlay, title, t)}
 			title={title}
 		>
 			<span className={styles.cover}>

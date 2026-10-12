@@ -1,5 +1,13 @@
-import { Info, Lock, type LucideIcon, Plus, Users } from "lucide-react";
-import { type ReactNode, useCallback, useId, useMemo, useState } from "react";
+import {
+	Headphones,
+	Info,
+	Lock,
+	type LucideIcon,
+	MonitorSpeaker,
+	Plus,
+	Users,
+} from "lucide-react";
+import { type ReactNode, useId } from "react";
 
 import { deviceId } from "@/domain/player/device";
 import { useSessionId } from "@/domain/player/session";
@@ -12,11 +20,9 @@ import {
 	useTranslate,
 } from "@/shared/i18n/useTranslate";
 import { classNames } from "@/shared/lib/classNames";
+import { Equalizer } from "@/shared/ui/Equalizer";
 import { SwitchTrack } from "@/shared/ui/SwitchTrack";
 import styles from "./ListenHere.module.css";
-
-export const ROW_STOP = "[data-row-stop]";
-export const ROW_BESIDE = "[data-row-beside]";
 
 export const whatPlaysIn = (document: SessionDocument, t: Translate) =>
 	document.title === null
@@ -49,65 +55,6 @@ export function useStartedBy(): StartedBy | null {
 	};
 }
 
-interface EndedAt {
-	session: ListedSession;
-	index: number;
-}
-
-interface DrawnSession {
-	session: ListedSession;
-	hasEnded: boolean;
-	isRefused: boolean;
-}
-
-const NONE_ENDED: ReadonlyMap<string, EndedAt> = new Map();
-const NONE_REFUSED: ReadonlySet<string> = new Set();
-
-function withEndedByIndex(
-	ended: ReadonlyMap<string, EndedAt>,
-	session: ListedSession,
-	index: number,
-): ReadonlyMap<string, EndedAt> {
-	const next = new Map(ended);
-	next.set(session.document.id, { session, index });
-	return new Map([...next].sort(([, a], [, b]) => a.index - b.index));
-}
-
-export function usePressedRows(listed: readonly ListedSession[]) {
-	const [ended, setEnded] = useState(NONE_ENDED);
-	const [refused, setRefused] = useState(NONE_REFUSED);
-	const markEnded = useCallback(
-		(session: ListedSession, index: number) =>
-			setEnded((held) => withEndedByIndex(held, session, index)),
-		[],
-	);
-	const markRefused = useCallback(
-		(session: ListedSession, isRefused: boolean) =>
-			setRefused((held) => {
-				const { id } = session.document;
-				if (held.has(id) === isRefused) return held;
-				const next = new Set(held);
-				if (isRefused) next.add(id);
-				else next.delete(id);
-				return next;
-			}),
-		[],
-	);
-	const rows = useMemo(() => {
-		const drawn: DrawnSession[] = listed
-			.filter((session) => !ended.has(session.document.id))
-			.map((session) => ({
-				session,
-				hasEnded: false,
-				isRefused: refused.has(session.document.id),
-			}));
-		for (const { session, index } of ended.values())
-			drawn.splice(index, 0, { session, hasEnded: true, isRefused: false });
-		return drawn;
-	}, [listed, ended, refused]);
-	return { rows, markEnded, markRefused };
-}
-
 const initialOf = (label: string) => (Array.from(label)[0] ?? "").toUpperCase();
 
 export function SessionDisc({
@@ -127,6 +74,102 @@ export function SessionDisc({
 		>
 			{initialOf(label)}
 		</span>
+	);
+}
+
+export function PlayerRow({
+	playerName,
+	isCurrent,
+	hears,
+	isOffered,
+	showsPlaying,
+	isPlaying,
+	secondLine,
+	onListen,
+	beside,
+	children,
+}: {
+	playerName: string;
+	isCurrent: boolean;
+	hears: boolean;
+	isOffered: boolean;
+	showsPlaying: boolean;
+	isPlaying: boolean;
+	secondLine: string | null;
+	onListen: (() => void) | null;
+	beside: ReactNode;
+	children: ReactNode;
+}) {
+	const t = useTranslate();
+	const say = useSpoken();
+	const secondLineId = useId();
+	const noSpeakersId = useId();
+
+	const face = (
+		<>
+			<span className={styles.tile} data-hears={hears}>
+				<MonitorSpeaker size={16} strokeWidth={2} aria-hidden="true" />
+			</span>
+			<span className={styles.title}>
+				<span className={styles.name}>{playerName}</span>
+				{showsPlaying ? (
+					<span className={styles.playing}>
+						<Equalizer
+							label={say("listen.playingOn", { player: playerName })}
+							paused={!isPlaying}
+						/>
+					</span>
+				) : null}
+			</span>
+		</>
+	);
+
+	const faceDescribedBy =
+		[isOffered ? noSpeakersId : null, secondLine ? secondLineId : null]
+			.filter(Boolean)
+			.join(" ") || undefined;
+
+	return (
+		<li className={styles.place} aria-current={isCurrent ? "true" : undefined}>
+			<div className={styles.row} data-offered={isOffered}>
+				{onListen ? (
+					<button
+						type="button"
+						className={styles.face}
+						aria-label={t("listen.here")}
+						aria-describedby={faceDescribedBy}
+						data-takes-focus=""
+						data-row-stop=""
+						onClick={onListen}
+					>
+						{face}
+						<span className={styles.verb}>
+							{isOffered ? (
+								<Headphones size={13} strokeWidth={2.5} aria-hidden="true" />
+							) : null}
+							{t("listen.here")}
+						</span>
+						{isOffered ? (
+							<span className={styles.noSpeakers} id={noSpeakersId}>
+								{t("listen.noSpeakers", { player: playerName })}
+							</span>
+						) : null}
+					</button>
+				) : (
+					<div className={styles.face}>{face}</div>
+				)}
+
+				{beside}
+
+				{secondLine ? (
+					<p className={styles.secondLine} id={secondLineId}>
+						{secondLine}
+					</p>
+				) : null}
+			</div>
+
+			{children}
+		</li>
 	);
 }
 

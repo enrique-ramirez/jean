@@ -5,8 +5,9 @@ import {
 	useTagWriting,
 	type WritableAddress,
 } from "@/domain/track/useTagWriter";
-import { readTrack } from "@/shared/api/playerState";
+import { playingTrack } from "@/shared/api/playerState";
 import type { PlayerSnapshot } from "@/shared/api/types";
+import { translate } from "@/shared/i18n/locale";
 import { setCachedLyrics, useNowPlayingTrack } from "./useNowPlayingTrack";
 
 export interface LyricTarget {
@@ -25,14 +26,17 @@ export function playingAgainst(
 	const track =
 		snapshot?.player?.playbackState === "stopped"
 			? null
-			: readTrack(snapshot?.player);
+			: playingTrack(snapshot?.player);
 	const isPlayingTarget =
 		track !== null &&
 		track.path === target.path &&
 		track.subsong === target.subsong;
 	return {
 		isPlayingTarget,
-		other: isPlayingTarget ? null : (track?.title ?? null),
+		other:
+			isPlayingTarget || !track
+				? null
+				: (track.title ?? translate("track.unknownTitle")),
 	};
 }
 

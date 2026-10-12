@@ -30,16 +30,12 @@ export function useOutputs() {
 		enabled,
 		staleTime: 0,
 		refetchOnMount: false,
-		// The tab becoming visible again is one of the four moments criterion 18 names, unlike every
-		// sibling query here, which turns this off: left implicit, the default reads as an oversight
-		// rather than the one query that means to lean on it.
 		refetchOnWindowFocus: true,
-		// Coming back online is not one of the four moments criterion 18 names, and react-query
-		// reads every stale query again on it unless told not to.
+		// react-query reads every stale query again on reconnecting unless told not to, and that is
+		// not one of the four moments.
 		refetchOnReconnect: false,
 		// Thrown, react-query leaves `data` holding the last good list rather than replacing it with
-		// an empty one, which criterion 24 says must stay drawn. No retry: a retry would read the route
-		// again on its own schedule, which is a fifth moment nobody asked for.
+		// an empty one. A retry would be a fifth moment.
 		retry: false,
 		queryFn: async () =>
 			orThrow(await fetchOutputs(requireFooJean(discovery.origin))),

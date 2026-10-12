@@ -1,30 +1,19 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { orThrow } from "@/shared/api/client";
-import { requireFooJean } from "@/shared/api/discovery";
 import {
-	createPlaylist,
 	fetchPlaylistAnnotations,
-	movePlaylist,
 	type PlaylistAnnotation,
-	removePlaylist,
-	renamePlaylist,
 } from "@/shared/api/playlists";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useCacheOnly } from "@/shared/hooks/useCacheOnly";
-import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
-import { moved } from "@/shared/lib/moved";
 import { type FollowRevision, followRevision } from "./followRevision";
-import { useOptimisticWrite } from "./playerWrite";
 
 export const PLAYLISTS_KEY = ["playlists"];
 
-// A generation is always a non-empty run of digits, so an empty string is a value the component
-// can never answer and is safe to hold until the create response replaces it.
-const UNKNOWN_GENERATION = "";
-
-const playlistInfoOf = (annotation: PlaylistAnnotation): PlaylistInfo => ({
+export const playlistInfoOf = (
+	annotation: PlaylistAnnotation,
+): PlaylistInfo => ({
 	id: annotation.id,
 	index: annotation.index,
 	title: annotation.title,
@@ -38,7 +27,7 @@ const playlistInfoOf = (annotation: PlaylistAnnotation): PlaylistInfo => ({
 
 export const usePlaylists = () => useCacheOnly<PlaylistInfo[]>(PLAYLISTS_KEY);
 
-const PLAYLISTS_REVISION_KEY = ["playlistsRevision"];
+export const PLAYLISTS_REVISION_KEY = ["playlistsRevision"];
 const PLAYLISTS_SEEN_REVISION_KEY = ["playlistsSeenRevision"];
 
 const playlistsFollowers = new WeakMap<QueryClient, FollowRevision>();
@@ -96,89 +85,6 @@ export function useResolvedPlaylistId(
 		() => resolvedPlaylistId(guid, playlists, caughtUp),
 		[guid, playlists, caughtUp],
 	);
-}
-
-// `index` is positional, and the player renumbers the whole list when any playlist moves or goes away.
-const renumber = (playlists: PlaylistInfo[]) =>
-	playlists.map((entry, index) => ({ ...entry, index }));
-
-const usePlaylistPatch = <TInput, TResult = unknown>(
-	mutationFn: (input: TInput) => Promise<TResult>,
-	patch: (playlists: PlaylistInfo[], input: TInput) => PlaylistInfo[],
-	reconcile?: (
-		playlists: PlaylistInfo[],
-		input: TInput,
-		result: TResult,
-	) => PlaylistInfo[],
-) =>
-	useOptimisticWrite<PlaylistInfo[], TInput, TResult>(
-		PLAYLISTS_KEY,
-		mutationFn,
-		(previous, input) => renumber(patch(previous, input)),
-		reconcile &&
-			((previous, input, result) =>
-				renumber(reconcile(previous, input, result))),
-		PLAYLISTS_REVISION_KEY,
-	);
-
-export function usePlaylistActions() {
-	const { discovery } = useFooJean();
-
-	const create = usePlaylistPatch<{ id: string; title: string }, PlaylistInfo>(
-		async ({ title }) => {
-			const origin = requireFooJean(discovery.origin);
-			return playlistInfoOf(orThrow(await createPlaylist(origin, { title })));
-		},
-		(playlists, { id, title }) => [
-			...playlists,
-			{
-				id,
-				title,
-				itemCount: 0,
-				structure: UNKNOWN_GENERATION,
-				revision: UNKNOWN_GENERATION,
-				index: playlists.length,
-				role: null,
-				isAutoPlaylist: false,
-			},
-		],
-		(playlists, { id }, created) =>
-			playlists.map((entry) => (entry.id === id ? created : entry)),
-	);
-
-	return {
-		create,
-
-		rename: usePlaylistPatch(
-			async ({ id, title }: { id: string; title: string }) => {
-				const origin = requireFooJean(discovery.origin);
-				orThrow(await renamePlaylist(origin, id, title));
-			},
-			(playlists, { id, title }) =>
-				playlists.map((entry) =>
-					entry.id === id ? { ...entry, title } : entry,
-				),
-		),
-
-		remove: usePlaylistPatch(
-			async (id: string) => {
-				const origin = requireFooJean(discovery.origin);
-				orThrow(await removePlaylist(origin, id));
-			},
-			(playlists, id) => playlists.filter((entry) => entry.id !== id),
-		),
-
-		move: usePlaylistPatch(
-			async ({ id, index }: { id: string; index: number }) => {
-				const origin = requireFooJean(discovery.origin);
-				orThrow(await movePlaylist(origin, id, index));
-			},
-			(playlists, { id, index }) => {
-				const from = playlists.findIndex((entry) => entry.id === id);
-				return from < 0 ? playlists : moved(playlists, from, index);
-			},
-		),
-	};
 }
 
 // foobar2000 allows two playlists with the same name, and the sidebar shows nothing else to tell

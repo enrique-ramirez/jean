@@ -3,7 +3,10 @@ import { useCallback, useMemo, useState } from "react";
 import { useInSession } from "@/domain/player/session";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
-import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
+import {
+	useCanControlPlayback,
+	whenControllable,
+} from "@/domain/player/usePlaybackControl";
 import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import { useAudiblePlayer, usePlayer } from "@/domain/player/usePlayer";
 import { useResolvedPlaylistId } from "@/domain/player/usePlaylists";
@@ -241,12 +244,8 @@ export function NowPlaying({
 		/>
 	);
 
-	const previousLabel = canControlPlayback
-		? t("shortcut.previousTrack")
-		: t("player.controlOffName", { control: t("shortcut.previousTrack") });
-	const nextLabel = canControlPlayback
-		? t("shortcut.nextTrack")
-		: t("player.controlOffName", { control: t("shortcut.nextTrack") });
+	const previousLabel = t("shortcut.previousTrack");
+	const nextLabel = t("shortcut.nextTrack");
 
 	if (!isPresent) return null;
 
@@ -397,11 +396,13 @@ export function NowPlaying({
 								<button
 									type="button"
 									className={styles.skip}
-									aria-disabled={canControlPlayback ? undefined : "true"}
 									aria-label={previousLabel}
-									onClick={
-										canControlPlayback ? () => wheel.skip(-1) : undefined
-									}
+									{...whenControllable(
+										canControlPlayback,
+										() => wheel.skip(-1),
+										previousLabel,
+										t,
+									)}
 								>
 									<SkipBackIcon size={22} />
 								</button>
@@ -416,9 +417,13 @@ export function NowPlaying({
 								<button
 									type="button"
 									className={styles.skip}
-									aria-disabled={canControlPlayback ? undefined : "true"}
 									aria-label={nextLabel}
-									onClick={canControlPlayback ? () => wheel.skip(1) : undefined}
+									{...whenControllable(
+										canControlPlayback,
+										() => wheel.skip(1),
+										nextLabel,
+										t,
+									)}
 								>
 									<SkipForwardIcon size={22} />
 								</button>

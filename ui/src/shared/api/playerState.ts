@@ -1,15 +1,14 @@
-import { translate } from "@/shared/i18n/locale";
-import type { NowPlayingTrack, PlayerState } from "./types";
+import type { PlayerState, PlayingTrack } from "./types";
 
-export function readTrack(
+export function playingTrack(
 	player: PlayerState | null | undefined,
-): NowPlayingTrack | null {
+): PlayingTrack | null {
 	const path = player?.activeItem?.path;
 	if (!path) return null;
 	const [artist, title] = player?.activeItem?.columns ?? [];
 	return {
-		artist: artist || translate("track.unknownArtist"),
-		title: title || translate("track.unknownTitle"),
+		artist: artist || null,
+		title: title || null,
 		path,
 		subsong: player?.activeItem?.subsong ?? 0,
 	};

@@ -67,14 +67,18 @@ export interface SearchSection {
 	suggestions: Suggestion[];
 }
 
-const entityOf = (suggestion: Suggestion) =>
-	suggestion.kind === "artist"
-		? suggestion.artist
-		: suggestion.kind === "album"
-			? suggestion.album
-			: suggestion.kind === "genre"
-				? suggestion.genre
-				: null;
+function entityOf(suggestion: Suggestion) {
+	switch (suggestion.kind) {
+		case "artist":
+			return suggestion.artist;
+		case "album":
+			return suggestion.album;
+		case "genre":
+			return suggestion.genre;
+		case "track":
+			return null;
+	}
+}
 
 export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const { discovery, recheck } = useFooJean();
@@ -292,16 +296,12 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 			(next: string = draft) => {
 				setDraft(next);
 				setQuery(next);
+				// The memo is a render behind while a fast typist is still going, and the refs a set is
+				// filled from have to be the ones this query matches.
+				if (next === deferredDraft) return { query: next, refs: draftMatched };
 				return {
 					query: next,
-					// The memo is a render behind while a fast typist is still going, and the refs a set is
-					// filled from have to be the ones this query matches.
-					refs:
-						next === deferredDraft
-							? draftMatched
-							: index
-								? searchLibrary(index, trackCount, next)
-								: null,
+					refs: index ? searchLibrary(index, trackCount, next) : null,
 				};
 			},
 			[draft, deferredDraft, draftMatched, index, trackCount],

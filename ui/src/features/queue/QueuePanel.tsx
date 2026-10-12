@@ -3,6 +3,7 @@ import { type CSSProperties, memo, useMemo } from "react";
 import { positionAt } from "@/domain/player/position";
 import type { QueueEntry } from "@/domain/player/queue";
 import { queueDropAt, queuedSeconds, startsIn } from "@/domain/player/queue";
+import { whenControllable } from "@/domain/player/usePlaybackControl";
 import { usePlayer } from "@/domain/player/usePlayer";
 import { useQueue, useQueueActions } from "@/domain/player/useQueue";
 import { coverKey } from "@/domain/track/fields";
@@ -185,6 +186,7 @@ const QueueRow = memo(function QueueRow({
 }) {
 	const t = useTranslate();
 	const { style, ...merged } = mergeHandlers(itemProps, rowProps);
+	const removeLabel = t("queue.removeTrack", { track: entry.title });
 
 	return (
 		<li
@@ -249,15 +251,8 @@ const QueueRow = memo(function QueueRow({
 					<button
 						type="button"
 						className={styles.remove}
-						aria-disabled={canControlPlayback ? undefined : "true"}
-						aria-label={
-							canControlPlayback
-								? t("queue.removeTrack", { track: entry.title })
-								: t("player.controlOffName", {
-										control: t("queue.removeTrack", { track: entry.title }),
-									})
-						}
-						onClick={canControlPlayback ? onRemove : undefined}
+						aria-label={removeLabel}
+						{...whenControllable(canControlPlayback, onRemove, removeLabel, t)}
 					>
 						<X size={15} strokeWidth={2.2} />
 					</button>
@@ -357,15 +352,12 @@ export function QueuePanel({
 						<button
 							type="button"
 							className={styles.clear}
-							aria-disabled={canControlPlayback ? undefined : "true"}
-							aria-label={
-								canControlPlayback
-									? undefined
-									: t("player.controlOffName", {
-											control: t("action.clear"),
-										})
-							}
-							onClick={canControlPlayback ? clear : undefined}
+							{...whenControllable(
+								canControlPlayback,
+								clear,
+								t("action.clear"),
+								t,
+							)}
 						>
 							{t("action.clear")}
 						</button>

@@ -5,13 +5,14 @@ import {
 	usePlaylists,
 	useResolvedPlaylistId,
 } from "@/domain/player/usePlaylists";
+import { namedTrack } from "@/domain/track/fields";
 import { librarySourceOf } from "@/domain/track/librarySource";
 import { starsOf } from "@/domain/track/rating";
 import { ratingItems, trackActions } from "@/domain/track/trackActions";
 import { useAddTracks } from "@/domain/track/useAddTracks";
 import { useQueueTracks } from "@/domain/track/useQueueTracks";
 import { permitsPlaylistWrites } from "@/shared/api/discovery";
-import { readTrack } from "@/shared/api/playerState";
+import { playingTrack } from "@/shared/api/playerState";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { ActionMenu } from "@/shared/ui/ActionMenu";
@@ -31,7 +32,7 @@ export function useNowPlayingMenu() {
 	const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
 
 	const item = snapshot?.player?.activeItem;
-	const track = readTrack(snapshot?.player);
+	const track = namedTrack(playingTrack(snapshot?.player), t);
 	const hasTrack = Boolean(track);
 	const playingPlaylistId = useResolvedPlaylistId(item?.playlistGuid ?? null);
 	const playingStructure = playlists.find(

@@ -1,4 +1,3 @@
-import { readTrack } from "@/shared/api/playerState";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { listeningPosition } from "./listenerStore";
 
@@ -23,6 +22,6 @@ export function positionAt(
 // freeze on pause, and what a relative seek offsets.
 export const audibleAt = (snapshot: PlayerSnapshot | null | undefined) =>
 	listeningPosition(
-		readTrack(snapshot?.player)?.path,
+		snapshot?.player?.activeItem?.path,
 		snapshot?.player?.activeItem?.duration ?? 0,
 	) ?? positionAt(snapshot, performance.now());

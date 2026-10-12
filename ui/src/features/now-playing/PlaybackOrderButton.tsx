@@ -9,6 +9,7 @@ import {
 	Shuffle,
 } from "lucide-react";
 import { useRef, useState } from "react";
+import { whenControllable } from "@/domain/player/usePlaybackControl";
 import type { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import type { PlaybackMode } from "@/shared/api/types";
 import type { Point } from "@/shared/hooks/useLongPress";
@@ -83,15 +84,12 @@ export function PlaybackOrderButton({
 				ref={buttonRef}
 				type="button"
 				className={className}
-				aria-label={
-					disabled ? t("player.controlOffName", { control: name }) : name
-				}
+				aria-label={name}
 				aria-haspopup={isList ? "menu" : undefined}
 				aria-expanded={isList ? isListOpen : undefined}
-				aria-disabled={disabled || undefined}
 				data-tone={toneOf(order.mode)}
 				title={name}
-				onClick={disabled ? undefined : press}
+				{...whenControllable(!disabled, press, name, t)}
 			>
 				<Icon size={size} strokeWidth={2} />
 			</button>

@@ -15,7 +15,7 @@ import {
 	targetFor,
 } from "@/shared/lib/dragGeometry";
 
-interface Drag {
+interface Press {
 	from: number;
 	to: number;
 	startY: number;
@@ -25,12 +25,21 @@ interface Drag {
 	offset: number;
 	scrolled: number;
 	step: number;
-	active: boolean;
-	tops: RowBox[] | null;
 }
 
-interface SortState extends Drag {
+interface Pressed extends Press {
+	active: false;
+	tops: null;
+}
+
+interface Sorting extends Press {
+	active: true;
 	tops: RowBox[];
+}
+
+type Drag = Pressed | Sorting;
+
+interface SortState extends Sorting {
 	settled?: boolean;
 }
 
@@ -103,47 +112,44 @@ export function useSortableList({
 			if (drag.current) drag.current.scrolled += scroller.scrollTop - before;
 			const moved = scroller.scrollTop !== before;
 			frame.current = moved ? requestAnimationFrame(tick) : null;
-			if (moved && drag.current) {
-				const offset = drag.current.offset + drag.current.scrolled;
-				setState({
-					...(drag.current as SortState),
-					offset,
-					to: targetFor(drag.current as SortState, offset),
-				});
+			const current = drag.current;
+			if (moved && current?.active) {
+				const offset = current.offset + current.scrolled;
+				setState({ ...current, offset, to: targetFor(current, offset) });
 			}
 		};
 
 		frame.current = requestAnimationFrame(tick);
 	};
 
-	const onPointerMove = (event: ReactPointerEvent) => {
-		const current = drag.current;
-		if (!current) return;
+	const lift = (pressed: Pressed, event: ReactPointerEvent): Sorting => {
+		if (!pressed.captured)
+			(event.currentTarget as HTMLElement).setPointerCapture(pressed.pointerId);
 
-		const travelled = event.clientY - current.startY;
-
-		if (!current.active) {
-			if (Math.abs(travelled) < current.threshold) return;
-			current.active = true;
-			if (!current.captured) {
-				(event.currentTarget as HTMLElement).setPointerCapture(
-					current.pointerId,
-				);
-				current.captured = true;
-			}
-			current.tops = itemRefs.current.slice(0, keys.length).map((element) => {
+		const sorting: Sorting = {
+			...pressed,
+			captured: true,
+			active: true,
+			tops: itemRefs.current.slice(0, keys.length).map((element) => {
 				const rect = (element as HTMLElement).getBoundingClientRect();
 				return { top: rect.top, height: rect.height };
-			});
-		}
+			}),
+		};
+		drag.current = sorting;
+		return sorting;
+	};
 
+	const onPointerMove = (event: ReactPointerEvent) => {
+		const held = drag.current;
+		if (!held) return;
+
+		const travelled = event.clientY - held.startY;
+		if (!held.active && Math.abs(travelled) < held.threshold) return;
+
+		const current = held.active ? held : lift(held, event);
 		current.offset = travelled;
 		const offset = travelled + current.scrolled;
-		setState({
-			...(current as SortState),
-			offset,
-			to: targetFor(current as SortState, offset),
-		});
+		setState({ ...current, offset, to: targetFor(current, offset) });
 		autoscroll(event.clientY);
 	};
 
@@ -161,7 +167,7 @@ export function useSortableList({
 
 		const to =
 			event?.type === "pointerup"
-				? targetFor(current as SortState, current.offset + current.scrolled)
+				? targetFor(current, current.offset + current.scrolled)
 				: current.from;
 
 		if (to === current.from) {
@@ -173,9 +179,9 @@ export function useSortableList({
 		// must not undo the drag while that runs.
 		settledAt.current = order;
 		setState({
-			...(current as SortState),
+			...current,
 			to,
-			offset: landingOffset({ ...(current as SortState), to }),
+			offset: landingOffset({ ...current, to }),
 			settled: true,
 		});
 		onReorder(current.from, to);

@@ -270,10 +270,10 @@ export function TrackBrowser({
 
 	const keyMoveTo = useCallback(
 		(position: number) => {
-			pendingScroll.current = true;
 			moveCursorTo(position);
+			scrollToTrack(position, { align: "auto" });
 		},
-		[moveCursorTo],
+		[moveCursorTo, scrollToTrack],
 	);
 
 	useEffect(() => {

@@ -8,6 +8,7 @@ import {
 	expectTheScreenIsStillOpen,
 	guidOfPlaylist,
 	inSequence,
+	isRowOnScreen,
 	listenHere,
 	modesSent,
 	nowPlayingScreen,
@@ -906,6 +907,32 @@ test.describe("moving the cursor in a playlist", () => {
 
 		await page.keyboard.press("Home");
 		await cursorAt(page, 0);
+	});
+
+	// The cursor does not move in either case, so nothing but the key itself can ask for the scroll.
+	test("Home brings the first row back into view when the cursor never left it", async ({
+		page,
+	}) => {
+		await cursorAt(page, 0);
+		await scrollUntilMounted(page, trackRow(page, 53));
+		expect(await isRowOnScreen(page, 0)).toBe(false);
+
+		await page.keyboard.press("Home");
+		await expect.poll(() => isRowOnScreen(page, 0)).toBe(true);
+		await cursorAt(page, 0);
+	});
+
+	test("End brings the last row back into view when the cursor is already on it", async ({
+		page,
+	}) => {
+		await page.keyboard.press("End");
+		await cursorAt(page, 53);
+		await scrollTo(page, 0);
+		await expect.poll(() => isRowOnScreen(page, 53)).toBe(false);
+
+		await page.keyboard.press("End");
+		await expect.poll(() => isRowOnScreen(page, 53)).toBe(true);
+		await cursorAt(page, 53);
 	});
 
 	test("the page keys move further than one row and stop at the ends", async ({

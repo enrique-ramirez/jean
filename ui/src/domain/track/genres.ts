@@ -3,7 +3,7 @@ import { artistGroups, FIELD, genreGroups, tagGroups, tagKey } from "./fields";
 import { growingIndex } from "./growingIndex";
 import type { TrackRows } from "./project";
 
-export const COVERS_PER_TILE = 2;
+const COVERS_PER_TILE = 2;
 
 export interface Genre {
 	name: string;
@@ -94,6 +94,8 @@ function absorb(byKey: Map<string, Draft>, rows: TrackRows, from: number) {
 	}
 }
 
+const inKeyOrder = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
 const derive = (byKey: Map<string, Draft>): Genre[] =>
 	[...byKey.values()]
 		.map(
@@ -110,7 +112,7 @@ const derive = (byKey: Map<string, Draft>): Genre[] =>
 					.map((album) => album.ref),
 			}),
 		)
-		.sort((a, b) => b.trackCount - a.trackCount || a.key.localeCompare(b.key));
+		.sort((a, b) => b.trackCount - a.trackCount || inKeyOrder(a.key, b.key));
 
 export function genresOf(rows: TrackRows): Genre[] {
 	const byKey = new Map<string, Draft>();

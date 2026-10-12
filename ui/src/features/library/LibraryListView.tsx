@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from "react";
-import { useMemo, useRef } from "react";
+import { useRef } from "react";
 import { libraryNoticeFor } from "@/domain/library/LibraryNotice";
 import {
 	isLibraryReading,
@@ -29,6 +29,24 @@ const FINDER_LABEL: Record<string, FinderPhrase> = {
 	[SCRATCH_KIND.artist]: "finder.inArtist",
 };
 
+const summaries = new WeakMap<
+	TrackView,
+	{ countsGenres: boolean; summary: ReturnType<typeof summarise> }
+>();
+
+const summaryOf = (view: TrackView, countsGenres: boolean) => {
+	const held = summaries.get(view);
+	if (held?.countsGenres === countsGenres) return held.summary;
+
+	const summary = summarise(
+		view,
+		view.playedCount,
+		countsGenres ? undefined : { genres: 0 },
+	);
+	summaries.set(view, { countsGenres, summary });
+	return summary;
+};
+
 export function LibraryListView({
 	library,
 	view,
@@ -54,14 +72,11 @@ export function LibraryListView({
 }) {
 	const t = useTranslate();
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
-	const { indices, heat, patina, playedCount } = view;
+	const { indices, heat, patina } = view;
 
 	const isGenre = kind === SCRATCH_KIND.genre;
 
-	const stats = useMemo(
-		() => summarise(view, playedCount, isGenre ? { genres: 0 } : undefined),
-		[view, playedCount, isGenre],
-	);
+	const stats = summaryOf(view, !isGenre);
 
 	const finder = useFinder({
 		rows: view,

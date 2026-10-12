@@ -7,6 +7,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { isLibraryReading } from "@/domain/library/libraryStatus";
 import { useLibrary } from "@/domain/library/useLibrary";
 import {
 	type Suggestion,
@@ -145,8 +146,6 @@ function Shell() {
 
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 
-	useEffect(() => workWhenIdle(preloadLayers), []);
-
 	const isNowPlaying = isPlayingRoute(route);
 	const [hasOpenedNowPlaying, setHasOpenedNowPlaying] = useState(isNowPlaying);
 	if (isNowPlaying && !hasOpenedNowPlaying) setHasOpenedNowPlaying(true);
@@ -171,6 +170,12 @@ function Shell() {
 	useOutputs();
 
 	const library = useLibrary();
+	const isLibraryRead = !isLibraryReading(library.status);
+	useEffect(
+		() => (isLibraryRead ? workWhenIdle(preloadLayers) : undefined),
+		[isLibraryRead],
+	);
+
 	const search = useLibrarySearch(library, playlists);
 	const { play: playSet } = usePlaySet({ library, playlists });
 	const playbackMode = usePlaybackOrder();

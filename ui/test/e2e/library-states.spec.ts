@@ -112,20 +112,6 @@ const recordFromLoad = (page: Page, patterns: string[]) =>
 const drawnSinceLoad = (page: Page) =>
 	page.evaluate(() => Reflect.get(window, "__drawn") as string[]);
 
-// Discovery never answers until the returned function is called, which is
-// *checking* for as long as the test wants it.
-const holdCapabilities = async (page: Page) => {
-	let answer!: () => void;
-	const answered = new Promise<void>((resolve) => {
-		answer = resolve;
-	});
-	await page.route("**/api/capabilities", async (route) => {
-		await answered;
-		await route.continue();
-	});
-	return answer;
-};
-
 const statePollsSinceExport = (player: FakePlayer) => {
 	const at = player.requests.findIndex((entry) =>
 		entry.path.startsWith("/api/library/export"),
@@ -259,16 +245,15 @@ test.describe("before discovery answers", () => {
 	for (const view of VIEWS) {
 		test(`${view.name} draws its header and the reading notice, and never an empty one`, async ({
 			page,
+			player,
 		}) => {
 			await recordFromLoad(page, EMPTY_NOTICES);
-			await holdCapabilities(page);
+			player.fooJean.hangCapabilities = true;
 			await page.goto(view.path);
 
 			await expect(headingOf(page, view)).toBeVisible();
 			await expect(main(page).getByText(view.reading)).toBeVisible();
 			expect(await drawnSinceLoad(page)).toEqual([]);
-
-			await page.unrouteAll({ behavior: "ignoreErrors" });
 		});
 	}
 });
@@ -496,5 +481,38 @@ test.describe("columns before the first snapshot", () => {
 
 		expect(onPlaylist.map((item) => item.name)).toContain(YEAR_UNAVAILABLE);
 		expect(onShelf).toEqual(onPlaylist);
+	});
+});
+
+// The now-playing screen, Settings, the shortcut sheet and the palette are fetched ahead of their
+// first opening, once the page is idle. A page waiting on the library is idle on its main thread
+// and busy on its connection, and on a phone at the edge of the wifi those bytes are the library's.
+test.describe("the layers nobody has opened yet", () => {
+	const EXPORT = "/api/library/export";
+	const LAYER =
+		/\/assets\/(NowPlaying|SettingsDialog|ShortcutSheet|CommandPalette)-[^/]+\.js$/;
+
+	test.use({
+		fooJean: { routeLatency: { [`GET ${EXPORT}`]: { ms: 1_500 } } },
+	});
+
+	test("are fetched after the library, never beside it", async ({ page }) => {
+		let libraryHasArrived = false;
+		const fetched: { layer: string; besideTheLibrary: boolean }[] = [];
+
+		page.on("requestfinished", (request) => {
+			if (new URL(request.url()).pathname === EXPORT) libraryHasArrived = true;
+		});
+		page.on("request", (request) => {
+			const { pathname } = new URL(request.url());
+			if (LAYER.test(pathname))
+				fetched.push({ layer: pathname, besideTheLibrary: !libraryHasArrived });
+		});
+
+		await page.goto("/#/all");
+		await expect(trackRow(page, 0)).toBeAttached();
+
+		await expect.poll(() => fetched.length).toBeGreaterThan(0);
+		expect(fetched.filter((layer) => layer.besideTheLibrary)).toEqual([]);
 	});
 });

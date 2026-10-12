@@ -28,6 +28,16 @@ export function warmLibraryIndex(
 	return workWhenIdle((hasTime) => cache.warm(columns, hasTime));
 }
 
+let lastSearch: {
+	index: SearchIndex;
+	trackCount: number;
+	tokens: string[];
+	matched: Int32Array;
+} | null = null;
+
+const narrows = (tokens: string[], earlier: string[]) =>
+	earlier.every((had) => tokens.some((token) => token.includes(had)));
+
 export function searchLibrary(
 	index: SearchIndex,
 	trackCount: number,
@@ -36,11 +46,24 @@ export function searchLibrary(
 	const tokens = tokenize(query);
 	if (tokens.length === 0) return null;
 
-	const matched: number[] = [];
-	for (let ref = 0; ref < trackCount; ref += 1)
-		if (rowMatches(index, ref, tokens)) matched.push(ref);
+	const candidates =
+		lastSearch?.index === index &&
+		lastSearch.trackCount === trackCount &&
+		narrows(tokens, lastSearch.tokens)
+			? lastSearch.matched
+			: null;
 
-	return Int32Array.from(matched);
+	const matched: number[] = [];
+	if (candidates) {
+		for (const ref of candidates)
+			if (rowMatches(index, ref, tokens)) matched.push(ref);
+	} else {
+		for (let ref = 0; ref < trackCount; ref += 1)
+			if (rowMatches(index, ref, tokens)) matched.push(ref);
+	}
+
+	lastSearch = { index, trackCount, tokens, matched: Int32Array.from(matched) };
+	return lastSearch.matched;
 }
 
 // Bisects, so the indices have to be ascending.

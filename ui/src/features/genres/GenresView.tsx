@@ -7,12 +7,11 @@ import {
 	readingNotice,
 } from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
-import { genresOf } from "@/domain/track/genres";
-import { trackRows } from "@/domain/track/project";
+import { type Genre, genreIndex } from "@/domain/track/genres";
 import { genreRoute } from "@/domain/track/routes";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import type { Phrase } from "@/shared/i18n/en";
-import { useTranslate } from "@/shared/i18n/useTranslate";
+import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { rovedIndex } from "@/shared/lib/rove";
@@ -38,6 +37,8 @@ const ORDERS = [
 	icon: IconComponent;
 }[];
 
+const NO_GENRES: Genre[] = [];
+
 export function GenresView({
 	library,
 	onOpenRoute,
@@ -46,33 +47,31 @@ export function GenresView({
 	onOpenRoute: (route: string) => void;
 }) {
 	const t = useTranslate();
+	const { compare } = useFormats();
 	const [query, setQuery] = useState("");
 	const [order, setOrder] = useStoredState<Order>("jean.genreOrder", "largest");
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const gridRef = useRef<HTMLDivElement | null>(null);
 
-	const { snapshot } = library;
-	const rows = useMemo(() => trackRows(snapshot.columns), [snapshot.columns]);
-	const genres = useMemo(() => genresOf(rows), [rows]);
+	const genres = library.key
+		? genreIndex(library.key, library.snapshot.columns)
+		: NO_GENRES;
 
 	const shown = useMemo(() => {
+		const byName = (a: Genre, b: Genre) => compare(a.key, b.key);
+		const largestFirst = (a: Genre, b: Genre) =>
+			b.trackCount - a.trackCount || byName(a, b);
+
 		const wanted = squash(query);
-		const scored = genres
-			.map((genre) => ({
-				genre,
-				score: wanted ? fuzzyScore(genre.match, wanted) : 1,
-			}))
-			.filter((entry) => entry.score > 0);
+		if (!wanted)
+			return [...genres].sort(order === "name" ? byName : largestFirst);
 
-		if (wanted)
-			scored.sort(
-				(a, b) => b.score - a.score || b.genre.trackCount - a.genre.trackCount,
-			);
-		else if (order === "name")
-			scored.sort((a, b) => a.genre.key.localeCompare(b.genre.key));
-
-		return scored.map((entry) => entry.genre);
-	}, [genres, query, order]);
+		return genres
+			.map((genre) => ({ genre, score: fuzzyScore(genre.match, wanted) }))
+			.filter((entry) => entry.score > 0)
+			.sort((a, b) => b.score - a.score || largestFirst(a.genre, b.genre))
+			.map((entry) => entry.genre);
+	}, [genres, query, order, compare]);
 
 	const best = shown[0] ?? null;
 	const completion = completionFor(query, best?.name ?? null);

@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { type RefObject, useEffect, useMemo, useState } from "react";
 import { audibleAt } from "@/domain/player/position";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useDragFraction } from "@/shared/hooks/useDragFraction";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { formatTime } from "@/shared/lib/time";
 import styles from "./SeekBar.module.css";
+import { seekGrid } from "./seekGrid";
 
 const useTickingPosition = (
 	snapshot: PlayerSnapshot | null | undefined,
@@ -12,13 +13,14 @@ const useTickingPosition = (
 ) => {
 	const [held, setHeld] = useState(() => ({
 		snapshot,
+		resolution,
 		value: resolution(audibleAt(snapshot)),
 	}));
 
 	let { value } = held;
-	if (held.snapshot !== snapshot) {
+	if (held.snapshot !== snapshot || held.resolution !== resolution) {
 		value = resolution(audibleAt(snapshot));
-		setHeld({ snapshot, value });
+		setHeld({ snapshot, resolution, value });
 	}
 
 	const isPlaying = snapshot?.player?.playbackState === "playing";
@@ -28,7 +30,9 @@ const useTickingPosition = (
 		let frame = requestAnimationFrame(function tick() {
 			const next = resolution(audibleAt(snapshot));
 			setHeld((current) =>
-				current.value === next ? current : { snapshot, value: next },
+				current.value === next
+					? current
+					: { snapshot, resolution, value: next },
 			);
 			frame = requestAnimationFrame(tick);
 		});
@@ -38,10 +42,24 @@ const useTickingPosition = (
 	return value;
 };
 
-const exactly = (at: number) => at;
+const useDevicePixelWidth = (ref: RefObject<HTMLElement | null>) => {
+	const [devicePixels, setDevicePixels] = useState(0);
 
-export const useElapsed = (snapshot: PlayerSnapshot | null | undefined) =>
-	useTickingPosition(snapshot, exactly);
+	useEffect(() => {
+		const element = ref.current;
+		if (!element) return undefined;
+
+		const observer = new ResizeObserver(([entry]) =>
+			setDevicePixels(
+				Math.round(entry.contentRect.width * window.devicePixelRatio),
+			),
+		);
+		observer.observe(element);
+		return () => observer.disconnect();
+	}, [ref]);
+
+	return devicePixels;
+};
 
 export const useElapsedSeconds = (
 	snapshot: PlayerSnapshot | null | undefined,
@@ -57,7 +75,6 @@ export function SeekBar({
 	disabled?: boolean;
 }) {
 	const t = useTranslate();
-	const elapsed = useElapsed(snapshot);
 
 	const duration = snapshot?.player?.activeItem?.duration ?? 0;
 	const canSeek = duration > 0;
@@ -67,7 +84,16 @@ export function SeekBar({
 		disabled: disabled || !canSeek,
 	});
 
-	const progress = fraction ?? (canSeek ? Math.min(elapsed / duration, 1) : 0);
+	const devicePixels = useDevicePixelWidth(ref);
+	const toTheDevicePixel = useMemo(
+		() => seekGrid(duration, devicePixels),
+		[duration, devicePixels],
+	);
+	const elapsed = useTickingPosition(snapshot, toTheDevicePixel);
+
+	const position =
+		fraction === null ? Math.min(elapsed, duration) : fraction * duration;
+	const progress = fraction ?? (canSeek ? position / duration : 0);
 	const baseLabel = t("player.position");
 
 	return (
@@ -86,9 +112,9 @@ export function SeekBar({
 			}
 			aria-valuemin={0}
 			aria-valuemax={Math.round(duration)}
-			aria-valuenow={Math.round(progress * duration)}
+			aria-valuenow={Math.round(position)}
 			aria-valuetext={t("player.positionOf", {
-				elapsed: formatTime(progress * duration),
+				elapsed: formatTime(position),
 				total: formatTime(duration),
 			})}
 			{...handlers}

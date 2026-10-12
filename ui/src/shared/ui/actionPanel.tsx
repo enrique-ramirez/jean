@@ -103,6 +103,13 @@ export function usePanel({
 
 	const active = pages[depth];
 	const isFiltered = canFilter && Boolean(active?.filter);
+	const activeLabels = useMemo(
+		() =>
+			isFiltered
+				? active?.items.map((node) => (node.type ? null : fold(node.label)))
+				: undefined,
+		[active, isFiltered],
+	);
 
 	useEffect(() => {
 		if (!isFiltered || !focusFilter) return;
@@ -150,9 +157,10 @@ export function usePanel({
 		const tokens = tokenize(query);
 		if (!isActive || !isFiltered || tokens.length === 0) return page.items;
 
-		const matched = page.items.filter(
-			(node) => !node.type && matchesTokens(fold(node.label), tokens),
-		);
+		const matched = page.items.filter((_, at) => {
+			const label = activeLabels?.[at];
+			return label != null && matchesTokens(label, tokens);
+		});
 		return matched.length > 0
 			? matched
 			: [{ type: "message", text: translate("menu.noMatch") }];

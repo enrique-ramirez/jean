@@ -17,7 +17,7 @@ import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { mergeHandlers } from "@/shared/lib/mergeHandlers";
 import { resolveColumns } from "./columns";
 import { useAvailableFields } from "./fieldAvailability";
-import { groupByAlbum } from "./grouping";
+import { type AlbumRun, groupByAlbum } from "./grouping";
 import type { LibrarySource } from "./librarySource";
 import type {
 	ActiveDirection,
@@ -39,6 +39,17 @@ import { useAlbumDragSource, useTrackDragSource } from "./useTrackDragSource";
 import { useTrackSelection } from "./useTrackSelection";
 
 const PAGE = 12;
+
+const albumRuns = new WeakMap<TrackRows, AlbumRun[]>();
+
+const albumRunsOf = (rows: TrackRows) => {
+	const held = albumRuns.get(rows);
+	if (held) return held;
+
+	const runs = groupByAlbum(rows);
+	albumRuns.set(rows, runs);
+	return runs;
+};
 
 export interface TrackBrowserProps {
 	rows: TrackRows;
@@ -108,7 +119,7 @@ export function TrackBrowser({
 	const selection = useTrackSelection(rows.length, viewKey);
 	const { isAvailable, hasPlayCounts } = useAvailableFields();
 
-	const groups = useMemo(() => groupByAlbum(rows), [rows]);
+	const groups = albumRunsOf(rows);
 	const hasDiscs = useMemo(() => groups.some((group) => group.discs), [groups]);
 
 	const { optional, template, albumTemplate } = useMemo(

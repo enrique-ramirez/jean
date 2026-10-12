@@ -1,26 +1,32 @@
+import { scrollParentOf } from "@/shared/lib/scrollParent";
+
 const MARGIN_PX = 400;
 
 type Seen = () => void;
 
 const waiting = new WeakMap<Element, Seen>();
 
-let observer: IntersectionObserver | null = null;
+const observers = new WeakMap<Element | Document, IntersectionObserver>();
 
-const observerFor = () => {
-	if (observer) return observer;
+// An `IntersectionObserver` grows only its root by `rootMargin`, and with no root that is the
+// browser's viewport: a scroll container in between still clips at its own edge.
+const observerWithin = (scroller: Element | null) => {
+	const held = observers.get(scroller ?? document);
+	if (held) return held;
 
-	observer = new IntersectionObserver(
+	const observer = new IntersectionObserver(
 		(entries) => {
 			for (const entry of entries) {
 				if (!entry.isIntersecting) continue;
 				const seen = waiting.get(entry.target);
 				waiting.delete(entry.target);
-				observer?.unobserve(entry.target);
+				observer.unobserve(entry.target);
 				seen?.();
 			}
 		},
-		{ rootMargin: `${MARGIN_PX}px` },
+		{ root: scroller, rootMargin: `${MARGIN_PX}px` },
 	);
+	observers.set(scroller ?? document, observer);
 
 	return observer;
 };
@@ -31,11 +37,12 @@ export function whenNearViewport(element: Element, seen: Seen): () => void {
 		return () => {};
 	}
 
+	const observer = observerWithin(scrollParentOf(element));
 	waiting.set(element, seen);
-	observerFor().observe(element);
+	observer.observe(element);
 
 	return () => {
 		waiting.delete(element);
-		observer?.unobserve(element);
+		observer.unobserve(element);
 	};
 }

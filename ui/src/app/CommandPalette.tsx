@@ -20,6 +20,8 @@ export interface PaletteEntry {
 	count?: number;
 }
 
+const foldedTitle = (entry: PaletteEntry) => fold(entry.title);
+
 export function CommandPalette({
 	views,
 	playlists,
@@ -37,21 +39,29 @@ export function CommandPalette({
 	const [query, setQuery] = useState("");
 	const [active, setActive] = useResettingState(0, [query]);
 
+	const titles = useMemo(
+		() => ({
+			views: views.map(foldedTitle),
+			playlists: playlists.map(foldedTitle),
+		}),
+		[views, playlists],
+	);
+
 	const { matchedViews, matchedPlaylists, results } = useMemo(() => {
 		const tokens = tokenize(query);
-		const matching = (entries: PaletteEntry[]) =>
+		const matching = (entries: PaletteEntry[], folded: string[]) =>
 			tokens.length === 0
 				? entries
-				: entries.filter((entry) => matchesTokens(fold(entry.title), tokens));
+				: entries.filter((_, at) => matchesTokens(folded[at], tokens));
 
-		const matchedViews = matching(views);
-		const matchedPlaylists = matching(playlists);
+		const matchedViews = matching(views, titles.views);
+		const matchedPlaylists = matching(playlists, titles.playlists);
 		return {
 			matchedViews,
 			matchedPlaylists,
 			results: [...matchedViews, ...matchedPlaylists],
 		};
-	}, [query, views, playlists]);
+	}, [query, views, playlists, titles]);
 
 	const aimedAt = useEarnedHover(results);
 

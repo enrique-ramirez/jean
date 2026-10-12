@@ -20,7 +20,7 @@ export function useHomePlayback({
 }) {
 	const t = useTranslate();
 	const { play, canPlaySets } = usePlaySet({ library, playlists });
-	const order = usePlaybackOrder();
+	const { enableShuffle, canShuffle } = usePlaybackOrder();
 
 	const playShelf = useCallback(
 		async (shelf: FilledShelf<Album>, album: Album) => {
@@ -61,10 +61,10 @@ export function useHomePlayback({
 	const shuffleEverything = useCallback(
 		(refs: Refs) => {
 			if (refs.length === 0) return undefined;
-			order.enableShuffle();
+			enableShuffle();
 			return startEverything(refs, Math.floor(Math.random() * refs.length));
 		},
-		[startEverything, order],
+		[startEverything, enableShuffle],
 	);
 
 	return {
@@ -73,6 +73,6 @@ export function useHomePlayback({
 		playEverything,
 		shuffleEverything,
 		canPlay: canPlaySets,
-		canShuffle: order.canShuffle && canPlaySets,
+		canShuffle: canShuffle && canPlaySets,
 	};
 }

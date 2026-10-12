@@ -175,6 +175,51 @@ test.describe("what the seek bar tells a screen reader", () => {
 	});
 });
 
+// A bar a few hundred pixels wide under a track a few minutes long moves a handful of pixels a
+// second. Redrawn on every frame, it costs a render and two style writes sixty times a second for
+// a movement nobody can see, for as long as anything plays.
+test.describe("the seek bar while a track plays", () => {
+	const WATCHED_MS = 2500;
+	const HALF_A_DEVICE_PIXEL = 0.5;
+
+	test("is redrawn only once it has somewhere to move", async ({ page }) => {
+		await openLibrary(page);
+		await trackRow(page, 0).dblclick();
+		await expect(seekBar(page)).toHaveAttribute("data-seekable", "true");
+		await expect(seekBar(page)).toHaveAttribute("aria-valuenow", "1");
+
+		const fill = seekBar(page).locator("span").nth(1);
+		await fill.evaluate((element: HTMLElement) => {
+			const drawn: number[] = [];
+			const read = () =>
+				Number(/scaleX\(([^)]+)\)/.exec(element.style.transform)?.[1]);
+			new MutationObserver(() => drawn.push(read())).observe(element, {
+				attributes: true,
+				attributeFilter: ["style"],
+			});
+			Object.assign(window, { seekBarDrawn: drawn });
+		});
+
+		await page.waitForTimeout(WATCHED_MS);
+
+		const moves = await fill.evaluate((element: HTMLElement) => {
+			const { seekBarDrawn } = window as unknown as { seekBarDrawn: number[] };
+			const devicePixels =
+				(element.parentElement as HTMLElement).getBoundingClientRect().width *
+				window.devicePixelRatio;
+			return seekBarDrawn
+				.slice(1)
+				.map((at, index) => Math.abs(at - seekBarDrawn[index]) * devicePixels);
+		});
+
+		expect(moves.length, "the bar never moved").toBeGreaterThan(2);
+		expect(
+			Math.min(...moves),
+			`the bar was redrawn to move ${moves.map((move) => move.toFixed(3))} device pixels`,
+		).toBeGreaterThanOrEqual(HALF_A_DEVICE_PIXEL);
+	});
+});
+
 test.describe("the seek bar", () => {
 	test.skip(({ isMobile }) => isMobile, "scrubbing is a mouse gesture");
 

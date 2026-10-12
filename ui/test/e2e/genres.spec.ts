@@ -200,6 +200,31 @@ test.describe("the ways in", () => {
 	});
 });
 
+// Spanish files ñ as a letter of its own, after n, and English as an n with a mark on it. The
+// order is the language Jean is showing, which Settings can set apart from the browser's.
+test.describe("genres by name, in a language that is not the browser's", () => {
+	test.use({
+		settings: { "jean.locale": "es", "jean.genreOrder": "name" },
+		retagged: {
+			"Los Calientes": {
+				"%genre%": "Ñu Metal",
+				[GENRE_EXPRESSION]: "Ñu Metal",
+			},
+			Nutshell: { "%genre%": "Nz Funk", [GENRE_EXPRESSION]: "Nz Funk" },
+		},
+	});
+
+	test("are in that language's order", async ({ page }) => {
+		await openGenres(page);
+
+		const names = await tiles(page).allTextContents();
+		const at = (name: string) => names.findIndex((text) => text.includes(name));
+
+		expect(at("Nz Funk"), names.join(" | ")).toBeGreaterThanOrEqual(0);
+		expect(at("Ñu Metal"), names.join(" | ")).toBeGreaterThan(at("Nz Funk"));
+	});
+});
+
 test.describe("a track tagged with several genres", () => {
 	test.use({
 		retagged: {

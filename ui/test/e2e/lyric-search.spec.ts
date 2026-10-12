@@ -492,6 +492,27 @@ test.describe("searching LRCLIB", () => {
 		await expectNothingWritten(player);
 	});
 
+	// What LRCLIB sends is drawn as it arrives, and React throws on a child that is an object:
+	// one such field took the whole page with it.
+	test("a version whose album is not text is listed without one, and one whose name is not text is left out", async ({
+		page,
+		isMobile,
+	}) => {
+		const misshapen: Answer = (route) =>
+			route.fulfill({
+				json: [
+					{ ...version(4, "synced", "Album", 0), albumName: { name: "Album" } },
+					{ ...version(5, "plain", "Reissue", 0), trackName: { text: "Soy" } },
+				],
+				headers: CROSS_ORIGIN,
+			});
+		await interceptLrclib(page, misshapen);
+		const view = await openSearch(page, isMobile, NO_LYRIC.row);
+
+		await expect(versionsOf(view, "Synced")).toHaveText([/Soy Rock, take 4/]);
+		await expect(versionsOf(view, "Plain")).toHaveCount(0);
+	});
+
 	test("a changed query is asked for by Search again and by Enter in a field, and never by the typing alone", async ({
 		page,
 		player,

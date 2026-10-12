@@ -671,3 +671,21 @@ test.describe("offering listening here when the player cannot be heard", () => {
 		await expect(playerFace(page)).toContainText(NO_SPEAKERS);
 	});
 });
+
+// What sits under a key is whatever was last written there, by any build or by hand, and a reader
+// that indexes into it throws on a shape it never wrote. Nothing catches a throw in render, so the
+// page went blank and stayed blank across reloads.
+const NEVER_WRITTEN_BY_JEAN: Record<string, unknown> = {
+	"jean.columns": {},
+	"jean.fooJeanFields": null,
+};
+
+for (const [key, stored] of Object.entries(NEVER_WRITTEN_BY_JEAN))
+	test.describe(`${key} stored in a shape Jean never wrote`, () => {
+		test.use({ settings: { [key]: stored } });
+
+		test("the list opens as it does with nothing stored", async ({ page }) => {
+			await openLibrary(page);
+			await expect(trackRow(page, 0)).toBeVisible();
+		});
+	});

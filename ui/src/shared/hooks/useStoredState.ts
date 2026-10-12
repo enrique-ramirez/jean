@@ -8,22 +8,37 @@ const values = new Map<string, unknown>();
 const resolve = <T>(fallback: T | (() => T)): T =>
 	typeof fallback === "function" ? (fallback as () => T)() : fallback;
 
-const read = <T>(key: string, fallback: T | (() => T)): T => {
+export type StoredShape<T> = (stored: unknown) => stored is T;
+
+const read = <T>(
+	key: string,
+	fallback: T | (() => T),
+	isShaped?: StoredShape<T>,
+): T => {
 	try {
-		const stored = localStorage.getItem(key);
-		return stored === null ? resolve(fallback) : (JSON.parse(stored) as T);
+		const raw = localStorage.getItem(key);
+		if (raw === null) return resolve(fallback);
+		const stored: unknown = JSON.parse(raw);
+		return !isShaped || isShaped(stored) ? (stored as T) : resolve(fallback);
 	} catch {
 		return resolve(fallback);
 	}
 };
 
-const held = <T>(key: string, fallback: T | (() => T)): T => {
-	if (!values.has(key)) values.set(key, read(key, fallback));
+const held = <T>(
+	key: string,
+	fallback: T | (() => T),
+	isShaped?: StoredShape<T>,
+): T => {
+	if (!values.has(key)) values.set(key, read(key, fallback, isShaped));
 	return values.get(key) as T;
 };
 
-export const readStoredState = <T>(key: string, fallback: T | (() => T)): T =>
-	held(key, fallback);
+export const readStoredState = <T>(
+	key: string,
+	fallback: T | (() => T),
+	isShaped?: StoredShape<T>,
+): T => held(key, fallback, isShaped);
 
 export function writeStoredState<T>(key: string, value: T): void {
 	values.set(key, value);
@@ -38,27 +53,30 @@ export function writeStoredState<T>(key: string, value: T): void {
 export function useStoredState<T>(
 	key: string,
 	fallback: T | (() => T),
+	isShaped?: StoredShape<T>,
 ): [T, (next: T | ((current: T) => T)) => void] {
 	// Read only on the first miss for a key, and deliberately not a dependency below: a caller passing
 	// a fresh object literal must not invalidate the snapshot on every render.
-	const initial = useRef(fallback);
-	initial.current = fallback;
+	const onMiss = useRef({ fallback, isShaped });
+	onMiss.current = { fallback, isShaped };
 
-	const value = useSyncExternalStore(
-		listeners.subscribe,
-		useCallback(() => held(key, initial.current), [key]),
+	const stored = useCallback(
+		() => held(key, onMiss.current.fallback, onMiss.current.isShaped),
+		[key],
 	);
+
+	const value = useSyncExternalStore(listeners.subscribe, stored);
 
 	const update = useCallback(
 		(next: T | ((current: T) => T)) => {
 			const resolved =
 				typeof next === "function"
-					? (next as (current: T) => T)(held(key, initial.current))
+					? (next as (current: T) => T)(stored())
 					: next;
 
 			writeStoredState(key, resolved);
 		},
-		[key],
+		[key, stored],
 	);
 
 	return [value, update];

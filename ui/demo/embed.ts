@@ -25,7 +25,8 @@ export const isolateStorage = () => {
 	});
 };
 
-export const applySettings = (params: URLSearchParams) => {
+export const applyFrameSettings = (params: URLSearchParams) => {
+	if (!isEmbed(params)) return;
 	for (const [name, value] of params)
 		if (name.startsWith("set."))
 			localStorage.setItem(`jean.${name.slice(4)}`, value);

@@ -3,6 +3,12 @@ packages:
   - site
   - contract
 
+# pnpm's own default, in minutes. pnpm turns minimumReleaseAgeStrict on once this is stated, so the
+# second line keeps what the unstated default does: a younger version is let through and listed
+# under minimumReleaseAgeExclude.
+minimumReleaseAge: 1440
+minimumReleaseAgeStrict: false
+
 catalog:
   '@biomejs/biome': 2.5.15
   '@playwright/test': 1.64.0

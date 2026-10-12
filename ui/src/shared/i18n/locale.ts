@@ -15,7 +15,7 @@ import {
 } from "./message";
 import { isPalyyyDay, respelled } from "./palyyy";
 
-export const ENGLISH = "en";
+const ENGLISH = "en";
 
 const CHOICE_KEY = "jean.locale";
 
@@ -59,9 +59,20 @@ const publish = (next: Partial<LocaleState>) => {
 export const localeState = () => state;
 export const subscribeToLocale = listeners.subscribe;
 
+// Every `Intl` constructor throws a `RangeError` for a code that is not a BCP 47 language tag,
+// `pt_BR` included.
+const isLanguageTag = (code: unknown): code is string => {
+	if (typeof code !== "string") return false;
+	try {
+		return Intl.getCanonicalLocales(code).length === 1;
+	} catch {
+		return false;
+	}
+};
+
 const readChoice = (): string | null => {
 	const stored = readStoredState<unknown>(CHOICE_KEY, null);
-	return typeof stored === "string" ? stored : null;
+	return isLanguageTag(stored) ? stored : null;
 };
 
 const writeChoice = (code: string | null) => writeStoredState(CHOICE_KEY, code);
@@ -70,7 +81,8 @@ const isMessage = (value: unknown): value is Message =>
 	typeof value === "string" ||
 	(typeof value === "object" &&
 		value !== null &&
-		typeof (value as PluralShape).other === "string");
+		typeof (value as PluralShape).other === "string" &&
+		Object.values(value).every((form) => typeof form === "string"));
 
 interface PluralShape {
 	other?: unknown;
@@ -98,9 +110,7 @@ async function fetchCustom(): Promise<string[]> {
 		const response = await fetch(fileIn(CUSTOM_FILE));
 		if (!response.ok) return [];
 		const body: unknown = await response.json();
-		return Array.isArray(body)
-			? body.filter((code): code is string => typeof code === "string")
-			: [];
+		return Array.isArray(body) ? body.filter(isLanguageTag) : [];
 	} catch {
 		return [];
 	}

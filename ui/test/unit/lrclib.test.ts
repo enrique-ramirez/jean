@@ -133,6 +133,38 @@ test("a search answers every record LRCLIB sent, in the order it sent them", asy
 	assert.deepEqual(await search(lrclib), { ok: true, value: sent });
 });
 
+// What LRCLIB sends reaches a render as it is, and React throws on a child that is not text.
+test("a record keeps only fields of the type LRCLIB documents, and one with no usable name or duration is left out", async (t) => {
+	const whole = synced(1);
+	lrclibAnswering(t, () =>
+		Response.json([
+			whole,
+			{
+				...plain(2),
+				albumName: { name: "Jessico" },
+				instrumental: "no",
+				plainLyrics: 7,
+				syncedLyrics: ["[00:01.00]Te pedí"],
+			},
+			{ ...plain(3), trackName: { text: "Te pedí" } },
+			{ ...plain(4), artistName: null },
+			{ ...plain(5), duration: "200" },
+			{ ...plain(6), id: "6" },
+			"a record",
+			null,
+		]),
+	);
+	const lrclib = await freshLrclib();
+
+	assert.deepEqual(await search(lrclib), {
+		ok: true,
+		value: [
+			whole,
+			record(2, { albumName: "", plainLyrics: null, syncedLyrics: null }),
+		],
+	});
+});
+
 test("an empty answer from LRCLIB is a successful search that found nothing", async (t) => {
 	lrclibAnswering(t, () => Response.json([]));
 	const lrclib = await freshLrclib();

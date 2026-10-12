@@ -119,10 +119,19 @@ function serveStatic(root: string, path: string, response: ServerResponse) {
 	return serveFile(file, response);
 }
 
+// foo_jean's own policy for the page, `kPageContentPolicy` in `plugins/fb2k/src/core/routes_page.cpp`.
+const PAGE_CONTENT_POLICY =
+	"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; " +
+	"media-src 'self' blob:; font-src 'self'; " +
+	"connect-src 'self' https://musicbrainz.org https://www.wikidata.org https://en.wikipedia.org " +
+	"https://lrclib.net; " +
+	"object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
 function serveFile(file: string, response: ServerResponse) {
 	if (!existsSync(file)) return empty(response, 404);
 	response.writeHead(200, {
 		"Content-Type": MIME[extname(file)] ?? "application/octet-stream",
+		"Content-Security-Policy": PAGE_CONTENT_POLICY,
 	});
 	createReadStream(file).pipe(response);
 	return true;

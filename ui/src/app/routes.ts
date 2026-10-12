@@ -65,17 +65,17 @@ export type RouteView =
 	| { kind: "artist"; artist: string; tab: ArtistTab }
 	| { kind: "playlist"; id: string };
 
-const FIXED: Partial<Record<string, RouteView>> = {
-	"": { kind: "home" },
-	[ROUTE.home]: { kind: "home" },
-	[ROUTE.all]: { kind: "all" },
-	[ROUTE.genres]: { kind: "genres" },
-	[ROUTE.playing]: { kind: "playing" },
-	[ROUTE.search]: { kind: "search", query: null },
-};
+const FIXED = new Map<string, RouteView>([
+	["", { kind: "home" }],
+	[ROUTE.home, { kind: "home" }],
+	[ROUTE.all, { kind: "all" }],
+	[ROUTE.genres, { kind: "genres" }],
+	[ROUTE.playing, { kind: "playing" }],
+	[ROUTE.search, { kind: "search", query: null }],
+]);
 
 export function resolveRoute(route: string): RouteView {
-	const fixed = FIXED[route];
+	const fixed = FIXED.get(route);
 	if (fixed) return fixed;
 
 	const query = queryOfRoute(route);

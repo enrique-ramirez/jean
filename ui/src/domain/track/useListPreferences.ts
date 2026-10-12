@@ -3,6 +3,9 @@ import { DEFAULT_COLUMN_IDS } from "./columns";
 
 export type Layout = "compact" | "album";
 
+const isColumnIds = (stored: unknown): stored is string[] =>
+	Array.isArray(stored) && stored.every((id) => typeof id === "string");
+
 export function useListPreferences() {
 	const [layout, setLayout] = useStoredState<Layout>("jean.layout", "compact");
 	const [showHeat, setShowHeat] = useStoredState("jean.heat", true);
@@ -10,6 +13,7 @@ export function useListPreferences() {
 	const [enabledIds, setEnabledIds] = useStoredState<string[]>(
 		"jean.columns",
 		DEFAULT_COLUMN_IDS,
+		isColumnIds,
 	);
 
 	return {

@@ -85,3 +85,24 @@ test.describe("a browser that asks for a language Jean does not have", () => {
 		await expect(page.locator("main")).toContainText("Your library");
 	});
 });
+
+// gettext spells a region with an underscore, and a code spelled that way is not a language tag:
+// every `Intl` constructor throws for it. With its catalogue installed and the choice stored, the
+// first phrase drawn took the whole page with it, on every reload.
+test.describe("a stored choice that is not a language tag", () => {
+	const UNDERSCORED = "pt_BR";
+
+	test.use({ settings: { "jean.locale": UNDERSCORED } });
+
+	test("opens in the browser's language rather than in nothing", async ({
+		page,
+	}) => {
+		await page.route(`**/locales/${UNDERSCORED}.json`, (route) =>
+			route.fulfill({ json: { "home.yourLibrary": "Sua biblioteca" } }),
+		);
+		await page.goto("/");
+
+		await expect(page.locator("main")).toContainText("Your library");
+		await expect(page.locator("html")).toHaveAttribute("lang", "en");
+	});
+});

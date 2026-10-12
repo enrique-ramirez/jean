@@ -17,7 +17,9 @@ const LABEL_FILL = {
 
 export type PlaybackBadge = keyof typeof LABEL_FILL;
 
-const cache = new Map<string, string>();
+const PNG = "image/png";
+
+const frames = new Map<string, Promise<Blob>>();
 
 let icon: HTMLLinkElement | null = null;
 let drawing: CanvasRenderingContext2D | null = null;
@@ -25,15 +27,21 @@ let source: HTMLImageElement | null = null;
 let pending: Promise<HTMLImageElement> | null = null;
 let timer: number | undefined;
 let badge: PlaybackBadge = "idle";
+let shown: string | null = null;
+let asked = 0;
 
 let angle = 0;
 
 const sourceUrl = () => new URL("favicon.svg", document.baseURI).href;
 
-function apply(href: string, type: string) {
+// foo_jean's page policy allows an image from this origin or a `blob:` URL, and refuses `data:`.
+function show(frame: Blob) {
 	icon ??= document.querySelector("link[rel='icon']") as HTMLLinkElement;
-	icon.type = type;
-	icon.href = href;
+	const replaced = shown;
+	shown = URL.createObjectURL(frame);
+	icon.type = PNG;
+	icon.href = shown;
+	if (replaced) URL.revokeObjectURL(replaced);
 }
 
 function drawingContext() {
@@ -57,8 +65,8 @@ function dot(context: CanvasRenderingContext2D, radius: number, fill: string) {
 // and a media query inside an SVG loaded as an image resolves inconsistently.
 function disc(state: PlaybackBadge, turn: number) {
 	const key = `${state}:${turn}`;
-	const hit = cache.get(key);
-	if (hit) return hit;
+	const held = frames.get(key);
+	if (held) return held;
 
 	const context = drawingContext();
 	const centre = SIZE / 2;
@@ -75,9 +83,25 @@ function disc(state: PlaybackBadge, turn: number) {
 		dot(context, HOLE_R, HOLE_FILL);
 	}
 
-	const url = context.canvas.toDataURL("image/png");
-	cache.set(key, url);
-	return url;
+	const frame = new Promise<Blob>((resolve, reject) => {
+		context.canvas.toBlob(
+			(blob) => (blob ? resolve(blob) : reject(new Error("no frame"))),
+			PNG,
+		);
+	});
+	frames.set(key, frame);
+	return frame;
+}
+
+function swap(state: PlaybackBadge, turn: number) {
+	asked += 1;
+	const ask = asked;
+	disc(state, turn).then(
+		(frame) => {
+			if (ask === asked) show(frame);
+		},
+		() => {},
+	);
 }
 
 function load() {
@@ -98,12 +122,12 @@ function halt() {
 function paint(image: HTMLImageElement) {
 	source = image;
 	halt();
-	apply(disc(badge, angle), "image/png");
+	swap(badge, angle);
 	if (badge !== "playing") return;
 	// A browser clamps a background tab's timers to about a second, which slows the spin there.
 	timer = window.setInterval(() => {
 		angle = (angle + 1) % FRAMES;
-		apply(disc("playing", angle), "image/png");
+		swap("playing", angle);
 	}, FRAME_MS);
 }
 

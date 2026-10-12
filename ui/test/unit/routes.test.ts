@@ -26,6 +26,12 @@ test("each fixed route names only itself", () => {
 	assert.equal(resolveRoute("playing").kind, "playing");
 });
 
+// A route is whatever follows the `#`, and every object answers to these names.
+test("a name every object carries is a playlist's id like any other", () => {
+	for (const route of ["constructor", "toString", "__proto__", "valueOf"])
+		assert.deepEqual(resolveRoute(route), { kind: "playlist", id: route });
+});
+
 test("a search carries its query, decoded", () => {
 	assert.deepEqual(resolveRoute(searchRoute("heavy metal")), {
 		kind: "search",

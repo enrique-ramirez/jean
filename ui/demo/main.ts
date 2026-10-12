@@ -1,6 +1,6 @@
 import "./badge.css";
 import {
-	applySettings,
+	applyFrameSettings,
 	focusSearch,
 	isEmbed,
 	isolateStorage,
@@ -113,7 +113,7 @@ async function start() {
 		if (localStorage.getItem(key) === null)
 			localStorage.setItem(key, JSON.stringify(value));
 
-	applySettings(params);
+	applyFrameSettings(params);
 
 	if (embedded) await seedPlayback();
 

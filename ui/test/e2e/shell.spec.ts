@@ -8,6 +8,7 @@ import {
 	scrollTop,
 	searchField,
 	searchFor,
+	statusBar,
 	test,
 	trackRow,
 } from "./fixtures.ts";
@@ -49,6 +50,20 @@ test.describe("the shell fits the screen", () => {
 		await expect(page.getByText(/matches?$/)).toBeVisible();
 
 		await expect.poll(() => overflow(page)).toBe(0);
+	});
+});
+
+test.describe("the status bar's cover", () => {
+	test("is smaller on a phone than on a desktop", async ({
+		page,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+
+		const cover = statusBar(page).locator("[data-artwork]");
+		const side = isMobile ? "40px" : "44px";
+		await expect(cover).toHaveCSS("width", side);
+		await expect(cover).toHaveCSS("height", side);
 	});
 });
 
@@ -145,5 +160,57 @@ test.describe("the compact top bar", () => {
 		await searchField(page).press("Escape");
 
 		await expect(mark).toBeVisible();
+	});
+});
+
+declare global {
+	interface Window {
+		__refusedByPolicy?: string[];
+	}
+}
+
+const recordPolicyRefusals = (page: Page) =>
+	page.addInitScript(() => {
+		const refused: string[] = [];
+		window.__refusedByPolicy = refused;
+		document.addEventListener("securitypolicyviolation", (event) => {
+			refused.push(
+				`${event.effectiveDirective} ${event.blockedURI.slice(0, 40)}`,
+			);
+		});
+	});
+
+const refusedByPolicy = (page: Page) =>
+	page.evaluate(() => window.__refusedByPolicy);
+
+const tabIcon = (page: Page) =>
+	page.evaluate(
+		() => document.querySelector<HTMLLinkElement>("link[rel='icon']")?.href,
+	);
+
+const ICON_TURNS_WATCHED = 6;
+
+// The fake sends foo_jean's own policy on the page, so anything the policy refuses is refused
+// here as it is on an install. The tab's icon is the worked example: it is swapped for every
+// frame of a playing record, and a refused one leaves the tab with no icon at all.
+test.describe("the page under foo_jean's content policy", () => {
+	test("nothing Jean draws is refused, at boot or while a record turns in the tab", async ({
+		page,
+		player,
+	}) => {
+		await recordPolicyRefusals(page);
+		await openLibrary(page);
+		await expect(statusBar(page)).toBeVisible();
+		await expect.poll(() => tabIcon(page)).toMatch(/^blob:/);
+
+		player.patchPlayer({ playbackState: "playing" });
+		const turns = new Set<string | undefined>();
+		await expect
+			.poll(async () => turns.add(await tabIcon(page)).size, {
+				intervals: [50],
+			})
+			.toBeGreaterThan(ICON_TURNS_WATCHED);
+
+		expect(await refusedByPolicy(page)).toEqual([]);
 	});
 });

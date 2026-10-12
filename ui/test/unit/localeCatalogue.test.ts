@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { en } from "../../src/shared/i18n/en.ts";
 import {
+	discover,
 	localeState,
 	setLocale,
 	translate,
@@ -41,6 +42,53 @@ test("a translation's inherited keys are not phrases", async (t) => {
 	assert.equal(translate("artistInfo.readMore", { source: "X" }), "Mehr auf X");
 	assert.equal(translate("artistInfo.off"), en["artistInfo.off"]);
 	assert.equal(localeState().missing, Object.keys(en).length - 1);
+});
+
+// `Intl.PluralRules` picks the form by the count, so a form that is not text is drawn only for
+// some counts, and what is drawn then is not a string.
+test("a plural with a form that is not text is not a phrase, and the English shows", async (t) => {
+	const realFetch = globalThis.fetch;
+	const realDocument = globalThis.document;
+	t.after(async () => {
+		await setLocale(null);
+		globalThis.fetch = realFetch;
+		globalThis.document = realDocument;
+	});
+	globalThis.document = {
+		baseURI: "http://127.0.0.1:9/",
+		documentElement: { lang: "" },
+	} as unknown as Document;
+	globalThis.fetch = (async () =>
+		Response.json({
+			"genre.count": { one: 5, other: "{count} Genres" },
+			"artistInfo.readMore": "Mehr auf {source}",
+		})) as typeof fetch;
+
+	await setLocale("de");
+
+	assert.equal(translate("genre.count", { count: 1 }), "1 genre");
+	assert.equal(localeState().missing, Object.keys(en).length - 1);
+});
+
+// `custom.json` is written by hand, and gettext spells a region with an underscore. `Intl` throws
+// for such a code wherever it is handed one, so it is never offered.
+test("a hand-added code that is not a language tag is not offered", async (t) => {
+	const realFetch = globalThis.fetch;
+	const realDocument = globalThis.document;
+	t.after(() => {
+		globalThis.fetch = realFetch;
+		globalThis.document = realDocument;
+	});
+	globalThis.document = {
+		baseURI: "http://127.0.0.1:9/",
+		documentElement: { lang: "" },
+	} as unknown as Document;
+	globalThis.fetch = (async () =>
+		Response.json(["pt_BR", "pt-BR", "", 5, "cy"])) as typeof fetch;
+
+	await discover();
+
+	assert.deepEqual(localeState().available, ["en", "pt-BR", "cy"]);
 });
 
 const PLAYING_ELSEWHERE_PHRASES: readonly string[] = [

@@ -192,11 +192,18 @@ interface PendingRating extends WritableAddress {
 	paint: OptimisticValue;
 }
 
+const isFieldPrefs = (stored: unknown): stored is Record<string, boolean> =>
+	typeof stored === "object" &&
+	stored !== null &&
+	!Array.isArray(stored) &&
+	Object.values(stored).every((enabled) => typeof enabled === "boolean");
+
 export function TagWriterProvider({ children }: { children: ReactNode }) {
 	const { discovery, isChecking, recheck } = useFooJean();
 	const [fieldPrefs, setFieldPrefs] = useStoredState<Record<string, boolean>>(
 		FIELDS_KEY,
 		{},
+		isFieldPrefs,
 	);
 	const hasFinePointer = useMediaQuery("(hover: hover) and (pointer: fine)");
 
@@ -400,11 +407,7 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 		],
 	);
 
-	return (
-		<TagWriterContext.Provider value={value}>
-			{children}
-		</TagWriterContext.Provider>
-	);
+	return <TagWriterContext value={value}>{children}</TagWriterContext>;
 }
 
 // `foo_jean` refuses an address two media library roots both hold before it writes anything, so the

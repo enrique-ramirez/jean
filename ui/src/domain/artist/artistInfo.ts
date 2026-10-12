@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { useStoredState } from "@/shared/hooks/useStoredState";
+import { fieldsOf, textOf } from "@/shared/lib/untrusted";
 
-export const ARTIST_INFO_KEY = "jean.artistInfo";
+const ARTIST_INFO_KEY = "jean.artistInfo";
 
 export const useArtistInfoEnabled = () =>
 	useStoredState<boolean>(ARTIST_INFO_KEY, false);
@@ -22,14 +23,48 @@ export interface ArtistInfo {
 const MUSICBRAINZ = "https://musicbrainz.org/ws/2";
 const WIKIPEDIA = "https://en.wikipedia.org/api/rest_v1/page/summary";
 
+interface MbRelation {
+	type: string;
+	resource: string;
+}
+
 interface MbArtist {
 	id: string;
 	name: string;
-	type?: string;
-	area?: { name?: string };
-	"life-span"?: { begin?: string; end?: string };
-	relations?: { type: string; url?: { resource: string } }[];
-	score?: number;
+	kind: string | null;
+	area: string | null;
+	begin: string | null;
+	end: string | null;
+	relations: MbRelation[];
+	score: number;
+}
+
+function relationOf(body: unknown): MbRelation[] {
+	const relation = fieldsOf(body);
+	const type = textOf(relation.type);
+	const resource = textOf(fieldsOf(relation.url).resource);
+	return type === null || resource === null ? [] : [{ type, resource }];
+}
+
+function artistOf(body: unknown): MbArtist | null {
+	const artist = fieldsOf(body);
+	const id = textOf(artist.id);
+	const name = textOf(artist.name);
+	if (id === null || name === null) return null;
+
+	const span = fieldsOf(artist["life-span"]);
+	return {
+		id,
+		name,
+		kind: textOf(artist.type),
+		area: textOf(fieldsOf(artist.area).name),
+		begin: textOf(span.begin),
+		end: textOf(span.end),
+		relations: Array.isArray(artist.relations)
+			? artist.relations.flatMap(relationOf)
+			: [],
+		score: typeof artist.score === "number" ? artist.score : 0,
+	};
 }
 
 const askThirdParty = (url: string, signal: AbortSignal) =>
@@ -39,19 +74,33 @@ const askThirdParty = (url: string, signal: AbortSignal) =>
 		headers: { Accept: "application/json" },
 	});
 
-const httpsUrl = (url: string | undefined) => {
+const WIKIPEDIA_HOSTS = ".wikipedia.org";
+
+const wikipediaPage = (url: string | null) => {
+	if (url === null) return null;
 	try {
-		return url && new URL(url).protocol === "https:" ? url : null;
+		const { protocol, hostname } = new URL(url);
+		return protocol === "https:" && hostname.endsWith(WIKIPEDIA_HOSTS)
+			? url
+			: null;
 	} catch {
 		return null;
 	}
 };
 
 const lifeSpan = (artist: MbArtist) => {
-	const begin = artist["life-span"]?.begin?.slice(0, 4);
-	const end = artist["life-span"]?.end?.slice(0, 4);
+	const begin = artist.begin?.slice(0, 4);
+	const end = artist.end?.slice(0, 4);
 	if (!begin) return null;
 	return end ? `${begin}–${end}` : `${begin}–`;
+};
+
+const unescaped = (escaped: string) => {
+	try {
+		return decodeURIComponent(escaped);
+	} catch {
+		return null;
+	}
 };
 
 async function wikipediaTitle(
@@ -59,10 +108,10 @@ async function wikipediaTitle(
 	signal: AbortSignal,
 ): Promise<string | null> {
 	const urlOf = (type: string) =>
-		relations?.find((relation) => relation.type === type)?.url?.resource;
+		relations.find((relation) => relation.type === type)?.resource;
 
 	const direct = urlOf("wikipedia");
-	if (direct) return decodeURIComponent(direct.split("/wiki/")[1] ?? "");
+	if (direct) return unescaped(direct.split("/wiki/")[1] ?? "");
 
 	const wikidata = urlOf("wikidata");
 	if (!wikidata) return null;
@@ -75,8 +124,7 @@ async function wikipediaTitle(
 		signal,
 	);
 	if (!response.ok) return null;
-	const link = (await response.json()) as { title?: string };
-	return link.title ?? null;
+	return textOf(fieldsOf(await response.json()).title);
 }
 
 export function useArtistInfo(artist: string | null | undefined) {
@@ -96,24 +144,25 @@ export function useArtistInfo(artist: string | null | undefined) {
 			);
 			if (!found.ok) return null;
 
-			const { artists } = (await found.json()) as { artists?: MbArtist[] };
-			const match = artists?.[0];
+			const { artists } = fieldsOf(await found.json());
+			const match = Array.isArray(artists) ? artistOf(artists[0]) : null;
 			// MusicBrainz scores a match out of 100, and an exact name scores 100.
-			if (!match || (match.score ?? 0) < 90) return null;
+			if (!match || match.score < 90) return null;
 
 			const detailed = await askThirdParty(
 				`${MUSICBRAINZ}/artist/${match.id}?inc=url-rels&fmt=json`,
 				signal,
 			);
-			const full = detailed.ok ? ((await detailed.json()) as MbArtist) : match;
+			const full =
+				(detailed.ok ? artistOf(await detailed.json()) : null) ?? match;
 
 			const base: ArtistInfo = {
 				name: full.name,
 				summary: "",
 				sourceName: "MusicBrainz",
 				sourceUrl: `https://musicbrainz.org/artist/${match.id}`,
-				kind: full.type ?? null,
-				area: full.area?.name ?? null,
+				kind: full.kind,
+				area: full.area,
 				years: lifeSpan(full),
 			};
 
@@ -126,17 +175,16 @@ export function useArtistInfo(artist: string | null | undefined) {
 			);
 			if (!summary.ok) return base;
 
-			const page = (await summary.json()) as {
-				extract?: string;
-				content_urls?: { desktop?: { page?: string } };
-			};
+			const page = fieldsOf(await summary.json());
+			const extract = textOf(page.extract) ?? "";
+			const desktop = fieldsOf(fieldsOf(page.content_urls).desktop);
 
 			return {
 				...base,
-				summary: page.extract ?? "",
-				sourceName: page.extract ? "Wikipedia" : base.sourceName,
+				summary: extract,
+				sourceName: extract ? "Wikipedia" : base.sourceName,
 				sourceUrl:
-					httpsUrl(page.content_urls?.desktop?.page) ??
+					wikipediaPage(textOf(desktop.page)) ??
 					`https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`,
 			};
 		},

@@ -121,7 +121,23 @@ test.describe("artist information", () => {
 		// Every third party is answered here rather than reached. The summary names
 		// a script as its page, which is what a compromised or spoofed answer would
 		// hand the link.
-		const answerTheLookup = async (page: Page) => {
+		const WIKIPEDIA_RELATION = {
+			type: "wikipedia",
+			url: { resource: "https://en.wikipedia.org/wiki/Babasonicos" },
+		};
+
+		const SCRIPT_FOR_A_PAGE = {
+			extract: "An Argentine rock band.",
+			content_urls: { desktop: { page: "javascript:alert(1)" } },
+		};
+
+		const answerTheLookup = async (
+			page: Page,
+			{
+				artist = { relations: [WIKIPEDIA_RELATION] },
+				summary = SCRIPT_FOR_A_PAGE,
+			}: { artist?: Record<string, unknown>; summary?: unknown } = {},
+		) => {
 			const referrers: (string | null)[] = [];
 			const answer = (body: unknown) => async (route: Route) => {
 				referrers.push(await route.request().headerValue("referer"));
@@ -134,23 +150,11 @@ test.describe("artist information", () => {
 			);
 			await page.route(
 				"https://musicbrainz.org/ws/2/artist/mbid?*",
-				answer({
-					id: "mbid",
-					name: "Babasónicos",
-					relations: [
-						{
-							type: "wikipedia",
-							url: { resource: "https://en.wikipedia.org/wiki/Babasonicos" },
-						},
-					],
-				}),
+				answer({ id: "mbid", name: "Babasónicos", ...artist }),
 			);
 			await page.route(
 				"https://en.wikipedia.org/api/rest_v1/page/summary/*",
-				answer({
-					extract: "An Argentine rock band.",
-					content_urls: { desktop: { page: "javascript:alert(1)" } },
-				}),
+				answer(summary),
 			);
 
 			return referrers;
@@ -179,6 +183,82 @@ test.describe("artist information", () => {
 			await expect(
 				page.getByRole("link", { name: "Read more on Wikipedia" }),
 			).toHaveAttribute("href", "https://en.wikipedia.org/wiki/Babasonicos");
+		});
+
+		test("links out to Wikipedia and to no other host the summary names", async ({
+			page,
+			isMobile,
+		}) => {
+			await answerTheLookup(page, {
+				summary: {
+					extract: "An Argentine rock band.",
+					content_urls: {
+						desktop: { page: "https://wikipedia.example.org/wiki/Babasonicos" },
+					},
+				},
+			});
+
+			await playSomething(page);
+			await openArtistTab(page, isMobile);
+
+			await expect(
+				page.getByRole("link", { name: "Read more on Wikipedia" }),
+			).toHaveAttribute("href", "https://en.wikipedia.org/wiki/Babasonicos");
+		});
+
+		// `decodeURIComponent` throws on a percent sign that begins no escape, and the throw read
+		// as an artist MusicBrainz had never heard of.
+		test("a Wikipedia address that cannot be decoded still leaves what MusicBrainz said", async ({
+			page,
+			isMobile,
+		}) => {
+			await answerTheLookup(page, {
+				artist: {
+					type: "Group",
+					area: { name: "Argentina" },
+					relations: [
+						{
+							type: "wikipedia",
+							url: {
+								resource: "https://en.wikipedia.org/wiki/100%_Babasonicos",
+							},
+						},
+					],
+				},
+			});
+
+			await playSomething(page);
+			await openArtistTab(page, isMobile);
+
+			await expect(page.getByText("Group · Argentina")).toBeVisible();
+			await expect(
+				page.getByRole("link", { name: "Read more on MusicBrainz" }),
+			).toHaveAttribute("href", "https://musicbrainz.org/artist/mbid");
+		});
+
+		// An answer is drawn as it arrives, and React throws on a child that is an object: one
+		// such field took the whole page with it.
+		test("a field that is not text is left out, and the rest is drawn", async ({
+			page,
+			isMobile,
+		}) => {
+			await answerTheLookup(page, {
+				artist: {
+					type: { name: "Group" },
+					area: { name: "Argentina" },
+					"life-span": { begin: 1991 },
+					relations: [WIKIPEDIA_RELATION],
+				},
+				summary: { extract: { html: "<p>An Argentine rock band.</p>" } },
+			});
+
+			await playSomething(page);
+			await openArtistTab(page, isMobile);
+
+			await expect(page.getByText("Argentina", { exact: true })).toBeVisible();
+			await expect(
+				page.getByRole("heading", { level: 2, name: "Babasónicos" }),
+			).toBeVisible();
 		});
 	});
 });

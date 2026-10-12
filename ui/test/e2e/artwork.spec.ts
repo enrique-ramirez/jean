@@ -1,6 +1,7 @@
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	componentOrigin,
+	countCoverHandles,
 	coversFromTheComponent,
 	expect,
 	guidOfPlaylist,
@@ -112,6 +113,45 @@ test.describe("artwork loading", () => {
 	});
 });
 
+// The list scrolls inside `main` rather than the document, and a margin measured from the
+// browser's viewport stops at that scroller's edge: a cover is then first asked for as its row
+// crosses the fold, and every scroll is led by a band of placeholders.
+test.describe("a cover just below the fold", () => {
+	// An album a track, so no row's cover is answered by the row above it.
+	test.use({
+		libraryShape: { tracks: 200, albums: 200 },
+		settings: { "jean.layout": "compact" },
+	});
+
+	const AHEAD_PX = 200;
+
+	test("is asked for before it scrolls in", async ({ page }) => {
+		await openAllMusic(page);
+
+		await expect
+			.poll(() =>
+				page.evaluate((ahead) => {
+					const fold = (
+						document.querySelector("main") as HTMLElement
+					).getBoundingClientRect().bottom;
+					const below = [
+						...document.querySelectorAll<HTMLElement>("main [data-artwork]"),
+					].filter((cover) => {
+						const { top } = cover.getBoundingClientRect();
+						return top >= fold && top < fold + ahead;
+					});
+					return {
+						drawn: below.length > 0,
+						waiting: below.filter(
+							(cover) => cover.dataset.artwork === "waiting",
+						).length,
+					};
+				}, AHEAD_PX),
+			)
+			.toEqual({ drawn: true, waiting: 0 });
+	});
+});
+
 // `foo_jean` addresses artwork per track, by its library path, so a record's tracks are one URL
 // each for one picture and the browser has no way to know. There is no thumbnail endpoint: the full
 // image comes back whatever size it is drawn at.
@@ -185,15 +225,7 @@ test.describe("one cover per album, not per track", () => {
 		page,
 		player,
 	}) => {
-		await page.addInitScript(() => {
-			const mint = URL.createObjectURL.bind(URL);
-			let minted = 0;
-			URL.createObjectURL = (object: Blob | MediaSource) => {
-				minted += 1;
-				return mint(object);
-			};
-			Object.defineProperty(window, "__mintedArtwork", { get: () => minted });
-		});
+		await countCoverHandles(page);
 
 		await page.route("**/api/artwork**", async (route) => {
 			await new Promise((done) => setTimeout(done, 600));
@@ -373,6 +405,39 @@ test.describe("a cover from the library", () => {
 	});
 });
 
+// Which picture is behind each address, as a digest of what it decodes to. Read through an image
+// rather than fetched: a drawn cover's address is a `blob:`, and foo_jean's page policy lets the
+// page draw one and refuses to let it fetch one.
+const digestsOf = (page: Page, urls: string[]) =>
+	page.evaluate(async (list: string[]) => {
+		const read = async (url: string) => {
+			const image = new Image();
+			image.src = url;
+			try {
+				await image.decode();
+			} catch {
+				return "no picture";
+			}
+
+			const canvas = document.createElement("canvas");
+			canvas.width = image.naturalWidth;
+			canvas.height = image.naturalHeight;
+			const context = canvas.getContext("2d") as CanvasRenderingContext2D;
+			context.drawImage(image, 0, 0);
+			const digest = await crypto.subtle.digest(
+				"SHA-1",
+				context.getImageData(0, 0, canvas.width, canvas.height).data,
+			);
+			return [...new Uint8Array(digest)]
+				.map((byte) => byte.toString(16).padStart(2, "0"))
+				.join("");
+		};
+
+		const digests: string[] = [];
+		for (const url of list) digests.push(await read(url));
+		return digests;
+	}, urls);
+
 // Jar Of Flies in the captured library, as the library-relative paths `GET /api/artwork` names a
 // track by.
 const ALBUM = "A/Alice in Chains/(1994) Jar Of Flies";
@@ -440,15 +505,7 @@ test.describe("a record already on screen, then played", () => {
 		// `createObjectURL` mints a new handle per call and coalesces nothing, so a mint is another
 		// copy of the same picture decoded and held until the tab closes. Nothing revokes it while
 		// either surface is drawing, and nobody can see it or clear it.
-		await page.addInitScript(() => {
-			const mint = URL.createObjectURL.bind(URL);
-			let minted = 0;
-			URL.createObjectURL = (object: Blob | MediaSource) => {
-				minted += 1;
-				return mint(object);
-			};
-			Object.defineProperty(window, "__mintedArtwork", { get: () => minted });
-		});
+		await countCoverHandles(page);
 
 		const minted = () =>
 			page.evaluate(
@@ -520,22 +577,10 @@ test.describe("a playlist row the media library carries no path for", () => {
 
 	const ROW = 1;
 
-	// Which picture is behind an address, as a digest of its bytes: a row that drew a stale handle,
-	// or a neighbouring record's sleeve, reaches `ok` just the same and only the bytes tell them
-	// apart.
-	const digestOf = (page: Page, url: string) =>
-		page.evaluate(async (address: string) => {
-			const response = await fetch(address);
-			if (!response.ok) return `status ${response.status}`;
-
-			const digest = await crypto.subtle.digest(
-				"SHA-1",
-				await response.arrayBuffer(),
-			);
-			return [...new Uint8Array(digest)]
-				.map((byte) => byte.toString(16).padStart(2, "0"))
-				.join("");
-		}, url);
+	// A row that drew a stale handle, or a neighbouring record's sleeve, reaches `ok` just the same
+	// and only the picture tells them apart.
+	const digestOf = async (page: Page, url: string) =>
+		(await digestsOf(page, [url]))[0];
 
 	test("draws its cover from the position it sits at", async ({
 		page,
@@ -590,28 +635,6 @@ test.describe("a track whose own art is not its album's", () => {
 
 	const coverUrl = (origin: string, track: string) =>
 		`${origin}/api/artwork?track=${encodeURIComponent(track)}`;
-
-	// Which picture is on screen, as a digest of the bytes behind each address: two sleeves can be
-	// asked for at one address, and only the bytes say which of them a person is looking at.
-	const digestsOf = (page: Page, urls: string[]) =>
-		page.evaluate(async (list: string[]) => {
-			const read = async (url: string) => {
-				const response = await fetch(url);
-				if (!response.ok) return `status ${response.status}`;
-
-				const digest = await crypto.subtle.digest(
-					"SHA-1",
-					await response.arrayBuffer(),
-				);
-				return [...new Uint8Array(digest)]
-					.map((byte) => byte.toString(16).padStart(2, "0"))
-					.join("");
-			};
-
-			const digests: string[] = [];
-			for (const url of list) digests.push(await read(url));
-			return digests;
-		}, urls);
 
 	test("draws its album's cover rather than the one in its own file", async ({
 		page,

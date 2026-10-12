@@ -1,3 +1,5 @@
+import { fieldsOf, textOf } from "@/shared/lib/untrusted";
+
 export interface LrclibRecord {
 	id: number;
 	trackName: string;
@@ -42,6 +44,33 @@ export function rankRecords(
 			KIND_ORDER[kindOf(a)] - KIND_ORDER[kindOf(b)] ||
 			distance(a) - distance(b),
 	);
+}
+
+function recordOf(entry: unknown): LrclibRecord[] {
+	const sent = fieldsOf(entry);
+	const { id, duration } = sent;
+	const trackName = textOf(sent.trackName);
+	const artistName = textOf(sent.artistName);
+	if (
+		typeof id !== "number" ||
+		typeof duration !== "number" ||
+		trackName === null ||
+		artistName === null
+	)
+		return [];
+
+	return [
+		{
+			id,
+			trackName,
+			artistName,
+			albumName: textOf(sent.albumName) ?? "",
+			duration,
+			instrumental: sent.instrumental === true,
+			plainLyrics: textOf(sent.plainLyrics),
+			syncedLyrics: textOf(sent.syncedLyrics),
+		},
+	];
 }
 
 // LRCLIB bans clients that keep sending after a 429 or 503.
@@ -91,7 +120,7 @@ export async function searchLrclib(
 		if (!response.ok) return { ok: false, error: "failed" };
 		const body: unknown = await response.json();
 		if (!Array.isArray(body)) return { ok: false, error: "failed" };
-		return { ok: true, value: body as LrclibRecord[] };
+		return { ok: true, value: body.flatMap(recordOf) };
 	} catch {
 		return { ok: false, error: "failed" };
 	} finally {

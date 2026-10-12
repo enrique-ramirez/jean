@@ -84,7 +84,7 @@ function mergePlayer(
 	};
 }
 
-export const LIBRARY_UNBUILT_KEY = ["library", "unbuilt"];
+const LIBRARY_UNBUILT_KEY = ["library", "unbuilt"];
 
 export function useExportHeldWhenLibraryUnbuilt(): number | null {
 	return useCacheOnly<number | null>(LIBRARY_UNBUILT_KEY).data ?? null;

@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useEffectEvent, useState } from "react";
 
 import { AXIS_LOCK } from "@/shared/hooks/useSwipe";
 import { scrollParentOf } from "@/shared/lib/scrollParent";
@@ -25,8 +25,7 @@ export function useSheetDrag(
 	distance: number,
 ): number {
 	const [dragY, setDragY] = useState(0);
-	const dismiss = useRef(onDismiss);
-	dismiss.current = onDismiss;
+	const dismiss = useEffectEvent(onDismiss);
 
 	useEffect(() => {
 		const element = sheet.current;
@@ -72,7 +71,7 @@ export function useSheetDrag(
 			const drag = touching;
 			touching = null;
 			if (!drag?.isTheSheets || !touch) return;
-			if (touch.clientY - drag.y > distance) dismiss.current();
+			if (touch.clientY - drag.y > distance) dismiss();
 			else setDragY(0);
 		};
 

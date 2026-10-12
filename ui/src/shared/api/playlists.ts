@@ -16,7 +16,6 @@ export type QueryPreview = Schema["QueryPreview"];
 export type FillPlaylistRequest = Schema["FillPlaylistRequest"];
 export type FillOwnPlaylistRequest = Schema["FillOwnPlaylistRequest"];
 export type Duplicates = Schema["Duplicates"];
-export type FillResult = Schema["FillResult"];
 export type PlaylistPage = Schema["PlaylistPage"];
 export type PlaylistChanges = Schema["PlaylistChanges"];
 export type CreatePlaylistRequest = Schema["CreatePlaylistRequest"];
@@ -24,8 +23,6 @@ export type CopyPlaylistRowsRequest = Schema["CopyPlaylistRowsRequest"];
 export type RemovePlaylistRowsRequest = Schema["RemovePlaylistRowsRequest"];
 export type MovePlaylistRowsRequest = Schema["MovePlaylistRowsRequest"];
 export type SortPlaylistRowsRequest = Schema["SortPlaylistRowsRequest"];
-export type CopiedRows = Schema["CopiedRows"];
-export type RemovedRows = Schema["RemovedRows"];
 export type MovedRows = Schema["MovedRows"];
 export type SortedRows = Schema["SortedRows"];
 

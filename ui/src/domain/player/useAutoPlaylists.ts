@@ -10,13 +10,13 @@ import { usePlaylists } from "./usePlaylists";
 
 const KEY = "fooJeanPlaylists";
 
-export interface PlaylistAnnotations {
+interface PlaylistAnnotations {
 	entries: PlaylistAnnotation[];
 	hasSettled: boolean;
 	isFetching: boolean;
 }
 
-export function usePlaylistAnnotations(): PlaylistAnnotations {
+function usePlaylistAnnotations(): PlaylistAnnotations {
 	const { discovery } = useFooJean();
 	const { origin } = discovery;
 	const { data: playlists } = usePlaylists();

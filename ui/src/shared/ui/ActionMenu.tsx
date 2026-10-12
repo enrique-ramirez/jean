@@ -27,12 +27,12 @@ export interface ActionEntry {
 	filter?: string;
 }
 
-export interface ActionSeparator {
+interface ActionSeparator {
 	type: "separator";
 	id?: string;
 }
 
-export interface ActionMessage {
+interface ActionMessage {
 	type: "message";
 	text: string;
 	id?: string;

@@ -163,6 +163,7 @@ export function Finder({
 										{artistOf(rows.at(index), t)}
 									</span>
 								</span>
+								{/* biome-ignore lint/style/noJsxLiterals: whether a number sign before a position is a phrase is the owner's decision */}
 								<span className={styles.position}>#{index + 1}</span>
 							</button>
 						))

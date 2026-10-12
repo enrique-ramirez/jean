@@ -13,7 +13,7 @@ import { translate } from "@/shared/i18n/locale";
 import { pushToast } from "@/shared/ui/toastStore";
 import { usePlayerPatch } from "./playerWrite";
 
-export const OUTPUTS_KEY = ["outputs"];
+const OUTPUTS_KEY = ["outputs"];
 
 // The list is read at exactly four moments (found, a picker opening, the tab
 // becoming visible, `canChangeOutput` turning true), never on a schedule of its

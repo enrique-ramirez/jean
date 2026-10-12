@@ -8,6 +8,8 @@ import type {
 import { useDismissable } from "@/shared/hooks/useDismissable";
 import { useResettingState } from "@/shared/hooks/useResettingState";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
+import { hintFor } from "@/shared/keyboard/keymap";
+import { useSingleKeyShortcuts } from "@/shared/keyboard/useKeymap";
 import { Input } from "@/shared/ui/Input";
 import styles from "./LibrarySearchField.module.css";
 import { optionId, SearchDropdown } from "./SearchDropdown";
@@ -33,6 +35,8 @@ export function LibrarySearchField({
 }) {
 	const t = useTranslate();
 	const format = useFormats();
+	const [singleKeys] = useSingleKeyShortcuts();
+	const searchHint = hintFor("globalSearch", singleKeys);
 	const {
 		draft,
 		hasDraft,
@@ -162,8 +166,8 @@ export function LibrarySearchField({
 								<X size={14} strokeWidth={2} />
 							</button>
 						</>
-					) : (
-						<kbd className={styles.hint}>⌘K</kbd>
+					) : searchHint === null ? null : (
+						<kbd className={styles.hint}>{searchHint}</kbd>
 					)
 				}
 			/>

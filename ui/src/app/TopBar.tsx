@@ -75,7 +75,9 @@ export function TopBar({
 
 			{isBrandShown ? (
 				<a className={styles.brand} href={href(ROUTE.home)}>
+					{/* biome-ignore-start lint/style/noJsxLiterals: the product's name, which no language respells */}
 					je<span>a</span>n
+					{/* biome-ignore-end lint/style/noJsxLiterals: the product's name, which no language respells */}
 				</a>
 			) : null}
 

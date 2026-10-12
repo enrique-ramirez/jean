@@ -18,7 +18,7 @@ export function starsOf(raw: number | null): number | null {
 	return null;
 }
 
-export const rawRatingOf = (row: TrackColumns) => numberOf(row, FIELD.rating);
+const rawRatingOf = (row: TrackColumns) => numberOf(row, FIELD.rating);
 
 export const rawRatingOfValue = readNumber;
 
@@ -27,14 +27,12 @@ export const rawRatingWith = (
 	written: string | undefined,
 ) => (written === undefined ? rawRatingOf(row) : rawRatingOfValue(written));
 
-export const ratingOf = (row: TrackColumns) => starsOf(rawRatingOf(row));
-
 // Narrower than what can be read: only foobar2000's native 0-5 is written back, so a value on any
 // other scale is left alone rather than rescaled. Unrated declares no scale, so it is writable.
 export const isWritableScale = (raw: number | null) =>
 	raw === null || raw <= MAX_STARS;
 
-export const toStars = (rating: number) => Math.round(rating * 2) / 2;
+const toStars = (rating: number) => Math.round(rating * 2) / 2;
 
 export function ratingDisplayOf(
 	raw: number | null,

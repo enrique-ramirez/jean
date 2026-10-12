@@ -19,7 +19,7 @@ const SEARCHED = [
 
 const TITLE_AT = SEARCHED.findIndex((field) => field.field === FIELD.title);
 
-export interface SearchField {
+interface SearchField {
 	readonly ids: Ids;
 	readonly weight: number;
 	readonly text: (ref: number) => string;

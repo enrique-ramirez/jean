@@ -1,13 +1,5 @@
-import {
-	askResult,
-	PATIENT_TIMEOUT_MS,
-	READ_TIMEOUT_MS,
-	type Schema,
-} from "./client";
+import { askResult, PATIENT_TIMEOUT_MS, READ_TIMEOUT_MS } from "./client";
 import type { TrackAddress } from "./types";
-
-export type LibraryTrack = Schema["LibraryTrack"];
-export type PlayingTrackColumns = Schema["PlayingTrackColumns"];
 
 export type LibraryTrackAddress = Extract<
 	TrackAddress,

@@ -8,7 +8,7 @@ export type Lyrics =
 	| { kind: "plain"; lines: string[] }
 	| { kind: "synced"; lines: LyricLine[] };
 
-export const NO_LYRICS: Lyrics = { kind: "none" };
+const NO_LYRICS: Lyrics = { kind: "none" };
 
 const TIMESTAMP = /^\[(\d{1,3}):([0-5]?\d)(?:[.:](\d{1,3}))?\]/;
 

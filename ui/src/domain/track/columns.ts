@@ -1,7 +1,7 @@
 import type { Phrase } from "@/shared/i18n/en";
 import { FIELD } from "./fields";
 
-export type ColumnLabel = Extract<Phrase, `column.${string}`>;
+type ColumnLabel = Extract<Phrase, `column.${string}`>;
 
 export type ColumnKind =
 	| "text"

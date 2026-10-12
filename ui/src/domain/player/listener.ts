@@ -40,7 +40,7 @@ export interface Listener {
 	target: ListenTarget | null;
 }
 
-export const NO_LISTENER: Listener = {
+const NO_LISTENER: Listener = {
 	canListen: false,
 	formats: [],
 	target: null,

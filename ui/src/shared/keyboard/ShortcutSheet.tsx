@@ -1,4 +1,3 @@
-import { formatForDisplay } from "@tanstack/react-hotkeys";
 import { useRef } from "react";
 
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
@@ -6,14 +5,25 @@ import { useTabTrap } from "@/shared/hooks/useTabTrap";
 import { Trans } from "@/shared/i18n/Trans";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SHORTCUTS_KEYBOARD, useKeyboardOwnership } from "./keyboardOwner";
-import { type Binding, bindingsIn, isAvailable, KEYMAP_GROUPS } from "./keymap";
+import {
+	bindingsIn,
+	chordFor,
+	chordsOf,
+	isAvailable,
+	KEYMAP_GROUPS,
+} from "./keymap";
 import styles from "./ShortcutSheet.module.css";
 import { useSingleKeyShortcuts } from "./useKeymap";
 
-const capsOf = (binding: Binding) =>
-	(binding.shown ?? binding.keys.map((key) => formatForDisplay(key))).map(
-		(chord) => chord.split(" ").filter(Boolean),
-	);
+const Chord = ({ caps }: { caps: readonly string[] }) => (
+	<span className={styles.chord}>
+		{caps.map((cap) => (
+			<kbd key={cap} className={styles.cap}>
+				{cap}
+			</kbd>
+		))}
+	</span>
+);
 
 export function ShortcutSheet({ onDismiss }: { onDismiss: () => void }) {
 	const t = useTranslate();
@@ -47,18 +57,8 @@ export function ShortcutSheet({ onDismiss }: { onDismiss: () => void }) {
 				<p className={styles.subtitle}>
 					<Trans
 						phrase="shortcuts.subtitle"
-						find={<kbd className={styles.cap}>/</kbd>}
-						search={
-							<span className={styles.chord}>
-								{formatForDisplay("Mod+k")
-									.split(" ")
-									.map((cap) => (
-										<kbd key={cap} className={styles.cap}>
-											{cap}
-										</kbd>
-									))}
-							</span>
-						}
+						find={<Chord caps={chordFor("openFinder")} />}
+						search={<Chord caps={chordFor("globalSearch")} />}
 					/>
 				</p>
 
@@ -70,15 +70,8 @@ export function ShortcutSheet({ onDismiss }: { onDismiss: () => void }) {
 								<div key={binding.id} className={styles.row}>
 									<span>{t(binding.name)}</span>
 									<span className={styles.keys}>
-										{/* A hotkey may be an object rather than a string, so the rendered spelling keys the row. */}
-										{capsOf(binding).map((chord) => (
-											<span key={chord.join("+")} className={styles.chord}>
-												{chord.map((cap) => (
-													<kbd key={cap} className={styles.cap}>
-														{cap}
-													</kbd>
-												))}
-											</span>
+										{chordsOf(binding).map((caps) => (
+											<Chord key={caps.join("+")} caps={caps} />
 										))}
 									</span>
 								</div>

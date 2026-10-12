@@ -1,6 +1,6 @@
 import { fold } from "@/shared/lib/text";
 
-export type ValueField = "artist" | "album artist" | "album" | "genre";
+type ValueField = "artist" | "album artist" | "album" | "genre";
 export type ValueSource = Readonly<Record<ValueField, readonly string[]>>;
 
 export interface Suggestion {

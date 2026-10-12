@@ -1,3 +1,5 @@
+import { getHotkeyManager } from "@tanstack/react-hotkeys";
+
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	checkedOrderRows,
@@ -71,6 +73,13 @@ const sidebarLink = (page: Page, title: string) =>
 
 const currentSidebarRow = (page: Page) =>
 	sidebar(page).locator('button[aria-current="true"]');
+
+const searchCap = (page: Page) =>
+	page
+		.locator("div")
+		.filter({ has: searchField(page) })
+		.last()
+		.locator("kbd");
 
 const commandsTo = (player: FakePlayer, route: string) =>
 	player.requests.filter(
@@ -622,7 +631,6 @@ test.describe("navigation and appearance", () => {
 		await page.keyboard.press("Shift+?");
 		const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
 
-		// `formatForDisplay` hands back "⌘ K" in one string; two keys are two caps.
 		const nextTrack = sheet
 			.locator("div")
 			.filter({ hasText: /^Next track/ })
@@ -847,10 +855,36 @@ test.describe("the sheet on a machine with a Menu key", () => {
 			.last();
 
 		await expect(row.locator("kbd")).toHaveText([
-			"Shift+F10",
+			"Shift",
+			"F10",
 			"Menu",
-			"Ctrl+Shift+\\",
+			"Ctrl",
+			"Shift",
+			"\\",
 		]);
+	});
+
+	test("draws one keycap per key, not one per chord", async ({ page }) => {
+		await page.keyboard.press("Shift+?");
+		const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+		const nextTrack = sheet
+			.locator("div")
+			.filter({ hasText: /^Next track/ })
+			.last();
+
+		await expect(nextTrack.locator("kbd")).toHaveText(["Ctrl", "→"]);
+	});
+
+	test("names the search chord as this keyboard spells it, in the sheet and on the field", async ({
+		page,
+	}) => {
+		await expect(searchCap(page)).toHaveText("Ctrl+K");
+
+		await page.keyboard.press("Shift+?");
+		const subtitle = page
+			.getByRole("dialog", { name: "Keyboard shortcuts" })
+			.locator("p");
+		await expect(subtitle.locator("kbd")).toHaveText(["/", "Ctrl", "K"]);
 	});
 });
 
@@ -879,6 +913,82 @@ test.describe("the sheet on a Mac", () => {
 			.last();
 
 		await expect(row.locator("kbd")).toHaveText(["⇧", "⌘", "\\"]);
+	});
+
+	test("names the search chord as this keyboard spells it, in the sheet and on the field", async ({
+		page,
+	}) => {
+		await expect(searchCap(page)).toHaveText("⌘ K");
+
+		await page.keyboard.press("Shift+?");
+		const subtitle = page
+			.getByRole("dialog", { name: "Keyboard shortcuts" })
+			.locator("p");
+		await expect(subtitle.locator("kbd")).toHaveText(["/", "⌘", "K"]);
+	});
+});
+
+// TanStack Hotkeys warns on the console for a hotkey registered twice on one target, enabled or not.
+const CONFLICT_WARNING = "already registered";
+
+test("a hotkey registered twice is still what the library warns of, in these words", () => {
+	const target = new EventTarget() as unknown as Document;
+	const warned: string[] = [];
+	const warn = console.warn;
+	console.warn = (...said: unknown[]) => warned.push(said.join(" "));
+	const twice = [0, 1].map(() =>
+		getHotkeyManager().register("Mod+K", () => {}, { target }),
+	);
+	console.warn = warn;
+	for (const handle of twice) handle.unregister();
+
+	expect(warned).toHaveLength(1);
+	expect(warned[0]).toContain(CONFLICT_WARNING);
+});
+
+test("no two scopes' bindings are reported as a conflict", async ({ page }) => {
+	const warnings: string[] = [];
+	page.on("console", (message) => {
+		if (message.type() === "warning") warnings.push(message.text());
+	});
+
+	await openLibrary(page);
+	await openNowPlaying(page);
+	await page.goto("/#/genres");
+	await expect(
+		page.getByRole("textbox", { name: "Find a genre" }),
+	).toBeVisible();
+
+	expect(warnings.filter((text) => text.includes(CONFLICT_WARNING))).toEqual(
+		[],
+	);
+});
+
+test.describe("the genre finder's key", () => {
+	const finder = (page: Page) =>
+		page.getByRole("textbox", { name: "Find a genre" });
+	const cap = (page: Page) =>
+		page
+			.locator("div")
+			.filter({ has: finder(page) })
+			.last()
+			.locator("kbd");
+
+	test.beforeEach(async ({ page }) => {
+		await page.goto("/#/genres");
+		await expect(finder(page)).toBeVisible();
+	});
+
+	test("is drawn on the field", async ({ page }) => {
+		await expect(cap(page)).toHaveText("/");
+	});
+
+	test.describe("with single-key shortcuts off", () => {
+		test.use({ settings: { "jean.singleKeyShortcuts": false } });
+
+		test("is not drawn", async ({ page }) => {
+			await expect(cap(page)).toHaveCount(0);
+		});
 	});
 });
 

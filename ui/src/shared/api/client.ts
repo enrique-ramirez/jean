@@ -12,7 +12,7 @@ export const READ_TIMEOUT_MS = 8_000;
 
 export const unreachable = () => translate("fooJean.unreachable.summary");
 
-export const withTimeout = async <T>(
+const withTimeout = async <T>(
 	ms: number,
 	run: (signal: AbortSignal) => Promise<T>,
 	outer?: AbortSignal,
@@ -288,7 +288,7 @@ const REFUSAL_MESSAGE = {
 		"this install has playlist writes turned off; turn on writePlaylists in config.json to allow them",
 } satisfies Record<SwitchRefusal, Schema["PlaylistFailed"]["error"]>;
 
-export const switchRefusalIn = (said: string): SwitchRefusal | null =>
+const switchRefusalIn = (said: string): SwitchRefusal | null =>
 	(Object.keys(REFUSAL_MESSAGE) as SwitchRefusal[]).find(
 		(refusal) => said === REFUSAL_MESSAGE[refusal],
 	) ?? null;

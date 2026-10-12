@@ -9,24 +9,23 @@ import {
 
 import type { Phrase } from "@/shared/i18n/en";
 
-export type ShortcutName = Extract<Phrase, `shortcut.${string}`>;
+type ShortcutName = Extract<Phrase, `shortcut.${string}`>;
 export type ShortcutGroup = Extract<Phrase, `shortcutGroup.${string}`>;
 
 const shifted = (key: string) => `Shift+${key}` as RegisterableHotkey;
 
+const MENU_CHORD = "Mod+Shift+\\" as RegisterableHotkey;
 const MENU_KEYS = [
 	"Shift+F10",
 	// Chromium drops the native `contextmenu` the Menu key would fire once its keydown is prevented,
 	// which every matched binding does, so one press is one menu.
 	"ContextMenu",
-	"Mod+Shift+\\" as RegisterableHotkey,
+	MENU_CHORD,
 ] as const;
 // A Mac keyboard has no Menu key and Chromium on macOS fires nothing for Shift+F10, so a Mac is shown
 // the chord alone.
-const MENU_KEYS_SHOWN =
-	detectPlatform() === "mac"
-		? [formatForDisplay("Mod+Shift+\\")]
-		: [formatForDisplay("Shift+F10"), "Menu", formatForDisplay("Mod+Shift+\\")];
+const MENU_KEYS_SHOWN = detectPlatform() === "mac" ? [MENU_CHORD] : MENU_KEYS;
+const KEY_LABELS = { ContextMenu: "Menu", Delete: "Del" };
 
 // TanStack Hotkeys fires a Ctrl or Meta binding inside a text field unless told otherwise, and there
 // a chord that edits text belongs to the field.
@@ -52,7 +51,7 @@ export interface Binding {
 	group: ShortcutGroup;
 	name: ShortcutName;
 	keys: readonly RegisterableHotkey[];
-	shown?: readonly string[];
+	shown?: readonly RegisterableHotkey[];
 	hidden?: boolean;
 	leavesControls?: boolean;
 	options?: { ignoreInputs?: boolean };
@@ -273,8 +272,7 @@ const DECLARED = [
 		scope: SCOPE.global,
 		group: "shortcutGroup.navigation",
 		name: "shortcut.showShortcuts",
-		keys: [shifted("?"), "?" as RegisterableHotkey],
-		shown: ["?"],
+		keys: ["?" as RegisterableHotkey],
 	},
 
 	{
@@ -589,7 +587,7 @@ const DECLARED = [
 		group: "shortcutGroup.playlist",
 		name: "shortcut.removeRows",
 		keys: ["Delete", "Mod+Backspace"],
-		shown: ["Del"],
+		shown: ["Delete"],
 	},
 	{
 		id: "openRowMenu",
@@ -671,11 +669,16 @@ export type BindingIdIn<S extends Scope> = Extract<Bound, { scope: S }>["id"];
 
 const PUNCTUATION = /^[^A-Za-z0-9]$/;
 const PRINTABLE_ASCII = /^[!-~]$/;
+// A browser reports a dead key, such as the grave a Spanish layout has where QWERTY has `[`, as
+// `event.key === "Dead"`.
+const DEAD_KEY = "Dead";
+const isCharacterTyped = (key: string) =>
+	PRINTABLE_ASCII.test(key) || key === DEAD_KEY;
 
 // TanStack Hotkeys falls back from `event.key` to `event.code` read through a QWERTY map, so on
 // another Latin layout a punctuation key also matches the character QWERTY has there: Dvorak's `/`
-// sits on QWERTY's `[`. Without Shift or Alt, a printable ASCII `event.key` is the character the
-// person pressed, and only a binding declaring that character is theirs.
+// sits on QWERTY's `[`. Without Shift or Alt, a printable ASCII `event.key` or a dead key is what
+// the person pressed, and only a binding declaring that character is theirs.
 export function isTypedAsAnother(
 	event: KeyboardEvent,
 	hotkey: RegisterableHotkey,
@@ -687,7 +690,7 @@ export function isTypedAsAnother(
 		!event.shiftKey &&
 		!event.altKey &&
 		PUNCTUATION.test(declared) &&
-		PRINTABLE_ASCII.test(event.key) &&
+		isCharacterTyped(event.key) &&
 		event.key !== declared
 	);
 }
@@ -723,8 +726,18 @@ export const KEYMAP_GROUPS = [
 export const bindingsIn = (group: ShortcutGroup) =>
 	documented.filter((binding) => binding.group === group);
 
+const drawnKeysOf = (binding: Binding) => binding.shown ?? binding.keys;
+
+export const chordsOf = (binding: Binding) =>
+	drawnKeysOf(binding).map((key) =>
+		formatForDisplay(key, { parts: true, keyLabels: KEY_LABELS }),
+	);
+
+export const chordFor = (id: BindingId) =>
+	chordsOf(KEYMAP.find((entry) => entry.id === id) as Binding)[0];
+
 export function hintFor(id: BindingId, singleKeys: boolean): string | null {
 	const binding = KEYMAP.find((entry) => entry.id === id);
 	if (!binding || !isAvailable(binding, singleKeys)) return null;
-	return binding.shown?.[0] ?? formatForDisplay(binding.keys[0]);
+	return formatForDisplay(drawnKeysOf(binding)[0], { keyLabels: KEY_LABELS });
 }

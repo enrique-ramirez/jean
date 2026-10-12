@@ -8,7 +8,7 @@ import {
 } from "./client";
 
 export type TagWriteRequest = Schema["TagWriteRequest"];
-export type TagWritten = Schema["TagWritten"];
+type TagWritten = Schema["TagWritten"];
 
 export type WriteFailure =
 	| { ok: false; reason: "not-allowed"; field: string | null; message: string }

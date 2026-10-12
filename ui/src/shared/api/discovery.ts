@@ -2,7 +2,7 @@ import { askResult, PROBE_TIMEOUT_MS, type Schema } from "./client";
 
 export type FooJeanCapabilities = Schema["Capabilities"];
 
-export const fetchCapabilities = (origin: string) =>
+const fetchCapabilities = (origin: string) =>
 	askResult(origin, PROBE_TIMEOUT_MS, (api, init) =>
 		api.GET("/capabilities", init),
 	);

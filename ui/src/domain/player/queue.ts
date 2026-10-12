@@ -11,7 +11,7 @@ import { type FollowRevision, followRevision } from "./followRevision";
 export const QUEUE_KEY = ["queue"];
 export const QUEUE_DROP_TARGET = "jean:queue";
 
-export interface QueueTarget {
+interface QueueTarget {
 	playlistId: string;
 	itemIndex: number;
 }

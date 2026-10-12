@@ -54,7 +54,7 @@ interface EndedAt {
 	index: number;
 }
 
-export interface DrawnSession {
+interface DrawnSession {
 	session: ListedSession;
 	hasEnded: boolean;
 	isRefused: boolean;

@@ -85,6 +85,7 @@ export function TagWriting() {
 		<section className={styles.panel} aria-labelledby="foo-jean">
 			<div className={styles.panelHead}>
 				<h2 className={styles.panelTitle} id="foo-jean">
+					{/* biome-ignore lint/style/noJsxLiterals: the component's name, which no language respells */}
 					foo_jean
 				</h2>
 				<span className={styles.status} data-tone={explained.tone}>

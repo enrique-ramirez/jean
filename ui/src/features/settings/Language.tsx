@@ -37,8 +37,10 @@ export function Language() {
 					<p>
 						<Trans
 							phrase="settings.language.customHow"
+							// biome-ignore lint/style/noJsxLiterals: a file name, typed as written in every language
 							example={<code>es.json</code>}
 							file={<code>{CUSTOM_FILE}</code>}
+							// biome-ignore lint/style/noJsxLiterals: JSON, typed as written in every language
 							sample={<code>["es"]</code>}
 						/>
 					</p>

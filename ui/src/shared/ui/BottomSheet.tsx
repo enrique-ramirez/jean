@@ -13,7 +13,7 @@ export const SHEET_EXIT_MS = 220;
 
 const TOASTS = "[data-toasts]";
 
-export type SheetLayer = "picker" | "actionMenu";
+type SheetLayer = "picker" | "actionMenu";
 
 export interface BottomSheetProps {
 	label: string;

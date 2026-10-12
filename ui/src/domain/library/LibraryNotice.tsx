@@ -31,7 +31,7 @@ export function libraryNoticeFor(
 	);
 }
 
-export function LibraryNotice({
+function LibraryNotice({
 	status,
 	origin,
 	recheck,

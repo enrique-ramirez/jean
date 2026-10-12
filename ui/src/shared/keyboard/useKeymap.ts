@@ -1,5 +1,4 @@
 import { useHotkeys } from "@tanstack/react-hotkeys";
-import { useMemo, useRef } from "react";
 
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useKeyboardOwner } from "./keyboardOwner";
@@ -24,22 +23,18 @@ export function useKeymap<S extends Scope>(
 	handlers: Partial<Record<BindingIdIn<S>, HotkeyHandler>>,
 	{ enabled = true, owner }: { enabled?: boolean; owner?: string } = {},
 ) {
-	const handlersRef = useRef(handlers);
-	handlersRef.current = handlers;
-
 	const keyboardOwner = useKeyboardOwner();
 	const live = enabled && (keyboardOwner === null || keyboardOwner === owner);
 	const [singleKeys] = useSingleKeyShortcuts();
+	const handlerOf = handlers as Record<string, HotkeyHandler | undefined>;
 
-	const handledIds = Object.keys(handlers).sort().join(",");
-
-	const definitions = useMemo(() => {
-		const handled = new Set(handledIds.split(","));
-
-		return KEYMAP.filter(
+	// TanStack Hotkeys' `useHotkeys` hands each registration its callback and options again after
+	// every render, and warns of a hotkey registered twice whether or not both are enabled.
+	useHotkeys(
+		KEYMAP.filter(
 			(binding) =>
 				binding.scope === scope &&
-				handled.has(binding.id) &&
+				binding.id in handlers &&
 				isAvailable(binding, singleKeys),
 		).flatMap((binding) =>
 			binding.keys.map((hotkey) => ({
@@ -47,9 +42,7 @@ export function useKeymap<S extends Scope>(
 				callback: (event: KeyboardEvent, context: unknown) => {
 					if (isTypedAsAnother(event, hotkey)) return;
 					if (binding.leavesControls && isPressOnControl(event)) return;
-					(handlersRef.current as Record<string, HotkeyHandler | undefined>)[
-						binding.id
-					]?.(event, context);
+					handlerOf[binding.id]?.(event, context);
 				},
 				options: {
 					...binding.options,
@@ -60,8 +53,7 @@ export function useKeymap<S extends Scope>(
 					meta: { name: binding.name, group: binding.group },
 				},
 			})),
-		);
-	}, [scope, handledIds, live, singleKeys]);
-
-	useHotkeys(definitions);
+		),
+		{ conflictBehavior: "allow" },
+	);
 }

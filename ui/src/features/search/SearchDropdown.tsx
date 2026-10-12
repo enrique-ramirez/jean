@@ -47,7 +47,9 @@ function Heading({
 
 	return (
 		<p className={styles.heading}>
+			{/* biome-ignore-start lint/style/noJsxLiterals: whether parentheses round a count are a phrase is the owner's decision */}
 			{t(label)} <span className={styles.count}>({format.number(count)})</span>
+			{/* biome-ignore-end lint/style/noJsxLiterals: whether parentheses round a count are a phrase is the owner's decision */}
 		</p>
 	);
 }

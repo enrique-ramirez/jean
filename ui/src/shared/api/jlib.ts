@@ -35,7 +35,7 @@ export interface JlibPatch {
 	readonly allUnresolved: boolean;
 }
 
-export interface JlibSpine {
+interface JlibSpine {
 	readonly directory: JlibColumn;
 	readonly filename: JlibColumn;
 	readonly subsong: JlibColumn;

@@ -1,16 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { matchesKeyboardEvent } from "@tanstack/react-hotkeys";
+
 import {
 	isSingleKeyBinding,
 	KEYMAP,
+	matchesBinding,
 	SCOPE,
 } from "../../src/shared/keyboard/keymap.ts";
 
-// The layout rule is a pure invariant over the array, and Playwright cannot see
-// it at all: Chromium synthesises US QWERTY codes, so `Shift+/` and `Shift+?`
-// are indistinguishable in a spec and the difference only exists on somebody's
-// Spanish or Dvorak keyboard. `keyboard.spec.ts` covers that the bindings fire.
+// Playwright cannot see the layout rule at all: Chromium synthesises US QWERTY
+// codes, so `Shift+/` and `?` are indistinguishable in a spec and the difference
+// only exists on somebody's Spanish or Dvorak keyboard. `keyboard.spec.ts`
+// covers that the bindings fire.
 
 const PUNCTUATION = /^[^A-Za-z0-9]$/;
 
@@ -18,20 +21,56 @@ const registrations = KEYMAP.flatMap((binding) =>
 	binding.keys.map((key) => ({ id: binding.id, key: String(key) })),
 );
 
-test("a shifted punctuation binding is declared in both spellings", () => {
-	// The matcher falls back to `event.code` through a QWERTY map, so `Shift+?`
-	// matches the key that types a question mark on every layout and the bare `?`
-	// covers the layouts that reach it without Shift. One of the two alone is a
-	// shortcut that works on the machine it was written on.
-	for (const { id, key } of registrations) {
-		const character = key.startsWith("Shift+") ? key.slice(6) : null;
-		if (character === null || !PUNCTUATION.test(character)) continue;
+const press = (
+	key: string,
+	code: string,
+	modifiers: { shiftKey?: boolean } = {},
+) =>
+	({
+		key,
+		code,
+		shiftKey: false,
+		altKey: false,
+		ctrlKey: false,
+		metaKey: false,
+		...modifiers,
+	}) as KeyboardEvent;
 
-		const binding = KEYMAP.find((entry) => entry.id === id);
+const QUESTION_MARKS = {
+	"QWERTY, Shift with /": press("?", "Slash", { shiftKey: true }),
+	"Spanish, Shift with '": press("?", "Minus", { shiftKey: true }),
+	"a layout with ? unshifted": press("?", "Slash"),
+};
+
+test("? is declared once, and matches however a layout reaches it", () => {
+	const spellings = KEYMAP.find(
+		(binding) => binding.id === "showShortcuts",
+	)?.keys.map(String);
+	assert.deepEqual(spellings, ["?"]);
+
+	for (const [layout, event] of Object.entries(QUESTION_MARKS))
+		assert.ok(matchesBinding(event, "showShortcuts"), layout);
+
+	assert.equal(
+		matchesBinding(press("/", "Slash"), "showShortcuts"),
+		false,
+		"QWERTY / without Shift",
+	);
+});
+
+test("a key that types another character, or a dead key, is not the binding QWERTY has there", () => {
+	assert.ok(matchesBinding(press("[", "BracketLeft"), "previousTab"));
+
+	const elsewhere = {
+		"Dvorak, where the key types /": press("/", "BracketLeft"),
+		"Spanish, where the key is a dead grave": press("Dead", "BracketLeft"),
+	};
+	for (const [layout, event] of Object.entries(elsewhere)) {
 		assert.ok(
-			binding?.keys.some((other) => String(other) === character),
-			`${id} declares Shift+${character} without the bare ${character}`,
+			matchesKeyboardEvent(event, "["),
+			`TanStack Hotkeys no longer falls back to the code: ${layout}`,
 		);
+		assert.equal(matchesBinding(event, "previousTab"), false, layout);
 	}
 });
 

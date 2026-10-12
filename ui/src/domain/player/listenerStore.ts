@@ -25,7 +25,6 @@ import {
 	bufferedAhead,
 	bufferedStart,
 	DEVICE_VOLUME_FLOOR_DB,
-	decibelsOf,
 	type ListenTarget,
 	lagSeconds,
 	playsNatively,
@@ -58,7 +57,7 @@ export type ListenPhase =
 	| { kind: "silent" }
 	| { kind: "failed"; message: string };
 
-export interface ListenSnapshot {
+interface ListenSnapshot {
 	phase: ListenPhase;
 	format: string | null;
 	volumeDb: number;
@@ -640,8 +639,6 @@ export function toggleListeningMute() {
 	if (element) element.muted = isMuted;
 	publish();
 }
-
-export { decibelsOf };
 
 export const listenTarget = () => target;
 

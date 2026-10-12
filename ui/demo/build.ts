@@ -22,7 +22,7 @@ export async function buildDemo(out = resolve(ROOT, "dist-demo")) {
 		publicDir: resolve(ROOT, "public"),
 		define,
 		plugins: [react(), localePlugin()],
-		resolve: { alias: { "@": resolve(ROOT, "src") } },
+		resolve: { tsconfigPaths: true },
 		build: { outDir: out, emptyOutDir: true },
 	});
 

@@ -9,7 +9,7 @@ import { leaveSession } from "./sessionOperations";
 // has to reconnect before the component lets it go. No route publishes it.
 const COMPONENT_LINGER_MS = 8_000;
 
-export const NOBODY_LISTENING_MS = COMPONENT_LINGER_MS + AUDIENCE_POLL_MS.open;
+const NOBODY_LISTENING_MS = COMPONENT_LINGER_MS + AUDIENCE_POLL_MS.open;
 
 let nobodySince: { epoch: number; at: number } | null = null;
 let lastReadAt = Number.NEGATIVE_INFINITY;

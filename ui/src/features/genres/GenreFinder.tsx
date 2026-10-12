@@ -1,6 +1,8 @@
 import { Search, X } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslate } from "@/shared/i18n/useTranslate";
+import { hintFor } from "@/shared/keyboard/keymap";
+import { useSingleKeyShortcuts } from "@/shared/keyboard/useKeymap";
 import { Input } from "@/shared/ui/Input";
 import styles from "./GenreFinder.module.css";
 
@@ -22,6 +24,8 @@ export function GenreFinder({
 	inputRef: React.RefObject<HTMLInputElement | null>;
 }) {
 	const t = useTranslate();
+	const [singleKeys] = useSingleKeyShortcuts();
+	const finderHint = hintFor("findGenre", singleKeys);
 	const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
 		if (event.key === "Escape") {
 			event.preventDefault();
@@ -88,8 +92,8 @@ export function GenreFinder({
 							<X size={15} strokeWidth={2.2} aria-hidden="true" />
 						</button>
 					</>
-				) : (
-					<kbd className={styles.hint}>/</kbd>
+				) : finderHint === null ? null : (
+					<kbd className={styles.hint}>{finderHint}</kbd>
 				)
 			}
 		/>

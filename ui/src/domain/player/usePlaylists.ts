@@ -24,9 +24,7 @@ export const PLAYLISTS_KEY = ["playlists"];
 // can never answer and is safe to hold until the create response replaces it.
 const UNKNOWN_GENERATION = "";
 
-export const playlistInfoOf = (
-	annotation: PlaylistAnnotation,
-): PlaylistInfo => ({
+const playlistInfoOf = (annotation: PlaylistAnnotation): PlaylistInfo => ({
 	id: annotation.id,
 	index: annotation.index,
 	title: annotation.title,
@@ -72,7 +70,7 @@ export function followPlaylists(
 	playlistsFollower(client).announce(origin, revision);
 }
 
-export function usePlaylistsCaughtUp(): boolean {
+function usePlaylistsCaughtUp(): boolean {
 	const { data: seen } = useCacheOnly<number>(PLAYLISTS_SEEN_REVISION_KEY);
 	const { data: fetchedAt } = useCacheOnly<number>(PLAYLISTS_REVISION_KEY);
 	return seen !== undefined && seen === fetchedAt;

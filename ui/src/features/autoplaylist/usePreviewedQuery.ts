@@ -16,7 +16,7 @@ const PREVIEW_PAUSE_MS = 300;
 
 const PREVIEW_KEPT_MS = 60_000;
 
-export interface MatchStats {
+interface MatchStats {
 	albumArtists: number;
 	albums: number;
 	tracks: number;

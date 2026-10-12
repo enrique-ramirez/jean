@@ -1,5 +1,11 @@
 import { X } from "lucide-react";
-import { type ReactNode, useEffect, useId, useRef } from "react";
+import {
+	type ReactNode,
+	useEffect,
+	useEffectEvent,
+	useId,
+	useRef,
+} from "react";
 
 import { useTabTrap } from "@/shared/hooks/useTabTrap";
 import { useKeyboardOwnership } from "@/shared/keyboard/keyboardOwner";
@@ -29,8 +35,7 @@ export function ModalDialog({
 	useKeyboardOwnership(keyboardOwner);
 	useTabTrap(dialogRef);
 
-	const dismiss = useRef(onDismiss);
-	dismiss.current = onDismiss;
+	const dismiss = useEffectEvent(onDismiss);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -42,7 +47,7 @@ export function ModalDialog({
 			if (isExpandedCombobox) return;
 			event.preventDefault();
 			event.stopPropagation();
-			dismiss.current();
+			dismiss();
 		};
 
 		document.addEventListener("keydown", onKeyDown, true);

@@ -2,7 +2,7 @@ import { artistGroups, FIELD, readValue, tagGroups, tagKey } from "./fields";
 import { byValue, type LibraryColumns } from "./libraryColumns";
 import type { TrackRows } from "./project";
 
-export interface DiscRun {
+interface DiscRun {
 	number: number | null;
 	start: number;
 	count: number;

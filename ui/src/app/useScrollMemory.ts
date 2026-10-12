@@ -1,4 +1,10 @@
-import { type RefObject, useEffect, useLayoutEffect, useRef } from "react";
+import {
+	type RefObject,
+	useEffect,
+	useEffectEvent,
+	useLayoutEffect,
+	useRef,
+} from "react";
 
 const MAX_REMEMBERED = 50;
 
@@ -12,8 +18,7 @@ export function useScrollMemory(
 	const offsets = useRef(new Map<string, number>());
 	const activeKey = useRef(viewKey);
 
-	const restoring = useRef(restore);
-	restoring.current = restore;
+	const isRestoring = useEffectEvent(() => restore);
 
 	useEffect(() => {
 		const element = scrollRef.current;
@@ -38,7 +43,7 @@ export function useScrollMemory(
 		const element = scrollRef.current;
 		if (!element) return undefined;
 
-		if (!restoring.current) {
+		if (!isRestoring()) {
 			element.scrollTop = 0;
 			return undefined;
 		}

@@ -6,7 +6,7 @@ import type { PlaylistSnapshot } from "./playlistEntries";
 // A ref is an integer: a playlist index on one source, a position in the paths array on the other.
 export type Refs = Int32Array | number[];
 
-export const refAt = (indices: Refs | null | undefined, position: number) =>
+const refAt = (indices: Refs | null | undefined, position: number) =>
 	indices ? indices[position] : position;
 
 export interface TrackRows {

@@ -148,7 +148,7 @@ async function recheckMissed(entry: Entry, origin: string) {
 	else entry.missedLibrary ??= missed;
 }
 
-export async function retryMissedLibraryRead(origin: string) {
+async function retryMissedLibraryRead(origin: string) {
 	const entry = heldEntry(componentLibraryKey(origin));
 	const feed = entry?.feed;
 	if (!entry || feed?.kind !== "library") return;

@@ -16,7 +16,7 @@ export type StateFailureReason =
 	| "failed"
 	| "noSuchSession";
 
-export interface StateFailure {
+interface StateFailure {
 	ok: false;
 	reason: StateFailureReason;
 	detail: string;

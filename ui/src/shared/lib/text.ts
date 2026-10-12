@@ -33,12 +33,6 @@ export const tokenize = (query: string) =>
 export const matchesTokens = (haystack: string, tokens: string[]) =>
 	tokens.every((token) => haystack.includes(token));
 
-export const pluralise = (count: number, one: string, many = `${one}s`) =>
-	count === 1 ? one : many;
-
-export const plural = (count: number, one: string, many?: string) =>
-	`${count.toLocaleString()} ${pluralise(count, one, many)}`;
-
 const NOT_ALPHANUMERIC = /[^\p{L}\p{N}]+/gu;
 
 export const squash = (text: string) =>

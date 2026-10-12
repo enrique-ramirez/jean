@@ -140,9 +140,6 @@ export function readTimestamp(raw: string | undefined): number | null {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
-export const timestamp = (row: TrackColumns, field: number): number | null =>
-	readTimestamp(row[field]);
-
 export const tagKey = (text: string | null | undefined) =>
 	(text ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
@@ -151,7 +148,7 @@ export const sameTagValue = (
 	b: string | null | undefined,
 ) => tagKey(a) === tagKey(b);
 
-export interface TagGrouper {
+interface TagGrouper {
 	readonly keys: string[];
 	readonly names: string[];
 	add: (raw: string) => number;
@@ -159,7 +156,7 @@ export interface TagGrouper {
 	group: (key: string) => number;
 }
 
-export function tagGrouper(): TagGrouper {
+function tagGrouper(): TagGrouper {
 	const byKey = new Map<string, number>();
 	const keys: string[] = [];
 	const names: string[] = [];

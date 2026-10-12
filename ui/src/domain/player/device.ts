@@ -5,7 +5,7 @@ import {
 import { translate } from "@/shared/i18n/locale";
 import { randomId } from "@/shared/lib/randomId";
 
-export const DEVICE_ID_KEY = "jean.deviceId";
+const DEVICE_ID_KEY = "jean.deviceId";
 export const DEVICE_NAME_KEY = "jean.deviceName";
 
 let id: string | null = null;
@@ -65,8 +65,7 @@ export function defaultDeviceName(): string {
 	return translate("device.browser");
 }
 
-export const deviceName = () =>
-	readStoredState(DEVICE_NAME_KEY, defaultDeviceName);
+const deviceName = () => readStoredState(DEVICE_NAME_KEY, defaultDeviceName);
 
 export const deviceIdentity = () => ({
 	deviceId: deviceId(),

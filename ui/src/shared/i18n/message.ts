@@ -1,4 +1,4 @@
-export type PluralForms = { other: string } & Partial<
+type PluralForms = { other: string } & Partial<
 	Record<Exclude<Intl.LDMLPluralRule, "other">, string>
 >;
 

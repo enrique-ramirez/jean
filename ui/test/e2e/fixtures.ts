@@ -608,7 +608,7 @@ export const openAllMusic = async (page: Page) => {
 };
 
 export const searchField = (page: Page) =>
-	page.getByLabel("Search your library");
+	page.getByRole("combobox", { name: "Search your library" });
 
 export const revealSearch = async (page: Page) => {
 	await closeSidebar(page);
@@ -1116,11 +1116,11 @@ export const dragTo = async (
 // light up before releasing, and one caller releases somewhere else on purpose.
 export const dragFrom = async (page: Page, source: Locator, onto: Locator) => {
 	const from = await source.boundingBox();
-	const to = await onto.boundingBox();
+	const to = await restingBox(onto);
 
 	await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
 	await page.mouse.down();
-	await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, {
+	await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, {
 		steps: 16,
 	});
 };
@@ -1276,3 +1276,21 @@ export const times = (count: number, run: (index: number) => unknown) =>
 		Array.from({ length: count }, (_, index) => index),
 		run,
 	);
+
+// The tab's icon is a handle too, minted for every frame of a playing record and revoked at the
+// next. It is a PNG off a canvas and every cover the fake serves is a JPEG, which is how the two
+// are told apart.
+const TAB_ICON_TYPE = "image/png";
+
+// Installed before the page loads, since the first cover is fetched on the first render. The count
+// is read back as `window.__mintedArtwork`.
+export const countCoverHandles = (page: Page) =>
+	page.addInitScript((iconType: string) => {
+		const mint = URL.createObjectURL.bind(URL);
+		let minted = 0;
+		URL.createObjectURL = (object: Blob | MediaSource) => {
+			if (!(object instanceof Blob && object.type === iconType)) minted += 1;
+			return mint(object);
+		};
+		Object.defineProperty(window, "__mintedArtwork", { get: () => minted });
+	}, TAB_ICON_TYPE);

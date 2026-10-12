@@ -1,6 +1,7 @@
-import type { Locator, Page } from "./fixtures.ts";
+import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	expect,
+	expectSettlesAt,
 	openLibrary,
 	pressAndHold,
 	statusBar,
@@ -13,6 +14,12 @@ const HOLD_MS = 520;
 
 const playToggle = (page: Page) =>
 	statusBar(page).getByRole("button", { name: "Play", exact: true });
+
+const asksToPlay = (player: FakePlayer) =>
+	player.requests
+		.filter((entry) => entry.method === "POST")
+		.map((entry) => entry.path.split("?")[0])
+		.filter((path) => /^\/api\/playback\/|\/play$/.test(path));
 
 const holdWithTheMouse = async (page: Page, target: Locator) => {
 	const box = (await target.boundingBox()) as {
@@ -42,6 +49,7 @@ test.describe("palyyy", () => {
 			page.getByRole("status").filter({ hasText: "Palyyy" }),
 		).toBeVisible();
 		await expect(toggle).toBeVisible();
+		await expectSettlesAt(player, () => asksToPlay(player), []);
 		expect(player.player.playbackState).toBe("stopped");
 	});
 

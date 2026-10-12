@@ -50,6 +50,15 @@ const startedSession = async (store: Store) => {
 	return id;
 };
 
+const ANOTHER = { deviceId: OTHER_DEVICE, name: "Kitchen tablet" };
+
+const heardOnAnotherDevice = (store: Store) => {
+	const elsewhere = store.fake.state.sessions.create(ANOTHER);
+	elsewhere.share(true);
+	const stream = store.fake.state.addSessionListener(elsewhere.id, ANOTHER);
+	return { elsewhere, stream };
+};
+
 const outcomeOf = (operation: Promise<SessionOutcome>) => {
 	let settled: SessionOutcome | null = null;
 	void operation.then((outcome) => {
@@ -262,7 +271,47 @@ test("leaving a session closes its stream, puts the tab on the player, and sends
 	);
 });
 
-test("a leave is sent again after the retry interval, its answer changes nothing, and no poll ever names the session left", async (t) => {
+test("where the stream's connection outlives the element letting go, the first leave leaves the session alive and the retry ends it", async (t) => {
+	const store = await harness.begin(t);
+	const id = await startedSession(store);
+	store.element()?.closeLate();
+	const from = store.mark();
+
+	const outcome = outcomeOf(operations.leaveSession(store.context));
+	await store.settle();
+
+	assert.equal(store.leavesTo(id, from), 1);
+	assert.equal(
+		store.openStreams(),
+		1,
+		"the connection closed before the leave reached the player",
+	);
+	assert.ok(
+		store.fake.state.sessions.find(id),
+		"the first leave ended a session whose connection the player still held",
+	);
+	assert.deepEqual(session.sessionSnapshot(), ON_THE_PLAYER);
+
+	store.element()?.letGo();
+	await store.settle();
+	assert.equal(store.openStreams(), 0);
+	assert.ok(
+		store.fake.state.sessions.find(id),
+		"the session ended with no leave after the close",
+	);
+
+	await store.advance(operations.LEAVE_RETRY_MS);
+
+	assert.deepEqual(store.said(from, NOT_POLLS), [`leave ${id}`, `leave ${id}`]);
+	assert.equal(
+		store.fake.state.sessions.find(id),
+		null,
+		"the retry did not end the session this device was the last member of",
+	);
+	assert.deepEqual(outcome(), { ok: true });
+});
+
+test("where the connection closed before the first leave, the leave is sent again after the retry interval, its answer changes nothing, and no poll ever names the session left", async (t) => {
 	const store = await harness.begin(t);
 	const id = await startedSession(store);
 	const from = store.mark();
@@ -390,6 +439,85 @@ test("listening on the player takes a ticket naming no session and opens the pla
 	assert.deepEqual(session.sessionSnapshot(), ON_THE_PLAYER);
 });
 
+test("joining to listen while listening to the player lets go of the player's stream and sends its leave before the session's ticket is asked for, and opens the session's stream after", async (t) => {
+	const store = await harness.begin(t);
+	const { elsewhere } = heardOnAnotherDevice(store);
+	await listenToPlayer(store);
+	const tickets = store.hold(named("/api/stream/ticket"));
+	const from = store.mark();
+
+	const outcome = outcomeOf(
+		operations.joinToListen(store.context, elsewhere.id),
+	);
+	await tickets.reached;
+	await store.settle();
+
+	assert.equal(
+		store.openStreams(),
+		0,
+		"the player's stream was still open when the session's ticket was asked for",
+	);
+	assert.deepEqual(store.said(from, NOT_POLLS), ["leave player"]);
+
+	tickets.release();
+	await store.settle();
+
+	assert.deepEqual(outcome(), { ok: true });
+	assert.deepEqual(store.said(from, NOT_POLLS), [
+		"leave player",
+		`ticket ${elsewhere.id}`,
+		"stream",
+	]);
+	assert.equal(store.openStreams(), 1);
+	assert.equal(
+		store.fake.state.streamDevices.has(store.thisDevice()),
+		false,
+		"the player still counts this device as listening",
+	);
+});
+
+test("a join whose ticket is refused opens the player's stream again only after the refusal, with the stream it let go already closed", async (t) => {
+	const store = await harness.begin(t);
+	const { elsewhere } = heardOnAnotherDevice(store);
+	await listenToPlayer(store);
+	store.fake.state.endSession(elsewhere.id);
+	const tickets = store.hold(named("/api/stream/ticket"));
+	const from = store.mark();
+
+	const outcome = outcomeOf(
+		operations.joinToListen(store.context, elsewhere.id),
+	);
+	await tickets.reached;
+	await store.settle();
+
+	assert.equal(
+		store.openStreams(),
+		0,
+		"the player's stream was still open when the session's ticket was asked for",
+	);
+	assert.equal(
+		store.played().length,
+		1,
+		"the player's stream was opened again before the ticket was answered",
+	);
+
+	tickets.release();
+	await store.settle();
+
+	const refusal = outcome();
+	assert.equal(refusal?.ok, false);
+	assert.equal(refusal && !refusal.ok && refusal.reason, "gone");
+	assert.deepEqual(store.said(from, NOT_POLLS), [
+		"leave player",
+		`ticket ${elsewhere.id}`,
+		"ticket player",
+		"stream",
+	]);
+	assert.ok(store.isListening(), "the player's stream was not put back");
+	assert.equal(store.openStreams(), 1);
+	assert.deepEqual(session.sessionSnapshot(), ON_THE_PLAYER);
+});
+
 test("an operation pressed while another is in flight resolves pending and sends nothing", async (t) => {
 	const store = await harness.begin(t);
 	await listenToPlayer(store);
@@ -486,10 +614,7 @@ test("a session reported gone while its start waits on the player's leave is fol
 
 test("Leave pressed while a sharing change is on its way leaves this device in nothing once both have settled: not a member, no connection, the tab on the player", async (t) => {
 	const store = await harness.begin(t);
-	const other = { deviceId: OTHER_DEVICE, name: "Kitchen tablet" };
-	const kept = store.fake.state.sessions.create(other);
-	kept.share(true);
-	const othersStream = store.fake.state.addSessionListener(kept.id, other);
+	const { elsewhere: kept, stream: othersStream } = heardOnAnotherDevice(store);
 	const joined = await operations.joinToListen(store.context, kept.id);
 	await store.settle();
 	assert.deepEqual(joined, { ok: true }, "the join never landed");

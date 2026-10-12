@@ -2,6 +2,7 @@ import type { APIRequestContext } from "@playwright/test";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	componentOrigin,
+	countCoverHandles,
 	coversByPosition,
 	coversFromTheComponent,
 	dragFrom,
@@ -471,27 +472,26 @@ test.describe("putting things in the queue", () => {
 	}) => {
 		await openLibrary(page);
 
-		const badge = async () => {
+		const expectBadge = async (name: string, text?: string) => {
 			const button = await anyQueueButton(page);
-			const name = await button.getAttribute("aria-label");
-			const text = (await button.textContent()) ?? "";
+			await expect(button).toHaveAccessibleName(name);
+			if (text !== undefined) await expect(button).toHaveText(text);
 			if (isMobile) {
 				await nowPlayingScreen(page)
 					.getByRole("button", { name: "Close now playing" })
 					.click();
 				await expect(nowPlayingScreen(page)).toBeHidden();
 			}
-			return { name, text };
 		};
 
-		expect((await badge()).name).toBe("Queue");
+		await expectBadge("Queue");
 
 		await queueTracks(page, isMobile);
-		expect(await badge()).toMatchObject({ name: "Queue, 1 track", text: "1" });
+		await expectBadge("Queue, 1 track", "1");
 
 		await queueTracks(page, isMobile, 1);
-		expect((await badge()).name).toBe("Queue, 2 tracks");
-		expect(player.playQueue).toHaveLength(2);
+		await expectBadge("Queue, 2 tracks");
+		await expectSettlesAt(player, () => player.playQueue.length, 2);
 	});
 });
 
@@ -1892,17 +1892,7 @@ test.describe("the cover on a queued row", () => {
 				// Counted rather than inferred: `createObjectURL` mints a new handle per call and
 				// coalesces nothing, so a mint is a second copy of the picture in memory. Installed
 				// before the page loads, since the first cover is fetched on the first render.
-				await page.addInitScript(() => {
-					const mint = URL.createObjectURL.bind(URL);
-					let minted = 0;
-					URL.createObjectURL = (object: Blob | MediaSource) => {
-						minted += 1;
-						return mint(object);
-					};
-					Object.defineProperty(window, "__mintedArtwork", {
-						get: () => minted,
-					});
-				});
+				await countCoverHandles(page);
 
 				// Over no list, so the two rows are the only covers on the page and the only mints.
 				await withNoListOnScreen(page);

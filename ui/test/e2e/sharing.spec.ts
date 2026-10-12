@@ -1408,7 +1408,7 @@ test.describe("joining while this device listens to the player", () => {
 
 	const CREATOR = "Kitchen tablet";
 
-	test("sends the player's leave before the session's ticket, and lets go of the player's stream before it opens the session's", async ({
+	test("sends the player's leave before the session's ticket, and ends off the player's stream and on the session's", async ({
 		page,
 		player,
 	}) => {
@@ -1430,11 +1430,12 @@ test.describe("joining while this device listens to the player", () => {
 			"leave the player",
 			`ticket ${CREATOR}`,
 		]);
-		const after = wire.slice(seenFrom);
-		expect(after.indexOf("stream closed")).toBeGreaterThanOrEqual(0);
-		expect(after.indexOf("stream closed")).toBeLessThan(
-			after.indexOf("stream opened"),
-		);
+		await expect
+			.poll(() => wire.slice(seenFrom))
+			.toEqual(expect.arrayContaining(["stream closed", "stream opened"]));
+		await expectSettlesAt(player, () => player.openStreams, 1);
+		expect(player.streamDevices.has(DEVICE)).toBe(false);
+		expect(connectionsOf(session, DEVICE)).toBe(1);
 		strict.release();
 		expect(refused).toEqual([]);
 	});
@@ -1477,10 +1478,7 @@ test.describe("joining while this device listens to the player", () => {
 					"ticket the player",
 					"stream opened",
 				]);
-			expect(wire.slice(seenFrom).indexOf("stream closed")).toBeLessThan(
-				wire.slice(seenFrom).indexOf("stream opened"),
-			);
-			expect(wire.slice(seenFrom)).toContain("stream closed");
+			await expect.poll(() => wire.slice(seenFrom)).toContain("stream closed");
 			await expect.poll(() => player.openStreams).toBe(1);
 			await untilQuiet(player);
 			expect(

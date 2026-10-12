@@ -102,6 +102,11 @@ export interface FooJeanOptions {
 	// `GET /api/state` goes on answering, and says so under `mainThread`.
 	mainThreadStalled?: boolean;
 
+	// Holds GET /api/capabilities until switched back off, which answers every
+	// request held with what the install offers by then: discovery answered as
+	// slowly as a spec wants it.
+	hangCapabilities?: boolean;
+
 	// Refuse each artwork route with a status only that route can answer, after
 	// the rate limit has been spent the way the component spends it.
 	failArtwork?: Refusal<"failArtwork"> | null;
@@ -251,6 +256,7 @@ export interface FooJeanFake extends Required<FooJeanOptions> {
 	// component's does.
 	mainThreadStalledAt: number | null;
 	limiter: Limiter;
+	capabilitiesHeld: (() => void)[];
 	// The specification of every autoplaylist `POST /api/autoplaylists` made, by the
 	// fake's own key: the only playlists the two `/api/autoplaylists/{id}` routes touch.
 	managedAutoPlaylists: Map<string, ManagedAutoPlaylist>;
@@ -313,6 +319,8 @@ const DEFAULTS: FooJeanFake = {
 	dropState: false,
 	hangState: false,
 	mainThreadStalled: false,
+	hangCapabilities: false,
+	capabilitiesHeld: [],
 	failArtwork: null,
 	failPlayingArtwork: null,
 	failRowArtwork: null,
@@ -416,9 +424,24 @@ const guardRefusals = (fake: FooJeanFake): FooJeanFake => {
 	return fake;
 };
 
+const releaseHeldCapabilitiesWhenSwitchedOff = (
+	fake: FooJeanFake,
+): FooJeanFake => {
+	let hanging = fake.hangCapabilities;
+	Object.defineProperty(fake, "hangCapabilities", {
+		enumerable: true,
+		get: () => hanging,
+		set: (next: boolean) => {
+			hanging = next;
+			if (!next) for (const answer of fake.capabilitiesHeld.splice(0)) answer();
+		},
+	});
+	return fake;
+};
+
 export const fooJeanState = (options: FooJeanOptions): FooJeanFake => {
 	const specs = options.autoPlaylistSpecs ?? {};
-	return guardRefusals({
+	const fake = guardRefusals({
 		...DEFAULTS,
 		...options,
 		// Copied, since a route or a spec mutates each of these in place and `DEFAULTS`
@@ -431,10 +454,12 @@ export const fooJeanState = (options: FooJeanOptions): FooJeanFake => {
 		ownPlaylists: {},
 		lockedPlaylists: new Set(),
 		limiter: new Map(),
+		capabilitiesHeld: [],
 		managedAutoPlaylists: new Map(
 			Object.entries(specs).map(([id, spec]) => [id, { ...spec }]),
 		),
 	});
+	return releaseHeldCapabilitiesWhenSwitchedOff(fake);
 };
 
 export type Bucket =
@@ -788,6 +813,12 @@ const abandoned = (response: Responder, within: number) =>
 			clearTimeout(timer);
 			resolve(true);
 		});
+	});
+
+const capabilitiesAbandoned = (fake: FooJeanFake, response: Responder) =>
+	new Promise<boolean>((resolve) => {
+		fake.capabilitiesHeld.push(() => resolve(false));
+		response.on("close", () => resolve(true));
 	});
 
 const latencyOf = (fake: FooJeanFake, method: string, path: string) => {
@@ -3101,6 +3132,8 @@ export async function handleFooJean({
 	}
 
 	if (path === "/api/capabilities") {
+		if (fake.hangCapabilities && (await capabilitiesAbandoned(fake, response)))
+			return true;
 		return json(response, {
 			apiVersion: fake.apiVersion,
 			allowedFields: fake.allowedFields,

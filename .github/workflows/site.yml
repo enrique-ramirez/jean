@@ -36,6 +36,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - run: pnpm lint
+
       # Typechecked before it is bundled, the way `pnpm build` does it: Vite never typechecks, so
       # nothing else would.
       - run: pnpm typecheck

@@ -1,5 +1,6 @@
 import type { Request, Route } from "@playwright/test";
 import { tagKey } from "../../src/domain/track/fields.ts";
+import { LYRICS_EXPRESSIONS } from "../../src/features/now-playing/nowPlayingFields.ts";
 import { en } from "../../src/shared/i18n/en.ts";
 import { evaluate, type Track } from "../fake-api/state.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
@@ -668,7 +669,7 @@ test("each announcement asks for its song once, lyric included", async ({
 	for (const one of reads())
 		expect(
 			new URLSearchParams(one.path.split("?")[1]).getAll("columns"),
-		).toContain("$meta(unsynced lyrics)");
+		).toEqual(expect.arrayContaining(LYRICS_EXPRESSIONS));
 });
 
 // react-query keeps the data a failed refetch leaves behind, and here that is
@@ -2049,7 +2050,7 @@ test("the front door still opens once a slow playlist join settles", async ({
 	await page.request.post("/__control/latency", { data: { ms: 1500 } });
 	await page.goto("/");
 
-	await page.waitForTimeout(500);
+	await expect(statusBar(page)).toContainText(PLAYING_ROW.title);
 	await expect(nowPlayingScreen(page)).toBeHidden();
 
 	await expect(nowPlayingScreen(page)).toBeVisible({ timeout: 5_000 });

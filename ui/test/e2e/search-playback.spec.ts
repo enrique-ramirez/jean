@@ -128,7 +128,9 @@ test.describe("a query with a colon in it", () => {
 		await openSidebar(page);
 		await sidebar(page).getByText(COLON, { exact: true }).click();
 
-		await expect(page.getByLabel("Search your library")).toHaveValue(COLON);
+		await expect(
+			page.getByRole("combobox", { name: "Search your library" }),
+		).toHaveValue(COLON);
 		await expect(
 			page.getByRole("heading", { level: 1, name: COLON }),
 		).toBeVisible();

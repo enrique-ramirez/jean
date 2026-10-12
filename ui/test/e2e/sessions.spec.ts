@@ -3546,7 +3546,7 @@ const iconIsDrawn = (page: Page) =>
 				() =>
 					document
 						.querySelector<HTMLLinkElement>("link[rel='icon']")
-						?.href.startsWith("data:") ?? false,
+						?.href.startsWith("blob:") ?? false,
 			),
 		)
 		.toBe(true);
@@ -3866,18 +3866,6 @@ test.describe("a create answered too many sessions, from inside what the page st
 	});
 });
 
-const holdDiscovery = async (page: Page) => {
-	let release!: () => void;
-	const released = new Promise<void>((resolve) => {
-		release = resolve;
-	});
-	await page.route("**/api/capabilities", async (route) => {
-		await released;
-		await route.continue().catch(() => {});
-	});
-	return release;
-};
-
 test.describe("a create answered sessions are not available", () => {
 	test.use(OFFERING_SESSIONS);
 
@@ -3889,7 +3877,7 @@ test.describe("a create answered sessions are not available", () => {
 		await untilTheInstallIsKnown(player);
 		await openPicker(page);
 		await expect(startButton(page)).toBeVisible();
-		const release = await holdDiscovery(page);
+		player.fooJean.hangCapabilities = true;
 		player.fooJean.canCreateSessions = false;
 
 		expect(await pressStart(page)).toEqual(NOT_AVAILABLE);
@@ -3908,7 +3896,7 @@ test.describe("a create answered sessions are not available", () => {
 		expect(streamsOpened(player)).toBe(0);
 
 		player.fooJean.configGeneration += 1;
-		release();
+		player.fooJean.hangCapabilities = false;
 
 		await expect(startButton(page)).toBeVisible();
 		await expect(rows(page)).toHaveCount(2);

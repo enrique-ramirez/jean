@@ -99,21 +99,15 @@ test.describe("what Settings says about foo_jean", () => {
 
 	test("checking: says so until the component answers, then settles on ready", async ({
 		page,
+		player,
 	}) => {
-		let answer!: () => void;
-		const answered = new Promise<void>((resolve) => {
-			answer = resolve;
-		});
-		await page.route("**/api/capabilities", async (route) => {
-			await answered;
-			await route.continue();
-		});
+		player.fooJean.hangCapabilities = true;
 
 		await openSettings(page);
 		await expect(panel(page)).toContainText("Checking…");
 		await expect(panel(page)).not.toContainText("Connected");
 
-		answer();
+		player.fooJean.hangCapabilities = false;
 		await expect(panel(page)).toContainText("Connected to foo_jean.");
 	});
 

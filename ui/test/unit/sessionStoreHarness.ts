@@ -98,7 +98,8 @@ const quietly = (pending: Set<Promise<unknown>>, work: Promise<unknown>) => {
 // A browser's media element as far as the listener store can tell: `src`, `play()`, `pause()`,
 // `removeAttribute("src")` with `load()`, and the events it dispatches. A browser fires `emptied`
 // from `load()` once an element that had a resource lets it go; here that is once the fake has seen
-// the socket close, or, for a case that holds it, once the case lets go itself.
+// the socket close, or, for a case that holds it, once the case lets go itself. Chromium fires it
+// while the player still holds the connection, which is what `closeLate()` stands in for.
 export class StreamingAudio extends EventTarget {
 	preload = "";
 	autoplay = false;
@@ -115,6 +116,7 @@ export class StreamingAudio extends EventTarget {
 	#connection: ClientRequest | null = null;
 	#connectedTo = "";
 	#holding = false;
+	#closingLate = false;
 	#held: (() => void)[] = [];
 
 	constructor() {
@@ -187,6 +189,11 @@ export class StreamingAudio extends EventTarget {
 		this.#holding = true;
 	}
 
+	// The next release fires `emptied` at once and keeps its socket open until `letGo()`.
+	closeLate() {
+		this.#closingLate = true;
+	}
+
 	letGo() {
 		this.#holding = false;
 		const held = this.#held;
@@ -201,29 +208,37 @@ export class StreamingAudio extends EventTarget {
 		this.#connection = null;
 		this.#connectedTo = "";
 		this.paused = true;
-		connection.destroy();
 
 		const emptied = () => {
 			const event = new Event("emptied");
 			this.dispatchEvent(event);
 			this.onemptied?.(event);
 		};
+		if (this.#closingLate) {
+			this.#closingLate = false;
+			this.#held.push(() => {
+				connection.destroy();
+				quietly(at.pending, seenClosedBy(at));
+			});
+			quietly(at.pending, Promise.resolve().then(emptied));
+			return;
+		}
+
+		connection.destroy();
 		if (this.#holding) {
 			this.#held.push(emptied);
 			return;
 		}
-		quietly(
-			at.pending,
-			(async () => {
-				for (let round = 0; at.openStreams() > 0; round += 1) {
-					assert.ok(round < 500, "the fake never saw the stream close");
-					await new Promise((resolve) => setImmediate(resolve));
-				}
-				emptied();
-			})(),
-		);
+		quietly(at.pending, seenClosedBy(at).then(emptied));
 	}
 }
+
+const seenClosedBy = async (at: ElementWorld) => {
+	for (let round = 0; at.openStreams() > 0; round += 1) {
+		assert.ok(round < 500, "the fake never saw the stream close");
+		await new Promise((resolve) => setImmediate(resolve));
+	}
+};
 
 interface Gate {
 	matches: (request: Request) => boolean;

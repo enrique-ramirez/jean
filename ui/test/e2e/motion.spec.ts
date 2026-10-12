@@ -287,8 +287,6 @@ test.describe("the now-playing arrow", () => {
 	});
 });
 
-// A bar grown by `height` lays the row out again every frame; grown by `scaleY` it is painted
-// alone, so its layout height holds still while its drawn height moves.
 test.describe("the playing row's equalizer", () => {
 	const bar = () => {
 		const element = document.querySelector(
@@ -325,11 +323,12 @@ test.describe("the playing row's equalizer", () => {
 	});
 });
 
+const CLOSED_THEN_OPEN = 2;
+
 test.describe("the queue panel", () => {
 	const panel = (page: Page) =>
 		page.getByRole("complementary", { name: "Queue" });
 
-	// The status bar carries the button on a desktop; a phone reaches it through Now Playing.
 	const revealQueueButton = async (page: Page) => {
 		await openLibrary(page);
 		if (
@@ -372,8 +371,7 @@ test.describe("the queue panel", () => {
 		await revealQueueButton(page);
 		const seen = await transformsAsItOpens(page);
 		await expect(panel(page)).toHaveAttribute("data-open", "true");
-		// Closed, then open: one step and no frame in between.
-		expect(new Set(seen).size).toBeLessThanOrEqual(2);
+		expect(new Set(seen).size).toBeLessThanOrEqual(CLOSED_THEN_OPEN);
 	});
 
 	test.describe("with motion allowed", () => {
@@ -382,19 +380,19 @@ test.describe("the queue panel", () => {
 		test("slides in, so the case above means something", async ({ page }) => {
 			await revealQueueButton(page);
 			const seen = await transformsAsItOpens(page);
-			expect(new Set(seen).size).toBeGreaterThan(2);
+			expect(new Set(seen).size).toBeGreaterThan(CLOSED_THEN_OPEN);
 		});
 	});
 });
+
+const JUST_ABOVE_COMPACT = { width: 900, height: 860 };
 
 test.describe("a Home shelf's arrows", () => {
 	test.skip(
 		({ isMobile }) => isMobile,
 		"a coarse pointer scrolls the shelf by touch and the arrows are not drawn",
 	);
-	// Narrow enough that the fixture's five albums overflow the shelf, wide enough to stay
-	// above the compact breakpoint.
-	test.use({ viewport: { width: 900, height: 860 } });
+	test.use({ viewport: JUST_ABOVE_COMPACT });
 
 	const scrollLeftOfShelf = () => {
 		const scroller = document.querySelector(

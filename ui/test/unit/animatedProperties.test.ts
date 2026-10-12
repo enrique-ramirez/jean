@@ -4,9 +4,6 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-// `ui/CONTRIBUTING.md` 5.4. A property below relays out or repaints the neighbours on every
-// frame it moves; the browser composites `transform`, `scale`, `rotate`, `translate` and
-// `opacity` alone.
 const HELD =
 	/^(height|width|(min|max)-(height|width)|grid-template-.*|padding(-.*)?|margin(-.*)?|inset(-.*)?|top|right|bottom|left|box-shadow|border-radius|background-position)$/;
 
@@ -17,6 +14,13 @@ const ALLOWED = [
 		file: "shared/ui/ActionMenu.module.css",
 		selector: ".viewport",
 		property: "height",
+	},
+	// A grid column cannot move by transform, and the sidebar's slide is kept for a toggle that
+	// is rare.
+	{
+		file: "app/App.module.css",
+		selector: ".body",
+		property: "grid-template-columns",
 	},
 ];
 

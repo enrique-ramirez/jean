@@ -4,7 +4,7 @@
 	position: relative;
 }
 
-.field {
+.anchor .field[data-size="md"] {
 	font-family: var(--font-numeric);
 	font-size: 0.8125rem;
 }
@@ -104,7 +104,7 @@
 }
 
 @media (max-width: 720px) {
-	.field {
+	.anchor .field[data-size="md"] {
 		font-size: 1rem;
 	}
 

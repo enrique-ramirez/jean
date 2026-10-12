@@ -183,7 +183,6 @@ export function StatusBar({
 						}
 						src={artwork}
 						identity={identity}
-						size={44}
 						className={styles.art}
 					/>
 

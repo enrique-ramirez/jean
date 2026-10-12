@@ -1072,6 +1072,21 @@ test.describe("who else is listening", () => {
 		expect(await mutesInThePanel(page)).toBe(0);
 	});
 
+	test("the player's fader is the picker's own width, wider than the status bar's", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(
+			isMobile,
+			"under a coarse pointer the picker's fader and the status bar's are one width",
+		);
+
+		await page.goto("/");
+		await listenButton(page).click();
+
+		await expect(playerFader(page)).toHaveCSS("width", "104px");
+	});
+
 	test("the player's own fader is what gives it its sound back", async ({
 		page,
 		isMobile,

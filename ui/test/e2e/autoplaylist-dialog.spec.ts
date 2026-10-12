@@ -89,6 +89,23 @@ test.describe("the autoplaylist dialog", () => {
 			await expect(nameField(dialog)).toHaveValue(UNTITLED);
 		});
 
+		test("the query is set smaller than the name on a desktop, and at the size iOS does not zoom at once the window is narrow", async ({
+			page,
+			isMobile,
+		}) => {
+			test.skip(
+				isMobile,
+				"at a phone's width the query's own size and every other field's are the same",
+			);
+
+			const dialog = await openApp(page);
+			await expect(nameField(dialog)).toHaveCSS("font-size", "14px");
+			await expect(queryField(dialog)).toHaveCSS("font-size", "13px");
+
+			await page.setViewportSize({ width: 700, height: 860 });
+			await expect(queryField(dialog)).toHaveCSS("font-size", "16px");
+		});
+
 		test("numbers the name past the ones the player already holds, as a new playlist's is numbered", async ({
 			page,
 			player,

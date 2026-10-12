@@ -51,6 +51,24 @@ const openWithSearch = async (page: Parameters<typeof openLibrary>[0]) => {
 	await revealSearch(page);
 };
 
+test.describe("the search field on a phone", () => {
+	test.skip(
+		({ isMobile }) => !isMobile,
+		"the field is only inset this way at a phone's width",
+	);
+
+	test("its glyph sits closer to the edge than a field's does elsewhere", async ({
+		page,
+	}) => {
+		await openWithSearch(page);
+
+		await expect(searchField(page).locator("xpath=..")).toHaveCSS(
+			"padding-left",
+			"10px",
+		);
+	});
+});
+
 test.describe("previewing a search without leaving the page", () => {
 	test("typing draws results over the view rather than replacing it", async ({
 		page,

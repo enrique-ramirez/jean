@@ -4,12 +4,12 @@ import { classNames } from "@/shared/lib/classNames";
 import styles from "./Button.module.css";
 import type { IconComponent } from "./icons";
 
-const VARIANTS: Record<string, string> = {
+const VARIANTS = {
 	primary: styles.primary,
 	default: styles.default,
 	ghost: styles.ghost,
 	danger: styles.danger,
-};
+} satisfies Record<string, string>;
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 	variant?: keyof typeof VARIANTS;

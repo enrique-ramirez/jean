@@ -26,6 +26,8 @@ const scrollerOf = (node: Element | null) =>
 
 const FOCUS = 0.34;
 
+const SCROLLEND_FALLBACK_MS = 700;
+
 function Following({ onResume }: { onResume: () => void }) {
 	const t = useTranslate();
 
@@ -62,7 +64,13 @@ export function Synced({
 	const [active, setActive] = useState(() =>
 		isHeard ? activeLineAt(lines, audibleAt(snapshot)) : -1,
 	);
+	const lyric = lyricKey ?? lines;
+	const [followedLyric, setFollowedLyric] = useState(lyric);
 	const [isFollowing, setIsFollowing] = useState(true);
+	if (followedLyric !== lyric) {
+		setFollowedLyric(lyric);
+		setIsFollowing(true);
+	}
 	const list = useRef<HTMLDivElement | null>(null);
 	const rows = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -81,6 +89,11 @@ export function Synced({
 	const isAutoScrolling = useRef(false);
 
 	const hasPlaced = useRef(false);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a fresh lyric re-arms the first, unanimated placement, it is not read here
+	useLayoutEffect(() => {
+		hasPlaced.current = false;
+	}, [lyric]);
 
 	useLayoutEffect(() => {
 		const element = rows.current[active];
@@ -103,7 +116,7 @@ export function Synced({
 
 		const timer = setTimeout(() => {
 			isAutoScrolling.current = false;
-		}, 700);
+		}, SCROLLEND_FALLBACK_MS);
 		return () => clearTimeout(timer);
 	}, [active, isFollowing]);
 
@@ -113,16 +126,16 @@ export function Synced({
 		const onScroll = () => {
 			if (!isAutoScrolling.current) setIsFollowing(false);
 		};
+		const onScrollEnd = () => {
+			isAutoScrolling.current = false;
+		};
 		container.addEventListener("scroll", onScroll, { passive: true });
-		return () => container.removeEventListener("scroll", onScroll);
+		container.addEventListener("scrollend", onScrollEnd);
+		return () => {
+			container.removeEventListener("scroll", onScroll);
+			container.removeEventListener("scrollend", onScrollEnd);
+		};
 	}, []);
-
-	const lyric = lyricKey ?? lines;
-	// biome-ignore lint/correctness/useExhaustiveDependencies: a fresh lyric re-arms following, it is not read here
-	useEffect(() => {
-		hasPlaced.current = false;
-		setIsFollowing(true);
-	}, [lyric]);
 
 	return (
 		<>

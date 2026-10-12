@@ -8,6 +8,7 @@ import {
 	statusBar,
 	test,
 	times,
+	tokenColourIn,
 } from "./fixtures.ts";
 
 const libraryGuid = (player: FakePlayer) =>
@@ -49,6 +50,24 @@ const openFinder = async (page: Page) => {
 				await openFinder(page);
 
 				await expect(finder(page)).toBeFocused();
+			});
+
+			test("its border keeps the accent under the pointer, with the caret elsewhere", async ({
+				page,
+			}) => {
+				test.skip(
+					test.info().project.name === "mobile",
+					"nothing hovers on a phone",
+				);
+
+				await openFinder(page);
+				const field = finder(page).locator("xpath=..");
+				const accent = await tokenColourIn(field, "--accent-line");
+
+				await finder(page).blur();
+				await field.hover();
+
+				await expect(field).toHaveCSS("border-top-color", accent);
 			});
 
 			test("the first result is the active one, wherever the pointer is", async ({

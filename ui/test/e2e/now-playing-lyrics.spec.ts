@@ -283,6 +283,82 @@ test.describe("reading the lyric tag", () => {
 	});
 });
 
+test.describe("a reader scrolling back through a fast passage", () => {
+	// Lines closer together than the time the lyric used to give its own scroll to settle, so every
+	// line renewed the wait and a reader's scroll was never read as theirs.
+	const LINE_EVERY_MS = 500;
+	const STARTS_AT_SECONDS = 20;
+
+	const FAST = Array.from({ length: 300 }, (_, at) => {
+		const ms = 1_000 + at * LINE_EVERY_MS;
+		const mm = String(Math.floor(ms / 60_000)).padStart(2, "0");
+		const ss = ((ms % 60_000) / 1_000).toFixed(2).padStart(5, "0");
+		return `[${mm}:${ss}]Fast line ${at + 1}`;
+	}).join("\r\n");
+
+	test.use({
+		retagged: { "Los Calientes": { "$meta(unsynced lyrics)": FAST } },
+	});
+
+	const scrollerOf = (line: Locator) =>
+		line.evaluateHandle((element) => {
+			let scroller = element.parentElement;
+			while (
+				scroller &&
+				!(
+					/auto|scroll/.test(getComputedStyle(scroller).overflowY) &&
+					scroller.scrollHeight > scroller.clientHeight
+				)
+			)
+				scroller = scroller.parentElement;
+			if (!scroller) throw new Error("the lyric is in nothing that scrolls");
+			return scroller;
+		});
+
+	test("the lyric stays where the reader put it, and offers to follow again", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		await trackRow(page, 0).dblclick();
+		player.patchPlayer({ position: STARTS_AT_SECONDS });
+		await openNowPlaying(page);
+		const panel = await openPanels(page, isMobile);
+		await panelTab(panel, "Lyrics").click();
+
+		await expect(currentLine(panel)).toContainText("Fast line");
+		const scroller = await scrollerOf(currentLine(panel));
+		await expect
+			.poll(() => scroller.evaluate((element) => element.scrollTop))
+			.toBeGreaterThan(0);
+
+		// From inside the page, and in the frame the lyric's own scroll comes to rest: half a second
+		// later the next line moves it again, and three round trips do not fit in that.
+		await scroller.evaluate(
+			(element) =>
+				new Promise<void>((resolve) => {
+					element.addEventListener(
+						"scrollend",
+						() => {
+							element.scrollTop = 0;
+							resolve();
+						},
+						{ once: true },
+					);
+				}),
+		);
+
+		await expect(
+			panel.getByRole("button", { name: "Resume following" }),
+		).toBeVisible();
+
+		const lineWhenLeft = await currentLine(panel).textContent();
+		await expect(currentLine(panel)).not.toHaveText(lineWhenLeft ?? "");
+		expect(await scroller.evaluate((element) => element.scrollTop)).toBe(0);
+	});
+});
+
 // foo_openlyrics reads `UNSYNCED LYRICS`, `LYRICS`, `SYNCEDLYRICS` and `UNSYNCEDLYRICS`, in that
 // order.
 test.describe("the lyric tags foo_openlyrics reads", () => {

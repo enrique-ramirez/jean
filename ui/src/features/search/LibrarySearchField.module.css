@@ -57,7 +57,7 @@
 		max-width: none;
 	}
 
-	.field {
+	.anchor .field[data-size="sm"] {
 		padding-left: 10px;
 	}
 }

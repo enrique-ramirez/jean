@@ -15,6 +15,8 @@ function remember(key: string | null | undefined, cursor: number) {
 		cursors.delete(cursors.keys().next().value as string);
 }
 
+const rememberedCursor = (key: string) => cursors.get(key) ?? 0;
+
 const rangeBetween = (from: number, to: number) => {
 	const [start, end] = from <= to ? [from, to] : [to, from];
 	return new Set(
@@ -23,29 +25,25 @@ const rangeBetween = (from: number, to: number) => {
 };
 
 export function useTrackSelection(total: number, viewKey: string) {
-	const [cursor, setCursor] = useState(() => cursors.get(viewKey) ?? 0);
+	const [shownKey, setShownKey] = useState(viewKey);
+	const [cursor, setCursor] = useState(() => rememberedCursor(viewKey));
 	const [selection, setSelection] = useState<Set<number>>(() => new Set());
 	const anchor = useRef(0);
+	const lastRow = Math.max(total - 1, 0);
 
-	const cursorRef = useRef(cursor);
-	cursorRef.current = cursor;
-
-	// Saved on the way out rather than on every move: the cleanup runs with the key it was registered
-	// under, so the value cannot land under the new one.
-	useEffect(() => () => remember(viewKey, cursorRef.current), [viewKey]);
-
-	useEffect(() => {
-		const restored = cursors.get(viewKey) ?? 0;
-		anchor.current = restored;
-		setCursor(restored);
+	if (shownKey !== viewKey) {
+		setShownKey(viewKey);
+		setCursor(rememberedCursor(viewKey));
 		setSelection(new Set());
-	}, [viewKey]);
+	} else if (cursor > lastRow) {
+		setCursor(lastRow);
+	}
 
-	// Clamp only: rows arrive in chunks, so `total` grows several times during a load and resetting
-	// here would throw away the cursor on every chunk.
+	useEffect(() => remember(viewKey, cursor), [viewKey, cursor]);
+
 	useEffect(() => {
-		setCursor((current) => clamp(current, 0, Math.max(total - 1, 0)));
-	}, [total]);
+		anchor.current = rememberedCursor(viewKey);
+	}, [viewKey]);
 
 	const moveCursorTo = useCallback(
 		(index: number) => {

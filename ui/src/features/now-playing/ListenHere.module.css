@@ -444,7 +444,7 @@ button.face:focus-visible {
 	color: var(--muted);
 }
 
-.slider {
+.fader .slider[data-orientation="horizontal"] {
 	width: 104px;
 }
 
@@ -585,11 +585,8 @@ button.face:focus-visible {
 		min-height: 52px;
 	}
 
-	.slider {
-		width: 88px;
-	}
-
 	.fader .slider[data-orientation="horizontal"] {
+		width: 88px;
 		height: 44px;
 	}
 

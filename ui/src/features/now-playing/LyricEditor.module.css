@@ -360,7 +360,8 @@ button.pick {
 	flex: 1;
 }
 
-.remove {
+.tools .remove,
+.tools .remove:hover:not(:disabled):not([aria-disabled="true"]) {
 	color: var(--danger);
 }
 

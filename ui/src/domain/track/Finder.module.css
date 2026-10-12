@@ -6,7 +6,8 @@
 	max-width: 400px;
 }
 
-.field {
+.finder .field,
+.finder .field:hover {
 	flex: 1;
 	border-color: var(--accent-line);
 }

@@ -189,6 +189,24 @@ const tabIcon = (page: Page) =>
 
 const ICON_TURNS_WATCHED = 6;
 
+const fontPreloads = (page: Page) =>
+	page.evaluate(() =>
+		[
+			...document.head.querySelectorAll<HTMLLinkElement>(
+				'link[rel="preload"][as="font"]',
+			),
+		].map((link) => link.href),
+	);
+
+const fontsAskedFor = (page: Page) => {
+	const asked: string[] = [];
+	page.on("request", (request) => {
+		if (new URL(request.url()).pathname.endsWith(".woff2"))
+			asked.push(request.url());
+	});
+	return asked;
+};
+
 // The fake sends foo_jean's own policy on the page, so anything the policy refuses is refused
 // here as it is on an install. The tab's icon is the worked example: it is swapped for every
 // frame of a playing record, and a refused one leaves the tab with no icon at all.
@@ -210,6 +228,28 @@ test.describe("the page under foo_jean's content policy", () => {
 			})
 			.toBeGreaterThan(ICON_TURNS_WATCHED);
 
+		expect(await refusedByPolicy(page)).toEqual([]);
+	});
+
+	// A preload the font's own fetch cannot reuse costs the file twice, and one the policy refuses
+	// costs the first paint the font it was there to bring forward.
+	test("the two faces the first screen is set in are preloaded from the page's head, each answered and asked for once, and neither refused", async ({
+		page,
+	}) => {
+		await recordPolicyRefusals(page);
+		const asked = fontsAskedFor(page);
+		await openLibrary(page);
+		await page.evaluate(() => document.fonts.ready);
+
+		const preloaded = await fontPreloads(page);
+		expect(preloaded).toHaveLength(2);
+		for (const href of preloaded) {
+			expect((await page.request.get(href)).status(), href).toBe(200);
+			expect(
+				asked.filter((url) => url === href),
+				`requests for ${href}`,
+			).toHaveLength(1);
+		}
 		expect(await refusedByPolicy(page)).toEqual([]);
 	});
 });

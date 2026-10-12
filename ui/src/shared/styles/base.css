@@ -1,43 +1,52 @@
-*,
-*::before,
-*::after {
-	box-sizing: border-box;
-}
+@layer base, shared;
 
-html,
-body,
-#root {
-	height: 100%;
-}
+@layer base {
+	*,
+	*::before,
+	*::after {
+		box-sizing: border-box;
+	}
 
-body {
-	margin: 0;
-	font-family: var(--font);
-	background: var(--bg);
-	color: var(--text);
-	-webkit-font-smoothing: antialiased;
-	overscroll-behavior: none;
-}
+	html,
+	body,
+	#root {
+		height: 100%;
+	}
 
-button {
-	font: inherit;
-	color: inherit;
-	cursor: pointer;
-}
+	body {
+		margin: 0;
+		font-family: var(--font);
+		background: var(--bg);
+		color: var(--text);
+		-webkit-font-smoothing: antialiased;
+		overscroll-behavior: none;
+	}
 
-input {
-	font: inherit;
-	color: inherit;
-}
+	button {
+		font: inherit;
+		color: inherit;
+		cursor: pointer;
+	}
 
-:focus-visible {
-	outline: 2px solid var(--accent);
-	outline-offset: 2px;
-	border-radius: var(--radius-sm);
-}
+	input {
+		font: inherit;
+		color: inherit;
+	}
 
-:focus:not(:focus-visible) {
-	outline: none;
+	:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+		border-radius: var(--radius-sm);
+	}
+
+	:focus:not(:focus-visible) {
+		outline: none;
+	}
+
+	/* A later layer beats this one at any specificity, so a host that is already absolutely positioned keeps it. */
+	.loading {
+		position: relative;
+	}
 }
 
 .visually-hidden {
@@ -67,11 +76,6 @@ input {
 	font-family: var(--font-numeric);
 	font-variant-numeric: tabular-nums;
 	font-size: 0.8125rem;
-}
-
-/* `:where()` carries no specificity, so a host that is already absolutely positioned keeps it. */
-:where(.loading) {
-	position: relative;
 }
 
 .loading {

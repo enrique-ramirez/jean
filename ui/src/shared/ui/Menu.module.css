@@ -1,66 +1,70 @@
-.anchor {
-	position: relative;
-	display: inline-flex;
-}
+@layer base, shared;
 
-.menu {
-	position: absolute;
-	top: calc(100% + 6px);
-	z-index: 25;
-	min-width: 210px;
-	max-width: calc(100vw - 16px);
-	padding: 5px;
-	transform: translateX(var(--menu-shift, 0px));
-	border: 1px solid var(--border-strong);
-	border-radius: var(--radius);
-	background: var(--surface-raised);
-	box-shadow: var(--shadow);
-}
+@layer shared {
+	.anchor {
+		position: relative;
+		display: inline-flex;
+	}
 
-.menu[data-placement="above"] {
-	top: auto;
-	bottom: calc(100% + 6px);
-}
+	.menu {
+		position: absolute;
+		top: calc(100% + 6px);
+		z-index: 25;
+		min-width: 210px;
+		max-width: calc(100vw - 16px);
+		padding: 5px;
+		transform: translateX(var(--menu-shift, 0px));
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius);
+		background: var(--surface-raised);
+		box-shadow: var(--shadow);
+	}
 
-.menu[data-align="end"] {
-	right: 0;
-}
+	.menu[data-placement="above"] {
+		top: auto;
+		bottom: calc(100% + 6px);
+	}
 
-.menu[data-align="start"] {
-	left: 0;
-}
+	.menu[data-align="end"] {
+		right: 0;
+	}
 
-.item {
-	display: flex;
-	align-items: center;
-	gap: 9px;
-	width: 100%;
-	padding: 8px 10px;
-	border: 0;
-	border-radius: var(--radius-sm);
-	background: none;
-	font-size: 0.8125rem;
-	text-align: left;
-}
+	.menu[data-align="start"] {
+		left: 0;
+	}
 
-.item:hover:not(:disabled) {
-	background: var(--surface-sunken);
-}
+	.item {
+		display: flex;
+		align-items: center;
+		gap: 9px;
+		width: 100%;
+		padding: 8px 10px;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: none;
+		font-size: 0.8125rem;
+		text-align: left;
+	}
 
-.item:disabled {
-	opacity: 0.4;
-	cursor: not-allowed;
-}
+	.item:hover:not(:disabled) {
+		background: var(--surface-sunken);
+	}
 
-.separator {
-	border: 0;
-	height: 1px;
-	margin: 4px 6px;
-	background: var(--border);
-}
+	.item:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
 
-.shortcut {
-	margin-left: auto;
-	font-size: 0.6875rem;
-	color: var(--faint);
+	.separator {
+		border: 0;
+		height: 1px;
+		margin: 4px 6px;
+		background: var(--border);
+	}
+
+	.shortcut {
+		margin-left: auto;
+		font-size: 0.6875rem;
+		color: var(--faint);
+	}
 }

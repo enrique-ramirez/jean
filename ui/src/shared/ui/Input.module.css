@@ -1,108 +1,106 @@
-.field {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	min-width: 0;
-	border: 1px solid var(--border);
-	border-radius: var(--radius-pill);
-	background: var(--surface);
-	color: var(--muted);
-	transition:
-		border-color 0.15s var(--ease),
-		color 0.15s var(--ease);
-}
+@layer base, shared;
 
-.field:hover {
-	border-color: var(--border-strong);
-}
+@layer shared {
+	.field {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-pill);
+		background: var(--surface);
+		color: var(--muted);
+		transition:
+			border-color 0.15s var(--ease),
+			color 0.15s var(--ease);
+	}
 
-.field:focus-within {
-	border-color: var(--accent-line);
-	color: var(--text);
-	box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 14%, transparent);
-}
+	.field:hover {
+		border-color: var(--border-strong);
+	}
 
-/* `width: 0`, not only `min-width: 0`: an `<input>` asserts a default width up the tree otherwise. */
-.input {
-	flex: 1;
-	width: 0;
-	min-width: 0;
-	padding: 0;
-	border: 0;
-	background: none;
-	font: inherit;
-	color: var(--text);
-}
+	.field:focus-within {
+		border-color: var(--accent-line);
+		color: var(--text);
+		box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 14%, transparent);
+	}
 
-.input::placeholder {
-	color: var(--muted);
-}
+	/* `width: 0`, not only `min-width: 0`: an `<input>` asserts a default width up the tree otherwise. */
+	.input {
+		flex: 1;
+		width: 0;
+		min-width: 0;
+		padding: 0;
+		border: 0;
+		background: none;
+		font: inherit;
+		color: var(--text);
+		outline: none;
+	}
 
-/* `:focus` as well as the bare class: a lone class ties with the global `:focus-visible` on
-   specificity and loses on source order. */
-.input:focus,
-.input:focus-visible {
-	outline: none;
-}
+	.input::placeholder {
+		color: var(--muted);
+	}
 
-/* Safari draws its own clear button on type=search. */
-.input::-webkit-search-cancel-button {
-	display: none;
-}
+	/* Safari draws its own clear button on type=search. */
+	.input::-webkit-search-cancel-button {
+		display: none;
+	}
 
-.leading,
-.trailing {
-	display: flex;
-	flex: 0 0 auto;
-	align-items: center;
-	gap: 6px;
-}
+	.leading,
+	.trailing {
+		display: flex;
+		flex: 0 0 auto;
+		align-items: center;
+		gap: 6px;
+	}
 
-.field[data-filled="true"] .leading {
-	color: var(--accent);
-}
+	.field[data-filled="true"] .leading {
+		color: var(--accent);
+	}
 
-.field[data-size="sm"] {
-	padding: 6px 8px 6px 12px;
-	font-size: 0.8125rem;
-}
+	.field[data-size="sm"] {
+		padding: 6px 8px 6px 12px;
+		font-size: 0.8125rem;
+	}
 
-.field[data-size="md"] {
-	padding: 8px 10px 8px 14px;
-	font-size: 0.875rem;
-}
-
-.field[data-size="lg"] {
-	padding: 11px 14px 11px 17px;
-	font-size: 0.9375rem;
-}
-
-@media (max-width: 640px) {
-	/* Under 16px, iOS Safari zooms the page on focus and does not come back. */
-	.field[data-size="lg"],
 	.field[data-size="md"] {
-		font-size: 1rem;
+		padding: 8px 10px 8px 14px;
+		font-size: 0.875rem;
 	}
-}
 
-.well {
-	position: relative;
-	flex: 1;
-	display: flex;
-	align-items: center;
-	min-width: 0;
-}
-
-.well .input {
-	position: relative;
-}
-
-@media (pointer: coarse) {
 	.field[data-size="lg"] {
-		padding-block: 1px;
+		padding: 11px 14px 11px 17px;
+		font-size: 0.9375rem;
 	}
 
-	.field[data-size="lg"] .input {
-		min-height: var(--touch-target);
+	@media (max-width: 640px) {
+		/* Under 16px, iOS Safari zooms the page on focus and does not come back. */
+		.field[data-size="lg"],
+		.field[data-size="md"] {
+			font-size: 1rem;
+		}
+	}
+
+	.well {
+		position: relative;
+		flex: 1;
+		display: flex;
+		align-items: center;
+		min-width: 0;
+	}
+
+	.well .input {
+		position: relative;
+	}
+
+	@media (pointer: coarse) {
+		.field[data-size="lg"] {
+			padding-block: 1px;
+		}
+
+		.field[data-size="lg"] .input {
+			min-height: var(--touch-target);
+		}
 	}
 }

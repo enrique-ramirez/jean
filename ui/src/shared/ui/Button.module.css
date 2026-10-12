@@ -1,81 +1,85 @@
-.button {
-	composes: hitArea from "../styles/hitArea.module.css";
-	display: inline-flex;
-	align-items: center;
-	gap: 7px;
-	padding: 8px 14px;
-	border: 1px solid var(--border-strong);
-	border-radius: var(--radius-pill);
-	background: var(--surface);
-	font-size: 0.8125rem;
-	font-weight: 550;
-	white-space: nowrap;
-	transition:
-		background 0.14s var(--ease),
-		border-color 0.14s var(--ease),
-		color 0.14s var(--ease);
-}
+@layer base, shared;
 
-.button:hover:not(:disabled):not([aria-disabled="true"]) {
-	border-color: var(--accent-line);
-	background: var(--surface-raised);
-}
+@layer shared {
+	.button {
+		composes: hitArea from "../styles/hitArea.module.css";
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		padding: 8px 14px;
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-pill);
+		background: var(--surface);
+		font-size: 0.8125rem;
+		font-weight: 550;
+		white-space: nowrap;
+		transition:
+			background 0.14s var(--ease),
+			border-color 0.14s var(--ease),
+			color 0.14s var(--ease);
+	}
 
-.button:disabled,
-.button[aria-disabled="true"] {
-	opacity: 0.45;
-	cursor: not-allowed;
-}
+	.button:hover:not(:disabled):not([aria-disabled="true"]) {
+		border-color: var(--accent-line);
+		background: var(--surface-raised);
+	}
 
-.button[aria-pressed="true"] {
-	border-color: var(--accent-line);
-	color: var(--accent);
-}
+	.button:disabled,
+	.button[aria-disabled="true"] {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
 
-.iconOnly {
-	padding: 8px;
-}
+	.button[aria-pressed="true"] {
+		border-color: var(--accent-line);
+		color: var(--accent);
+	}
 
-.primary {
-	padding: 9px 18px;
-	border-color: transparent;
-	background: var(--accent);
-	color: var(--on-accent);
-}
-
-.primary:hover:not(:disabled):not([aria-disabled="true"]) {
-	border-color: transparent;
-	background: oklch(
-		calc(var(--accent-l) + 0.05) var(--accent-c) var(--accent-h)
-	);
-}
-
-.ghost {
-	border-color: transparent;
-	background: none;
-	color: var(--muted);
-}
-
-.ghost:hover:not(:disabled):not([aria-disabled="true"]) {
-	border-color: transparent;
-	background: var(--surface);
-	color: var(--text);
-}
-
-.danger {
-	color: var(--danger);
-}
-
-.danger:hover:not(:disabled):not([aria-disabled="true"]),
-.danger:focus-visible {
-	border-color: var(--danger);
-	background: color-mix(in oklab, var(--danger) 10%, var(--surface));
-}
-
-@media (pointer: coarse) {
 	.iconOnly {
-		justify-content: center;
-		min-width: var(--touch-target);
-		min-height: var(--touch-target);
+		padding: 8px;
+	}
+
+	.primary {
+		padding: 9px 18px;
+		border-color: transparent;
+		background: var(--accent);
+		color: var(--on-accent);
+	}
+
+	.primary:hover:not(:disabled):not([aria-disabled="true"]) {
+		border-color: transparent;
+		background: oklch(
+			calc(var(--accent-l) + 0.05) var(--accent-c) var(--accent-h)
+		);
+	}
+
+	.ghost {
+		border-color: transparent;
+		background: none;
+		color: var(--muted);
+	}
+
+	.ghost:hover:not(:disabled):not([aria-disabled="true"]) {
+		border-color: transparent;
+		background: var(--surface);
+		color: var(--text);
+	}
+
+	.danger {
+		color: var(--danger);
+	}
+
+	.danger:hover:not(:disabled):not([aria-disabled="true"]),
+	.danger:focus-visible {
+		border-color: var(--danger);
+		background: color-mix(in oklab, var(--danger) 10%, var(--surface));
+	}
+
+	@media (pointer: coarse) {
+		.iconOnly {
+			justify-content: center;
+			min-width: var(--touch-target);
+			min-height: var(--touch-target);
+		}
 	}
 }

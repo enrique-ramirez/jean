@@ -1,75 +1,79 @@
-.stars {
-	/* Read through a second name: a custom property declared on the element beats an inherited one,
-	 so declaring `--star-size` here would win over anything an ancestor sets. */
-	--star-size: var(--stars-size, 12px);
-	--star-gap: var(--stars-gap, 2px);
-	display: inline-flex;
-	align-items: center;
-	gap: var(--star-gap);
-	color: var(--border-strong);
-}
+@layer base, shared;
 
-.star {
-	position: relative;
-	display: block;
-	width: var(--star-size);
-	height: var(--star-size);
-}
-
-.star svg {
-	position: absolute;
-	inset: 0;
-	width: 100%;
-	height: 100%;
-}
-
-.fill {
-	color: var(--star);
-	fill: currentColor;
-	stroke: var(--star-outline);
-}
-
-@media (max-width: 720px) {
+@layer shared {
 	.stars {
-		--star-size: var(--stars-size, 11px);
-		--star-gap: var(--stars-gap, 1.5px);
+		/* Read through a second name: a custom property declared on the element beats an inherited one,
+		 so declaring `--star-size` here would win over anything an ancestor sets. */
+		--star-size: var(--stars-size, 12px);
+		--star-gap: var(--stars-gap, 2px);
+		display: inline-flex;
+		align-items: center;
+		gap: var(--star-gap);
+		color: var(--border-strong);
 	}
-}
 
-.stars[data-interactive] {
-	margin-inline: -2px;
-}
+	.star {
+		position: relative;
+		display: block;
+		width: var(--star-size);
+		height: var(--star-size);
+	}
 
-.stars[data-interactive] .star {
-	appearance: none;
-	padding: 0 1px;
-	border: 0;
-	background: none;
-	color: inherit;
-	cursor: pointer;
-	width: calc(var(--star-size) + 2px);
-	height: 100%;
-	min-height: var(--star-size);
-}
+	.star svg {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+	}
 
-.stars[data-interactive] .star svg {
-	inset: 0 1px;
-	width: var(--star-size);
-	height: var(--star-size);
-	top: 50%;
-	transform: translateY(-50%);
-}
+	.fill {
+		color: var(--star);
+		fill: currentColor;
+		stroke: var(--star-outline);
+	}
 
-.stars[data-interactive]:hover {
-	color: color-mix(in oklab, var(--star) 35%, var(--border-strong));
-}
+	@media (max-width: 720px) {
+		.stars {
+			--star-size: var(--stars-size, 11px);
+			--star-gap: var(--stars-gap, 1.5px);
+		}
+	}
 
-.stars[data-interactive][data-clearing="true"] {
-	opacity: 0.4;
-}
+	.stars[data-interactive] {
+		margin-inline: -2px;
+	}
 
-@media (prefers-reduced-motion: no-preference) {
-	.stars[data-interactive] .fill {
-		transition: opacity 90ms ease-out;
+	.stars[data-interactive] .star {
+		appearance: none;
+		padding: 0 1px;
+		border: 0;
+		background: none;
+		color: inherit;
+		cursor: pointer;
+		width: calc(var(--star-size) + 2px);
+		height: 100%;
+		min-height: var(--star-size);
+	}
+
+	.stars[data-interactive] .star svg {
+		inset: 0 1px;
+		width: var(--star-size);
+		height: var(--star-size);
+		top: 50%;
+		transform: translateY(-50%);
+	}
+
+	.stars[data-interactive]:hover {
+		color: color-mix(in oklab, var(--star) 35%, var(--border-strong));
+	}
+
+	.stars[data-interactive][data-clearing="true"] {
+		opacity: 0.4;
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		.stars[data-interactive] .fill {
+			transition: opacity 90ms ease-out;
+		}
 	}
 }

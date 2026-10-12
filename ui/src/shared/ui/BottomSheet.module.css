@@ -1,130 +1,134 @@
-.scrim {
-	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-	height: 100dvh;
-	display: flex;
-	align-items: flex-end;
-	padding: 10px;
-	padding-right: max(10px, env(safe-area-inset-right));
-	padding-bottom: max(10px, env(safe-area-inset-bottom));
-	padding-left: max(10px, env(safe-area-inset-left));
-	background: oklch(0 0 0 / 0.5);
-}
+@layer base, shared;
 
-.scrim[data-layer="picker"] {
-	z-index: 47;
-}
-
-.scrim[data-layer="actionMenu"] {
-	z-index: 70;
-}
-
-.scrim[data-state="open"] {
-	animation: fade 0.2s var(--ease) backwards;
-}
-
-/* A separate keyframe name rather than `animation-direction: reverse`: flipping direction on a
-   finished animation updates it in place instead of running it again. */
-.scrim[data-state="closed"] {
-	animation: unfade 0.2s var(--ease) forwards;
-	pointer-events: none;
-}
-
-@keyframes fade {
-	from {
-		opacity: 0;
+@layer shared {
+	.scrim {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 100dvh;
+		display: flex;
+		align-items: flex-end;
+		padding: 10px;
+		padding-right: max(10px, env(safe-area-inset-right));
+		padding-bottom: max(10px, env(safe-area-inset-bottom));
+		padding-left: max(10px, env(safe-area-inset-left));
+		background: oklch(0 0 0 / 0.5);
 	}
-}
 
-@keyframes unfade {
-	to {
-		opacity: 0;
+	.scrim[data-layer="picker"] {
+		z-index: 47;
 	}
-}
 
-.sheet {
-	display: flex;
-	flex-direction: column;
-	width: 100%;
-	min-height: 0;
-	max-height: min(76dvh, 100%);
-	border: 1px solid var(--border-strong);
-	border-radius: calc(var(--radius) + 8px);
-	background: var(--surface-raised);
-	box-shadow:
-		var(--shadow),
-		inset 0 1px 0 oklch(1 0 0 / 0.05);
-	transition: transform 0.24s var(--ease);
-}
-
-.sheet[data-state="open"] {
-	animation: rise 0.26s var(--ease) backwards;
-}
-
-.sheet[data-state="closed"] {
-	animation: sink 0.22s var(--ease) forwards;
-}
-
-@keyframes rise {
-	from {
-		transform: translate3d(0, calc(100% + 16px), 0);
+	.scrim[data-layer="actionMenu"] {
+		z-index: 70;
 	}
-}
 
-@keyframes sink {
-	to {
-		transform: translate3d(0, calc(100% + 16px), 0);
+	.scrim[data-state="open"] {
+		animation: fade 0.2s var(--ease) backwards;
 	}
-}
 
-.sheet[data-dragging="true"] {
-	transition: none;
-}
+	/* A separate keyframe name rather than `animation-direction: reverse`: flipping direction on a
+	   finished animation updates it in place instead of running it again. */
+	.scrim[data-state="closed"] {
+		animation: unfade 0.2s var(--ease) forwards;
+		pointer-events: none;
+	}
 
-.grabber {
-	display: flex;
-	justify-content: center;
-	padding: 9px 0 5px;
-	touch-action: none;
-}
+	@keyframes fade {
+		from {
+			opacity: 0;
+		}
+	}
 
-.handle {
-	width: 34px;
-	height: 4px;
-	border-radius: var(--radius-pill);
-	background: var(--border-strong);
-}
+	@keyframes unfade {
+		to {
+			opacity: 0;
+		}
+	}
 
-.heading {
-	display: flex;
-	flex: 0 0 auto;
-	align-items: center;
-	gap: 12px;
-	padding: 0 6px 4px 18px;
-}
+	.sheet {
+		display: flex;
+		flex-direction: column;
+		width: 100%;
+		min-height: 0;
+		max-height: min(76dvh, 100%);
+		border: 1px solid var(--border-strong);
+		border-radius: calc(var(--radius) + 8px);
+		background: var(--surface-raised);
+		box-shadow:
+			var(--shadow),
+			inset 0 1px 0 oklch(1 0 0 / 0.05);
+		transition: transform 0.24s var(--ease);
+	}
 
-.title {
-	overflow: hidden;
-	margin: 0;
-	font-size: 0.75rem;
-	font-weight: 600;
-	letter-spacing: 0.04em;
-	text-overflow: ellipsis;
-	text-transform: uppercase;
-	white-space: nowrap;
-	color: var(--faint);
-}
+	.sheet[data-state="open"] {
+		animation: rise 0.26s var(--ease) backwards;
+	}
 
-.close {
-	display: grid;
-	flex: 0 0 auto;
-	place-items: center;
-	width: 44px;
-	height: 44px;
-	margin-left: auto;
-	border: 0;
-	background: none;
-	color: var(--text);
+	.sheet[data-state="closed"] {
+		animation: sink 0.22s var(--ease) forwards;
+	}
+
+	@keyframes rise {
+		from {
+			transform: translate3d(0, calc(100% + 16px), 0);
+		}
+	}
+
+	@keyframes sink {
+		to {
+			transform: translate3d(0, calc(100% + 16px), 0);
+		}
+	}
+
+	.sheet[data-dragging="true"] {
+		transition: none;
+	}
+
+	.grabber {
+		display: flex;
+		justify-content: center;
+		padding: 9px 0 5px;
+		touch-action: none;
+	}
+
+	.handle {
+		width: 34px;
+		height: 4px;
+		border-radius: var(--radius-pill);
+		background: var(--border-strong);
+	}
+
+	.heading {
+		display: flex;
+		flex: 0 0 auto;
+		align-items: center;
+		gap: 12px;
+		padding: 0 6px 4px 18px;
+	}
+
+	.title {
+		overflow: hidden;
+		margin: 0;
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-overflow: ellipsis;
+		text-transform: uppercase;
+		white-space: nowrap;
+		color: var(--faint);
+	}
+
+	.close {
+		display: grid;
+		flex: 0 0 auto;
+		place-items: center;
+		width: 44px;
+		height: 44px;
+		margin-left: auto;
+		border: 0;
+		background: none;
+		color: var(--text);
+	}
 }

@@ -1,62 +1,66 @@
-.equalizer {
-	display: inline-flex;
-	align-items: flex-end;
-	justify-content: flex-start;
-	gap: 2px;
-	height: 12px;
-}
+@layer base, shared;
 
-.equalizer i {
-	width: 2px;
-	height: 11px;
-	border-radius: 1px;
-	background: var(--accent);
-	transform-origin: bottom;
-	animation: bars 900ms var(--ease) infinite alternate;
-}
-
-.equalizer i:nth-child(2) {
-	animation-delay: 180ms;
-}
-
-.equalizer i:nth-child(3) {
-	animation-delay: 360ms;
-}
-
-@keyframes bars {
-	from {
-		transform: scaleY(0.27);
+@layer shared {
+	.equalizer {
+		display: inline-flex;
+		align-items: flex-end;
+		justify-content: flex-start;
+		gap: 2px;
+		height: 12px;
 	}
-	to {
-		transform: scaleY(1);
-	}
-}
 
-@media (prefers-reduced-motion: reduce) {
 	.equalizer i {
-		transform: scaleY(0.64);
-		animation: none;
+		width: 2px;
+		height: 11px;
+		border-radius: 1px;
+		background: var(--accent);
+		transform-origin: bottom;
+		animation: bars 900ms var(--ease) infinite alternate;
 	}
 
 	.equalizer i:nth-child(2) {
-		transform: scaleY(1);
+		animation-delay: 180ms;
 	}
 
 	.equalizer i:nth-child(3) {
-		transform: scaleY(0.45);
+		animation-delay: 360ms;
 	}
-}
 
-.equalizer[data-paused="true"] i {
-	transform: scaleY(0.45);
-	opacity: 0.55;
-	animation: none;
-}
+	@keyframes bars {
+		from {
+			transform: scaleY(0.27);
+		}
+		to {
+			transform: scaleY(1);
+		}
+	}
 
-.equalizer[data-paused="true"] i:nth-child(2) {
-	transform: scaleY(0.73);
-}
+	@media (prefers-reduced-motion: reduce) {
+		.equalizer i {
+			transform: scaleY(0.64);
+			animation: none;
+		}
 
-.equalizer[data-paused="true"] i:nth-child(3) {
-	transform: scaleY(0.36);
+		.equalizer i:nth-child(2) {
+			transform: scaleY(1);
+		}
+
+		.equalizer i:nth-child(3) {
+			transform: scaleY(0.45);
+		}
+	}
+
+	.equalizer[data-paused="true"] i {
+		transform: scaleY(0.45);
+		opacity: 0.55;
+		animation: none;
+	}
+
+	.equalizer[data-paused="true"] i:nth-child(2) {
+		transform: scaleY(0.73);
+	}
+
+	.equalizer[data-paused="true"] i:nth-child(3) {
+		transform: scaleY(0.36);
+	}
 }

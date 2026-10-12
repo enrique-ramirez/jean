@@ -71,7 +71,13 @@ Commands run from the repository root and the root `package.json` delegates them
 ## 5. Styling
 
 1. **CSS Modules, colocated with the component.** The only global stylesheets are `shared/styles/tokens.css` (the palette and scale, as custom properties) and `base.css`. Re-theming Jean SHOULD mean editing custom properties and nothing else.
-2. **A rule in one module that overrides another's MUST outrank it on specificity, never merely follow it.** Module order in the bundle follows import order, and import sorting can flip two rules of equal specificity.
+2. **A class passed into a shared component wins by cascade layer, whatever either rule's specificity or place in the bundle.** A stylesheet under `shared/ui/` or `shared/keyboard/`, and `hitArea.module.css`, is one `@layer shared` block. `base.css` keeps its element rules and the focus ring in `@layer base`, beneath it. `domain/`, `features/` and `app/` stay unlayered, which outranks both.
+   - The caller's plain rule also replaces the component's `:hover`, `:disabled` and `:focus-visible` rule for the same property. Restate the state where it is still wanted.
+   - A layered stylesheet opens with `@layer base, shared;`. Any chunk can be the first one the browser reads, and an order stated after a layered rule does not reorder it.
+   - Nothing in a layer is `!important`, which inverts the order.
+   - Layers do not settle two unlayered modules. There the overriding rule MUST outrank the other on specificity, with a parent class in its selector, never merely follow it: module order in the bundle follows import order, and import sorting can flip two rules of equal specificity.
+
+   `test/unit/cascadeLayers.test.ts` holds the arrangement: which layer each stylesheet's rules are in, the opening statement, and no `!important` in a layer.
 3. **Within one stylesheet, rules ascend in specificity**, so the file reads in the order the cascade applies it. `noDescendingSpecificity` fails the lint on a rule that undoes a more specific one above it.
 4. Anything spatial belongs to a media query, not to a JS breakpoint flag.
 5. Animate compositor properties only, `transform`, `scale`, `rotate` and `opacity`, plus a colour on a control's own box. Never a layout property, a shadow, `border-radius` or `background-position`; `test/unit/animatedProperties.test.ts` reads every stylesheet for one.

@@ -222,7 +222,6 @@
 	background: var(--surface-sunken);
 	font-size: 0.875rem;
 	color: var(--text);
-	outline: none;
 }
 
 .heading:not(:first-child),

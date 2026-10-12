@@ -1,26 +1,30 @@
-.cap {
-	display: inline-grid;
-	place-items: center;
-	height: 20px;
-	padding: 0 6px;
-	box-sizing: border-box;
-	border: 1px solid var(--border-strong);
-	border-radius: 5px;
-	box-shadow: 0 1px 0 var(--border-strong);
-	background: var(--surface-raised);
-	color: var(--text);
-	font-family: inherit;
-	font-size: 0.6875rem;
-	font-weight: 550;
-	line-height: 1;
-}
+@layer base, shared;
 
-@media (pointer: coarse) {
+@layer shared {
 	.cap {
-		display: none;
+		display: inline-grid;
+		place-items: center;
+		height: 20px;
+		padding: 0 6px;
+		box-sizing: border-box;
+		border: 1px solid var(--border-strong);
+		border-radius: 5px;
+		box-shadow: 0 1px 0 var(--border-strong);
+		background: var(--surface-raised);
+		color: var(--text);
+		font-family: inherit;
+		font-size: 0.6875rem;
+		font-weight: 550;
+		line-height: 1;
 	}
-}
 
-.decoration {
-	display: contents;
+	@media (pointer: coarse) {
+		.cap {
+			display: none;
+		}
+	}
+
+	.decoration {
+		display: contents;
+	}
 }

@@ -1,37 +1,41 @@
-.chip {
-	composes: hitArea from "../styles/hitArea.module.css";
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
-	padding: 3px 9px;
-	border: 1px solid var(--border);
-	border-radius: var(--radius-pill);
-	background: var(--surface);
-	font-size: 0.75rem;
-	color: var(--muted);
-}
+@layer base, shared;
 
-.chip b {
-	font-weight: 600;
-	color: var(--text);
-}
+@layer shared {
+	.chip {
+		composes: hitArea from "../styles/hitArea.module.css";
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 3px 9px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-pill);
+		background: var(--surface);
+		font-size: 0.75rem;
+		color: var(--muted);
+	}
 
-.chip[data-link] {
-	text-decoration: none;
-	transition:
-		border-color 0.12s var(--ease),
-		background 0.12s var(--ease),
-		color 0.12s var(--ease);
-}
+	.chip b {
+		font-weight: 600;
+		color: var(--text);
+	}
 
-.chip[data-link]:hover,
-.chip[data-link]:focus-visible {
-	border-color: var(--border-strong);
-	background: var(--surface-raised);
-	color: var(--text);
-}
+	.chip[data-link] {
+		text-decoration: none;
+		transition:
+			border-color 0.12s var(--ease),
+			background 0.12s var(--ease),
+			color 0.12s var(--ease);
+	}
 
-.chip[data-link]:focus-visible {
-	outline: 2px solid var(--accent);
-	outline-offset: 2px;
+	.chip[data-link]:hover,
+	.chip[data-link]:focus-visible {
+		border-color: var(--border-strong);
+		background: var(--surface-raised);
+		color: var(--text);
+	}
+
+	.chip[data-link]:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
 }

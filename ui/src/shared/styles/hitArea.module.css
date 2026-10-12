@@ -1,11 +1,15 @@
-@media (pointer: coarse) {
-	.hitArea {
-		position: relative;
-	}
+@layer base, shared;
 
-	.hitArea::before {
-		content: "";
-		position: absolute;
-		inset: min(0px, calc((100% - var(--touch-target)) / 2));
+@layer shared {
+	@media (pointer: coarse) {
+		.hitArea {
+			position: relative;
+		}
+
+		.hitArea::before {
+			content: "";
+			position: absolute;
+			inset: min(0px, calc((100% - var(--touch-target)) / 2));
+		}
 	}
 }

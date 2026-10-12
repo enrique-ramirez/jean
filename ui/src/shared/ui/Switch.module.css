@@ -1,43 +1,47 @@
-.row {
-	display: flex;
-	align-items: center;
-	gap: 16px;
-	width: 100%;
-	padding: 10px 2px;
-	border: 0;
-	border-radius: var(--radius-sm);
-	background: none;
-	text-align: left;
-	color: var(--text);
-	cursor: pointer;
-}
+@layer base, shared;
 
-.row:disabled {
-	cursor: default;
-	opacity: 0.5;
-}
+@layer shared {
+	.row {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+		width: 100%;
+		padding: 10px 2px;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: none;
+		text-align: left;
+		color: var(--text);
+		cursor: pointer;
+	}
 
-.text {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	min-width: 0;
-	margin-right: auto;
-}
+	.row:disabled {
+		cursor: default;
+		opacity: 0.5;
+	}
 
-.label {
-	font-size: 0.875rem;
-	font-weight: 560;
-}
+	.text {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+		margin-right: auto;
+	}
 
-.description {
-	font-size: 0.75rem;
-	line-height: 1.45;
-	color: var(--faint);
-	text-wrap: pretty;
-}
+	.label {
+		font-size: 0.875rem;
+		font-weight: 560;
+	}
 
-.row:focus-visible {
-	outline: 2px solid var(--accent);
-	outline-offset: 2px;
+	.description {
+		font-size: 0.75rem;
+		line-height: 1.45;
+		color: var(--faint);
+		text-wrap: pretty;
+	}
+
+	.row:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
 }

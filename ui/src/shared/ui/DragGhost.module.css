@@ -1,69 +1,73 @@
-.ghost {
-	position: fixed;
-	top: 0;
-	left: 0;
-	z-index: 80;
-	pointer-events: none;
-}
+@layer base, shared;
 
-.pill {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	max-width: 260px;
-	padding: 7px 10px 7px 11px;
-	border: 1px solid var(--border-strong);
-	border-radius: var(--radius-pill);
-	background: var(--surface-raised);
-	box-shadow: var(--shadow);
-	font-size: 0.75rem;
-	color: var(--muted);
-	transition:
-		border-color 0.12s var(--ease),
-		color 0.12s var(--ease);
-	animation: lift 0.14s var(--ease) backwards;
-}
-
-@keyframes lift {
-	from {
-		opacity: 0;
-		transform: scale(0.9);
+@layer shared {
+	.ghost {
+		position: fixed;
+		top: 0;
+		left: 0;
+		z-index: 80;
+		pointer-events: none;
 	}
-}
 
-.pill[data-armed="true"] {
-	border-color: var(--accent-line);
-	color: var(--text);
-}
+	.pill {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		max-width: 260px;
+		padding: 7px 10px 7px 11px;
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-pill);
+		background: var(--surface-raised);
+		box-shadow: var(--shadow);
+		font-size: 0.75rem;
+		color: var(--muted);
+		transition:
+			border-color 0.12s var(--ease),
+			color 0.12s var(--ease);
+		animation: lift 0.14s var(--ease) backwards;
+	}
 
-.pill svg {
-	flex: 0 0 auto;
-	color: var(--faint);
-}
+	@keyframes lift {
+		from {
+			opacity: 0;
+			transform: scale(0.9);
+		}
+	}
 
-.pill[data-armed="true"] svg {
-	color: var(--accent);
-}
+	.pill[data-armed="true"] {
+		border-color: var(--accent-line);
+		color: var(--text);
+	}
 
-.label {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
+	.pill svg {
+		flex: 0 0 auto;
+		color: var(--faint);
+	}
 
-.count {
-	flex: 0 0 auto;
-	padding: 1px 7px;
-	border-radius: var(--radius-pill);
-	background: var(--accent);
-	font-size: 0.6875rem;
-	font-weight: 650;
-	color: var(--on-accent);
-	font-variant-numeric: tabular-nums;
-}
+	.pill[data-armed="true"] svg {
+		color: var(--accent);
+	}
 
-.pill[data-refused="true"] {
-	border-color: var(--border-strong);
-	background: var(--surface-sunken);
-	color: var(--muted);
+	.label {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.count {
+		flex: 0 0 auto;
+		padding: 1px 7px;
+		border-radius: var(--radius-pill);
+		background: var(--accent);
+		font-size: 0.6875rem;
+		font-weight: 650;
+		color: var(--on-accent);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.pill[data-refused="true"] {
+		border-color: var(--border-strong);
+		background: var(--surface-sunken);
+		color: var(--muted);
+	}
 }

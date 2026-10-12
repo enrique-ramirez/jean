@@ -1,45 +1,49 @@
-.artwork {
-	position: relative;
-	flex: 0 0 auto;
-	overflow: hidden;
-	border-radius: 5px;
-	background: var(--surface-sunken);
-}
+@layer base, shared;
 
-.placeholder {
-	position: absolute;
-	inset: 0;
-	display: grid;
-	place-items: center;
-	border-radius: inherit;
-	color: var(--faint);
-}
+@layer shared {
+	.artwork {
+		position: relative;
+		flex: 0 0 auto;
+		overflow: hidden;
+		border-radius: 5px;
+		background: var(--surface-sunken);
+	}
 
-.placeholder svg {
-	color: var(--faint);
-	width: 42%;
-	height: 42%;
-	max-width: 56px;
-	max-height: 56px;
-}
+	.placeholder {
+		position: absolute;
+		inset: 0;
+		display: grid;
+		place-items: center;
+		border-radius: inherit;
+		color: var(--faint);
+	}
 
-.image {
-	position: absolute;
-	inset: 0;
-	width: 100%;
-	height: 100%;
-	object-fit: cover;
-	/* An `<img>` with a `src` and no bytes yet paints its alt text. */
-	opacity: 0;
-	transition: opacity 0.16s var(--ease);
-}
+	.placeholder svg {
+		color: var(--faint);
+		width: 42%;
+		height: 42%;
+		max-width: 56px;
+		max-height: 56px;
+	}
 
-.artwork[data-artwork="ok"] .image {
-	opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
 	.image {
-		transition: none;
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		/* An `<img>` with a `src` and no bytes yet paints its alt text. */
+		opacity: 0;
+		transition: opacity 0.16s var(--ease);
+	}
+
+	.artwork[data-artwork="ok"] .image {
+		opacity: 1;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.image {
+			transition: none;
+		}
 	}
 }

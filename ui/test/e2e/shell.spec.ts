@@ -207,6 +207,41 @@ const fontsAskedFor = (page: Page) => {
 	return asked;
 };
 
+const layersNamedByEachStylesheet = (page: Page) =>
+	page.evaluate(() => {
+		const namedIn = (rules: CSSRuleList): string[] =>
+			[...rules].flatMap((rule) => {
+				if (rule instanceof CSSLayerStatementRule) return [...rule.nameList];
+				if (rule instanceof CSSLayerBlockRule) return [rule.name];
+				if (rule instanceof CSSGroupingRule) return namedIn(rule.cssRules);
+				return [];
+			});
+		return [...document.styleSheets]
+			.map((sheet) => namedIn(sheet.cssRules))
+			.filter((names) => names.length > 0);
+	});
+
+// A browser orders cascade layers by where each is first named, and Vite links a chunk's
+// stylesheet ahead of the entry's, so the first stylesheet read is not the one holding `base.css`.
+test.describe("a shared control over the element reset", () => {
+	test("a button keeps its own type size, and every stylesheet loaded by the time a dialog is open names the base layer first", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		const shuffle = page.getByRole("button", { name: "Shuffle", exact: true });
+		const size = await shuffle.evaluate((element) => ({
+			own: getComputedStyle(element).fontSize,
+			inherited: getComputedStyle(element.parentElement as Element).fontSize,
+		}));
+		expect(size.own).not.toBe(size.inherited);
+
+		await openSettings(page);
+		const layers = await layersNamedByEachStylesheet(page);
+		expect(layers.length).toBeGreaterThan(1);
+		for (const names of layers) expect(names[0]).toBe("base");
+	});
+});
+
 // The fake sends foo_jean's own policy on the page, so anything the policy refuses is refused
 // here as it is on an install. The tab's icon is the worked example: it is swapped for every
 // frame of a playing record, and a refused one leaves the tab with no icon at all.

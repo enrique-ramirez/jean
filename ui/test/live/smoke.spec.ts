@@ -2,10 +2,10 @@ import { fold } from "../../src/shared/lib/text.ts";
 import {
 	openSettings,
 	orderButton,
-	scrollUntilMounted,
 	statusBar,
 	trackRow,
 } from "../e2e/fixtures.ts";
+import { scrollUntilMounted } from "../e2e/scrolling.ts";
 import { component, type PlaybackMode, player } from "./component.ts";
 import {
 	expect,

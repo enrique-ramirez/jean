@@ -1,7 +1,7 @@
 import { UNRESPONSIVE_AFTER_MS } from "../../src/domain/player/connection.ts";
 import { en } from "../../src/shared/i18n/en.ts";
 import type { Page } from "./fixtures.ts";
-import { expect, openLibrary, statusBar, test, trackRow } from "./fixtures.ts";
+import { expect, playFirstRow, test, toastRegion } from "./fixtures.ts";
 
 // `foo_jean` answers `GET /api/state` from its own store, so while foobar2000's
 // main thread is held by a modal dialog, a scan or a hung DSP the poll goes on
@@ -12,16 +12,7 @@ const HEADLINE = en["connection.unresponsive"];
 const REMEDY = en["connection.unresponsiveRemedy"];
 const UNRESPONSIVE_TITLE = `${en["player.unresponsive"]} · Jean`;
 
-const notice = (page: Page) =>
-	page.getByRole("status").filter({ hasText: HEADLINE });
-
-const playFirstRow = async (page: Page, isMobile: boolean) => {
-	await openLibrary(page);
-	if (isMobile) await trackRow(page, 0).tap();
-	else await trackRow(page, 0).dblclick();
-	await expect(statusBar(page)).toContainText("Los Calientes");
-	await expect(page).toHaveTitle(/^Los Calientes/);
-};
+const notice = (page: Page) => toastRegion(page).filter({ hasText: HEADLINE });
 
 // Resolves once the page has been handed a poll reporting the stall, rather
 // than once one was asked, so the stall is known to have reached Jean.

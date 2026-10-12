@@ -1,58 +1,70 @@
 import type { Route } from "@playwright/test";
 import { en } from "../../src/shared/i18n/en.ts";
 import type { DetachedSession, SessionDevice } from "../fake-api/sessions.ts";
-import { evaluate, type Track } from "../fake-api/state.ts";
+import type { Track } from "../fake-api/state.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
+	CLOCK_STEP_MS,
 	countPostsTo,
 	countPostsToSession,
-	dragTo,
 	drawing,
 	expect,
 	expectDisabledWithReason,
 	expectSettlesAt,
+	fieldOf,
 	openLibrary,
+	pickerOpener,
 	playbackCommands,
 	playingOn,
 	playRequests,
-	restingBox,
+	runClockFor,
 	statusBar,
 	test,
+	titleOf,
+	toastRegion,
 	tokenColourIn,
-	touchDrag,
 	trackRow,
 	untilQuiet,
 	untilTheInstallIsKnown,
+	volumesSent,
 } from "./fixtures.ts";
+import { dragTo, restingBox, touchDrag } from "./gestures.ts";
+import {
+	currentRows,
+	DEVICE,
+	DEVICE_NAME,
+	LEAVE_NAMED,
+	LISTENING_HERE,
+	leaveButton,
+	listensIn,
+	OFFERING_SESSIONS,
+	openOnThePlayer,
+	openPicker,
+	ownRow,
+	PAST_THE_SECOND_LEAVE_MS,
+	PLAYER_NAME,
+	pickerRows,
+	playerRowOf,
+	ROUTE_WITH_NO_LIST,
+	refusalsFrom,
+	rowLabelled,
+	SESSION_KEY,
+	START,
+	startButton,
+	strictOnceSettled,
+	THIS_DEVICE,
+	thePlayersFace,
+} from "./sessions.ts";
 
-const DEVICE = "5f1c0a9e3b7d4e2a8c6b0d1f2e3a4b5c";
-const DEVICE_NAME = "Den laptop";
-
-const OFFERING_SESSIONS = {
-	fooJean: { maxSessions: 4, canCreateSessions: true },
-	settings: { "jean.deviceId": DEVICE, "jean.deviceName": DEVICE_NAME },
-};
-
-const PLAYER_NAME = "foobar2000";
-const START = "Play something else here";
-const THIS_DEVICE = "This device";
 const UNKNOWN_DEVICE = "Unknown device";
 const NOBODY_LISTENING = "Nobody listening";
-const LEAVE_NAMED = `Leave, and go back to ${PLAYER_NAME}`;
-
-const ROUTE_WITH_NO_LIST = "/#/search";
-
-const field = (track: Track, expression: string) =>
-	String(evaluate(track, expression) ?? "");
-
-const titleOf = (track: Track) => field(track, "%title%");
-const artistOf = (track: Track) => field(track, "%artist%");
+const artistOf = (track: Track) => fieldOf(track, "%artist%");
 
 const oneOffEachRecord = (player: FakePlayer) => {
 	const library = player.playlistById("p7")?.items ?? [];
 	const records = new Map<string, Track>();
 	for (const track of library) {
-		const record = field(track, "%album%");
+		const record = fieldOf(track, "%album%");
 		if (!records.has(record)) records.set(record, track);
 	}
 	const [atThePlayer, first, second, third] = records.values();
@@ -88,45 +100,12 @@ const startedElsewhere = (
 	return session;
 };
 
-const opener = (page: Page) =>
-	statusBar(page).getByRole("button", {
-		name: /^(Choose where to play|Playing on this device|Playing what .+ started)/,
-	});
-
-const openPicker = async (page: Page) => {
-	await opener(page).click();
-	await expect(playingOn(page)).toBeVisible();
-};
-
-const rows = (page: Page) =>
-	playingOn(page).getByRole("listitem").and(page.locator("li:not(li li)"));
-
-const rowLabelled = (page: Page, label: string) =>
-	rows(page).filter({ has: page.getByText(label, { exact: true }) });
-
-const playerRowOf = (page: Page) => rowLabelled(page, PLAYER_NAME);
-
-const ownRow = (page: Page) => rowLabelled(page, THIS_DEVICE);
-
-const startButton = (page: Page) =>
-	playingOn(page).getByRole("button", { name: START, exact: true });
-
-const leaveButton = (page: Page) =>
-	playingOn(page).getByRole("button", { name: LEAVE_NAMED, exact: true });
-
-const thePlayersFace = (page: Page) =>
-	playingOn(page).getByRole("button", { name: "Listen here", exact: true });
-
-// WAI-ARIA reads `aria-current="false"` as not current, the same as no attribute.
-const currentRows = (page: Page) =>
-	rows(page).and(page.locator('[aria-current]:not([aria-current="false"])'));
-
 const rowsHolding = async (page: Page, labels: string[]) => {
 	const holds = async (row: Locator, label: string) =>
 		(await row.getByText(label, { exact: true }).count()) > 0 ||
 		(await row.getByRole("button", { name: label, exact: true }).count()) > 0;
 	const drawn: string[] = [];
-	for (const row of await rows(page).all()) {
+	for (const row of await pickerRows(page).all()) {
 		const held: string[] = [];
 		for (const label of labels) if (await holds(row, label)) held.push(label);
 		drawn.push(held.join(" + ") || "?");
@@ -142,36 +121,6 @@ const sessionReads = (player: FakePlayer) =>
 		(entry) =>
 			entry.method === "GET" && entry.path.split("?")[0] === "/api/sessions",
 	);
-
-const refusalsFrom = (page: Page) => {
-	const refused: string[] = [];
-	page.on("response", (response) => {
-		const url = new URL(response.url());
-		if (response.status() === 500 && url.pathname.startsWith("/api/"))
-			refused.push(`${response.request().method()} ${url.pathname}`);
-	});
-	return refused;
-};
-
-const strictOnceSettled = async (player: FakePlayer) => {
-	await untilQuiet(player);
-	player.fooJean.strictSessions = true;
-	return {
-		release() {
-			player.fooJean.strictSessions = false;
-		},
-	};
-};
-
-const openOnThePlayer = async (page: Page, route = ROUTE_WITH_NO_LIST) => {
-	const refused = refusalsFrom(page);
-	await page.goto(route);
-	await expect(opener(page)).toBeVisible();
-	return refused;
-};
-
-const listensIn = (session: DetachedSession) =>
-	session.roster().some((device) => device.deviceId === DEVICE);
 
 const startedHere = (player: FakePlayer) =>
 	player.sessions
@@ -200,12 +149,6 @@ const inStartedSession = async (
 };
 
 const OPEN_CADENCE_MS = 4_000;
-const CLOCK_STEP_MS = 250;
-
-const advance = async (page: Page, ms: number) => {
-	for (let passed = 0; passed < ms; passed += CLOCK_STEP_MS)
-		await page.clock.runFor(CLOCK_STEP_MS);
-};
 
 const pauseTheClock = async (page: Page) =>
 	page.clock.pauseAt((await page.evaluate(() => Date.now())) + CLOCK_STEP_MS);
@@ -229,7 +172,7 @@ test.describe("the picker's list, where sessions are offered", () => {
 		await openPicker(page);
 
 		await expectRowsInOrder(page, [PLAYER_NAME, ...LISTED, START]);
-		await expect(rows(page)).toHaveCount(5);
+		await expect(pickerRows(page)).toHaveCount(5);
 		await expect(playingOn(page).getByText(PRIVATE_ELSEWHERE)).toHaveCount(0);
 	});
 
@@ -244,12 +187,12 @@ test.describe("the picker's list, where sessions are offered", () => {
 		await pauseTheClock(page);
 
 		const closedFrom = sessionReads(player).length;
-		await advance(page, 3 * OPEN_CADENCE_MS);
+		await runClockFor(page, 3 * OPEN_CADENCE_MS);
 		await untilQuiet(player);
 		expect(sessionReads(player).length).toBe(closedFrom);
 
-		await opener(page).click();
-		await advance(page, CLOCK_STEP_MS);
+		await pickerOpener(page).click();
+		await runClockFor(page, CLOCK_STEP_MS);
 		await expect.poll(() => sessionReads(player).length).toBe(closedFrom + 1);
 		await expect(rowLabelled(page, "Study desk")).toHaveCount(1);
 
@@ -316,7 +259,7 @@ test.describe("the picker's list, where sessions are offered", () => {
 		await openPicker(page);
 		await expect(rowLabelled(page, "Study desk")).toHaveCount(1);
 
-		await expect(rows(page)).toHaveCount(4);
+		await expect(pickerRows(page)).toHaveCount(4);
 		await expect(currentRows(page)).toHaveCount(1);
 		await expect(
 			currentRows(page).getByText(THIS_DEVICE, { exact: true }),
@@ -349,8 +292,8 @@ test.describe("a listed session's label", () => {
 		await openOnThePlayer(page);
 		await openPicker(page);
 
-		await expect(rows(page)).toHaveCount(3);
-		await expect(rows(page).nth(1)).toContainText(UNKNOWN_DEVICE);
+		await expect(pickerRows(page)).toHaveCount(3);
+		await expect(pickerRows(page).nth(1)).toContainText(UNKNOWN_DEVICE);
 		await expect(rowLabelled(page, UNKNOWN_DEVICE)).toHaveCount(1);
 	});
 
@@ -366,12 +309,12 @@ test.describe("a listed session's label", () => {
 		await openOnThePlayer(second);
 		await openPicker(second);
 
-		await expect(rows(second)).toHaveCount(3);
+		await expect(pickerRows(second)).toHaveCount(3);
 		await expect(ownRow(second)).toHaveCount(1);
 		await expect(
 			ownRow(second).getByText(DEVICE_NAME, { exact: true }),
 		).toHaveCount(1);
-		await expect(rows(second).nth(1)).toContainText(THIS_DEVICE);
+		await expect(pickerRows(second).nth(1)).toContainText(THIS_DEVICE);
 		await expect(currentRows(second)).toHaveCount(1);
 		await expect(
 			currentRows(second).getByText(PLAYER_NAME, { exact: true }),
@@ -391,7 +334,7 @@ test.describe("a listed session's label", () => {
 
 		await openPicker(page);
 
-		await expect(rows(page)).toHaveCount(3);
+		await expect(pickerRows(page)).toHaveCount(3);
 		await expect(rowLabelled(page, "Study desk")).toHaveCount(1);
 		await expect(playingOn(page).getByText("Porch tablet")).toHaveCount(0);
 	});
@@ -537,7 +480,7 @@ test.describe("a row's face, with sessions listed", () => {
 		startedElsewhere(player, "Attic radio");
 		await page.keyboard.press("Escape");
 		await openPicker(page);
-		await expect(rows(page)).toHaveCount(5);
+		await expect(pickerRows(page)).toHaveCount(5);
 
 		await expect(
 			ownRow(page).getByRole("button").filter({ hasText: DEVICE_NAME }),
@@ -563,7 +506,7 @@ test.describe("a row's face, with sessions listed", () => {
 		startedElsewhere(player, "Attic radio");
 		await openOnThePlayer(page);
 		await openPicker(page);
-		await expect(rows(page)).toHaveCount(4);
+		await expect(pickerRows(page)).toHaveCount(4);
 		await expect(thePlayersFace(page)).toBeVisible();
 
 		expect(await nestedControls(page)).toEqual([]);
@@ -681,7 +624,7 @@ test.describe("the picker's sheet, scrolled by a touch that begins on a face", (
 			startedElsewhere(player, `Speaker ${made + 1}`);
 		await openOnThePlayer(page);
 		await openPicker(page);
-		await expect(rows(page)).toHaveCount(LISTED + 2);
+		await expect(pickerRows(page)).toHaveCount(LISTED + 2);
 		await expect
 			.poll(async () => (await listScroll(page))?.room ?? 0)
 			.toBeGreaterThan(100);
@@ -712,10 +655,6 @@ const SHARE = "Let others join";
 const SHARE_ON = "Other devices can listen along or control it.";
 const SHARE_OFF = "Only the devices already in it can see it.";
 const PRIVATE = "Private";
-const SESSION_KEY = "jean.session";
-
-const PAST_THE_SECOND_LEAVE_MS = 3_000;
-
 const shareSwitch = (scope: Locator) =>
 	scope.getByRole("switch", { name: SHARE, exact: true });
 
@@ -859,7 +798,7 @@ test.describe("sharing what this device started", () => {
 		player,
 	}) => {
 		const { strict, refused } = await inStartedSession(page, player);
-		await expect(rows(page)).toHaveCount(3);
+		await expect(pickerRows(page)).toHaveCount(3);
 
 		await expect(playingOn(page).getByRole("switch")).toHaveCount(1);
 		await expect(shareSwitch(ownRow(page))).toHaveCount(1);
@@ -1044,7 +983,7 @@ test.describe("sharing what another device started and shared", () => {
 		await storeForThisTab(page, { id: session.id, listening: false });
 		const refused = refusalsFrom(page);
 		await page.goto(ROUTE_WITH_NO_LIST);
-		await expect(opener(page)).toHaveAccessibleName(
+		await expect(pickerOpener(page)).toHaveAccessibleName(
 			`Playing what ${CREATOR} started`,
 		);
 		const strict = await strictOnceSettled(player);
@@ -1196,7 +1135,7 @@ const watchThePage = (page: Page, phrases: string[]) =>
 		Object.assign(window, { watchedToasts: toasts, watchedShown: shown });
 		const look = () => {
 			for (const dismiss of document.querySelectorAll(
-				'[role="status"] button[aria-label="Dismiss"]',
+				'[data-toasts] button[aria-label="Dismiss"]',
 			))
 				toasts.add(dismiss.parentElement?.textContent ?? "");
 			const text = document.body?.textContent ?? "";
@@ -1394,7 +1333,7 @@ test.describe("a session another device started, where the install cannot stream
 		await untilTheInstallIsKnown(player);
 		await untilQuiet(player);
 
-		await expect(opener(page)).toHaveCount(0);
+		await expect(pickerOpener(page)).toHaveCount(0);
 		await expect(page.getByText("Kitchen tablet")).toHaveCount(0);
 		await expect(
 			page.getByRole("button", { name: joinNamed("Kitchen tablet") }),
@@ -1793,10 +1732,10 @@ test.describe("the position after a switch while listening", () => {
 	}) => {
 		const library = player.playlistById("p7")?.items ?? [];
 		const track = library.find(
-			(entry) => Number(field(entry, "%length_seconds%")) >= 200,
+			(entry) => Number(fieldOf(entry, "%length_seconds%")) >= 200,
 		);
 		if (!track) throw new Error("the library holds no track of 200 seconds");
-		const length = Number(field(track, "%length_seconds%"));
+		const length = Number(fieldOf(track, "%length_seconds%"));
 		const LEFT_AT = 10;
 		const JOINED_AT = length - 40;
 
@@ -1942,7 +1881,7 @@ test.describe("the picker's sheet, scrolled by a touch that begins on a listed f
 			startedElsewhere(player, `Speaker ${made + 1}`);
 		await openOnThePlayer(page);
 		await openPicker(page);
-		await expect(rows(page)).toHaveCount(LISTED + 2);
+		await expect(pickerRows(page)).toHaveCount(LISTED + 2);
 		const face = faceOf(page, "Speaker 3");
 		await expect(face).toBeVisible();
 		await expect.poll(() => listScrollTop(page)).toBe(0);
@@ -2221,17 +2160,17 @@ test.describe("each session's roster in the picker", () => {
 			started.id,
 			aDevice(first),
 		);
-		await advance(page, OPEN_CADENCE_MS);
+		await runClockFor(page, OPEN_CADENCE_MS);
 		await expect.poll(() => namesIn(ownRow(page))).toEqual([first]);
 
 		player.addSessionListener(started.id, aDevice(second));
-		await advance(page, OPEN_CADENCE_MS);
+		await runClockFor(page, OPEN_CADENCE_MS);
 		await expect
 			.poll(() => namesIn(ownRow(page)))
 			.toEqual(sorted([first, second]));
 
 		firstConnection.close();
-		await advance(page, OPEN_CADENCE_MS);
+		await runClockFor(page, OPEN_CADENCE_MS);
 		await expect.poll(() => namesIn(ownRow(page))).toEqual([second]);
 		strict.release();
 		expect(refused).toEqual([]);
@@ -2269,7 +2208,6 @@ test.describe("each session's roster in the picker", () => {
 const CONTROL = "Control";
 const CONTROLLING = "Controlling, not listening";
 const LISTEN_HERE = "Listen here";
-const LISTENING_HERE = "Listening here";
 const ROSTER_WHILE_CONTROLLING = "Listening";
 
 const controlNamed = (device: string) =>
@@ -2335,7 +2273,7 @@ const controlFromThePicker = async (
 ) => {
 	await openPicker(page);
 	await controlOf(page, device).click();
-	await expect(opener(page)).toHaveAccessibleName(
+	await expect(pickerOpener(page)).toHaveAccessibleName(
 		new RegExp(`^${playingWhat(device)}`),
 	);
 	await expect(
@@ -2351,7 +2289,7 @@ const recordToasts = (page: Page) =>
 		Object.assign(window, { raisedToasts: raised });
 		new MutationObserver(() => {
 			for (const dismiss of document.querySelectorAll(
-				'[role="status"] button[aria-label="Dismiss"]',
+				'[data-toasts] button[aria-label="Dismiss"]',
 			)) {
 				const toast = dismiss.parentElement;
 				if (!toast || seen.has(toast)) continue;
@@ -2380,7 +2318,7 @@ test.describe("Control, on a row another device started", () => {
 		startedElsewhere(player, UNHEARD);
 		await openOnThePlayer(page);
 		await openPicker(page);
-		await expect(rows(page)).toHaveCount(4);
+		await expect(pickerRows(page)).toHaveCount(4);
 		await expect(rowLabelled(page, UNHEARD)).toContainText(NOBODY_LISTENING);
 
 		const control = controlOf(page, HEARD);
@@ -2433,7 +2371,7 @@ test.describe("pressing Control", () => {
 
 		await controlOf(page, CREATOR).click();
 
-		await expect(opener(page)).toHaveAccessibleName(
+		await expect(pickerOpener(page)).toHaveAccessibleName(
 			new RegExp(`^${playingWhat(CREATOR)}`),
 		);
 		await expect(statusBar(page)).toContainText(titleOf(plays));
@@ -2506,13 +2444,13 @@ test.describe("pressing Control", () => {
 		expect(await storedSession(page)).toBeNull();
 		expectEachNames(await nextPolls(polls), ON_THE_PLAYER);
 		expect(await toastsRaised(page)).toEqual([]);
-		await expect(opener(page)).not.toHaveAccessibleName(
+		await expect(pickerOpener(page)).not.toHaveAccessibleName(
 			new RegExp(`^${playingWhat(CREATOR)}`),
 		);
 		expect(refused).toEqual([]);
 	});
 
-	test("while this device listens to the player, asks after the session before it lets go of the player's stream and sends the player's leave, and opens nothing", async ({
+	test("while this device listens to the player, asks after the session before it sends the player's leave, ends off the player's stream, and opens nothing", async ({
 		page,
 		player,
 	}) => {
@@ -2530,15 +2468,6 @@ test.describe("pressing Control", () => {
 			if (route === "POST /api/stream/leave") seen.push(`leave ${of}`);
 			if (route === "GET /api/stream") seen.push("stream opened");
 		});
-		const closed = (request: { method: () => string; url: () => string }) => {
-			if (
-				request.method() === "GET" &&
-				new URL(request.url()).pathname === "/api/stream"
-			)
-				seen.push("stream closed");
-		};
-		page.on("requestfinished", closed);
-		page.on("requestfailed", closed);
 		await openPicker(page);
 		await thePlayersFace(page).click();
 		await expect(
@@ -2551,7 +2480,7 @@ test.describe("pressing Control", () => {
 
 		await controlOf(page, CREATOR).click();
 
-		await expect(opener(page)).toHaveAccessibleName(
+		await expect(pickerOpener(page)).toHaveAccessibleName(
 			new RegExp(`^${playingWhat(CREATOR)}`),
 		);
 		await expect.poll(() => player.openStreams).toBe(0);
@@ -2559,7 +2488,6 @@ test.describe("pressing Control", () => {
 		const after = seen.slice(from);
 		expect(after[0]).toBe("poll it");
 		expect(after).toContain("leave the player");
-		expect(after).toContain("stream closed");
 		expect(
 			after.filter(
 				(step) => step.startsWith("ticket") || step === "stream opened",
@@ -2652,7 +2580,7 @@ test.describe("the row this tab only controls", () => {
 			await expect(
 				row.getByRole("button", { name: LEAVE_NAMED, exact: true }),
 			).toBeFocused();
-		await expect(opener(page)).toHaveAccessibleName(
+		await expect(pickerOpener(page)).toHaveAccessibleName(
 			new RegExp(`^${playingWhat(CREATOR)}`),
 		);
 		expectEachNames(await nextPolls(polls), {
@@ -2952,7 +2880,7 @@ test.describe("Control from the keyboard", () => {
 
 			await page.keyboard.press(key);
 
-			await expect(opener(page)).toHaveAccessibleName(
+			await expect(pickerOpener(page)).toHaveAccessibleName(
 				new RegExp(`^${playingWhat(CREATOR)}`),
 			);
 			const strict = await strictOnceSettled(player);
@@ -3024,13 +2952,13 @@ test.describe("a hidden page that only controls", () => {
 		const refused = refusalsFrom(page);
 		const polls = pollScopesOf(page);
 		await page.goto(ROUTE_WITH_NO_LIST);
-		await expect(opener(page)).toHaveAccessibleName(playingWhat(CREATOR));
+		await expect(pickerOpener(page)).toHaveAccessibleName(playingWhat(CREATOR));
 		const strict = await strictOnceSettled(player);
 		await pauseTheClock(page);
 
 		await turnHidden(page);
 		const from = polls.length;
-		await advance(page, 3 * BACKGROUND_CADENCE_MS + CLOCK_STEP_MS);
+		await runClockFor(page, 3 * BACKGROUND_CADENCE_MS + CLOCK_STEP_MS);
 		await untilQuiet(player);
 
 		const hidden = polls.slice(from);
@@ -3063,7 +2991,7 @@ test.describe("a page that only controls a private session, when the other page 
 		await storeForThisTab(page, { id: session.id, listening: false });
 		const polls = pollScopesOf(page);
 		await page.goto(ROUTE_WITH_NO_LIST);
-		await expect(opener(page)).toHaveAccessibleName(playingWhat(CREATOR));
+		await expect(pickerOpener(page)).toHaveAccessibleName(playingWhat(CREATOR));
 
 		const beside = await page.context().newPage();
 		await storeForThisTab(beside, { id: session.id, listening: true });
@@ -3140,7 +3068,7 @@ const pollsAndLeavesOf = (page: Page, session: DetachedSession) => {
 // only the page clock fires.
 const advanceSettled = async (page: Page, player: FakePlayer, ms: number) => {
 	for (let left = ms; left > 0; left -= OPEN_CADENCE_MS) {
-		await advance(page, Math.min(left, OPEN_CADENCE_MS));
+		await runClockFor(page, Math.min(left, OPEN_CADENCE_MS));
 		await untilQuiet(player);
 		await page.clock.runFor(1);
 	}
@@ -3209,8 +3137,7 @@ const wordsBoxOf = (scope: Locator, phrase: string) =>
 	}, phrase);
 
 const expectNeutralTone = async (page: Page, phrase: string) => {
-	const toast = page
-		.getByRole("status")
+	const toast = toastRegion(page)
 		.filter({ has: page.getByRole("button", { name: "Dismiss" }) })
 		.filter({ hasText: phrase });
 	await expect(toast).toHaveCount(1);
@@ -3249,7 +3176,7 @@ test.describe("the document of what the page only controls", () => {
 		await page.clock.install();
 		const refused = refusalsFrom(page);
 		await page.goto(ROUTE_WITH_NO_LIST);
-		await expect(opener(page)).toHaveAccessibleName(playingWhat(CREATOR));
+		await expect(pickerOpener(page)).toHaveAccessibleName(playingWhat(CREATOR));
 		const strict = await strictOnceSettled(player);
 		await pauseTheClock(page);
 		await advanceSettled(page, player, ONE_POLL_MS);
@@ -3303,7 +3230,7 @@ test.describe("the document of what the page only controls", () => {
 		await page.clock.install();
 		const refused = refusalsFrom(page);
 		await page.goto(ROUTE_WITH_NO_LIST);
-		await expect(opener(page)).toHaveAccessibleName(playingWhat(CREATOR));
+		await expect(pickerOpener(page)).toHaveAccessibleName(playingWhat(CREATOR));
 		const strict = await strictOnceSettled(player);
 		await pauseTheClock(page);
 		await openPicker(page);
@@ -3364,7 +3291,7 @@ test.describe("nobody listening any more, to what the page only controls", () =>
 		await page.clock.install();
 		const refused = refusalsFrom(page);
 		await page.goto(ROUTE_WITH_NO_LIST);
-		await expect(opener(page)).toHaveAccessibleName(playingWhat(CREATOR));
+		await expect(pickerOpener(page)).toHaveAccessibleName(playingWhat(CREATOR));
 		const strict = await strictOnceSettled(player);
 		await pauseTheClock(page);
 		return { session, hearing, strict, refused };
@@ -3399,7 +3326,7 @@ test.describe("nobody listening any more, to what the page only controls", () =>
 			id: session.id,
 			listening: false,
 		});
-		await expect(opener(page)).toHaveAccessibleName(
+		await expect(pickerOpener(page)).toHaveAccessibleName(
 			new RegExp(`^${playingWhat(CREATOR)}`),
 		);
 	};
@@ -3502,7 +3429,7 @@ test.describe("nobody listening any more, to what the page only controls", () =>
 		expect(player.sessions.find(session.id)).toBe(session);
 
 		await page.reload();
-		await expect(opener(page)).not.toHaveAccessibleName(
+		await expect(pickerOpener(page)).not.toHaveAccessibleName(
 			new RegExp(`^${playingWhat(CREATOR)}`),
 		);
 		await advanceSettled(page, player, 3 * ONE_POLL_MS);
@@ -3622,7 +3549,7 @@ test.describe("nobody listening any more, to what the page only controls", () =>
 
 		strict.release();
 		await page.unroute(theDocument);
-		await advance(
+		await runClockFor(
 			page,
 			NOBODY_LISTENING_MS + OPEN_CADENCE_MS + 2 * ONE_POLL_MS,
 		);
@@ -3646,7 +3573,7 @@ test.describe("nobody listening any more, to what the page only controls", () =>
 		await turnHidden(page);
 		await advanceSettled(page, player, 3 * BACKGROUND_CADENCE_MS);
 		await turnVisible(page);
-		await advance(
+		await runClockFor(
 			page,
 			NOBODY_LISTENING_MS + OPEN_CADENCE_MS + 2 * ONE_POLL_MS,
 		);
@@ -3740,16 +3667,10 @@ const moveFader = async (
 	});
 };
 
-const volumesSent = (player: FakePlayer, from = 0) =>
-	player.requests
-		.slice(from)
-		.filter(
-			(entry) =>
-				entry.method === "POST" && entry.path.split("?")[0] === "/api/volume",
-		)
-		.map((entry) =>
-			new URL(entry.path, "http://fake").searchParams.get("session"),
-		);
+const volumeScopes = (player: FakePlayer, from = 0) =>
+	volumesSent(player, from).map((entry) =>
+		new URL(entry.path, "http://fake").searchParams.get("session"),
+	);
 
 const statusBarFaders = async (page: Page, isMobile: boolean) => {
 	const bar = statusBar(page);
@@ -3796,11 +3717,11 @@ test.describe("the status bar's fader while the page only controls", () => {
 		const from = player.requests.length;
 		await moveFader(page, isMobile, thePlayersFader(page), 0.3);
 		await expect
-			.poll(() => volumesSent(player, from).length)
+			.poll(() => volumeScopes(player, from).length)
 			.toBeGreaterThan(0);
 		await untilQuiet(player);
-		expect(volumesSent(player, from)).toEqual(
-			volumesSent(player, from).map(() => null),
+		expect(volumeScopes(player, from)).toEqual(
+			volumeScopes(player, from).map(() => null),
 		);
 		expect(player.player.volume.value).not.toBe(level);
 
@@ -3839,7 +3760,7 @@ test.describe("the status bar's fader while the page only controls, with playbac
 		await closeThePicker(page, isMobile);
 
 		await expectNoFaderIn(page, player);
-		expect(volumesSent(player)).toEqual([]);
+		expect(volumeScopes(player)).toEqual([]);
 		strict.release();
 		expect(refused).toEqual([]);
 	});
@@ -3878,7 +3799,7 @@ test.describe("the status bar's fader while the page is in what it started and h
 				(document.activeElement as HTMLElement | null)?.blur(),
 			);
 			for (const key of ["=", "-", "="]) await page.keyboard.press(key);
-			await expectSettlesAt(player, () => volumesSent(player), []);
+			await expectSettlesAt(player, () => volumeScopes(player), []);
 		}
 		strict.release();
 		expect(refused).toEqual([]);
@@ -3908,7 +3829,7 @@ test.describe("the status bar's fader while the page is in what it started and h
 		await expect(faders).toHaveAccessibleName("Volume on this device");
 		await moveFader(page, isMobile, faders, 0.2);
 
-		await expectSettlesAt(player, () => volumesSent(player, from), []);
+		await expectSettlesAt(player, () => volumeScopes(player, from), []);
 		strict.release();
 		expect(refused).toEqual([]);
 	});

@@ -1,29 +1,43 @@
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
-	choosePlayer,
+	countPostsTo,
 	expect,
 	expectSettlesAt,
+	globalControls,
 	guidOfPlaylist,
 	holdThePoll,
 	listenHere,
 	MEDIA_SESSION_ACTIONS_WITH_CONTROL,
 	mediaSessionActions,
 	openLibrary,
+	orderButton,
+	pickerOpener,
+	playbackOffToast,
+	playingAtThePlayer,
 	playingOn,
-	pressAndHold,
 	REASON,
 	recordMediaSessionHandlers,
+	refusedAsks,
 	refusePlaylistWrites,
+	revealSearch,
+	scratchOf,
+	searchField,
 	searchFor,
 	statusBar,
 	test,
+	toastRegion,
 	trackRow,
 	untilQuiet,
 	viewHeader,
 } from "./fixtures.ts";
+import { dragTo } from "./gestures.ts";
+import { openRowMenu } from "./menus.ts";
 
 const playPause = (page: Page) =>
 	statusBar(page).getByRole("button", { name: /^(Play|Pause)\b/ });
+
+const statusBarVolume = (page: Page) =>
+	statusBar(page).getByRole("slider", { name: /^Volume\b/ });
 
 const saveAsPlaylist = (page: Page) =>
 	viewHeader(page).getByRole("button", { name: /^Save as playlist\b/ });
@@ -58,12 +72,6 @@ const expectSameLoad = async (page: Page) =>
 		await page.evaluate((key) => Reflect.get(window, key), LOAD_MARK),
 		"the page reloaded",
 	).toBe(true);
-
-const playingAtThePlayer = async (page: Page, player: FakePlayer) => {
-	player.playItem("p7", 2);
-	await openLibrary(page);
-	await expect(statusBar(page)).toContainText("Deléctrico");
-};
 
 test.describe("a switch changed at the player while Jean is open", () => {
 	test("turning playback control off disables Play/Pause with the reason on the next poll, and turning it on enables it again, with no reload", async ({
@@ -112,7 +120,7 @@ test.describe("a switch changed at the player while Jean is open", () => {
 		const bar = statusBar(page);
 		const fader = bar.getByRole("slider", { name: /^Volume\b/ });
 		const expectListeningWithItsFader = async () => {
-			await expect(choosePlayer(page)).toHaveAccessibleName(
+			await expect(pickerOpener(page)).toHaveAccessibleName(
 				/Playing on this device/,
 			);
 			if (isMobile && !(await fader.isVisible()))
@@ -244,22 +252,11 @@ test.describe("a switch changed at the player while Jean is open", () => {
 	});
 });
 
-const toast = (page: Page) => page.getByRole("status");
-
 const refusedWrite = (page: Page) =>
 	page.waitForResponse(
 		(response) =>
 			response.request().method() !== "GET" && response.status() === 403,
 	);
-
-const openRowMenu = async (page: Page, index: number, isMobile: boolean) => {
-	const row = trackRow(page, index);
-	if (isMobile) await pressAndHold(page, row);
-	else await row.click({ button: "right" });
-	await expect(
-		page.getByRole("menuitem", { name: /^Add to queue/ }),
-	).toBeVisible();
-};
 
 // The poll is held throughout, so the player's own 403 is the only thing that
 // can tell Jean the switch moved: a press made in the second before the next
@@ -280,7 +277,7 @@ test.describe("a write that raced a switch turned off at the player", () => {
 		await control.click();
 		await refused;
 
-		await expect(toast(page)).toContainText(REASON);
+		await expect(toastRegion(page)).toContainText(REASON);
 		await expect(control).toHaveAttribute("aria-disabled", "true");
 		await expect(control).toHaveAccessibleName(REASON);
 	});
@@ -295,18 +292,154 @@ test.describe("a write that raced a switch turned off at the player", () => {
 		await holdThePoll(page);
 		await refusePlaylistWrites(page);
 
-		await openRowMenu(page, 0, isMobile);
+		await openRowMenu(page, isMobile, 0, /^Add to queue/);
 		await page.getByRole("menuitem", { name: "Add to playlist" }).click();
 		const refused = refusedWrite(page);
 		await page
 			.getByRole("menuitem", { name: "Favorites", exact: true })
 			.click();
 		await refused;
-		await expect(toast(page)).toContainText("writePlaylists");
+		await expect(toastRegion(page)).toContainText("writePlaylists");
 
-		await openRowMenu(page, 1, isMobile);
+		await openRowMenu(page, isMobile, 1, /^Add to queue/);
 		await expect(
 			page.getByRole("menuitem", { name: /Add to playlist/ }),
 		).toHaveCount(0);
+	});
+});
+
+test.describe("playback control turned off while Jean is open", () => {
+	// Jean learns of the switch on the poll, and a drag already under way was
+	// armed before it did. Whatever the gesture does after the controls redraw
+	// disabled is a write Jean already knew would be refused.
+	test("a volume drag under way stops writing once the fader turns disabled", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "dragging a fader is a mouse gesture");
+
+		await playingAtThePlayer(page, player);
+		const fader = statusBarVolume(page);
+		await expect(fader).not.toHaveAttribute("aria-disabled", "true");
+		const poll = await holdThePoll(page);
+
+		const box = (await fader.boundingBox())!;
+		const y = box.y + box.height / 2;
+		await page.mouse.move(box.x + box.width * 0.2, y);
+		await page.mouse.down();
+		await page.mouse.move(box.x + box.width * 0.4, y, { steps: 5 });
+		await expect
+			.poll(() => countPostsTo(player, "/api/volume"))
+			.toBeGreaterThan(0);
+		await untilQuiet(player);
+
+		await allowPlayback(page, false);
+		poll.letOneThrough();
+		await expect(fader).toHaveAttribute("aria-disabled", "true");
+		await untilQuiet(player);
+		const sentBeforeJeanKnew = countPostsTo(player, "/api/volume");
+
+		await page.mouse.move(box.x + box.width * 0.9, y, { steps: 10 });
+		await page.mouse.up();
+
+		await expectSettlesAt(
+			player,
+			() => countPostsTo(player, "/api/volume"),
+			sentBeforeJeanKnew,
+		);
+	});
+
+	// The poll is held, so the player's own 403 is the only way Jean can learn
+	// the switch moved. A drag coalesces its writes, and a refusal swallowed
+	// there leaves the fader live and says nothing.
+	test("a volume drag refused by playback control says so in a toast, and the fader turns disabled with its reason before the next poll", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "dragging a fader is a mouse gesture");
+
+		await playingAtThePlayer(page, player);
+		const fader = statusBarVolume(page);
+		await expect(fader).not.toHaveAttribute("aria-disabled", "true");
+
+		await holdThePoll(page);
+		await allowPlayback(page, false);
+
+		const refused = page.waitForResponse(
+			(response) =>
+				response.request().method() === "POST" &&
+				new URL(response.url()).pathname === "/api/volume" &&
+				response.status() === 403,
+		);
+		await dragTo(page, fader, 0.3);
+		await refused;
+
+		await expect(playbackOffToast(page)).toContainText(REASON);
+		await expect(fader).toHaveAttribute("aria-disabled", "true");
+		await expect(fader).toHaveAccessibleName(REASON);
+	});
+
+	// The poll is held, so the player's own 403 is the only way Jean can learn the switch moved.
+	test("an order chosen is refused in a toast, the button goes back to the order the player is in, and it turns disabled with its reason before the next poll", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openLibrary(page);
+		await globalControls(page, isMobile);
+		const order = orderButton(page, isMobile);
+		await expect(order).toHaveAccessibleName("Playback order: In order");
+		const held = player.player.playbackMode;
+
+		await holdThePoll(page);
+		await allowPlayback(page, false);
+
+		const refused = page.waitForResponse(
+			(response) =>
+				response.request().method() === "POST" &&
+				new URL(response.url()).pathname === "/api/playback/mode" &&
+				response.status() === 403,
+		);
+		await order.click();
+		await page
+			.getByRole("menuitemradio", { name: "Repeat track", exact: true })
+			.click();
+		await refused;
+
+		await expect(playbackOffToast(page)).toContainText(REASON);
+		await expect(order).toHaveAttribute("aria-disabled", "true");
+		await expect(order).toHaveAccessibleName(
+			"Playback order: In order (playback control is off)",
+		);
+		expect(player.player.playbackMode).toBe(held);
+	});
+
+	// Emptying the scratch is playback, so it follows controlPlayback. Clearing
+	// the search is still the user's to do; only the write behind it goes.
+	test("clearing the search with a played set in the scratch sends nothing refused and raises no toast", async ({
+		page,
+		player,
+	}) => {
+		await page.goto("/#/search");
+		await searchFor(page, "babasonicos");
+		await trackRow(page, 0).dblclick();
+		await expect.poll(() => scratchOf(player)?.items.length).toBe(12);
+		await expect(statusBar(page)).toContainText("Los Calientes");
+		player.stop();
+		await expect(statusBar(page)).toContainText("Nothing playing");
+
+		await allowPlayback(page, false);
+		await expect(playPause(page)).toHaveAttribute("aria-disabled", "true");
+		await untilQuiet(player);
+		const since = player.requests.length;
+
+		await page.getByRole("button", { name: "Clear search" }).click();
+		await revealSearch(page);
+		await expect(searchField(page)).toHaveValue("");
+
+		await expectSettlesAt(player, () => refusedAsks(player, since), []);
+		await expect(playbackOffToast(page)).toHaveCount(0);
 	});
 });

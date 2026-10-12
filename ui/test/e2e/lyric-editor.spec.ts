@@ -12,6 +12,7 @@ import {
 	requestsTo,
 	test,
 	times,
+	toastRegion,
 	toasts,
 	tokenColourIn,
 	untilQuiet,
@@ -2332,7 +2333,7 @@ test.describe("a Save the player refuses, from the editor", () => {
 
 				await saveButton(editor).click();
 
-				await expect(page.getByRole("status").getByText(said)).toBeVisible();
+				await expect(toastRegion(page).getByText(said)).toBeVisible();
 				await untilQuiet(player);
 				await expect(editor).toBeVisible();
 				await expectLines(editor, CHANGED);

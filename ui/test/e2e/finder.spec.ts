@@ -26,6 +26,15 @@ const OFF_SCREEN = { query: "lafcadio", matches: 11, firstRow: 30 };
 
 const finder = (page: Page) =>
 	page.getByRole("textbox", { name: "Find in this playlist" });
+
+// The status region inside the finder's own field, which is the innermost box holding the input.
+const finderCount = (page: Page) =>
+	page
+		.locator("div")
+		.filter({ has: finder(page) })
+		.last()
+		.getByRole("status");
+
 const results = (page: Page) => page.getByRole("listbox").getByRole("option");
 const matchedRows = (page: Page) =>
 	page.locator('[role="row"][data-match="true"]');
@@ -195,7 +204,7 @@ const openFinder = async (page: Page) => {
 				await finder(page).fill(ACCENTED.query);
 				await expect(results(page)).toHaveCount(ACCENTED.matches);
 
-				const said = page.getByRole("status").filter({ hasText: /match/ });
+				const said = finderCount(page);
 				await expect(said).toContainText(`${ACCENTED.matches} matches`);
 			});
 

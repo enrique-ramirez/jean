@@ -3,11 +3,11 @@ import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	guidOfPlaylist,
-	openLibrary,
+	playFirstRow,
 	requestsTo,
 	statusBar,
 	test,
-	trackRow,
+	toastRegion,
 	withNoListOnScreen,
 } from "./fixtures.ts";
 
@@ -21,14 +21,7 @@ import {
 const RECONNECTING = en["connection.reconnecting"];
 
 const notice = (page: Page) =>
-	page.getByRole("status").filter({ hasText: RECONNECTING });
-
-const playFirstRow = async (page: Page, isMobile: boolean) => {
-	await openLibrary(page);
-	if (isMobile) await trackRow(page, 0).tap();
-	else await trackRow(page, 0).dblclick();
-	await expect(statusBar(page)).toContainText("Los Calientes");
-};
+	toastRegion(page).filter({ hasText: RECONNECTING });
 
 const statusBarCover = (page: Page) =>
 	statusBar(page).locator("[data-artwork='ok'] img");

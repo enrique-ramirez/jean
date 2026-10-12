@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { after, before, beforeEach, test } from "node:test";
 
+import { libraryOfShape } from "../fake-api/libraryShapes.ts";
 import { createFooJeanServer } from "../fake-api/server.ts";
-import { createState, libraryOfShape } from "../fake-api/state.ts";
+import { createState } from "../fake-api/state.ts";
 
 // Pinned here rather than in a spec because no browser can reach it: Jean addresses a cue-sheet
 // row by the subsong the snapshot handed it and never by 0. `test/README.md` has how the fake

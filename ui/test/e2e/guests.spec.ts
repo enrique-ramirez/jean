@@ -1,11 +1,6 @@
 import type { Locator } from "./fixtures.ts";
-import {
-	expect,
-	openLibrary,
-	rowByTitle,
-	scrollUntilMounted,
-	test,
-} from "./fixtures.ts";
+import { expect, openLibrary, rowByTitle, test } from "./fixtures.ts";
+import { scrollUntilMounted } from "./scrolling.ts";
 
 // Jar Of Flies, retagged: the captured library has no featured artist on it and
 // no compilation. 'No Excuses' and "Don't Follow" both name Mad Season -- on one

@@ -7,16 +7,17 @@ import {
 	holdThePoll,
 	openAllMusic,
 	openLibrary,
-	pressAndHold,
-	scrollTop,
 	test,
 	times,
+	titleOfPlaylist,
 	titlesIn,
-	touchDrag,
+	toastRegion,
 	trackRow,
 	untilQuiet,
 	viewHeader,
 } from "./fixtures.ts";
+import { pressAndHold, touchDrag } from "./gestures.ts";
+import { scrollTop } from "./scrolling.ts";
 
 // Twelve rows of one album in track order, so a sort by title reorders every one of them.
 const SPANISH = "p5";
@@ -40,13 +41,10 @@ const BELOW_CENTRE = 0.75;
 // Every playlist the fake mints starts here: `GENERATION_SEED` in `test/fake-api/state.ts`.
 const STRUCTURE_AT_LOAD = "9204739866101318656";
 
-const titleOf = (player: FakePlayer, key: string) =>
-	player.playlists.find((entry) => entry.id === key)!.title;
-
 const openPlaylist = async (page: Page, player: FakePlayer, key: string) => {
 	await page.goto(`/#/${guidOfPlaylist(player, key)}`);
 	await expect(
-		page.getByRole("heading", { level: 1, name: titleOf(player, key) }),
+		page.getByRole("heading", { level: 1, name: titleOfPlaylist(player, key) }),
 	).toBeVisible();
 	await expect(trackRow(page, 0)).toBeAttached();
 	return titlesIn(player, key).map(String);
@@ -128,8 +126,6 @@ const ANSWER_DELAY_MS = 3000;
 
 const slowThePlayer = (page: Page) =>
 	control(page, "latency", { ms: ANSWER_DELAY_MS });
-
-const toast = (page: Page) => page.getByRole("status");
 
 const sortButton = (page: Page) =>
 	viewHeader(page).getByRole("button", { name: "Sort", exact: true });
@@ -686,7 +682,7 @@ test.describe("the Sort menu", () => {
 			isMobile,
 		}) => {
 			const titles = await openPlaylist(page, player, SPANISH);
-			const name = titleOf(player, SPANISH);
+			const name = titleOfPlaylist(player, SPANISH);
 
 			// A selection names no rows to the sort: it orders the playlist whatever is selected.
 			if (!isMobile) {
@@ -700,7 +696,7 @@ test.describe("the Sort menu", () => {
 
 			await sortBy(page, ordering);
 
-			await expect(toast(page)).toContainText(
+			await expect(toastRegion(page)).toContainText(
 				new RegExp(`${name} sorted by ${ordering}`, "i"),
 			);
 			await expectSettlesAt(
@@ -821,7 +817,7 @@ test.describe("a reorder the player refuses", () => {
 				player,
 			}) => {
 				const titles = await openPlaylist(page, player, SPANISH);
-				const name = titleOf(player, SPANISH);
+				const name = titleOfPlaylist(player, SPANISH);
 				const poll = await holdThePoll(page);
 				// Descending, so a client that quietly sent the title sort again would be seen undoing it.
 				player.sortItems(SPANISH, { by: "%title%", desc: true });
@@ -829,7 +825,7 @@ test.describe("a reorder the player refuses", () => {
 
 				await edit.run(page);
 
-				await expect(toast(page)).toContainText(
+				await expect(toastRegion(page)).toContainText(
 					`${name} changed at the player, so nothing was moved`,
 				);
 				// Whether the rows are read again at once or on the next tick is not this case's to say.
@@ -850,7 +846,7 @@ test.describe("a reorder the player refuses", () => {
 			}) => {
 				const titles = await openPlaylist(page, player, SPANISH);
 				const before = [...titles];
-				const name = titleOf(player, SPANISH);
+				const name = titleOfPlaylist(player, SPANISH);
 				await control(page, "lockPlaylist", { id: SPANISH, locked: true });
 				await slowThePlayer(page);
 
@@ -862,7 +858,7 @@ test.describe("a reorder the player refuses", () => {
 						.poll(() => shownOrder(page, titles, 6))
 						.toEqual(movedFirstBelowThird(before).slice(0, 6));
 
-				await expect(toast(page)).toContainText(
+				await expect(toastRegion(page)).toContainText(
 					`foobar2000 refused the edit to ${name}`,
 				);
 				await expect
@@ -910,7 +906,9 @@ test.describe("a reorder the player refuses", () => {
 								.poll(() => shownOrder(page, titles, 6))
 								.toEqual(movedFirstBelowThird(before).slice(0, 6));
 
-						await expect(toast(page)).toContainText("The order was not saved");
+						await expect(toastRegion(page)).toContainText(
+							"The order was not saved",
+						);
 						await expect
 							.poll(() => shownOrder(page, titles, 8))
 							.toEqual(before.slice(0, 8));

@@ -40,16 +40,16 @@ test("the playback client exports the playback commands and no other function", 
 	);
 });
 
-test("the player state module exports readTrack and libraryPathMatcher", async () => {
+test("the player state module exports playingTrack and libraryPathMatcher", async () => {
 	const playerState: Record<string, unknown> = await import(
 		"../../src/shared/api/playerState.ts"
 	).catch(() => ({}));
 	assert.deepEqual(
 		{
-			readTrack: typeof playerState.readTrack,
+			playingTrack: typeof playerState.playingTrack,
 			libraryPathMatcher: typeof playerState.libraryPathMatcher,
 		},
-		{ readTrack: "function", libraryPathMatcher: "function" },
+		{ playingTrack: "function", libraryPathMatcher: "function" },
 	);
 });
 

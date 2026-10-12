@@ -18,7 +18,7 @@ import {
 } from "../../src/domain/player/session.ts";
 import { sessionScope, setSessionScope } from "../../src/shared/api/client.ts";
 import type { FooJeanCapabilities } from "../../src/shared/api/discovery.ts";
-import { readTrack } from "../../src/shared/api/playerState.ts";
+import { playingTrack } from "../../src/shared/api/playerState.ts";
 import type { QueueRead } from "../../src/shared/api/queue.ts";
 import { fetchState, type StateDocument } from "../../src/shared/api/state.ts";
 import type { PlayerSnapshot } from "../../src/shared/api/types.ts";
@@ -270,7 +270,7 @@ const polling = async (t: TestContext, respond: Answer) => {
 };
 
 const drawnPath = (client: QueryClient) =>
-	readTrack(client.getQueryData<PlayerSnapshot>(PLAYER_KEY)?.player)?.path ??
+	playingTrack(client.getQueryData<PlayerSnapshot>(PLAYER_KEY)?.player)?.path ??
 	null;
 
 const drawnQueue = (client: QueryClient) =>
@@ -580,7 +580,7 @@ test("what was heard in the session left is forgotten at a switch, so the next s
 	commitSession({ id: FIRST, role: "controlling" });
 	await poll.tick();
 	const heard = poll.client.getQueryData<PlayerSnapshot>(PLAYER_KEY);
-	assert.equal(readTrack(heard?.player)?.path, SHARED_PATH);
+	assert.equal(playingTrack(heard?.player)?.path, SHARED_PATH);
 
 	commitSession({ id: SECOND, role: "controlling" });
 	await settle();

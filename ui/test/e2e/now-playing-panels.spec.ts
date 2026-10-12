@@ -7,10 +7,12 @@ import {
 	openLibrary,
 	openNowPlaying,
 	requestsTo,
+	runClockFor,
 	test,
-	touchDrag,
 	trackRow,
+	watchWhatIsSaid,
 } from "./fixtures.ts";
+import { touchDrag } from "./gestures.ts";
 import {
 	expectPanelOpen,
 	openPanels,
@@ -587,10 +589,6 @@ const outlastBudgetOfRead = async (page: Page, index: number) => {
 	await page.clock.pauseAt(sentAt + READ_BUDGET_MS + 250);
 };
 
-const letTimePass = async (page: Page, ms: number) => {
-	for (let passed = 0; passed < ms; passed += 250) await page.clock.runFor(250);
-};
-
 const watchTheNotice = async (page: Page, landed: string | null = null) => {
 	await page.evaluate(
 		({ reading, landed }) => {
@@ -620,26 +618,6 @@ const watchTheNotice = async (page: Page, landed: string | null = null) => {
 				(window as unknown as { notices: { times: number; gaps: number } })
 					.notices,
 		);
-};
-
-const watchWhatIsSaid = async (page: Page) => {
-	await page.evaluate(() => {
-		const said: string[] = [];
-		(window as unknown as { said: string[] }).said = said;
-		new MutationObserver(() => {
-			for (const layer of document.querySelectorAll('[role="status"]')) {
-				const text = layer.textContent ?? "";
-				if (text && !said.includes(text)) said.push(text);
-			}
-		}).observe(document.body, {
-			childList: true,
-			subtree: true,
-			characterData: true,
-		});
-	});
-
-	return () =>
-		page.evaluate(() => (window as unknown as { said: string[] }).said);
 };
 
 test.describe("the details read", () => {
@@ -805,7 +783,7 @@ test.describe("a read that never answers, every time", () => {
 		await expect
 			.poll(ticking(page, () => panel.textContent()))
 			.not.toContain(READING);
-		await letTimePass(page, RETRY_WINDOW_MS);
+		await runClockFor(page, RETRY_WINDOW_MS);
 		await expectSettlesAt(player, reads, 2);
 
 		await expect(detailRows(panel)).toHaveCount(0);

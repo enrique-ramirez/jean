@@ -4,19 +4,18 @@ import {
 	expectSettlesAt,
 	guidOfPlaylist,
 	openAllMusic,
-	pressAndHold,
 	test,
+	titleOfPlaylist,
 	titlesIn,
+	toastRegion,
 	trackRow,
 } from "./fixtures.ts";
+import { openRowMenu } from "./menus.ts";
 
 const SPANISH = "p5";
 const AUTOPLAYLIST = "p9";
 
 const REMOVE = "Remove from playlist";
-
-const titleOf = (player: FakePlayer, key: string) =>
-	player.playlists.find((entry) => entry.id === key)!.title;
 
 const structureOf = (player: FakePlayer, key: string) =>
 	String(player.playlists.find((entry) => entry.id === key)!.structure);
@@ -24,19 +23,10 @@ const structureOf = (player: FakePlayer, key: string) =>
 const openPlaylist = async (page: Page, player: FakePlayer, key: string) => {
 	await page.goto(`/#/${guidOfPlaylist(player, key)}`);
 	await expect(
-		page.getByRole("heading", { level: 1, name: titleOf(player, key) }),
+		page.getByRole("heading", { level: 1, name: titleOfPlaylist(player, key) }),
 	).toBeVisible();
 	await expect(trackRow(page, 0)).toBeAttached();
 	return titlesIn(player, key).map(String);
-};
-
-const openRowMenu = async (page: Page, index: number, isMobile: boolean) => {
-	const target = trackRow(page, index);
-	if (isMobile) await pressAndHold(page, target);
-	else await target.click({ button: "right" });
-	await expect(
-		page.getByRole("menuitem", { name: "Add to queue" }),
-	).toBeVisible();
 };
 
 const removeItem = (page: Page) => page.getByRole("menuitem", { name: REMOVE });
@@ -57,8 +47,6 @@ const rowReads = (player: FakePlayer, key: string) =>
 				`/api/playlists/${guidOfPlaylist(player, key)}/items`,
 	);
 
-const toast = (page: Page) => page.getByRole("status");
-
 const selected = (page: Page) =>
 	page.locator('[role="row"][data-selected="true"]');
 
@@ -71,7 +59,7 @@ test.describe("removing a row from a playlist", () => {
 		const before = await openPlaylist(page, player, SPANISH);
 		const structure = structureOf(player, SPANISH);
 
-		await openRowMenu(page, 1, isMobile);
+		await openRowMenu(page, isMobile, 1, "Add to queue");
 		await removeItem(page).click();
 
 		const after = before.filter((_, at) => at !== 1);
@@ -80,8 +68,8 @@ test.describe("removing a row from a playlist", () => {
 			{ structure, ordinals: [1] },
 		]);
 
-		await expect(toast(page)).toContainText(
-			`Removed 1 track from ${titleOf(player, SPANISH)}`,
+		await expect(toastRegion(page)).toContainText(
+			`Removed 1 track from ${titleOfPlaylist(player, SPANISH)}`,
 		);
 		await expect(trackRow(page, 1)).toContainText(before[2]);
 		await expect(trackRow(page, before.length - 1)).toHaveCount(0);
@@ -97,7 +85,7 @@ test.describe("removing a row from a playlist", () => {
 		const before = await openPlaylist(page, player, SPANISH);
 		const reads = rowReads(player, SPANISH).length;
 
-		await openRowMenu(page, 0, isMobile);
+		await openRowMenu(page, isMobile, 0, "Add to queue");
 		await removeItem(page).click();
 
 		await expectSettlesAt(
@@ -125,8 +113,8 @@ test.describe("removing a row from a playlist", () => {
 
 		const after = before.filter((_, at) => at !== 1 && at !== 2);
 		await expectSettlesAt(player, () => titlesIn(player, SPANISH), after);
-		await expect(toast(page)).toContainText(
-			`Removed 2 tracks from ${titleOf(player, SPANISH)}`,
+		await expect(toastRegion(page)).toContainText(
+			`Removed 2 tracks from ${titleOfPlaylist(player, SPANISH)}`,
 		);
 		await expect(selected(page)).toHaveCount(1);
 		await expect(selected(page)).toContainText(before[3]);
@@ -143,11 +131,11 @@ test.describe("removing a row from a playlist", () => {
 		});
 		expect(locked.ok(), "the fake needs /__control/lockPlaylist").toBe(true);
 
-		await openRowMenu(page, 1, isMobile);
+		await openRowMenu(page, isMobile, 1, "Add to queue");
 		await removeItem(page).click();
 
-		await expect(toast(page)).toContainText(
-			`foobar2000 refused the edit to ${titleOf(player, SPANISH)}`,
+		await expect(toastRegion(page)).toContainText(
+			`foobar2000 refused the edit to ${titleOfPlaylist(player, SPANISH)}`,
 		);
 		await expect(trackRow(page, 1)).toContainText(before[1]);
 		expect(titlesIn(player, SPANISH)).toEqual(before);
@@ -161,7 +149,7 @@ test.describe("where a row cannot be removed", () => {
 		isMobile,
 	}) => {
 		await openPlaylist(page, player, AUTOPLAYLIST);
-		await openRowMenu(page, 0, isMobile);
+		await openRowMenu(page, isMobile, 0, "Add to queue");
 
 		await expect(removeItem(page)).toHaveCount(0);
 	});
@@ -171,7 +159,7 @@ test.describe("where a row cannot be removed", () => {
 		isMobile,
 	}) => {
 		await openAllMusic(page);
-		await openRowMenu(page, 0, isMobile);
+		await openRowMenu(page, isMobile, 0, "Add to queue");
 
 		await expect(removeItem(page)).toHaveCount(0);
 	});
@@ -185,7 +173,7 @@ test.describe("where a row cannot be removed", () => {
 			data: { canWrite: false },
 		});
 		await openPlaylist(page, player, SPANISH);
-		await openRowMenu(page, 0, isMobile);
+		await openRowMenu(page, isMobile, 0, "Add to queue");
 
 		await expect(removeItem(page)).toHaveCount(0);
 	});

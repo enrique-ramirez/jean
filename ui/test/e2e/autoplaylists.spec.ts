@@ -108,9 +108,9 @@ test.describe("creating one from a genre", () => {
 		await createButton(page).click();
 
 		await expect(page.getByText(/The player matches 13 tracks/)).toBeVisible();
-		await expect(
-			page.getByRole("status").filter({ hasText: /The player matches/ }),
-		).toContainText("The player matches 13 tracks.");
+		await expect(page.locator("form").getByRole("status")).toContainText(
+			"The player matches 13 tracks.",
+		);
 		expect(posts(player, "/autoplaylists/preview").length).toBe(1);
 		// Nothing is created by looking -- the only post so far is the preview itself.
 		expect(posts(player, "/autoplaylists").length).toBe(1);

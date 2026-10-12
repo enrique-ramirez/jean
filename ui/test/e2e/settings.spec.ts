@@ -1,4 +1,4 @@
-import { NULL_OUTPUT_DEVICE } from "../fake-api/fooJean.ts";
+import { NULL_OUTPUT_DEVICE } from "../fake-api/fooJean/outputs.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
@@ -8,22 +8,18 @@ import {
 	openSettings,
 	playedFrom,
 	playRequests,
-	pressAndHold,
 	requestsTo,
 	searchField,
 	settingsDialog,
 	sidebar,
 	statusBar,
+	tagWrites,
 	test,
 	times,
 	trackRow,
 	untilQuiet,
 } from "./fixtures.ts";
-
-const tagWrites = (player: { requests: { method: string }[] }) =>
-	requestsTo(player as never, "/api/tags").filter(
-		(entry) => entry.method === "POST",
-	);
+import { pressAndHold } from "./gestures.ts";
 
 const libraryHash = (player: FakePlayer) =>
 	`#/${player.playlists.find((entry) => entry.title === "Library")!.guid}`;

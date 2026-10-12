@@ -1,18 +1,19 @@
 import { albumRoute } from "../../src/domain/track/routes.ts";
-import { evaluate } from "../fake-api/state.ts";
+import { evaluate } from "../fake-api/titleFormat.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
-	dragFrom,
 	expect,
 	expectSettlesAt,
 	guidOfPlaylist,
 	playedFrom,
 	sidebar,
-	statusBar,
 	test,
+	titleOfPlaylist,
 	titlesIn,
 	trackRow,
 } from "./fixtures.ts";
+import { dragFrom } from "./gestures.ts";
+import { queueButton } from "./queue.ts";
 
 const FAVORITES = "p2";
 const DEFAULT_PLAYLIST = "p1";
@@ -31,13 +32,13 @@ const cover = (page: Page, album: number) =>
 const album = (page: Page, at: number) =>
 	page.locator("main [data-span-start]").nth(at);
 
-const titleOf = (player: FakePlayer, key: string) =>
-	player.playlists.find((entry) => entry.id === key)!.title;
-
 const openFavorites = async (page: Page, player: FakePlayer) => {
 	await page.goto(`/#/${guidOfPlaylist(player, FAVORITES)}`);
 	await expect(
-		page.getByRole("heading", { level: 1, name: titleOf(player, FAVORITES) }),
+		page.getByRole("heading", {
+			level: 1,
+			name: titleOfPlaylist(player, FAVORITES),
+		}),
 	).toBeVisible();
 	await expect(cover(page, 2)).toBeVisible();
 	return titlesIn(player, FAVORITES);
@@ -47,9 +48,6 @@ const sidebarRow = (page: Page, title: string) =>
 	sidebar(page)
 		.locator("> div")
 		.filter({ has: page.getByText(title, { exact: true }) });
-
-const queueButton = (page: Page) =>
-	statusBar(page).getByRole("button", { name: /^Queue/ });
 
 const moveOver = async (page: Page, onto: Locator, fraction: number) => {
 	const box = (await onto.boundingBox())!;
@@ -88,7 +86,7 @@ test("a cover dropped on a playlist in the sidebar copies its whole album there"
 }) => {
 	const titles = await openFavorites(page, player);
 	const before = titlesIn(player, DEFAULT_PLAYLIST);
-	const target = sidebarRow(page, titleOf(player, DEFAULT_PLAYLIST));
+	const target = sidebarRow(page, titleOfPlaylist(player, DEFAULT_PLAYLIST));
 
 	await dragFrom(page, cover(page, 1), target);
 	await expect(target).toHaveAttribute("data-drop-over", "true");

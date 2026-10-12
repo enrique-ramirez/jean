@@ -10,9 +10,12 @@ import {
 	openNowPlaying,
 	requestsTo,
 	rowByTitle,
+	runClockFor,
 	statusBar,
+	tagWrites,
 	test,
 	times,
+	toastRegion,
 	toasts,
 	untilQuiet,
 } from "./fixtures.ts";
@@ -433,9 +436,6 @@ const versionsOf = (view: Locator, kind: "Synced" | "Plain" | "Instrumental") =>
 
 const FAILED = "The search failed.";
 
-const tagWrites = (player: FakePlayer) =>
-	requestsTo(player, "/api/tags").filter((one) => one.method === "POST");
-
 const expectNothingWritten = (player: FakePlayer) =>
 	expectSettlesAt(player, () => tagWrites(player).length, 0);
 
@@ -451,11 +451,6 @@ const openSearch = async (page: Page, isMobile: boolean, row: number) => {
 	await searchButton(panel).click();
 	return searchView(panel);
 };
-
-const CLOCK_STEP_MS = 250;
-
-const runClockFor = (page: Page, ms: number) =>
-	times(Math.ceil(ms / CLOCK_STEP_MS), () => page.clock.runFor(CLOCK_STEP_MS));
 
 // A greyed button and a live one that declines the press both send nothing.
 const pressRegardless = (button: Locator) => button.click({ force: true });
@@ -1221,7 +1216,7 @@ test.describe("saving a preview", () => {
 
 				await save(shown).click();
 
-				await expect(page.getByRole("status").getByText(said)).toBeVisible();
+				await expect(toastRegion(page).getByText(said)).toBeVisible();
 				await untilQuiet(player);
 
 				await expect(shown).toBeVisible();

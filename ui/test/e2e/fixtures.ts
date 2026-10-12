@@ -1,26 +1,24 @@
 import type {
 	APIRequestContext,
-	CDPSession,
 	Locator,
 	Page,
 	Request,
 	Route,
 } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
-import {
-	COMPONENT_RATE_LIMITS,
-	type FooJeanOptions,
-	JEAN_MODE_BY_ORDER,
-} from "../fake-api/fooJean.ts";
+import type { FooJeanOptions } from "../fake-api/fooJean/options.ts";
+import { JEAN_MODE_BY_ORDER } from "../fake-api/fooJean/playbackModes.ts";
+import { COMPONENT_RATE_LIMITS } from "../fake-api/fooJean/rateLimits.ts";
+import { libraryOfShape } from "../fake-api/libraryShapes.ts";
 import { createServer, type FakeServer } from "../fake-api/server.ts";
 import { postsToSession } from "../fake-api/sessions.ts";
 import {
 	createState,
 	DEFAULT_PLAYLISTS,
 	type FakePlayerState,
-	libraryOfShape,
 	type Track,
 } from "../fake-api/state.ts";
+import { evaluate } from "../fake-api/titleFormat.ts";
 import { distDir } from "./dist.ts";
 
 export type FakePlayer = FakeServer["state"];
@@ -168,10 +166,7 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 			const asked = new Set(player.fooJean.expectRateLimited);
 			const refused = player.requests
 				.filter((entry) => entry.limited && !asked.has(entry.limited))
-				.map(
-					(entry) =>
-						`${entry.method} ${entry.path.split("?")[0]} (${entry.limited})`,
-				);
+				.map((entry) => `${askOf(entry)} (${entry.limited})`);
 			expect(
 				[...new Set(refused)],
 				`foo_jean's rate limits refused ${refused.length} request(s) this test did not ask to be refused`,
@@ -385,14 +380,42 @@ export const untilTheInstallIsKnown = async (player: FakePlayer) => {
 	await untilQuiet(player);
 };
 
+// The layer toasts are drawn in. A finder's count and an autoplaylist's results are status regions
+// too, so the role alone does not name it.
+export const toastRegion = (page: Page) => page.locator("[data-toasts]");
+
 export const playbackOffToast = (page: Page) =>
-	page.getByRole("status").filter({ hasText: /controlPlayback/ });
+	toastRegion(page).filter({ hasText: /controlPlayback/ });
 
 // Every toast on the page, found by the button each is dismissed with. The region they are drawn
 // in also holds the notice that the player has stopped answering, which is not a toast and has no
 // such button.
 export const toasts = (page: Page) =>
-	page.getByRole("status").getByRole("button", { name: "Dismiss" });
+	toastRegion(page).getByRole("button", { name: "Dismiss" });
+
+// Every message the page puts up in a status region from here on, the toast layer among them. A
+// toast takes itself down after a few seconds, so looking for one afterwards cannot tell "never
+// said" from "said and gone", and a retrying `toHaveCount(0)` waits a real one out and passes. A
+// case that promises silence reads it off this record, kept from before the press.
+export const watchWhatIsSaid = async (page: Page) => {
+	await page.evaluate(() => {
+		const said: string[] = [];
+		(window as unknown as { said: string[] }).said = said;
+		new MutationObserver(() => {
+			for (const layer of document.querySelectorAll('[role="status"]')) {
+				const text = layer.textContent ?? "";
+				if (text && !said.includes(text)) said.push(text);
+			}
+		}).observe(document.body, {
+			childList: true,
+			subtree: true,
+			characterData: true,
+		});
+	});
+
+	return () =>
+		page.evaluate(() => (window as unknown as { said: string[] }).said);
+};
 
 // lucide-react puts `lucide-{name}` on the `svg` it draws, among other classes.
 export const drawing = (icon: string) =>
@@ -419,9 +442,11 @@ export const drawnColour = (icon: Locator) =>
 export const expectDrawnIn = (icon: Locator, colour: string) =>
 	expect.poll(() => drawnColour(icon)).toBe(colour);
 
-export const choosePlayer = (page: Page) =>
+// The status bar's button for the "Playing on" panel, under whichever of its three names the page
+// has given it.
+export const pickerOpener = (page: Page) =>
 	statusBar(page).getByRole("button", {
-		name: /Choose where to play|Playing on this device|Playing what .+ started/,
+		name: /^(Choose where to play|Playing on this device|Playing what .+ started)/,
 	});
 
 export const playingOn = (page: Page) =>
@@ -439,7 +464,7 @@ export const deviceAudio = async (page: Page) => {
 // `listeningPosition` answers null until audio is rendering, so the element's
 // own clock is the only proof the stream arrived.
 export const listenHere = async (page: Page) => {
-	await choosePlayer(page).click();
+	await pickerOpener(page).click();
 	await playingOn(page)
 		.getByRole("button", { name: "Listen here", exact: true })
 		.click();
@@ -587,6 +612,9 @@ export const guidOfPlaylist = (player: FakePlayer, key: string) => {
 	return found.guid;
 };
 
+export const titleOfPlaylist = (player: FakePlayer, key: string) =>
+	player.playlists.find((entry) => entry.id === key)!.title;
+
 // The captured `Library` playlist, which most specs use as a list long enough to
 // scroll. Not `#Jean Library`, which carries Jean's own prefix and stays hidden.
 export const openLibrary = async (page: Page) => {
@@ -597,6 +625,21 @@ export const openLibrary = async (page: Page) => {
 		page.getByRole("heading", { level: 1, name: "Library" }),
 	).toBeVisible();
 	await expect(trackRow(page, 0)).toBeAttached();
+};
+
+export const playFirstRow = async (page: Page, isMobile: boolean) => {
+	await openLibrary(page);
+	if (isMobile) await trackRow(page, 0).tap();
+	else await trackRow(page, 0).dblclick();
+	await expect(statusBar(page)).toContainText("Los Calientes");
+	await expect(page).toHaveTitle(/^Los Calientes/);
+};
+
+// Started at the player rather than from the page, so nothing Jean sends is behind it.
+export const playingAtThePlayer = async (page: Page, player: FakePlayer) => {
+	player.playItem("p7", 2);
+	await openLibrary(page);
+	await expect(statusBar(page)).toContainText("Deléctrico");
 };
 
 export const openAllMusic = async (page: Page) => {
@@ -649,10 +692,35 @@ export const refusePlaylistWrites = async (page: Page) => {
 export const requestsTo = (player: FakePlayer, pattern: string) =>
 	player.requests.filter((entry) => entry.path.includes(pattern));
 
+export const routeOf = (path: string) => path.split("?")[0];
+
+export const askOf = (entry: { method: string; path: string }) =>
+	`${entry.method} ${routeOf(entry.path)}`;
+
 export const countPostsTo = (player: FakePlayer, route: string) =>
 	player.requests.filter(
-		(entry) => entry.method === "POST" && entry.path.split("?")[0] === route,
+		(entry) => entry.method === "POST" && routeOf(entry.path) === route,
 	).length;
+
+export const ticksTaken = (player: FakePlayer) =>
+	requestsTo(player, "/api/state").filter((one) => one.method === "GET").length;
+
+export const tagWrites = (player: FakePlayer) =>
+	requestsTo(player, "/api/tags").filter((one) => one.method === "POST");
+
+// Every volume write from `from` on, whichever session it named.
+export const volumesSent = (player: FakePlayer, from = 0) =>
+	player.requests
+		.slice(from)
+		.filter(
+			(entry) =>
+				entry.method === "POST" && routeOf(entry.path) === "/api/volume",
+		);
+
+export const fieldOf = (track: Track, expression: string) =>
+	String(evaluate(track, expression) ?? "");
+
+export const titleOf = (track: Track) => fieldOf(track, "%title%");
 
 export const countPostsToSession = (
 	player: FakePlayer,
@@ -723,7 +791,7 @@ export const REFUSED_ROUTES = [
 export const refusedAsks = (player: FakePlayer, since = 0) =>
 	player.requests
 		.slice(since)
-		.map((entry) => `${entry.method} ${entry.path.split("?")[0]}`)
+		.map(askOf)
 		.filter((route) => REFUSED_ROUTES.some((pattern) => pattern.test(route)));
 
 export const expectNothingRefusedSent = (player: FakePlayer) =>
@@ -925,341 +993,6 @@ export const trackPlayed = (player: FakePlayer) => {
 	return playlist?.items[at.index]?.["%title%"] ?? null;
 };
 
-// ---- gestures ---------------------------------------------------------------
-
-// A finger dragged between two points, driven through CDP rather than
-// dispatched as DOM events: what these tests are usually about is the browser's
-// own decision about who the gesture belongs to, and a dispatched `touchmove`
-// sails past that and passes either way. Why every point is stamped and why the
-// session is one per page rather than one per drag: test/README.md.
-const sessions = new WeakMap<Page, Promise<CDPSession>>();
-
-const sessionFor = (page: Page) => {
-	const held = sessions.get(page);
-	if (held) return held;
-	const session = page.context().newCDPSession(page);
-	sessions.set(page, session);
-	return session;
-};
-
-export const touchDrag = async (
-	page: Page,
-	from: { x: number; y: number },
-	to: { x: number; y: number },
-	steps = 4,
-) => {
-	const cdp = await sessionFor(page);
-	const at = Date.now() / 1000;
-	let tick = 0;
-	const send = (
-		type: "touchStart" | "touchMove" | "touchEnd",
-		point: { x: number; y: number },
-	) =>
-		cdp.send("Input.dispatchTouchEvent", {
-			type,
-			touchPoints: type === "touchEnd" ? [] : [point],
-			timestamp: at + 0.02 * tick++,
-		});
-
-	await send("touchStart", from);
-	await times(steps, (step) => {
-		const at = (step + 1) / steps;
-		return send("touchMove", {
-			x: from.x + (to.x - from.x) * at,
-			y: from.y + (to.y - from.y) * at,
-		});
-	});
-	await send("touchEnd", to);
-};
-
-export const restingBox = async (target: Locator) => {
-	let last = "null";
-	await expect
-		.poll(async () => {
-			const now = JSON.stringify(await target.boundingBox());
-			const isStill = now !== "null" && now === last;
-			last = now;
-			return isStill;
-		})
-		.toBe(true);
-	return JSON.parse(last) as {
-		x: number;
-		y: number;
-		width: number;
-		height: number;
-	};
-};
-
-// Across the middle of an action sheet, further than a flick has to travel. React hands a touch on
-// a portalled sheet to the ancestors of the component that drew it, wherever the sheet is on the
-// page, so a drag across it reaches their gesture handlers.
-export const dragAcrossTheSheet = async (
-	page: Page,
-	sheet: Locator,
-	towards: "left" | "right" = "left",
-) => {
-	const box = await restingBox(sheet);
-	await dragSideways(page, box, box.y + box.height / 2, towards);
-};
-
-const dragSideways = (
-	page: Page,
-	box: { x: number; width: number },
-	y: number,
-	towards: "left" | "right",
-) => {
-	const right = { x: box.x + box.width * 0.85, y };
-	const left = { x: box.x + box.width * 0.2, y };
-	const [from, to] = towards === "left" ? [right, left] : [left, right];
-	return touchDrag(page, from, to);
-};
-
-// The room a drag from the scrim needs above the sheet: further than a flick has to travel.
-const SCRIM_ROOM_PX = 100;
-
-// A drag that begins on the dimmed scrim above an action sheet and never crosses the sheet. The
-// sheet sits at the bottom of the viewport, so the scrim on show is what lies above it.
-export const dragFromTheScrim = async (
-	page: Page,
-	sheet: Locator,
-	towards: "left" | "right" | "down",
-) => {
-	const box = await restingBox(sheet);
-	expect(box.y, "the scrim on show above the sheet").toBeGreaterThan(
-		SCRIM_ROOM_PX,
-	);
-
-	if (towards !== "down") return dragSideways(page, box, box.y / 2, towards);
-
-	const x = box.x + box.width / 2;
-	return touchDrag(page, { x, y: box.y * 0.2 }, { x, y: box.y * 0.8 });
-};
-
-// Inside the strip at the top of an action sheet that a thumb drags it away by.
-const GRABBER_INSET = 8;
-
-export const dragTheSheetAwayByItsTopEdge = async (
-	page: Page,
-	sheet: Locator,
-) => {
-	const box = await restingBox(sheet);
-	const x = box.x + box.width / 2;
-	await touchDrag(
-		page,
-		{ x, y: box.y + GRABBER_INSET },
-		{ x, y: box.y + box.height },
-	);
-};
-
-// Enough moves that the browser paints the sheet between them.
-const GRABBER_DRAG_STEPS = 12;
-
-// Straight down from the grabber at the top of a bottom sheet, by `distance` pixels.
-export const fromTheGrabber = async (
-	page: Page,
-	sheet: Locator,
-	distance: number,
-) => {
-	const box = await restingBox(sheet);
-	const x = box.x + box.width / 2;
-	const y = box.y + GRABBER_INSET;
-	await touchDrag(page, { x, y }, { x, y: y + distance }, GRABBER_DRAG_STEPS);
-};
-
-// How far the sheet ever stood from where it rested when this was called, sampled every frame
-// until read. A box read after the finger lifts sees only where the sheet came back to.
-export const watchHowFarItMoves = async (sheet: Locator) => {
-	const watch = await sheet.evaluateHandle((element) => {
-		const rest = element.getBoundingClientRect().top;
-		const seen = { furthest: 0, watching: true };
-		const sample = () => {
-			if (!seen.watching) return;
-			const offset = Math.abs(element.getBoundingClientRect().top - rest);
-			seen.furthest = Math.max(seen.furthest, offset);
-			requestAnimationFrame(sample);
-		};
-		sample();
-		return seen;
-	});
-	return () =>
-		watch.evaluate((seen) => {
-			seen.watching = false;
-			return seen.furthest;
-		});
-};
-
-// Driven with the real mouse rather than dispatched events: pointer capture and
-// the element's own rect are what is under test.
-export const dragTo = async (
-	page: Page,
-	slider: Locator,
-	fraction: number,
-	steps = 20,
-) => {
-	const box = await slider.boundingBox();
-	const vertical = box!.height > box!.width;
-	const start = vertical
-		? { x: box!.x + box!.width / 2, y: box!.y + box!.height }
-		: { x: box!.x, y: box!.y + box!.height / 2 };
-	const end = vertical
-		? { x: box!.x + box!.width / 2, y: box!.y + box!.height * (1 - fraction) }
-		: { x: box!.x + box!.width * fraction, y: box!.y + box!.height / 2 };
-
-	await page.mouse.move(start.x, start.y);
-	await page.mouse.down();
-	await page.mouse.move(end.x, end.y, { steps });
-	await page.mouse.up();
-};
-
-// Drags one element over another and stops there, still holding: a drop target
-// arms on an animation frame rather than on the move, so a caller waits for it to
-// light up before releasing, and one caller releases somewhere else on purpose.
-export const dragFrom = async (page: Page, source: Locator, onto: Locator) => {
-	const from = await source.boundingBox();
-	const to = await restingBox(onto);
-
-	await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
-	await page.mouse.down();
-	await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, {
-		steps: 16,
-	});
-};
-
-// Press-and-hold, which is touch's right-click. Dispatched rather than driven by
-// page.touchscreen, which has no way to hold. The synthetic click at the end is
-// part of the gesture: a hold that stopped swallowing it would also activate
-// whatever it opened the menu over.
-export const pressAndHold = async (page: Page, target: Locator) => {
-	const box = (await target.boundingBox()) as {
-		x: number;
-		y: number;
-		width: number;
-		height: number;
-	};
-	const touch = {
-		pointerType: "touch",
-		isPrimary: true,
-		button: 0,
-		clientX: box.x + box.width / 2,
-		clientY: box.y + box.height / 2,
-	};
-
-	await target.dispatchEvent("pointerdown", touch);
-	await page.waitForTimeout(520); // past the 420ms hold
-	await target.dispatchEvent("pointerup", touch);
-	await target.dispatchEvent("click", { ...touch, detail: 1 });
-};
-
-// ---- scrolling --------------------------------------------------------------
-
-// Row heights, the scroll offset and the container's own rect are all
-// fractional, so a row scrolled exactly to the bottom edge lands a few tenths of
-// a pixel past it.
-const EDGE_TOLERANCE_PX = 1;
-
-export const isRowOnScreen = (page: Page, index: number) =>
-	page.evaluate(
-		({ row, slack }) => {
-			const element = document.querySelector(`[role="row"][data-row="${row}"]`);
-			if (!element) return false;
-			const scroller = document.querySelector("main") as HTMLElement;
-			const seen = element.getBoundingClientRect();
-			const view = scroller.getBoundingClientRect();
-			return seen.top >= view.top - slack && seen.bottom <= view.bottom + slack;
-		},
-		{ row: index, slack: EDGE_TOLERANCE_PX },
-	);
-
-// A step short of a screenful, so two consecutive steps overlap and no row can
-// fall between them.
-const SCREENFUL = 0.8;
-
-// Frames the list may keep moving for before it is read anyway. A list that
-// never comes to rest should fail on the assertion it was scrolled for, not on
-// the test's own timeout with nothing said about why.
-const STILLNESS_CAP_FRAMES = 90;
-
-// Consecutive unchanged frames required to call the list settled, rather than
-// one: a single match can be two samples either side of a change that is still
-// in flight.
-const STILL_FRAMES = 3;
-
-const listHoldsStill = (page: Page) =>
-	page.evaluate(
-		([cap, stillFrames]: [number, number]) =>
-			new Promise<void>((resolve) => {
-				const scroller = document.querySelector("main") as HTMLElement;
-				let last = "";
-				let still = 0;
-				let frames = 0;
-				const tick = () => {
-					const now = `${scroller.scrollTop}/${scroller.scrollHeight}`;
-					still = now === last ? still + 1 : 0;
-					last = now;
-					frames += 1;
-					if (still >= stillFrames || frames >= cap) resolve();
-					else requestAnimationFrame(tick);
-				};
-				requestAnimationFrame(tick);
-			}),
-		[STILLNESS_CAP_FRAMES, STILL_FRAMES] as [number, number],
-	);
-
-const scrollOneScreen = (page: Page) =>
-	page.evaluate((fraction: number) => {
-		const scroller = document.querySelector("main") as HTMLElement;
-		const from = scroller.scrollTop;
-		scroller.scrollBy(0, scroller.clientHeight * fraction);
-		return scroller.scrollTop > from;
-	}, SCREENFUL);
-
-// The virtualiser only mounts what is near the viewport, so a row further down a
-// playlist does not exist to be located until the list has been scrolled to it.
-// A screenful at a time rather than a jump: in album mode the total height is an
-// estimate until the groups have been measured, so any single jump is aimed at
-// the wrong place.
-//
-// Every read is taken from a list that has come to rest, and that is the part
-// that matters. While the groups are still estimated the list believes it is
-// short enough to mount all of them at once, so a row far down it is attached
-// for a moment and gone again once the measuring pass lands. A read taken
-// before the list has settled can see that row and lose it again before
-// anything acts on it.
-//
-// The loop is bounded by the list rather than by a clock. A step that moves
-// nothing means the scroller is out of room, and two of them in a row mean it is
-// really out of room: at an estimated bottom the first step can be refused and
-// the next one have somewhere to go, once the groups down there have been
-// measured and the total has grown.
-export const scrollUntilMounted = async (page: Page, locator: Locator) => {
-	// Wait for the view before scrolling it. Without this the loop below scrolls
-	// a container with nothing in it, which shows up only in a full parallel run.
-	await expect(page.locator('[role="row"]').first()).toBeAttached();
-
-	let refusals = 0;
-	while (refusals < 2) {
-		await listHoldsStill(page);
-		if (await locator.count()) break;
-		refusals = (await scrollOneScreen(page)) ? 0 : refusals + 1;
-	}
-
-	await expect(
-		locator,
-		"the row never mounted, and the list ran out of room to scroll",
-	).toBeAttached();
-};
-
-export const scrollTop = (page: Page) =>
-	page.evaluate(
-		() => (document.querySelector("main") as HTMLElement).scrollTop,
-	);
-
-export const scrollTo = (page: Page, offset: number) =>
-	page.evaluate(
-		(to) => (document.querySelector("main") as HTMLElement).scrollTo(0, to),
-		offset,
-	);
-
 // ---- running steps one after the next ---------------------------------------
 
 export const inSequence = <T>(
@@ -1276,6 +1009,12 @@ export const times = (count: number, run: (index: number) => unknown) =>
 		Array.from({ length: count }, (_, index) => index),
 		run,
 	);
+
+// See "A fake clock advances honestly only in small steps" in test/README.md.
+export const CLOCK_STEP_MS = 250;
+
+export const runClockFor = (page: Page, ms: number) =>
+	times(Math.ceil(ms / CLOCK_STEP_MS), () => page.clock.runFor(CLOCK_STEP_MS));
 
 // The tab's icon is a handle too, minted for every frame of a playing record and revoked at the
 // next. It is a PNG off a canvas and every cover the fake serves is a JPEG, which is how the two

@@ -4,9 +4,9 @@ import {
 	expect,
 	holdRequests,
 	openLibrary,
-	requestsTo,
 	statusBar,
 	test,
+	ticksTaken,
 	titlesIn,
 	trackRow,
 } from "./fixtures.ts";
@@ -26,9 +26,6 @@ const isTick = (request: Request) =>
 
 const isOwnRead = (request: Request) =>
 	isStateRead(request) && !request.headers()["if-none-match"];
-
-const ticksTaken = (player: FakePlayer) =>
-	requestsTo(player, "/api/state").filter((one) => one.method === "GET").length;
 
 const nextTrack = (page: Page) =>
 	statusBar(page).getByRole("button", { name: /^Next track\b/ });

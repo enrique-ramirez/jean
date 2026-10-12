@@ -1,52 +1,53 @@
 import type { Request } from "@playwright/test";
-import { NULL_OUTPUT_DEVICE } from "../fake-api/fooJean.ts";
 import {
 	countPostsTo,
 	deviceAudio,
-	dragTo,
 	expect,
 	expectDisabledWithReason,
 	expectSettlesAt,
-	expectTheScreenIsStillOpen,
 	type FakePlayer,
-	fromTheGrabber,
 	globalControls,
 	type Locator,
-	nowPlayingScreen,
-	openLibrary,
-	openNowPlaying,
-	openSettings,
 	type Page,
-	playRequests,
+	pickerOpener,
+	playingOn,
 	putThePickerAway,
 	requestsTo,
-	restingBox,
-	settingsDialog,
 	statusBar,
 	test,
-	toasts,
-	touchDrag,
-	trackRow,
 	untilQuiet,
-	watchHowFarItMoves,
 } from "./fixtures.ts";
+import { dragTo } from "./gestures.ts";
+import {
+	currentTime,
+	HAND_BACK,
+	HEARD,
+	listensInItsOwn,
+	marks,
+	mutesInThePanel,
+	playerFader,
+	playerRow,
+	STOP_HERE,
+	startListening,
+	stopButtons,
+	streamRequests,
+	TICK,
+	thePlayer,
+	ticketRequests,
+} from "./listening.ts";
+import {
+	leaveButton,
+	OFFERING_SESSIONS,
+	openOnThePlayer,
+	ownRow,
+	playerRowOf,
+	startButton,
+	strictOnceSettled,
+	thePlayersFace,
+} from "./sessions.ts";
 
 // Playwright cannot hear anything, so nothing here asserts on sound -- only on
 // what went over the wire and what the audio element believes.
-
-const TICK = [100, 100, 200];
-
-const listenButton = (page: Page) =>
-	statusBar(page).getByRole("button", {
-		name: /Choose where to play|Playing on this device/,
-	});
-
-// The element is created by the store and never mounted in the tree.
-const currentTime = (page: Page) =>
-	page.evaluate(() => {
-		const audio = document.querySelector("audio");
-		return audio ? audio.currentTime : null;
-	});
 
 const elapsedSeconds = async (page: Page) => {
 	const text = (await statusBar(page).innerText()).replace(/\s+/g, " ");
@@ -54,79 +55,10 @@ const elapsedSeconds = async (page: Page) => {
 	return match ? Number(match[1]) * 60 + Number(match[2]) : null;
 };
 
-const streamRequests = (player: FakePlayer) =>
-	player.requests.filter((entry) => entry.path.split("?")[0] === "/api/stream");
-
-const ticketRequests = (player: FakePlayer) =>
-	requestsTo(player, "/api/stream/ticket").filter(
-		(entry) => entry.method === "POST",
-	);
-
-const picker = (page: Page) => page.getByRole("group", { name: "Playing on" });
-
-// The player's face is a button only while pressing it would listen here.
-const playerFace = (page: Page) =>
-	picker(page).getByRole("button", { name: "Listen here", exact: true });
-
-// Choosing does not dismiss the panel -- the player's row is where the connection
-// reports itself -- so every helper below leaves it open.
-const startListening = async (page: Page) => {
-	await listenButton(page).click();
-	await playerFace(page).click();
-};
-
-// By its name rather than by its role: the face is a button only where pressing
-// it would do something.
-const thePlayer = (page: Page) =>
-	picker(page).getByText("foobar2000", { exact: true });
-
-const playerRow = (page: Page) =>
-	picker(page)
-		.getByRole("listitem")
-		.filter({ has: page.getByText("foobar2000", { exact: true }) });
-
-const HAND_BACK = "Stop, and move the sound back to foobar2000";
-const STOP_HERE = "Stop listening here";
-
-// Found by either of its names, so a case that wants one name can count the other.
-const stopButtons = (page: Page) =>
-	picker(page).getByRole("button", {
-		name: new RegExp(`^(${HAND_BACK}|${STOP_HERE})$`),
-	});
-
-// WAI-ARIA reads `aria-current="false"` as not current, the same as no attribute.
-const currentRows = (page: Page) =>
-	picker(page)
-		.getByRole("listitem")
-		.and(page.locator('[aria-current]:not([aria-current="false"])'));
-
-// The whole panel the button opens, the roster included.
-const pickerPanel = (page: Page) => picker(page).locator("xpath=..");
-
 const leavesSent = (player: FakePlayer) =>
 	requestsTo(player, "/api/stream/leave").filter(
 		(entry) => entry.method === "POST",
 	).length;
-
-const playerFader = (page: Page) =>
-	picker(page).getByRole("slider", { name: "Volume on foobar2000" });
-
-// A mute on foobar2000 is its fader at the bottom of its travel, so a button for it would be a
-// control that disappears at the one level somebody needs it at. Read once the fader beside where it
-// would sit is drawn, so an empty count is about a panel that is on screen.
-const mutesInThePanel = async (page: Page) => {
-	await expect(playerFader(page)).toBeVisible();
-	const named = { name: /mute|silence/i };
-	return pickerPanel(page)
-		.getByRole("button", named)
-		.or(pickerPanel(page).getByRole("switch", named))
-		.or(pickerPanel(page).getByRole("checkbox", named))
-		.count();
-};
-
-// One per device the sound reaches, and the same bars a playing row carries in a
-// track list.
-const marks = (within: Locator) => within.locator("[data-paused]");
 
 const POLL_MS = 1000;
 const MARK_FOLLOW_UP_MS = 250;
@@ -181,45 +113,6 @@ const playingPath = (player: FakePlayer) => {
 	return String(track?.["%path%"] ?? "");
 };
 
-test.describe("where the picker sits", () => {
-	test.use({ fooJean: {} });
-
-	// The button is a third of the way in from the right edge at every width, so a
-	// panel whose right edge is the button's hangs off the left of a phone.
-	test("it is on the screen, both ends, wherever it was opened from", async ({
-		page,
-		isMobile,
-	}) => {
-		await page.goto("/");
-
-		const width = page.viewportSize()?.width ?? 0;
-		const check = async (where: string) => {
-			const box = (await picker(page).boundingBox())!;
-			expect(box.x, `${where}: ran off the left`).toBeGreaterThanOrEqual(0);
-			expect(
-				box.x + box.width,
-				`${where}: ran off the right`,
-			).toBeLessThanOrEqual(width);
-		};
-
-		await listenButton(page).click();
-		await check("the status bar");
-
-		if (!isMobile) return;
-
-		// The screen replaces the status bar on a phone, so the same panel opens
-		// from the transport instead -- a different anchor and the same answer.
-		await page.keyboard.press("Escape");
-		await openNowPlaying(page);
-		await nowPlayingScreen(page)
-			.getByRole("button", {
-				name: /Choose where to play|Playing on this device/,
-			})
-			.click();
-		await check("the now-playing transport");
-	});
-});
-
 // A check cached as unreachable takes the whole picker away -- `ListenHere`
 // renders nothing at all when the component is not ready, so there is not
 // even a button left to press. Settings has a "Check again"; the footer is
@@ -239,9 +132,9 @@ test.describe("a first check that times out", () => {
 		);
 		await page.goto("/");
 
-		await expect(listenButton(page)).toBeVisible();
-		await listenButton(page).click();
-		await expect(playerFace(page)).toBeVisible();
+		await expect(pickerOpener(page)).toBeVisible();
+		await pickerOpener(page).click();
+		await expect(thePlayersFace(page)).toBeVisible();
 		expect(refused).toBe(1);
 	});
 });
@@ -311,7 +204,7 @@ test.describe("listening on this device", () => {
 		expect(leavesSent(player)).toBe(0);
 		expect(await currentTime(page)).toBeGreaterThan(0);
 
-		await picker(page)
+		await playingOn(page)
 			.getByRole("button", { name: HAND_BACK, exact: true })
 			.click();
 
@@ -324,10 +217,10 @@ test.describe("listening on this device", () => {
 		page,
 	}) => {
 		await page.goto("/");
-		await listenButton(page).click();
-		await expect(playerFace(page)).toBeVisible();
+		await pickerOpener(page).click();
+		await expect(thePlayersFace(page)).toBeVisible();
 
-		await playerFace(page).click();
+		await thePlayersFace(page).click();
 		await expect
 			.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
 			.toBeGreaterThan(0);
@@ -336,16 +229,16 @@ test.describe("listening on this device", () => {
 			playerRow(page).getByText("Listening here", { exact: true }),
 		).toBeVisible();
 		await expect(
-			picker(page).getByRole("button").filter({ hasText: "foobar2000" }),
+			playingOn(page).getByRole("button").filter({ hasText: "foobar2000" }),
 		).toHaveCount(0);
 		await expect(
-			picker(page).getByRole("button", { name: /listen here/i }),
+			playingOn(page).getByRole("button", { name: /listen here/i }),
 		).toHaveCount(0);
 
 		// One way out, whatever it is called, and the word drawn on it is Stop.
 		await expect(stopButtons(page)).toHaveCount(1);
 		await expect(
-			picker(page)
+			playingOn(page)
 				.getByRole("button")
 				.filter({ hasText: /^Stop$/ }),
 		).toHaveCount(1);
@@ -355,7 +248,7 @@ test.describe("listening on this device", () => {
 
 		await stopButtons(page).click();
 		await expect.poll(() => currentTime(page)).toBe(0);
-		await expect(playerFace(page)).toBeVisible();
+		await expect(thePlayersFace(page)).toBeVisible();
 	});
 });
 
@@ -431,49 +324,7 @@ test.describe("an install with no encoder", () => {
 	test("does not offer the control at all", async ({ page }) => {
 		await page.goto("/");
 		await expect(statusBar(page).getByRole("button")).not.toHaveCount(0);
-		await expect(listenButton(page)).toHaveCount(0);
-	});
-});
-
-test.describe("the picker on the now-playing screen", () => {
-	test.use({ fooJean: {} });
-
-	// The phone's screen replaces the status bar, so without a copy here the one
-	// control that says where the sound is going is unreachable while it is open.
-	test.skip(
-		({ isMobile }) => !isMobile,
-		"the desktop screen draws no transport: the status bar under it carries both",
-	);
-
-	test("is beside the fader, and opens onto the same picker", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await openNowPlaying(page);
-		await expect(statusBar(page)).toHaveCount(0);
-
-		const screen = nowPlayingScreen(page);
-		await screen
-			.getByRole("button", { name: /Choose where to play|Playing on this/ })
-			.click();
-
-		await expect(picker(page)).toBeVisible();
-		await expect(thePlayer(page)).toBeVisible();
-		await expect(playerFace(page)).toBeVisible();
-	});
-
-	test("hands the sound to this device from there", async ({ page }) => {
-		await page.goto("/");
-		await openNowPlaying(page);
-
-		await nowPlayingScreen(page)
-			.getByRole("button", { name: /Choose where to play|Playing on this/ })
-			.click();
-		await playerFace(page).click();
-
-		await expect
-			.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
-			.toBeGreaterThan(0);
+		await expect(pickerOpener(page)).toHaveCount(0);
 	});
 });
 
@@ -483,7 +334,7 @@ test.describe("a component that is not answering", () => {
 	test("offers nothing to listen with", async ({ page }) => {
 		await page.goto("/");
 		await expect(statusBar(page)).toBeVisible();
-		await expect(listenButton(page)).toHaveCount(0);
+		await expect(pickerOpener(page)).toHaveCount(0);
 	});
 });
 
@@ -638,16 +489,13 @@ test.describe("a stream that goes quiet", () => {
 		// No error to catch: the element never fires `playing` and `currentTime`
 		// never moves, so the watchdog asks `foo_jean` which of the two it is.
 		await expect
-			.poll(async () => (await picker(page).textContent()) ?? "", {
+			.poll(async () => (await playingOn(page).textContent()) ?? "", {
 				timeout: 25_000,
 			})
 			.toMatch(/stopped/i);
 	});
 });
 
-// Two tracks far enough apart in the Library fixture to have nothing in common.
-const HEARD = { index: 2, title: "Deléctrico" };
-const HEARD_ARTIST = "Babasónicos";
 const NEXT = { index: 40, title: "Goodnite, Noises Everywhere" };
 
 test.describe("what is audible, not what the player is doing", () => {
@@ -978,26 +826,6 @@ test.describe("the clock once the short buffer is written off", () => {
 	});
 });
 
-test.describe("the Playing on panel", () => {
-	test.use({ fooJean: {} });
-
-	test("offers no mute while the player is the one playing, nor once this device listens", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await listenButton(page).click();
-		expect(await mutesInThePanel(page)).toBe(0);
-
-		// Listening here silences the player, and the Stop that hands the sound back is the panel
-		// saying so. A player held silent is where a mute would be drawn if anywhere.
-		await playerFace(page).click();
-		await expect(
-			picker(page).getByRole("button", { name: HAND_BACK, exact: true }),
-		).toBeVisible();
-		expect(await mutesInThePanel(page)).toBe(0);
-	});
-});
-
 test.describe("who else is listening", () => {
 	test.use({
 		fooJean: {
@@ -1011,7 +839,7 @@ test.describe("who else is listening", () => {
 
 	test("names them, and tells two of a kind apart", async ({ page }) => {
 		await page.goto("/");
-		await listenButton(page).click();
+		await pickerOpener(page).click();
 
 		const roster = page.getByRole("list", { name: "Also listening" });
 		await expect(roster.getByRole("listitem")).toHaveCount(3);
@@ -1031,7 +859,7 @@ test.describe("who else is listening", () => {
 		page,
 	}) => {
 		await page.goto("/");
-		await expect(listenButton(page)).toHaveText("3");
+		await expect(pickerOpener(page)).toHaveText("3");
 	});
 
 	test("this device is a row of its own and never also one of the others", async ({
@@ -1053,7 +881,7 @@ test.describe("who else is listening", () => {
 		page,
 	}) => {
 		await page.goto("/");
-		await listenButton(page).click();
+		await pickerOpener(page).click();
 
 		// Nothing is listening from here, so the reason is somebody else's doing
 		// and the row has to say whose.
@@ -1066,8 +894,8 @@ test.describe("who else is listening", () => {
 		page,
 	}) => {
 		await page.goto("/");
-		await listenButton(page).click();
-		await expect(picker(page)).toContainText("Silent while");
+		await pickerOpener(page).click();
+		await expect(playingOn(page)).toContainText("Silent while");
 
 		expect(await mutesInThePanel(page)).toBe(0);
 	});
@@ -1082,7 +910,7 @@ test.describe("who else is listening", () => {
 		);
 
 		await page.goto("/");
-		await listenButton(page).click();
+		await pickerOpener(page).click();
 
 		await expect(playerFader(page)).toHaveCSS("width", "104px");
 	});
@@ -1094,20 +922,20 @@ test.describe("who else is listening", () => {
 		test.skip(isMobile, "dragging a fader is a mouse gesture");
 
 		await page.goto("/");
-		await listenButton(page).click();
+		await pickerOpener(page).click();
 
 		// There is no mute button in this picker: the player's mute is its fader at
 		// the bottom of its travel, and the fader is how anyone comes back from it.
 		const fader = page.getByRole("slider", { name: "Volume on foobar2000" });
 		await expect(fader).toHaveAttribute("aria-valuenow", "0");
-		await expect(marks(playerFace(page))).toHaveCount(0);
+		await expect(marks(thePlayersFace(page))).toHaveCount(0);
 
 		await dragTo(page, fader, 0.6);
 
 		// The component reads the fader moving as the mute no longer being its own,
 		// so the row stops explaining a silence that is over.
-		await expect(picker(page)).not.toContainText("Silent while");
-		await expect(marks(playerFace(page))).toHaveCount(1);
+		await expect(playingOn(page)).not.toContainText("Silent while");
+		await expect(marks(thePlayersFace(page))).toHaveCount(1);
 
 		// It adds an output rather than taking one away: everybody who was
 		// listening still is.
@@ -1119,7 +947,7 @@ test.describe("who else is listening", () => {
 		page,
 	}) => {
 		await page.goto("/");
-		await listenButton(page).click();
+		await pickerOpener(page).click();
 
 		const roster = page.getByRole("list", { name: "Also listening" });
 		await expect(marks(roster)).toHaveCount(3);
@@ -1161,8 +989,8 @@ test.describe("a device holding several connections", () => {
 
 	test("is counted once, on the button and in the list", async ({ page }) => {
 		await page.goto("/");
-		await expect(listenButton(page)).toHaveText("2");
-		await listenButton(page).click();
+		await expect(pickerOpener(page)).toHaveText("2");
+		await pickerOpener(page).click();
 
 		const roster = page.getByRole("list", { name: "Also listening" });
 		await expect(roster.getByRole("listitem")).toHaveCount(2);
@@ -1194,7 +1022,7 @@ test.describe("saying goodbye", () => {
 		player,
 	}) => {
 		await page.goto("/");
-		await listenButton(page).click();
+		await pickerOpener(page).click();
 		// On the player's name rather than its word: the whole face is the button.
 		await thePlayer(page).click();
 
@@ -1204,1330 +1032,26 @@ test.describe("saying goodbye", () => {
 	});
 });
 
-test.describe("the player's row", () => {
-	test.use({ fooJean: {} });
-
-	test("on the player and not listening, its face is the one Listen here in the picker", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await listenButton(page).click();
-
-		await expect(playerFace(page)).toBeVisible();
-		// The face holds the player's name: a Listen here beside the name is the separate row again.
-		await expect(playerFace(page)).toContainText("foobar2000");
-		await expect(
-			playerRow(page).getByRole("button", { name: "Listen here" }),
-		).toHaveCount(1);
-		await expect(
-			picker(page).getByRole("button", { name: /listen here/i }),
-		).toHaveCount(1);
-		await expect(
-			pickerPanel(page).getByText("Listen here", { exact: true }),
-		).toHaveCount(1);
-	});
-
-	test("is the only row with a slider, and is marked current whether or not this device listens", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await listenButton(page).click();
-
-		await expect(playerFace(page)).toBeVisible();
-		await expect(currentRows(page)).toHaveCount(1);
-		await expect(currentRows(page)).toContainText("foobar2000");
-		await expect(picker(page).getByRole("slider")).toHaveCount(1);
-		await expect(playerRow(page).getByRole("slider")).toHaveCount(1);
-
-		await playerFace(page).click();
-		await expect(stopButtons(page)).toBeVisible();
-		await expect(currentRows(page)).toHaveCount(1);
-		await expect(currentRows(page)).toContainText("foobar2000");
-		await expect(picker(page).getByRole("slider")).toHaveCount(1);
-		await expect(playerRow(page).getByRole("slider")).toHaveCount(1);
-	});
-
-	// A control inside the face is a press that also listens.
-	test("holds nothing interactive inside its face", async ({ page }) => {
-		await page.goto("/");
-		await listenButton(page).click();
-
-		const face = playerFace(page);
-		await expect(face).toBeVisible();
-		await expect(playerRow(page).getByRole("slider")).toBeVisible();
-		await expect(face.getByRole("button")).toHaveCount(0);
-		await expect(face.getByRole("slider")).toHaveCount(0);
-		await expect(face.getByRole("link")).toHaveCount(0);
-	});
-
-	test("its fader moves the player and not this device while this device listens", async ({
-		page,
-		player,
-		isMobile,
-	}) => {
-		await page.goto("/");
-		await startListening(page);
-		await expect
-			.poll(() => currentTime(page), { timeout: 15_000 })
-			.toBeGreaterThan(0);
-		await untilQuiet(player);
-		const before = await deviceAudio(page);
-		const volumes = countPostsTo(player, "/api/volume");
-
-		const fader = playerRow(page).getByRole("slider", {
-			name: "Volume on foobar2000",
-		});
-		await expect(fader).toBeVisible();
-		if (isMobile) {
-			const box = (await fader.boundingBox())!;
-			await fader.tap({ position: { x: box.width * 0.6, y: box.height / 2 } });
-		} else await dragTo(page, fader, 0.6);
-
-		await expect
-			.poll(() => countPostsTo(player, "/api/volume"))
-			.toBeGreaterThan(volumes);
-		expect(await deviceAudio(page)).toEqual(before);
-	});
-});
-
-test.describe("the picker on the desktop", () => {
-	test.use({ fooJean: {} });
-	test.skip(({ isMobile }) => isMobile, "a phone has no keyboard to drive it");
-
-	const openFromTheKeyboard = async (page: Page) => {
-		await listenButton(page).focus();
-		await page.keyboard.press("Enter");
-		await expect(picker(page)).toBeVisible();
-	};
-
-	const listeningWithThePickerShut = async (page: Page) => {
-		await page.goto("/");
-		await startListening(page);
-		await expect
-			.poll(() => currentTime(page), { timeout: 15_000 })
-			.toBeGreaterThan(0);
-		await page.keyboard.press("Escape");
-		await expect(picker(page)).toBeHidden();
-	};
-
-	test("Enter on the opener opens the picker on the player's face", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await openFromTheKeyboard(page);
-
-		await expect(playerFace(page)).toBeFocused();
-	});
-
-	test("listening, Enter on the opener opens the picker on Stop", async ({
-		page,
-	}) => {
-		await listeningWithThePickerShut(page);
-		await openFromTheKeyboard(page);
-
-		await expect(stopButtons(page)).toBeFocused();
-	});
-
-	test("not listening, Tab walks from the face to the player's fader and back", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await openFromTheKeyboard(page);
-		const fader = playerRow(page).getByRole("slider");
-
-		await expect(playerFace(page)).toBeFocused();
-		await page.keyboard.press("Tab");
-		await expect(fader).toBeFocused();
-		await page.keyboard.press("Shift+Tab");
-		await expect(playerFace(page)).toBeFocused();
-	});
-
-	test("listening, Tab walks the fader, the cog and then Stop", async ({
-		page,
-	}) => {
-		await listeningWithThePickerShut(page);
-		await openFromTheKeyboard(page);
-		const fader = playerRow(page).getByRole("slider");
-		const cog = playerRow(page).getByRole("button", {
-			name: "Output options",
-			exact: true,
-		});
-
-		await expect(stopButtons(page)).toBeFocused();
-		await page.keyboard.press("Shift+Tab");
-		await expect(cog).toBeFocused();
-		await page.keyboard.press("Shift+Tab");
-		await expect(fader).toBeFocused();
-		await page.keyboard.press("Tab");
-		await expect(cog).toBeFocused();
-		await page.keyboard.press("Tab");
-		await expect(stopButtons(page)).toBeFocused();
-	});
-
-	test("Escape closes the picker and gives focus back to the opener", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await openFromTheKeyboard(page);
-		await expect(playerFace(page)).toBeFocused();
-
-		await page.keyboard.press("Escape");
-		await expect(picker(page)).toBeHidden();
-		await expect(listenButton(page)).toBeFocused();
-	});
-
-	// With the player's row the only row there is no row to move to, and the fader is reached by
-	// Tab alone.
-	test("with one row, the arrows leave focus on the player's face and move no fader", async ({
-		page,
-		player,
-	}) => {
-		await page.goto("/");
-		await openFromTheKeyboard(page);
-		await expect(playerFace(page)).toBeFocused();
-
-		for (const key of ["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft"]) {
-			await page.keyboard.press(key);
-			await expect(playerFace(page), key).toBeFocused();
-		}
-		await untilQuiet(player);
-		expect(countPostsTo(player, "/api/volume")).toBe(0);
-	});
-
-	// Polled, so a control that takes focus a frame after the swap is not read as having lost it.
-	const whereFocusSettles = (page: Page) =>
-		expect.poll(() =>
-			pickerPanel(page).evaluate((panel) => {
-				const focused = document.activeElement;
-				if (!focused || focused === document.body) return "body";
-				return panel.contains(focused) ? "the picker" : "elsewhere";
-			}),
-		);
-
-	// A press that swaps the control it was made on would otherwise drop focus to `body`, from where
-	// Escape no longer knows to give it back to the opener.
-	test("Enter on the player's face listens and leaves focus on Stop, from where Escape gives it back to the opener", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await openFromTheKeyboard(page);
-		await expect(playerFace(page)).toBeFocused();
-
-		await page.keyboard.press("Enter");
-		await expect(stopButtons(page)).toBeVisible();
-		await whereFocusSettles(page).toBe("the picker");
-		await expect(stopButtons(page)).toBeFocused();
-
-		await page.keyboard.press("Escape");
-		await expect(picker(page)).toBeHidden();
-		await expect(listenButton(page)).toBeFocused();
-	});
-
-	test("open, listen, stop and close by Enter and Escape alone, with focus inside the picker at every step", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await openFromTheKeyboard(page);
-		await whereFocusSettles(page).toBe("the picker");
-		await expect(playerFace(page)).toBeFocused();
-
-		await page.keyboard.press("Enter");
-		await expect(stopButtons(page)).toBeVisible();
-		await whereFocusSettles(page).toBe("the picker");
-		await expect(stopButtons(page)).toBeFocused();
-
-		await page.keyboard.press("Enter");
-		await expect(playerFace(page)).toBeVisible();
-		await whereFocusSettles(page).toBe("the picker");
-		await expect(playerFace(page)).toBeFocused();
-
-		await page.keyboard.press("Escape");
-		await expect(picker(page)).toBeHidden();
-		await expect(listenButton(page)).toBeFocused();
-	});
-
-	test("the popover is 360 pixels wide", async ({ page }) => {
-		await page.goto("/");
-		await listenButton(page).click();
-
-		const box = (await pickerPanel(page).boundingBox())!;
-		expect(Math.round(box.width)).toBe(360);
-	});
-});
-
-const pickerSheet = (page: Page) =>
-	page.getByRole("dialog", { name: "Playing on" });
-
-const closeButton = (page: Page) =>
-	pickerSheet(page).getByRole("button", { name: "Close", exact: true });
-
-const openerOnTheScreen = (page: Page) =>
-	nowPlayingScreen(page).getByRole("button", {
-		name: /Choose where to play|Playing on this device/,
-	});
-
-const openTheSheet = async (page: Page) => {
-	await listenButton(page).click();
-	await expect(pickerSheet(page)).toBeVisible();
-	return pickerSheet(page);
-};
-
-// Longer than a sheet on its way out stays drawn, so one still there after it was never closed.
-const PAST_ITS_EXIT_MS = 600;
-
-const expectTheSheetStillOpen = async (page: Page) => {
-	await page.waitForTimeout(PAST_ITS_EXIT_MS);
-	await expect(page.getByRole("dialog")).toHaveCount(1);
-	await expect(pickerSheet(page)).toBeVisible();
-};
-
-// Either side of the distance the grabber has to travel before letting go closes the sheet, each
-// far enough from it that the gesture is unambiguous.
-const SHORT_OF_CLOSING_PX = 50;
-const PAST_CLOSING_PX = 140;
-
-// A box is fractional, so a sheet back at rest can sit a fraction of a pixel off.
-const AT_REST_PX = 1;
-
-// Enough moves that the browser paints the sheet between them.
-const DRAG_STEPS = 12;
-
-// The smallest target a fingertip lands on reliably, and the taller one the design gives a face.
-const FINGER_PX = 44;
-const FACE_PX = 52;
-const PILL_WIDTH_PX = 64;
-
-const SHEET_HEIGHT_LIMIT = 0.76;
-
-const expectAtLeast = async (
-	target: Locator,
-	what: string,
-	size: { width?: number; height?: number },
-) => {
-	await expect(target).toBeVisible();
-	const box = (await restingBox(target))!;
-	if (size.height !== undefined)
-		expect(box.height, `${what}: height`).toBeGreaterThanOrEqual(size.height);
-	if (size.width !== undefined)
-		expect(box.width, `${what}: width`).toBeGreaterThanOrEqual(size.width);
-};
-
-const expectOnTheScreen = (
-	page: Page,
-	box: { x: number; y: number; width: number; height: number },
-	where: string,
-) => {
-	const viewport = page.viewportSize()!;
-	expect(box.x, `${where}: ran off the left`).toBeGreaterThanOrEqual(0);
-	expect(box.y, `${where}: ran off the top`).toBeGreaterThanOrEqual(0);
-	expect(box.x + box.width, `${where}: ran off the right`).toBeLessThanOrEqual(
-		viewport.width,
-	);
-	expect(
-		box.y + box.height,
-		`${where}: ran off the bottom`,
-	).toBeLessThanOrEqual(viewport.height);
-};
-
-test.describe("the picker on a phone is a bottom sheet", () => {
-	test.use({ fooJean: {} });
-	test.skip(({ isMobile }) => !isMobile, "the desktop keeps its popover");
-
-	test("the opener in the status bar opens a modal dialog named Playing on, holding the player's row and its face", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		const sheet = await openTheSheet(page);
-
-		await expect(page.getByRole("dialog")).toHaveCount(1);
-		await expect(sheet).toHaveAttribute("aria-modal", "true");
-		await expect(
-			sheet.getByRole("group", { name: "Playing on" }),
-		).toBeVisible();
-		await expect(
-			sheet
-				.getByRole("listitem")
-				.filter({ has: page.getByText("foobar2000", { exact: true }) }),
-		).toBeVisible();
-		await expect(
-			sheet.getByRole("button", { name: "Listen here", exact: true }),
-		).toBeVisible();
-	});
-
-	test("the opener on the now-playing screen opens the same dialog, holding the same row and face", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await openNowPlaying(page);
-		await openerOnTheScreen(page).click();
-
-		const sheet = pickerSheet(page);
-		await expect(sheet).toBeVisible();
-		await expect(sheet).toHaveAttribute("aria-modal", "true");
-		await expect(
-			sheet.getByRole("group", { name: "Playing on" }),
-		).toBeVisible();
-		await expect(
-			sheet.getByRole("button", { name: "Listen here", exact: true }),
-		).toBeVisible();
-	});
-
-	test("it is wholly on the screen, from either opener", async ({ page }) => {
-		await page.goto("/");
-		await openTheSheet(page);
-		expectOnTheScreen(
-			page,
-			await restingBox(pickerSheet(page)),
-			"from the status bar",
-		);
-
-		await closeButton(page).click();
-		await expect(page.getByRole("dialog")).toHaveCount(0);
-		await openNowPlaying(page);
-		await openerOnTheScreen(page).click();
-		await expect(pickerSheet(page)).toBeVisible();
-		expectOnTheScreen(
-			page,
-			await restingBox(pickerSheet(page)),
-			"from the now-playing screen",
-		);
-	});
-
-	test("its Close button closes it", async ({ page }) => {
-		await page.goto("/");
-		await openTheSheet(page);
-
-		await closeButton(page).click();
-
-		await expect(page.getByRole("dialog")).toHaveCount(0);
-	});
-
-	test("a press on the scrim above it closes it", async ({ page }) => {
-		await page.goto("/");
-		const box = await restingBox(await openTheSheet(page));
-
-		await page.touchscreen.tap(box.x + box.width / 2, box.y / 2);
-
-		await expect(page.getByRole("dialog")).toHaveCount(0);
-	});
-
-	test("Escape closes it", async ({ page }) => {
-		await page.goto("/");
-		await openTheSheet(page);
-
-		await page.keyboard.press("Escape");
-
-		await expect(page.getByRole("dialog")).toHaveCount(0);
-	});
-
-	// The now-playing screen closes on Escape too, and the sheet opened from it is in front of it.
-	// A phone's keys are an attached keyboard's.
-	test("opened from the now-playing screen, Escape closes the sheet and leaves the screen open, and Escape again closes the screen", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await openNowPlaying(page);
-		await openerOnTheScreen(page).click();
-		await expect(pickerSheet(page)).toBeVisible();
-
-		await page.keyboard.press("Escape");
-		await expect(page.getByRole("dialog")).toHaveCount(0);
-		await expectTheScreenIsStillOpen(page);
-
-		await page.keyboard.press("Escape");
-		await expect(nowPlayingScreen(page)).toBeHidden();
-	});
-
-	// As behind a row's action sheet: the sheet is modal, so the transport's keys wait for it.
-	test("while it is open, a transport key sends nothing to the player, and Escape still closes it", async ({
-		page,
-		player,
-	}) => {
-		await page.goto("/");
-		await openTheSheet(page);
-		await expect(playerFace(page)).toBeFocused();
-
-		await page.keyboard.press("ControlOrMeta+.");
-		await expectSettlesAt(
-			player,
-			() =>
-				requestsTo(player, "/api/playback/").filter(
-					(entry) => entry.method === "POST",
-				),
-			[],
-		);
-
-		await page.keyboard.press("Escape");
-		await expect(page.getByRole("dialog")).toHaveCount(0);
-	});
-
-	// A press inside the sheet is not a press outside it: the face swaps for Stop under the finger,
-	// and the swap must not read as the press having landed somewhere else.
-	test("it stays open after Listen here, and after Stop", async ({ page }) => {
-		await page.goto("/");
-		const sheet = await openTheSheet(page);
-
-		await sheet
-			.getByRole("button", { name: "Listen here", exact: true })
-			.click();
-		await expect
-			.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
-			.toBeGreaterThan(0);
-		await expectTheSheetStillOpen(page);
-		await expect(stopButtons(page)).toBeVisible();
-
-		await stopButtons(page).click();
-		await expect.poll(() => currentTime(page)).toBe(0);
-		await expectTheSheetStillOpen(page);
-		await expect(playerFace(page)).toBeVisible();
-	});
-
-	test("opening it puts focus on the player's face, and Close gives it back to the opener", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await openTheSheet(page);
-
-		await expect(playerFace(page)).toBeFocused();
-
-		await closeButton(page).click();
-		await expect(page.getByRole("dialog")).toHaveCount(0);
-		await expect(listenButton(page)).toBeFocused();
-	});
-
-	test("listening, opening it puts focus on Stop", async ({ page }) => {
-		await page.goto("/");
-		await startListening(page);
-		await expect
-			.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
-			.toBeGreaterThan(0);
-		await closeButton(page).click();
-		await expect(page.getByRole("dialog")).toHaveCount(0);
-
-		await openTheSheet(page);
-
-		await expect(stopButtons(page)).toBeFocused();
-	});
-
-	// The sheet covers the status bar, which is where the track is named everywhere else.
-	test("the player's row names the track it plays and its artist", async ({
-		page,
-		player,
-	}) => {
-		await page.goto("/#/home");
-		player.playItem("p7", HEARD.index);
-		await expect(statusBar(page)).toContainText(HEARD.title);
-
-		await openTheSheet(page);
-
-		await expect(playerRow(page)).toContainText(HEARD.title);
-		await expect(playerRow(page)).toContainText(HEARD_ARTIST);
-	});
-
-	test("the player's row names no track while the player is stopped", async ({
-		page,
-		player,
-	}) => {
-		await page.goto("/#/home");
-		player.playItem("p7", HEARD.index);
-		await expect(statusBar(page)).toContainText(HEARD.title);
-		player.stop();
-		await expect(statusBar(page)).not.toContainText(HEARD.title);
-
-		await openTheSheet(page);
-		await expect(playerFace(page)).toBeVisible();
-
-		const row = await playerRow(page).innerText();
-		expect(row).not.toContain(HEARD.title);
-		expect(row).not.toContain(HEARD_ARTIST);
-	});
-});
-
-test.describe("the picker's sheet goes by a drag down", () => {
-	test.use({ fooJean: {} });
-	test.skip(({ isMobile }) => !isMobile, "the desktop keeps its popover");
-	test.skip(
-		({ browserName }) => browserName !== "chromium",
-		"a finger is driven through CDP",
-	);
-
-	test("the grabber dragged down past the distance closes it", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		const sheet = await openTheSheet(page);
-
-		await fromTheGrabber(page, sheet, PAST_CLOSING_PX);
-
-		await expect(page.getByRole("dialog")).toHaveCount(0);
-	});
-
-	test("a downward drag that begins on its body, past the distance, closes it", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		const sheet = await openTheSheet(page);
-		const heading = await restingBox(sheet.getByRole("heading").first());
-
-		const x = heading.x + heading.width / 2;
-		const y = heading.y + heading.height / 2;
-		await touchDrag(page, { x, y }, { x, y: y + PAST_CLOSING_PX }, DRAG_STEPS);
-
-		await expect(page.getByRole("dialog")).toHaveCount(0);
-	});
-
-	test("the grabber dragged a shorter way carries it with the finger, and letting go leaves it open where it rested", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		const sheet = await openTheSheet(page);
-		const before = await restingBox(sheet);
-		const furthest = await watchHowFarItMoves(sheet);
-
-		await fromTheGrabber(page, sheet, SHORT_OF_CLOSING_PX);
-
-		// Settled first, or the box read below is one the sheet passed on its way back.
-		const after = await restingBox(sheet);
-		expect(
-			await furthest(),
-			"how far the sheet followed the finger",
-		).toBeGreaterThan(AT_REST_PX);
-		expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(AT_REST_PX);
-		await expectTheSheetStillOpen(page);
-	});
-});
-
-// Enough listeners that the roster inside the player's row is taller than the sheet may stand.
-const MANY_LISTENERS = Array.from({ length: 24 }, (_, index) => ({
-	deviceId: `listener-${index + 1}`,
-	name: `Listener ${index + 1}`,
-	listeningFor: 60 * (index + 1),
-}));
-
-test.describe("the picker's sheet holding more than fits", () => {
-	test.use({ fooJean: { otherListeners: MANY_LISTENERS } });
-	test.skip(({ isMobile }) => !isMobile, "the desktop keeps its popover");
-
-	const roster = (page: Page) =>
-		pickerSheet(page).getByRole("list", { name: "Also listening" });
-	const lastListener = (page: Page) =>
-		roster(page).getByRole("listitem").filter({ hasText: "Listener 24" });
-
-	const openItFull = async (page: Page) => {
-		await page.goto("/");
-		const sheet = await openTheSheet(page);
-		await expect(roster(page).getByRole("listitem")).toHaveCount(
-			MANY_LISTENERS.length,
-		);
-		return sheet;
-	};
-
-	test("it stands no taller than 76% of the screen, and wholly on it", async ({
-		page,
-	}) => {
-		const sheet = await openItFull(page);
-
-		const box = await restingBox(sheet);
-		const viewport = page.viewportSize()!;
-		expect(box.height).toBeLessThanOrEqual(
-			viewport.height * SHEET_HEIGHT_LIMIT + AT_REST_PX,
-		);
-		expectOnTheScreen(page, box, "the sheet");
-	});
-
-	test("scrolled to the end of its list, its heading and Close are still in view", async ({
-		page,
-	}) => {
-		const sheet = await openItFull(page);
-		const before = await restingBox(sheet);
-		const last = await restingBox(lastListener(page));
-		expect(
-			last.y,
-			"the last listener starts out below the sheet's edge",
-		).toBeGreaterThan(before.y + before.height);
-
-		await lastListener(page).scrollIntoViewIfNeeded();
-
-		const box = await restingBox(sheet);
-		const shown = await restingBox(lastListener(page));
-		expect(
-			shown.y + shown.height,
-			"the last listener, shown",
-		).toBeLessThanOrEqual(box.y + box.height + AT_REST_PX);
-		for (const [what, target] of [
-			["the heading", sheet.getByRole("heading", { name: "Playing on" })],
-			["Close", closeButton(page)],
-		] as const) {
-			const at = await restingBox(target);
-			expect(at.y, `${what}: scrolled above the sheet`).toBeGreaterThanOrEqual(
-				box.y - AT_REST_PX,
-			);
-			expect(at.y + at.height, `${what}: below the sheet`).toBeLessThanOrEqual(
-				box.y + box.height,
-			);
-		}
-		await expect(closeButton(page)).toBeInViewport();
-	});
-
-	test("a downward drag begun on its body, with its list at the top, closes it", async ({
-		page,
-		browserName,
-	}) => {
-		test.skip(browserName !== "chromium", "a finger is driven through CDP");
-		const sheet = await openItFull(page);
-		const box = await restingBox(sheet);
-
-		const x = box.x + box.width / 2;
-		const y = box.y + box.height / 2;
-		await touchDrag(page, { x, y }, { x, y: y + PAST_CLOSING_PX }, 12);
-
-		await expect(page.getByRole("dialog")).toHaveCount(0);
-	});
-
-	test("a downward drag begun on its list scrolled away from the top scrolls it back and moves the sheet nowhere", async ({
-		page,
-		browserName,
-	}) => {
-		test.skip(browserName !== "chromium", "a finger is driven through CDP");
-		const sheet = await openItFull(page);
-		const box = await restingBox(sheet);
-		const first = roster(page).getByRole("listitem").first();
-		const x = box.x + box.width / 2;
-		await touchDrag(
-			page,
-			{ x, y: box.y + box.height * 0.8 },
-			{ x, y: box.y + box.height * 0.3 },
-			12,
-		);
-		const scrolled = await restingBox(first);
-		expect(scrolled.y, "the first listener, scrolled up").toBeLessThan(box.y);
-		const furthest = await watchHowFarItMoves(sheet);
-
-		await touchDrag(
-			page,
-			{ x, y: box.y + box.height * 0.5 },
-			{ x, y: box.y + box.height * 0.5 + PAST_CLOSING_PX },
-			12,
-		);
-
-		const after = await restingBox(first);
-		expect(after.y, "the first listener, scrolled back").toBeGreaterThan(
-			scrolled.y,
-		);
-		expect(await furthest(), "how far the sheet moved").toBeLessThanOrEqual(
-			AT_REST_PX,
-		);
-		await expectTheSheetStillOpen(page);
-	});
-
-	test("a drag up its list scrolls the list and moves the sheet nowhere", async ({
-		page,
-		browserName,
-	}) => {
-		test.skip(browserName !== "chromium", "a finger is driven through CDP");
-		const sheet = await openItFull(page);
-		const box = await restingBox(sheet);
-		const first = roster(page).getByRole("listitem").first();
-		const firstBefore = await restingBox(first);
-		const furthest = await watchHowFarItMoves(sheet);
-
-		const x = box.x + box.width / 2;
-		await touchDrag(
-			page,
-			{ x, y: box.y + box.height * 0.8 },
-			{ x, y: box.y + box.height * 0.3 },
-			12,
-		);
-
-		const firstAfter = await restingBox(first);
-		expect(firstAfter.y, "the first listener, scrolled up").toBeLessThan(
-			firstBefore.y,
-		);
-		expect(await furthest(), "how far the sheet moved").toBeLessThanOrEqual(
-			AT_REST_PX,
-		);
-		await expectTheSheetStillOpen(page);
-	});
-});
-
-// Named the way foobar2000 lists outputs on Windows, with ids of the shape it answers.
-const SPEAKERS = {
-	id: "5B0C0E5E-3C1D-4D6A-8E2F-1A2B3C4D5E6F:1F2E3D4C-5B6A-4978-8A9B-0C1D2E3F4A5B",
-	name: "Speakers [WASAPI]",
-};
-const HEADPHONES = {
-	id: "5B0C0E5E-3C1D-4D6A-8E2F-1A2B3C4D5E6F:6A5B4C3D-2E1F-4A0B-9C8D-7E6F5A4B3C2D",
-	name: "Headphones [WASAPI]",
-};
-const TWO_OUTPUTS = {
-	outputDevices: [SPEAKERS, HEADPHONES],
-	activeOutput: SPEAKERS.id,
-};
-
-const listeningInTheSheet = async (page: Page) => {
-	await page.goto("/");
-	await startListening(page);
-	await expect
-		.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
-		.toBeGreaterThan(0);
-	await expect(pickerSheet(page)).toBeVisible();
-};
-
-const outputOptions = (page: Page) =>
-	pickerSheet(page).getByRole("button", {
-		name: "Output options",
-		exact: true,
-	});
-
-const outputList = (page: Page) =>
-	pickerSheet(page).getByRole("radiogroup", { name: "Output device" });
-
-test.describe("the output page behind the cog, in the picker's sheet", () => {
-	test.use({ fooJean: TWO_OUTPUTS });
-	test.skip(({ isMobile }) => !isMobile, "the desktop keeps its popover");
-
-	test("the cog turns the sheet to the output devices in place, and Back turns it back to the rows", async ({
-		page,
-	}) => {
-		await listeningInTheSheet(page);
-
-		await outputOptions(page).click();
-		await expect(outputList(page)).toBeVisible();
-		await expect(outputList(page).getByRole("radio")).toHaveCount(2);
-		await expect(page.getByRole("dialog")).toHaveCount(1);
-
-		await pickerSheet(page)
-			.getByRole("button", { name: "Back", exact: true })
-			.click();
-		await expect(
-			pickerSheet(page).getByRole("group", { name: "Playing on" }),
-		).toBeVisible();
-		await expect(outputList(page)).toHaveCount(0);
-		await expect(stopButtons(page)).toBeVisible();
-		await expect(page.getByRole("dialog")).toHaveCount(1);
-	});
-});
-
-const SWITCH_FAILED = "We couldn’t switch the output device";
-
-test.describe("a toast raised while the picker's sheet is open", () => {
-	test.use({ fooJean: { ...TWO_OUTPUTS, outputSwitchRefusal: 500 } });
-	test.skip(({ isMobile }) => !isMobile, "the desktop keeps its popover");
-
-	test("is drawn above the sheet, so a press at its centre reaches it", async ({
-		page,
-	}) => {
-		await listeningInTheSheet(page);
-		await outputOptions(page).click();
-		await outputList(page)
-			.getByRole("radio", { name: HEADPHONES.name, exact: true })
-			.click();
-
-		const toast = toasts(page)
-			.locator("xpath=..")
-			.filter({ hasText: SWITCH_FAILED });
-		await expect(toast).toBeVisible();
-		await expect(pickerSheet(page)).toBeVisible();
-
-		const box = await restingBox(toast);
-		const reached = await page.evaluate(
-			({ x, y, text }) => {
-				const hit = document.elementFromPoint(x, y);
-				return Boolean(
-					hit?.closest('[role="status"]')?.textContent?.includes(text),
-				);
-			},
-			{
-				x: box.x + box.width / 2,
-				y: box.y + box.height / 2,
-				text: SWITCH_FAILED,
-			},
-		);
-		expect(reached, "the press at the toast's centre landed on it").toBe(true);
-
-		await toast.getByRole("button", { name: "Dismiss" }).tap();
-		await expect(page.getByText(SWITCH_FAILED)).toHaveCount(0);
-	});
-});
-
-test.describe("the picker's touch targets on a phone", () => {
-	test.use({ fooJean: TWO_OUTPUTS });
-	test.skip(({ isMobile }) => !isMobile, "these are a finger's sizes");
-
-	test("the player's face is at least 52 pixels tall", async ({ page }) => {
-		await page.goto("/");
-		await listenButton(page).click();
-
-		await expectAtLeast(playerFace(page), "the face", { height: FACE_PX });
-	});
-
-	test("Stop is at least 44 pixels tall and 64 wide", async ({ page }) => {
-		await page.goto("/");
-		await startListening(page);
-		await expect
-			.poll(() => currentTime(page), { timeout: 20_000, intervals: TICK })
-			.toBeGreaterThan(0);
-
-		await expectAtLeast(stopButtons(page), "Stop", {
-			height: FINGER_PX,
-			width: PILL_WIDTH_PX,
-		});
-	});
-
-	test("the player's fader takes a touch 44 pixels tall", async ({ page }) => {
-		await page.goto("/");
-		await listenButton(page).click();
-
-		await expectAtLeast(playerFader(page), "the fader", { height: FINGER_PX });
-	});
-
-	test("Close is at least 44 by 44", async ({ page }) => {
-		await page.goto("/");
-		await openTheSheet(page);
-
-		await expectAtLeast(closeButton(page), "Close", {
-			height: FINGER_PX,
-			width: FINGER_PX,
-		});
-	});
-
-	test("the status bar's opener and its volume button are each at least 44 by 44", async ({
-		page,
-	}) => {
-		await page.goto("/");
-
-		await expectAtLeast(listenButton(page), "the opener", {
-			height: FINGER_PX,
-			width: FINGER_PX,
-		});
-		await expectAtLeast(
-			statusBar(page).getByRole("button", { name: "Show volume" }),
-			"the volume button",
-			{ height: FINGER_PX, width: FINGER_PX },
-		);
-	});
-});
-
-const NO_SPEAKERS = "foobar2000 is not playing through any speakers.";
-
-// Both listed, as foobar2000 lists its Null Output beside the real devices, so a switch between them
-// is one the player could make.
-const ON_SPEAKERS = {
-	outputDevices: [SPEAKERS, NULL_OUTPUT_DEVICE],
-	activeOutput: SPEAKERS.id,
-};
-const ON_NOTHING = { ...ON_SPEAKERS, activeOutput: NULL_OUTPUT_DEVICE.id };
-
-const noSpeakers = (page: Page) =>
-	page.getByText(NO_SPEAKERS, { exact: true }).filter({ visible: true });
-
-// The fader's level arrives on the same poll as `outputSilent`, so once it is drawn the picker
-// has read whether the player can be heard, and an absence after that is not one still loading.
-const openThePickerOnThePoll = async (page: Page) => {
-	await listenButton(page).click();
-	await expect(playerFace(page)).toBeVisible();
-	await expect(playerFader(page)).toBeVisible();
-};
-
-const expectOfferedFirst = async (page: Page) => {
-	await expect(playerFace(page)).toContainText(NO_SPEAKERS);
-	// One target for the act: a second Listen here, or a row of its own ahead of the player's,
-	// is the offer drawn beside the face rather than as it.
-	await expect(
-		picker(page).getByRole("button", { name: /listen here/i }),
-	).toHaveCount(1);
-	await expect(noSpeakers(page)).toHaveCount(1);
-	const firstRow = picker(page).getByRole("listitem").first();
-	await expect(firstRow).toContainText("foobar2000");
-	await expect(
-		firstRow.getByRole("button", { name: "Listen here", exact: true }),
-	).toContainText(NO_SPEAKERS);
-};
-
-const turnOffTheOffer = async (page: Page) => {
-	await openSettings(page);
-	const offer = settingsDialog(page).getByRole("switch", {
-		name: /^Offer listening here when the player cannot be heard/,
-	});
-	await offer.click();
-	await expect(offer).not.toBeChecked();
-	await page.getByRole("button", { name: "Close settings" }).click();
-	await expect(settingsDialog(page)).toBeHidden();
-};
-
-const expectNothingOffered = async (page: Page) => {
-	await expect(playerFace(page)).toBeVisible();
-	await expect(playerFace(page)).toContainText("foobar2000");
-	await expect(noSpeakers(page)).toHaveCount(0);
-};
-
-test.describe("a player nobody can hear", () => {
-	test.use({ fooJean: ON_NOTHING });
-
-	test("on the player and not listening, the player's face is the Listen here that says foobar2000 is not playing through any speakers, in the first row", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await openThePickerOnThePoll(page);
-
-		await expectOfferedFirst(page);
-	});
-
-	test("a press on the offered face listens, with one ticket and the stream opened", async ({
-		page,
-		player,
-	}) => {
-		await page.goto("/");
-		await openThePickerOnThePoll(page);
-		await expect(playerFace(page)).toContainText(NO_SPEAKERS);
-
-		await playerFace(page).click();
-
-		await expect.poll(() => streamRequests(player).length).toBeGreaterThan(0);
-		await expectSettlesAt(player, () => ticketRequests(player).length, 1);
-	});
-
-	test("listening here, the sentence is gone and the row reads Listening here with its Stop, and Stop brings the offer back", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await startListening(page);
-		await expect
-			.poll(() => currentTime(page), { timeout: 15_000 })
-			.toBeGreaterThan(0);
-
-		await expect(picker(page)).toContainText("Listening here");
-		await expect(stopButtons(page)).toHaveAccessibleName(HAND_BACK);
-		await expect(noSpeakers(page)).toHaveCount(0);
-
-		await stopButtons(page).click();
-		await expectOfferedFirst(page);
-	});
-
-	test("while listening is offered, the player's fader is still in its row and moves the player", async ({
-		page,
-		player,
-		isMobile,
-	}) => {
-		await page.goto("/");
-		await openThePickerOnThePoll(page);
-		await expect(playerFace(page)).toContainText(NO_SPEAKERS);
-		await untilQuiet(player);
-		const volumes = countPostsTo(player, "/api/volume");
-
-		const fader = playerRow(page).getByRole("slider", {
-			name: "Volume on foobar2000",
-		});
-		await expect(fader).toBeEnabled();
-		if (isMobile) {
-			const box = (await fader.boundingBox())!;
-			await fader.tap({ position: { x: box.width * 0.6, y: box.height / 2 } });
-		} else await dragTo(page, fader, 0.6);
-
-		await expect
-			.poll(() => countPostsTo(player, "/api/volume"))
-			.toBeGreaterThan(volumes);
-	});
-
-	test("while listening is offered, the player's row draws no bars beside its name, though the player plays", async ({
-		page,
-		player,
-	}) => {
-		await page.goto("/#/home");
-		player.playItem("p7", HEARD.index);
-		await expect(statusBar(page)).toContainText(HEARD.title);
-		await openThePickerOnThePoll(page);
-		await expectOfferedFirst(page);
-
-		expect(await marks(playerRow(page)).count()).toBe(0);
-	});
-
-	test("with the Settings switch off, the player's face draws its bars beside its name while it plays, as when it can be heard", async ({
-		page,
-		player,
-	}) => {
-		await page.goto("/#/home");
-		player.playItem("p7", HEARD.index);
-		await expect(statusBar(page)).toContainText(HEARD.title);
-		await turnOffTheOffer(page);
-		await openThePickerOnThePoll(page);
-
-		await expectNothingOffered(page);
-		await expect(marks(playerFace(page))).toHaveCount(1);
-	});
-
-	test.describe("with playback control off", () => {
-		test.use({ fooJean: { ...ON_NOTHING, canControlPlayback: false } });
-
-		// Listening is the stream, which `foo_jean` serves whatever `canControlPlayback` says.
-		test("listening is still offered first, and the press listens", async ({
-			page,
-			player,
-		}) => {
-			await page.goto("/");
-			await openThePickerOnThePoll(page);
-
-			await expectOfferedFirst(page);
-
-			await playerFace(page).click();
-			await expect.poll(() => streamRequests(player).length).toBeGreaterThan(0);
-			await expectSettlesAt(player, () => ticketRequests(player).length, 1);
-		});
-	});
-
-	test.describe("on an install that cannot stream", () => {
-		test.use({ fooJean: { ...ON_NOTHING, canStream: false } });
-
-		test("nothing is offered, and nothing says the player cannot be heard", async ({
-			page,
-			player,
-		}) => {
-			await page.goto("/");
-			// Two polls asked after the first, so the first has been answered and drawn.
-			await expect
-				.poll(() => requestsTo(player, "/api/state").length)
-				.toBeGreaterThan(2);
-
-			await expect(listenButton(page)).toHaveCount(0);
-			await expect(noSpeakers(page)).toHaveCount(0);
-		});
-	});
-});
-
-test.describe("a player whose output reaches speakers", () => {
-	test.use({ fooJean: ON_SPEAKERS });
-
-	test("is offered as before: its face is Listen here, with no sentence about speakers", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await openThePickerOnThePoll(page);
-
-		await expectNothingOffered(page);
-	});
-
-	test("its face draws the bars beside the player's name while it plays", async ({
-		page,
-		player,
-	}) => {
-		await page.goto("/#/home");
-		player.playItem("p7", HEARD.index);
-		await expect(statusBar(page)).toContainText(HEARD.title);
-		await openThePickerOnThePoll(page);
-
-		await expectNothingOffered(page);
-		await expect(marks(playerFace(page))).toHaveCount(1);
-	});
-
-	test("moved by the player onto an output nobody hears, is offered first on the next poll without a reload, and moved back is not", async ({
-		page,
-		player,
-	}) => {
-		await page.goto("/");
-		await page.evaluate(() => {
-			(window as unknown as { notReloaded: boolean }).notReloaded = true;
-		});
-		await openThePickerOnThePoll(page);
-		await expectNothingOffered(page);
-
-		player.setActiveOutput(NULL_OUTPUT_DEVICE.id);
-		await expectOfferedFirst(page);
-
-		player.setActiveOutput(SPEAKERS.id);
-		await expect(noSpeakers(page)).toHaveCount(0);
-		await expect(playerFace(page)).toBeVisible();
-
-		expect(
-			await page.evaluate(
-				() => (window as unknown as { notReloaded?: boolean }).notReloaded,
-			),
-		).toBe(true);
-	});
-});
-
-test.describe("a player whose output foo_jean cannot name", () => {
-	test.use({ fooJean: { activeOutput: null } });
-
-	test("reads as audible: its face is Listen here, with no sentence about speakers", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await openThePickerOnThePoll(page);
-
-		await expectNothingOffered(page);
-	});
-});
-
-// A browser falls back to an element's `title` for its description, so the opener has one whether
-// or not anything is offered: what the offer adds is the sentence.
-const SAYS_NO_SPEAKERS = /not playing through any speakers/;
-
-const screenOpener = (page: Page) =>
-	nowPlayingScreen(page).getByRole("button", {
-		name: /Choose where to play|Playing on this device/,
-	});
-
-test.describe("the opener while listening is offered first", () => {
-	test.use({ fooJean: ON_NOTHING });
-
-	test("says foobar2000 is not playing through any speakers as its description, and keeps its name", async ({
-		page,
-		isMobile,
-	}) => {
-		await page.goto("/");
-
-		await expect(listenButton(page)).toHaveAccessibleDescription(NO_SPEAKERS);
-		await expect(listenButton(page)).toHaveAccessibleName(
-			"Choose where to play",
-		);
-
-		if (!isMobile) return;
-		await openNowPlaying(page);
-		await expect(screenOpener(page)).toHaveAccessibleDescription(NO_SPEAKERS);
-		await expect(screenOpener(page)).toHaveAccessibleName(
-			"Choose where to play",
-		);
-	});
-
-	test("with the Settings switch off, says nothing about speakers", async ({
-		page,
-	}) => {
-		await page.goto("/");
-		await expect(listenButton(page)).toHaveAccessibleDescription(NO_SPEAKERS);
-
-		await turnOffTheOffer(page);
-		await openThePickerOnThePoll(page);
-		await expectNothingOffered(page);
-
-		await expect(listenButton(page)).not.toHaveAccessibleDescription(
-			SAYS_NO_SPEAKERS,
-		);
-	});
-
-	test("listening here, says nothing about speakers", async ({ page }) => {
-		await page.goto("/");
-		await startListening(page);
-		await expect(picker(page)).toContainText("Listening here");
-		await expect(listenButton(page)).toHaveAccessibleName(
-			"Playing on this device",
-		);
-
-		await expect(listenButton(page)).not.toHaveAccessibleDescription(
-			SAYS_NO_SPEAKERS,
-		);
-	});
-});
-
-test.describe("the opener of a player whose output reaches speakers", () => {
-	test.use({ fooJean: ON_SPEAKERS });
-
-	test("says nothing about speakers, and says it once the player moves onto an output nobody hears", async ({
-		page,
-		player,
-	}) => {
-		await page.goto("/");
-		await openThePickerOnThePoll(page);
-		await expectNothingOffered(page);
-
-		await expect(listenButton(page)).not.toHaveAccessibleDescription(
-			SAYS_NO_SPEAKERS,
-		);
-
-		player.setActiveOutput(NULL_OUTPUT_DEVICE.id);
-		await expect(listenButton(page)).toHaveAccessibleDescription(NO_SPEAKERS);
-	});
-});
-
-// The same as sessions.spec.ts's: Playwright refuses a spec that imports another spec.
-const SESSION_DEVICE = "5f1c0a9e3b7d4e2a8c6b0d1f2e3a4b5c";
 const ANOTHER_SESSION_DEVICE = {
 	deviceId: "0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a",
 	name: null,
 };
 
-const OFFERING_SESSIONS = {
-	fooJean: { maxSessions: 4, canCreateSessions: true },
-	settings: {
-		"jean.deviceId": SESSION_DEVICE,
-		"jean.deviceName": "Den laptop",
-	},
-};
-
-const START = "Play something else here";
-const LEAVE_NAMED = "Leave, and go back to foobar2000";
 const OWN_LEVEL = "This device sets its own level. Use its volume buttons.";
 
-const opener = (page: Page) =>
-	statusBar(page).getByRole("button", {
-		name: /^(Choose where to play|Playing on this device|Playing what .+ started)/,
-	});
-
-const pickerRows = (page: Page) =>
-	picker(page).getByRole("listitem").and(page.locator("li:not(li li)"));
-
-const thePlayersRow = (page: Page) =>
-	pickerRows(page).filter({
-		has: page.getByText("foobar2000", { exact: true }),
-	});
-
-// Exact: Playwright's `hasText` ignores case, and the player's drift line reads "Runs ahead of this device".
-const ownRow = (page: Page) =>
-	pickerRows(page).filter({
-		has: page.getByText("This device", { exact: true }),
-	});
-
-const startButton = (page: Page) =>
-	picker(page).getByRole("button", { name: START, exact: true });
-
-const leaveButton = (page: Page) =>
-	picker(page).getByRole("button", { name: LEAVE_NAMED, exact: true });
-
 const thePlayersFader = (page: Page) =>
-	thePlayersRow(page).getByRole("slider", { name: /^Volume on foobar2000\b/ });
-
-const listensIn = (player: FakePlayer) => {
-	const [started, ...more] = player.sessions.list();
-	if (!started || more.length > 0) return false;
-	return started.roster().some((device) => device.deviceId === SESSION_DEVICE);
-};
-
-const refusalsFrom = (page: Page) => {
-	const refused: string[] = [];
-	page.on("response", (response) => {
-		const url = new URL(response.url());
-		if (response.status() === 500 && url.pathname.startsWith("/api/"))
-			refused.push(`${response.request().method()} ${url.pathname}`);
-	});
-	return refused;
-};
-
-const strictOnceSettled = async (player: FakePlayer) => {
-	await untilQuiet(player);
-	player.fooJean.strictSessions = true;
-	return {
-		release() {
-			player.fooJean.strictSessions = false;
-		},
-	};
-};
-
-const openOnThePlayer = async (page: Page) => {
-	const refused = refusalsFrom(page);
-	await page.goto("/");
-	await expect(opener(page)).toBeVisible();
-	return refused;
-};
+	playerRowOf(page).getByRole("slider", { name: /^Volume on foobar2000\b/ });
 
 const startFromThePicker = async (page: Page, player: FakePlayer) => {
-	if (!(await picker(page).isVisible())) await opener(page).click();
+	if (!(await playingOn(page).isVisible())) await pickerOpener(page).click();
 	await startButton(page).click();
-	await expect.poll(() => listensIn(player)).toBe(true);
+	await expect.poll(() => listensInItsOwn(player)).toBe(true);
 	await expect(ownRow(page)).toContainText("Listening here");
 	return strictOnceSettled(player);
 };
 
 const listeningToItsOwnSession = async (page: Page, player: FakePlayer) => {
-	const refused = await openOnThePlayer(page);
+	const refused = await openOnThePlayer(page, "/");
 	const strict = await startFromThePicker(page, player);
 	return { strict, refused };
 };
@@ -2535,7 +1059,7 @@ const listeningToItsOwnSession = async (page: Page, player: FakePlayer) => {
 const shutThePicker = async (page: Page, isMobile: boolean) => {
 	if (isMobile) await putThePickerAway(page, true);
 	else await page.keyboard.press("Escape");
-	await expect(picker(page)).toBeHidden();
+	await expect(playingOn(page)).toBeHidden();
 };
 
 const volumeFadersIn = (scope: Locator) =>
@@ -2624,7 +1148,7 @@ test.describe("the fader while this device listens to a session of its own", () 
 		strict.release();
 		await leaveButton(page).click();
 		await expect.poll(() => player.sessions.list()).toEqual([]);
-		await expect(playerFace(page)).toBeVisible();
+		await expect(thePlayersFace(page)).toBeVisible();
 		await shutThePicker(page, isMobile);
 		await untilQuiet(player);
 		const playerLevel = player.player.volume.value;
@@ -2733,9 +1257,9 @@ test.describe("a player held silent by somebody else, while this device listens 
 		page,
 		player,
 	}) => {
-		const refused = await openOnThePlayer(page);
-		await opener(page).click();
-		await expect(picker(page)).toContainText(
+		const refused = await openOnThePlayer(page, "/");
+		await pickerOpener(page).click();
+		await expect(playingOn(page)).toContainText(
 			"Silent while Android phone is listening",
 		);
 
@@ -2771,7 +1295,7 @@ test.describe("a device whose audio element ignores its volume", () => {
 		isMobile,
 	}) => {
 		await ignoreElementVolume(page);
-		const refused = await openOnThePlayer(page);
+		const refused = await openOnThePlayer(page, "/");
 		const bar = statusBar(page);
 		if (isMobile)
 			await expect(
@@ -2783,7 +1307,7 @@ test.describe("a device whose audio element ignores its volume", () => {
 
 		const line = ownRow(page).getByText(OWN_LEVEL, { exact: true });
 		await expect(line).toBeVisible();
-		await expect(picker(page).getByText(OWN_LEVEL)).toHaveCount(1);
+		await expect(playingOn(page).getByText(OWN_LEVEL)).toHaveCount(1);
 		const listening = ownRow(page).getByText("Listening here", {
 			exact: true,
 		});
@@ -2806,13 +1330,13 @@ test.describe("a device whose audio element ignores its volume", () => {
 		player,
 	}) => {
 		await ignoreElementVolume(page);
-		const refused = await openOnThePlayer(page);
+		const refused = await openOnThePlayer(page, "/");
 		await startListening(page);
 		await expect(
 			playerRow(page).getByText(OWN_LEVEL, { exact: true }),
 		).toBeVisible();
 		await stopButtons(page).click();
-		await expect(playerFace(page)).toBeVisible();
+		await expect(thePlayersFace(page)).toBeVisible();
 
 		await expect(startButton(page)).toBeVisible();
 		const strict = await startFromThePicker(page, player);
@@ -2821,140 +1345,5 @@ test.describe("a device whose audio element ignores its volume", () => {
 		).toBeVisible();
 		strict.release();
 		expect(refused).toEqual([]);
-	});
-});
-
-test.describe("the picker from the keyboard, with a track list on screen", () => {
-	test.use({ fooJean: {} });
-	test.skip(({ isMobile }) => isMobile, "a phone has no keyboard to drive it");
-
-	const SELECTED_ROW = 2;
-
-	const keysPlayed = (player: FakePlayer) =>
-		playRequests(player).length +
-		countPostsTo(player, "/api/playback/play-pause");
-
-	const withARowSelected = async (page: Page, player: FakePlayer) => {
-		await openLibrary(page);
-		await trackRow(page, SELECTED_ROW).click();
-		await expect(trackRow(page, SELECTED_ROW)).toHaveAttribute(
-			"aria-selected",
-			"true",
-		);
-		await untilQuiet(player);
-		const before = keysPlayed(player);
-		return async () => {
-			await untilQuiet(player);
-			return keysPlayed(player) - before;
-		};
-	};
-
-	const selectedRows = (page: Page) =>
-		page
-			.locator('main [role="row"][aria-selected="true"]')
-			.evaluateAll((rows) => rows.map((row) => row.getAttribute("data-row")));
-
-	const openThePicker = async (page: Page) => {
-		await listenButton(page).click();
-		await expect(picker(page)).toBeVisible();
-	};
-
-	for (const key of ["Enter", "Space"]) {
-		test(`${key} on the opener opens the picker on the player's face`, async ({
-			page,
-			player,
-		}) => {
-			await withARowSelected(page, player);
-			await listenButton(page).focus();
-			await page.keyboard.press(key);
-
-			await expect(picker(page)).toBeVisible();
-			await expect(playerFace(page)).toBeFocused();
-		});
-
-		test(`opened by ${key}, Escape gives focus back to the opener, and the list took none of the keys`, async ({
-			page,
-			player,
-		}) => {
-			const played = await withARowSelected(page, player);
-			await listenButton(page).focus();
-			await page.keyboard.press(key);
-			await expect(playerFace(page)).toBeFocused();
-
-			await page.keyboard.press("Escape");
-			await expect(picker(page)).toBeHidden();
-			await expect(listenButton(page)).toBeFocused();
-
-			expect(await played()).toBe(0);
-			expect(await selectedRows(page)).toEqual([String(SELECTED_ROW)]);
-		});
-
-		test(`${key} on the player's face listens here and plays nothing in the list`, async ({
-			page,
-			player,
-		}) => {
-			const played = await withARowSelected(page, player);
-			await openThePicker(page);
-			const ticketsBefore = ticketRequests(player).length;
-			await playerFace(page).focus();
-			await page.keyboard.press(key);
-
-			await expect(stopButtons(page)).toBeVisible();
-			expect(ticketRequests(player).length).toBeGreaterThan(ticketsBefore);
-			expect(await played()).toBe(0);
-		});
-	}
-
-	test("listening here, Enter on Stop stops and plays nothing in the list", async ({
-		page,
-		player,
-	}) => {
-		const played = await withARowSelected(page, player);
-		await openThePicker(page);
-		await playerFace(page).click();
-		await expect(stopButtons(page)).toBeVisible();
-		await untilQuiet(player);
-		const before = await played();
-
-		await stopButtons(page).focus();
-		await page.keyboard.press("Enter");
-
-		await expect(playerFace(page)).toBeVisible();
-		expect(await played()).toBe(before);
-	});
-
-	test("with the picker open and focus back on the page, Space still plays and pauses", async ({
-		page,
-		player,
-	}) => {
-		await withARowSelected(page, player);
-		await openThePicker(page);
-		await page.evaluate(() => (document.activeElement as HTMLElement).blur());
-		await untilQuiet(player);
-		const before = countPostsTo(player, "/api/playback/play-pause");
-
-		await page.keyboard.press("Space");
-
-		await expect
-			.poll(() => countPostsTo(player, "/api/playback/play-pause"))
-			.toBe(before + 1);
-		await expect(picker(page)).toBeVisible();
-	});
-
-	test.describe("with a session on offer", () => {
-		test.use(OFFERING_SESSIONS);
-
-		test("Enter on the start row starts a session here and plays nothing in the list", async ({
-			page,
-			player,
-		}) => {
-			const played = await withARowSelected(page, player);
-			await openThePicker(page);
-			await startButton(page).focus();
-			await page.keyboard.press("Enter");
-
-			await expect.poll(() => listensIn(player)).toBe(true);
-			expect(await played()).toBe(0);
-		});
 	});
 });

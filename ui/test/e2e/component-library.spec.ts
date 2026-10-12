@@ -1,6 +1,5 @@
 import type { RecordedRequest } from "../fake-api/state.ts";
 import {
-	dragFrom,
 	expect,
 	expectPlayingFrom,
 	expectSettlesAt,
@@ -9,17 +8,19 @@ import {
 	type Page,
 	playedFrom,
 	playRequests,
-	pressAndHold,
 	requestsTo,
 	rowByTitle,
 	scratchFills,
 	scratchOf,
-	scrollUntilMounted,
 	sidebar,
 	test,
+	toastRegion,
 	trackPlayed,
 	trackRow,
 } from "./fixtures.ts";
+import { dragFrom } from "./gestures.ts";
+import { openRowMenu } from "./menus.ts";
+import { scrollUntilMounted } from "./scrolling.ts";
 
 // `foo_jean` answers the whole library as one binary snapshot, and it is the only source there is.
 
@@ -93,23 +94,13 @@ const addToPlaylist = (page: Page) =>
 const sidebarRow = (page: Page, title: string) =>
 	sidebar(page).locator("> div").filter({ hasText: title });
 
-// Waits on the queue item rather than on Add to playlist, which an install with
-// playlist writes off does not draw at all: a helper that waited on it could open
-// no menu on the one install this file has a describe about.
-const openTrackMenu = async (page: Page, isMobile: boolean, index: number) => {
-	const row = trackRow(page, index);
-	if (isMobile) await pressAndHold(page, row);
-	else await row.click({ button: "right" });
-	await expect(menuItem(page, "Add to queue")).toBeVisible();
-};
-
 const fileInto = async (
 	page: Page,
 	isMobile: boolean,
 	index: number,
 	title: string,
 ) => {
-	await openTrackMenu(page, isMobile, index);
+	await openRowMenu(page, isMobile, index, /^Add to queue$/);
 	await addToPlaylist(page).click();
 	await menuItem(page, title).click();
 };
@@ -689,7 +680,7 @@ test.describe("filing a library row into a playlist of your own", () => {
 
 		await fileInto(page, isMobile, 2, FAVORITES);
 
-		await expect(page.getByRole("status")).toContainText(
+		await expect(toastRegion(page)).toContainText(
 			`Added 1 track to ${FAVORITES}`,
 		);
 
@@ -718,7 +709,7 @@ test.describe("filing a library row into a playlist of your own", () => {
 		await expect(target).toHaveAttribute("data-drop-over", "true");
 		await page.mouse.up();
 
-		await expect(page.getByRole("status")).toContainText(
+		await expect(toastRegion(page)).toContainText(
 			`Added 1 track to ${FAVORITES}`,
 		);
 
@@ -762,7 +753,7 @@ test.describe("filing a library row into a playlist of your own", () => {
 
 		test("the same row still queues", async ({ page, player, isMobile }) => {
 			await openAllMusic(page);
-			await openTrackMenu(page, isMobile, 2);
+			await openRowMenu(page, isMobile, 2, /^Add to queue$/);
 
 			const queue = menuItem(page, "Add to queue");
 			// Named rather than left to the click's own actionability wait, which
@@ -782,7 +773,7 @@ test.describe("filing a library row into a playlist of your own", () => {
 			isMobile,
 		}) => {
 			await openAllMusic(page);
-			await openTrackMenu(page, isMobile, 2);
+			await openRowMenu(page, isMobile, 2, /^Add to queue$/);
 
 			await expect(addToPlaylist(page)).toHaveCount(0);
 		});
@@ -796,7 +787,7 @@ test.describe("filing a library row into a playlist of your own", () => {
 			isMobile,
 		}) => {
 			await openAllMusic(page);
-			await openTrackMenu(page, isMobile, 2);
+			await openRowMenu(page, isMobile, 2, /^Add to queue$/);
 
 			await expect(addToPlaylist(page)).toBeEnabled();
 			await addToPlaylist(page).click();

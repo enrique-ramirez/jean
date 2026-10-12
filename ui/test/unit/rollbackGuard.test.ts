@@ -5,7 +5,7 @@ import { PLAYER_KEY } from "../../src/domain/player/playerPoll.ts";
 import * as playerWrite from "../../src/domain/player/playerWrite.ts";
 import { QUEUE_KEY } from "../../src/domain/player/queue.ts";
 import { commitSession } from "../../src/domain/player/session.ts";
-import { readTrack } from "../../src/shared/api/playerState.ts";
+import { playingTrack } from "../../src/shared/api/playerState.ts";
 import type { QueueRead } from "../../src/shared/api/queue.ts";
 import type { PlayerSnapshot } from "../../src/shared/api/types.ts";
 import { guidOf, pathAt } from "./fakeSessionHarness.ts";
@@ -88,7 +88,7 @@ test("a write pressed in one session and refused after the tab moved to another 
 	commitSession({ id: first, role: "controlling" });
 	await store.settle();
 	assert.equal(
-		readTrack(drawnPlayer(store)?.player)?.path,
+		playingTrack(drawnPlayer(store)?.player)?.path,
 		pathAt(store.fake.state, "p1", 0),
 	);
 
@@ -98,7 +98,7 @@ test("a write pressed in one session and refused after the tab moved to another 
 	const player = drawnPlayer(store);
 	const queue = drawnQueue(store);
 	assert.equal(
-		readTrack(player?.player)?.path,
+		playingTrack(player?.player)?.path,
 		pathAt(store.fake.state, "p1", 2),
 	);
 	assert.equal(queue?.entries.length, 1);
@@ -124,13 +124,13 @@ test("a write refused after a switch, before the new session has answered, draws
 	written.player.rollBack();
 	written.queue.rollBack();
 
-	assert.equal(readTrack(drawnPlayer(store)?.player), null);
+	assert.equal(playingTrack(drawnPlayer(store)?.player), null);
 	assert.deepEqual(drawnQueue(store)?.entries ?? [], []);
 
 	polls.release();
 	await store.settle();
 	assert.equal(
-		readTrack(drawnPlayer(store)?.player)?.path,
+		playingTrack(drawnPlayer(store)?.player)?.path,
 		pathAt(store.fake.state, "p1", 2),
 	);
 });

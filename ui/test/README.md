@@ -28,7 +28,7 @@ Both projects, `desktop` and `mobile` (Pixel 7, touch on), run every spec. Skip 
 
 ## Touch gestures
 
-`touchDrag` in `fixtures.ts` drives a finger through CDP rather than dispatching DOM events, since most of these tests are about *the browser's* decision on who a gesture belongs to and a dispatched `touchmove` sails past that.
+`touchDrag` in `gestures.ts` drives a finger through CDP rather than dispatching DOM events, since most of these tests are about *the browser's* decision on who a gesture belongs to and a dispatched `touchmove` sails past that.
 
 Two things it does that are not optional. **Every point carries a timestamp**: `useSwipe` reads a slow enough gesture as a scroll rather than a flick, and a gesture is one round trip per point, so on a loaded machine an unstamped drag silently stops being a flick. And **one CDP session per page, never one per drag**: detaching a session while the next is dispatching drops the moves in between, and the gesture arrives as a tap where it started.
 
@@ -47,7 +47,7 @@ pnpm build && node test/fake-api/main.ts --serve dist   # page and API together,
 
 ### The routes run in two places
 
-`routes.ts` and `fooJean.ts`'s `handleFooJean` have no host in them, and neither does `state.ts`, and there is no `node:` import in any of the three. `server.ts` gives them a node socket for the suite; `demo/sw.ts` gives the same tables a `fetch` event. The seam is `Responder` in `http.ts`: `writeHead`, `setHeader`, `write`, `end` and `on("close")`, plus an optional readonly `writableEnded`. `ServerResponse` satisfies all of it as it stands, and the last two are what the audio pump stops on when a client leaves.
+Everything under `fake-api/` that `handleFooJean` and `routes.ts` reach, `fooJean/` and `state.ts` included, has no host in it and no `node:` import; only `server.ts` and `capture.ts` import from `node:`. `server.ts` gives them a node socket for the suite; `demo/sw.ts` gives the same tables a `fetch` event. The seam is `Responder` in `http.ts`: `writeHead`, `setHeader`, `write`, `end` and `on("close")`, plus an optional readonly `writableEnded`. `ServerResponse` satisfies all of it as it stands, and the last two are what the audio pump stops on when a client leaves.
 
 Two consequences before adding a route. **Anything reaching for a socket, a file or a `Buffer` belongs in the host files**, not the route tables; the artwork routes are the worked example and take a function instead of a path. And **fixtures are imported rather than read off disk**, since one of the two hosts has no filesystem.
 
@@ -208,14 +208,14 @@ Two rules outrank the rest.
 
 | | |
 |---|---|
-| Finding things | `trackRow`, `rowByTitle`, `statusBar`, `withNoListOnScreen`, `viewHeader`, `globalControls`, `sidebar`, `openSidebar`, `closeSidebar`, `openLibrary`, `openNowPlaying`, `nowPlayingScreen`, `listenHere`, `settingsDialog`, `openSettings`, `expectPlayingFrom` |
-| Reading the player | `requestsTo`, `expectSettlesAt`, `scratchOf`, `playedFrom`, `trackPlayed` |
+| Finding things | `trackRow`, `rowByTitle`, `statusBar`, `withNoListOnScreen`, `viewHeader`, `globalControls`, `sidebar`, `openSidebar`, `closeSidebar`, `openLibrary`, `openNowPlaying`, `nowPlayingScreen`, `listenHere`, `settingsDialog`, `openSettings`, `expectPlayingFrom`, `toastRegion`, `playFirstRow`, `playingAtThePlayer` |
+| Reading the player | `requestsTo`, `routeOf`, `askOf`, `ticksTaken`, `tagWrites`, `volumesSent`, `expectSettlesAt`, `scratchOf`, `playedFrom`, `trackPlayed`, `fieldOf`, `titleOf`, `titleOfPlaylist`, `watchWhatIsSaid` |
 | Playback control off | `REASON`, `REFUSED_ROUTES`, `refusedAsks`, `expectNothingRefusedSent`, `expectDisabledWithReason` |
-| Gestures | `touchDrag`, `dragTo`, `pressAndHold` |
-| Scrolling | `isRowOnScreen`, `scrollUntilMounted`, `scrollTop`, `scrollTo` |
-| Steps | `inSequence`, `times` |
+| Gestures, in `gestures.ts` | `touchDrag`, `dragTo`, `dragFrom`, `pressAndHold`, `restingBox` |
+| Scrolling, in `scrolling.ts` | `isRowOnScreen`, `scrollUntilMounted`, `scrollTop`, `scrollTo` |
+| Steps | `inSequence`, `times`, `runClockFor` |
 
-A file that is not `*.spec.ts` is not collected, which is how `fixtures.ts` and `build.ts` sit in the same folder. `nowPlaying.ts` is the same thing one level down: the lyric fixtures, the panel helpers and the discard-prompt helpers the now-playing and lyric specs share, which are too specific to be everybody's.
+A file that is not `*.spec.ts` is not collected, which is how `fixtures.ts` and `build.ts` sit in the same folder. `nowPlaying.ts` is the same thing one level down: the lyric fixtures, the panel helpers and the discard-prompt helpers the now-playing and lyric specs share, which are too specific to be everybody's. `queue.ts` is the queue panel, its button and its rows, `menus.ts` is a row's menu, `sessions.ts` is the install that offers sessions, the picker's rows and buttons, the scene a session spec sets and the strict-mode watch that `sessions.spec.ts`, `session-picker.spec.ts`, `session-reports.spec.ts`, `sharing.spec.ts` and `media-session.spec.ts` share, and `listening.ts` is listening on this device, a stream and its ticket and the player's row, that `listen.spec.ts`, `listen-picker.spec.ts` and `unheard-player.spec.ts` share. The two pickers differ by what they put in the "Playing on" panel: `listen-picker.spec.ts` is the panel as a way to hear the player here, and `session-picker.spec.ts` is the panel as a way to start and leave a session of one's own. `pickerOpener` in `fixtures.ts` is the status bar's button that opens either.
 
 ```js
 import { expect, requestsTo, test, trackRow } from './fixtures.ts'
@@ -290,5 +290,5 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 11. **Anywhere the fake supplies both sides of a comparison, it is only testing that a string equals itself.** Path joins between the stream timeline and the poll's own `player.path` are the case in point, and have to be verified against a real player.
 12. **Assert what a value settles at, never what it passed through.** `expectSettlesAt` is that, and the top of this section is why.
 13. **A keyboard shortcut gated by `useKeymap`'s `enabled` waits for nothing on its own.** `locator.click()` waits for the button sharing that condition to become actionable; `page.keyboard.press()` fires immediately, and a keystroke sent before the gate opens is not queued for when it does. Wait on whatever draws the gate visibly, usually the same button, before pressing the key.
-14. **A fake clock advances honestly only in small steps.** `page.clock.runFor` fires every timer due in one sweep, so a real response the fake player answers between two of them lands out of order against a jump; step forward a few hundred milliseconds at a time so each timer fires at the moment it was set for and a response arriving mid-window is handled before the next one comes due. Pause it rather than leaving it running while a retrying assertion polls, or every poll nudges the very budget under test. And a response the fake answers after the last step is not drawn until the clock steps again, so after an advance that is meant to produce a read, wait for the read and step once more before asserting on what it draws.
+14. **A fake clock advances honestly only in small steps.** `page.clock.runFor` fires every timer due in one sweep, so a real response the fake player answers between two of them lands out of order against a jump; step forward a few hundred milliseconds at a time, which is `runClockFor`, so each timer fires at the moment it was set for and a response arriving mid-window is handled before the next one comes due. Pause it rather than leaving it running while a retrying assertion polls, or every poll nudges the very budget under test. And a response the fake answers after the last step is not drawn until the clock steps again, so after an advance that is meant to produce a read, wait for the read and step once more before asserting on what it draws.
 15. **Playwright cannot say whether a stream closed before the leave that followed it.** It reports an aborted fetch's `requestfailed` after the request events that come next, so a list built from both events reads the leave first whatever the page did. That order is held by the unit tests of `sessionOperations`.

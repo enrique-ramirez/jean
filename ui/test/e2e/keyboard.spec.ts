@@ -10,7 +10,6 @@ import {
 	expectTheScreenIsStillOpen,
 	guidOfPlaylist,
 	inSequence,
-	isRowOnScreen,
 	listenHere,
 	modesSent,
 	nowPlayingScreen,
@@ -24,21 +23,25 @@ import {
 	playedFrom,
 	playerDeclaring,
 	playRequests,
-	requestsTo,
 	STOCK_ORDERS,
-	scrollTo,
-	scrollTop,
-	scrollUntilMounted,
 	searchField,
 	searchFor,
 	settingsDialog,
 	sidebar,
 	sidebarToggle,
+	tagWrites,
 	test,
 	trackRow,
 	untilTheInstallIsKnown,
 } from "./fixtures.ts";
 import { panelTab, playRow, TAGGED } from "./nowPlaying.ts";
+import { queuePanel } from "./queue.ts";
+import {
+	isRowOnScreen,
+	scrollTo,
+	scrollTop,
+	scrollUntilMounted,
+} from "./scrolling.ts";
 
 // One test per binding in keymap.ts: `useKeymap` registers only the ids a scope
 // both declares and has a handler for, so a deleted handler leaves the shortcut
@@ -1344,14 +1347,8 @@ test.describe("with the full-screen lyric open", () => {
 		await expect(lyricScreenClose(page)).toHaveCount(0);
 	};
 
-	const queuePanel = (page: Page) =>
-		page.getByRole("complementary", { name: "Queue" });
-
 	const ratingOnTheScreen = (page: Page) =>
 		nowPlayingScreen(page).getByRole("group", { name: /stars|Unrated/ });
-
-	const tagWrites = (player: FakePlayer) =>
-		requestsTo(player, "/api/tags").filter((entry) => entry.method === "POST");
 
 	// One case per key rather than one case pressing all six. A keyboard that is
 	// off is proved by absence, and absence is proved one key at a time: a case

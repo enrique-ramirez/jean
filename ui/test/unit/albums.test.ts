@@ -5,7 +5,12 @@ import {
 	albumsOf,
 	refsOfAlbum,
 } from "../../src/domain/track/albums.ts";
-import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
+import {
+	artistGroups,
+	FIELD,
+	TRACK_EXPRESSIONS,
+	tagGroups,
+} from "../../src/domain/track/fields.ts";
 import {
 	columnCollector,
 	libraryColumnsOf,
@@ -148,4 +153,33 @@ test("two records sharing a title are two rows, not one", () => {
 		both.map((entry) => entry.artistTag),
 		["Blood, Sweat & Tears", "Johnny Cash"],
 	);
+});
+
+test("the groups of a column are built once for as long as the column is the same object", () => {
+	const album = columns.fields[FIELD.album];
+
+	assert.equal(tagGroups(album), tagGroups(album));
+	assert.equal(artistGroups(columns), artistGroups({ ...columns }));
+});
+
+test("a column that has been replaced is grouped afresh, with what it now holds", () => {
+	const collector = columnCollector(TRACK_EXPRESSIONS.length);
+	collector.add(rows.slice(0, 2));
+	const before = collector.table();
+	collector.add(rows.slice(2));
+	const after = collector.table();
+
+	const few = tagGroups(before.fields[FIELD.album]);
+	const all = tagGroups(after.fields[FIELD.album]);
+
+	assert.deepEqual(few.names, ["Blood, Sweat & Tears"]);
+	assert.deepEqual(all.names, [
+		"Blood, Sweat & Tears",
+		"Discovery",
+		"The Colour and the Shape",
+		"Field Recordings",
+	]);
+	assert.notEqual(artistGroups(before), artistGroups(after));
+	assert.equal(artistGroups(after).group("daft punk") >= 0, true);
+	assert.equal(artistGroups(before).group("daft punk"), -1);
 });

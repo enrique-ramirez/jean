@@ -518,6 +518,51 @@ test("a join whose ticket is refused opens the player's stream again only after 
 	assert.deepEqual(session.sessionSnapshot(), ON_THE_PLAYER);
 });
 
+test("joining to control while listening to the player asks after the session with the player's stream still open and no leave sent, and only then lets go and sends the player's leave, taking no ticket", async (t) => {
+	const store = await harness.begin(t);
+	const { elsewhere } = heardOnAnotherDevice(store);
+	await listenToPlayer(store);
+	const probes = store.hold((request) => {
+		const url = new URL(request.url);
+		return (
+			url.pathname === "/api/state" &&
+			url.searchParams.get("session") === elsewhere.id
+		);
+	});
+	const from = store.mark();
+
+	const outcome = outcomeOf(
+		operations.joinToControl(store.context, elsewhere.id),
+	);
+	await probes.reached;
+	await store.settle();
+
+	assert.equal(
+		store.openStreams(),
+		1,
+		"the player's stream was let go before the session had answered",
+	);
+	assert.deepEqual(store.said(from, NOT_POLLS), []);
+	assert.equal(outcome(), null);
+
+	probes.release();
+	await store.settle();
+
+	assert.deepEqual(outcome(), { ok: true });
+	assert.deepEqual(store.said(from, NOT_POLLS), ["leave player"]);
+	assert.equal(store.openStreams(), 0);
+	assert.equal(
+		store.fake.state.streamDevices.has(store.thisDevice()),
+		false,
+		"the player still counts this device as listening",
+	);
+	assert.deepEqual(session.sessionSnapshot(), {
+		id: elsewhere.id,
+		role: "controlling",
+		notice: null,
+	});
+});
+
 test("an operation pressed while another is in flight resolves pending and sends nothing", async (t) => {
 	const store = await harness.begin(t);
 	await listenToPlayer(store);

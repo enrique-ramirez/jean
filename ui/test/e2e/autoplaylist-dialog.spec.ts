@@ -8,6 +8,7 @@ import {
 	openSidebar,
 	refusePlaylistWrites,
 	test,
+	titleOfPlaylist,
 	trackRow,
 	untilQuiet,
 	viewHeader,
@@ -78,7 +79,7 @@ const openApp = async (page: Page) => {
 test.describe("the autoplaylist dialog", () => {
 	test.use({ fooJean: WITH_AUTOPLAYLISTS });
 
-	test.describe("opening it (criterion 19)", () => {
+	test.describe("opening it", () => {
 		test("is titled New autoplaylist, puts the caret in the query field and names itself", async ({
 			page,
 		}) => {
@@ -172,7 +173,7 @@ test.describe("the autoplaylist dialog", () => {
 		});
 	});
 
-	test.describe("previewing as the person types (criterion 20)", () => {
+	test.describe("previewing as the person types", () => {
 		test("asks the player once per pause, not per keystroke, and asks for the rows each time", async ({
 			page,
 			player,
@@ -259,7 +260,7 @@ test.describe("the autoplaylist dialog", () => {
 		});
 	});
 
-	test("a query foobar2000 cannot read shows its own message in place of the results, and Create is disabled (criterion 21)", async ({
+	test("a query foobar2000 cannot read shows its own message in place of the results, and Create is disabled", async ({
 		page,
 	}) => {
 		const dialog = await openApp(page);
@@ -280,7 +281,7 @@ test.describe("the autoplaylist dialog", () => {
 		await expect(createButton(dialog)).toBeDisabled();
 	});
 
-	test.describe("a player with no Media Library (criterion 22)", () => {
+	test.describe("a player with no Media Library", () => {
 		test.use({ fooJean: { ...WITH_AUTOPLAYLISTS, libraryEnabled: false } });
 
 		test("says an autoplaylist would stay empty, and Create is disabled", async ({
@@ -295,7 +296,7 @@ test.describe("the autoplaylist dialog", () => {
 		});
 	});
 
-	test.describe("suggestions at the caret (criterion 23)", () => {
+	test.describe("suggestions at the caret", () => {
 		const listbox = (page: Page) => page.getByRole("listbox");
 		const options = (page: Page) => listbox(page).getByRole("option");
 
@@ -398,7 +399,7 @@ test.describe("the autoplaylist dialog", () => {
 		});
 	});
 
-	test.describe("a query matching the whole of a large library (criterion 24)", () => {
+	test.describe("a query matching the whole of a large library", () => {
 		// The largest library the suite builds. As ordinals the answer is a body of tens of
 		// thousands of numbers, and every one of them has to reach the list.
 		test.use({ mediaLibrarySize: 30441 });
@@ -464,7 +465,7 @@ test.describe("the autoplaylist dialog", () => {
 		});
 	});
 
-	test("the results are drawn in library order and neither play nor queue (criterion 25)", async ({
+	test("the results are drawn in library order and neither play nor queue", async ({
 		page,
 		player,
 	}) => {
@@ -505,7 +506,7 @@ test.describe("the autoplaylist dialog", () => {
 		await expect(dialog).toBeVisible();
 	});
 
-	test.describe("creating it (criterion 26)", () => {
+	test.describe("creating it", () => {
 		// The preview answered late, so the window between typing and the player's answer is
 		// wide enough to see Create waiting in.
 		test.use({
@@ -564,7 +565,7 @@ test.describe("the autoplaylist dialog", () => {
 		});
 	});
 
-	test.describe("a create the player refuses (criterion 27)", () => {
+	test.describe("a create the player refuses", () => {
 		const readyToCreate = async (page: Page) => {
 			const dialog = await openApp(page);
 			await nameField(dialog).fill("Heavy days");
@@ -616,7 +617,7 @@ test.describe("the autoplaylist dialog", () => {
 		});
 	});
 
-	test.describe("closing it without creating (criterion 28)", () => {
+	test.describe("closing it without creating", () => {
 		const WAYS_OUT = [
 			{
 				how: "Escape",
@@ -694,8 +695,6 @@ test.describe("editing an autoplaylist", () => {
 	const editButton = (page: Page) =>
 		viewHeader(page).getByRole("button", { name: EDIT_TITLE, exact: true });
 
-	const titleOf = (player: FakePlayer, key: string) =>
-		player.playlists.find((entry) => entry.id === key)!.title;
 	const updatesOf = (player: FakePlayer, key: string) => {
 		const path = `/api/autoplaylists/${guidOfPlaylist(player, key)}`;
 		return player.requests.filter(
@@ -706,7 +705,10 @@ test.describe("editing an autoplaylist", () => {
 	const showPlaylist = async (page: Page, player: FakePlayer, key: string) => {
 		await page.goto(`/#/${guidOfPlaylist(player, key)}`);
 		await expect(
-			page.getByRole("heading", { level: 1, name: titleOf(player, key) }),
+			page.getByRole("heading", {
+				level: 1,
+				name: titleOfPlaylist(player, key),
+			}),
 		).toBeVisible();
 		await expect(trackRow(page, 0)).toBeAttached();
 	};
@@ -740,7 +742,7 @@ test.describe("editing an autoplaylist", () => {
 			await expect(trackRow(page, at)).toContainText(title);
 	};
 
-	test("the view of an autoplaylist Jean made or foobar2000 made offers Edit autoplaylist, and a kept one, a plain playlist and the library do not (criteria 29 and 37)", async ({
+	test("the view of an autoplaylist Jean made or foobar2000 made offers Edit autoplaylist, and a kept one, a plain playlist and the library do not", async ({
 		page,
 		player,
 	}) => {
@@ -763,7 +765,7 @@ test.describe("editing an autoplaylist", () => {
 		}
 	});
 
-	test("opens titled Edit autoplaylist with the name and the stored query filled in, previews that query at once, and offers Save rather than Create (criterion 30)", async ({
+	test("opens titled Edit autoplaylist with the name and the stored query filled in, previews that query at once, and offers Save rather than Create", async ({
 		page,
 		player,
 	}) => {
@@ -788,7 +790,7 @@ test.describe("editing an autoplaylist", () => {
 		await expect(dialogOf(page)).toHaveCount(0);
 	});
 
-	test.describe("saving it (criterion 31)", () => {
+	test.describe("saving it", () => {
 		test("sends one update with the new query and the stored key, sort and forceSort and no title, closes, and the view shows the refilled playlist", async ({
 			page,
 			player,
@@ -841,7 +843,7 @@ test.describe("editing an autoplaylist", () => {
 		});
 	});
 
-	test.describe("when Save can be pressed (criterion 32)", () => {
+	test.describe("when Save can be pressed", () => {
 		// Answered late, as for Create, so the window between typing and the answer is wide enough
 		// to see Save waiting in.
 		test.use({
@@ -888,7 +890,7 @@ test.describe("editing an autoplaylist", () => {
 		});
 	});
 
-	test("a save refused because playlist writes were switched off meanwhile keeps the dialog open with what was typed, and says why (criterion 27)", async ({
+	test("a save refused because playlist writes were switched off meanwhile keeps the dialog open with what was typed, and says why", async ({
 		page,
 		player,
 	}) => {
@@ -910,7 +912,7 @@ test.describe("editing an autoplaylist", () => {
 		await expect(dialog).toBeVisible();
 		await expect(nameField(dialog)).toHaveValue("Heavy days");
 		await expect(queryField(dialog)).toHaveValue(POST_ROCK);
-		expect(titleOf(player, JEAN_MADE)).toBe("Favorites");
+		expect(titleOfPlaylist(player, JEAN_MADE)).toBe("Favorites");
 		expect(
 			player.playlists
 				.find((entry) => entry.id === JEAN_MADE)!
@@ -918,7 +920,7 @@ test.describe("editing an autoplaylist", () => {
 		).toEqual(rowsBefore);
 	});
 
-	test.describe("an autoplaylist foobar2000 made (criterion 37)", () => {
+	test.describe("an autoplaylist foobar2000 made", () => {
 		test("opens with its name, an empty query, a line saying Save replaces the query it has now, and no results or preview until a query is typed", async ({
 			page,
 			player,

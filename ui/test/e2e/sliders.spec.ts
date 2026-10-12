@@ -3,15 +3,15 @@ type BoundingBox = { x: number; y: number; width: number; height: number };
 
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
-	dragTo,
 	expect,
 	expectSettlesAt,
 	openLibrary,
 	statusBar,
 	test,
-	touchDrag,
 	trackRow,
+	volumesSent,
 } from "./fixtures.ts";
+import { dragTo, touchDrag } from "./gestures.ts";
 
 const volume = (page: Page) => page.getByRole("slider", { name: "Volume" });
 const seekBar = (page: Page) =>
@@ -36,9 +36,9 @@ const bodiesTo = (player: FakePlayer, route: string) =>
 		.filter((entry) => entry.method === "POST" && entry.path === route)
 		.map((entry) => entry.body ?? {});
 
-const volumesSent = (player: FakePlayer) =>
-	bodiesTo(player, "/api/volume")
-		.map((body) => body.value)
+const levelsSent = (player: FakePlayer) =>
+	volumesSent(player)
+		.map((entry) => entry.body?.value)
 		.filter((value) => value !== undefined);
 
 test.describe("the volume slider", () => {
@@ -50,10 +50,10 @@ test.describe("the volume slider", () => {
 	});
 
 	const landsAt = async (page: Page, player: FakePlayer, fraction: number) => {
-		const before = volumesSent(player).length;
+		const before = levelsSent(player).length;
 		await dragTo(page, volume(page), fraction);
-		await expect.poll(() => volumesSent(player).length).toBeGreaterThan(before);
-		return volumesSent(player).at(-1);
+		await expect.poll(() => levelsSent(player).length).toBeGreaterThan(before);
+		return levelsSent(player).at(-1);
 	};
 
 	test("half the travel is half as loud, which is -10 dB", async ({
@@ -90,10 +90,10 @@ test.describe("the volume slider", () => {
 
 	test("the ends are the ends", async ({ page, player }) => {
 		await dragTo(page, volume(page), 1);
-		await expect.poll(() => volumesSent(player).at(-1)).toBe(0);
+		await expect.poll(() => levelsSent(player).at(-1)).toBe(0);
 
 		await dragTo(page, volume(page), 0);
-		await expect.poll(() => volumesSent(player).at(-1)).toBe(-100);
+		await expect.poll(() => levelsSent(player).at(-1)).toBe(-100);
 	});
 
 	test("a drag sends far fewer requests than it has moves, and the last one wins", async ({
@@ -105,8 +105,8 @@ test.describe("the volume slider", () => {
 		const MOVES = 40;
 		await dragTo(page, volume(page), 0.6, MOVES);
 
-		await expectSettlesAt(player, () => volumesSent(player).length > 0, true);
-		const sent = volumesSent(player);
+		await expectSettlesAt(player, () => levelsSent(player).length > 0, true);
+		const sent = levelsSent(player);
 
 		expect(sent.length).toBeLessThan(MOVES / 2);
 
@@ -326,6 +326,6 @@ test.describe("dragging the fader with a finger", () => {
 			)
 			.toBeLessThan(8);
 
-		await expect.poll(() => volumesSent(player).length).toBeGreaterThan(0);
+		await expect.poll(() => levelsSent(player).length).toBeGreaterThan(0);
 	});
 });

@@ -4,12 +4,12 @@ import {
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
-	scrollTo,
-	scrollTop,
 	statusBar,
 	test,
 	trackRow,
 } from "./fixtures.ts";
+import { queuePanel } from "./queue.ts";
+import { scrollTo, scrollTop } from "./scrolling.ts";
 
 const TOGGLE = 'footer button[aria-label="Pause"]';
 
@@ -326,9 +326,6 @@ test.describe("the playing row's equalizer", () => {
 const CLOSED_THEN_OPEN = 2;
 
 test.describe("the queue panel", () => {
-	const panel = (page: Page) =>
-		page.getByRole("complementary", { name: "Queue" });
-
 	const revealQueueButton = async (page: Page) => {
 		await openLibrary(page);
 		if (
@@ -370,7 +367,7 @@ test.describe("the queue panel", () => {
 	}) => {
 		await revealQueueButton(page);
 		const seen = await transformsAsItOpens(page);
-		await expect(panel(page)).toHaveAttribute("data-open", "true");
+		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
 		expect(new Set(seen).size).toBeLessThanOrEqual(CLOSED_THEN_OPEN);
 	});
 

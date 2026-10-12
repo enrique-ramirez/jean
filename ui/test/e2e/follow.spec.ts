@@ -1,16 +1,14 @@
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
-	isRowOnScreen,
 	openLibrary,
 	playRequests,
-	scrollTo,
-	scrollTop,
 	statusBar,
 	test,
 	times,
 	trackRow,
 } from "./fixtures.ts";
+import { isRowOnScreen, scrollTo, scrollTop } from "./scrolling.ts";
 
 // Far enough down the 54-track fixture to be well past the fold on both the
 // desktop and the phone viewport.

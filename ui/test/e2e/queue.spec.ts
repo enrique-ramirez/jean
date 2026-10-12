@@ -5,7 +5,6 @@ import {
 	countCoverHandles,
 	coversByPosition,
 	coversFromTheComponent,
-	dragFrom,
 	expect,
 	expectSettlesAt,
 	guidOfPlaylist,
@@ -14,37 +13,22 @@ import {
 	openLibrary,
 	openNowPlaying,
 	openSidebar,
-	pressAndHold,
 	sidebar,
 	statusBar,
 	test,
-	touchDrag,
+	toastRegion,
 	trackRow,
 	untilQuiet,
 	withNoListOnScreen,
 } from "./fixtures.ts";
-
-const queuePanel = (page: Page) =>
-	page.getByRole("complementary", { name: "Queue" });
-
-const queueButton = (page: Page) =>
-	statusBar(page).getByRole("button", { name: /^Queue/ });
-
-const anyQueueButton = async (page: Page) => {
-	if (await queueButton(page).count()) return queueButton(page);
-	await openNowPlaying(page);
-	return nowPlayingScreen(page).getByRole("button", { name: /^Queue/ });
-};
-
-// Closed, the panel is parked off the right edge rather than hidden, so
-// `toBeHidden()` would not see it either way.
-const openQueue = async (page: Page) => {
-	if ((await queuePanel(page).getAttribute("data-open")) !== "true")
-		(await anyQueueButton(page)).click();
-	await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
-};
-
-const queueRows = (page: Page) => queuePanel(page).getByRole("listitem");
+import { dragFrom, pressAndHold, touchDrag } from "./gestures.ts";
+import {
+	anyQueueButton,
+	openQueue,
+	queueButton,
+	queuePanel,
+	queueRows,
+} from "./queue.ts";
 
 const queueTracks = async (page: Page, isMobile: boolean, index = 0) => {
 	const row = trackRow(page, index);
@@ -99,12 +83,10 @@ const expectPanelShows = async (page: Page, titles: string[]) =>
 // other one says the queue moved while they were dragging, which is a different
 // event: that one Jean can read the truth back from, and this one it cannot.
 const expectRefusalToast = async (page: Page) => {
-	await expect(page.getByRole("status")).toContainText(
+	await expect(toastRegion(page)).toContainText(
 		"The player would not change the queue.",
 	);
-	await expect(page.getByRole("status")).not.toContainText(
-		"while you were dragging",
-	);
+	await expect(toastRegion(page)).not.toContainText("while you were dragging");
 };
 
 // Where each entry sits, as `GET /api/queue` reports it: a track queued by
@@ -505,7 +487,7 @@ test.describe("queueing opens the panel", () => {
 
 		await expect(queuePanel(page)).toHaveAttribute("data-open", "true");
 		await expect(queueRows(page)).toHaveCount(1);
-		await expect(page.getByRole("status")).toBeEmpty();
+		await expect(toastRegion(page)).toBeEmpty();
 	});
 
 	test("a press outside puts away the overlay and leaves the dock", async ({
@@ -1105,7 +1087,7 @@ test.describe("a selection past a thousand tracks", () => {
 		await expect(queueButton(page)).toHaveAttribute("data-drop-over", "true");
 		await page.mouse.up();
 
-		await expect(page.getByRole("status")).toContainText(namesTheLimit);
+		await expect(toastRegion(page)).toContainText(namesTheLimit);
 		await expectSettlesAt(
 			player,
 			() => componentRequests(player, "POST", "/api/queue").length,

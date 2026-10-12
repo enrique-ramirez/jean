@@ -5,12 +5,11 @@ import {
 	nowPlayingScreen,
 	openLibrary,
 	openSidebar,
-	scrollTo,
-	scrollTop,
 	sidebar,
 	test,
 	trackRow,
 } from "./fixtures.ts";
+import { scrollTo, scrollTop } from "./scrolling.ts";
 
 const palette = (page: Page) => page.getByRole("dialog", { name: "Go to" });
 const paletteField = (page: Page) =>

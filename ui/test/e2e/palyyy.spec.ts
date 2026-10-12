@@ -3,11 +3,12 @@ import {
 	expect,
 	expectSettlesAt,
 	openLibrary,
-	pressAndHold,
 	statusBar,
 	test,
+	toastRegion,
 	viewHeader,
 } from "./fixtures.ts";
+import { pressAndHold } from "./gestures.ts";
 
 const MAY_THE_TENTH = new Date(2026, 4, 10, 12);
 const HOLD_MS = 520;
@@ -45,9 +46,7 @@ test.describe("palyyy", () => {
 		if (test.info().project.name === "mobile") await pressAndHold(page, toggle);
 		else await holdWithTheMouse(page, toggle);
 
-		await expect(
-			page.getByRole("status").filter({ hasText: "Palyyy" }),
-		).toBeVisible();
+		await expect(toastRegion(page).filter({ hasText: "Palyyy" })).toBeVisible();
 		await expect(toggle).toBeVisible();
 		await expectSettlesAt(player, () => asksToPlay(player), []);
 		expect(player.player.playbackState).toBe("stopped");

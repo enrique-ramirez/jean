@@ -5,6 +5,7 @@ import {
 	openLibrary,
 	requestsTo,
 	test,
+	toastRegion,
 	trackRow,
 } from "./fixtures.ts";
 import { openPanels, panelTab, playRow } from "./nowPlaying.ts";
@@ -131,7 +132,7 @@ test.describe("a rating's read back the player refuses as too fast", () => {
 			.getByRole("button", { name: "Rate 4 of 5" })
 			.click();
 
-		await expect(page.getByRole("status")).toContainText(
+		await expect(toastRegion(page)).toContainText(
 			"We couldn’t rate Deléctrico with 4 stars",
 		);
 		expect(refused).toBe(1);

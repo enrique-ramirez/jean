@@ -6,9 +6,6 @@ import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	checkedOrderRows,
 	closeNowPlaying,
-	dragAcrossTheSheet,
-	dragFromTheScrim,
-	dragTheSheetAwayByItsTopEdge,
 	drawing,
 	drawnColour,
 	expect,
@@ -32,7 +29,6 @@ import {
 	playerDeclaring,
 	playRequests,
 	putThePickerAway,
-	restingBox,
 	statusBar,
 	test,
 	tokenColourIn,
@@ -41,6 +37,13 @@ import {
 	untilTheInstallIsKnown,
 	viewHeader,
 } from "./fixtures.ts";
+import {
+	dragAcrossTheSheet,
+	dragFromTheScrim,
+	dragTheSheetAwayByItsTopEdge,
+	restingBox,
+} from "./gestures.ts";
+import { queuePanel } from "./queue.ts";
 
 // foobar2000's stock playback orders, in the sequence its own Order menu lists them and the fake
 // declares them: Random is fourth, between the repeats and the shuffles. `declared` is foobar2000's
@@ -189,9 +192,6 @@ const closeAndLetTheAppHearIt = async (page: Page) => {
 			),
 	);
 };
-
-const queuePanel = (page: Page) =>
-	page.getByRole("complementary", { name: "Queue" });
 
 const sheet = (page: Page) =>
 	page.getByRole("dialog", { name: "Playback order" });

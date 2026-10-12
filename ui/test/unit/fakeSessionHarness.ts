@@ -4,9 +4,10 @@ import { after, before } from "node:test";
 
 import { conforms } from "../../../contract/shape.ts";
 import { type Operation, publishedOperations } from "../../../contract/spec.ts";
-import type { FooJeanOptions } from "../fake-api/fooJean.ts";
+import type { FooJeanOptions } from "../fake-api/fooJean/options.ts";
 import { createServer } from "../fake-api/server.ts";
-import { createState, evaluate } from "../fake-api/state.ts";
+import { createState } from "../fake-api/state.ts";
+import { evaluate } from "../fake-api/titleFormat.ts";
 
 export type FakeState = ReturnType<typeof createState>;
 

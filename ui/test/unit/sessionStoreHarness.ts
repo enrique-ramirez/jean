@@ -18,7 +18,7 @@ import {
 } from "../../src/domain/player/session.ts";
 import type * as Operations from "../../src/domain/player/sessionOperations.ts";
 import { setSessionScope } from "../../src/shared/api/client.ts";
-import type { FooJeanOptions } from "../fake-api/fooJean.ts";
+import type { FooJeanOptions } from "../fake-api/fooJean/options.ts";
 import { postsToSession } from "../fake-api/state.ts";
 import { fakePlayer } from "./fakeSessionHarness.ts";
 

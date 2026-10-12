@@ -12,13 +12,13 @@ import {
 	openNowPlaying,
 	requestsTo,
 	rowByTitle,
-	scrollTop,
 	searchFor,
 	statusBar,
 	test,
 	times,
 	trackRow,
 } from "./fixtures.ts";
+import { scrollTop } from "./scrolling.ts";
 
 // Far enough down that getting there crosses thousands of rows the view has
 // never been near.

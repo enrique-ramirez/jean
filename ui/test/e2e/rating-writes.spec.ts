@@ -5,7 +5,7 @@ import {
 	type Message,
 	type Values,
 } from "../../src/shared/i18n/message.ts";
-import { STALLED_READ_MS } from "../fake-api/fooJean.ts";
+import { STALLED_READ_MS } from "../fake-api/fooJean/latency.ts";
 import type { RecordedRequest, Track } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
@@ -19,11 +19,15 @@ import {
 	openLibrary,
 	openNowPlaying,
 	openSettings,
-	pressAndHold,
 	requestsTo,
+	routeOf,
+	tagWrites,
 	test,
+	toastRegion,
 	trackRow,
+	watchWhatIsSaid,
 } from "./fixtures.ts";
+import { pressAndHold } from "./gestures.ts";
 import { openPanels, panelTab, writeLyric } from "./nowPlaying.ts";
 
 // The fake serves `foo_jean` on a second port, so everything here crosses a
@@ -69,10 +73,6 @@ const star = (page: Page, row: number, value: number) =>
 const starsOnScreen = (page: Page) =>
 	nowPlayingScreen(page).getByRole("group", { name: /stars|Unrated/ });
 
-const tagWrites = (player: FakePlayer) => requestsTo(player, "/api/tags");
-
-const routeOf = (path: string) => path.split("?")[0];
-
 // Everything a click cost: the write and anything sent to work out what to
 // write to. Left out because it is nobody's click: the player poll, which
 // runs once a second whatever happens.
@@ -88,31 +88,6 @@ const asksSince = (player: FakePlayer, from: number) =>
 // written yet.
 const nothingWrittenYet = (player: FakePlayer) =>
 	expectSettlesAt(player, () => tagWrites(player).length, 0);
-
-// Every message the page puts up from here on. A toast takes itself down after a
-// few seconds, so looking for one afterwards cannot tell "never said" from "said
-// and gone", and a retrying `toHaveCount(0)` waits a real one out and passes.
-// Several cases here promise silence, so silence has to mean nothing was ever
-// said.
-const watchWhatIsSaid = async (page: Page) => {
-	await page.evaluate(() => {
-		const said: string[] = [];
-		(window as unknown as { said: string[] }).said = said;
-		new MutationObserver(() => {
-			for (const layer of document.querySelectorAll('[role="status"]')) {
-				const text = layer.textContent ?? "";
-				if (text && !said.includes(text)) said.push(text);
-			}
-		}).observe(document.body, {
-			childList: true,
-			subtree: true,
-			characterData: true,
-		});
-	});
-
-	return () =>
-		page.evaluate(() => (window as unknown as { said: string[] }).said);
-};
 
 // The address a write named, with what it wrote and the subsong set aside: an
 // ordinary file's subsong is omitted and read as 0, so it is read rather than
@@ -751,7 +726,7 @@ test.describe("when the playlist moved under a rating", () => {
 
 		await star(page, OFF_LIBRARY_ROW, 4).click();
 
-		await expect(page.getByRole("status")).toContainText(en["rate.moved"]);
+		await expect(toastRegion(page)).toContainText(en["rate.moved"]);
 		await expect(ratingOf(page, OFF_LIBRARY_ROW)).toHaveAccessibleName(
 			"Unrated",
 		);
@@ -941,7 +916,7 @@ test.describe("when a library address names more than one track", () => {
 			const before = player.requests.length;
 			await star(page, 2, 4).click();
 
-			await expect(page.getByRole("status")).toContainText(en["rate.moved"]);
+			await expect(toastRegion(page)).toContainText(en["rate.moved"]);
 			await expectSettlesAt(player, () => asksSince(player, before), [
 				"POST /api/tags",
 				"POST /api/tags",
@@ -1042,12 +1017,10 @@ test.describe("when ratings arrive faster than the player takes them", () => {
 
 		await star(page, 2, 4).click();
 
-		await expect(page.getByRole("status")).toContainText(
+		await expect(toastRegion(page)).toContainText(
 			saying(en["rate.tooFast"], { track: "Deléctrico" }),
 		);
-		await expect(page.getByRole("status")).not.toContainText(
-			"too many tag writes",
-		);
+		await expect(toastRegion(page)).not.toContainText("too many tag writes");
 		await expect(ratingOf(page, 2)).toHaveAccessibleName("3 of 5 stars");
 		await expectSettlesAt(player, () => tagWrites(player).length, 1);
 	});
@@ -1704,7 +1677,7 @@ test.describe("when a rating from the now-playing screen is refused", () => {
 		await stars.getByRole("button", { name: "Rate 5 of 5" }).click();
 
 		await expectSettlesAt(player, () => tagWrites(player).length, 1);
-		await expect(page.getByRole("status")).toContainText("was not rated");
+		await expect(toastRegion(page)).toContainText("was not rated");
 		await expect(stars).toHaveAccessibleName("3 of 5 stars");
 	});
 
@@ -1741,7 +1714,7 @@ test.describe("when a rating from the now-playing screen is refused", () => {
 		// stars are between the two refusals and hold the right rating for a
 		// moment on the way to the wrong one.
 		await expect(
-			page.getByRole("status").getByText(wasNotRated("Deléctrico")),
+			toastRegion(page).getByText(wasNotRated("Deléctrico")),
 		).toHaveCount(2);
 
 		await expect(starsOnScreen(page)).toHaveAccessibleName("3 of 5 stars");
@@ -1808,7 +1781,7 @@ test.describe("when a rating from the now-playing screen is refused", () => {
 			// message on screen is the star having been put back. Between the press
 			// and it the stars hold five, which is neither rating this is about.
 			await expect(
-				page.getByRole("status").getByText(wasNotRated("Deléctrico")),
+				toastRegion(page).getByText(wasNotRated("Deléctrico")),
 			).toHaveCount(1);
 
 			await expect(starsOnScreen(page)).toHaveAccessibleName("4 of 5 stars");

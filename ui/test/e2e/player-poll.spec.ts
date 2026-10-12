@@ -2,7 +2,8 @@ import type { Request, Route } from "@playwright/test";
 import { tagKey } from "../../src/domain/track/fields.ts";
 import { LYRICS_EXPRESSIONS } from "../../src/features/now-playing/nowPlayingFields.ts";
 import { en } from "../../src/shared/i18n/en.ts";
-import { evaluate, type Track } from "../fake-api/state.ts";
+import type { Track } from "../fake-api/state.ts";
+import { evaluate } from "../fake-api/titleFormat.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	coversByPosition,
@@ -22,21 +23,24 @@ import {
 	openSidebar,
 	playRequests,
 	requestsTo,
+	routeOf,
 	rowByTitle,
 	scratchOf,
-	scrollTo,
-	scrollUntilMounted,
 	sidebar,
 	statusBar,
+	tagWrites,
 	test,
+	ticksTaken,
 	times,
-	touchDrag,
 	trackPlayed,
 	trackRow,
 	untilQuiet,
 	withNoListOnScreen,
 } from "./fixtures.ts";
+import { touchDrag } from "./gestures.ts";
 import { openPanels, panelTab } from "./nowPlaying.ts";
+import { queuePanel } from "./queue.ts";
+import { scrollTo, scrollUntilMounted } from "./scrolling.ts";
 
 const isPlayingTrackRead = (request: Request) =>
 	new URL(request.url()).pathname === "/api/track/playing";
@@ -49,18 +53,10 @@ const playToggle = (page: Page, name: "Play" | "Pause") =>
 const seekBar = (page: Page) =>
 	statusBar(page).getByRole("slider", { name: "Position" });
 
-const ticksTaken = (player: FakePlayer) =>
-	requestsTo(player, "/api/state").filter((one) => one.method === "GET").length;
-
-const routeOf = (path: string) => path.split("?")[0];
-
 const askedForTheOldLibraryRoute = (player: FakePlayer) =>
 	player.requests
 		.filter((one) => routeOf(one.path) === "/api/library")
 		.map((one) => one.path);
-
-const queuePanel = (page: Page) =>
-	page.getByRole("complementary", { name: "Queue" });
 
 // The poll's own interval, restated rather than imported: `tsconfig.test.json`
 // scopes which of `src/` a spec may reach and `playerPoll.ts` is outside it.
@@ -263,9 +259,6 @@ const anyRating = (page: Page) =>
 	nowPlayingScreen(page)
 		.getByRole("img", { name: /stars|Unrated/ })
 		.or(nowPlayingScreen(page).getByRole("group", { name: /stars|Unrated/ }));
-
-const tagWrites = (player: FakePlayer) =>
-	requestsTo(player, "/api/tags").filter((one) => one.method === "POST");
 
 const rawPlayingTrack = (player: FakePlayer) => {
 	const { playlistId, index } = player.player.activeItem;

@@ -1,30 +1,28 @@
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	closeSidebar,
-	dragAcrossTheSheet,
-	dragFromTheScrim,
-	dragTheSheetAwayByItsTopEdge,
 	expect,
 	expectSettlesAt,
 	expectTheScreenIsStillOpen,
-	isRowOnScreen,
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
 	openSidebar,
 	playbackCommands,
 	requestsTo,
-	scrollTo,
-	scrollTop,
-	scrollUntilMounted,
 	sidebar,
 	sidebarToggle,
 	statusBar,
 	test,
-	touchDrag,
 	trackRow,
 	untilQuiet,
 } from "./fixtures.ts";
+import {
+	dragAcrossTheSheet,
+	dragFromTheScrim,
+	dragTheSheetAwayByItsTopEdge,
+	touchDrag,
+} from "./gestures.ts";
 import {
 	expectPanelOpen,
 	panelTab,
@@ -32,6 +30,12 @@ import {
 	TAGGED,
 	trackInfo,
 } from "./nowPlaying.ts";
+import {
+	isRowOnScreen,
+	scrollTo,
+	scrollTop,
+	scrollUntilMounted,
+} from "./scrolling.ts";
 
 test.describe("the way in and the way out", () => {
 	test("the status bar block opens it and the chevron closes it", async ({

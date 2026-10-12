@@ -18,6 +18,7 @@ import {
 	sidebar,
 	statusBar,
 	test,
+	toastRegion,
 	trackRow,
 	viewHeader,
 } from "./fixtures.ts";
@@ -553,11 +554,7 @@ test.describe("a scratch renamed or deleted at the player", () => {
 
 		expect(player.player.playbackState).toBe("playing");
 		await expect(statusBar(page)).toContainText("Los Calientes");
-		await expectSettlesAt(
-			player,
-			() => page.locator("[data-toasts]").textContent(),
-			"",
-		);
+		await expectSettlesAt(player, () => toastRegion(page).textContent(), "");
 
 		await searchFor(page, NARROWER.text);
 		await trackRow(page, 0).dblclick();

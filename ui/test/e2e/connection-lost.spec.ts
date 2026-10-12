@@ -4,28 +4,26 @@ import {
 } from "../../src/domain/player/connection.ts";
 import { en } from "../../src/shared/i18n/en.ts";
 import type { Page } from "./fixtures.ts";
-import { expect, openLibrary, statusBar, test, trackRow } from "./fixtures.ts";
+import {
+	expect,
+	playFirstRow,
+	statusBar,
+	test,
+	toastRegion,
+} from "./fixtures.ts";
 
 const RECONNECTING = en["connection.reconnecting"];
 const REMEDY = en["connection.remedy"];
 const DISCONNECTED_TITLE = `${en["player.disconnected"]} · Jean`;
 
 const notice = (page: Page) =>
-	page.getByRole("status").filter({ hasText: RECONNECTING });
+	toastRegion(page).filter({ hasText: RECONNECTING });
 
 const setReachable = async (page: Page, reachable: boolean) => {
 	const answered = await page.request.post("/__control/reachable", {
 		data: { reachable },
 	});
 	expect(answered.ok(), "the fake needs /__control/reachable").toBe(true);
-};
-
-const playFirstRow = async (page: Page, isMobile: boolean) => {
-	await openLibrary(page);
-	if (isMobile) await trackRow(page, 0).tap();
-	else await trackRow(page, 0).dblclick();
-	await expect(statusBar(page)).toContainText("Los Calientes");
-	await expect(page).toHaveTitle(/^Los Calientes/);
 };
 
 const countFailedPolls = (page: Page) => {

@@ -4,14 +4,13 @@ import {
 	openLibrary,
 	openSettings,
 	revealSearch,
-	scrollTo,
-	scrollTop,
 	searchField,
 	searchFor,
 	statusBar,
 	test,
 	trackRow,
 } from "./fixtures.ts";
+import { scrollTo, scrollTop } from "./scrolling.ts";
 
 const NARROWEST = { width: 320, height: 640 };
 

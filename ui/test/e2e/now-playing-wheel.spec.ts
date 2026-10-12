@@ -13,11 +13,11 @@ import {
 	putThePickerAway,
 	statusBar,
 	test,
-	touchDrag,
 	trackRow,
 	untilQuiet,
 	withNoListOnScreen,
 } from "./fixtures.ts";
+import { touchDrag } from "./gestures.ts";
 import { playRow } from "./nowPlaying.ts";
 
 const wheel = (page: Page) =>

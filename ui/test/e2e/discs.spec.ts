@@ -1,11 +1,6 @@
 import type { Locator, Page } from "./fixtures.ts";
-import {
-	expect,
-	openLibrary,
-	rowByTitle,
-	scrollUntilMounted,
-	test,
-} from "./fixtures.ts";
+import { expect, openLibrary, rowByTitle, test } from "./fixtures.ts";
+import { scrollUntilMounted } from "./scrolling.ts";
 
 // Deathconsciousness is the fixture's two-disc album and the last one in the
 // Library, so everything here scrolls to the end first. Both discs number their

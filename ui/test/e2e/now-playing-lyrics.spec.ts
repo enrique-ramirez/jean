@@ -1,6 +1,7 @@
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	expect,
+	inSequence,
 	listenHere,
 	nowPlayingScreen,
 	openLibrary,
@@ -8,11 +9,11 @@ import {
 	openSidebar,
 	putThePickerAway,
 	requestsTo,
+	runClockFor,
 	sidebar,
 	sidebarToggle,
 	statusBar,
 	test,
-	times,
 	trackRow,
 } from "./fixtures.ts";
 import {
@@ -23,6 +24,7 @@ import {
 	TAGGED,
 	writeLyric,
 } from "./nowPlaying.ts";
+import { queuePanel } from "./queue.ts";
 
 interface PlayingRead {
 	sentAt: number;
@@ -87,14 +89,9 @@ const recheckColumnCounts = (player: FakePlayer) =>
 const currentLine = (panel: Locator) =>
 	panel.locator('[aria-current="true"]:not(nav *)');
 
-// See "A fake clock advances honestly only in small steps" in test/README.md.
-const CLOCK_STEP_MS = 250;
-
 const runClockTo = async (page: Page, until: number) => {
 	const from = await page.evaluate(() => Date.now());
-	await times(Math.ceil((until - from) / CLOCK_STEP_MS), () =>
-		page.clock.runFor(CLOCK_STEP_MS),
-	);
+	await runClockFor(page, until - from);
 };
 
 test.describe("reading the lyric tag", () => {
@@ -280,6 +277,42 @@ test.describe("reading the lyric tag", () => {
 
 		await runClockTo(page, from + 30_000);
 		expect(await playingReads(page)).toHaveLength(readsAtChange);
+	});
+});
+
+test.describe("a plain lyric with section rows in brackets", () => {
+	const HEADER = "[ti:Los Calientes]";
+	const SECTIONED = [
+		"[Verse: Adrián]",
+		"First line",
+		"Second line",
+		"[Chorus: Diego]",
+		"Third line",
+	];
+
+	test.use({
+		retagged: {
+			"Los Calientes": {
+				"$meta(unsynced lyrics)": [HEADER, ...SECTIONED].join("\r\n"),
+			},
+		},
+	});
+
+	// A section mark is spelt like an LRC tag, and the panel read every such row as
+	// one and left it out, so the lyric lost the rows the editor shows and saves.
+	test("the panel shows the bracketed rows with the words they head, and no LRC header", async ({
+		page,
+		isMobile,
+	}) => {
+		await playRow(page, 0);
+		const panel = await openPanels(page, isMobile);
+		await panelTab(panel, "Lyrics").click();
+
+		await expect(panel).toContainText("Unsynced");
+		await inSequence(SECTIONED, (row) =>
+			expect(panel.getByText(row, { exact: true })).toBeVisible(),
+		);
+		await expect(panel).not.toContainText(HEADER);
 	});
 });
 
@@ -840,9 +873,6 @@ test.describe("full-screen lyrics", () => {
 		await expect(close(page)).toHaveCount(0);
 		await expect(nowPlayingScreen(page)).toBeVisible();
 	});
-
-	const queuePanel = (page: Page) =>
-		page.getByRole("complementary", { name: "Queue" });
 
 	// Closed, the panel is parked off the right edge rather than hidden, so it
 	// answers `toBeVisible()` either way.

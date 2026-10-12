@@ -17,7 +17,7 @@ import {
 } from "../../src/domain/player/playerPoll.ts";
 import { volumePercent } from "../../src/domain/player/volumeScale.ts";
 import type { FooJeanCapabilities } from "../../src/shared/api/discovery.ts";
-import { readTrack } from "../../src/shared/api/playerState.ts";
+import { playingTrack } from "../../src/shared/api/playerState.ts";
 import type { StateDocument } from "../../src/shared/api/state.ts";
 import type {
 	PlayerSnapshot,
@@ -330,7 +330,7 @@ test("the playing track's name, path and subsong all come from the tick's docume
 	await poll.settle();
 	await poll.ticks(1);
 
-	const track = readTrack(playerIn(poll.client));
+	const track = playingTrack(playerIn(poll.client));
 
 	assert.equal(track?.artist, NAME.artist);
 	assert.equal(track?.title, NAME.title);
@@ -341,7 +341,7 @@ test("the playing track's name, path and subsong all come from the tick's docume
 });
 
 test("a tick naming nothing does not draw the previous track's name on the new path", async (t) => {
-	// Criterion 24: a window where the path is the new track and the name is the old one is the
+	// A window where the path is the new track and the name is the old one is the
 	// same defect a tick wide. `title` and `artist` are on the document every tick, so a tick that
 	// answers `null` for both is the component saying this track has no computed name yet, not the
 	// component staying silent about the one it already gave.
@@ -353,7 +353,7 @@ test("a tick naming nothing does not draw the previous track's name on the new p
 	await poll.settle();
 	await poll.ticks(1);
 
-	assert.equal(readTrack(playerIn(poll.client))?.artist, NAME.artist);
+	assert.equal(playingTrack(playerIn(poll.client))?.artist, NAME.artist);
 
 	poll.answersState(() =>
 		document200("playing", LATER_TAG, {
@@ -362,10 +362,10 @@ test("a tick naming nothing does not draw the previous track's name on the new p
 	);
 	await poll.ticks(1);
 
-	const track = readTrack(playerIn(poll.client));
+	const track = playingTrack(playerIn(poll.client));
 
-	assert.notEqual(track?.artist, NAME.artist);
-	assert.notEqual(track?.title, NAME.title);
+	assert.equal(track?.artist, null);
+	assert.equal(track?.title, null);
 });
 
 test("a reader of the player key is fed by the poll and never refetches for itself", async (t) => {
@@ -660,7 +660,7 @@ test("a tick before capabilities have landed reports the level with no range to 
 	assert.equal(volumePercent(player?.volume), 0);
 });
 
-test("criterion 11: a tick carries the output device the player is set to, and the next tick moves it", async (t) => {
+test("a tick carries the output device the player is set to, and the next tick moves it", async (t) => {
 	const poll = harness(
 		t,
 		stateOnly(() => document200("playing", TAG, { outputDeviceId: SPEAKERS })),
@@ -680,7 +680,7 @@ test("criterion 11: a tick carries the output device the player is set to, and t
 	assert.equal(playerIn(poll.client)?.outputDeviceId, HEADPHONES);
 });
 
-test("criterion 11: a tick naming no output device writes null, rather than keeping the last one", async (t) => {
+test("a tick naming no output device writes null, rather than keeping the last one", async (t) => {
 	// `null` is the device foobar2000 is pointed at having been unplugged, or a component that
 	// cannot ask. Holding the last id instead ticks a device the player has left.
 	const poll = harness(
@@ -700,7 +700,7 @@ test("criterion 11: a tick naming no output device writes null, rather than keep
 	assert.strictEqual(playerIn(poll.client)?.outputDeviceId, null);
 });
 
-test("criterion 11: a tick before capabilities have landed still carries the output device", async (t) => {
+test("a tick before capabilities have landed still carries the output device", async (t) => {
 	const poll = harness(
 		t,
 		stateOnly(() => document200("playing", TAG, { outputDeviceId: SPEAKERS })),
@@ -936,7 +936,7 @@ test("a hidden tab that is listening goes on asking, and sees a track change nob
 	listening.show(showing('"t2"', { path: NEXT_TRACK }));
 	await listening.poll.ticks(1);
 
-	assert.equal(readTrack(playerIn(listening.poll.client))?.path, NEXT_TRACK);
+	assert.equal(playingTrack(playerIn(listening.poll.client))?.path, NEXT_TRACK);
 });
 
 test("once this device has stopped listening, a new track is not looked at again", async (t) => {

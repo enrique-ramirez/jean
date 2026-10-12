@@ -1,19 +1,20 @@
 import type { DetachedSession } from "../fake-api/sessions.ts";
-import { evaluate, type Track } from "../fake-api/state.ts";
+import type { Track } from "../fake-api/state.ts";
 import {
 	callMediaSessionAction,
-	choosePlayer,
 	countPostsTo,
 	countPostsToSession,
 	expect,
 	expectNothingRefusedSent,
 	expectSettlesAt,
 	type FakePlayer,
+	fieldOf,
 	listenHere,
 	MEDIA_SESSION_ACTIONS_WITH_CONTROL,
 	mediaSessionActions,
 	openLibrary,
 	type Page,
+	pickerOpener,
 	playingOn,
 	putThePickerAway,
 	REFUSED_ROUTES,
@@ -21,9 +22,11 @@ import {
 	requestsTo,
 	statusBar,
 	test,
+	titleOf,
 	trackRow,
 	untilQuiet,
 } from "./fixtures.ts";
+import { ANOTHER_DEVICE, DEVICE, SESSION_KEY } from "./sessions.ts";
 
 const play = async (page: Page) => {
 	await openLibrary(page);
@@ -126,7 +129,7 @@ const expectListeningEnded = async (page: Page, player: FakePlayer) => {
 	await expect
 		.poll(() => session(page))
 		.toMatchObject({ state: "none", title: null });
-	await expect(choosePlayer(page)).toHaveAccessibleName(/Choose where to play/);
+	await expect(pickerOpener(page)).toHaveAccessibleName(/Choose where to play/);
 	await expect.poll(() => countPostsTo(player, "/api/stream/leave")).toBe(1);
 };
 
@@ -330,7 +333,7 @@ test.describe("the media session", () => {
 
 		expect(countPostsTo(player, "/api/playback/stop")).toBe(0);
 		expect(countPostsTo(player, "/api/stream/leave")).toBe(0);
-		await expect(choosePlayer(page)).toHaveAccessibleName(
+		await expect(pickerOpener(page)).toHaveAccessibleName(
 			/Playing on this device/,
 		);
 	});
@@ -451,18 +454,8 @@ test.describe("the media session with playback control off at the player", () =>
 
 // ---- a page listening to a session of its own -------------------------------
 
-const DEVICE = "5f1c0a9e3b7d4e2a8c6b0d1f2e3a4b5c";
-const ANOTHER_DEVICE = {
-	deviceId: "0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a",
-	name: null,
-};
-
-const SESSION_KEY = "jean.session";
-
-const field = (track: Track | null, expression: string) =>
-	track ? String(evaluate(track, expression) ?? "") : null;
-
-const titleOf = (track: Track | null) => field(track, "%title%");
+// A session holding no track plays nothing, and reads as no title rather than as an empty one.
+const titleOfPlaying = (track: Track | null) => (track ? titleOf(track) : null);
 
 // One track off each of three records, so the player's track and the session's two share no
 // title, artist or cover.
@@ -470,7 +463,7 @@ const threeRecords = (player: FakePlayer) => {
 	const library = player.playlistById("p7")?.items ?? [];
 	const records = new Map<string, Track>();
 	for (const track of library) {
-		const record = field(track, "%album%") ?? "";
+		const record = fieldOf(track, "%album%");
 		if (!records.has(record)) records.set(record, track);
 	}
 	const [atThePlayer, first, second] = records.values();
@@ -531,7 +524,7 @@ const listeningInSession = async (
 	player.fooJean.strictSessions = true;
 	await page.goto("/#/search");
 
-	await choosePlayer(page).click();
+	await pickerOpener(page).click();
 	await page.getByRole("button", { name: "Start playing" }).click();
 	await page.waitForFunction(
 		() => {
@@ -622,7 +615,7 @@ const SESSION_MOVES: SessionMove[] = [
 	{
 		title: "next track moves the session to its next track",
 		action: "nexttrack",
-		read: ({ detached }) => titleOf(detached.playingTrack()),
+		read: ({ detached }) => titleOfPlaying(detached.playingTrack()),
 		expected: ({ second }) => titleOf(second),
 		route: "/api/playback/next",
 	},
@@ -630,7 +623,7 @@ const SESSION_MOVES: SessionMove[] = [
 		title: "previous track asks the session for its previous track",
 		action: "previoustrack",
 		at: 1,
-		read: ({ detached }) => titleOf(detached.playingTrack()),
+		read: ({ detached }) => titleOfPlaying(detached.playingTrack()),
 		expected: ({ first }) => titleOf(first),
 		route: "/api/playback/previous",
 	},
@@ -743,10 +736,10 @@ for (const canControlPlayback of [true, false])
 			await expect
 				.poll(() => session(page))
 				.toMatchObject({ state: "none", title: null });
-			await expect(choosePlayer(page)).toHaveAccessibleName(
+			await expect(pickerOpener(page)).toHaveAccessibleName(
 				/Choose where to play/,
 			);
-			await expect(statusBar(page)).toContainText(titleOf(atThePlayer) ?? "");
+			await expect(statusBar(page)).toContainText(titleOf(atThePlayer));
 			expect(countPostsToSession(player, "/api/stream/ticket", "engine")).toBe(
 				0,
 			);
@@ -761,7 +754,7 @@ for (const canControlPlayback of [true, false])
 			player.addSessionListener(detached.id, ANOTHER_DEVICE);
 			await listeningInSession(page, player, detached);
 			const asItPlayed = {
-				track: titleOf(detached.playingTrack()),
+				track: titleOfPlaying(detached.playingTrack()),
 				playback: detached.playback(),
 				position: detached.position,
 			};
@@ -777,13 +770,13 @@ for (const canControlPlayback of [true, false])
 			);
 			expect(player.sessions.find(detached.id)).toBe(detached);
 			expect({
-				track: titleOf(detached.playingTrack()),
+				track: titleOfPlaying(detached.playingTrack()),
 				playback: detached.playback(),
 				position: detached.position,
 			}).toEqual(asItPlayed);
 			expect(playerAsItStands(player)).toEqual(asItStood);
 			expect(commandsToThePlayer(player)).toEqual([]);
-			await expect(choosePlayer(page)).toHaveAccessibleName(
+			await expect(pickerOpener(page)).toHaveAccessibleName(
 				/Choose where to play/,
 			);
 		});
@@ -817,7 +810,7 @@ test.describe("the media session of a page listening to a session of its own", (
 			)
 			.toEqual({
 				title: titleOf(first),
-				artist: field(first, "%artist%"),
+				artist: fieldOf(first, "%artist%"),
 				isPicture: true,
 			});
 

@@ -3,6 +3,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { whenControllable } from "../../src/domain/player/usePlaybackControl.ts";
+import type { Translate } from "../../src/shared/i18n/locale.ts";
 
 const UI = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const SRC = join(UI, "src");
@@ -34,4 +36,25 @@ test("only the control hook, where the permission is defined, and the files stil
 		.sort();
 
 	assert.deepEqual(reading, READERS);
+});
+
+const said = ((key: string, fields?: Record<string, unknown>) =>
+	fields ? `${key} ${JSON.stringify(fields)}` : key) as Translate;
+
+test("a control is pressable and keeps its own name while playback can be controlled", () => {
+	const press = () => {};
+
+	assert.deepEqual(whenControllable(true, press, "Shuffle", said), {
+		onClick: press,
+	});
+});
+
+test("with playback control off a control takes no press, reads as disabled and names the reason", () => {
+	assert.deepEqual(
+		whenControllable(false, () => {}, "Shuffle", said),
+		{
+			"aria-disabled": "true",
+			"aria-label": 'player.controlOffName {"control":"Shuffle"}',
+		},
+	);
 });

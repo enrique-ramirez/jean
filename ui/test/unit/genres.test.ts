@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
-import { genreIndex, genresOf } from "../../src/domain/track/genres.ts";
+import { genreIndex } from "../../src/domain/track/genres.ts";
 import {
 	columnCollector,
 	libraryColumnsOf,
 } from "../../src/domain/track/libraryColumns.ts";
-import { trackRows } from "../../src/domain/track/project.ts";
 import { rankEntities } from "../../src/domain/track/rankEntities.ts";
 import { TIER } from "../../src/shared/lib/text.ts";
 
@@ -30,7 +29,7 @@ const rows = LIBRARY.map(([genres, artist, album]) => {
 
 const columns = libraryColumnsOf(rows, TRACK_EXPRESSIONS.length);
 
-const genres = genresOf(trackRows(columns));
+const genres = genreIndex("library:1", columns);
 const find = (name: string) => genres.find((entry) => entry.name === name);
 
 test("a track tagged with several genres counts in each of them", () => {

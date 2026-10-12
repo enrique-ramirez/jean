@@ -2,12 +2,10 @@ import type { Page } from "./fixtures.ts";
 import {
 	expect,
 	expectSettlesAt,
-	openLibrary,
 	openSettings,
+	playFirstRow,
 	settingsDialog,
-	statusBar,
 	test,
-	trackRow,
 } from "./fixtures.ts";
 
 const PREFERENCES = "File → Preferences → Tools → Jean";
@@ -21,13 +19,6 @@ const asAFreshDevice = (page: Page) =>
 		for (const key of Object.keys(window.localStorage))
 			if (/token/i.test(key)) window.localStorage.removeItem(key);
 	});
-
-const playFirstRow = async (page: Page, isMobile: boolean) => {
-	await openLibrary(page);
-	if (isMobile) await trackRow(page, 0).tap();
-	else await trackRow(page, 0).dblclick();
-	await expect(statusBar(page)).toContainText("Los Calientes");
-};
 
 test.describe("a session against foo_jean", () => {
 	test("sends no Authorization header on any request", async ({

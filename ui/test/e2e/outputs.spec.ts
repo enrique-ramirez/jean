@@ -1,6 +1,5 @@
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
-	dragTo,
 	expect,
 	expectSettlesAt,
 	holdThePoll,
@@ -8,12 +7,17 @@ import {
 	nowPlayingScreen,
 	openLibrary,
 	openNowPlaying,
+	pickerOpener,
+	routeOf,
 	statusBar,
 	test,
-	touchDrag,
+	toastRegion,
 	untilQuiet,
+	volumesSent,
+	watchWhatIsSaid,
 	withNoListOnScreen,
 } from "./fixtures.ts";
+import { dragTo, touchDrag } from "./gestures.ts";
 
 const OPTIONS = "Output options";
 const LIST_NAME = "Output device";
@@ -50,8 +54,6 @@ const THREE_DEVICES = { outputDevices: DEVICES, activeOutput: SPEAKERS.id };
 
 // ---- reading the player ----------------------------------------------------
 
-const routeOf = (path: string) => path.split("?")[0];
-
 const listReads = (player: FakePlayer) =>
 	player.requests.filter(
 		(entry) => entry.method === "GET" && routeOf(entry.path) === "/api/outputs",
@@ -77,10 +79,8 @@ const capabilityReads = (player: FakePlayer) =>
 			entry.method === "GET" && routeOf(entry.path) === "/api/capabilities",
 	).length;
 
-const volumesSent = (player: FakePlayer) =>
-	player.requests
-		.filter((entry) => entry.method === "POST" && entry.path === "/api/volume")
-		.map((entry) => entry.body ?? {});
+const volumeBodies = (player: FakePlayer) =>
+	volumesSent(player).map((entry) => entry.body ?? {});
 
 const untilPollTicks = async (player: FakePlayer, count: number) => {
 	const from = stateReads(player);
@@ -92,28 +92,6 @@ const untilPollTicks = async (player: FakePlayer, count: number) => {
 const flip = async (page: Page, route: string, data: object) => {
 	const answered = await page.request.post(`/__control/${route}`, { data });
 	expect(answered.ok(), `the fake needs /__control/${route}`).toBe(true);
-};
-
-// Every message the page puts up from here on. A toast takes itself down after a
-// few seconds, so "nothing was said" has to be read off a record kept from before
-// the press rather than off the screen afterwards.
-const watchWhatIsSaid = async (page: Page) => {
-	await page.evaluate(() => {
-		const said: string[] = [];
-		(window as unknown as { said: string[] }).said = said;
-		new MutationObserver(() => {
-			for (const layer of document.querySelectorAll('[role="status"]')) {
-				const text = layer.textContent ?? "";
-				if (text && !said.includes(text)) said.push(text);
-			}
-		}).observe(document.body, {
-			childList: true,
-			subtree: true,
-			characterData: true,
-		});
-	});
-	return () =>
-		page.evaluate(() => (window as unknown as { said: string[] }).said);
 };
 
 // A reload would read the list again from scratch and satisfy a count of one, so
@@ -206,11 +184,6 @@ const rowOf = (list: Locator, isMobile: boolean, name: string) =>
 const playingOn = (page: Page) =>
 	page.getByRole("group", { name: "Playing on" });
 
-const listenButton = (page: Page) =>
-	statusBar(page).getByRole("button", {
-		name: /Choose where to play|Playing on this device/,
-	});
-
 // The caret's menu on a desktop; on a phone the status bar's volume popover,
 // turned to its list by the cog.
 const openPicker = async (page: Page, isMobile: boolean) => {
@@ -269,12 +242,12 @@ const wordsBesidesNames = async (list: Locator, names: string[]) => {
 
 const sameSet = (names: string[]) => [...names].sort();
 
-// ---- criterion 18: when the list is read ----------------------------------
+// ---- when the list is read ----------------------------------
 
-test.describe("criterion 18: the list of devices is read at four moments and no others", () => {
+test.describe("the list of devices is read at four moments and no others", () => {
 	test.use({ fooJean: THREE_DEVICES });
 
-	test("criterion 18: the list is read once when the component is found, and not again across ten poll ticks", async ({
+	test("the list is read once when the component is found, and not again across ten poll ticks", async ({
 		page,
 		player,
 	}) => {
@@ -285,7 +258,7 @@ test.describe("criterion 18: the list of devices is read at four moments and no 
 		await expectSettlesAt(player, () => listReads(player), 1);
 	});
 
-	test("criterion 18: every opening of the picker reads the list once more", async ({
+	test("every opening of the picker reads the list once more", async ({
 		page,
 		player,
 		isMobile,
@@ -303,7 +276,7 @@ test.describe("criterion 18: the list of devices is read at four moments and no 
 		await expectSettlesAt(player, () => listReads(player), 3);
 	});
 
-	test("criterion 18: the tab coming back reads the list once more, and the window losing and regaining focus does not", async ({
+	test("the tab coming back reads the list once more, and the window losing and regaining focus does not", async ({
 		page,
 		player,
 	}) => {
@@ -319,14 +292,14 @@ test.describe("criterion 18: the list of devices is read at four moments and no 
 
 	// A second host of the picker mounting is not one of the four moments: the
 	// list it would read is the one already held.
-	test("criterion 18: opening the Playing on panel or the now-playing screen reads nothing", async ({
+	test("opening the Playing on panel or the now-playing screen reads nothing", async ({
 		page,
 		player,
 	}) => {
 		await withNoListOnScreen(page);
 		await expectSettlesAt(player, () => listReads(player), 1);
 
-		await listenButton(page).click();
+		await pickerOpener(page).click();
 		await expect(playingOn(page)).toBeVisible();
 		await page.keyboard.press("Escape");
 		await expect(playingOn(page)).toBeHidden();
@@ -337,7 +310,7 @@ test.describe("criterion 18: the list of devices is read at four moments and no 
 
 	// The tick is drawn off the poll's `outputDeviceId`, never off the `active` the
 	// list answered with: the list here still says Speakers when the player moves.
-	test("criterion 18: a switch made at the player moves the tick on the next poll, with no list read", async ({
+	test("a switch made at the player moves the tick on the next poll, with no list read", async ({
 		page,
 		player,
 		isMobile,
@@ -362,10 +335,10 @@ test.describe("criterion 18: the list of devices is read at four moments and no 
 	});
 });
 
-test.describe("criterion 18 and 24: with changeOutput off", () => {
+test.describe("with changeOutput off", () => {
 	test.use({ fooJean: { ...THREE_DEVICES, canChangeOutput: false } });
 
-	test("criterion 18 and 24: the list is never read and no picker is drawn", async ({
+	test("the list is never read and no picker is drawn", async ({
 		page,
 		player,
 		isMobile,
@@ -381,7 +354,7 @@ test.describe("criterion 18 and 24: with changeOutput off", () => {
 		await expectNoPicker(page, isMobile);
 	});
 
-	test("criterion 18: changeOutput turned on at the player reads the list exactly once and draws the picker, with no reload", async ({
+	test("changeOutput turned on at the player reads the list exactly once and draws the picker, with no reload", async ({
 		page,
 		player,
 		isMobile,
@@ -405,12 +378,12 @@ test.describe("criterion 18 and 24: with changeOutput off", () => {
 	});
 });
 
-// ---- criteria 19 and 20: choosing a device --------------------------------
+// ---- choosing a device --------------------------------
 
-test.describe("criterion 19: choosing a device", () => {
+test.describe("choosing a device", () => {
 	test.use({ fooJean: THREE_DEVICES });
 
-	test("criterion 19: a chosen device is ticked before the player answers, one switch naming it is sent, and nothing is said once it lands", async ({
+	test("a chosen device is ticked before the player answers, one switch naming it is sent, and nothing is said once it lands", async ({
 		page,
 		player,
 		isMobile,
@@ -445,10 +418,10 @@ test.describe("criterion 19: choosing a device", () => {
 	});
 });
 
-test.describe("criterion 19: a switch the player refuses", () => {
+test.describe("a switch the player refuses", () => {
 	test.use({ fooJean: { ...THREE_DEVICES, outputSwitchRefusal: 500 } });
 
-	test("criterion 19: a refused switch puts the tick back and says the switch failed", async ({
+	test("a refused switch puts the tick back and says the switch failed", async ({
 		page,
 		player,
 		isMobile,
@@ -464,7 +437,7 @@ test.describe("criterion 19: a switch the player refuses", () => {
 			.poll(() => switchesSent(player))
 			.toEqual([{ deviceId: TV.id }]);
 
-		await expect(page.getByRole("status")).toContainText(FAILED);
+		await expect(toastRegion(page)).toContainText(FAILED);
 		const list = await openPicker(page, isMobile);
 		await expect(rowOf(list, isMobile, SPEAKERS.name)).toBeChecked();
 		await expect(rowOf(list, isMobile, TV.name)).not.toBeChecked();
@@ -472,10 +445,10 @@ test.describe("criterion 19: a switch the player refuses", () => {
 	});
 });
 
-test.describe("criterion 20: a switch to a device the player no longer lists", () => {
+test.describe("a switch to a device the player no longer lists", () => {
 	test.use({ fooJean: { ...THREE_DEVICES, outputSwitchRefusal: 409 } });
 
-	test("criterion 20: a 409 says the device is no longer there, rather than that the switch failed", async ({
+	test("a 409 says the device is no longer there, rather than that the switch failed", async ({
 		page,
 		player,
 		isMobile,
@@ -484,7 +457,7 @@ test.describe("criterion 20: a switch to a device the player no longer lists", (
 		const said = await watchWhatIsSaid(page);
 
 		await rowOf(await openPicker(page, isMobile), isMobile, TV.name).click();
-		await expect(page.getByRole("status")).toContainText(GONE);
+		await expect(toastRegion(page)).toContainText(GONE);
 		await untilQuiet(player);
 
 		const everything = (await said()).join(" ");
@@ -493,13 +466,13 @@ test.describe("criterion 20: a switch to a device the player no longer lists", (
 	});
 });
 
-// ---- criterion 21: the caret on a wide viewport ---------------------------
+// ---- the caret on a wide viewport ---------------------------
 
-test.describe("criterion 21: the caret beside the status bar's volume", () => {
+test.describe("the caret beside the status bar's volume", () => {
 	test.skip(({ isMobile }) => isMobile, "the caret is the wide status bar's");
 	test.use({ fooJean: THREE_DEVICES });
 
-	test("criterion 21: the caret sits beside the volume icon, is named Output options, and opens the devices above it with no heading and nothing in between", async ({
+	test("the caret sits beside the volume icon, is named Output options, and opens the devices above it with no heading and nothing in between", async ({
 		page,
 	}) => {
 		await withNoListOnScreen(page);
@@ -541,7 +514,7 @@ test.describe("criterion 21: the caret beside the status bar's volume", () => {
 		expect(await wordsBesidesNames(menu, NAMES)).toBe("");
 	});
 
-	test("criterion 21: arrow keys move through the devices, and Escape closes the list and hands focus back to the caret", async ({
+	test("arrow keys move through the devices, and Escape closes the list and hands focus back to the caret", async ({
 		page,
 	}) => {
 		await withNoListOnScreen(page);
@@ -564,7 +537,7 @@ test.describe("criterion 21: the caret beside the status bar's volume", () => {
 
 	// Choosing unmounts the row that held focus, and a browser then drops focus on
 	// <body>, so a keyboard user starts over from the top of the page.
-	test("criterion 21: choosing a device with Enter sends the switch and hands focus back to the caret", async ({
+	test("choosing a device with Enter sends the switch and hands focus back to the caret", async ({
 		page,
 		player,
 	}) => {
@@ -596,7 +569,7 @@ test.describe("criterion 21: the caret beside the status bar's volume", () => {
 		await expect(caret(page)).toBeFocused();
 	});
 
-	test("criterion 21: a long device name wraps inside the list rather than being cut off", async ({
+	test("a long device name wraps inside the list rather than being cut off", async ({
 		page,
 	}) => {
 		await withNoListOnScreen(page);
@@ -625,13 +598,13 @@ test.describe("criterion 21: the caret beside the status bar's volume", () => {
 	});
 });
 
-// ---- criterion 22: the cog in the volume popover --------------------------
+// ---- the cog in the volume popover --------------------------
 
-test.describe("criterion 22: the cog in the phone's volume popover", () => {
+test.describe("the cog in the phone's volume popover", () => {
 	test.skip(({ isMobile }) => !isMobile, "the volume popover is compact-only");
 	test.use({ fooJean: THREE_DEVICES });
 
-	test("criterion 22: the cog under the status bar's fader swaps the fader for the devices inside the popover, and Back returns to the fader", async ({
+	test("the cog under the status bar's fader swaps the fader for the devices inside the popover, and Back returns to the fader", async ({
 		page,
 	}) => {
 		await withNoListOnScreen(page);
@@ -660,7 +633,7 @@ test.describe("criterion 22: the cog in the phone's volume popover", () => {
 		await expect(listIn(bar)).toHaveCount(0);
 	});
 
-	test("criterion 22: choosing a device leaves the popover open on the list", async ({
+	test("choosing a device leaves the popover open on the list", async ({
 		page,
 		player,
 	}) => {
@@ -676,7 +649,7 @@ test.describe("criterion 22: the cog in the phone's volume popover", () => {
 		await expect(rowOf(list, true, TV.name)).toBeChecked();
 	});
 
-	test("criterion 22: the now-playing screen's volume popover carries the same cog and list", async ({
+	test("the now-playing screen's volume popover carries the same cog and list", async ({
 		page,
 	}) => {
 		await withNoListOnScreen(page);
@@ -695,14 +668,14 @@ test.describe("criterion 22: the cog in the phone's volume popover", () => {
 	});
 });
 
-test.describe("criterion 22: the desktop now-playing screen", () => {
+test.describe("the desktop now-playing screen", () => {
 	test.skip(
 		({ isMobile }) => isMobile,
 		"the wide layout keeps the status bar under the screen",
 	);
 	test.use({ fooJean: THREE_DEVICES });
 
-	test("criterion 22: the desktop now-playing screen offers the status bar's caret and no cog", async ({
+	test("the desktop now-playing screen offers the status bar's caret and no cog", async ({
 		page,
 	}) => {
 		await withNoListOnScreen(page);
@@ -722,12 +695,12 @@ test.describe("criterion 22: the desktop now-playing screen", () => {
 	});
 });
 
-// ---- criterion 23: while listening here -----------------------------------
+// ---- while listening here -----------------------------------
 
-test.describe("criterion 23: while listening in this browser", () => {
+test.describe("while listening in this browser", () => {
 	test.use({ fooJean: THREE_DEVICES });
 
-	test("criterion 23: the status bar draws neither caret nor cog, and the Playing on panel's foobar2000 row carries the cog", async ({
+	test("the status bar draws neither caret nor cog, and the Playing on panel's foobar2000 row carries the cog", async ({
 		page,
 		isMobile,
 	}) => {
@@ -765,7 +738,7 @@ test.describe("criterion 23: while listening in this browser", () => {
 
 	// The panel's page is the same radio list the volume popover turns to, on
 	// either viewport.
-	test("criterion 23: the Playing on panel's cog swaps the panel for the devices in place, and Back returns to the panel", async ({
+	test("the Playing on panel's cog swaps the panel for the devices in place, and Back returns to the panel", async ({
 		page,
 	}) => {
 		await withNoListOnScreen(page);
@@ -787,26 +760,23 @@ test.describe("criterion 23: while listening in this browser", () => {
 	});
 });
 
-// ---- criterion 24: when the picker is drawn at all ------------------------
+// ---- when the picker is drawn at all ------------------------
 
-test.describe("criterion 24: with playback control off and changeOutput on", () => {
+test.describe("with playback control off and changeOutput on", () => {
 	test.use({ fooJean: { ...THREE_DEVICES, canControlPlayback: false } });
 
-	test("criterion 24: the picker is still drawn", async ({
-		page,
-		isMobile,
-	}) => {
+	test("the picker is still drawn", async ({ page, isMobile }) => {
 		await withNoListOnScreen(page);
 		await expectPicker(page, isMobile);
 	});
 });
 
-test.describe("criterion 24: an install with one output device", () => {
+test.describe("an install with one output device", () => {
 	test.use({
 		fooJean: { outputDevices: [SPEAKERS], activeOutput: SPEAKERS.id },
 	});
 
-	test("criterion 24: one device draws no picker at all", async ({
+	test("one device draws no picker at all", async ({
 		page,
 		player,
 		isMobile,
@@ -817,24 +787,21 @@ test.describe("criterion 24: an install with one output device", () => {
 	});
 });
 
-test.describe("criterion 24: an install with two output devices", () => {
+test.describe("an install with two output devices", () => {
 	test.use({
 		fooJean: { outputDevices: [PRIMARY, SPEAKERS], activeOutput: SPEAKERS.id },
 	});
 
-	test("criterion 24: two devices draw the picker", async ({
-		page,
-		isMobile,
-	}) => {
+	test("two devices draw the picker", async ({ page, isMobile }) => {
 		await withNoListOnScreen(page);
 		await expectPicker(page, isMobile);
 	});
 });
 
-test.describe("criterion 24: before the list has answered", () => {
+test.describe("before the list has answered", () => {
 	test.use({ fooJean: THREE_DEVICES });
 
-	test("criterion 24: no picker is drawn until the first list has answered", async ({
+	test("no picker is drawn until the first list has answered", async ({
 		page,
 		isMobile,
 	}) => {
@@ -849,12 +816,12 @@ test.describe("criterion 24: before the list has answered", () => {
 	});
 });
 
-// ---- criteria 25 and 26: what the list marks ------------------------------
+// ---- what the list marks ------------------------------
 
-test.describe("criterion 25: the list is a single choice", () => {
+test.describe("the list is a single choice", () => {
 	test.use({ fooJean: THREE_DEVICES });
 
-	test("criterion 25: every device is a single-choice row and exactly the active one is marked", async ({
+	test("every device is a single-choice row and exactly the active one is marked", async ({
 		page,
 		isMobile,
 	}) => {
@@ -871,10 +838,10 @@ test.describe("criterion 25: the list is a single choice", () => {
 	});
 });
 
-test.describe("criterion 26: the player pointed at a device it no longer lists", () => {
+test.describe("the player pointed at a device it no longer lists", () => {
 	test.use({ fooJean: { outputDevices: DEVICES, activeOutput: UNPLUGGED } });
 
-	test("criterion 26: the list opens with every device drawn, none marked, no extra row and nothing said about the missing one", async ({
+	test("the list opens with every device drawn, none marked, no extra row and nothing said about the missing one", async ({
 		page,
 		isMobile,
 	}) => {
@@ -891,14 +858,14 @@ test.describe("criterion 26: the player pointed at a device it no longer lists",
 	});
 });
 
-// ---- criterion 16: the volume does not answer to changeOutput -------------
+// ---- the volume does not answer to changeOutput -------------
 
-test.describe("criterion 16: the volume with changeOutput off", () => {
+test.describe("the volume with changeOutput off", () => {
 	test.use({
 		fooJean: { ...THREE_DEVICES, activeOutput: TV.id, canChangeOutput: false },
 	});
 
-	test("criterion 16: the status bar's fader drags and writes, mute toggles, the keys step, and the Playing on panel's fader writes", async ({
+	test("the status bar's fader drags and writes, mute toggles, the keys step, and the Playing on panel's fader writes", async ({
 		page,
 		player,
 		isMobile,
@@ -914,7 +881,7 @@ test.describe("criterion 16: the volume with changeOutput off", () => {
 		await expect(slider).not.toHaveAttribute("aria-disabled", "true");
 		await dragTo(page, slider, 0.5);
 		await expect
-			.poll(() => volumesSent(player).filter((body) => "value" in body).length)
+			.poll(() => volumeBodies(player).filter((body) => "value" in body).length)
 			.toBeGreaterThan(0);
 
 		await bar.getByRole("button", { name: "Mute", exact: true }).click();
@@ -922,18 +889,20 @@ test.describe("criterion 16: the volume with changeOutput off", () => {
 
 		await page.keyboard.press("=");
 		await expect
-			.poll(() => volumesSent(player).some((body) => body.step === "up"))
+			.poll(() => volumeBodies(player).some((body) => body.step === "up"))
 			.toBe(true);
 
-		await listenButton(page).click();
+		await pickerOpener(page).click();
 		const own = playingOn(page).getByRole("slider", { name: /^Volume on / });
 		await expect(own).not.toHaveAttribute("aria-disabled", "true");
-		const before = volumesSent(player).length;
+		const before = volumeBodies(player).length;
 		await dragTo(page, own, 0.3);
-		await expect.poll(() => volumesSent(player).length).toBeGreaterThan(before);
+		await expect
+			.poll(() => volumeBodies(player).length)
+			.toBeGreaterThan(before);
 	});
 
-	test("criterion 16: the phone's volume popover fader still writes", async ({
+	test("the phone's volume popover fader still writes", async ({
 		page,
 		player,
 		isMobile,
@@ -953,15 +922,15 @@ test.describe("criterion 16: the volume with changeOutput off", () => {
 			{ x, y: box.y + box.height * 0.2 },
 		);
 		await expect
-			.poll(() => volumesSent(player).filter((body) => "value" in body).length)
+			.poll(() => volumeBodies(player).filter((body) => "value" in body).length)
 			.toBeGreaterThan(0);
 	});
 });
 
-// ---- criterion 28: the fake ----------------------------------------------
+// ---- the fake ----------------------------------------------
 
-test.describe("criterion 28: the fake's own defaults", () => {
-	test("criterion 28: GET /api/state names the output device the fake is set to, and a switch moves it", async ({
+test.describe("the fake's own defaults", () => {
+	test("GET /api/state names the output device the fake is set to, and a switch moves it", async ({
 		page,
 		isMobile,
 	}) => {
@@ -987,7 +956,7 @@ test.describe("criterion 28: the fake's own defaults", () => {
 		expect(after.player.outputDeviceId).toBe(other.id);
 	});
 
-	test("criterion 28: the picker is drawn with no fixture override, listing what the fake lists and marking what it is set to", async ({
+	test("the picker is drawn with no fixture override, listing what the fake lists and marking what it is set to", async ({
 		page,
 		isMobile,
 	}) => {
@@ -1010,7 +979,7 @@ test.describe("criterion 28: the fake's own defaults", () => {
 	});
 });
 
-// ---- from the audit --------------------------------------------------------
+// ---- a failed read, narrow phones and the keyboard -------------------------
 
 // The fewest device rows the status bar drew at any moment since the list
 // first appeared. A picker that blinks out and back between two reads passes
@@ -1044,10 +1013,10 @@ const closePicker = async (page: Page, isMobile: boolean) => {
 	else await page.keyboard.press("Escape");
 };
 
-test.describe("criterion 24: a list read that fails", () => {
+test.describe("a list read that fails", () => {
 	test.use({ fooJean: THREE_DEVICES });
 
-	test("criterion 24: a failed read keeps the last list Jean read, and the next opening reads again", async ({
+	test("a failed read keeps the last list Jean read, and the next opening reads again", async ({
 		page,
 		player,
 		isMobile,
@@ -1115,14 +1084,14 @@ const expectInside = async (page: Page, scope: Locator) => {
 };
 
 for (const width of [320, 360]) {
-	test.describe(`criterion 22: the paged volume popover on a phone ${width}px wide`, () => {
+	test.describe(`the paged volume popover on a phone ${width}px wide`, () => {
 		test.skip(
 			({ isMobile }) => !isMobile,
 			"the volume popover is compact-only",
 		);
 		test.use({ fooJean: THREE_DEVICES, viewport: { width, height: 740 } });
 
-		test(`criterion 22: at ${width}px the status bar's paged popover stays inside the screen`, async ({
+		test(`at ${width}px the status bar's paged popover stays inside the screen`, async ({
 			page,
 		}) => {
 			await withNoListOnScreen(page);
@@ -1130,7 +1099,7 @@ for (const width of [320, 360]) {
 			await expectInside(page, statusBar(page));
 		});
 
-		test(`criterion 22: at ${width}px the now-playing screen's paged popover stays inside the screen`, async ({
+		test(`at ${width}px the now-playing screen's paged popover stays inside the screen`, async ({
 			page,
 		}) => {
 			await withNoListOnScreen(page);
@@ -1149,11 +1118,11 @@ for (const width of [320, 360]) {
 // own case in `sliders.spec.ts` holds it to.
 const TOUCH_TARGET_PX = 44;
 
-test.describe("criterion 22: touch targets in the phone's volume popover", () => {
+test.describe("touch targets in the phone's volume popover", () => {
 	test.skip(({ isMobile }) => !isMobile, "a touch target is the phone's");
 	test.use({ fooJean: THREE_DEVICES });
 
-	test("criterion 22: the cog and Back are each at least a finger's width and height", async ({
+	test("the cog and Back are each at least a finger's width and height", async ({
 		page,
 	}) => {
 		await withNoListOnScreen(page);
@@ -1194,12 +1163,12 @@ const expectPagedFocus = async (scope: Locator) => {
 	await expect(rows.nth(at)).toBeFocused();
 };
 
-test.describe("criterion 22 and 23: paging with the keyboard", () => {
+test.describe("paging with the keyboard", () => {
 	test.use({ fooJean: THREE_DEVICES });
 
 	// Paging unmounts the button that held focus, and a browser then drops focus
 	// on <body>.
-	test("criterion 22: the popover's cog pressed from the keyboard lands on the checked device, the arrows move between devices, and Back lands on the cog", async ({
+	test("the popover's cog pressed from the keyboard lands on the checked device, the arrows move between devices, and Back lands on the cog", async ({
 		page,
 		isMobile,
 	}) => {
@@ -1217,7 +1186,7 @@ test.describe("criterion 22 and 23: paging with the keyboard", () => {
 		await expect(optionsIn(bar)).toBeFocused();
 	});
 
-	test("criterion 23: the Playing on panel's cog pressed from the keyboard lands on the checked device, the arrows move between devices, and Back lands on the cog", async ({
+	test("the Playing on panel's cog pressed from the keyboard lands on the checked device, the arrows move between devices, and Back lands on the cog", async ({
 		page,
 	}) => {
 		await withNoListOnScreen(page);
@@ -1236,12 +1205,12 @@ test.describe("criterion 22 and 23: paging with the keyboard", () => {
 	});
 });
 
-test.describe("criterion 18: the network coming back", () => {
+test.describe("the network coming back", () => {
 	test.use({ fooJean: THREE_DEVICES });
 
 	// Coming back online is not one of the four moments, and react-query reads
 	// every stale query again on it unless told not to.
-	test("criterion 18: the browser going offline and online again reads nothing", async ({
+	test("the browser going offline and online again reads nothing", async ({
 		page,
 		context,
 		player,

@@ -11,9 +11,9 @@ import {
 	sidebar,
 	statusBar,
 	test,
-	touchDrag,
 	trackPlayed,
 } from "./fixtures.ts";
+import { touchDrag } from "./gestures.ts";
 
 // Enough matches that the preview has to leave some out.
 const QUERY = "babasonicos";

@@ -1,11 +1,11 @@
 import {
-	dragFrom,
 	openSidebar,
 	searchFor,
 	sidebar,
 	trackRow,
 	viewHeader,
 } from "../e2e/fixtures.ts";
+import { dragFrom } from "../e2e/gestures.ts";
 import { capabilities, playlists } from "./component.ts";
 import { expect, type Page, searchTerm, test } from "./fixtures.ts";
 

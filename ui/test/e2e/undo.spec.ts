@@ -9,16 +9,18 @@ import {
 	guidOfPlaylist,
 	openAllMusic,
 	openLibrary,
-	pressAndHold,
 	refusePlaylistWrites,
 	requestsTo,
 	rowByTitle,
-	scrollUntilMounted,
+	runClockFor,
 	test,
-	times,
 	titlesIn,
+	toastRegion,
 	trackRow,
 } from "./fixtures.ts";
+import { pressAndHold } from "./gestures.ts";
+import { openRowMenu } from "./menus.ts";
+import { scrollUntilMounted } from "./scrolling.ts";
 
 // Adding goes through the row menu rather than a drag: the menu is the route
 // that exists on both surfaces. sidebar.spec.ts covers the drag.
@@ -26,8 +28,6 @@ import {
 // A playlist holding none of the library playlist's first rows, so an add from there lands whole.
 const TARGET = { id: "p1", title: "Default Playlist", itemCount: 4 };
 const LIBRARY = "p7";
-
-const toast = (page: Page) => page.getByRole("status");
 
 // A string of decimal digits on the wire, never the fake's own internal number: the requests below
 // compare against exactly what the client sent.
@@ -68,19 +68,8 @@ const countReadsAndWritesBefore = (
 		)
 		.map((entry) => `${entry.method} ${entry.path}`);
 
-// Right-click on a pointer, press-and-hold on touch: the same menu, asked for
-// the way each surface asks for it.
-const openRowMenu = async (page: Page, index: number, isMobile: boolean) => {
-	const target = trackRow(page, index);
-	if (isMobile) await pressAndHold(page, target);
-	else await target.click({ button: "right" });
-	await expect(
-		page.getByRole("menuitem", { name: "Add to playlist" }),
-	).toBeVisible();
-};
-
 const addToTarget = async (page: Page, index: number, isMobile: boolean) => {
-	await openRowMenu(page, index, isMobile);
+	await openRowMenu(page, isMobile, index, "Add to playlist");
 	await page.getByRole("menuitem", { name: "Add to playlist" }).click();
 	await page.getByRole("menuitem", { name: TARGET.title, exact: true }).click();
 };
@@ -105,7 +94,7 @@ const addTo = async (
 	isMobile: boolean,
 	title: string,
 ) => {
-	await openRowMenu(page, index, isMobile);
+	await openRowMenu(page, isMobile, index, "Add to playlist");
 	await page.getByRole("menuitem", { name: "Add to playlist" }).click();
 	await page.getByRole("menuitem", { name: title, exact: true }).click();
 };
@@ -159,8 +148,8 @@ test.describe("an add into a playlist the player has locked", () => {
 		// The request is sent and refused; there is no way to know beforehand.
 		await expect.poll(() => answered).toEqual([409]);
 
-		await expect(toast(page)).toContainText(AUTO.title);
-		await expect(toast(page)).toContainText(AUTO_REFUSED);
+		await expect(toastRegion(page)).toContainText(AUTO.title);
+		await expect(toastRegion(page)).toContainText(AUTO_REFUSED);
 		expect(titlesIn(player, AUTO.id)).toHaveLength(AUTO.itemCount);
 	});
 
@@ -170,10 +159,10 @@ test.describe("an add into a playlist the player has locked", () => {
 	}) => {
 		await addTo(page, 0, isMobile, AUTO.title);
 
-		await expect(toast(page)).toContainText("Nothing was added to");
-		await expect(toast(page).getByRole("button", { name: "Undo" })).toHaveCount(
-			0,
-		);
+		await expect(toastRegion(page)).toContainText("Nothing was added to");
+		await expect(
+			toastRegion(page).getByRole("button", { name: "Undo" }),
+		).toHaveCount(0);
 	});
 
 	// The other cause a refusal can have is foo_jean's `writePlaylists`, which is
@@ -186,8 +175,8 @@ test.describe("an add into a playlist the player has locked", () => {
 	}) => {
 		await addTo(page, 0, isMobile, AUTO.title);
 
-		await expect(toast(page)).toContainText("Nothing was added to");
-		await expect(toast(page)).not.toHaveText(/foo_jean/i);
+		await expect(toastRegion(page)).toContainText("Nothing was added to");
+		await expect(toastRegion(page)).not.toHaveText(/foo_jean/i);
 	});
 
 	// An ordinary playlist, refused by a lock some other component took. Jean knows the lock
@@ -206,12 +195,12 @@ test.describe("an add into a playlist the player has locked", () => {
 
 		await expect.poll(() => answered).toEqual([409]);
 
-		await expect(toast(page)).toContainText(TARGET.title);
-		await expect(toast(page)).not.toContainText(/autoplaylist/i);
-		await expect(toast(page)).not.toContainText(/writePlaylists/i);
-		await expect(toast(page).getByRole("button", { name: "Undo" })).toHaveCount(
-			0,
-		);
+		await expect(toastRegion(page)).toContainText(TARGET.title);
+		await expect(toastRegion(page)).not.toContainText(/autoplaylist/i);
+		await expect(toastRegion(page)).not.toContainText(/writePlaylists/i);
+		await expect(
+			toastRegion(page).getByRole("button", { name: "Undo" }),
+		).toHaveCount(0);
 		expect(titlesIn(player, TARGET.id)).toHaveLength(TARGET.itemCount);
 	});
 
@@ -222,9 +211,11 @@ test.describe("an add into a playlist the player has locked", () => {
 	}) => {
 		await addTo(page, 0, isMobile, TARGET.title);
 
-		await expect(toast(page)).toContainText(`Added 1 track to ${TARGET.title}`);
+		await expect(toastRegion(page)).toContainText(
+			`Added 1 track to ${TARGET.title}`,
+		);
 		await expect(
-			toast(page).getByRole("button", { name: "Undo" }),
+			toastRegion(page).getByRole("button", { name: "Undo" }),
 		).toBeVisible();
 		await expect
 			.poll(() => titlesIn(player, TARGET.id).length)
@@ -241,9 +232,11 @@ test.describe("adding tracks to a playlist", () => {
 	}) => {
 		await addToTarget(page, 0, isMobile);
 
-		await expect(toast(page)).toContainText(`Added 1 track to ${TARGET.title}`);
+		await expect(toastRegion(page)).toContainText(
+			`Added 1 track to ${TARGET.title}`,
+		);
 		await expect(
-			toast(page).getByRole("button", { name: "Undo" }),
+			toastRegion(page).getByRole("button", { name: "Undo" }),
 		).toBeVisible();
 	});
 
@@ -265,7 +258,9 @@ test.describe("adding tracks to a playlist", () => {
 
 		await addToTarget(page, 0, isMobile);
 
-		await expect(toast(page)).toContainText(`Added 1 track to ${TARGET.title}`);
+		await expect(toastRegion(page)).toContainText(
+			`Added 1 track to ${TARGET.title}`,
+		);
 		await expectSettlesAt(
 			player,
 			() => postsTo(player, "/items/copy").length,
@@ -310,7 +305,7 @@ test.describe("adding tracks to a playlist", () => {
 			duplicates: "skip",
 		});
 
-		await expect(toast(page)).toContainText(
+		await expect(toastRegion(page)).toContainText(
 			`Added 3 tracks to ${TARGET.title}`,
 		);
 	});
@@ -364,14 +359,14 @@ for (const [view, open] of [
 			await question(page).getByRole("button", { name: "Skip" }).click();
 
 			await expect(question(page)).toHaveCount(0);
-			await expect(toast(page)).toBeEmpty();
+			await expect(toastRegion(page)).toBeEmpty();
 			await expectSettlesAt(player, () => titlesIn(player, SPANISH.id), held);
 		});
 
 		test("Add anyway puts it in again", async ({ page, player }) => {
 			await question(page).getByRole("button", { name: "Add anyway" }).click();
 
-			await expect(toast(page)).toContainText(
+			await expect(toastRegion(page)).toContainText(
 				`Added 1 track to ${SPANISH.title}`,
 			);
 			await expectSettlesAt(player, () => titlesIn(player, SPANISH.id), [
@@ -423,7 +418,7 @@ test.describe("adding a selection the target holds part of", () => {
 	}) => {
 		await question(page).getByRole("button", { name: "Skip" }).click();
 
-		await expect(toast(page)).toContainText(
+		await expect(toastRegion(page)).toContainText(
 			`Added 1 track to ${FAVORITES.title}`,
 		);
 		await expectSettlesAt(player, () => titlesIn(player, FAVORITES.id), [
@@ -438,14 +433,14 @@ test.describe("adding a selection the target holds part of", () => {
 	}) => {
 		await question(page).getByRole("button", { name: "Add anyway" }).click();
 
-		await expect(toast(page)).toContainText(
+		await expect(toastRegion(page)).toContainText(
 			`Added 3 tracks to ${FAVORITES.title}`,
 		);
 		await expect
 			.poll(() => titlesIn(player, FAVORITES.id))
 			.toEqual([...before, FRESH, ...ALREADY]);
 
-		await toast(page).getByRole("button", { name: "Undo" }).click();
+		await toastRegion(page).getByRole("button", { name: "Undo" }).click();
 
 		await expectSettlesAt(player, () => titlesIn(player, FAVORITES.id), before);
 	});
@@ -470,7 +465,7 @@ test.describe("undoing it", () => {
 
 		const structureAfterAdd = structureOf(player, TARGET.id);
 
-		await toast(page).getByRole("button", { name: "Undo" }).click();
+		await toastRegion(page).getByRole("button", { name: "Undo" }).click();
 
 		// The appended range, computed from the itemCount already in PlaylistInfo:
 		// no %path% fetched, no matching, one request.
@@ -509,7 +504,7 @@ test.describe("undoing it", () => {
 
 		const structureAfterAdd = structureOf(player, TARGET.id);
 
-		await toast(page).getByRole("button", { name: "Undo" }).click();
+		await toastRegion(page).getByRole("button", { name: "Undo" }).click();
 
 		await expectSettlesAt(
 			player,
@@ -550,7 +545,7 @@ test.describe("undoing it", () => {
 		await expect.poll(() => listReads(player).length).toBeGreaterThan(caughtUp);
 
 		player.requests.length = 0;
-		await toast(page).getByRole("button", { name: "Undo" }).click();
+		await toastRegion(page).getByRole("button", { name: "Undo" }).click();
 
 		await expect.poll(() => titlesIn(player, TARGET.id)).toEqual(before);
 		await expectSettlesAt(
@@ -572,7 +567,7 @@ test.describe("undoing it", () => {
 	}) => {
 		await addToTarget(page, 0, isMobile);
 		await expect(
-			toast(page).getByRole("button", { name: "Undo" }),
+			toastRegion(page).getByRole("button", { name: "Undo" }),
 		).toBeVisible();
 
 		// foobar2000 on the desktop, adding two tracks of its own while the toast
@@ -587,9 +582,9 @@ test.describe("undoing it", () => {
 			.toHaveLength(TARGET.itemCount + 3);
 
 		const after = titlesIn(player, TARGET.id);
-		await toast(page).getByRole("button", { name: "Undo" }).click();
+		await toastRegion(page).getByRole("button", { name: "Undo" }).click();
 
-		await expect(toast(page)).toContainText(
+		await expect(toastRegion(page)).toContainText(
 			`${TARGET.title} has changed since then`,
 		);
 
@@ -610,10 +605,10 @@ test.describe("undoing it", () => {
 		isMobile,
 	}) => {
 		await addToTarget(page, 0, isMobile);
-		await expect(toast(page)).not.toBeEmpty();
+		await expect(toastRegion(page)).not.toBeEmpty();
 
-		await toast(page).getByRole("button", { name: "Dismiss" }).click();
-		await expect(toast(page)).toBeEmpty();
+		await toastRegion(page).getByRole("button", { name: "Dismiss" }).click();
+		await expect(toastRegion(page)).toBeEmpty();
 
 		await expectSettlesAt(
 			player,
@@ -625,11 +620,6 @@ test.describe("undoing it", () => {
 		).toHaveLength(TARGET.itemCount + 1);
 	});
 });
-
-const CLOCK_STEP_MS = 250;
-
-const runClockFor = (page: Page, ms: number) =>
-	times(Math.ceil(ms / CLOCK_STEP_MS), () => page.clock.runFor(CLOCK_STEP_MS));
 
 const LONGER_THAN_A_TOAST_LIVES_MS = 15_000;
 
@@ -643,8 +633,8 @@ test.describe("saying it", () => {
 	test("the region a toast is said in is on the page before anything is said", async ({
 		page,
 	}) => {
-		await expect(toast(page)).toHaveCount(1);
-		await expect(toast(page)).toBeEmpty();
+		await expect(toastRegion(page)).toHaveCount(1);
+		await expect(toastRegion(page)).toBeEmpty();
 	});
 
 	test("a toast waits while the pointer rests on it, and goes once it leaves", async ({
@@ -655,16 +645,16 @@ test.describe("saying it", () => {
 
 		await page.clock.install();
 		await addToTarget(page, 0, isMobile);
-		const undo = toast(page).getByRole("button", { name: "Undo" });
+		const undo = toastRegion(page).getByRole("button", { name: "Undo" });
 		await expect(undo).toBeVisible();
 
-		await toast(page).getByText(TARGET.title).hover();
+		await toastRegion(page).getByText(TARGET.title).hover();
 		await runClockFor(page, LONGER_THAN_A_TOAST_LIVES_MS);
 		await expect(undo).toBeVisible();
 
 		await page.mouse.move(0, 0);
 		await runClockFor(page, LONGER_THAN_A_TOAST_LIVES_MS);
-		await expect(toast(page)).toBeEmpty();
+		await expect(toastRegion(page)).toBeEmpty();
 	});
 
 	test("a toast waits while focus is inside it, and goes once focus leaves", async ({
@@ -673,7 +663,7 @@ test.describe("saying it", () => {
 	}) => {
 		await page.clock.install();
 		await addToTarget(page, 0, isMobile);
-		const undo = toast(page).getByRole("button", { name: "Undo" });
+		const undo = toastRegion(page).getByRole("button", { name: "Undo" });
 		await undo.focus();
 
 		await runClockFor(page, LONGER_THAN_A_TOAST_LIVES_MS);
@@ -681,7 +671,7 @@ test.describe("saying it", () => {
 
 		await undo.blur();
 		await runClockFor(page, LONGER_THAN_A_TOAST_LIVES_MS);
-		await expect(toast(page)).toBeEmpty();
+		await expect(toastRegion(page)).toBeEmpty();
 	});
 });
 
@@ -701,7 +691,7 @@ test.describe("undoing an add made from a library view", () => {
 
 		await addTo(page, 0, isMobile, FAVORITES.title);
 
-		await expect(toast(page)).toContainText(
+		await expect(toastRegion(page)).toContainText(
 			`Added 1 track to ${FAVORITES.title}`,
 		);
 		const target = guidOfPlaylist(player, FAVORITES.id);
@@ -725,11 +715,11 @@ test.describe("undoing an add made from a library view", () => {
 	}) => {
 		await expectSettlesAt(player, () => listReads(player).length > 0, true);
 		await addTo(page, 0, isMobile, FAVORITES.title);
-		await expect(toast(page)).toContainText(
+		await expect(toastRegion(page)).toContainText(
 			`Added 1 track to ${FAVORITES.title}`,
 		);
 		await expect(
-			toast(page).getByRole("button", { name: "Undo" }),
+			toastRegion(page).getByRole("button", { name: "Undo" }),
 		).toBeVisible();
 
 		// foobar2000 on the desktop, adding two tracks of its own while the toast is
@@ -742,9 +732,9 @@ test.describe("undoing an add made from a library view", () => {
 			.toBe(FAVORITES.itemCount + 3);
 
 		const after = titlesIn(player, FAVORITES.id);
-		await toast(page).getByRole("button", { name: "Undo" }).click();
+		await toastRegion(page).getByRole("button", { name: "Undo" }).click();
 
-		await expect(toast(page)).toContainText(
+		await expect(toastRegion(page)).toContainText(
 			en["add.undoStale"].replace("{playlist}", FAVORITES.title),
 		);
 		await expectSettlesAt(
@@ -778,7 +768,7 @@ test.describe("undoing an add made from a library view", () => {
 		await expect.poll(() => listReads(player).length).toBeGreaterThan(caughtUp);
 
 		player.requests.length = 0;
-		await toast(page).getByRole("button", { name: "Undo" }).click();
+		await toastRegion(page).getByRole("button", { name: "Undo" }).click();
 
 		await expect.poll(() => titlesIn(player, FAVORITES.id)).toEqual(before);
 		await expectSettlesAt(
@@ -809,8 +799,8 @@ test.describe("an add the component refuses outright", () => {
 
 		await addToTarget(page, 0, isMobile);
 
-		await expect(toast(page)).toContainText("writePlaylists");
-		await expect(toast(page)).not.toContainText(/autoplaylist/i);
+		await expect(toastRegion(page)).toContainText("writePlaylists");
+		await expect(toastRegion(page)).not.toContainText(/autoplaylist/i);
 	});
 });
 
@@ -832,12 +822,12 @@ test.describe("an add that failed rather than being refused", () => {
 
 		await expect.poll(() => answered).toEqual([500]);
 
-		await expect(toast(page)).toContainText(TARGET.title);
-		await expect(toast(page)).not.toContainText(/autoplaylist/i);
-		await expect(toast(page)).not.toContainText(/writePlaylists/i);
-		await expect(toast(page).getByRole("button", { name: "Undo" })).toHaveCount(
-			0,
-		);
+		await expect(toastRegion(page)).toContainText(TARGET.title);
+		await expect(toastRegion(page)).not.toContainText(/autoplaylist/i);
+		await expect(toastRegion(page)).not.toContainText(/writePlaylists/i);
+		await expect(
+			toastRegion(page).getByRole("button", { name: "Undo" }),
+		).toHaveCount(0);
 		expect(titlesIn(player, TARGET.id)).toHaveLength(TARGET.itemCount);
 	});
 });
@@ -926,6 +916,6 @@ test.describe("what does not get a toast", () => {
 			page.getByRole("textbox", { name: "Rename New playlist" }),
 		).toBeFocused();
 
-		await expect(toast(page)).toBeEmpty();
+		await expect(toastRegion(page)).toBeEmpty();
 	});
 });

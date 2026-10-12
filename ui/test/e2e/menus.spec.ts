@@ -1,26 +1,30 @@
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
-	dragAcrossTheSheet,
-	dragFromTheScrim,
 	expect,
 	expectSettlesAt,
 	focusedEndOf,
-	fromTheGrabber,
 	openLibrary,
 	openSidebar,
 	playRequests,
-	pressAndHold,
-	restingBox,
-	scrollTop,
-	scrollUntilMounted,
 	sidebar,
 	statusBar,
 	test,
-	touchDrag,
+	toastRegion,
 	trackRow,
 	untilQuiet,
-	watchHowFarItMoves,
 } from "./fixtures.ts";
+import {
+	dragAcrossTheSheet,
+	dragFromTheScrim,
+	fromTheGrabber,
+	pressAndHold,
+	restingBox,
+	touchDrag,
+	watchHowFarItMoves,
+} from "./gestures.ts";
+import { openRowMenu } from "./menus.ts";
+import { queuePanel } from "./queue.ts";
+import { scrollTop, scrollUntilMounted } from "./scrolling.ts";
 
 // `ui/ActionMenu.tsx` is one component with two shapes: a popover at the pointer
 // on a desktop viewport, an action sheet on a compact one. Both projects run
@@ -32,15 +36,8 @@ import {
 const menuItem = (page: Page, name: string | RegExp) =>
 	page.getByRole("menuitem", { name });
 
-const openTrackMenu = async (page: Page, isMobile: boolean) => {
-	const row = trackRow(page, 0);
-	if (isMobile) await pressAndHold(page, row);
-	else await row.click({ button: "right" });
-	await expect(menuItem(page, "Add to playlist")).toBeVisible();
-};
-
 const openTargets = async (page: Page, isMobile: boolean) => {
-	await openTrackMenu(page, isMobile);
+	await openRowMenu(page, isMobile, 0, "Add to playlist");
 	await menuItem(page, "Add to playlist").click();
 	await expect(menuItem(page, "Favorites")).toBeVisible();
 };
@@ -50,9 +47,6 @@ const filterField = (page: Page) =>
 
 const isTransportCommand = (path: string) =>
 	path.startsWith("/api/playback/") || path === "/api/volume";
-
-const queuePanel = (page: Page) =>
-	page.getByRole("complementary", { name: "Queue" });
 
 const isFocusInTheMenu = (page: Page) =>
 	page
@@ -89,7 +83,7 @@ test.describe("the menu names what it is about", () => {
 		isMobile,
 	}) => {
 		await openLibrary(page);
-		await openTrackMenu(page, isMobile);
+		await openRowMenu(page, isMobile, 0, "Add to playlist");
 
 		// On a phone the sheet covers the row it was summoned from, so the header is
 		// the only thing naming the track. Scoped to the menu, because the row it
@@ -114,7 +108,7 @@ test.describe("the menu names what it is about", () => {
 			page.locator('[role="row"][data-selected="true"]'),
 		).toHaveCount(3);
 
-		await openTrackMenu(page, isMobile);
+		await openRowMenu(page, isMobile, 0, "Add to playlist");
 		await expect(page.getByText("3 tracks")).toBeVisible();
 	});
 });
@@ -125,7 +119,7 @@ test.describe("a nested page", () => {
 		isMobile,
 	}) => {
 		await openLibrary(page);
-		await openTrackMenu(page, isMobile);
+		await openRowMenu(page, isMobile, 0, "Add to playlist");
 
 		// The back button is named after the page it came from, which stays in the
 		// panel, inert and slid aside.
@@ -215,7 +209,7 @@ test.describe("typing at a menu", () => {
 		await filterField(page).fill("def");
 		await filterField(page).press("Enter");
 
-		await expect(page.getByRole("status")).toContainText("Default Playlist");
+		await expect(toastRegion(page)).toContainText("Default Playlist");
 		await expect
 			.poll(
 				() =>
@@ -249,7 +243,7 @@ test.describe("while a menu is open", () => {
 		test.skip(isMobile, "these are keyboard events");
 
 		await openLibrary(page);
-		await openTrackMenu(page, isMobile);
+		await openRowMenu(page, isMobile, 0, "Add to playlist");
 
 		// Without stopping propagation these seek the player and toggle playback.
 		await page.keyboard.press("ArrowRight");
@@ -269,7 +263,7 @@ test.describe("while a menu is open", () => {
 		await page.keyboard.press("ArrowDown");
 		await expect(trackRow(page, 1)).toHaveAttribute("data-cursor", "true");
 
-		await openTrackMenu(page, isMobile);
+		await openRowMenu(page, isMobile, 0, "Add to playlist");
 		await page.keyboard.press("Escape");
 
 		await expect(menuItem(page, "Add to playlist")).toHaveCount(0);
@@ -314,7 +308,7 @@ test.describe("while a menu is open", () => {
 		test.skip(isMobile, "a sheet is modal, and keeps Tab inside it");
 
 		await openLibrary(page);
-		await openTrackMenu(page, isMobile);
+		await openRowMenu(page, isMobile, 0, "Add to playlist");
 		await page.keyboard.press("Shift+Tab");
 		await expect
 			.poll(() => isFocusInTheMenu(page), { message: "focus, in the menu" })
@@ -341,7 +335,7 @@ test.describe("the action sheet, from a keyboard", () => {
 		isMobile,
 	}) => {
 		await openLibrary(page);
-		await openTrackMenu(page, isMobile);
+		await openRowMenu(page, isMobile, 0, "Add to playlist");
 		const sheet = page.getByRole("dialog");
 
 		await page.keyboard.press("Tab");
@@ -856,7 +850,7 @@ test.describe("an install whose component allows playlist edits", () => {
 		isMobile,
 	}) => {
 		await openLibrary(page);
-		await openTrackMenu(page, isMobile);
+		await openRowMenu(page, isMobile, 0, "Add to playlist");
 
 		const add = menuItem(page, /Add to playlist/);
 		// Named rather than left to the click's own actionability wait, which reports

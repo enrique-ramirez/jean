@@ -4,13 +4,13 @@ import {
 	expectPlayingFrom,
 	openAllMusic,
 	openSidebar,
-	pressAndHold,
 	scratchOf,
 	sidebar,
 	test,
 	trackRow,
 	viewHeader,
 } from "./fixtures.ts";
+import { openRowMenu } from "./menus.ts";
 
 // The playlist the component keeps for playing a set, which it titles in its own
 // namespace so somebody reading foobar2000's playlist list can tell whose it is.
@@ -23,13 +23,6 @@ const USERS = "#Jean Library";
 
 const menuItem = (page: Page, name: string) =>
 	page.getByRole("menuitem", { name });
-
-const openTrackMenu = async (page: Page, isMobile: boolean, index: number) => {
-	const row = trackRow(page, index);
-	if (isMobile) await pressAndHold(page, row);
-	else await row.click({ button: "right" });
-	await expect(menuItem(page, "Add to playlist")).toBeVisible();
-};
 
 // Counted rather than matched, so a row that is drawn fails on the count
 // instead of on a strict-mode violation somewhere else.
@@ -114,7 +107,7 @@ test.describe("the scratch playlist, and the namespace it is titled in", () => {
 	}) => {
 		await withBothJeanPlaylists(page, player);
 
-		await openTrackMenu(page, isMobile, 2);
+		await openRowMenu(page, isMobile, 2, "Add to playlist");
 		await menuItem(page, "Add to playlist").click();
 
 		await expect(menuItem(page, "Favorites")).toBeVisible();

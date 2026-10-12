@@ -1,8 +1,6 @@
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
-	choosePlayer,
 	componentOrigin,
-	dragTo,
 	drawing,
 	expect,
 	expectSettlesAt,
@@ -10,19 +8,19 @@ import {
 	openLibrary,
 	openSettings,
 	orderButton,
+	pickerOpener,
 	playedFrom,
 	playerDeclaring,
 	playingOn,
 	playRequests,
-	pressAndHold,
-	scrollTop,
 	settingsDialog,
 	statusBar,
 	test,
 	toasts,
-	touchDrag,
 	trackRow,
 } from "./fixtures.ts";
+import { dragTo, pressAndHold, touchDrag } from "./gestures.ts";
+import { scrollTop } from "./scrolling.ts";
 
 // The Library fixture is Jessico in playlist order.
 const THIRD_TRACK = { title: "Deléctrico", artist: "Babasónicos", index: 2 };
@@ -226,7 +224,7 @@ test.describe("a tap outside a status bar popover", () => {
 	const popovers = [
 		{
 			name: "Playing on",
-			open: (page: Page) => choosePlayer(page).tap(),
+			open: (page: Page) => pickerOpener(page).tap(),
 			panel: (page: Page) => playingOn(page),
 		},
 		{

@@ -3,7 +3,6 @@ import type { RecordedRequest } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	closeSidebar,
-	dragFrom,
 	expect,
 	expectPlayingFrom,
 	expectSettlesAt,
@@ -14,20 +13,22 @@ import {
 	openSidebar,
 	playedFrom,
 	playRequests,
-	pressAndHold,
 	refusePlaylistWrites,
 	requestsTo,
 	scratchOf,
-	scrollUntilMounted,
 	searchFor,
 	sidebar,
 	statusBar,
 	test,
+	ticksTaken,
 	titlesIn,
-	touchDrag,
+	toastRegion,
 	trackRow,
 	untilQuiet,
 } from "./fixtures.ts";
+import { dragFrom, pressAndHold, touchDrag } from "./gestures.ts";
+import { queuePanel } from "./queue.ts";
+import { scrollUntilMounted } from "./scrolling.ts";
 
 const DEFAULT_PLAYLIST = "Default Playlist";
 const LIBRARY = "Library";
@@ -86,9 +87,6 @@ const GUID_ROUTE =
 // that re-reads the list every tick from one that re-read it on the tick this
 // happened to sample.
 const TICKS_WATCHED = 3;
-
-const ticksTaken = (player: FakePlayer) =>
-	requestsTo(player, "/api/state").filter((one) => one.method === "GET").length;
 
 // Reads of the collection alone. A playlist's rows sit under the same prefix,
 // and a spec counting those would never see the list stand still.
@@ -522,7 +520,7 @@ test.describe("the playlist menu from the keyboard", () => {
 	});
 });
 
-test.describe("Edit autoplaylist in a playlist's menu (criteria 29 and 37)", () => {
+test.describe("Edit autoplaylist in a playlist's menu", () => {
 	// Favorites is an autoplaylist Jean made, Rock en Español one Jean keeps for a purpose of its
 	// own, and Recently Added one foobar2000 made. Default Playlist stays plain.
 	test.use({
@@ -705,8 +703,7 @@ test.describe("deleting a playlist", () => {
 		// be counted against the delete.
 		await expectSettlesAt(player, () => player.playQueue.length, 1);
 		// Scoped to the panel: on a phone the scrim behind it carries the same name.
-		await page
-			.getByRole("complementary", { name: "Queue" })
+		await queuePanel(page)
 			.getByRole("button", { name: "Close the queue" })
 			.click();
 
@@ -1274,7 +1271,7 @@ test.describe("an edit the component refuses", () => {
 			.fill("Bangers");
 		await page.keyboard.press("Enter");
 
-		await expect(page.getByRole("status")).not.toBeEmpty();
+		await expect(toastRegion(page)).not.toBeEmpty();
 		await expect(link(page, FAVORITES)).toBeVisible();
 		await expect(link(page, "Bangers")).toHaveCount(0);
 		expect(titlesInOrder(player)).toContain(FAVORITES);
@@ -1292,7 +1289,7 @@ test.describe("an edit the component refuses", () => {
 		await page.getByRole("menuitem", { name: "Delete" }).click();
 		await page.getByRole("menuitem", { name: "Delete playlist" }).click();
 
-		await expect(page.getByRole("status")).not.toBeEmpty();
+		await expect(toastRegion(page)).not.toBeEmpty();
 		await expect(link(page, FAVORITES)).toBeVisible();
 		expect(titlesInOrder(player)).toContain(FAVORITES);
 	});
@@ -1310,7 +1307,7 @@ test.describe("an edit the component refuses", () => {
 		await link(page, DEFAULT_PLAYLIST).focus();
 		await page.keyboard.press("Alt+ArrowDown");
 
-		await expect(page.getByRole("status")).not.toBeEmpty();
+		await expect(toastRegion(page)).not.toBeEmpty();
 		await expect.poll(() => playlistsDrawn(page)).toEqual(PLAYLIST_TITLES);
 		expect(titlesInOrder(player).slice(0, 2)).toEqual([
 			DEFAULT_PLAYLIST,
@@ -1372,7 +1369,7 @@ test.describe("an edit the component refuses", () => {
 	}) => {
 		await refuseSlowlyWhileTheListMoves(page, player, isMobile);
 
-		await expect(page.getByRole("status")).not.toBeEmpty();
+		await expect(toastRegion(page)).not.toBeEmpty();
 
 		// A tick past the refusal, so a sidebar that went back to the list this
 		// edit started from has had a poll to notice and put itself right.
@@ -1390,7 +1387,7 @@ test.describe("an edit the component refuses", () => {
 		isMobile,
 	}) => {
 		await refuseSlowlyWhileTheListMoves(page, player, isMobile);
-		await expect(page.getByRole("status")).not.toBeEmpty();
+		await expect(toastRegion(page)).not.toBeEmpty();
 
 		// Nothing in Jean asks for the list again, so what the poll says about the
 		// revision is the only thing that can bring this rename over.
@@ -1459,7 +1456,7 @@ test.describe("dragging tracks onto a playlist", () => {
 			)
 			.toBe(before + 1);
 
-		await expect(page.getByRole("status")).toContainText(DEFAULT_PLAYLIST);
+		await expect(toastRegion(page)).toContainText(DEFAULT_PLAYLIST);
 	});
 
 	// Collapsing a selection on pointer-down empties it before the pointer has moved a pixel, and a
@@ -1512,7 +1509,7 @@ test.describe("dragging tracks onto a playlist", () => {
 			await expect(target).toHaveAttribute("data-drop-over", "true");
 			await page.mouse.up();
 
-			await expect(page.getByRole("status")).toContainText(
+			await expect(toastRegion(page)).toContainText(
 				`Added 3 tracks to ${DEFAULT_PLAYLIST}`,
 			);
 			await expectSettlesAt(
@@ -1557,7 +1554,7 @@ test.describe("dragging tracks onto a playlist", () => {
 			() => requestsTo(player, "/items/copy").length,
 			0,
 		);
-		await expect(page.getByRole("status")).toBeEmpty();
+		await expect(toastRegion(page)).toBeEmpty();
 		expect(
 			player.playlists.find((entry) => entry.title === AUTO)!.items,
 		).toHaveLength(5);
@@ -1650,7 +1647,7 @@ test.describe("dragging the playing track off the status bar", () => {
 		});
 
 		await expect.poll(() => titlesIn(player, "p2")).toEqual([...before, title]);
-		await expect(page.getByRole("status")).toContainText(FAVORITES);
+		await expect(toastRegion(page)).toContainText(FAVORITES);
 		await expect(nowPlayingScreen(page)).toBeHidden();
 	});
 });

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { after, before, beforeEach, test } from "node:test";
 
-import { NULL_OUTPUT_DEVICE } from "../fake-api/fooJean.ts";
+import { NULL_OUTPUT_DEVICE } from "../fake-api/fooJean/outputs.ts";
 import { createFooJeanServer } from "../fake-api/server.ts";
 import { createState } from "../fake-api/state.ts";
 

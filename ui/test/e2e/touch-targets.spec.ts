@@ -5,12 +5,13 @@ import {
 	openLibrary,
 	openNowPlaying,
 	openSettings,
-	pressAndHold,
 	statusBar,
 	test,
+	toastRegion,
 	trackRow,
 	viewHeader,
 } from "./fixtures.ts";
+import { pressAndHold } from "./gestures.ts";
 
 // Apple's Human Interface Guidelines put a touch target's least side at 44 points. Under a coarse
 // pointer every control reaches it, drawn that size or given a hit area around its glyph.
@@ -193,7 +194,7 @@ test.describe("under a coarse pointer, a control reaches 44 px", () => {
 		await openLibrary(page);
 		await pressAndHold(page, trackRow(page, 0));
 		await page.getByRole("menuitem", { name: /^Add to queue/ }).tap();
-		await expect(page.getByRole("status")).toContainText(
+		await expect(toastRegion(page)).toContainText(
 			"The player would not change the queue.",
 		);
 		await expectTapTarget(button(page, "Dismiss"), "Dismiss");

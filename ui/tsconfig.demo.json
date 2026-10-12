@@ -21,10 +21,14 @@
 		"test/fake-api/http.ts",
 		"test/fake-api/routes.ts",
 		"test/fake-api/state.ts",
+		"test/fake-api/titleFormat.ts",
+		"test/fake-api/capturedLibrary.ts",
+		"test/fake-api/libraryShapes.ts",
 		"test/fake-api/sessions.ts",
 		"test/fake-api/playerOrder.ts",
 		"test/fake-api/aacTone.ts",
 		"test/fake-api/fooJean.ts",
+		"test/fake-api/fooJean",
 		"test/fake-api/jlib.ts"
 	],
 	// The worker has its own scope below, and `build.ts` is node's.

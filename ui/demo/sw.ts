@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import { handleFooJean } from "../test/fake-api/fooJean.ts";
+import { handleFooJean, MAX_BODY_BYTES } from "../test/fake-api/fooJean.ts";
 import type { RequestHeaders } from "../test/fake-api/http.ts";
 import type { ArtworkServer } from "../test/fake-api/routes.ts";
 import { createState } from "../test/fake-api/state.ts";
@@ -10,9 +10,6 @@ import { type CapturedLibrary, demoLibrary } from "./library.ts";
 import { answer } from "./responder.ts";
 
 declare const self: ServiceWorkerGlobalScope;
-
-// `foo_jean` answers a body over 256 KiB `413` before any route reads it.
-const MAX_BODY_BYTES = 256 * 1024;
 
 const REQUEST_LOG_LIMIT = 200;
 

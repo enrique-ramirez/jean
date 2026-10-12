@@ -90,7 +90,7 @@ export function handleControl({
 	}
 
 	// With a `route`, one route's answers are held back rather than every write:
-	// see `routeLatency` in `fooJean.ts`. `ms: 0` takes it off again.
+	// see `routeLatency` in `fooJean/options.ts`. `ms: 0` takes it off again.
 	if (action === "latency") {
 		const ms = Number(input.ms) || 0;
 		if (typeof input.route !== "string") {

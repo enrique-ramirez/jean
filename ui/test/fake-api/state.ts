@@ -1,16 +1,13 @@
 import { GENRE_EXPRESSION, valuesIn } from "../../src/shared/api/multiValue.ts";
-import { RATING_EXPRESSION } from "../../src/shared/api/rating.ts";
 import type {
 	PlaybackState,
 	PlaylistInfo,
 	Volume,
 } from "../../src/shared/api/types.ts";
-import {
-	type Bucket,
-	type FooJeanOptions,
-	fooJeanState,
-	JEAN_MODE_BY_ORDER,
-} from "./fooJean.ts";
+import { allTracks, LIBRARY, type Track, tracksOf } from "./capturedLibrary.ts";
+import { type FooJeanOptions, fooJeanState } from "./fooJean/options.ts";
+import { JEAN_MODE_BY_ORDER } from "./fooJean/playbackModes.ts";
+import type { Bucket } from "./fooJean/rateLimits.ts";
 import {
 	changedColumn,
 	type Dictionary,
@@ -18,12 +15,13 @@ import {
 	encodeJlib,
 	wholeColumn,
 } from "./jlib.ts";
-import capturedLibrary from "./library.json" with { type: "json" };
+import { generateTracks } from "./libraryShapes.ts";
 import capturedPlayer from "./player.json" with { type: "json" };
 import { compareText, pathKey } from "./playerOrder.ts";
 import { createSessions, type SessionDevice } from "./sessions.ts";
+import { evaluate, sortedOrder } from "./titleFormat.ts";
 
-export type Track = Record<string, string>;
+export type { Track };
 
 // Where the stream last changed what a given stream time means, in wall-clock
 // milliseconds.
@@ -64,12 +62,6 @@ export interface LibraryEntry {
 export interface QueuedEntry {
 	playlistId: string | null;
 	track: Track;
-}
-
-interface CapturedAlbum {
-	slug: string;
-	artwork?: string;
-	tracks: Track[];
 }
 
 interface Changed {
@@ -117,7 +109,6 @@ export interface RecordedRequest {
 	limited?: Bucket;
 }
 
-const LIBRARY = capturedLibrary as { albums: CapturedAlbum[] };
 const CAPTURED_PLAYER = capturedPlayer as Omit<FakePlayerState, "activeItem">;
 
 // foobar2000's own playback-order option, every stock order declared.
@@ -135,94 +126,6 @@ const IDLE_ITEM: FakeActiveItem = {
 	playlistId: "",
 	position: -1,
 };
-
-// Copies, because a tag write or a counted play lands in the track object
-// itself, and the captured fixture outlives every state one worker builds.
-const copied = (tracks: Track[]) => tracks.map((track) => ({ ...track }));
-const tracksOf = (album: string) =>
-	copied(LIBRARY.albums.find((entry) => entry.slug === album)?.tracks ?? []);
-const allTracks = () => copied(LIBRARY.albums.flatMap((album) => album.tracks));
-
-export function generateTracks(count: number): Track[] {
-	const source = allTracks();
-	const tracks: Track[] = new Array(count);
-	for (let index = 0; index < count; index += 1) {
-		const template = source[index % source.length];
-		tracks[index] = {
-			...template,
-			"%title%": `${template["%title%"]} (${index + 1})`,
-			"%tracknumber%": String((index % 99) + 1).padStart(2, "0"),
-			"%path%": `${template["%path%"]}#${index}`,
-		};
-	}
-	return tracks;
-}
-
-export function libraryOfShape({
-	tracks = 12,
-	albums = 1,
-	artists = 1,
-	genres = 1,
-	seconds = 240,
-	years = [2000, 2000],
-	omit = [],
-	// The same artist written two ways, differing in case and in spacing, as
-	// collections look once more than one tool has touched them.
-	mixedCase = false,
-	// A cue sheet or a disc image: this many tracks inside one file, sharing a
-	// `%path%` and told apart by `%subsong%` alone. foobar2000 numbers them from 1.
-	subsongsPerFile = 1,
-}: {
-	tracks?: number;
-	albums?: number;
-	artists?: number;
-	genres?: number;
-	seconds?: number;
-	years?: [number, number];
-	omit?: string[];
-	mixedCase?: boolean;
-	subsongsPerFile?: number;
-} = {}): Track[] {
-	const template = allTracks()[0];
-	const [first, last] = years;
-	const built: Track[] = new Array(tracks);
-
-	for (let index = 0; index < tracks; index += 1) {
-		const album = index % albums;
-		const artist = album % artists;
-		const year =
-			albums > 1
-				? first + Math.round((album * (last - first)) / (albums - 1))
-				: first;
-
-		const named = `Artist ${artist + 1}`;
-		const spelling =
-			mixedCase && index % 2 === 1
-				? named.toUpperCase().replace(" ", "  ")
-				: named;
-
-		const track: Track = {
-			...template,
-			"%title%": `Track ${index + 1}`,
-			"%tracknumber%": String((index % 99) + 1).padStart(2, "0"),
-			"%album%": `Album ${album + 1}`,
-			"%artist%": spelling,
-			"%album artist%": spelling,
-			"%genre%": `Genre ${(index % genres) + 1}`,
-			"%year%": String(year),
-			"%length_seconds%": String(seconds),
-			"%path%": `C:\\Music\\S\\Artist ${artist + 1}\\Album ${album + 1}\\${Math.floor(index / subsongsPerFile) + 1}.mp3`,
-		};
-
-		if (subsongsPerFile > 1)
-			track["%subsong%"] = String((index % subsongsPerFile) + 1);
-
-		for (const field of omit) delete track[field];
-		built[index] = track;
-	}
-
-	return built;
-}
 
 const libraryRoot = (tracks: Track[]) => {
 	const paths = tracks.map((track) =>
@@ -328,67 +231,6 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 	},
 ];
 
-// foobar2000 answers a single-valued genre the same through `%genre%` and `GENRE_EXPRESSION`, and,
-// with no foo_playcount, a rating the same through `%rating%` and `RATING_EXPRESSION`.
-const PLAIN_SPELLING = new Map([
-	[GENRE_EXPRESSION, "%genre%"],
-	[RATING_EXPRESSION, "%rating%"],
-]);
-
-const argumentsOf = (inside: string) => {
-	const parts: string[] = [];
-	let depth = 0;
-	let from = 0;
-	for (let at = 0; at < inside.length; at++) {
-		if (inside[at] === "(") depth += 1;
-		else if (inside[at] === ")") depth -= 1;
-		else if (inside[at] === "," && depth === 0) {
-			parts.push(inside.slice(from, at));
-			from = at + 1;
-		}
-		if (depth < 0) return null;
-	}
-	parts.push(inside.slice(from));
-	return depth === 0 ? parts : null;
-};
-
-const CALL = /^\$(\w+)\((.*)\)$/s;
-
-// foobar2000 title formatting: `$meta(x)` answers '' and false for a file without the field, where
-// `%x%` answers `?`; `$if2(a,b)` answers `a` where it is true and `b` otherwise.
-const titleFormat = (
-	track: Track,
-	expression: string,
-): { text: string; isTrue: boolean } | null => {
-	const held = track[expression];
-	if (held !== undefined)
-		return { text: held, isTrue: held !== "" && held !== "?" };
-
-	const call = CALL.exec(expression);
-	const parts = call && argumentsOf(call[2]);
-	if (!call || !parts) return null;
-
-	if (call[1] === "meta" && parts.length === 1) {
-		const text = track[`$meta(${parts[0].toLowerCase()})`] ?? "";
-		return { text, isTrue: text !== "" };
-	}
-	if (call[1] === "if2" && parts.length === 2) {
-		const first = titleFormat(track, parts[0]);
-		return first?.isTrue ? first : titleFormat(track, parts[1]);
-	}
-	return null;
-};
-
-export const evaluate = (track: Track, expression: string) => {
-	const plain = PLAIN_SPELLING.get(expression);
-	return (
-		track[expression] ??
-		(plain && track[plain]) ??
-		titleFormat(track, expression)?.text ??
-		"?"
-	);
-};
-
 export const trackKey = (track: Track) =>
 	`${track["%path%"]}\u0000${Number(track["%subsong%"]) || 0}`;
 
@@ -440,28 +282,6 @@ function queryMatcher(query: string): ((track: Track) => boolean) | null {
 	});
 	return (track) =>
 		alternatives.some((group) => group.every((term) => term(track)));
-}
-
-// `order[new] = old` for a stable ascending sort by the `|`-joined fields of `pattern`, each read
-// through the fixture's expression of that name. An expression the fixture does not carry reads
-// `?` for every row and so leaves their order to the ones after it.
-export function sortedOrder(
-	items: readonly Track[],
-	pattern: string,
-): number[] {
-	const parts = pattern.split("|");
-	return items
-		.map((_, at) => at)
-		.sort((a, b) => {
-			for (const part of parts) {
-				const compared = compareText(
-					evaluate(items[a], part),
-					evaluate(items[b], part),
-				);
-				if (compared !== 0) return compared;
-			}
-			return 0;
-		});
 }
 
 export function createState({
@@ -567,7 +387,7 @@ export function createState({
 		latency: 0,
 		skipDelayMs: 0,
 		requests: [] as RecordedRequest[],
-		// Same bound as the component's; `fooJean.ts` puts these on the stream clock.
+		// Same bound as the component's; `fooJean/stream.ts` puts these on the stream clock.
 		streamMarks: [] as StreamMark[],
 		libraryFeed: {
 			structure: 0,
@@ -1470,4 +1290,4 @@ export function createState({
 }
 
 export { postsToSession } from "./sessions.ts";
-export { allTracks, DEFAULT_PLAYLISTS, LIBRARY, tracksOf };
+export { DEFAULT_PLAYLISTS };

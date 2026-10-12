@@ -13,6 +13,9 @@ export interface Responder {
 // them.
 export type RequestHeaders = Record<string, string | string[] | undefined>;
 
+export const one = (value: string | string[] | undefined) =>
+	(Array.isArray(value) ? value[0] : value) ?? "";
+
 export const json = (response: Responder, body: unknown, status = 200) => {
 	response.writeHead(status, {
 		"Content-Type": "application/json; charset=utf-8",

@@ -11,14 +11,12 @@
 
 ## Search
 
-- Search filters client-side and writes nothing. In `useLibrarySearch` the draft reaches only the field and its dropdown, and `query` moves on a commitment; nothing outside the field reads the draft.
-- The scratch is hidden from the sidebar, the palette, the library and the routing fallback, so a reorder among visible rows is translated through the hidden one.
-- On the player, dismissing a search empties the scratch unless the player is on it, and a GUID `useResolvedPlaylistId` has not resolved yet counts as playing.
-- A device trusts the title of its own last fill over the scratch's live title while the scratch's `structure` is the one that fill left (`useScratchPlaylist.ts`).
-- Escape backs out one rung per press (panel, edit, caret) and never ends the search. The draft reverts on a press outside (`useDismissable`), never on blur. Space is a character.
+- In `useLibrarySearch` the draft reaches only the field and its dropdown, and `query` moves on a commitment; nothing outside the field reads the draft.
+- The scratch is hidden and still holds a position in the player's list, so a reorder among visible rows is translated through the hidden one.
+- Dismissing a search leaves the scratch alone while the player is on it, and a GUID `useResolvedPlaylistId` has not resolved yet counts as playing.
 
 ## Genres
 
-- A genre view matches whole through `tagKey`, the matcher its count uses, and an empty key matches nothing. A genre is a route, never a search, which would tokenise the name and match titles.
+- A genre is a route, never a search, which would tokenise the name and match titles.
 - `genreQuery.ts` composes the one player query and owns its quoting; the component's preview, the only check, runs on foobar2000's main thread and goes through react-query, since a bare effect fires twice under StrictMode.
 - A genre autoplaylist carries no `#Jean` prefix and no managed key, since a key makes it the component's to manage and a second one a `409`.

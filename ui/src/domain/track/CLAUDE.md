@@ -5,14 +5,12 @@
 - `rating.ts` bands a raw value by magnitude, because one library holds several taggers' scales at once: foobar2000's 0–5, 0–10, FLAC's 0–100 `RATING`, and a POPM byte on the thresholds Windows Explorer, foobar2000 and MediaMonkey share. The banding is per value, never one scale per library.
 - Jean writes whole stars on foobar2000's native 0–5, so a track stored on a larger scale is read-only, asked per track through `isWritableScale()`. The empty string removes the tag; `"0"` is a rating some taggers read as unrated.
 - A 403 means the allowlist lacks the field, which then stops being offered for the session. A 504 is not rolled back: the write may still land, so the value is re-read.
-- `0`–`5` rate a layer's track, else the cursor row, else the playing track. A layer publishes through `ratingTarget.ts` even where its value is read-only, so a digit never falls through to the row behind.
+- A layer publishes through `ratingTarget.ts` even where its value is read-only, so a digit never falls through to the row behind.
 
 ## The list
 
 - Following playback measures the row against the scroll container, since overscan mounts rows past the fold. The virtualiser's `align: "auto"` is minimal scrolling, not centring.
 - `jumpToPlaying.ts` is raised when the route lands, never at the click.
-- Undo removes the range that landed, and a `409` on the removal says the playlist changed underneath. An add that landed as two requests comes off newest first.
-- A removal is a reorder naming fewer rows: carried, never reloaded.
 
 ## Holding a library
 

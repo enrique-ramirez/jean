@@ -174,21 +174,21 @@ App-level layers, lowest first. These share the root stacking context, so a new 
 | Anchored menu (`Menu`) | 25 |
 | Now-playing screen | 25 |
 | Queue panel scrim, compact | 29 |
-| Queue panel · volume popover · listen-here popover · status bar, desktop | 30 |
+| Queue panel · volume popover in the compact status bar · status bar, desktop | 30 |
 | Sidebar scrim, compact | 39 |
 | Sidebar drawer, compact | 40 |
 | Search dropdown | 42 |
 | Track info screen · lyrics screen · lyric editor | 45 |
 | Playback picker sheet, compact | 47 |
 | Alert dialog (`AlertDialog`) | 49 |
-| Toasts · settings backdrop · shortcut sheet backdrop | 50 |
+| Toasts · modal dialog backdrop (`ModalDialog`) · shortcut sheet backdrop | 50 |
 | Command palette backdrop | 60 |
 | Action menu and its scrim | 70 |
 | Drag ghost | 80 |
 
-Lyrics and the lyric editor sit above the app chrome, the queue panel and the now-playing screen, and **under** toasts and menus, so a failed write can still say so. The playback picker's sheet sits under the toasts too, so a refusal raised while it is open is seen. The drag ghost is above everything, since a drag can start anywhere. The seek bar reaches above the status bar's top edge, so on desktop the status bar is lifted to the queue panel's layer and wins the tie by coming later in the document; its popovers stack inside it and so still clear the queue panel.
+Lyrics and the lyric editor sit above the app chrome, the queue panel and the now-playing screen, and **under** toasts and menus, so a failed write can still say so. The playback picker's sheet sits under the toasts too, so a refusal raised while it is open is seen. The drag ghost is above everything, since a drag can start anywhere. The seek bar reaches above the status bar's top edge, so on desktop the status bar is lifted to the queue panel's layer and wins the tie by coming later in the document. The listen-here popover and the output menu open inside it, in its stacking context, and so still clear the queue panel. The playback order list is an `ActionMenu`, portalled to `body` on the action menu's layer.
 
-Values of `0`–`5` inside `AlbumCard`, `ShelfRow`, `GenreTile`, `TrackPanels`, `QueuePanel` rows, `ActionMenu` pages and the `Sidebar` row being dragged are local to a stacking context their own component establishes, and mean nothing against this table.
+Values of `-1` to `5` inside `AlbumCard`, `ShelfRow`, `GenreTile`, `TrackPanels`, `NowPlaying`, `LyricEditor`, `QueryField`, `QueuePanel` rows, `ActionMenu` pages, the `Sidebar` row being dragged and a `.loading` placeholder are local to a stacking context their own component or the layer around it establishes, and mean nothing against this table. So are the volume and listen-here popovers inside the now-playing screen.
 
 ## Layout and viewport
 

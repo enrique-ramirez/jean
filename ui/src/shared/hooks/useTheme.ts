@@ -7,9 +7,11 @@ export type Theme = "light" | "dark";
 
 const FOLLOW_SYSTEM = null;
 
+export const THEME_KEY = "jean.theme";
+
 export function useTheme() {
 	const [chosen, choose] = useStoredState<Theme | null>(
-		"jean.theme",
+		THEME_KEY,
 		FOLLOW_SYSTEM,
 	);
 	const prefersLight = useMediaQuery("(prefers-color-scheme: light)");

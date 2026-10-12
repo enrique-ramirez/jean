@@ -32,6 +32,7 @@
 		"src/shared/lib/dragGeometry.ts",
 		"src/shared/lib/idle.ts",
 		"src/shared/lib/moved.ts",
+		"src/shared/lib/ownedStorage.ts",
 		"src/shared/lib/patchCache.ts",
 		"src/shared/lib/rove.ts",
 		"src/shared/lib/sequence.ts",

@@ -5,7 +5,7 @@ import {
 import { translate } from "@/shared/i18n/locale";
 import { randomId } from "@/shared/lib/randomId";
 
-const DEVICE_ID_KEY = "jean.deviceId";
+export const DEVICE_ID_KEY = "jean.deviceId";
 export const DEVICE_NAME_KEY = "jean.deviceName";
 
 let id: string | null = null;

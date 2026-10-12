@@ -173,6 +173,13 @@ export const en = {
 	"device.title": "This device",
 	"device.unknown": "Unknown device",
 	"device.windows": "Windows PC",
+	"error.body":
+		"Something on this page failed to draw. Reloading usually fixes it.",
+	"error.reload": "Reload",
+	"error.reset": "Reset this device's settings",
+	"error.resetDetail":
+		"Clears the settings stored in this browser. Your library and playlists live in foobar2000 and are not touched.",
+	"error.title": "Jean hit a problem",
 	"finder.close": "Close finder",
 	"finder.inAlbum": "Find in this album",
 	"finder.inAllMusic": "Find in all music",

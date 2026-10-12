@@ -125,8 +125,69 @@ test("fractions of one, two and three digits are tenths, hundredths and thousand
 test("nothing, or only tags, is no lyric at all", () => {
 	assert.equal(parseLyrics(null).kind, "none");
 	assert.equal(parseLyrics("").kind, "none");
+	assert.equal(parseLyrics(lrc("", "  ", "")).kind, "none");
 	assert.equal(
-		parseLyrics(lrc("[ar:Somebody]", "[ti:Something]")).kind,
+		parseLyrics(lrc("[ar:Somebody]", "[ti:Something]", "[offset:500]")).kind,
 		"none",
+	);
+});
+
+test("a plain lyric keeps its bracketed section rows as lines", () => {
+	assert.deepEqual(
+		parseLyrics(
+			lrc(
+				"[Verse: Adrián]",
+				"First line",
+				"Second line",
+				"",
+				"[Chorus: Diego]",
+				"Third line",
+			),
+		),
+		{
+			kind: "plain",
+			lines: [
+				"[Verse: Adrián]",
+				"First line",
+				"Second line",
+				"",
+				"[Chorus: Diego]",
+				"Third line",
+			],
+		},
+	);
+});
+
+test("an untimed lyric is read without its LRC header tags, and keeps a section row beside them", () => {
+	assert.deepEqual(
+		parseLyrics(
+			lrc(
+				"[ti:Leave]",
+				"[AR: Somebody]",
+				"one",
+				"[offset:500]",
+				"[Chorus: Diego]",
+				"two",
+			),
+		),
+		{ kind: "plain", lines: ["one", "[Chorus: Diego]", "two"] },
+	);
+});
+
+test("a section row among timed lines is words, so it counts against the timed half and is kept when the lyric reads as plain", () => {
+	const timed = ["[00:10.00]one", "[00:20.00]two", "[00:40.00]three"];
+
+	assert.equal(
+		parseLyrics(lrc("[ar:Somebody]", ...timed, "[Chorus: Diego]")).kind,
+		"synced",
+	);
+	assert.deepEqual(
+		parseLyrics(
+			lrc("[ar:Somebody]", "[Chorus: Diego]", ...timed, "a", "b", "c"),
+		),
+		{
+			kind: "plain",
+			lines: ["[Chorus: Diego]", "one", "two", "three", "a", "b", "c"],
+		},
 	);
 });

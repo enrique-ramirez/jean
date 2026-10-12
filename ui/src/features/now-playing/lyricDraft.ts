@@ -1,4 +1,4 @@
-import { ID_TAG, peel } from "./lyricsFormat";
+import { readSource } from "./lyricsFormat";
 
 export interface DraftLine {
 	id: number;
@@ -11,58 +11,19 @@ export interface LyricDraft {
 	lines: DraftLine[];
 }
 
-const LINE_BREAK = /\r\n|\r|\n/;
-
 const wholeMilliseconds = (seconds: number) =>
 	Math.max(0, Math.round(seconds * 1000) / 1000);
 
 const isBlankUntimed = (line: Omit<DraftLine, "id">) =>
 	line.at === null && !line.text;
 
-// The ID tags LRC defines. Any other bracketed row is words somebody wrote.
-const KNOWN_TAGS = new Set([
-	"ti",
-	"ar",
-	"al",
-	"au",
-	"by",
-	"re",
-	"ve",
-	"la",
-	"length",
-	"tool",
-	"offset",
-]);
-
 export function draftFromText(raw: string): LyricDraft {
-	const headers: string[] = [];
-	const rows: Omit<DraftLine, "id">[] = [];
-	let offset = 0;
-	const source = raw.split(LINE_BREAK);
-	const isLrc = source.some((row) => peel(row.trim()).times.length > 0);
-
-	for (const row of source) {
-		const trimmed = row.trim();
-		const { times, text } = peel(trimmed);
-
-		if (times.length === 0) {
-			const tag = isLrc ? ID_TAG.exec(trimmed) : null;
-			if (tag && KNOWN_TAGS.has(tag[1].toLowerCase())) {
-				if (tag[1].toLowerCase() === "offset") {
-					const ms = Number(tag[2].trim());
-					if (Number.isFinite(ms)) offset = ms / 1000;
-				} else {
-					headers.push(trimmed);
-				}
-				continue;
-			}
-			rows.push({ at: null, text });
-			continue;
-		}
-
-		for (const at of times)
-			rows.push({ at: wholeMilliseconds(at - offset), text });
-	}
+	const { headers, offset, lines } = readSource(raw);
+	const rows = lines.flatMap(({ times, text }): Omit<DraftLine, "id">[] =>
+		times.length === 0
+			? [{ at: null, text }]
+			: times.map((at) => ({ at: wholeMilliseconds(at - offset), text })),
+	);
 
 	const words = rows.filter((row) => !isBlankUntimed(row));
 	const timedWords = words.filter(

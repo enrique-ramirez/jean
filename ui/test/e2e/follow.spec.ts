@@ -182,7 +182,7 @@ test.describe("with following turned off", () => {
 });
 
 test.describe("the jump survives a coasting list", () => {
-	test.use({ settings: { "jean.followPlayback": false } });
+	test.use({ settings: { "jean.followPlayback": false }, motion: "allow" });
 	test.skip(({ isMobile }) => isMobile, "wheel is a pointer input");
 
 	// Both the key and the wheel are dispatched from inside the page, one frame

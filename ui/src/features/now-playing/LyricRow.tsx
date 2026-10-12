@@ -129,6 +129,7 @@ export const LyricRow = memo(function LyricRow({
 						type="button"
 						className={classNames(styles.line, styles.pick)}
 						data-pick=""
+						data-keeps-keys=""
 						onClick={() => onSelect(index)}
 						onDoubleClick={() => onEditWords(index)}
 					>

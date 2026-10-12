@@ -13,6 +13,7 @@ import {
 	test,
 	times,
 	toasts,
+	tokenColourIn,
 	untilQuiet,
 } from "./fixtures.ts";
 import {
@@ -1071,6 +1072,46 @@ test.describe("stamping lines against the song", () => {
 			await expect(selectedRows(editor)).toHaveText([/Second line/]);
 		});
 
+		test("Space on a line leaves a selection of every line as it is", async ({
+			page,
+			player,
+		}) => {
+			const editor = await openEditor(page, false, PART_SYNCED);
+			await selectLine(editor, "Second line");
+			await page.keyboard.press("ControlOrMeta+a");
+			await expect(selectedRows(editor)).toHaveCount(3);
+			const before = playbackCommands(player).length;
+
+			await page.keyboard.press("Space");
+
+			await expectSettlesAt(
+				player,
+				() => playbackCommands(player).slice(before),
+				["/api/playback/play-pause"],
+			);
+			await expect(selectedRows(editor)).toHaveCount(3);
+		});
+
+		test("Space on one of the editor's buttons presses it and does not play", async ({
+			page,
+			player,
+		}) => {
+			const editor = await openEditor(page, false, PART_SYNCED);
+			await selectLine(editor, "Second line");
+			const held = await holdTheClockAt(editor, player, 20);
+			const before = playbackCommands(player).length;
+
+			await stampButton(editor).focus();
+			await page.keyboard.press("Space");
+
+			await expectStamped(lineRow(editor, "Second line"), held);
+			await expectSettlesAt(
+				player,
+				() => playbackCommands(player).slice(before),
+				[],
+			);
+		});
+
 		test("the Stamp button stamps as Enter does", async ({ page, player }) => {
 			const editor = await openEditor(page, false, PART_SYNCED);
 			await selectLine(editor, "Second line");
@@ -1186,6 +1227,28 @@ const HEADED_TEXT = [
 
 test.describe("changing words and lines", () => {
 	test.use(EDITABLE);
+
+	test("Remove stays red under the pointer", async ({ page, isMobile }) => {
+		test.skip(isMobile, "nothing hovers on a phone");
+
+		const editor = await openEditor(page, isMobile, WITH_HEADERS);
+		await selectLine(editor, "Second line");
+		const danger = await tokenColourIn(editor, "--danger");
+		await expect(removeButton(editor)).toHaveCSS("color", danger);
+
+		// Read in one step with whether the pointer is still on it: a colour read after the pointer
+		// has left is the resting red, which the button had all along.
+		await expect
+			.poll(async () => {
+				await removeButton(editor).hover();
+				return removeButton(editor).evaluate((button) =>
+					button.matches(":hover")
+						? getComputedStyle(button).color
+						: "not under the pointer",
+				);
+			})
+			.toBe(danger);
+	});
 
 	test("a line's words are changed in a text field, kept by Enter and by leaving the field", async ({
 		page,

@@ -10,5 +10,9 @@ const CONTROLS = [
 	'[role="radio"]',
 ].join(", ");
 
-export const isPressOnControl = (event: KeyboardEvent) =>
-	(event.target as Element | null)?.closest?.(CONTROLS) != null;
+const KEEPS_KEYS = "[data-keeps-keys]";
+
+export function isPressOnControl(event: KeyboardEvent) {
+	const control = (event.target as Element | null)?.closest?.(CONTROLS);
+	return control != null && !control.matches(KEEPS_KEYS);
+}

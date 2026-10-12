@@ -448,7 +448,8 @@ export function LyricEditor({
 		SCOPE.global,
 		{
 			playPause: (event) => {
-				if (!handBackToControl(event)) playPause.mutate();
+				event.preventDefault();
+				playPause.mutate();
 			},
 			seekBack: () => {
 				if (isSongPlaying) seekBy.mutate(-KEY_SEEK_SECONDS);

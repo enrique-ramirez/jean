@@ -51,18 +51,18 @@
 		scale 0.12s var(--ease);
 }
 
-.bar[data-seekable="true"]:hover .rail,
-.bar[data-seekable="true"]:hover .fill,
 .bar[data-scrubbing="true"] .rail,
 .bar[data-scrubbing="true"] .fill,
 .bar:focus-visible .rail,
-.bar:focus-visible .fill {
+.bar:focus-visible .fill,
+.bar[data-seekable="true"]:hover .rail,
+.bar[data-seekable="true"]:hover .fill {
 	scale: 1 1.6667;
 }
 
-.bar[data-seekable="true"]:hover .thumb,
 .bar[data-scrubbing="true"] .thumb,
-.bar:focus-visible .thumb {
+.bar:focus-visible .thumb,
+.bar[data-seekable="true"]:hover .thumb {
 	opacity: 1;
 	scale: 1;
 }

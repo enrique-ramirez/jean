@@ -311,6 +311,11 @@
 		color 0.12s var(--ease);
 }
 
+.grip {
+	display: none;
+	cursor: grab;
+}
+
 .row:hover .grip,
 .row:hover .remove,
 .grip:focus-visible,
@@ -320,11 +325,6 @@
 
 .remove:hover:not([aria-disabled="true"]) {
 	color: var(--danger);
-}
-
-.grip {
-	display: none;
-	cursor: grab;
 }
 
 .row {

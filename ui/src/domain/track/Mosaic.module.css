@@ -25,14 +25,11 @@
 	width: 100%;
 	height: 100%;
 	border-radius: 0;
+	transition: opacity 220ms var(--ease);
 }
 
 .mosaic:not([data-ready]) .tile {
 	opacity: 0;
-}
-
-.tile {
-	transition: opacity 220ms var(--ease);
 }
 
 .hold {

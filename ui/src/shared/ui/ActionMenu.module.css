@@ -216,17 +216,17 @@
 	height: 20px;
 }
 
-.item:hover:not(:disabled) .rail,
-.item:focus-visible .rail {
-	transform: translateY(-50%) scaleY(1);
-}
-
 .item[data-danger="true"] {
 	color: var(--danger);
 }
 
 .item[data-danger="true"] .rail {
 	background: var(--danger);
+}
+
+.item:focus-visible .rail,
+.item:hover:not(:disabled) .rail {
+	transform: translateY(-50%) scaleY(1);
 }
 
 .icon {

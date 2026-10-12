@@ -202,6 +202,11 @@
 	font-size: 0.75rem;
 }
 
+.versionDetail .length,
+.versionDetail .difference {
+	margin-left: 8px;
+}
+
 .version[data-length="same"] .difference {
 	color: var(--positive);
 }
@@ -294,9 +299,4 @@ button.again {
 
 .view[hidden] {
 	display: none;
-}
-
-.versionDetail .length,
-.versionDetail .difference {
-	margin-left: 8px;
 }

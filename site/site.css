@@ -611,6 +611,12 @@ footer a:hover {
 	background: var(--surface);
 }
 
+.extra p {
+	margin-block: 0 1rem;
+	max-width: var(--measure);
+	color: var(--muted);
+}
+
 .extra-panel > .eyebrow,
 .extra-panel > .eyebrow + p {
 	grid-column: 1 / -1;
@@ -619,12 +625,6 @@ footer a:hover {
 /* Outranks `.extra p` on specificity rather than on the order the rules happen to sit in. */
 .extra p.eyebrow {
 	color: var(--accent);
-}
-
-.extra p {
-	margin-block: 0 1rem;
-	max-width: var(--measure);
-	color: var(--muted);
 }
 
 .extra-panel > .eyebrow + p {

@@ -36,6 +36,7 @@
 				"noReactPropAssignments": "error"
 			},
 			"style": {
+				"noDescendingSpecificity": "error",
 				"noJsxLiterals": {
 					"level": "error",
 					"options": {

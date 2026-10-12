@@ -374,27 +374,6 @@ button.face:focus-visible {
 	color: var(--danger, var(--accent-text));
 }
 
-.standing {
-	display: flex;
-	align-items: flex-start;
-	gap: 10px;
-	margin: 0 4px;
-	padding: 0 12px 6px 4px;
-	font-size: 0.6875rem;
-	line-height: 1.35;
-	text-wrap: pretty;
-	color: var(--muted);
-}
-
-.standing .mark {
-	height: 15px;
-	color: var(--muted);
-}
-
-.standing[data-tone="caution"] .mark {
-	color: var(--caution);
-}
-
 .private {
 	gap: 5px;
 	font-size: 0.6875rem;
@@ -434,6 +413,27 @@ button.face:focus-visible {
 	border: 0;
 	border-radius: var(--radius-sm);
 	background: none;
+}
+
+.standing {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	margin: 0 4px;
+	padding: 0 12px 6px 4px;
+	font-size: 0.6875rem;
+	line-height: 1.35;
+	text-wrap: pretty;
+	color: var(--muted);
+}
+
+.standing .mark {
+	height: 15px;
+	color: var(--muted);
+}
+
+.standing[data-tone="caution"] .mark {
+	color: var(--caution);
 }
 
 .fader {

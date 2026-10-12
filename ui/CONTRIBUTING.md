@@ -72,9 +72,10 @@ Commands run from the repository root and the root `package.json` delegates them
 
 1. **CSS Modules, colocated with the component.** The only global stylesheets are `shared/styles/tokens.css` (the palette and scale, as custom properties) and `base.css`. Re-theming Jean SHOULD mean editing custom properties and nothing else.
 2. **A rule in one module that overrides another's MUST outrank it on specificity, never merely follow it.** Module order in the bundle follows import order, and import sorting can flip two rules of equal specificity.
-3. Anything spatial belongs to a media query, not to a JS breakpoint flag.
-4. Animate compositor properties only, `transform`, `scale`, `rotate` and `opacity`, plus a colour on a control's own box. Never a layout property, a shadow, `border-radius` or `background-position`; `test/unit/animatedProperties.test.ts` reads every stylesheet for one.
-5. **A new stacking layer goes in the table in `ARCHITECTURE.md` before it goes in a stylesheet.** The app-level scale is shared by everything, and picking a number without reading it is how a dialog ends up under a toolbar.
+3. **Within one stylesheet, rules ascend in specificity**, so the file reads in the order the cascade applies it. `noDescendingSpecificity` fails the lint on a rule that undoes a more specific one above it.
+4. Anything spatial belongs to a media query, not to a JS breakpoint flag.
+5. Animate compositor properties only, `transform`, `scale`, `rotate` and `opacity`, plus a colour on a control's own box. Never a layout property, a shadow, `border-radius` or `background-position`; `test/unit/animatedProperties.test.ts` reads every stylesheet for one.
+6. **A new stacking layer goes in the table in `ARCHITECTURE.md` before it goes in a stylesheet.** The app-level scale is shared by everything, and picking a number without reading it is how a dialog ends up under a toolbar.
 
 ## 6. Phrases
 

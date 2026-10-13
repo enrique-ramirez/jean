@@ -13,9 +13,9 @@
 #   scripts/test.sh --sanitize=thread      ThreadSanitizer, which is what covers the rings and the hold
 #   scripts/test.sh --sanitize=leaks       the ordinary build under macOS's leaks
 #
-# --sanitize= comes first and composes with doctest's own arguments. Each instrumented build gets its
-# own directories under bin/: linking instrumented tests against the cached plain libcodec.a would
-# leave the codec uninstrumented and say nothing about it.
+# --sanitize= comes first, once, and composes with doctest's own arguments; anywhere else it is
+# refused. Each instrumented build gets its own directories under bin/: linking instrumented tests
+# against the cached plain libcodec.a would leave the codec uninstrumented and say nothing about it.
 #
 # leaks scans conservatively rather than proving anything, so a clean run promises less than a clean
 # LeakSanitizer run would.
@@ -41,6 +41,17 @@ case "${1-}" in
     shift
     ;;
 esac
+
+# doctest ignores options it does not know, so a flag left unparsed here would run the plain build
+# and report it as the sanitised one.
+for arg in "$@"; do
+  case "$arg" in
+    --sanitize | --sanitize=* | -sanitize | -sanitize=*)
+      echo "$arg: --sanitize= takes address, thread or leaks and must be the first argument, as in: scripts/test.sh --sanitize=thread '-sf=*x_test.cpp'" >&2
+      exit 1
+      ;;
+  esac
+done
 
 # leaks refuses to inspect an ASan heap, so it takes the ordinary build and instruments nothing.
 instrument=""

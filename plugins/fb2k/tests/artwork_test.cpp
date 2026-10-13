@@ -325,6 +325,37 @@ TEST_CASE("an address the snapshot does not hold is a refusal rather than anothe
     CHECK(response->get_header_value("ETag").empty());
 }
 
+TEST_CASE("an address spelled with .. is looked up as sent, and is no way round to a cover") {
+    ArtLog log{kJpeg};
+    const TestServer server(servingSettings(), showing(&log));
+
+    const std::vector<std::string> spellings{
+        "..%2F..%2Fetc%2Fpasswd",
+        "Artist%2FAlbum%2F..%2FAlbum%2F01.flac",
+        "Artist%2FAlbum%2F%2e%2e%2FAlbum%2F01.flac",
+        "Artist/Album/../Album/01.flac",
+    };
+
+    for (const auto& spelling : spellings) {
+        INFO("track: ", spelling);
+
+        const auto response = get(server, "/api/artwork?track=" + spelling);
+
+        REQUIRE(response);
+        CHECK(response->status == 404);
+        CHECK(json::parse(response->body)["error"] == "no artwork for that track");
+        CHECK(response->get_header_value("ETag").empty());
+    }
+
+    const std::vector<std::string> asSent{
+        "../../etc/passwd",
+        "Artist/Album/../Album/01.flac",
+        "Artist/Album/../Album/01.flac",
+        "Artist/Album/../Album/01.flac",
+    };
+    CHECK(log.asked == asSent);
+}
+
 TEST_CASE("a picture in a format this component does not send is refused rather than guessed") {
     ArtLog log{"a file that is not a picture"};
     const TestServer server(servingSettings(), showing(&log));

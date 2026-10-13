@@ -371,6 +371,83 @@ TEST_CASE(
     CHECK(disk.asked.empty());
 }
 
+// Windows reads a letter and a colon as a drive wherever a relative path starts with them, and
+// `name:stream` as an alternate data stream of `name`. std::filesystem's operator/ answers its
+// right-hand side alone when that side is rooted, so a path starting with a second separator
+// leaves whatever folder it was joined to.
+TEST_CASE("c5 a path naming a drive, a stream or a second root is refused unread") {
+    FakePages pages = aBuild();
+    FakeDisk disk;
+    for (const char* held :
+         {"C:/secret.js", "c:secret.js", "mine/C:/secret.js", "assets/x.js:hidden.js",
+          "mine/index.html:hidden.js", "/index.html", "/server/share/x.js", "/mine/index.html"}) {
+        pages.files[held] = kIndex;
+        disk.files[held] = kIndex;
+    }
+    const TestServer server(servingSettings(), serving(&pages, &disk));
+
+    const std::vector<std::string> refused{
+        "/C:/secret.js",
+        "/c:secret.js",
+        "/C%3A/secret.js",
+        "/C%3a/secret.js",
+        "/mine/C:/secret.js",
+        "/assets/x.js:hidden.js",
+        "/assets/x.js%3Ahidden.js",
+        "/mine/index.html:hidden.js",
+        "//index.html",
+        "/%2Findex.html",
+        "/%2findex.html",
+        "//server/share/x.js",
+        "//mine/index.html",
+    };
+
+    for (const auto& path : refused) {
+        INFO("path: ", path);
+
+        const auto response = server.client().Get(path);
+
+        REQUIRE(response);
+        CHECK(response->status == 404);
+        CHECK(json::parse(response->body) == notFound());
+    }
+
+    CHECK(pages.asked.empty());
+    CHECK(disk.asked.empty());
+}
+
+TEST_CASE("c5 a path carrying .. never reaches www/, behind an encoded separator or a plain one") {
+    FakePages pages = aBuild();
+    FakeDisk disk;
+    for (const char* held : {"mine/../secret.js", "mine/../../config.json", "../config.json",
+                             "locales/../../config.json", "assets/../index.html"}) {
+        pages.files[held] = kIndex;
+        disk.files[held] = kIndex;
+    }
+    const TestServer server(servingSettings(), serving(&pages, &disk));
+
+    const std::vector<std::string> refused{
+        "/mine/../secret.js",         "/mine/%2e%2e/secret.js",
+        "/mine%2F..%2Fsecret.js",     "/mine%2f%2e%2e%2fsecret.js",
+        "/mine/../../config.json",    "/..%2Fconfig.json",
+        "/locales/../../config.json", "/locales%2F..%2F..%2Fconfig.json",
+        "/assets%2F..%2Findex.html",
+    };
+
+    for (const auto& path : refused) {
+        INFO("path: ", path);
+
+        const auto response = server.client().Get(path);
+
+        REQUIRE(response);
+        CHECK(response->status == 404);
+        CHECK(json::parse(response->body) == notFound());
+    }
+
+    CHECK(pages.asked.empty());
+    CHECK(disk.asked.empty());
+}
+
 // A stale index.html names scripts a new build no longer holds, and draws a blank page until
 // somebody finds the hard reload. Revalidating it every time is what keeps an upgrade visible.
 TEST_CASE("c6 index.html and a locale are revalidated on every load, and a matching tag is a 304") {

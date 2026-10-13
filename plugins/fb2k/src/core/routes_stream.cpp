@@ -105,8 +105,8 @@ void StreamRoutes::issueTicket(const httplib::Request& req, httplib::Response& r
     if (named.which == SessionAnswer::Which::none)
         return;
 
-    const auto issued = tickets_.issue(std::chrono::steady_clock::now(), device,
-                                       named.session ? named.session->id() : std::string());
+    const auto issued =
+        tickets_.issue(clock_(), device, named.session ? named.session->id() : std::string());
     if (issued.ticket.empty()) {
         respondUnavailable(res, "could not generate a stream ticket");
         return;
@@ -161,8 +161,7 @@ void StreamRoutes::leave(const httplib::Request& req, httplib::Response& res) {
 }
 
 void StreamRoutes::openStream(const httplib::Request& req, httplib::Response& res) {
-    const auto admission =
-        tickets_.admits(req.get_param_value("ticket"), std::chrono::steady_clock::now());
+    const auto admission = tickets_.admits(req.get_param_value("ticket"), clock_());
     if (!admission) {
         respondError(res, 401, "a valid stream ticket is required");
         return;

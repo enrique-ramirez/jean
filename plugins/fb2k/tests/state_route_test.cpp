@@ -1568,7 +1568,7 @@ TEST_CASE(
     REQUIRE(malformed);
     CHECK(malformed->status == 400);
 
-    server.advanceRateLimits(std::chrono::seconds(1));
+    server.advanceClock(std::chrono::seconds(1));
     const auto answered = client.Get(path);
     REQUIRE(answered);
     CHECK(answered->status == 200);

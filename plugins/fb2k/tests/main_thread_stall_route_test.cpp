@@ -61,7 +61,7 @@ TEST_CASE("GET /api/state says the main thread is answering while it runs each c
     CHECK(first.mainThread == json{{"answering", true}, {"unansweredSeconds", nullptr}});
 
     mainThread.pump();
-    server.advanceRateLimits(kMainThreadStalledAfter * 2);
+    server.advanceClock(kMainThreadStalledAfter * 2);
 
     CHECK(poll(server, first.tag).status == 304);
 }
@@ -75,7 +75,7 @@ TEST_CASE("a stall moves GET /api/state's validator as it starts and again as it
     const auto healthy = poll(server);
     REQUIRE(healthy.status == 200);
 
-    server.advanceRateLimits(kMainThreadStalledAfter);
+    server.advanceClock(kMainThreadStalledAfter);
     const auto stalled = poll(server, healthy.tag);
     REQUIRE(stalled.status == 200);
     CHECK(stalled.tag != healthy.tag);
@@ -84,7 +84,7 @@ TEST_CASE("a stall moves GET /api/state's validator as it starts and again as it
           doctest::Approx(std::chrono::duration<double>(kMainThreadStalledAfter).count()));
 
     // A stall going on is one change, not one per poll: a client holding it revalidates for free.
-    server.advanceRateLimits(kMainThreadCheckInterval);
+    server.advanceClock(kMainThreadCheckInterval);
     CHECK(poll(server, stalled.tag).status == 304);
 
     mainThread.pump();

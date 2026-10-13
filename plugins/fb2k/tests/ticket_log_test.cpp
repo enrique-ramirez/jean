@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -172,11 +173,11 @@ TEST_CASE("a ticket the store no longer honours is in no log line") {
     int opens = 0;
 
     SUBCASE("because it ran out before it was used") {
-        auto settings = servingSettings();
-        settings.streamTicketTtlSeconds = 0;
+        const auto settings = servingSettings();
         const TestServer server = serving(TestServer::streaming(countingOpens(&opens)), settings);
 
         const auto ticket = ticketFrom(server, sent);
+        server.advanceClock(std::chrono::seconds(settings.streamTicketTtlSeconds + 1));
 
         for (int attempt = 0; attempt < 2; ++attempt) {
             const auto response = listen(server, ticket);

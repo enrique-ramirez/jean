@@ -566,15 +566,15 @@ TEST_CASE("a device that stops listening holds the session through its linger, a
     source.hold(id);
     live.open(ticketFor(server, id, kPhone));
     settlesAt(session->audience(), 1);
-    server.advanceRateLimits(kPastTheGrace);
+    server.advanceClock(kPastTheGrace);
     REQUIRE(statusOf(read(server, id, kPhone)) == 200);
 
     source.letGo(id);
     settlesAt(session->audience(), 0);
-    server.advanceRateLimits(std::chrono::seconds(kMuteLingerSeconds - 1));
+    server.advanceClock(std::chrono::seconds(kMuteLingerSeconds - 1));
     CHECK(statusOf(read(server, id, kPhone)) == 200);
 
-    server.advanceRateLimits(std::chrono::seconds(2));
+    server.advanceClock(std::chrono::seconds(2));
     checkSameAnswer(read(server, id, kPhone), unknownSessionAnswer(server));
     CHECK(idsSeenBy(server, kPhone) == std::vector<std::string>{kEngineSessionId});
     CHECK(source.stops(id) == 1);
@@ -592,11 +592,11 @@ TEST_CASE("a reconnect inside the linger keeps a session its listener was the on
     source.hold(id);
     live.open(ticketFor(server, id, kPhone));
     settlesAt(session->audience(), 1);
-    server.advanceRateLimits(kPastTheGrace);
+    server.advanceClock(kPastTheGrace);
     source.letGo(id);
     settlesAt(session->audience(), 0);
 
-    server.advanceRateLimits(std::chrono::seconds(kMuteLingerSeconds - 1));
+    server.advanceClock(std::chrono::seconds(kMuteLingerSeconds - 1));
     const auto back = listen(server, ticketFor(server, id, kPhone));
 
     REQUIRE(back);
@@ -779,7 +779,7 @@ TEST_CASE("a leave by a device still connected keeps it on the roster and keeps 
     settlesAt(session->audience(), 0);
     CHECK(statusOf(read(server, id, kPhone)) == 200);
 
-    server.advanceRateLimits(kPastTheLinger);
+    server.advanceClock(kPastTheLinger);
     checkSameAnswer(read(server, id, kPhone), unknownSessionAnswer(server));
 }
 

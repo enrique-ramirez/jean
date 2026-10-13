@@ -57,7 +57,7 @@ TestServer::TestServer(OnOneClock /*oneClock*/, Settings settings, const Player&
     : settings_(std::move(settings)),
       audience_(std::make_unique<Audience>(settings_.maxConcurrentStreams,
                                            std::chrono::seconds(kMuteLingerSeconds),
-                                           [clock = rateLimitClock_] { return clock->now(); })) {
+                                           [clock = clock_] { return clock->now(); })) {
     listen(player, nullptr, mint, nullptr, nullptr);
 }
 
@@ -78,7 +78,7 @@ void TestServer::listen(const Player& player, Library* library, const TicketMint
         settings_.port = freePort();
         server_ = std::make_unique<HttpServer>(settings_, *audience_, player, mint, library,
                                                playerState, nowPlayingArtwork,
-                                               [clock = rateLimitClock_] { return clock->now(); });
+                                               [clock = clock_] { return clock->now(); });
         status_ = server_->start();
 
         if (status_.listening || !status_.portInUse)

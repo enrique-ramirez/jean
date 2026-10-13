@@ -685,7 +685,7 @@ TEST_CASE("the tag write budget earns writes back as time passes") {
     REQUIRE(refused);
     REQUIRE(refused->status == 429);
 
-    server.advanceRateLimits(std::chrono::seconds(1));
+    server.advanceClock(std::chrono::seconds(1));
 
     const auto earned = write(server, ratingWrite(kTrackAddress));
     REQUIRE(earned);

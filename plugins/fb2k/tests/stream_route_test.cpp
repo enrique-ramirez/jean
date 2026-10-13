@@ -10,6 +10,7 @@
 #include "support/tickets.h"
 #include "third_party/json.hpp"
 
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -52,6 +53,48 @@ TEST_CASE("the ticket lives as long as the file says, not as long as the default
     // A client schedules its reconnect off this, so a lifetime that never left config.json
     // is a client that reconnects at the wrong moment for the whole session.
     CHECK(json::parse(response->body)["expiresIn"] == 45);
+}
+
+TEST_CASE("a ticket opens the stream for the lifetime it was issued with, counted from its mint") {
+    constexpr std::chrono::seconds kLifetime{45};
+    constexpr std::chrono::steady_clock::duration kOneTick{1};
+
+    auto settings = servingSettings();
+    settings.streamTicketTtlSeconds = static_cast<int>(kLifetime.count());
+
+    int opens = 0;
+    const TestServer server(settings, TestServer::streaming(opensWith({"a"}, "audio/ogg", &opens)));
+    const auto ticket = ticketFrom(server);
+
+    const auto fresh = listen(server, ticket);
+    REQUIRE(fresh);
+    CHECK(fresh->status == 200);
+
+    server.advanceClock(kLifetime - kOneTick);
+    const auto onItsLastTick = listen(server, ticket);
+    REQUIRE(onItsLastTick);
+    CHECK(onItsLastTick->status == 200);
+    CHECK(opens == 2);
+
+    server.advanceClock(kOneTick);
+    const auto ranOut = listen(server, ticket);
+    REQUIRE(ranOut);
+    CHECK(ranOut->status == 401);
+    CHECK(errorOf(*ranOut) == "a valid stream ticket is required");
+    CHECK(opens == 2);
+
+    const auto mintedLater = ticketFrom(server);
+
+    server.advanceClock(kLifetime - kOneTick);
+    const auto laterOnItsLastTick = listen(server, mintedLater);
+    REQUIRE(laterOnItsLastTick);
+    CHECK(laterOnItsLastTick->status == 200);
+
+    server.advanceClock(kOneTick);
+    const auto laterRanOut = listen(server, mintedLater);
+    REQUIRE(laterRanOut);
+    CHECK(laterRanOut->status == 401);
+    CHECK(opens == 3);
 }
 
 TEST_CASE("a ticket streams the bytes the listener produces") {

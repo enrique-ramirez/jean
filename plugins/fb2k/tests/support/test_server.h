@@ -16,8 +16,6 @@
 
 namespace jean::testing {
 
-// Moves only when a test moves it, so no rate limit refills behind a test's back on a machine slow
-// enough to take a token's worth of time between two requests.
 class ManualClock {
 public:
     std::chrono::steady_clock::time_point now() const {
@@ -43,11 +41,9 @@ public:
                         PlayerStateStore* playerState = nullptr,
                         NowPlayingArtwork* nowPlayingArtwork = nullptr);
 
-    // A server whose audience, and so every session's, reads the clock advanceRateLimits moves.
-    // The server hands that clock to its routes, and each route passes the registry its `now`
-    // from it, so a case moves a listener's linger and a session's grace together.
-    // Every other server's audience reads the real clock, and the cases that read a linger with
-    // Audience::Clock::now() rely on that.
+    // Only here does the audience, and so every session's grace, read the clock advanceClock moves.
+    // Every other server's audience reads the real clock, which cases using
+    // Audience::Clock::now() rely on.
     static TestServer onOneClock(Settings settings, const Player& player,
                                  const TicketMint& mint = countingMint());
 
@@ -81,10 +77,7 @@ public:
     // one reads the audience the server is driving.
     Audience& audience() const { return *audience_; }
 
-    // Every rate limit this server keeps refills only when this is called.
-    void advanceRateLimits(std::chrono::steady_clock::duration by) const {
-        rateLimitClock_->advance(by);
-    }
+    void advanceClock(std::chrono::steady_clock::duration by) const { clock_->advance(by); }
 
     httplib::Client client() const;
 
@@ -100,7 +93,7 @@ private:
     Settings settings_;
 
     // Shared rather than held, so the server's reading of it survives this object being moved.
-    std::shared_ptr<ManualClock> rateLimitClock_ = std::make_shared<ManualClock>();
+    std::shared_ptr<ManualClock> clock_ = std::make_shared<ManualClock>();
 
     // Before the server, which unwinds connections into it as it stops.
     std::unique_ptr<Audience> audience_;

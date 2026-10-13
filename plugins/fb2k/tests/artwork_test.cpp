@@ -470,7 +470,7 @@ TEST_CASE(
     };
 
     loop();
-    server.advanceRateLimits(kLongEnoughToEarnACover);
+    server.advanceClock(kLongEnoughToEarnACover);
     loop();
 
     const auto refused = std::count(statuses.begin(), statuses.end(), 429);

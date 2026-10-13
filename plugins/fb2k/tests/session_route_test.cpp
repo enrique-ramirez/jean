@@ -2188,7 +2188,7 @@ TEST_CASE(
 
     for (const auto& move : engineMoves()) {
         CAPTURE(move.name);
-        server.advanceRateLimits(kAPollsWorth);
+        server.advanceClock(kAPollsWorth);
         const auto sessionTag = tagOf(poll(server, id, kPhone));
         const auto engineTag = tagOf(poll(server, "", ""));
 
@@ -2200,7 +2200,7 @@ TEST_CASE(
 
     for (const auto& move : playerMoves()) {
         CAPTURE(move.name);
-        server.advanceRateLimits(kAPollsWorth);
+        server.advanceClock(kAPollsWorth);
         const auto sessionTag = tagOf(poll(server, id, kPhone));
         const auto engineTag = tagOf(poll(server, "", ""));
 
@@ -2223,7 +2223,7 @@ TEST_CASE("every session's poll answers the player's outputSilent, true, false a
     const auto idle = createdId(server, kLaptop);
 
     const auto pollsSay = [&](const json& silent, const json& deviceId) {
-        server.advanceRateLimits(kAPollsWorth);
+        server.advanceClock(kAPollsWorth);
         for (const auto& asker : {std::pair<std::string, std::string>{playing, kPhone},
                                   {idle, kLaptop},
                                   {kEngineSessionId, kPhone},
@@ -2261,7 +2261,7 @@ TEST_CASE("a member's poll keeps a session past the creator's grace, answered 20
     shared(server, id, kPhone, false);
     const auto tag = tagOf(poll(server, id, kLaptop));
 
-    server.advanceRateLimits(std::chrono::minutes(14));
+    server.advanceClock(std::chrono::minutes(14));
 
     SUBCASE("answered 200") {
         const auto response = poll(server, id, kLaptop);
@@ -2272,7 +2272,7 @@ TEST_CASE("a member's poll keeps a session past the creator's grace, answered 20
         checkUnchanged(pollHolding(server, id, kLaptop, tag), tag);
     }
 
-    server.advanceRateLimits(std::chrono::minutes(2));
+    server.advanceClock(std::chrono::minutes(2));
 
     CHECK(statusOf(read(server, id, kLaptop)) == 200);
     CHECK(idsSeenBy(server, kLaptop) == std::vector<std::string>{kEngineSessionId, id});
@@ -2286,11 +2286,11 @@ TEST_CASE("a session nobody polls is gone once its creator's grace has run out")
     const TestServer server = serving(recorder.player());
     const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 1);
 
-    server.advanceRateLimits(std::chrono::minutes(14));
+    server.advanceClock(std::chrono::minutes(14));
     checkDone(post(server, scoped(kNext, id, kPhone), ""));
     CHECK(statusOf(read(server, id, kPhone)) == 200);
 
-    server.advanceRateLimits(std::chrono::minutes(2));
+    server.advanceClock(std::chrono::minutes(2));
 
     const auto unknown = unknownSessionAnswer(server);
     checkSameAnswer(read(server, id, kPhone), unknown);
@@ -2305,10 +2305,10 @@ TEST_CASE("a poll naming no device holds nothing, even of a shared session it ma
     const auto id = createdId(server, kPhone);
     shared(server, id, kPhone, true);
 
-    server.advanceRateLimits(std::chrono::minutes(14));
+    server.advanceClock(std::chrono::minutes(14));
     CHECK(playerPolled(server, id, "")["playback"] == "stopped");
 
-    server.advanceRateLimits(std::chrono::minutes(2));
+    server.advanceClock(std::chrono::minutes(2));
 
     checkSameAnswer(poll(server, id, ""), unknownSessionAnswer(server));
     CHECK(idsSeenBy(server, "") == engineOnly());
@@ -3885,10 +3885,10 @@ TEST_CASE("a session reaped once its grace runs out gives its place under the ca
     const TestServer server = cappedAt(recorder.player(), 1);
     createdId(server, kPhone);
 
-    server.advanceRateLimits(std::chrono::minutes(14));
+    server.advanceClock(std::chrono::minutes(14));
     CHECK(statusOf(create(server, json{{"deviceId", kLaptop}})) == 503);
 
-    server.advanceRateLimits(std::chrono::minutes(2));
+    server.advanceClock(std::chrono::minutes(2));
     const auto laptops = create(server, json{{"deviceId", kLaptop}});
     REQUIRE(laptops);
     CHECK(laptops->status == 200);

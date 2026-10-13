@@ -59,6 +59,9 @@ export function followPlaylists(
 	playlistsFollower(client).announce(origin, revision);
 }
 
+export const playlistsSettled = (client: QueryClient) =>
+	playlistsFollower(client).settled();
+
 function usePlaylistsCaughtUp(): boolean {
 	const { data: seen } = useCacheOnly<number>(PLAYLISTS_SEEN_REVISION_KEY);
 	const { data: fetchedAt } = useCacheOnly<number>(PLAYLISTS_REVISION_KEY);

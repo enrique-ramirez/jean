@@ -156,6 +156,30 @@ test.describe("creating one from a genre", () => {
 		await expect.poll(() => player.playlists.at(-1)?.title).toBe("Post Rock");
 	});
 
+	// The tick is a timer of the page's own, so a stopped clock is a page the next poll never
+	// reaches: whatever is drawn after the create came from a read the create asked for itself.
+	test("it is open and in the sidebar once made, with no poll tick to wait for", async ({
+		page,
+	}) => {
+		await page.clock.install();
+		await page.goto("/#/genre/Post%20Rock");
+		await createButton(page).click();
+		await expect(page.getByLabel("Playlist name")).toHaveValue("Post Rock");
+		await expect(page.getByText(/The player matches 13 tracks/)).toBeVisible();
+		await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 250);
+
+		await page.getByRole("button", { name: "Create", exact: true }).click();
+
+		await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+			"Post Rock",
+		);
+		await expect(
+			viewHeader(page).getByRole("button", { name: "Edit autoplaylist" }),
+		).toBeVisible();
+		await openSidebar(page);
+		await expect(row(page, "Post Rock")).toBeVisible();
+	});
+
 	test.describe("when the player refuses to make it", () => {
 		test.use({ fooJean: { maxAutoPlaylists: 100, failCreate: 409 } });
 

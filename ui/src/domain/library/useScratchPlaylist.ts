@@ -99,7 +99,6 @@ export function useScratchPlaylist({
 			const filled = await source.fill(title, refs);
 			if (sequence !== mine) return null;
 
-			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 			const id =
 				filled?.id ??
 				queryClient

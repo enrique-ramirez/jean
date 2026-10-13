@@ -1,9 +1,9 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { type FormEvent, useId, useMemo, useState } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import { editedAutoPlaylist } from "@/domain/player/editableAutoPlaylist";
+import { useCatchUpPlaylists } from "@/domain/player/usePlaylistActions";
 import {
-	PLAYLISTS_KEY,
 	untitledPlaylistName,
 	usePlaylists,
 } from "@/domain/player/usePlaylists";
@@ -36,8 +36,8 @@ export function AutoPlaylistDialog({
 }) {
 	const t = useTranslate();
 	const format = useFormats();
-	const queryClient = useQueryClient();
 	const { data: playlists = [] } = usePlaylists();
+	const catchUpPlaylists = useCatchUpPlaylists();
 	const { origin, snapshot } = library;
 
 	const formId = useId();
@@ -83,7 +83,7 @@ export function AutoPlaylistDialog({
 				: orThrow(
 						await createAutoPlaylist(player, { title: named, query: wanted }),
 					);
-			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
+			await catchUpPlaylists();
 			return made;
 		},
 		onSuccess: (made) => {

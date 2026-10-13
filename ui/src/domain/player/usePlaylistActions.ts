@@ -1,3 +1,5 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import { orThrow } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
 import {
@@ -9,11 +11,13 @@ import {
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { moved } from "@/shared/lib/moved";
+import { pollPlayerNow } from "./playerPoll";
 import { useOptimisticWrite } from "./playerWrite";
 import {
 	PLAYLISTS_KEY,
 	PLAYLISTS_REVISION_KEY,
 	playlistInfoOf,
+	playlistsSettled,
 } from "./usePlaylists";
 
 // A generation is always a non-empty run of digits, so an empty string is a value the component
@@ -42,6 +46,17 @@ const usePlaylistPatch = <TInput, TResult = unknown>(
 				renumber(reconcile(previous, input, result))),
 		PLAYLISTS_REVISION_KEY,
 	);
+
+export function useCatchUpPlaylists() {
+	const queryClient = useQueryClient();
+	const { origin } = useFooJean().discovery;
+
+	return useCallback(async () => {
+		if (!origin) return;
+		await pollPlayerNow(queryClient, origin);
+		await playlistsSettled(queryClient);
+	}, [queryClient, origin]);
+}
 
 export function usePlaylistActions() {
 	const { discovery } = useFooJean();

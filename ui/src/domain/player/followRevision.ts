@@ -9,6 +9,7 @@ export interface FollowRevisionOptions<T> {
 
 export interface FollowRevision {
 	announce(origin: string, revision: number): void;
+	settled(): Promise<void>;
 	forget(): void;
 }
 
@@ -24,6 +25,7 @@ export function followRevision<T>({
 	let reading = false;
 	let failing = false;
 	let generation = 0;
+	let lastRead: Promise<void> = Promise.resolve();
 
 	async function readOnce(): Promise<void> {
 		const target = desired;
@@ -49,7 +51,7 @@ export function followRevision<T>({
 		failing = false;
 		held = target;
 		apply(answer.value, target);
-		if (desired !== held) void readOnce();
+		if (desired !== held) await readOnce();
 	}
 
 	return {
@@ -58,8 +60,9 @@ export function followRevision<T>({
 			origin = nextOrigin;
 			desired = revision;
 			if (held === revision || reading) return;
-			void readOnce();
+			lastRead = readOnce();
 		},
+		settled: () => lastRead,
 		forget() {
 			generation += 1;
 			reading = false;

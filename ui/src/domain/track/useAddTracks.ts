@@ -1,6 +1,4 @@
-import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { PLAYLISTS_KEY } from "@/domain/player/usePlaylists";
 import { refusedStatusOf } from "@/shared/api/client";
 import { runsOf } from "@/shared/api/fillEncoding";
 import { type Duplicates, removePlaylistRows } from "@/shared/api/playlists";
@@ -52,7 +50,6 @@ function announce(
 	landed: AddedRows[],
 	target: PlaylistInfo,
 	origin: string | null,
-	queryClient: QueryClient,
 ) {
 	const count = landed.reduce((sum, added) => sum + added.positions.length, 0);
 	if (count === 0) return;
@@ -66,9 +63,7 @@ function announce(
 				tone: "error",
 				message: translate(outcome, { playlist: target.title }),
 			});
-			return;
 		}
-		await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
 	};
 
 	pushToast({
@@ -100,7 +95,6 @@ const duplicateQuestion = (
 // A copy or a fill answers where the rows landed, so nothing here reads the target's item count
 // before or after: a locked playlist is refused outright with `409`.
 export function useAddTracks() {
-	const queryClient = useQueryClient();
 	const { discovery, recheck } = useFooJean();
 	const { origin } = discovery;
 
@@ -141,8 +135,8 @@ export function useAddTracks() {
 				(await askToConfirm(duplicateQuestion(skipped, target, titleOf)));
 			const again = addsAgain ? await add(skipped, "add") : null;
 
-			announce(again ? [fresh, again] : [fresh], target, origin, queryClient);
+			announce(again ? [fresh, again] : [fresh], target, origin);
 		},
-		[queryClient, origin, recheck],
+		[origin, recheck],
 	);
 }

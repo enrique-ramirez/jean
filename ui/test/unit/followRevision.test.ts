@@ -33,7 +33,7 @@ const follower = (
 	}[] = [];
 	const applied: [string, number][] = [];
 
-	const { announce, forget } = followRevision<string>({
+	const { announce, forget, settled } = followRevision<string>({
 		resource,
 		read: (origin) =>
 			new Promise<Result<string>>((resolve) => {
@@ -59,6 +59,7 @@ const follower = (
 		reads,
 		applied,
 		forget,
+		settled,
 		complaints: () => complaints.mock.callCount(),
 		announce: async (revision: number) => {
 			announce(ORIGIN, revision);
@@ -238,4 +239,25 @@ test("a read from before forget is ignored when it lands, and does not let a sec
 		0,
 		"a read from before forget was reported as a failure",
 	);
+});
+
+test("settled waits for the read under way and the one a later revision asks for, and for nothing once caught up", async (t) => {
+	const playlists = follower(t);
+	let caughtUp = false;
+
+	await playlists.announce(3);
+	await playlists.announce(4);
+	void playlists.settled().then(() => {
+		caughtUp = true;
+	});
+
+	await playlists.latest().answer("read at 3");
+	assert.equal(caughtUp, false, "settled before the list held the revision");
+
+	await playlists.latest().answer("read at 4");
+	assert.equal(caughtUp, true);
+
+	await playlists.announce(4);
+	await playlists.settled();
+	assert.equal(playlists.reads.length, 2);
 });

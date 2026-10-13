@@ -1,11 +1,11 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { ListPlus } from "lucide-react";
 import type { FormEvent as ReactFormEvent } from "react";
 import { useEffect, useRef } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import type { useScratchPlaylist } from "@/domain/library/useScratchPlaylist";
-import { PLAYLISTS_KEY } from "@/domain/player/usePlaylists";
+import { useCatchUpPlaylists } from "@/domain/player/usePlaylistActions";
 import { orThrow } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
 import { encodeFill } from "@/shared/api/fillEncoding";
@@ -38,8 +38,8 @@ export function SavePlaylistButton({
 	onOpenPlaylist: (id: string) => void;
 }) {
 	const t = useTranslate();
-	const queryClient = useQueryClient();
 	const { discovery } = useFooJean();
+	const catchUpPlaylists = useCatchUpPlaylists();
 	const [title, setTitle] = useResettingState(search.query, [isOpen]);
 	const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -56,7 +56,7 @@ export function SavePlaylistButton({
 
 			if (holdsResults) {
 				const id = await scratch.adopt(name);
-				await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
+				await catchUpPlaylists();
 				return { id, title: name };
 			}
 
@@ -70,9 +70,7 @@ export function SavePlaylistButton({
 					}),
 				}),
 			);
-			// Refetched rather than invalidated: the route that follows resolves against this list, and an id it has not
-			// seen yet lands on the old view.
-			await queryClient.refetchQueries({ queryKey: PLAYLISTS_KEY });
+			await catchUpPlaylists();
 			return playlist;
 		},
 		onSuccess: (playlist) => {

@@ -4,6 +4,7 @@ import {
 	expect,
 	expectPlayingFrom,
 	expectSettlesAt,
+	holdRequests,
 	holdThePoll,
 	nowPlayingScreen,
 	openLibrary,
@@ -75,6 +76,9 @@ const scratchEmpties = (player: FakePlayer) =>
 
 const saveAsPlaylist = (page: Page) =>
 	viewHeader(page).getByRole("button", { name: /Save as playlist/ });
+
+const stopTheTick = async (page: Page) =>
+	page.clock.pauseAt((await page.evaluate(() => Date.now())) + 250);
 
 const saveAs = async (page: Page, name: string) => {
 	await page.getByRole("button", { name: "Save as playlist" }).click();
@@ -471,6 +475,41 @@ test.describe("clearing the search", () => {
 		await expectSettlesAt(player, () => scratchOf(player)?.id, scratchId);
 		expect(scratchOf(player)!.items).toHaveLength(0);
 	});
+
+	// The tick names a playlist before the list that resolves it has landed, and
+	// until it has nothing can say the playing playlist is not the scratch.
+	test("leaves the scratch's rows alone while the list has yet to say which playlist is playing", async ({
+		page,
+		player,
+	}) => {
+		await searchAndPlay(page, player);
+		await expect(statusBar(page)).toContainText("Los Calientes");
+
+		const lists = await holdRequests(
+			page,
+			(request) =>
+				request.method() === "GET" &&
+				new URL(request.url()).pathname === "/api/playlists",
+		);
+		const elsewhere = player.addPlaylist("Made at the player");
+		const track = player.libraryTracks[10];
+		player.playlistById(elsewhere.id)!.items.push(track);
+		player.playItem(elsewhere.id, 0);
+		await lists.untilHeld();
+		await expect(statusBar(page)).toContainText(String(track["%title%"]));
+
+		await page.getByRole("button", { name: "Clear search" }).click();
+
+		await revealSearch(page);
+		await expect(page.getByLabel("Search your library")).toHaveValue("");
+		await expectSettlesAt(
+			player,
+			() => scratchOf(player)?.items.length,
+			QUERY.matches,
+		);
+		expect(scratchEmpties(player)).toHaveLength(0);
+		lists.releaseAll();
+	});
 });
 
 // The component finds its own playlist by a marker it writes rather than by a
@@ -672,6 +711,28 @@ test.describe("saving results as a playlist", () => {
 		const keepers = player.playlists.find((entry) => entry.title === "Keepers");
 		expect(keepers?.items).toHaveLength(QUERY.matches);
 	});
+
+	// The tick is a timer of the page's own, so a stopped clock is a page the next poll never
+	// reaches: whatever is drawn after the save came from a read the save asked for itself.
+	for (const [which, arrive] of [
+		["the scratch is holding the results", searchAndPlay],
+		["nothing has been played yet", (page: Page) => search(page, QUERY.text)],
+	] as const)
+		test(`the saved playlist is open and in the sidebar with no poll tick to wait for, where ${which}`, async ({
+			page,
+			player,
+		}) => {
+			await page.clock.install();
+			await arrive(page, player);
+			await stopTheTick(page);
+
+			await saveAs(page, "Keepers");
+
+			await openSidebar(page);
+			await expect(
+				sidebar(page).getByText("Keepers", { exact: true }),
+			).toBeVisible();
+		});
 
 	// A ref is only an index into its own source, so copying out of the `Library`
 	// autoplaylist by index addresses that library's path-ordered array instead --

@@ -46,8 +46,6 @@ foobar2000 must not be running, and `-StopPlayer` has the script ask it to exit 
 
 A hand installation has to reproduce what the script does, and `scripts/install.ps1`'s own header says what that is. One thing it does not: the profile is not always in `%APPDATA%`. A portable install keeps it beside the executable and announces itself with a `portable_mode_enabled` file, which the script tests for rather than assuming.
 
-The script never runs `foobar2000.exe` directly: over SSH that starts a second instance in session 0, which then holds the single-instance IPC.
-
 `scripts/deploy.local.sh` does the whole round trip from an editing machine: run the tests, sync, build, package, install. It is gitignored, because the route to a player is personal to whoever has one. It reads `FOO_JEAN_SSH`, `FOO_JEAN_REMOTE` and `FOOBAR2000_DIR`.
 
 ## Configuring
@@ -140,7 +138,7 @@ scripts/compile-commands.sh               # what an editor's clangd reads
 
 On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\test.ps1`. `scripts\lint.ps1` is clang-tidy over `src/fb2k/` against MSVC's headers, with the vcxproj's own defines and include paths, and the only lint of the files `fb2k_unparsed_sources` lists in `scripts/lib/compile-flags.sh`; `scripts\build.ps1` runs it after every build of the component, so a finding fails the build. It wants LLVM 23: `winget install LLVM.LLVM` on a machine, `.github/actions/windows-llvm` on a runner. The `.ps1` and `.sh` fetchers are the same fetch for different shells; run whichever belongs to the machine the tests will run on.
 
-`plugins/fb2k/CONTRIBUTING.md`, *Tests*, rule 11, is what a machine that runs the suite needs beyond this directory.
+`plugins/fb2k/CONTRIBUTING.md`, *Tests*, rule 10, is what a machine that runs the suite needs beyond this directory.
 
 `scripts/test.sh`'s own header has the rest of its arguments and what each one costs.
 

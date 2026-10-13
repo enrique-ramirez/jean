@@ -82,6 +82,9 @@ bool isPrintable(const std::string& text) {
                         [](unsigned char c) { return c < 0x20 || c == 0x7f; });
 }
 
+// The C++ standard defines std::inner_product as a visit to every element, where std::equal and
+// std::mismatch are specified as at most that many applications and may stop at the first
+// difference.
 bool secureEquals(const std::string& a, const std::string& b) {
     const auto shared = static_cast<std::ptrdiff_t>(std::min(a.size(), b.size()));
     const auto seed = static_cast<unsigned>(a.size() ^ b.size());

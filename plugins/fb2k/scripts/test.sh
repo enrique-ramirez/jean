@@ -17,6 +17,9 @@
 # own directories under bin/: linking instrumented tests against the cached plain libcodec.a would
 # leave the codec uninstrumented and say nothing about it.
 #
+# leaks scans conservatively rather than proving anything, so a clean run promises less than a clean
+# LeakSanitizer run would.
+#
 # doctest's source-file filter is -sf and needs the glob. -ts is test *suite*, matches nothing here and exits 0.
 set -euo pipefail
 

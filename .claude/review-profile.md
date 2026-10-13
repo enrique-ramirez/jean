@@ -137,4 +137,4 @@ Two runs at once share `plugins/fb2k/bin/`, so two agents never run the suite at
 
 The files `fb2k_unparsed_sources` lists in `compile-flags.sh`, and everything MSVC-specific (its warnings, its headers, `scripts\lint.ps1`), are known only to a Windows build.
 
-The AAC encoder is Windows-only and unreachable from the suite. A `setsockopt` failure cannot be induced from a test.
+`plugins/fb2k/CONTRIBUTING.md`, *What a green suite does not cover*, lists what the suite cannot reach and how each is verified instead.

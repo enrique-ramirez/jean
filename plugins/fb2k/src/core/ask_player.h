@@ -113,6 +113,8 @@ template <typename T>
 T askForOutcome(MainThreadQueue& mainThread, const std::string& what, std::function<T()> job) {
     return askPlayer<T>(
         mainThread, what,
+        // clang's analyzer loses track of the closure libc++'s std::function allocates.
+        // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
         [job = std::move(job)](const AnswerPtr<T>& answer) { answer->set(job()); },
         failureOf<T>(PlayerOutcome::timedOut), failureOf<T>(PlayerOutcome::playerRefused));
 }

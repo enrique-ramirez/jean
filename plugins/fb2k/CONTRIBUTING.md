@@ -12,6 +12,7 @@ The rationale, the enforcement and what the seam buys are in `plugins/fb2k/ARCHI
 4. `src/fb2k/` is parsed and linted on a Mac with the SDK fetched, and linked and run only on the build machine. A change there is *reviewed*, not *tested*, until `scripts/build.ps1` has run. State which of the two you did.
 5. Headers live beside their sources. This is a DLL with no exported headers; do not restructure towards `include/` + `src/`.
 6. The two directories deliberately share filenames, since each pair is one feature split at the boundary. `src/foo_jean.vcxproj` keeps their object files apart and says how beside the setting that does it. Keep it.
+7. **A platform file holds the call into the operating system or the player, and nothing a second platform would have to write again.** A platform file is one that holds a platform conditional, includes an operating system header or is named for one platform. Whatever both platforms need goes in `src/core/`, with a test. `tests/platform_seams_test.cpp` lists every platform file and fails on one missing from the list and on an entry whose file no longer earns it, so adding a platform file adds a line a reviewer reads. The test does not judge what a listed file holds; the reviewer does, against the first sentence.
 
 ## 2. Comments and documentation
 

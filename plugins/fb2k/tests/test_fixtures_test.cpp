@@ -9,7 +9,8 @@
 
 #include "third_party/doctest.h"
 
-#include <algorithm>
+#include "support/repository.h"
+
 #include <fstream>
 #include <map>
 #include <regex>
@@ -17,15 +18,8 @@
 
 namespace {
 
-constexpr char kSelf[] = "plugins/fb2k/tests/test_fixtures_test.cpp";
-
 std::string scriptPath() {
-    std::string self = __FILE__;
-    std::replace(self.begin(), self.end(), '\\', '/');
-    const auto tail = self.rfind(kSelf);
-
-    REQUIRE_MESSAGE(tail != std::string::npos, "cannot locate the repository from ", self);
-    return self.substr(0, tail) + "plugins/fb2k/scripts/test-fixtures.ps1";
+    return jean::testing::repositoryRoot() + "plugins/fb2k/scripts/test-fixtures.ps1";
 }
 
 std::map<std::string, std::string> sourcesCopied() {

@@ -10,6 +10,7 @@
 #include "core/outputs.h"
 #include "support/fixtures.h"
 #include "support/keys.h"
+#include "support/repository.h"
 #include "support/spec.h"
 #include "support/test_server.h"
 #include "support/wire.h"
@@ -1006,11 +1007,7 @@ TEST_CASE("no stream route answers a status contract/openapi.yaml does not docum
 namespace {
 
 std::string coreDirectory() {
-    std::string self = __FILE__;
-    std::replace(self.begin(), self.end(), '\\', '/');
-    const std::string tail = "tests/api_contract_test.cpp";
-    REQUIRE(self.size() > tail.size());
-    return self.substr(0, self.size() - tail.size()) + "src/core/";
+    return repositoryRoot() + "plugins/fb2k/src/core/";
 }
 
 std::string withHoles(std::string path) {

@@ -14,34 +14,6 @@ using nlohmann::json;
 
 namespace {
 
-class FiniteStream : public StreamListener {
-public:
-    explicit FiniteStream(std::vector<std::string> chunks) : chunks_(std::move(chunks)) {}
-
-    bool next(std::vector<std::uint8_t>& out) override {
-        if (sent_ >= chunks_.size())
-            return false;
-
-        const auto& chunk = chunks_[sent_++];
-        out.assign(chunk.begin(), chunk.end());
-        return true;
-    }
-
-private:
-    std::vector<std::string> chunks_;
-    size_t sent_ = 0;
-};
-
-StreamOpener opensWith(std::vector<std::string> chunks, std::string contentType = "audio/ogg",
-                       int* opens = nullptr) {
-    return [chunks = std::move(chunks), contentType = std::move(contentType),
-            opens](const std::string&) -> OpenedStream {
-        if (opens != nullptr)
-            ++*opens;
-        return {contentType, std::make_unique<FiniteStream>(chunks)};
-    };
-}
-
 httplib::Result listen(const TestServer& server, const std::string& ticket) {
     return server.client().Get("/api/stream?ticket=" + ticket);
 }

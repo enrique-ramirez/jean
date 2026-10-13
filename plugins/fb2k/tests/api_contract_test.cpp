@@ -35,26 +35,8 @@ namespace {
 
 constexpr char kUpdateSpec[] = "shape changed -- update contract/openapi.yaml to match";
 
-// One byte, once, so a stream ends by itself rather than holding a thread.
-class OneChunk : public StreamListener {
-public:
-    bool next(std::vector<std::uint8_t>& out) override {
-        if (sent_)
-            return false;
-
-        sent_ = true;
-        out = {'o'};
-        return true;
-    }
-
-private:
-    bool sent_ = false;
-};
-
 Player wiredUp() {
-    auto player = TestServer::streaming([](const std::string&) -> OpenedStream {
-        return {"audio/ogg", std::make_unique<OneChunk>()};
-    });
+    auto player = TestServer::streaming(opensWith({"o"}));
 
     player.stream.readTimeline = [] { return streamTimelineDocument(0, {}); };
     player.stream.outputHeld = [] { return true; };

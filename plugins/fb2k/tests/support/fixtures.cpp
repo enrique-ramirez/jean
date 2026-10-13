@@ -1,15 +1,35 @@
 #include "support/fixtures.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace jean::testing {
 
 namespace {
 
 constexpr char kBuiltFolder[] = "Artist/Album/";
+
+class FiniteStream : public StreamListener {
+public:
+    explicit FiniteStream(std::vector<std::string> chunks) : chunks_(std::move(chunks)) {}
+
+    bool next(std::vector<std::uint8_t>& out) override {
+        if (sent_ >= chunks_.size())
+            return false;
+
+        const auto& chunk = chunks_[sent_++];
+        out.assign(chunk.begin(), chunk.end());
+        return true;
+    }
+
+private:
+    std::vector<std::string> chunks_;
+    size_t sent_ = 0;
+};
 
 }  // namespace
 
@@ -78,6 +98,15 @@ ListenerStatus listeningStatus() {
 TicketMint countingMint() {
     const auto issued = std::make_shared<int>(0);
     return [issued] { return "ticket-" + std::to_string(++*issued); };
+}
+
+StreamOpener opensWith(std::vector<std::string> chunks, std::string contentType, int* opens) {
+    return [chunks = std::move(chunks), contentType = std::move(contentType),
+            opens](const std::string&) -> OpenedStream {
+        if (opens != nullptr)
+            ++*opens;
+        return {contentType, std::make_unique<FiniteStream>(chunks)};
+    };
 }
 
 SessionRandom countingUp() {

@@ -6,6 +6,7 @@
 #include "core/library.h"
 #include "core/session.h"
 #include "core/settings.h"
+#include "core/stream.h"
 #include "core/stream_ticket.h"
 
 #include "third_party/doctest.h"
@@ -90,5 +91,8 @@ ListenerStatus listeningStatus();
 TicketMint countingMint();
 
 SessionRandom countingUp();
+
+StreamOpener opensWith(std::vector<std::string> chunks, std::string contentType = "audio/ogg",
+                       int* opens = nullptr);
 
 }  // namespace jean::testing

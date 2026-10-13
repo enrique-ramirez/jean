@@ -2876,7 +2876,9 @@ paths:
       description: |
         An `<audio>` element cannot send a header at all, so the credential for `GET /stream` travels in the query string. That makes it a capability URL, and a short lifetime is what bounds it: a ticket expires in `expiresIn` seconds and grants nothing but the audio already being played.
 
-        A ticket is not single-use. Safari's media element probes a source with a `Range: bytes=0-1` request before fetching it for real, so one playback start is two requests and a single-use ticket cannot serve Safari at all. A ticket is good until it expires; `maxConcurrentStreams` bounds how many streams may be open at once.
+        A ticket is not single-use. Safari's media element probes a source with a `Range: bytes=0-1` request before fetching it for real, so one playback start is two requests and a single-use ticket cannot serve Safari at all. A ticket is good until it expires or newer tickets push it out; `maxConcurrentStreams` bounds how many streams may be open at once.
+
+        The component keeps a small bounded number of tickets outstanding, and minting one more than that pushes one out before its time. A device that mints more than it uses loses its own oldest first, and another device's only when it holds none of its own. The device is the body's `deviceId`; a request naming none counts with the other anonymous ones. A ticket pushed out answers `401` like one that expired, and a client that mints immediately before opening, as the next paragraph asks, is unlikely to meet it.
 
         A client SHOULD call this immediately before opening the stream rather than at page load, and MUST request a fresh ticket when reconnecting. Clients MUST NOT store a ticket or log it.
 
@@ -2894,7 +2896,7 @@ paths:
             schema: { $ref: "#/components/schemas/DeviceIdentity" }
       responses:
         "200":
-          description: A ticket, good until it expires.
+          description: A ticket, good until it expires or is pushed out by newer ones.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/StreamTicket" }
@@ -3073,7 +3075,7 @@ paths:
         - name: ticket
           in: query
           required: true
-          description: From `POST /stream/ticket`. Valid until it expires, not consumed by this request.
+          description: From `POST /stream/ticket`. Valid until it expires or is pushed out by newer ones, not consumed by this request.
           schema: { type: string }
         - name: format
           in: query
@@ -3102,7 +3104,7 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: |
-            No ticket, an unknown ticket, or an expired one. All three answer identically, so a caller cannot sort guesses into wrong and too late.
+            No ticket, an unknown ticket, an expired one, or one pushed out by newer ones. All four answer identically, so a caller cannot sort guesses into wrong and too late.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -4295,7 +4297,9 @@ components:
           description: |
             Opaque, and stable for as long as the device keeps its storage. It is what groups a device's connections into one listener, so a reconnect and Safari's `Range` probe do not read as three people.
 
-            Untrusted: it labels a row in somebody else's picker and nothing branches on it, and anything admitted onto this origin could send another device's. A client SHOULD generate one at random and keep it, and MUST NOT derive it from anything about the person using it.
+            Untrusted: it labels a row in somebody else's picker and decides whose ticket a full store pushes out first, and anything admitted onto this origin could send another device's. A client SHOULD generate one at random and keep it, and MUST NOT derive it from anything about the person using it.
+
+            Absent, empty, unprintable or overlong all become no id at all, and the request is served: a device with no id counts with the other anonymous ones.
           examples: ["3f8a1c0e-2b7d-4a91-9c33-51e0a2f6d4b8"]
         name:
           type: string

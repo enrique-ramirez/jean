@@ -330,8 +330,12 @@ SortedRows sortRowsOnMainThread(const std::string& playlistId, uint64_t structur
             return failureOf<SortedRows>(PlayerOutcome::playerRefused);
     }
 
-    return SortedRows{PlayerOutcome::done, versions.of(playlistId).structure,
-                      std::vector<uint32_t>(order.begin(), order.end())};
+    std::vector<uint32_t> narrowed;
+    narrowed.reserve(order.size());
+    for (const t_size from : order)
+        narrowed.push_back(static_cast<uint32_t>(from));
+
+    return SortedRows{PlayerOutcome::done, versions.of(playlistId).structure, std::move(narrowed)};
 }
 
 // No role check: a fill is how this component's own scratch playlist gets its rows.

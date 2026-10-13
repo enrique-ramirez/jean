@@ -499,6 +499,34 @@ test.describe("single-key shortcuts", () => {
 				sheet(page).getByText("Go to a playlist or a shelf"),
 			).toHaveCount(0);
 		});
+
+		test("the sheet's subtitle names the search chord alone, and the finder's key once it works again", async ({
+			page,
+		}) => {
+			const subtitle = (page: Page) => sheet(page).locator("p");
+
+			await openLibrary(page);
+			await sheetButton(page).click();
+			await expect(subtitle(page)).toContainText("searches everything.");
+			await expect(subtitle(page)).not.toContainText("filters the list");
+			await expect(subtitle(page).locator("kbd").last()).toHaveText("K");
+			await expect(
+				subtitle(page).locator("kbd").filter({ hasText: "/" }),
+			).toHaveCount(0);
+			await page.keyboard.press("Escape");
+			await expect(sheet(page)).toBeHidden();
+
+			await openSettings(page);
+			await singleKeys(page).click();
+			await expect(singleKeys(page)).toBeChecked();
+			await page.keyboard.press("Escape");
+			await expect(settingsDialog(page)).toBeHidden();
+
+			await sheetButton(page).click();
+			await expect(subtitle(page)).toContainText("filters the list");
+			await expect(subtitle(page).locator("kbd").first()).toHaveText("/");
+			await expect(subtitle(page).locator("kbd").last()).toHaveText("K");
+		});
 	});
 });
 

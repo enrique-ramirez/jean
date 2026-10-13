@@ -9,6 +9,7 @@ import {
 	bindingsIn,
 	chordFor,
 	chordsOf,
+	hintFor,
 	isAvailable,
 	KEYMAP_GROUPS,
 } from "./keymap";
@@ -35,6 +36,7 @@ export function ShortcutSheet({ onDismiss }: { onDismiss: () => void }) {
 
 	const listed = (group: (typeof KEYMAP_GROUPS)[number]) =>
 		bindingsIn(group).filter((binding) => isAvailable(binding, singleKeys));
+	const search = <Chord caps={chordFor("globalSearch")} />;
 
 	return (
 		// biome-ignore lint/a11y/noStaticElementInteractions: a dismissal scrim, not a control; Escape is the keyboard route out
@@ -55,11 +57,15 @@ export function ShortcutSheet({ onDismiss }: { onDismiss: () => void }) {
 			>
 				<h2 className={styles.title}>{t("shortcuts.title")}</h2>
 				<p className={styles.subtitle}>
-					<Trans
-						phrase="shortcuts.subtitle"
-						find={<Chord caps={chordFor("openFinder")} />}
-						search={<Chord caps={chordFor("globalSearch")} />}
-					/>
+					{hintFor("openFinder", singleKeys) === null ? (
+						<Trans phrase="shortcuts.subtitleSearchOnly" search={search} />
+					) : (
+						<Trans
+							phrase="shortcuts.subtitle"
+							find={<Chord caps={chordFor("openFinder")} />}
+							search={search}
+						/>
+					)}
 				</p>
 
 				{KEYMAP_GROUPS.filter((group) => listed(group).length > 0).map(

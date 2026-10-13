@@ -857,6 +857,7 @@ export const en = {
 	"shortcutGroup.sidebar": "In the sidebar",
 	"shortcuts.subtitle":
 		"{find} filters the list you are looking at. {search} searches everything.",
+	"shortcuts.subtitleSearchOnly": "{search} searches everything.",
 	"shortcuts.title": "Keyboard shortcuts",
 	"sidebar.closeMenu": "Close menu",
 	"sidebar.hide": "Hide playlists",

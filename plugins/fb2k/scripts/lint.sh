@@ -3,12 +3,13 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Runs clang-tidy over src/core/ and tests/, to the checks in .clang-tidy.
+Runs clang-tidy over src/core/, tests/ and, on a Mac with the SDK fetched, src/fb2k/, to the checks in .clang-tidy.
 
   scripts/lint.sh                     everything
   scripts/lint.sh src/core/text.cpp   one file
 
-src/fb2k/ is not covered: it needs the foobar2000 SDK and a compilation database MSBuild does not produce.
+src/fb2k/ is linted where scripts/fetch-sdk.sh has fetched the foobar2000 SDK and the host is a
+Mac, less the files scripts/lib/compile-flags.sh names. It is linked and run only on the build machine.
 USAGE
 }
 
@@ -30,16 +31,46 @@ vendor_include=-isystem
 # shellcheck source=lib/compile-flags.sh
 . "$root/scripts/lib/compile-flags.sh"
 
+core_files=()
+fb2k_files=()
 if [ "$#" -gt 0 ]; then
-  files=("$@")
+  for file in "$@"; do
+    directory="$(cd "$(dirname "$file")" 2>/dev/null && pwd || true)"
+    if [ "$directory" != "$root/src/fb2k" ]; then
+      core_files+=("$file")
+    elif [ -n "$fb2k_skipped" ]; then
+      echo "$fb2k_skipped" >&2
+    else
+      if is_fb2k_unparsed "$file"; then
+        echo "$file was skipped: it is in fb2k_unparsed_sources in scripts/lib/compile-flags.sh." >&2
+      else
+        fb2k_files+=("$file")
+      fi
+    fi
+  done
 else
-  files=()
   while IFS= read -r file; do
-    files+=("$file")
+    core_files+=("$file")
   done < <(find "$root/src/core" "$root/tests" -name '*.cpp' | sort)
+  fb2k_files=(${fb2k_sources[@]+"${fb2k_sources[@]}"})
+  if [ -n "$fb2k_skipped" ]; then
+    echo "$fb2k_skipped" >&2
+  fi
+fi
+
+if [ "$((${#core_files[@]} + ${#fb2k_files[@]}))" = 0 ]; then
+  echo "Nothing to lint." >&2
+  exit 1
 fi
 
 # Without --warnings-as-errors clang-tidy prints its findings and exits 0.
-echo "Linting ${#files[@]} file(s). This is slow: doctest is a large header."
-"$tidy" --quiet --warnings-as-errors='*' "${files[@]}" -- "${compile_flags[@]}"
+echo "Linting $((${#core_files[@]} + ${#fb2k_files[@]})) file(s). This is slow: doctest is a large header."
+findings=0
+if [ "${#core_files[@]}" -gt 0 ]; then
+  "$tidy" --quiet --warnings-as-errors='*' "${core_files[@]}" -- "${compile_flags[@]}" || findings=1
+fi
+if [ "${#fb2k_files[@]}" -gt 0 ]; then
+  "$tidy" --quiet --warnings-as-errors='*' "${fb2k_files[@]}" -- "${fb2k_compile_flags[@]}" || findings=1
+fi
+[ "$findings" = 0 ] || exit 1
 echo "clang-tidy is clean."

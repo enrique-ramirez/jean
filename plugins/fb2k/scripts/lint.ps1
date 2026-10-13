@@ -1,6 +1,8 @@
 # Runs clang-tidy over src/fb2k/, to the checks in .clang-tidy and src/fb2k/.clang-tidy, with the
-# defines and include paths src/foo_jean.vcxproj compiles it with. Only here, because it needs the
-# foobar2000 SDK and the Windows SDK; scripts/lint.sh covers src/core/ and tests/ anywhere.
+# defines and include paths src/foo_jean.vcxproj compiles it with. It is the lint against MSVC's
+# headers, and the only one that reaches the files in fb2k_unparsed_sources
+# (scripts/lib/compile-flags.sh). scripts/lint.sh covers src/core/ and tests/ anywhere, and
+# src/fb2k/ on a Mac.
 #
 #   scripts\lint.ps1                        everything
 #   scripts\lint.ps1 src\fb2k\library.cpp   one file

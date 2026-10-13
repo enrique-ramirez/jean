@@ -99,7 +99,7 @@ build_codec_archive_if_missing() {
                 "$ogg"/src/*.c | grep -vE '(_demo|opus_compare)\.c$')
 
   # shellcheck disable=SC2086
-  (cd "$codec" && $CC -c -O2 -w -DOPUS_BUILD -DUSE_ALLOCA -DHAVE_LRINTF $instrument \
+  (cd "$codec" && $CC -c -O2 -w "${codec_defines[@]}" ${platform_flags[@]+"${platform_flags[@]}"} $instrument \
     -I"$opus" -I"$opus/include" -I"$opus/celt" -I"$opus/silk" -I"$opus/silk/float" \
     -I"$ogg/include" $sources)
 
@@ -115,7 +115,7 @@ build_zlib_archive_if_missing() {
   mkdir -p "$deflate"
 
   # shellcheck disable=SC2086
-  (cd "$deflate" && $CC -c -O2 -w $instrument "$zlib"/*.c)
+  (cd "$deflate" && $CC -c -O2 -w ${platform_flags[@]+"${platform_flags[@]}"} $instrument "$zlib"/*.c)
 
   ar rcs "$deflate/libz.a" "$deflate"/*.o
 }
@@ -138,7 +138,7 @@ build_tests() {
   fi
 
   make -s -j "$(getconf _NPROCESSORS_ONLN)" -f "$root/scripts/lib/tests.mk" \
-    ROOT="$root" OUT="$out" CXX="$CXX" CXXFLAGS="$cxxflags" LDFLAGS="-g $instrument" \
+    ROOT="$root" OUT="$out" CXX="$CXX" CXXFLAGS="$cxxflags" LDFLAGS="-g $instrument ${platform_flags[*]-}" \
     CORE_CXXFLAGS="$core_cxxflags" \
     SOURCES="$(echo "$root"/tests/*.cpp "$root"/tests/support/*.cpp "$root"/src/core/*.cpp)" \
     LIBS="$codec/libcodec.a $deflate/libz.a" FLAGS="$flags"

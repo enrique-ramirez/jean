@@ -9,7 +9,7 @@ The rationale, the enforcement and what the seam buys are in `plugins/fb2k/ARCHI
 1. **`src/core/` MUST NOT include a foobar2000 or Windows header.**
 2. Anything `core/` needs from the player MUST arrive as a callback or a plain value handed in by `fb2k/`. The one exception is `core/log.h`, which declares `logInfo`/`logError` and lets each host supply them: `fb2k/log.cpp` in the component, `tests/support/log_capture.cpp` in the suite.
 3. **Put the decision in `core/` and the mechanism in `fb2k/`.** A decision compiles and is tested on any machine; a mechanism is not.
-4. `src/fb2k/` compiles for the first time on the build machine. A change there is *reviewed*, not *tested*, until `scripts/build.ps1` has run. State which of the two you did.
+4. `src/fb2k/` is parsed and linted on a Mac with the SDK fetched, and linked and run only on the build machine. A change there is *reviewed*, not *tested*, until `scripts/build.ps1` has run. State which of the two you did.
 5. Headers live beside their sources. This is a DLL with no exported headers; do not restructure towards `include/` + `src/`.
 6. The two directories deliberately share filenames, since each pair is one feature split at the boundary. `src/foo_jean.vcxproj` keeps their object files apart and says how beside the setting that does it. Keep it.
 

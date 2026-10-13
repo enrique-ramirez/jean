@@ -124,20 +124,21 @@ Two things hold across the whole surface. Every request is checked first for whe
 
 ```bash
 scripts/fetch-opus.sh                     # once; the suite links libopus and libogg
+scripts/fetch-sdk.sh                      # once, on a Mac; lets clangd and lint reach src/fb2k/
 scripts/test.sh                           # the whole suite
 scripts/test.sh '-sf=*cors_test.cpp'      # one file
 scripts/test.sh --sanitize=address        # AddressSanitizer and UBSan
 scripts/test.sh --sanitize=thread         # ThreadSanitizer
 scripts/format.sh --check                 # clang-format, without writing
-scripts/lint.sh                           # clang-tidy over src/core/ and tests/
+scripts/lint.sh                           # clang-tidy over src/core/ and tests/, and src/fb2k/ on a Mac
 scripts/compile-commands.sh               # what an editor's clangd reads
 ```
 
-`scripts/compile-commands.sh` writes `compile_commands.json`, and an editor is wrong without it. clangd finds no compilation database, falls back to compiling each file with no include paths and no `-std`, and reports the first `#include "core/..."` as a file-not-found followed by a hundred errors that are all cascade from it. The file holds absolute paths and is gitignored, so it is generated per machine. It covers `src/core/` and `tests/`; `src/fb2k/` resolves only where the foobar2000 SDK and the Windows SDK are, which is the build machine.
+`scripts/compile-commands.sh` writes `compile_commands.json`, and an editor is wrong without it. clangd finds no compilation database, falls back to compiling each file with no include paths and no `-std`, and reports the first `#include "core/..."` as a file-not-found followed by a hundred errors that are all cascade from it. The file holds absolute paths and is gitignored, so it is generated per machine. It covers `src/core/` and `tests/`, and `src/fb2k/` on a Mac where `scripts/fetch-sdk.sh` has fetched the foobar2000 SDK, all but the files `fb2k_unparsed_sources` lists in `scripts/lib/compile-flags.sh`. Anywhere else the script says it skipped `src/fb2k/` and why.
 
 `.github/workflows/plugin.yml` runs `scripts/test.sh`, `scripts/format.sh --check` and `scripts/lint.sh` on a Linux runner for every change under `plugins/fb2k/` or to `contract/openapi.yaml`, and builds the component on a Windows runner, where `scripts\build.ps1` lints `src/fb2k/`. It pins LLVM 23, and so do both scripts: each refuses any other clang-format or clang-tidy, since a local run matches CI only at that version. `CLANG_FORMAT` and `CLANG_TIDY` name the binary on a machine carrying more than one.
 
-On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\test.ps1`. `scripts\lint.ps1` is clang-tidy over `src/fb2k/`, which only the build machine can compile, with the vcxproj's own defines and include paths; `scripts\build.ps1` runs it after every build of the component, so a finding fails the build. It wants LLVM 23: `winget install LLVM.LLVM` on a machine, `.github/actions/windows-llvm` on a runner. The `.ps1` and `.sh` fetchers are the same fetch for different shells; run whichever belongs to the machine the tests will run on.
+On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\test.ps1`. `scripts\lint.ps1` is clang-tidy over `src/fb2k/` against MSVC's headers, with the vcxproj's own defines and include paths, and the only lint of the files `fb2k_unparsed_sources` lists in `scripts/lib/compile-flags.sh`; `scripts\build.ps1` runs it after every build of the component, so a finding fails the build. It wants LLVM 23: `winget install LLVM.LLVM` on a machine, `.github/actions/windows-llvm` on a runner. The `.ps1` and `.sh` fetchers are the same fetch for different shells; run whichever belongs to the machine the tests will run on.
 
 `plugins/fb2k/CONTRIBUTING.md`, *Tests*, rule 11, is what a machine that runs the suite needs beyond this directory.
 
@@ -147,7 +148,7 @@ The tests need **neither Windows nor the foobar2000 SDK nor a running player**: 
 
 Covered: admission, CORS and preflight, every way a hand-edited `config.json` can be wrong including a reload while the listener runs, the listener and its port collision, the preferences page's decisions, tag-write permission and the tag route, autoplaylist requests and their routes, the rate limiter with time passed in, the main-thread queue and its stall watch, the order refusals are weighed in and the order a budgeted route refuses in, stream tickets, the stream route, the audience and the listener roster, the output hold, the PCM and broadcast rings, the Ogg Opus encoder (whose tests decode their own output), the 16-bit conversion AAC is fed, the timeline and its route, the artwork route and what it will and will not send, and every key set and status `contract/openapi.yaml` publishes.
 
-**Nothing here covers `src/fb2k/`.** That half needs the SDK and compiles for the first time on the build machine.
+**No test reaches `src/fb2k/`.** On a Mac with the SDK fetched it is parsed and linted. That is not a build: it is linked and run only on the build machine.
 
 Four end-to-end checks run against a real player. `scripts/verify-tag-write.ps1` writes a rating to every track in the test fixture playlist and reads it back **from the player**, through each row's `%rating%` column, which is the point rather than a formality: the failure this design exists to avoid is a write the player performed but its own database did not learn about. It refuses the whole playlist if any row sits outside the tree `scripts/test-fixtures.ps1` built, and puts back each track's own rating afterwards. `scripts/verify-stream.ps1` refuses a player that is not playing or not muted, then checks two listeners reading one encoder, a ticket, both formats well formed, the clock advancing, and a skipped track or a seek leaving a mark; the track and the place in it go back afterwards, pass or fail. `scripts/verify-listeners.ps1` checks the roster and the mute hold without writing the volume or the mute: who is listening, the linger, a hold taken and given back on an unmuted player or a person's own mute left alone on a muted one, and the player left at the level it was found at. `scripts/verify-library.ps1` checks the library routes against a real library, writing no tag and no playlist: `GET /api/state`'s library object, export and changes revalidation by ETag, the export capture with `-Full`, the player's own path order, covers through `/api/artwork`, and a forced rebuild, plus the two CORS checks when `-Origin` names an allowed origin.
 

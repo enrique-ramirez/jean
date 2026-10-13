@@ -124,6 +124,7 @@ Run from the repository root. `scripts/test.sh` finds its own tree, so the path 
 | one test file | `plugins/fb2k/scripts/test.sh '-sf=*cors_test.cpp'` | the same |
 | one case | `plugins/fb2k/scripts/test.sh '-tc=*private address*'` | the same |
 | threaded code | `plugins/fb2k/scripts/test.sh --sanitize=thread` | 15s from clean, then incremental in its own directories |
+| one `src/fb2k/` file, on a Mac with the SDK | `plugins/fb2k/scripts/lint.sh plugins/fb2k/src/fb2k/library.cpp` | about 5s a file. Without arguments it lints everything, about 18 minutes |
 | any C++ change, before it is called ready | `plugins/fb2k/scripts/test.sh --sanitize=address` | about 2 minutes from clean, then incremental in its own directories |
 
 The build is incremental and the filters narrow only what runs, never what compiles. Run the whole suite rather than a filtered one: it costs the same and covers everything. Filter only to read less output.
@@ -132,6 +133,8 @@ Two runs at once share `plugins/fb2k/bin/`, so two agents never run the suite at
 
 ### What cannot be verified here
 
-`plugins/fb2k/src/fb2k/` does not compile on an editing machine. A change there is reviewed, not tested, until a Windows build has run. Say which of the two you did.
+`plugins/fb2k/src/fb2k/` is parsed and linted on a Mac where `scripts/fetch-sdk.sh` has fetched the SDK, all but the files `fb2k_unparsed_sources` lists in `plugins/fb2k/scripts/lib/compile-flags.sh`. It is linked and run only on the build machine, and no test reaches it. A change there is reviewed, not tested, until a Windows build has run. Say which of the two you did, and whether you also linted it.
+
+The files `fb2k_unparsed_sources` lists in `compile-flags.sh`, and everything MSVC-specific (its warnings, its headers, `scripts\lint.ps1`), are known only to a Windows build.
 
 The AAC encoder is Windows-only and unreachable from the suite. A `setsockopt` failure cannot be induced from a test.

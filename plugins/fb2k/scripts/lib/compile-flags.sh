@@ -1,7 +1,9 @@
 # The defines and include paths the C++ here compiles with, in one place: scripts/test.sh builds
 # with them, scripts/lint.sh hands them to clang-tidy, and scripts/compile-commands.sh
 # writes them into the database an editor's clangd reads. An include path missing from one of
-# the three is an editor that disagrees with the build.
+# the three is an editor that disagrees with the build. scripts/test.ps1 reads the
+# compile_flags=( ... ) literal below too, and hands it to cl, so the literal holds only
+# -std, -D and -I elements.
 #
 # Dot-source it with $root set to plugins/fb2k, and read the result from $compile_flags.
 # src/fb2k/ takes $fb2k_compile_flags instead, and is covered where $fb2k_skipped is empty:
@@ -29,10 +31,8 @@ if [ "$(uname -s)" = Darwin ]; then
   platform_flags=(-mmacosx-version-min=11.0)
 fi
 
-# ${platform_flags[@]+...} because bash 3.2, which is macOS's /bin/bash, calls an empty array unset.
 compile_flags=(
   -std=c++20
-  ${platform_flags[@]+"${platform_flags[@]}"}
   # Defined once for the whole build, never per file: third_party/README.md has why.
   -DCPPHTTPLIB_ZLIB_SUPPORT
   "$vendor_include$root"
@@ -42,6 +42,8 @@ compile_flags=(
   "-I$root/src"
   "-I$root/tests"
 )
+# ${platform_flags[@]+...} because bash 3.2, which is macOS's /bin/bash, calls an empty array unset.
+compile_flags+=(${platform_flags[@]+"${platform_flags[@]}"})
 
 # Files the foobar2000 SDK or the Windows headers keep clang on a Mac from parsing.
 fb2k_unparsed_sources=(preferences.cpp aac_encoder.cpp browser.cpp ui_assets.cpp)

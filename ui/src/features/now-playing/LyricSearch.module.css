@@ -202,9 +202,17 @@
 	font-size: 0.75rem;
 }
 
-.versionDetail .length,
-.versionDetail .difference {
-	margin-left: 8px;
+.summaryDetail {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	min-width: 0;
+	color: var(--muted);
+}
+
+.summaryDetail .length,
+.summaryDetail .difference {
+	flex: none;
 }
 
 .version[data-length="same"] .difference {

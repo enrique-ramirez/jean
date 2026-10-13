@@ -1113,6 +1113,90 @@ test.describe("previewing a version", () => {
 	});
 });
 
+const LONG_NAMED = {
+	...record(
+		14,
+		"The Complete Original Soundtrack Recordings: Collector's Edition",
+		3,
+		{
+			synced: NUDGED_SOURCE,
+			plain: "First line\nSecond line\nThird line",
+		},
+	),
+	artistName: "Babasónicos and the Orchestra of the Long Afternoon",
+};
+const LONG_NAMED_LENGTH = "4:40";
+const NARROWEST_PHONE = { width: 320, height: 720 };
+
+// Text an ancestor clips is still in the page, so a clipped length reads whole to a locator.
+const clippedBy = (drawn: Locator) =>
+	drawn.evaluate((element) => {
+		const box = element.getBoundingClientRect();
+		const clips: string[] = [];
+		for (
+			let ancestor = element.parentElement;
+			ancestor;
+			ancestor = ancestor.parentElement
+		) {
+			if (getComputedStyle(ancestor).overflowX === "visible") continue;
+			const within = ancestor.getBoundingClientRect();
+			if (box.left < within.left - 0.5 || box.right > within.right + 0.5)
+				clips.push(ancestor.tagName.toLowerCase());
+		}
+		if (box.left < 0 || box.right > document.documentElement.clientWidth)
+			clips.push("viewport");
+		if (element.scrollWidth > element.clientWidth) clips.push("itself");
+		return clips;
+	});
+
+const expectDrawnWhole = async (length: Locator) => {
+	await expect(length).toHaveCount(1);
+	await expect(length).toBeVisible();
+	await expect.poll(() => clippedBy(length)).toEqual([]);
+};
+
+test.describe("a version whose artist and album are long", () => {
+	test.use({ ...TAGGED, fooJean: SAVING_POSSIBLE });
+
+	const lengthIn = (within: Locator) =>
+		within.getByText(LONG_NAMED_LENGTH, { exact: true });
+
+	test("the preview draws its length whole, and the names give way", async ({
+		page,
+		isMobile,
+	}) => {
+		await interceptLrclib(page, answering([LONG_NAMED]));
+		const shown = await openPreviewOf(page, isMobile, "Synced", 0);
+
+		await expect(shown).toContainText(LONG_NAMED.albumName);
+		await expectDrawnWhole(lengthIn(shown));
+	});
+
+	test.describe("on the narrowest phone", () => {
+		test.skip(
+			({ isMobile }) => !isMobile,
+			"the desktop's window is never this narrow",
+		);
+
+		test("the versions list and the preview both draw its length whole", async ({
+			page,
+		}) => {
+			await page.setViewportSize(NARROWEST_PHONE);
+			await interceptLrclib(page, answering([LONG_NAMED]));
+			const view = await openSearch(page, true, OPENED_ON.row);
+			const row = versionsOf(view, "Synced").first();
+
+			await expect(row).toContainText(LONG_NAMED.albumName);
+			await expectDrawnWhole(lengthIn(row));
+
+			await row.getByRole("button").click();
+			const shown = preview(lyricsPanel(page, true));
+			await expect(shown).toBeVisible();
+			await expectDrawnWhole(lengthIn(shown));
+		});
+	});
+});
+
 test.describe("saving a preview", () => {
 	test.use({ ...TAGGED, fooJean: SAVING_POSSIBLE });
 

@@ -168,8 +168,10 @@ function VersionSummary({
 	return (
 		<>
 			<VersionName record={record} />
-			<span className={styles.versionDetail}>
-				<VersionByline record={record} />
+			<span className={styles.summaryDetail}>
+				<span className={styles.versionDetail}>
+					<VersionByline record={record} />
+				</span>
 				<span className={styles.length}>{formatTime(record.duration)}</span>
 				{apart === null ? null : (
 					<Difference apart={apart} closeness={closenessOf(Math.abs(apart))} />

@@ -12,6 +12,7 @@
 #include "core/player_state.h"
 #include "core/session.h"
 #include "core/settings.h"
+#include "support/devices.h"
 #include "support/fake_player.h"
 #include "support/http.h"
 #include "support/keys.h"
@@ -39,10 +40,6 @@ using namespace jean::testing;
 using nlohmann::json;
 
 namespace {
-
-constexpr char kPhone[] = "phone-4c1e";
-constexpr char kLaptop[] = "laptop-9a07";
-constexpr char kTablet[] = "tablet-2b55";
 
 constexpr char kNoSuchSession[] = "no such session";
 
@@ -547,7 +544,7 @@ TEST_CASE("creating a session answers a private, stopped and empty detached sess
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto response = create(server, json{{"deviceId", kPhone}, {"name", "Kitchen phone"}});
+    const auto response = create(server, json{{"deviceId", phone().id}, {"name", phone().name}});
 
     REQUIRE(response);
     REQUIRE(response->status == 200);
@@ -566,7 +563,7 @@ TEST_CASE("creating a session answers a private, stopped and empty detached sess
     CHECK(session["listeners"] == 0);
     CHECK(session["chainDropped"] == false);
     CHECK(session["reports"] == json::array());
-    CHECK(session["createdBy"] == json{{"deviceId", kPhone}, {"name", "Kitchen phone"}});
+    CHECK(session["createdBy"] == json{{"deviceId", phone().id}, {"name", phone().name}});
 
     CHECK(recorder.calls() == 0);
 }
@@ -574,12 +571,12 @@ TEST_CASE("creating a session answers a private, stopped and empty detached sess
 TEST_CASE("a detached session offers exactly the five orders it can play, in their sequence") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto session = created(server, kPhone);
+    const auto session = created(server, phone().id);
 
     const auto expected =
         json::array({"inOrder", "repeatAll", "repeatOne", "random", "shuffleTracks"});
     CHECK(session["playbackModes"] == expected);
-    CHECK(sessionsSeenBy(server, kPhone)[1]["playbackModes"] == expected);
+    CHECK(sessionsSeenBy(server, phone().id)[1]["playbackModes"] == expected);
     CHECK(recorder.calls() == 0);
 }
 
@@ -587,16 +584,18 @@ TEST_CASE("a creator that named nothing is answered a null name, whether it sent
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto unnamed = create(server, json{{"deviceId", kPhone}});
-    const auto blank = create(server, json{{"deviceId", kLaptop}, {"name", ""}});
+    const auto unnamed = create(server, json{{"deviceId", phone().id}});
+    const auto blank = create(server, json{{"deviceId", laptop().id}, {"name", ""}});
 
     REQUIRE(unnamed);
     REQUIRE(unnamed->status == 200);
-    CHECK(json::parse(unnamed->body)["createdBy"] == json{{"deviceId", kPhone}, {"name", nullptr}});
+    CHECK(json::parse(unnamed->body)["createdBy"] ==
+          json{{"deviceId", phone().id}, {"name", nullptr}});
 
     REQUIRE(blank);
     REQUIRE(blank->status == 200);
-    CHECK(json::parse(blank->body)["createdBy"] == json{{"deviceId", kLaptop}, {"name", nullptr}});
+    CHECK(json::parse(blank->body)["createdBy"] ==
+          json{{"deviceId", laptop().id}, {"name", nullptr}});
 
     CHECK(recorder.calls() == 0);
 }
@@ -605,8 +604,8 @@ TEST_CASE("each session's id is the next one the ticket mint gives") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    CHECK(createdId(server, kPhone) == mintedIds()[0]);
-    CHECK(createdId(server, kPhone) == mintedIds()[1]);
+    CHECK(createdId(server, phone().id) == mintedIds()[0]);
+    CHECK(createdId(server, phone().id) == mintedIds()[1]);
     CHECK(recorder.calls() == 0);
 }
 
@@ -627,13 +626,13 @@ TEST_CASE("a create without a deviceId in its body is refused and leaves no sess
         CHECK(errorOf(*response) == "'deviceId' is required");
     }
 
-    const auto fromTheQuery = post(server, naming("/api/sessions", kPhone), "{}");
+    const auto fromTheQuery = post(server, naming("/api/sessions", phone().id), "{}");
     REQUIRE(fromTheQuery);
     CHECK(fromTheQuery->status == 400);
     CHECK(errorOf(*fromTheQuery) == "'deviceId' is required");
 
     CHECK(idsSeenBy(server, "") == engineOnly());
-    CHECK(idsSeenBy(server, kPhone) == engineOnly());
+    CHECK(idsSeenBy(server, phone().id) == engineOnly());
     CHECK(recorder.calls() == 0);
 }
 
@@ -658,9 +657,9 @@ TEST_CASE("the creator's list is the engine session and then the creator's own s
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto session = created(server, kPhone);
+    const auto session = created(server, phone().id);
 
-    const auto sessions = sessionsSeenBy(server, kPhone);
+    const auto sessions = sessionsSeenBy(server, phone().id);
     REQUIRE(sessions.size() == 2);
     CHECK(sessions[0]["id"] == kEngineSessionId);
     CHECK(keysOf(sessions[0]) == documentKeys());
@@ -672,9 +671,9 @@ TEST_CASE("a private session is listed for no other device and for a request nam
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    createdId(server, kPhone);
+    createdId(server, phone().id);
 
-    CHECK(idsSeenBy(server, kLaptop) == engineOnly());
+    CHECK(idsSeenBy(server, laptop().id) == engineOnly());
     CHECK(idsSeenBy(server, "") == engineOnly());
     CHECK(recorder.calls() == 0);
 }
@@ -683,12 +682,13 @@ TEST_CASE("detached sessions follow the engine session in the order they were cr
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto first = createdId(server, kPhone);
-    const auto laptops = createdId(server, kLaptop);
-    const auto third = createdId(server, kPhone);
+    const auto first = createdId(server, phone().id);
+    const auto laptops = createdId(server, laptop().id);
+    const auto third = createdId(server, phone().id);
 
-    CHECK(idsSeenBy(server, kPhone) == std::vector<std::string>{kEngineSessionId, first, third});
-    CHECK(idsSeenBy(server, kLaptop) == std::vector<std::string>{kEngineSessionId, laptops});
+    CHECK(idsSeenBy(server, phone().id) ==
+          std::vector<std::string>{kEngineSessionId, first, third});
+    CHECK(idsSeenBy(server, laptop().id) == std::vector<std::string>{kEngineSessionId, laptops});
     CHECK(recorder.calls() == 0);
 }
 
@@ -696,15 +696,15 @@ TEST_CASE("a session reads for its creator and is 404 for anybody else") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto session = created(server, kPhone);
+    const auto session = created(server, phone().id);
     const auto id = session["id"].get<std::string>();
 
-    const auto mine = read(server, id, kPhone);
+    const auto mine = read(server, id, phone().id);
     REQUIRE(mine);
     CHECK(mine->status == 200);
     CHECK(json::parse(mine->body) == session);
 
-    const auto stranger = read(server, id, kLaptop);
+    const auto stranger = read(server, id, laptop().id);
     REQUIRE(stranger);
     CHECK(stranger->status == 404);
     CHECK(errorOf(*stranger) == kNoSuchSession);
@@ -723,11 +723,11 @@ TEST_CASE("a private session read by a stranger answers what an id nobody issued
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
 
-    const auto stranger = read(server, id, kLaptop);
-    const auto unissued = read(server, "Zz00q", kLaptop);
-    const auto unissuedForTheCreator = read(server, "Zz00q", kPhone);
+    const auto stranger = read(server, id, laptop().id);
+    const auto unissued = read(server, "Zz00q", laptop().id);
+    const auto unissuedForTheCreator = read(server, "Zz00q", phone().id);
 
     REQUIRE(stranger);
     REQUIRE(unissued);
@@ -756,7 +756,7 @@ TEST_CASE("the engine session's document is the player's own state, the same for
     store.publish(playing);
     const TestServer server = serving(recorder.player(), &store);
 
-    const auto forPhone = read(server, kEngineSessionId, kPhone);
+    const auto forPhone = read(server, kEngineSessionId, phone().id);
     const auto forNobody = read(server, kEngineSessionId, "");
     REQUIRE(forPhone);
     REQUIRE(forNobody);
@@ -790,7 +790,7 @@ TEST_CASE("the engine session's document is the player's own state, the same for
         CHECK(engine[key] == player[key]);
     }
 
-    CHECK(sessionsSeenBy(server, kPhone)[0] == engine);
+    CHECK(sessionsSeenBy(server, phone().id)[0] == engine);
     CHECK(recorder.calls() == 0);
 }
 
@@ -798,7 +798,7 @@ TEST_CASE("the engine session offers the orders GET /api/capabilities publishes 
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto response = read(server, kEngineSessionId, kPhone);
+    const auto response = read(server, kEngineSessionId, phone().id);
     REQUIRE(response);
     REQUIRE(response->status == 200);
 
@@ -813,15 +813,15 @@ TEST_CASE("the engine session counts each device listening to it once, however m
     const TestServer server = serving(recorder.player());
 
     const auto now = Audience::Clock::now();
-    const auto phone = server.audience().join({kPhone, "Kitchen phone"}, "opus", now);
-    const auto phoneAgain = server.audience().join({kPhone, "Kitchen phone"}, "opus", now);
-    const auto laptop = server.audience().join({kLaptop, "Desk"}, "opus", now);
-    REQUIRE(phone);
-    REQUIRE(phoneAgain);
-    REQUIRE(laptop);
+    const auto onPhone = server.audience().join(phone(), "opus", now);
+    const auto onPhoneAgain = server.audience().join(phone(), "opus", now);
+    const auto onLaptop = server.audience().join(laptop(), "opus", now);
+    REQUIRE(onPhone);
+    REQUIRE(onPhoneAgain);
+    REQUIRE(onLaptop);
     REQUIRE(server.audience().connections() == 3);
 
-    const auto response = read(server, kEngineSessionId, kTablet);
+    const auto response = read(server, kEngineSessionId, tablet().id);
     REQUIRE(response);
     REQUIRE(response->status == 200);
     CHECK(json::parse(response->body)["listeners"] == 2);
@@ -832,13 +832,13 @@ TEST_CASE("with no session stream on the player, a create is 503 and the engine 
     Recorder recorder;
     const TestServer server = serving(recorder.player(false));
 
-    const auto response = create(server, json{{"deviceId", kPhone}, {"name", "Kitchen phone"}});
+    const auto response = create(server, json{{"deviceId", phone().id}, {"name", phone().name}});
     REQUIRE(response);
     CHECK(response->status == 503);
     CHECK(errorOf(*response) == "sessions are not available");
 
-    CHECK(idsSeenBy(server, kPhone) == engineOnly());
-    CHECK(statusOf(read(server, kEngineSessionId, kPhone)) == 200);
+    CHECK(idsSeenBy(server, phone().id) == engineOnly());
+    CHECK(statusOf(read(server, kEngineSessionId, phone().id)) == 200);
     CHECK(recorder.calls() == 0);
 }
 
@@ -846,27 +846,27 @@ TEST_CASE("sharing a session lists it for every device and for none, and unshari
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
 
-    const auto sharing = shared(server, id, kPhone, true);
+    const auto sharing = shared(server, id, phone().id, true);
     CHECK(keysOf(sharing) == documentKeys());
     CHECK(sharing["id"] == id);
     CHECK(sharing["shared"] == true);
-    CHECK(sharing["createdBy"] == json{{"deviceId", kPhone}, {"name", "Kitchen phone"}});
+    CHECK(sharing["createdBy"] == json{{"deviceId", phone().id}, {"name", phone().name}});
 
     const std::vector<std::string> engineAndShared{kEngineSessionId, id};
-    CHECK(idsSeenBy(server, kLaptop) == engineAndShared);
+    CHECK(idsSeenBy(server, laptop().id) == engineAndShared);
     CHECK(idsSeenBy(server, "") == engineAndShared);
-    CHECK(statusOf(read(server, id, kLaptop)) == 200);
+    CHECK(statusOf(read(server, id, laptop().id)) == 200);
 
-    const auto unsharing = shared(server, id, kPhone, false);
+    const auto unsharing = shared(server, id, phone().id, false);
     CHECK(keysOf(unsharing) == documentKeys());
     CHECK(unsharing["shared"] == false);
 
-    CHECK(idsSeenBy(server, kLaptop) == engineOnly());
+    CHECK(idsSeenBy(server, laptop().id) == engineOnly());
     CHECK(idsSeenBy(server, "") == engineOnly());
-    CHECK(statusOf(read(server, id, kLaptop)) == 404);
-    CHECK(idsSeenBy(server, kPhone) == engineAndShared);
+    CHECK(statusOf(read(server, id, laptop().id)) == 404);
+    CHECK(idsSeenBy(server, phone().id) == engineAndShared);
     CHECK(recorder.calls() == 0);
 }
 
@@ -875,16 +875,16 @@ TEST_CASE("a device that only listed and read a shared session loses it when it 
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto id = createdId(server, kPhone);
-    shared(server, id, kPhone, true);
+    const auto id = createdId(server, phone().id);
+    shared(server, id, phone().id, true);
 
-    REQUIRE(idsSeenBy(server, kLaptop) == std::vector<std::string>{kEngineSessionId, id});
-    REQUIRE(statusOf(read(server, id, kLaptop)) == 200);
+    REQUIRE(idsSeenBy(server, laptop().id) == std::vector<std::string>{kEngineSessionId, id});
+    REQUIRE(statusOf(read(server, id, laptop().id)) == 200);
 
-    shared(server, id, kPhone, false);
+    shared(server, id, phone().id, false);
 
-    CHECK(idsSeenBy(server, kLaptop) == engineOnly());
-    CHECK(statusOf(read(server, id, kLaptop)) == 404);
+    CHECK(idsSeenBy(server, laptop().id) == engineOnly());
+    CHECK(statusOf(read(server, id, laptop().id)) == 404);
     CHECK(recorder.calls() == 0);
 }
 
@@ -892,15 +892,15 @@ TEST_CASE("a device that shares a shared session stays a member after the creato
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto id = createdId(server, kPhone);
-    shared(server, id, kPhone, true);
-    CHECK(shared(server, id, kLaptop, true)["shared"] == true);
+    const auto id = createdId(server, phone().id);
+    shared(server, id, phone().id, true);
+    CHECK(shared(server, id, laptop().id, true)["shared"] == true);
 
-    shared(server, id, kPhone, false);
+    shared(server, id, phone().id, false);
 
-    CHECK(idsSeenBy(server, kLaptop) == std::vector<std::string>{kEngineSessionId, id});
-    CHECK(statusOf(read(server, id, kLaptop)) == 200);
-    CHECK(statusOf(read(server, id, kTablet)) == 404);
+    CHECK(idsSeenBy(server, laptop().id) == std::vector<std::string>{kEngineSessionId, id});
+    CHECK(statusOf(read(server, id, laptop().id)) == 200);
+    CHECK(statusOf(read(server, id, tablet().id)) == 404);
     CHECK(recorder.calls() == 0);
 }
 
@@ -908,17 +908,17 @@ TEST_CASE("a second member may share the session again and stop sharing it") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto id = createdId(server, kPhone);
-    shared(server, id, kPhone, true);
-    shared(server, id, kLaptop, true);
-    shared(server, id, kPhone, false);
+    const auto id = createdId(server, phone().id);
+    shared(server, id, phone().id, true);
+    shared(server, id, laptop().id, true);
+    shared(server, id, phone().id, false);
 
-    CHECK(shared(server, id, kLaptop, true)["shared"] == true);
-    CHECK(idsSeenBy(server, kTablet) == std::vector<std::string>{kEngineSessionId, id});
+    CHECK(shared(server, id, laptop().id, true)["shared"] == true);
+    CHECK(idsSeenBy(server, tablet().id) == std::vector<std::string>{kEngineSessionId, id});
 
-    CHECK(shared(server, id, kLaptop, false)["shared"] == false);
-    CHECK(idsSeenBy(server, kTablet) == engineOnly());
-    CHECK(statusOf(read(server, id, kPhone)) == 200);
+    CHECK(shared(server, id, laptop().id, false)["shared"] == false);
+    CHECK(idsSeenBy(server, tablet().id) == engineOnly());
+    CHECK(statusOf(read(server, id, phone().id)) == 200);
     CHECK(recorder.calls() == 0);
 }
 
@@ -926,16 +926,16 @@ TEST_CASE("a device that has only seen a shared session may unshare it and is a 
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto id = createdId(server, kPhone);
-    shared(server, id, kPhone, true);
+    const auto id = createdId(server, phone().id);
+    shared(server, id, phone().id, true);
 
-    const auto unsharing = shared(server, id, kLaptop, false);
+    const auto unsharing = shared(server, id, laptop().id, false);
     CHECK(unsharing["shared"] == false);
 
-    CHECK(statusOf(read(server, id, kLaptop)) == 200);
-    CHECK(idsSeenBy(server, kLaptop) == std::vector<std::string>{kEngineSessionId, id});
-    CHECK(statusOf(read(server, id, kPhone)) == 200);
-    CHECK(statusOf(read(server, id, kTablet)) == 404);
+    CHECK(statusOf(read(server, id, laptop().id)) == 200);
+    CHECK(idsSeenBy(server, laptop().id) == std::vector<std::string>{kEngineSessionId, id});
+    CHECK(statusOf(read(server, id, phone().id)) == 200);
+    CHECK(statusOf(read(server, id, tablet().id)) == 404);
     CHECK(recorder.calls() == 0);
 }
 
@@ -943,25 +943,25 @@ TEST_CASE("a stranger's share of a private session is 404 and changes nothing") 
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto id = createdId(server, kPhone);
-    const auto unissued = share(server, "Zz00q", kLaptop, json{{"shared", true}});
+    const auto id = createdId(server, phone().id);
+    const auto unissued = share(server, "Zz00q", laptop().id, json{{"shared", true}});
     REQUIRE(unissued);
     CHECK(unissued->status == 404);
     CHECK(errorOf(*unissued) == kNoSuchSession);
 
     for (const bool asked : {true, false}) {
         CAPTURE(asked);
-        const auto response = share(server, id, kLaptop, json{{"shared", asked}});
+        const auto response = share(server, id, laptop().id, json{{"shared", asked}});
         REQUIRE(response);
         CHECK(response->status == 404);
         CHECK(response->body == unissued->body);
     }
 
-    CHECK(idsSeenBy(server, kLaptop) == engineOnly());
-    CHECK(idsSeenBy(server, kTablet) == engineOnly());
-    CHECK(statusOf(read(server, id, kLaptop)) == 404);
+    CHECK(idsSeenBy(server, laptop().id) == engineOnly());
+    CHECK(idsSeenBy(server, tablet().id) == engineOnly());
+    CHECK(statusOf(read(server, id, laptop().id)) == 404);
 
-    const auto mine = read(server, id, kPhone);
+    const auto mine = read(server, id, phone().id);
     REQUIRE(mine);
     REQUIRE(mine->status == 200);
     CHECK(json::parse(mine->body)["shared"] == false);
@@ -973,7 +973,7 @@ TEST_CASE("the engine session is 409 to a share and to an unshare, and stays sha
     const TestServer server = serving(recorder.player());
 
     for (const bool asked : {true, false}) {
-        for (const char* device : {kPhone, ""}) {
+        for (const std::string& device : std::vector<std::string>{phone().id, ""}) {
             CAPTURE(asked);
             CAPTURE(device);
             const auto response = share(server, kEngineSessionId, device, json{{"shared", asked}});
@@ -983,7 +983,7 @@ TEST_CASE("the engine session is 409 to a share and to an unshare, and stays sha
         }
     }
 
-    const auto engine = read(server, kEngineSessionId, kPhone);
+    const auto engine = read(server, kEngineSessionId, phone().id);
     REQUIRE(engine);
     REQUIRE(engine->status == 200);
     CHECK(json::parse(engine->body)["shared"] == true);
@@ -996,33 +996,33 @@ TEST_CASE("a share without a boolean 'shared' is refused and changes nothing") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
 
     const std::vector<std::string> bodies{R"({})", R"({"shared": "true"})", R"({"shared": 1})",
                                           R"({"shared": null})", R"({"share": true})"};
 
     for (const auto& body : bodies) {
         CAPTURE(body);
-        const auto response = post(server, naming(sessionPath(id), kPhone), body);
+        const auto response = post(server, naming(sessionPath(id), phone().id), body);
         REQUIRE(response);
         CHECK(response->status == 400);
         CHECK(errorOf(*response) == "'shared' must be true or false");
     }
-    CHECK(idsSeenBy(server, kLaptop) == engineOnly());
+    CHECK(idsSeenBy(server, laptop().id) == engineOnly());
 
-    shared(server, id, kPhone, true);
+    shared(server, id, phone().id, true);
 
     for (const auto& body : bodies) {
         CAPTURE(body);
-        const auto response = post(server, naming(sessionPath(id), kLaptop), body);
+        const auto response = post(server, naming(sessionPath(id), laptop().id), body);
         REQUIRE(response);
         CHECK(response->status == 400);
         CHECK(errorOf(*response) == "'shared' must be true or false");
     }
-    CHECK(idsSeenBy(server, kTablet) == std::vector<std::string>{kEngineSessionId, id});
+    CHECK(idsSeenBy(server, tablet().id) == std::vector<std::string>{kEngineSessionId, id});
 
-    shared(server, id, kPhone, false);
-    CHECK(statusOf(read(server, id, kLaptop)) == 404);
+    shared(server, id, phone().id, false);
+    CHECK(statusOf(read(server, id, laptop().id)) == 404);
     CHECK(recorder.calls() == 0);
 }
 
@@ -1030,13 +1030,13 @@ TEST_CASE("a create the mint gives no id for is 503 and leaves no session behind
     Recorder recorder;
     const TestServer server = serving(recorder.player(), nullptr, failingOnceMint());
 
-    const auto refused = create(server, json{{"deviceId", kPhone}, {"name", "Kitchen phone"}});
+    const auto refused = create(server, json{{"deviceId", phone().id}, {"name", phone().name}});
     REQUIRE(refused);
     CHECK(refused->status == 503);
     CHECK(errorOf(*refused) == "sessions are not available");
-    CHECK(idsSeenBy(server, kPhone) == engineOnly());
+    CHECK(idsSeenBy(server, phone().id) == engineOnly());
 
-    CHECK(createdId(server, kPhone) == mintedIds()[0]);
+    CHECK(createdId(server, phone().id) == mintedIds()[0]);
     CHECK(recorder.calls() == 0);
 }
 
@@ -1045,8 +1045,8 @@ TEST_CASE("a share naming no device is refused and leaves the session shared") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto id = createdId(server, kPhone);
-    shared(server, id, kPhone, true);
+    const auto id = createdId(server, phone().id);
+    shared(server, id, phone().id, true);
 
     for (const auto& path : {sessionPath(id), sessionPath(id) + "?deviceId="}) {
         CAPTURE(path);
@@ -1056,7 +1056,7 @@ TEST_CASE("a share naming no device is refused and leaves the session shared") {
         CHECK(errorOf(*response) == "'deviceId' is required");
     }
 
-    CHECK(idsSeenBy(server, kLaptop) == std::vector<std::string>{kEngineSessionId, id});
+    CHECK(idsSeenBy(server, laptop().id) == std::vector<std::string>{kEngineSessionId, id});
     CHECK(recorder.calls() == 0);
 }
 
@@ -1066,15 +1066,15 @@ TEST_CASE("a bad share body is answered 409 for the engine and 404 for a strange
     Recorder recorder;
     const TestServer server = serving(recorder.player());
 
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
     const auto bad = json{{"shared", "yes"}}.dump();
 
-    const auto engine = post(server, naming(sessionPath(kEngineSessionId), kPhone), bad);
+    const auto engine = post(server, naming(sessionPath(kEngineSessionId), phone().id), bad);
     REQUIRE(engine);
     CHECK(engine->status == 409);
     CHECK(errorOf(*engine) == "the engine session cannot be changed");
 
-    const auto stranger = post(server, naming(sessionPath(id), kLaptop), bad);
+    const auto stranger = post(server, naming(sessionPath(id), laptop().id), bad);
     REQUIRE(stranger);
     CHECK(stranger->status == 404);
     CHECK(errorOf(*stranger) == kNoSuchSession);
@@ -1137,7 +1137,7 @@ void checkDone(const httplib::Result& response) {
 
 // What an id nobody issued answers, which a refusal for a private session must not differ from.
 httplib::Result unknownSessionAnswer(const TestServer& server) {
-    return read(server, "Zz00q", kTablet);
+    return read(server, "Zz00q", tablet().id);
 }
 
 // A session created by `deviceId`, playing row `index` of a five-row snapshot of kPlaylistId.
@@ -1173,21 +1173,21 @@ TEST_CASE("a row play naming a session plays that row of the playlist the taker 
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto other = createdId(server, kPhone);
-    const auto id = createdId(server, kPhone);
-    const auto ears = listening(recorder, id, kPhone);
+    const auto other = createdId(server, phone().id);
+    const auto id = createdId(server, phone().id);
+    const auto ears = listening(recorder, id, phone().id);
     recorder.hold(kPlaylistId, rows);
 
-    checkDone(post(server, scoped(rowPlayPath(kPlaylistId, 2), id, kPhone), ""));
+    checkDone(post(server, scoped(rowPlayPath(kPlaylistId, 2), id, phone().id), ""));
 
     CHECK(recorder.taken() == std::vector<std::string>{kPlaylistId});
     CHECK(recorder.takenWithPositions() == 0);
 
-    const auto session = documentOf(server, id, kPhone);
+    const auto session = documentOf(server, id, phone().id);
     CHECK(session["playback"] == "playing");
     CHECK(session["libraryPath"] == libraryPathOf(rows[2]));
 
-    const auto untouched = documentOf(server, other, kPhone);
+    const auto untouched = documentOf(server, other, phone().id);
     CHECK(untouched["playback"] == "stopped");
     CHECK(untouched["libraryPath"].is_null());
 
@@ -1198,47 +1198,48 @@ TEST_CASE("a row play naming a session plays that row of the playlist the taker 
 TEST_CASE("a row play naming a session answers as the engine's does for a playlist nobody holds") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
 
     const auto engine = post(server, rowPlayPath(kNoSuchPlaylistId, 0), "");
     const int enginePlays = recorder.rowPlays();
-    const auto session = post(server, scoped(rowPlayPath(kNoSuchPlaylistId, 0), id, kPhone), "");
+    const auto session =
+        post(server, scoped(rowPlayPath(kNoSuchPlaylistId, 0), id, phone().id), "");
 
     REQUIRE(engine);
     CHECK(engine->status != 204);
     checkSameAnswer(session, engine);
     CHECK(recorder.taken() == std::vector<std::string>{kNoSuchPlaylistId});
     CHECK(recorder.rowPlays() == enginePlays);
-    CHECK(documentOf(server, id, kPhone)["playback"] == "stopped");
+    CHECK(documentOf(server, id, phone().id)["playback"] == "stopped");
 }
 
 TEST_CASE("a row play naming a session past the rows taken answers as the engine's does") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
     recorder.hold(kPlaylistId, tracks("Road", 3));
 
     const auto engine = post(server, rowPlayPath(kPlaylistId, 3), "");
     const int enginePlays = recorder.rowPlays();
-    const auto session = post(server, scoped(rowPlayPath(kPlaylistId, 3), id, kPhone), "");
+    const auto session = post(server, scoped(rowPlayPath(kPlaylistId, 3), id, phone().id), "");
 
     REQUIRE(engine);
     CHECK(engine->status != 204);
     checkSameAnswer(session, engine);
     CHECK(recorder.rowPlays() == enginePlays);
-    CHECK(documentOf(server, id, kPhone)["playback"] == "stopped");
+    CHECK(documentOf(server, id, phone().id)["playback"] == "stopped");
 }
 
 TEST_CASE("a session plays on through the rows it took after the playlist changes") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto id = playingSession(server, recorder, kPhone, rows, 1);
+    const auto id = playingSession(server, recorder, phone().id, rows, 1);
 
     recorder.hold(kPlaylistId, tracks("Edited", kRows));
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
 
-    CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOf(rows[2]));
+    CHECK(documentOf(server, id, phone().id)["libraryPath"] == libraryPathOf(rows[2]));
     CHECK(recorder.taken().size() == 1);
     CHECK(recorder.calls() == 0);
 }
@@ -1247,22 +1248,22 @@ TEST_CASE("play-pause and stop move the session named and no other") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto other = playingSession(server, recorder, kPhone, rows, 0);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
-    const auto othersEars = listening(recorder, other, kPhone);
-    const auto ears = listening(recorder, id, kPhone);
+    const auto other = playingSession(server, recorder, phone().id, rows, 0);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
+    const auto othersEars = listening(recorder, other, phone().id);
+    const auto ears = listening(recorder, id, phone().id);
 
-    checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
-    CHECK(documentOf(server, id, kPhone)["playback"] == "paused");
-    CHECK(documentOf(server, other, kPhone)["playback"] == "playing");
+    checkDone(post(server, scoped(kPlayPause, id, phone().id), ""));
+    CHECK(documentOf(server, id, phone().id)["playback"] == "paused");
+    CHECK(documentOf(server, other, phone().id)["playback"] == "playing");
 
-    checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
-    CHECK(documentOf(server, id, kPhone)["playback"] == "playing");
+    checkDone(post(server, scoped(kPlayPause, id, phone().id), ""));
+    CHECK(documentOf(server, id, phone().id)["playback"] == "playing");
 
-    checkDone(post(server, scoped(kStop, id, kPhone), ""));
-    CHECK(documentOf(server, id, kPhone)["playback"] == "stopped");
+    checkDone(post(server, scoped(kStop, id, phone().id), ""));
+    CHECK(documentOf(server, id, phone().id)["playback"] == "stopped");
 
-    const auto untouched = documentOf(server, other, kPhone);
+    const auto untouched = documentOf(server, other, phone().id);
     CHECK(untouched["playback"] == "playing");
     CHECK(untouched["libraryPath"] == libraryPathOf(rows[0]));
     CHECK(recorder.calls() == 0);
@@ -1272,22 +1273,22 @@ TEST_CASE("in the middle of a snapshot, next plays the following row and previou
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto other = playingSession(server, recorder, kPhone, rows, 0);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
-    const auto ears = listening(recorder, id, kPhone);
+    const auto other = playingSession(server, recorder, phone().id, rows, 0);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
+    const auto ears = listening(recorder, id, phone().id);
 
-    checkDone(post(server, scoped(kPrevious, id, kPhone), ""));
-    CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOf(rows[1]));
+    checkDone(post(server, scoped(kPrevious, id, phone().id), ""));
+    CHECK(documentOf(server, id, phone().id)["libraryPath"] == libraryPathOf(rows[1]));
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
-    CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOf(rows[2]));
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
+    CHECK(documentOf(server, id, phone().id)["libraryPath"] == libraryPathOf(rows[2]));
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
-    const auto moved = documentOf(server, id, kPhone);
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
+    const auto moved = documentOf(server, id, phone().id);
     CHECK(moved["libraryPath"] == libraryPathOf(rows[3]));
     CHECK(moved["playback"] == "playing");
 
-    CHECK(documentOf(server, other, kPhone)["libraryPath"] == libraryPathOf(rows[0]));
+    CHECK(documentOf(server, other, phone().id)["libraryPath"] == libraryPathOf(rows[0]));
     CHECK(recorder.calls() == 0);
 }
 
@@ -1296,15 +1297,15 @@ TEST_CASE("next plays a track queued in the session before the snapshot resumes"
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
     const auto queued = track("Queued");
     REQUIRE(recorder.session(id)->enqueue({queued}) == PlayerOutcome::done);
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
-    CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOf(queued));
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
+    CHECK(documentOf(server, id, phone().id)["libraryPath"] == libraryPathOf(queued));
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
-    CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOf(rows[3]));
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
+    CHECK(documentOf(server, id, phone().id)["libraryPath"] == libraryPathOf(rows[3]));
     CHECK(recorder.calls() == 0);
 }
 
@@ -1313,17 +1314,17 @@ TEST_CASE("a seek naming a session moves its position, absolutely or relatively,
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto other = playingSession(server, recorder, kPhone, rows, 0);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto other = playingSession(server, recorder, phone().id, rows, 0);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
 
-    checkDone(post(server, scoped(kSeek, id, kPhone), R"({"seconds": 42})"));
+    checkDone(post(server, scoped(kSeek, id, phone().id), R"({"seconds": 42})"));
     CHECK(stateOf(recorder, id).position.seconds == doctest::Approx(42));
 
-    checkDone(post(server, scoped(kSeek, id, kPhone), R"({"relativeSeconds": -10})"));
+    checkDone(post(server, scoped(kSeek, id, phone().id), R"({"relativeSeconds": -10})"));
     CHECK(stateOf(recorder, id).position.seconds == doctest::Approx(32));
 
     CHECK(stateOf(recorder, other).position.seconds == doctest::Approx(0));
-    CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOf(rows[2]));
+    CHECK(documentOf(server, id, phone().id)["libraryPath"] == libraryPathOf(rows[2]));
     CHECK(recorder.engine().seeks.empty());
     CHECK(recorder.calls() == 0);
 }
@@ -1331,15 +1332,15 @@ TEST_CASE("a seek naming a session moves its position, absolutely or relatively,
 TEST_CASE("a malformed seek naming a session is refused as the engine's seek refuses it") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
-    checkDone(post(server, scoped(kSeek, id, kPhone), R"({"seconds": 42})"));
+    const auto id = playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
+    checkDone(post(server, scoped(kSeek, id, phone().id), R"({"seconds": 42})"));
 
     for (const char* body : {R"({"seconds": -1})", R"({})", R"({"seconds": "30"})", "{"}) {
         CAPTURE(body);
         const auto engine = post(server, kSeek, body);
         REQUIRE(engine);
         CHECK(engine->status == 400);
-        checkSameAnswer(post(server, scoped(kSeek, id, kPhone), body), engine);
+        checkSameAnswer(post(server, scoped(kSeek, id, phone().id), body), engine);
     }
 
     CHECK(stateOf(recorder, id).position.seconds == doctest::Approx(42));
@@ -1352,18 +1353,18 @@ TEST_CASE("each of the five orders a session offers sets the named session's ord
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto other = playingSession(server, recorder, kPhone, rows, 0);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
-    const auto offered = documentOf(server, id, kPhone)["playbackModes"];
+    const auto other = playingSession(server, recorder, phone().id, rows, 0);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
+    const auto offered = documentOf(server, id, phone().id)["playbackModes"];
 
     for (const char* mode : {"repeatAll", "repeatOne", "shuffleTracks", "random", "inOrder"}) {
         CAPTURE(mode);
-        checkDone(post(server, scoped(kMode, id, kPhone), json{{"mode", mode}}.dump()));
+        checkDone(post(server, scoped(kMode, id, phone().id), json{{"mode", mode}}.dump()));
         CHECK(stateOf(recorder, id).playbackMode == mode);
         CHECK(stateOf(recorder, other).playbackMode == "inOrder");
     }
 
-    CHECK(documentOf(server, id, kPhone)["playbackModes"] == offered);
+    CHECK(documentOf(server, id, phone().id)["playbackModes"] == offered);
     CHECK(recorder.engine().orders.empty());
     CHECK(recorder.calls() == 0);
 }
@@ -1372,12 +1373,13 @@ TEST_CASE(
     "shuffleAlbums and shuffleFolders are 409 for a session, as for an install without them") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
-    checkDone(post(server, scoped(kMode, id, kPhone), R"({"mode": "repeatAll"})"));
+    const auto id = playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
+    checkDone(post(server, scoped(kMode, id, phone().id), R"({"mode": "repeatAll"})"));
 
     for (const char* mode : {"shuffleAlbums", "shuffleFolders"}) {
         CAPTURE(mode);
-        const auto response = post(server, scoped(kMode, id, kPhone), json{{"mode", mode}}.dump());
+        const auto response =
+            post(server, scoped(kMode, id, phone().id), json{{"mode", mode}}.dump());
         REQUIRE(response);
         CHECK(response->status == 409);
         CHECK(errorOf(*response) == kModeNotOffered);
@@ -1390,14 +1392,14 @@ TEST_CASE(
 TEST_CASE("a mode naming a session that no session knows is refused as the engine refuses it") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
+    const auto id = playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
 
     for (const char* body : {R"({"mode": "shuffle"})", R"({"mode": 3})", R"({"mode": "Random"})"}) {
         CAPTURE(body);
         const auto engine = post(server, kMode, body);
         REQUIRE(engine);
         CHECK(engine->status == 400);
-        checkSameAnswer(post(server, scoped(kMode, id, kPhone), body), engine);
+        checkSameAnswer(post(server, scoped(kMode, id, phone().id), body), engine);
     }
 
     CHECK(stateOf(recorder, id).playbackMode == "inOrder");
@@ -1409,7 +1411,7 @@ TEST_CASE("a mode naming a session that no session knows is refused as the engin
 TEST_CASE("each route naming no session or the engine session reaches the engine as today") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    createdId(server, kPhone);
+    createdId(server, phone().id);
 
     for (const auto& route : sevenRoutes()) {
         CAPTURE(route.path);
@@ -1418,7 +1420,7 @@ TEST_CASE("each route naming no session or the engine session reaches the engine
         checkDone(unnamed);
         CHECK(recorder.calls() == before + 1);
 
-        checkSameAnswer(command(server, route, kEngineSessionId, kPhone), unnamed);
+        checkSameAnswer(command(server, route, kEngineSessionId, phone().id), unnamed);
         CHECK(recorder.calls() == before + 2);
     }
 
@@ -1442,7 +1444,7 @@ TEST_CASE("an unknown session on each route is 404 in the words of an id nobody 
 
     for (const auto& route : sevenRoutes()) {
         CAPTURE(route.path);
-        const auto response = command(server, route, "Zz00q", kPhone);
+        const auto response = command(server, route, "Zz00q", phone().id);
         checkSameAnswer(response, unknown);
         CHECK(errorOf(*response) == kNoSuchSession);
     }
@@ -1462,7 +1464,7 @@ TEST_CASE("with controlPlayback off, each route naming the engine or none is ref
         REQUIRE(unnamed);
         CHECK(unnamed->status == 403);
         CHECK(errorOf(*unnamed).find("controlPlayback") != std::string::npos);
-        checkSameAnswer(command(server, route, kEngineSessionId, kPhone), unnamed);
+        checkSameAnswer(command(server, route, kEngineSessionId, phone().id), unnamed);
     }
 
     CHECK(recorder.taken().empty());
@@ -1475,32 +1477,32 @@ TEST_CASE("with controlPlayback off, a detached session is created, shared and d
                                       parseSettings(R"({"controlPlayback": false})"));
     const auto rows = tracks("Road", kRows);
 
-    const auto id = createdId(server, kPhone);
-    CHECK(shared(server, id, kPhone, true)["shared"] == true);
+    const auto id = createdId(server, phone().id);
+    CHECK(shared(server, id, phone().id, true)["shared"] == true);
     recorder.hold(kPlaylistId, rows);
-    const auto ears = listening(recorder, id, kPhone);
+    const auto ears = listening(recorder, id, phone().id);
 
-    checkDone(post(server, scoped(rowPlayPath(kPlaylistId, 2), id, kPhone), ""));
-    CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOf(rows[2]));
-    CHECK(documentOf(server, id, kPhone)["playback"] == "playing");
+    checkDone(post(server, scoped(rowPlayPath(kPlaylistId, 2), id, phone().id), ""));
+    CHECK(documentOf(server, id, phone().id)["libraryPath"] == libraryPathOf(rows[2]));
+    CHECK(documentOf(server, id, phone().id)["playback"] == "playing");
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
-    CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOf(rows[3]));
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
+    CHECK(documentOf(server, id, phone().id)["libraryPath"] == libraryPathOf(rows[3]));
 
-    checkDone(post(server, scoped(kPrevious, id, kPhone), ""));
-    CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOf(rows[2]));
+    checkDone(post(server, scoped(kPrevious, id, phone().id), ""));
+    CHECK(documentOf(server, id, phone().id)["libraryPath"] == libraryPathOf(rows[2]));
 
-    checkDone(post(server, scoped(kSeek, id, kPhone), R"({"seconds": 42})"));
+    checkDone(post(server, scoped(kSeek, id, phone().id), R"({"seconds": 42})"));
     CHECK(stateOf(recorder, id).position.seconds == doctest::Approx(42));
 
-    checkDone(post(server, scoped(kMode, id, kPhone), R"({"mode": "repeatOne"})"));
+    checkDone(post(server, scoped(kMode, id, phone().id), R"({"mode": "repeatOne"})"));
     CHECK(stateOf(recorder, id).playbackMode == "repeatOne");
 
-    checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
-    CHECK(documentOf(server, id, kPhone)["playback"] == "paused");
+    checkDone(post(server, scoped(kPlayPause, id, phone().id), ""));
+    CHECK(documentOf(server, id, phone().id)["playback"] == "paused");
 
-    checkDone(post(server, scoped(kStop, id, kPhone), ""));
-    CHECK(documentOf(server, id, kPhone)["playback"] == "stopped");
+    checkDone(post(server, scoped(kStop, id, phone().id), ""));
+    CHECK(documentOf(server, id, phone().id)["playback"] == "stopped");
 
     CHECK(recorder.calls() == 0);
 }
@@ -1509,19 +1511,19 @@ TEST_CASE("a private session is 404 on each route to a stranger and to no device
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
-    const auto ears = listening(recorder, id, kPhone);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
+    const auto ears = listening(recorder, id, phone().id);
     const auto unknown = unknownSessionAnswer(server);
 
     for (const auto& route : sevenRoutes()) {
-        for (const char* device : {kLaptop, ""}) {
+        for (const std::string& device : std::vector<std::string>{laptop().id, ""}) {
             CAPTURE(route.path);
             CAPTURE(device);
             checkSameAnswer(command(server, route, id, device), unknown);
         }
     }
 
-    const auto session = documentOf(server, id, kPhone);
+    const auto session = documentOf(server, id, phone().id);
     CHECK(session["playback"] == "playing");
     CHECK(session["libraryPath"] == libraryPathOf(rows[2]));
     const auto state = stateOf(recorder, id);
@@ -1536,16 +1538,16 @@ TEST_CASE("a stranger may drive a shared session, and is refused again once it i
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
-    shared(server, id, kPhone, true);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
+    shared(server, id, phone().id, true);
 
-    checkDone(post(server, scoped(kNext, id, kLaptop), ""));
-    CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOf(rows[3]));
+    checkDone(post(server, scoped(kNext, id, laptop().id), ""));
+    CHECK(documentOf(server, id, phone().id)["libraryPath"] == libraryPathOf(rows[3]));
 
-    shared(server, id, kPhone, false);
+    shared(server, id, phone().id, false);
 
-    checkSameAnswer(post(server, scoped(kNext, id, kLaptop), ""), unknownSessionAnswer(server));
-    CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOf(rows[3]));
+    checkSameAnswer(post(server, scoped(kNext, id, laptop().id), ""), unknownSessionAnswer(server));
+    CHECK(documentOf(server, id, phone().id)["libraryPath"] == libraryPathOf(rows[3]));
     CHECK(recorder.calls() == 0);
 }
 
@@ -1650,11 +1652,11 @@ TEST_CASE("a poll naming the engine session answers the poll naming none, its se
     store.publish(engineState());
     moveEveryEngineRevision(store);
     const TestServer server = servingWith(recorder.player(), &library, &store);
-    const auto id = createdId(server, kPhone);
-    shared(server, id, kPhone, true);
+    const auto id = createdId(server, phone().id);
+    shared(server, id, phone().id, true);
 
     const auto unnamed = poll(server, "", "");
-    const auto named = poll(server, kEngineSessionId, kPhone);
+    const auto named = poll(server, kEngineSessionId, phone().id);
 
     checkSameAnswer(named, unnamed);
     REQUIRE(unnamed->status == 200);
@@ -1670,10 +1672,10 @@ TEST_CASE("a poll naming the engine session answers the poll naming none, its se
     moved.playback = PlaybackState::stopped;
     store.publish(moved);
     moveEveryEngineRevision(store);
-    shared(server, id, kPhone, false);
+    shared(server, id, phone().id, false);
 
     CHECK(playerPolled(server, "", "")["sessionRevision"] == 0);
-    CHECK(playerPolled(server, kEngineSessionId, kPhone)["sessionRevision"] == 0);
+    CHECK(playerPolled(server, kEngineSessionId, phone().id)["sessionRevision"] == 0);
     CHECK(recorder.calls() == 0);
 }
 
@@ -1693,18 +1695,18 @@ TEST_CASE(
 
     auto rows = tracks("Road", kRows);
     rows[2].subsong = 4;
-    const auto paused = playingSession(server, recorder, kPhone, rows, 2);
-    const auto ears = listening(recorder, paused, kPhone);
-    checkDone(post(server, scoped(kMode, paused, kPhone), R"({"mode": "repeatAll"})"));
-    checkDone(post(server, scoped(kSeek, paused, kPhone), R"({"seconds": 42})"));
-    checkDone(post(server, scoped(kPlayPause, paused, kPhone), ""));
+    const auto paused = playingSession(server, recorder, phone().id, rows, 2);
+    const auto ears = listening(recorder, paused, phone().id);
+    checkDone(post(server, scoped(kMode, paused, phone().id), R"({"mode": "repeatAll"})"));
+    checkDone(post(server, scoped(kSeek, paused, phone().id), R"({"seconds": 42})"));
+    checkDone(post(server, scoped(kPlayPause, paused, phone().id), ""));
     REQUIRE(recorder.session(paused)->enqueue({track("Queued")}) == PlayerOutcome::done);
 
-    const auto stopped = createdId(server, kLaptop);
-    shared(server, stopped, kLaptop, true);
+    const auto stopped = createdId(server, laptop().id);
+    shared(server, stopped, laptop().id, true);
 
-    const auto pausedPoll = polled(server, paused, kPhone);
-    const auto stoppedPoll = polled(server, stopped, kLaptop);
+    const auto pausedPoll = polled(server, paused, phone().id);
+    const auto stoppedPoll = polled(server, stopped, laptop().id);
     const auto enginePoll = polled(server, "", "");
 
     const auto& engine = enginePoll["player"];
@@ -1771,22 +1773,22 @@ TEST_CASE("a session's poll names its track through the track reader, once for e
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
-    const auto ears = listening(recorder, id, kPhone);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
+    const auto ears = listening(recorder, id, phone().id);
 
-    const auto first = playerPolled(server, id, kPhone);
+    const auto first = playerPolled(server, id, phone().id);
     CHECK(first["title"] == nameOf(rows[2]));
     CHECK(first["artist"] == "Artist of " + nameOf(rows[2]));
     CHECK(first["album"] == "Album of " + nameOf(rows[2]));
     CHECK(first["albumArtist"] == "Album artist of " + nameOf(rows[2]));
 
-    playerPolled(server, id, kPhone);
-    checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
-    CHECK(playerPolled(server, id, kPhone)["title"] == nameOf(rows[2]));
+    playerPolled(server, id, phone().id);
+    checkDone(post(server, scoped(kPlayPause, id, phone().id), ""));
+    CHECK(playerPolled(server, id, phone().id)["title"] == nameOf(rows[2]));
     CHECK(recorder.trackReads() == std::vector<std::string>{nameOf(rows[2])});
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
-    CHECK(playerPolled(server, id, kPhone)["title"] == nameOf(rows[3]));
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
+    CHECK(playerPolled(server, id, phone().id)["title"] == nameOf(rows[3]));
     CHECK(recorder.trackReads() == std::vector<std::string>{nameOf(rows[2]), nameOf(rows[3])});
     CHECK(recorder.calls() == 0);
 }
@@ -1794,14 +1796,14 @@ TEST_CASE("a session's poll names its track through the track reader, once for e
 TEST_CASE("a stopped session's poll answers no track and no names, and reads no track") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto fresh = createdId(server, kPhone);
-    const auto stopped = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
-    checkDone(post(server, scoped(kStop, stopped, kPhone), ""));
+    const auto fresh = createdId(server, phone().id);
+    const auto stopped = playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
+    checkDone(post(server, scoped(kStop, stopped, phone().id), ""));
     const auto readsBefore = recorder.trackReads().size();
 
     for (const auto& id : {fresh, stopped}) {
         CAPTURE(id);
-        const auto player = playerPolled(server, id, kPhone);
+        const auto player = playerPolled(server, id, phone().id);
         CHECK(player["playback"] == "stopped");
         CHECK(player["path"] == "");
         CHECK(player["libraryPath"].is_null());
@@ -1824,10 +1826,10 @@ TEST_CASE(
     const TestServer server = serving(recorder.player());
     auto rows = tracks("Road", kRows);
     rows[2] = track("Untagged 2");
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
 
-    const auto player = playerPolled(server, id, kPhone);
-    const auto document = documentOf(server, id, kPhone);
+    const auto player = playerPolled(server, id, phone().id);
+    const auto document = documentOf(server, id, phone().id);
 
     CHECK(player["title"] == "Untagged 2");
     CHECK(document["title"] == "Untagged 2");
@@ -1874,17 +1876,17 @@ TEST_CASE("a session's document and its list entry name its track with no poll b
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
 
-    checkNamed(documentOf(server, id, kPhone), nameOf(rows[2]));
-    checkNamed(listedAs(server, kPhone, id), nameOf(rows[2]));
+    checkNamed(documentOf(server, id, phone().id), nameOf(rows[2]));
+    checkNamed(listedAs(server, phone().id, id), nameOf(rows[2]));
     CHECK(recorder.trackReads() == std::vector<std::string>{nameOf(rows[2])});
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
 
-    checkNamed(listedAs(server, kPhone, id), nameOf(rows[3]));
-    checkNamed(documentOf(server, id, kPhone), nameOf(rows[3]));
-    CHECK(playerPolled(server, id, kPhone)["title"] == nameOf(rows[3]));
+    checkNamed(listedAs(server, phone().id, id), nameOf(rows[3]));
+    checkNamed(documentOf(server, id, phone().id), nameOf(rows[3]));
+    CHECK(playerPolled(server, id, phone().id)["title"] == nameOf(rows[3]));
     CHECK(recorder.trackReads() == std::vector<std::string>{nameOf(rows[2]), nameOf(rows[3])});
     CHECK(recorder.calls() == 0);
 }
@@ -1893,11 +1895,11 @@ TEST_CASE("names a poll read are the ones the document answers, read once betwee
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
 
-    CHECK(playerPolled(server, id, kPhone)["title"] == nameOf(rows[2]));
-    checkNamed(documentOf(server, id, kPhone), nameOf(rows[2]));
-    checkNamed(listedAs(server, kPhone, id), nameOf(rows[2]));
+    CHECK(playerPolled(server, id, phone().id)["title"] == nameOf(rows[2]));
+    checkNamed(documentOf(server, id, phone().id), nameOf(rows[2]));
+    checkNamed(listedAs(server, phone().id, id), nameOf(rows[2]));
 
     CHECK(recorder.trackReads() == std::vector<std::string>{nameOf(rows[2])});
     CHECK(recorder.calls() == 0);
@@ -1907,11 +1909,11 @@ TEST_CASE("names a poll read are the ones the document answers, read once betwee
 TEST_CASE("the list names each detached session it shows from that session's own track") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto first = playingSession(server, recorder, kPhone, tracks("Road", kRows), 1);
-    const auto second = playingSession(server, recorder, kPhone, tracks("Other", kRows), 3);
+    const auto first = playingSession(server, recorder, phone().id, tracks("Road", kRows), 1);
+    const auto second = playingSession(server, recorder, phone().id, tracks("Other", kRows), 3);
 
-    checkNamed(listedAs(server, kPhone, first), "Road 1");
-    checkNamed(listedAs(server, kPhone, second), "Other 3");
+    checkNamed(listedAs(server, phone().id, first), "Road 1");
+    checkNamed(listedAs(server, phone().id, second), "Other 3");
 
     auto reads = recorder.trackReads();
     std::sort(reads.begin(), reads.end());
@@ -1922,22 +1924,22 @@ TEST_CASE("the list names each detached session it shows from that session's own
 TEST_CASE("a stopped session's document names nothing and reads nothing, nor does a stranger's") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto fresh = createdId(server, kPhone);
-    const auto stopped = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
-    checkDone(post(server, scoped(kStop, stopped, kPhone), ""));
-    const auto playing = playingSession(server, recorder, kPhone, tracks("Other", kRows), 1);
-    checkNamed(documentOf(server, playing, kPhone), "Other 1");
+    const auto fresh = createdId(server, phone().id);
+    const auto stopped = playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
+    checkDone(post(server, scoped(kStop, stopped, phone().id), ""));
+    const auto playing = playingSession(server, recorder, phone().id, tracks("Other", kRows), 1);
+    checkNamed(documentOf(server, playing, phone().id), "Other 1");
     const auto readsBefore = recorder.trackReads().size();
 
     for (const auto& id : {fresh, stopped}) {
         CAPTURE(id);
-        checkUnnamed(documentOf(server, id, kPhone));
-        checkUnnamed(listedAs(server, kPhone, id));
+        checkUnnamed(documentOf(server, id, phone().id));
+        checkUnnamed(listedAs(server, phone().id, id));
     }
     CHECK(recorder.trackReads().size() == readsBefore);
 
     const auto unknown = unknownSessionAnswer(server);
-    for (const char* device : {kLaptop, ""}) {
+    for (const std::string& device : std::vector<std::string>{laptop().id, ""}) {
         CAPTURE(device);
         checkSameAnswer(read(server, playing, device), unknown);
         CHECK(idsSeenBy(server, device) == engineOnly());
@@ -1960,18 +1962,18 @@ TEST_CASE("a document whose names could not be read is null, and the next read a
     }
 
     recorder.cannotName(nameOf(rows[2]), outcome);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
     const auto readsBefore = recorder.trackReads().size();
 
-    checkUnnamed(documentOf(server, id, kPhone));
+    checkUnnamed(documentOf(server, id, phone().id));
     CHECK(recorder.trackReads().size() == readsBefore + 1);
-    checkUnnamed(listedAs(server, kPhone, id));
+    checkUnnamed(listedAs(server, phone().id, id));
     CHECK(recorder.trackReads().size() == readsBefore + 2);
 
     recorder.canName(nameOf(rows[2]));
 
-    checkNamed(documentOf(server, id, kPhone), nameOf(rows[2]));
-    checkNamed(documentOf(server, id, kPhone), nameOf(rows[2]));
+    checkNamed(documentOf(server, id, phone().id), nameOf(rows[2]));
+    checkNamed(documentOf(server, id, phone().id), nameOf(rows[2]));
     CHECK(recorder.trackReads().size() == readsBefore + 3);
     CHECK(recorder.calls() == 0);
 }
@@ -1995,18 +1997,18 @@ TEST_CASE("a session's duration is its track's own length until the decoder answ
     const auto rows = tracks("Road", kRows);
     recorder.lasts(nameOf(rows[2]), 241.5);
     recorder.lasts(nameOf(rows[3]), 187.25);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
 
-    CHECK(playerPolled(server, id, kPhone)["duration"] == 241.5);
+    CHECK(playerPolled(server, id, phone().id)["duration"] == 241.5);
 
     decoderOpens(*recorder.session(id), 243);
-    CHECK(playerPolled(server, id, kPhone)["duration"] == 243);
+    CHECK(playerPolled(server, id, phone().id)["duration"] == 243);
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
-    CHECK(playerPolled(server, id, kPhone)["duration"] == 187.25);
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
+    CHECK(playerPolled(server, id, phone().id)["duration"] == 187.25);
 
-    checkDone(post(server, scoped(kStop, id, kPhone), ""));
-    CHECK(playerPolled(server, id, kPhone)["duration"] == 0);
+    checkDone(post(server, scoped(kStop, id, phone().id), ""));
+    CHECK(playerPolled(server, id, phone().id)["duration"] == 0);
     CHECK(recorder.calls() == 0);
 }
 
@@ -2017,11 +2019,11 @@ TEST_CASE("a decoder's duration answered before the first poll is the one the po
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
     recorder.lasts(nameOf(rows[2]), 241.5);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
 
     decoderOpens(*recorder.session(id), 243);
 
-    const auto player = playerPolled(server, id, kPhone);
+    const auto player = playerPolled(server, id, phone().id);
     CHECK(player["title"] == nameOf(rows[2]));
     CHECK(player["duration"] == 243);
     CHECK(recorder.calls() == 0);
@@ -2033,41 +2035,41 @@ TEST_CASE("a session's poll is 304 while nothing it answers moves, and 200 once 
     store.publish(engineState());
     const TestServer server = serving(recorder.player(), &store);
     const auto rows = tracks("Road", kRows);
-    const auto id = playingSession(server, recorder, kPhone, rows, 1);
-    const auto ears = listening(recorder, id, kPhone);
+    const auto id = playingSession(server, recorder, phone().id, rows, 1);
+    const auto ears = listening(recorder, id, phone().id);
 
-    const auto tag = tagOf(poll(server, id, kPhone));
-    checkUnchanged(pollHolding(server, id, kPhone, tag), tag);
+    const auto tag = tagOf(poll(server, id, phone().id));
+    checkUnchanged(pollHolding(server, id, phone().id, tag), tag);
 
     SUBCASE("it pauses") {
-        checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
+        checkDone(post(server, scoped(kPlayPause, id, phone().id), ""));
     }
     SUBCASE("it moves to the next track") {
-        checkDone(post(server, scoped(kNext, id, kPhone), ""));
+        checkDone(post(server, scoped(kNext, id, phone().id), ""));
     }
     SUBCASE("it plays another row") {
-        checkDone(post(server, scoped(rowPlayPath(kPlaylistId, 3), id, kPhone), ""));
+        checkDone(post(server, scoped(rowPlayPath(kPlaylistId, 3), id, phone().id), ""));
     }
     SUBCASE("it seeks") {
-        checkDone(post(server, scoped(kSeek, id, kPhone), R"({"seconds": 42})"));
+        checkDone(post(server, scoped(kSeek, id, phone().id), R"({"seconds": 42})"));
     }
     SUBCASE("it stops") {
-        checkDone(post(server, scoped(kStop, id, kPhone), ""));
+        checkDone(post(server, scoped(kStop, id, phone().id), ""));
     }
     SUBCASE("its order changes") {
-        checkDone(post(server, scoped(kMode, id, kPhone), R"({"mode": "repeatOne"})"));
+        checkDone(post(server, scoped(kMode, id, phone().id), R"({"mode": "repeatOne"})"));
     }
     SUBCASE("its queue changes") {
         REQUIRE(recorder.session(id)->enqueue({track("Queued")}) == PlayerOutcome::done);
     }
     SUBCASE("it is shared") {
-        shared(server, id, kPhone, true);
+        shared(server, id, phone().id, true);
     }
     SUBCASE("the player's volume moves") {
         store.volumeChanged(-12, false);
     }
 
-    checkMoved(pollHolding(server, id, kPhone, tag), tag);
+    checkMoved(pollHolding(server, id, phone().id, tag), tag);
 }
 
 // Two sessions just created hold the same state, so only the id can tell their tags apart.
@@ -2076,23 +2078,23 @@ TEST_CASE("the engine and each session poll under tags of their own, none moving
     PlayerStateStore store;
     store.publish(engineState());
     const TestServer server = serving(recorder.player(), &store);
-    const auto playing = playingSession(server, recorder, kPhone, tracks("Road", kRows), 1);
-    const auto first = createdId(server, kPhone);
-    const auto second = createdId(server, kPhone);
+    const auto playing = playingSession(server, recorder, phone().id, tracks("Road", kRows), 1);
+    const auto first = createdId(server, phone().id);
+    const auto second = createdId(server, phone().id);
 
     const auto engineTag = tagOf(poll(server, "", ""));
-    const auto playingTag = tagOf(poll(server, playing, kPhone));
-    const auto firstTag = tagOf(poll(server, first, kPhone));
-    const auto secondTag = tagOf(poll(server, second, kPhone));
+    const auto playingTag = tagOf(poll(server, playing, phone().id));
+    const auto firstTag = tagOf(poll(server, first, phone().id));
+    const auto secondTag = tagOf(poll(server, second, phone().id));
 
     CHECK(std::set<std::string>{engineTag, playingTag, firstTag, secondTag}.size() == 4);
 
-    checkDone(post(server, scoped(kNext, playing, kPhone), ""));
-    shared(server, first, kPhone, true);
+    checkDone(post(server, scoped(kNext, playing, phone().id), ""));
+    shared(server, first, phone().id, true);
 
-    checkMoved(pollHolding(server, playing, kPhone, playingTag), playingTag);
-    checkMoved(pollHolding(server, first, kPhone, firstTag), firstTag);
-    checkUnchanged(pollHolding(server, second, kPhone, secondTag), secondTag);
+    checkMoved(pollHolding(server, playing, phone().id, playingTag), playingTag);
+    checkMoved(pollHolding(server, first, phone().id, firstTag), firstTag);
+    checkUnchanged(pollHolding(server, second, phone().id, secondTag), secondTag);
     checkUnchanged(pollHolding(server, "", "", engineTag), engineTag);
     CHECK(recorder.calls() == 0);
 }
@@ -2184,29 +2186,29 @@ TEST_CASE(
     PlayerStateStore store;
     store.publish(engineState());
     const TestServer server = serving(recorder.player(), &store);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
 
     for (const auto& move : engineMoves()) {
         CAPTURE(move.name);
         server.advanceClock(kAPollsWorth);
-        const auto sessionTag = tagOf(poll(server, id, kPhone));
+        const auto sessionTag = tagOf(poll(server, id, phone().id));
         const auto engineTag = tagOf(poll(server, "", ""));
 
         move.apply(store);
 
-        checkUnchanged(pollHolding(server, id, kPhone, sessionTag), sessionTag);
+        checkUnchanged(pollHolding(server, id, phone().id, sessionTag), sessionTag);
         checkMoved(pollHolding(server, "", "", engineTag), engineTag);
     }
 
     for (const auto& move : playerMoves()) {
         CAPTURE(move.name);
         server.advanceClock(kAPollsWorth);
-        const auto sessionTag = tagOf(poll(server, id, kPhone));
+        const auto sessionTag = tagOf(poll(server, id, phone().id));
         const auto engineTag = tagOf(poll(server, "", ""));
 
         move.apply(store);
 
-        checkMoved(pollHolding(server, id, kPhone, sessionTag), sessionTag);
+        checkMoved(pollHolding(server, id, phone().id, sessionTag), sessionTag);
         checkMoved(pollHolding(server, "", "", engineTag), engineTag);
     }
     CHECK(recorder.calls() == 0);
@@ -2219,14 +2221,14 @@ TEST_CASE("every session's poll answers the player's outputSilent, true, false a
     PlayerStateStore store;
     store.publish(engineState());
     const TestServer server = serving(recorder.player(), &store);
-    const auto playing = playingSession(server, recorder, kPhone, tracks("Road", kRows), 1);
-    const auto idle = createdId(server, kLaptop);
+    const auto playing = playingSession(server, recorder, phone().id, tracks("Road", kRows), 1);
+    const auto idle = createdId(server, laptop().id);
 
     const auto pollsSay = [&](const json& silent, const json& deviceId) {
         server.advanceClock(kAPollsWorth);
-        for (const auto& asker : {std::pair<std::string, std::string>{playing, kPhone},
-                                  {idle, kLaptop},
-                                  {kEngineSessionId, kPhone},
+        for (const auto& asker : {std::pair<std::string, std::string>{playing, phone().id},
+                                  {idle, laptop().id},
+                                  {kEngineSessionId, phone().id},
                                   {"", ""}}) {
             CAPTURE(asker.first);
             const auto player = playerPolled(server, asker.first, asker.second);
@@ -2255,28 +2257,28 @@ TEST_CASE("every session's poll answers the player's outputSilent, true, false a
 TEST_CASE("a member's poll keeps a session past the creator's grace, answered 200 or 304") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = createdId(server, kPhone);
-    shared(server, id, kPhone, true);
-    CHECK(playerPolled(server, id, kLaptop)["playback"] == "stopped");
-    shared(server, id, kPhone, false);
-    const auto tag = tagOf(poll(server, id, kLaptop));
+    const auto id = createdId(server, phone().id);
+    shared(server, id, phone().id, true);
+    CHECK(playerPolled(server, id, laptop().id)["playback"] == "stopped");
+    shared(server, id, phone().id, false);
+    const auto tag = tagOf(poll(server, id, laptop().id));
 
     server.advanceClock(std::chrono::minutes(14));
 
     SUBCASE("answered 200") {
-        const auto response = poll(server, id, kLaptop);
+        const auto response = poll(server, id, laptop().id);
         REQUIRE(response);
         CHECK(response->status == 200);
     }
     SUBCASE("answered 304") {
-        checkUnchanged(pollHolding(server, id, kLaptop, tag), tag);
+        checkUnchanged(pollHolding(server, id, laptop().id, tag), tag);
     }
 
     server.advanceClock(std::chrono::minutes(2));
 
-    CHECK(statusOf(read(server, id, kLaptop)) == 200);
-    CHECK(idsSeenBy(server, kLaptop) == std::vector<std::string>{kEngineSessionId, id});
-    checkSameAnswer(read(server, id, kPhone), unknownSessionAnswer(server));
+    CHECK(statusOf(read(server, id, laptop().id)) == 200);
+    CHECK(idsSeenBy(server, laptop().id) == std::vector<std::string>{kEngineSessionId, id});
+    checkSameAnswer(read(server, id, phone().id), unknownSessionAnswer(server));
     CHECK(recorder.calls() == 0);
 }
 
@@ -2284,26 +2286,26 @@ TEST_CASE("a member's poll keeps a session past the creator's grace, answered 20
 TEST_CASE("a session nobody polls is gone once its creator's grace has run out") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 1);
+    const auto id = playingSession(server, recorder, phone().id, tracks("Road", kRows), 1);
 
     server.advanceClock(std::chrono::minutes(14));
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
-    CHECK(statusOf(read(server, id, kPhone)) == 200);
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
+    CHECK(statusOf(read(server, id, phone().id)) == 200);
 
     server.advanceClock(std::chrono::minutes(2));
 
     const auto unknown = unknownSessionAnswer(server);
-    checkSameAnswer(read(server, id, kPhone), unknown);
-    checkSameAnswer(poll(server, id, kPhone), unknown);
-    CHECK(idsSeenBy(server, kPhone) == engineOnly());
+    checkSameAnswer(read(server, id, phone().id), unknown);
+    checkSameAnswer(poll(server, id, phone().id), unknown);
+    CHECK(idsSeenBy(server, phone().id) == engineOnly());
     CHECK(recorder.calls() == 0);
 }
 
 TEST_CASE("a poll naming no device holds nothing, even of a shared session it may read") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = createdId(server, kPhone);
-    shared(server, id, kPhone, true);
+    const auto id = createdId(server, phone().id);
+    shared(server, id, phone().id, true);
 
     server.advanceClock(std::chrono::minutes(14));
     CHECK(playerPolled(server, id, "")["playback"] == "stopped");
@@ -2312,7 +2314,7 @@ TEST_CASE("a poll naming no device holds nothing, even of a shared session it ma
 
     checkSameAnswer(poll(server, id, ""), unknownSessionAnswer(server));
     CHECK(idsSeenBy(server, "") == engineOnly());
-    CHECK(idsSeenBy(server, kPhone) == engineOnly());
+    CHECK(idsSeenBy(server, phone().id) == engineOnly());
     CHECK(recorder.calls() == 0);
 }
 
@@ -2322,36 +2324,36 @@ TEST_CASE(
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto id = playingSession(server, recorder, kPhone, rows, 1);
-    shared(server, id, kPhone, true);
+    const auto id = playingSession(server, recorder, phone().id, rows, 1);
+    shared(server, id, phone().id, true);
 
-    CHECK(playerPolled(server, id, kLaptop)["libraryPath"] == libraryPathOf(rows[1]));
-    checkDone(post(server, scoped(kNext, id, kTablet), ""));
+    CHECK(playerPolled(server, id, laptop().id)["libraryPath"] == libraryPathOf(rows[1]));
+    checkDone(post(server, scoped(kNext, id, tablet().id), ""));
 
-    shared(server, id, kPhone, false);
+    shared(server, id, phone().id, false);
 
-    CHECK(playerPolled(server, id, kLaptop)["libraryPath"] == libraryPathOf(rows[2]));
-    CHECK(statusOf(read(server, id, kLaptop)) == 200);
+    CHECK(playerPolled(server, id, laptop().id)["libraryPath"] == libraryPathOf(rows[2]));
+    CHECK(statusOf(read(server, id, laptop().id)) == 200);
 
     const auto unknown = unknownSessionAnswer(server);
-    checkSameAnswer(poll(server, id, kTablet), unknown);
-    checkSameAnswer(read(server, id, kTablet), unknown);
+    checkSameAnswer(poll(server, id, tablet().id), unknown);
+    checkSameAnswer(read(server, id, tablet().id), unknown);
     CHECK(recorder.calls() == 0);
 }
 
 TEST_CASE("a private session's poll is 404 to a stranger and to no device, as an unknown id is") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 1);
+    const auto id = playingSession(server, recorder, phone().id, tracks("Road", kRows), 1);
     const auto unknown = unknownSessionAnswer(server);
 
-    for (const char* device : {kLaptop, ""}) {
+    for (const std::string& device : std::vector<std::string>{laptop().id, ""}) {
         CAPTURE(device);
         checkSameAnswer(poll(server, id, device), unknown);
     }
-    checkSameAnswer(poll(server, "Zz00q", kPhone), unknown);
+    checkSameAnswer(poll(server, "Zz00q", phone().id), unknown);
 
-    CHECK(statusOf(read(server, id, kLaptop)) == 404);
+    CHECK(statusOf(read(server, id, laptop().id)) == 404);
     CHECK(recorder.trackReads().empty());
     CHECK(recorder.calls() == 0);
 }
@@ -2362,34 +2364,34 @@ TEST_CASE("a session's queueRevision moves with its queue and sessionRevision wi
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto id = playingSession(server, recorder, kPhone, rows, 1);
+    const auto id = playingSession(server, recorder, phone().id, rows, 1);
 
-    const auto start = playerPolled(server, id, kPhone);
+    const auto start = playerPolled(server, id, phone().id);
 
     REQUIRE(recorder.session(id)->enqueue({track("Queued")}) == PlayerOutcome::done);
-    const auto queued = playerPolled(server, id, kPhone);
+    const auto queued = playerPolled(server, id, phone().id);
     CHECK(queued["queueRevision"] > start["queueRevision"]);
     CHECK(queued["sessionRevision"] == start["sessionRevision"]);
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
-    const auto taken = playerPolled(server, id, kPhone);
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
+    const auto taken = playerPolled(server, id, phone().id);
     CHECK(taken["libraryPath"] == libraryPathOf(track("Queued")));
     CHECK(taken["queueRevision"] > queued["queueRevision"]);
     CHECK(taken["sessionRevision"] == start["sessionRevision"]);
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
-    const auto moved = playerPolled(server, id, kPhone);
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
+    const auto moved = playerPolled(server, id, phone().id);
     CHECK(moved["libraryPath"] == libraryPathOf(rows[2]));
     CHECK(moved["queueRevision"] == taken["queueRevision"]);
     CHECK(moved["sessionRevision"] == start["sessionRevision"]);
 
-    shared(server, id, kPhone, true);
-    const auto sharing = playerPolled(server, id, kPhone);
+    shared(server, id, phone().id, true);
+    const auto sharing = playerPolled(server, id, phone().id);
     CHECK(sharing["sessionRevision"] > moved["sessionRevision"]);
     CHECK(sharing["queueRevision"] == moved["queueRevision"]);
 
-    shared(server, id, kPhone, false);
-    const auto unsharing = playerPolled(server, id, kPhone);
+    shared(server, id, phone().id, false);
+    const auto unsharing = playerPolled(server, id, phone().id);
     CHECK(unsharing["sessionRevision"] > sharing["sessionRevision"]);
 
     for (const auto& player : {start, queued, taken, moved, sharing, unsharing})
@@ -2498,13 +2500,13 @@ TEST_CASE(
     "GET /api/queue naming a session reads its entries at its own revision, located nowhere") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto other = createdId(server, kPhone);
-    const auto id = createdId(server, kPhone);
+    const auto other = createdId(server, phone().id);
+    const auto id = createdId(server, phone().id);
     queueIn(recorder, id, {"First", "Second", "Third"});
     queueIn(recorder, other, {"Elsewhere", "Elsewhere too"});
     recorder.queueAtTheEngine({engineQueued("At the engine")});
 
-    const auto body = queueOf(server, id, kPhone);
+    const auto body = queueOf(server, id, phone().id);
 
     CHECK(keysOf(body) == Keys{"entries", "revision"});
     CHECK(body["revision"] == queueRevisionOf(recorder, id));
@@ -2535,13 +2537,13 @@ TEST_CASE("POST /api/queue naming a session takes its ordinals from the library 
     buildLibrary(library);
     const auto structure = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library);
-    const auto other = createdId(server, kPhone);
-    const auto id = createdId(server, kPhone);
+    const auto other = createdId(server, phone().id);
+    const auto id = createdId(server, phone().id);
     queueIn(recorder, id, {"Already", "Already too"});
     queueIn(recorder, other, {"Elsewhere", "Elsewhere too"});
     recorder.queueAtTheEngine({engineQueued("At the engine")});
 
-    checkDone(queueing(server, id, kPhone, librarySet(structure, "ordinals", {5, 2})));
+    checkDone(queueing(server, id, phone().id, librarySet(structure, "ordinals", {5, 2})));
 
     CHECK(recorder.libraryTaken() == std::vector<LibraryTake>{{structure, {5, 2}}});
     CHECK(queuedIn(recorder, id) ==
@@ -2557,10 +2559,10 @@ TEST_CASE("POST /api/queue naming a session takes playlist rows by position, in 
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
     recorder.hold(kPlaylistId, rows);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
 
     checkDone(
-        queueing(server, id, kPhone, json{{"playlistId", kPlaylistId}, {"positions", {3, 0}}}));
+        queueing(server, id, phone().id, json{{"playlistId", kPlaylistId}, {"positions", {3, 0}}}));
 
     CHECK(recorder.taken() == std::vector<std::string>{kPlaylistId});
     CHECK(recorder.takenWithPositions() == 1);
@@ -2576,18 +2578,18 @@ TEST_CASE("POST /api/queue naming a session at a position lands there at the que
     buildLibrary(library);
     const auto structure = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
     queueIn(recorder, id, {"Queued A", "Queued B", "Queued C"});
 
     auto atOne = librarySet(structure, "ordinals", {4});
     atOne["at"] = 1;
     atOne["revision"] = queueRevisionOf(recorder, id);
-    checkDone(queueing(server, id, kPhone, atOne));
+    checkDone(queueing(server, id, phone().id, atOne));
 
     auto atZero = librarySet(structure, "ordinals", {6});
     atZero["at"] = 0;
     atZero["revision"] = queueRevisionOf(recorder, id);
-    checkDone(queueing(server, id, kPhone, atZero));
+    checkDone(queueing(server, id, phone().id, atZero));
 
     CHECK(queuedIn(recorder, id) == std::vector<std::string>{libraryName(6), "Queued A",
                                                              libraryName(4), "Queued B",
@@ -2603,7 +2605,7 @@ TEST_CASE("POST /api/queue naming a session at a stale revision is 409 and takes
     buildLibrary(library);
     const auto structure = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
     queueIn(recorder, id, {"Queued A", "Queued B", "Queued C"});
     const auto current = queueRevisionOf(recorder, id);
     REQUIRE(current >= 2);
@@ -2614,7 +2616,7 @@ TEST_CASE("POST /api/queue naming a session at a stale revision is 409 and takes
         body["at"] = 1;
         body["revision"] = revision;
 
-        const auto response = queueing(server, id, kPhone, body);
+        const auto response = queueing(server, id, phone().id, body);
         REQUIRE(response);
         CHECK(response->status == 409);
         CHECK(errorOf(*response) == describe(PlayerOutcome::queueMoved));
@@ -2634,18 +2636,20 @@ TEST_CASE("POST /api/queue naming a session is the engine's 409 for a library th
     buildLibrary(library);
     const auto exported = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
     queueIn(recorder, id, {"Queued A", "Queued B"});
 
     recorder.moveTheLibrary();
-    const auto duringTheTake = queueing(server, id, kPhone, librarySet(exported, "ordinals", {1}));
+    const auto duringTheTake =
+        queueing(server, id, phone().id, librarySet(exported, "ordinals", {1}));
     REQUIRE(duringTheTake);
     CHECK(duringTheTake->status == 409);
     CHECK(errorOf(*duringTheTake) == describe(DeltaOutcome::structureChanged));
     CHECK(recorder.libraryTaken().size() == 1);
 
     buildLibrary(library, kLibraryTracks - 2);
-    const auto beforeTheTake = queueing(server, id, kPhone, librarySet(exported, "ordinals", {1}));
+    const auto beforeTheTake =
+        queueing(server, id, phone().id, librarySet(exported, "ordinals", {1}));
     REQUIRE(beforeTheTake);
     CHECK(beforeTheTake->status == 409);
     CHECK(errorOf(*beforeTheTake) == describe(DeltaOutcome::structureChanged));
@@ -2663,19 +2667,19 @@ TEST_CASE("POST /api/queue naming a session is refused whole past kMaxSessionQue
     buildLibrary(library);
     const auto structure = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
     REQUIRE(recorder.session(id)->enqueue(tracks("Queued", kMaxSessionQueue - 1)) ==
             PlayerOutcome::done);
     const auto revision = queueRevisionOf(recorder, id);
 
-    const auto past = queueing(server, id, kPhone, librarySet(structure, "ordinals", {1, 2}));
+    const auto past = queueing(server, id, phone().id, librarySet(structure, "ordinals", {1, 2}));
     REQUIRE(past);
     CHECK(past->status == 409);
     CHECK_FALSE(errorOf(*past).empty());
     CHECK(recorder.session(id)->queue().entries.size() == kMaxSessionQueue - 1);
     CHECK(queueRevisionOf(recorder, id) == revision);
 
-    checkDone(queueing(server, id, kPhone, librarySet(structure, "ordinals", {1})));
+    checkDone(queueing(server, id, phone().id, librarySet(structure, "ordinals", {1})));
     const auto entries = recorder.session(id)->queue().entries;
     REQUIRE(entries.size() == kMaxSessionQueue);
     CHECK(nameOf(entries.back()) == libraryName(1));
@@ -2685,18 +2689,18 @@ TEST_CASE("POST /api/queue naming a session is refused whole past kMaxSessionQue
 TEST_CASE("DELETE /api/queue naming a session empties that session's queue and no other") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto other = createdId(server, kPhone);
-    const auto id = createdId(server, kPhone);
+    const auto other = createdId(server, phone().id);
+    const auto id = createdId(server, phone().id);
     queueIn(recorder, id, fourQueued());
     queueIn(recorder, other, {"Elsewhere", "Elsewhere too"});
     recorder.queueAtTheEngine({engineQueued("At the engine")});
     const auto revision = queueRevisionOf(recorder, id);
 
-    checkDone(clearing(server, id, kPhone));
+    checkDone(clearing(server, id, phone().id));
 
     CHECK(queuedIn(recorder, id).empty());
     CHECK(queueRevisionOf(recorder, id) > revision);
-    CHECK(queueOf(server, id, kPhone)["entries"] == json::array());
+    CHECK(queueOf(server, id, phone().id)["entries"] == json::array());
     CHECK(queuedIn(recorder, other) == std::vector<std::string>{"Elsewhere", "Elsewhere too"});
     CHECK(engineTitles(recorder) == std::vector<std::string>{"At the engine"});
     CHECK(recorder.engineCalls(Call::clearQueue) == 0);
@@ -2707,19 +2711,19 @@ TEST_CASE(
     "POST /api/queue/move naming a session moves its entry at its revision, as the engine's") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto other = createdId(server, kPhone);
-    const auto id = createdId(server, kPhone);
+    const auto other = createdId(server, phone().id);
+    const auto id = createdId(server, phone().id);
     queueIn(recorder, id, fourQueued());
     queueIn(recorder, other, {"Elsewhere", "Elsewhere too"});
     const auto planned = queueRevisionOf(recorder, id);
 
-    checkDone(moving(server, id, kPhone, 3, 0, planned));
+    checkDone(moving(server, id, phone().id, 3, 0, planned));
     const std::vector<std::string> moved{"Queued D", "Queued A", "Queued B", "Queued C"};
     CHECK(queuedIn(recorder, id) == moved);
     const auto current = queueRevisionOf(recorder, id);
     CHECK(current != planned);
 
-    const auto stale = moving(server, id, kPhone, 0, 1, planned);
+    const auto stale = moving(server, id, phone().id, 0, 1, planned);
     REQUIRE(stale);
     CHECK(stale->status == 409);
     CHECK(errorOf(*stale) == describe(PlayerOutcome::queueMoved));
@@ -2728,7 +2732,7 @@ TEST_CASE(
     for (const auto& move : pastTheEnd) {
         CAPTURE(move.first);
         CAPTURE(move.second);
-        const auto past = moving(server, id, kPhone, move.first, move.second, current);
+        const auto past = moving(server, id, phone().id, move.first, move.second, current);
         REQUIRE(past);
         CHECK(past->status == 400);
         CHECK(errorOf(*past) == describe(PlayerOutcome::positionPastEnd));
@@ -2743,23 +2747,23 @@ TEST_CASE(
 TEST_CASE("DELETE /api/queue/{index} naming a session removes its entry at its revision") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto other = createdId(server, kPhone);
-    const auto id = createdId(server, kPhone);
+    const auto other = createdId(server, phone().id);
+    const auto id = createdId(server, phone().id);
     queueIn(recorder, id, fourQueued());
     queueIn(recorder, other, {"Elsewhere", "Elsewhere too"});
     const auto planned = queueRevisionOf(recorder, id);
 
-    checkDone(removing(server, id, kPhone, 2, planned));
+    checkDone(removing(server, id, phone().id, 2, planned));
     const std::vector<std::string> left{"Queued A", "Queued B", "Queued D"};
     CHECK(queuedIn(recorder, id) == left);
     const auto current = queueRevisionOf(recorder, id);
 
-    const auto stale = removing(server, id, kPhone, 0, planned);
+    const auto stale = removing(server, id, phone().id, 0, planned);
     REQUIRE(stale);
     CHECK(stale->status == 409);
     CHECK(errorOf(*stale) == describe(PlayerOutcome::queueMoved));
 
-    const auto past = removing(server, id, kPhone, 3, current);
+    const auto past = removing(server, id, phone().id, 3, current);
     REQUIRE(past);
     CHECK(past->status == 400);
     CHECK(errorOf(*past) == describe(PlayerOutcome::positionPastEnd));
@@ -2775,7 +2779,7 @@ TEST_CASE("a queue request naming a session that the route can judge is refused 
     buildLibrary(library);
     const auto structure = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
     queueIn(recorder, id, {"Queued A", "Queued B"});
 
     auto titled = librarySet(structure, "ordinals", {1});
@@ -2789,7 +2793,7 @@ TEST_CASE("a queue request naming a session that the route can judge is refused 
         const auto engine = post(server, kQueue, body);
         REQUIRE(engine);
         CHECK(engine->status == 400);
-        checkSameAnswer(post(server, scoped(kQueue, id, kPhone), body), engine);
+        checkSameAnswer(post(server, scoped(kQueue, id, phone().id), body), engine);
     }
 
     for (const auto& body : {std::string("{}"), std::string(R"({"from": "1", "to": 0})")}) {
@@ -2797,7 +2801,7 @@ TEST_CASE("a queue request naming a session that the route can judge is refused 
         const auto engine = post(server, kMoveQueued, body);
         REQUIRE(engine);
         CHECK(engine->status == 400);
-        checkSameAnswer(post(server, scoped(kMoveQueued, id, kPhone), body), engine);
+        checkSameAnswer(post(server, scoped(kMoveQueued, id, phone().id), body), engine);
     }
 
     CHECK(recorder.libraryTaken().empty());
@@ -2811,7 +2815,7 @@ TEST_CASE("a queue request naming a session that the route can judge is refused 
 TEST_CASE("each queue route naming no session or the engine session reaches foobar2000's queue") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    queueIn(recorder, createdId(server, kPhone), {"Queued A", "Queued B"});
+    queueIn(recorder, createdId(server, phone().id), {"Queued A", "Queued B"});
     recorder.queueAtTheEngine({engineQueued("At the engine")});
 
     struct Reached {
@@ -2846,7 +2850,7 @@ TEST_CASE("each queue route naming no session or the engine session reaches foob
         REQUIRE(unnamed);
         CHECK(recorder.engineCalls(reached.call) == before + 1);
 
-        checkSameAnswer(reached.route.send(kEngineSessionId, kPhone), unnamed);
+        checkSameAnswer(reached.route.send(kEngineSessionId, phone().id), unnamed);
         CHECK(recorder.engineCalls(reached.call) == before + 2);
     }
 
@@ -2863,7 +2867,7 @@ TEST_CASE(
     const auto structure = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library, nullptr,
                                           parseSettings(R"({"controlPlayback": false})"));
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
     queueIn(recorder, id, {"Queued A", "Queued B"});
     recorder.queueAtTheEngine({engineQueued("At the engine")});
 
@@ -2886,18 +2890,18 @@ TEST_CASE(
         REQUIRE(unnamed);
         CHECK(unnamed->status == 403);
         CHECK(errorOf(*unnamed).find("controlPlayback") != std::string::npos);
-        checkSameAnswer(write.send(kEngineSessionId, kPhone), unnamed);
+        checkSameAnswer(write.send(kEngineSessionId, phone().id), unnamed);
     }
     CHECK(recorder.libraryTaken().empty());
     CHECK(engineTitles(recorder) == std::vector<std::string>{"At the engine"});
 
-    checkDone(queueing(server, id, kPhone, librarySet(structure, "ordinals", {1})));
+    checkDone(queueing(server, id, phone().id, librarySet(structure, "ordinals", {1})));
     CHECK(queuedIn(recorder, id) ==
           std::vector<std::string>{"Queued A", "Queued B", libraryName(1)});
-    checkDone(moving(server, id, kPhone, 2, 0, queueRevisionOf(recorder, id)));
-    checkDone(removing(server, id, kPhone, 1, queueRevisionOf(recorder, id)));
+    checkDone(moving(server, id, phone().id, 2, 0, queueRevisionOf(recorder, id)));
+    checkDone(removing(server, id, phone().id, 1, queueRevisionOf(recorder, id)));
     CHECK(queuedIn(recorder, id) == std::vector<std::string>{libraryName(1), "Queued B"});
-    checkDone(clearing(server, id, kPhone));
+    checkDone(clearing(server, id, phone().id));
     CHECK(queuedIn(recorder, id).empty());
 
     CHECK(recorder.calls() == 0);
@@ -2910,7 +2914,7 @@ TEST_CASE("a private session's queue is 404 on every queue route to a stranger a
     buildLibrary(library);
     const auto structure = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
     queueIn(recorder, id, {"Queued A", "Queued B"});
     const auto revision = queueRevisionOf(recorder, id);
     const auto unknown = unknownSessionAnswer(server);
@@ -2932,11 +2936,11 @@ TEST_CASE("a private session's queue is 404 on every queue route to a stranger a
 
     for (const auto& route : routes) {
         CAPTURE(route.name);
-        for (const char* device : {kLaptop, ""}) {
+        for (const std::string& device : std::vector<std::string>{laptop().id, ""}) {
             CAPTURE(device);
             checkSameAnswer(route.send(id, device), unknown);
         }
-        checkSameAnswer(route.send("Zz00q", kPhone), unknown);
+        checkSameAnswer(route.send("Zz00q", phone().id), unknown);
     }
 
     CHECK(queuedIn(recorder, id) == std::vector<std::string>{"Queued A", "Queued B"});
@@ -2977,7 +2981,7 @@ TEST_CASE("a library set played in a session plays from its index, whichever for
     buildLibrary(library);
     const auto structure = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library);
-    const auto other = createdId(server, kPhone);
+    const auto other = createdId(server, phone().id);
 
     struct Form {
         const char* name;
@@ -2989,23 +2993,23 @@ TEST_CASE("a library set played in a session plays from its index, whichever for
          {Form{"ordinals", {5, 2, 7}, {5, 2, 7}}, Form{"runs", json::array({{3, 2}}), {3, 4}},
           Form{"bitset", "Qg==", {1, 6}}}) {
         CAPTURE(form.name);
-        const auto id = createdId(server, kPhone);
-        const auto ears = listening(recorder, id, kPhone);
+        const auto id = createdId(server, phone().id);
+        const auto ears = listening(recorder, id, phone().id);
         const auto asked = recorder.libraryTaken().size();
 
-        checkDone(playing(server, id, kPhone,
+        checkDone(playing(server, id, phone().id,
                           fromIndex(librarySet(structure, form.name, form.selection), 1)));
 
         const auto taken = recorder.libraryTaken();
         REQUIRE(taken.size() == asked + 1);
         CHECK(taken.back() == LibraryTake{structure, form.ordinals});
 
-        const auto session = documentOf(server, id, kPhone);
+        const auto session = documentOf(server, id, phone().id);
         CHECK(session["playback"] == "playing");
         CHECK(session["libraryPath"] == libraryPathOfOrdinal(form.ordinals[1]));
     }
 
-    CHECK(documentOf(server, other, kPhone)["playback"] == "stopped");
+    CHECK(documentOf(server, other, phone().id)["playback"] == "stopped");
     CHECK(recorder.taken().empty());
     CHECK(recorder.calls() == 0);
 }
@@ -3019,14 +3023,14 @@ TEST_CASE(
     buildLibrary(library);
     const auto structure = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
 
-    checkDone(
-        playing(server, id, kPhone, fromIndex(librarySet(structure, "ordinals", {1, 2, 3}), 0)));
+    checkDone(playing(server, id, phone().id,
+                      fromIndex(librarySet(structure, "ordinals", {1, 2, 3}), 0)));
     recorder.answerLibraryWith("Rebuilt");
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
 
-    CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOfOrdinal(2));
+    CHECK(documentOf(server, id, phone().id)["libraryPath"] == libraryPathOfOrdinal(2));
     CHECK(recorder.libraryTaken().size() == 1);
     CHECK(recorder.calls() == 0);
 }
@@ -3037,14 +3041,14 @@ TEST_CASE("a library set naming no session or the engine session is 409 and take
     buildLibrary(library);
     const auto structure = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library);
-    createdId(server, kPhone);
+    createdId(server, phone().id);
     const auto body = fromIndex(librarySet(structure, "ordinals", {1, 2}), 0);
 
     const auto unnamed = playing(server, "", "", body);
     REQUIRE(unnamed);
     CHECK(unnamed->status == 409);
     CHECK(errorOf(*unnamed) == kNameADetachedSession);
-    checkSameAnswer(playing(server, kEngineSessionId, kPhone, body), unnamed);
+    checkSameAnswer(playing(server, kEngineSessionId, phone().id, body), unnamed);
 
     CHECK(recorder.libraryTaken().empty());
     CHECK(recorder.calls() == 0);
@@ -3058,24 +3062,24 @@ TEST_CASE("a library set played in a session is the fill's 409 for a library tha
     buildLibrary(library);
     const auto exported = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
     const auto body = fromIndex(librarySet(exported, "ordinals", {1, 2}), 0);
 
     recorder.moveTheLibrary();
-    const auto duringTheTake = playing(server, id, kPhone, body);
+    const auto duringTheTake = playing(server, id, phone().id, body);
     REQUIRE(duringTheTake);
     CHECK(duringTheTake->status == 409);
     CHECK(errorOf(*duringTheTake) == describe(DeltaOutcome::structureChanged));
     CHECK(recorder.libraryTaken().size() == 1);
 
     buildLibrary(library, kLibraryTracks - 2);
-    const auto beforeTheTake = playing(server, id, kPhone, body);
+    const auto beforeTheTake = playing(server, id, phone().id, body);
     REQUIRE(beforeTheTake);
     CHECK(beforeTheTake->status == 409);
     CHECK(errorOf(*beforeTheTake) == describe(DeltaOutcome::structureChanged));
     CHECK(recorder.libraryTaken().size() == 1);
 
-    CHECK(documentOf(server, id, kPhone)["playback"] == "stopped");
+    CHECK(documentOf(server, id, phone().id)["playback"] == "stopped");
     CHECK(recorder.calls() == 0);
 }
 
@@ -3087,20 +3091,20 @@ TEST_CASE("an index past the library set, an empty set included, is the row play
     buildLibrary(library);
     const auto structure = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
 
     for (const auto& body : {fromIndex(librarySet(structure, "ordinals", {1, 2}), 2),
                              fromIndex(librarySet(structure, "ordinals", json::array()), 0),
                              fromIndex(librarySet(structure, "bitset", "AA=="), 0)}) {
         CAPTURE(body.dump());
-        const auto response = playing(server, id, kPhone, body);
+        const auto response = playing(server, id, phone().id, body);
         REQUIRE(response);
         CHECK(response->status == 400);
         CHECK(errorOf(*response) == describe(PlayerOutcome::positionPastEnd));
     }
 
     CHECK(recorder.libraryTaken().empty());
-    CHECK(documentOf(server, id, kPhone)["playback"] == "stopped");
+    CHECK(documentOf(server, id, phone().id)["playback"] == "stopped");
     CHECK(recorder.calls() == 0);
 }
 
@@ -3111,7 +3115,7 @@ TEST_CASE("a library set carrying a field the play does not take, or no usable i
     buildLibrary(library);
     const auto structure = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
     const auto set = fromIndex(librarySet(structure, "ordinals", {1, 2}), 0);
 
     const std::vector<std::pair<std::string, json>> undeclared{
@@ -3120,7 +3124,7 @@ TEST_CASE("a library set carrying a field the play does not take, or no usable i
         CAPTURE(field.first);
         auto body = set;
         body[field.first] = field.second;
-        const auto response = playing(server, id, kPhone, body);
+        const auto response = playing(server, id, phone().id, body);
         REQUIRE(response);
         CHECK(response->status == 400);
         CHECK(errorOf(*response) == describe(PlaylistRefusal::malformedBody));
@@ -3128,7 +3132,7 @@ TEST_CASE("a library set carrying a field the play does not take, or no usable i
 
     for (const auto& index : {json("1"), json(-1), json(1.5), json(nullptr)}) {
         CAPTURE(index.dump());
-        const auto response = playing(server, id, kPhone,
+        const auto response = playing(server, id, phone().id,
                                       fromIndex(librarySet(structure, "ordinals", {1, 2}), index));
         REQUIRE(response);
         CHECK(response->status == 400);
@@ -3136,7 +3140,7 @@ TEST_CASE("a library set carrying a field the play does not take, or no usable i
     }
 
     CHECK(recorder.libraryTaken().empty());
-    CHECK(documentOf(server, id, kPhone)["playback"] == "stopped");
+    CHECK(documentOf(server, id, phone().id)["playback"] == "stopped");
     CHECK(recorder.calls() == 0);
 }
 
@@ -3147,11 +3151,12 @@ TEST_CASE("with controlPlayback off, a library set still plays in a detached ses
     const auto structure = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library, nullptr,
                                           parseSettings(R"({"controlPlayback": false})"));
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
 
-    checkDone(playing(server, id, kPhone, fromIndex(librarySet(structure, "ordinals", {4, 3}), 1)));
+    checkDone(
+        playing(server, id, phone().id, fromIndex(librarySet(structure, "ordinals", {4, 3}), 1)));
 
-    CHECK(documentOf(server, id, kPhone)["libraryPath"] == libraryPathOfOrdinal(3));
+    CHECK(documentOf(server, id, phone().id)["libraryPath"] == libraryPathOfOrdinal(3));
     CHECK(recorder.calls() == 0);
 }
 
@@ -3161,18 +3166,18 @@ TEST_CASE("a library set naming a private session is 404 to a stranger and to no
     buildLibrary(library);
     const auto structure = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
     const auto body = fromIndex(librarySet(structure, "ordinals", {1, 2}), 0);
     const auto unknown = unknownSessionAnswer(server);
 
-    for (const char* device : {kLaptop, ""}) {
+    for (const std::string& device : std::vector<std::string>{laptop().id, ""}) {
         CAPTURE(device);
         checkSameAnswer(playing(server, id, device, body), unknown);
     }
-    checkSameAnswer(playing(server, "Zz00q", kPhone, body), unknown);
+    checkSameAnswer(playing(server, "Zz00q", phone().id, body), unknown);
 
     CHECK(recorder.libraryTaken().empty());
-    CHECK(documentOf(server, id, kPhone)["playback"] == "stopped");
+    CHECK(documentOf(server, id, phone().id)["playback"] == "stopped");
     CHECK(recorder.calls() == 0);
 }
 
@@ -3249,10 +3254,10 @@ TEST_CASE("a session's playing track answers its own track's path, subsong and c
     const TestServer server = serving(recorder.player());
     auto rows = tracks("Road", kRows);
     rows[2].subsong = 4;
-    const auto other = playingSession(server, recorder, kPhone, tracks("Other", kRows), 0);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto other = playingSession(server, recorder, phone().id, tracks("Other", kRows), 0);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
 
-    const auto response = get(server, playingTrackOf(id, kPhone));
+    const auto response = get(server, playingTrackOf(id, phone().id));
 
     REQUIRE(response);
     CHECK(response->status == 200);
@@ -3265,10 +3270,10 @@ TEST_CASE("a session's playing track answers its own track's path, subsong and c
     REQUIRE_FALSE(recorder.trackColumns().empty());
     CHECK(recorder.trackColumns().back() == std::vector<std::string>{kTitleColumn, kArtistColumn});
 
-    CHECK(bodyOf(get(server, playingTrackOf(other, kPhone)))["path"] == track("Other 0").path);
+    CHECK(bodyOf(get(server, playingTrackOf(other, phone().id)))["path"] == track("Other 0").path);
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
-    const auto moved = bodyOf(get(server, playingTrackOf(id, kPhone)));
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
+    const auto moved = bodyOf(get(server, playingTrackOf(id, phone().id)));
     CHECK(moved["path"] == rows[3].path);
     CHECK(moved["columns"][0] == "%title% of " + nameOf(rows[3]));
 
@@ -3281,22 +3286,22 @@ TEST_CASE("a paused session's playing track is answered, and a stopped one is th
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto fresh = createdId(server, kPhone);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
-    const auto ears = listening(recorder, id, kPhone);
+    const auto fresh = createdId(server, phone().id);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
+    const auto ears = listening(recorder, id, phone().id);
 
-    checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
-    const auto paused = get(server, playingTrackOf(id, kPhone));
+    checkDone(post(server, scoped(kPlayPause, id, phone().id), ""));
+    const auto paused = get(server, playingTrackOf(id, phone().id));
     REQUIRE(paused);
     CHECK(paused->status == 200);
     CHECK(bodyOf(paused)["path"] == rows[2].path);
 
-    checkDone(post(server, scoped(kStop, id, kPhone), ""));
+    checkDone(post(server, scoped(kStop, id, phone().id), ""));
     const auto readsBefore = recorder.trackReads().size();
 
     for (const auto& session : {id, fresh}) {
         CAPTURE(session);
-        const auto response = get(server, playingTrackOf(session, kPhone));
+        const auto response = get(server, playingTrackOf(session, phone().id));
         REQUIRE(response);
         CHECK(response->status == 404);
         CHECK(bodyOf(response) == json{{"error", "nothing is playing"}});
@@ -3312,7 +3317,7 @@ TEST_CASE("a paused session's playing track is answered, and a stopped one is th
 TEST_CASE("a column list the engine's playing track refuses is refused naming a session too") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
+    const auto id = playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
     const auto readsBefore = recorder.trackReads().size();
 
     auto raw = server.client();
@@ -3327,7 +3332,7 @@ TEST_CASE("a column list the engine's playing track refuses is refused naming a 
         CHECK(engine->status == 400);
 
         const auto session =
-            raw.Get(scoped(kPlayingTrack, id, kPhone) + (query.empty() ? "" : "&" + query));
+            raw.Get(scoped(kPlayingTrack, id, phone().id) + (query.empty() ? "" : "&" + query));
         checkSameAnswer(session, engine);
     }
 
@@ -3340,7 +3345,7 @@ TEST_CASE("a column list the engine's playing track refuses is refused naming a 
 TEST_CASE("the playing track naming no session or the engine session reads the engine's track") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
+    playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
     const auto readsBefore = recorder.trackReads().size();
 
     const auto unnamed = get(server, withQuery(kPlayingTrack, kTwoColumns));
@@ -3349,7 +3354,7 @@ TEST_CASE("the playing track naming no session or the engine session reads the e
     CHECK(bodyOf(unnamed)["path"] == kEnginePlayingPath);
     CHECK(recorder.calls() == 1);
 
-    checkSameAnswer(get(server, playingTrackOf(kEngineSessionId, kPhone)), unnamed);
+    checkSameAnswer(get(server, playingTrackOf(kEngineSessionId, phone().id)), unnamed);
     CHECK(recorder.calls() == 2);
     CHECK(recorder.trackReads().size() == readsBefore);
 }
@@ -3360,10 +3365,10 @@ TEST_CASE("a session's playing cover is the one read off its track, sent as the 
     engine.hold(engineCover());
     const TestServer server = servingCovers(recorder.player(), &engine);
     const auto rows = tracks("Road", kRows);
-    const auto other = playingSession(server, recorder, kPhone, tracks("Other", kRows), 0);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto other = playingSession(server, recorder, phone().id, tracks("Other", kRows), 0);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
 
-    const auto response = get(server, playingCoverOf(id, kPhone));
+    const auto response = get(server, playingCoverOf(id, phone().id));
 
     REQUIRE(response);
     CHECK(response->status == 200);
@@ -3372,7 +3377,7 @@ TEST_CASE("a session's playing cover is the one read off its track, sent as the 
     CHECK(response->get_header_value("ETag") == artworkTag(coverOf(nameOf(rows[2]))));
     CHECK(response->get_header_value("Cache-Control") == kAskEveryTime);
 
-    const auto others = get(server, playingCoverOf(other, kPhone));
+    const auto others = get(server, playingCoverOf(other, phone().id));
     REQUIRE(others);
     CHECK(others->status == 200);
     CHECK(others->body == coverOf("Other 0"));
@@ -3389,7 +3394,7 @@ TEST_CASE("the playing cover naming no session or the engine session is the engi
     NowPlayingArtwork engine;
     engine.hold(engineCover());
     const TestServer server = servingCovers(recorder.player(), &engine);
-    playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
+    playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
 
     const auto unnamed = get(server, kPlayingCover);
     REQUIRE(unnamed);
@@ -3397,7 +3402,7 @@ TEST_CASE("the playing cover naming no session or the engine session is the engi
     CHECK(unnamed->body == engineCover());
     CHECK(unnamed->get_header_value("Content-Type") == "image/png");
 
-    checkSameAnswer(get(server, playingCoverOf(kEngineSessionId, kPhone)), unnamed);
+    checkSameAnswer(get(server, playingCoverOf(kEngineSessionId, phone().id)), unnamed);
     CHECK(recorder.artworkReads().empty());
     CHECK(recorder.calls() == 0);
 }
@@ -3407,25 +3412,25 @@ TEST_CASE("a session's cover is read once for each track however often it is ask
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
-    const auto ears = listening(recorder, id, kPhone);
-    const auto path = playingCoverOf(id, kPhone);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
+    const auto ears = listening(recorder, id, phone().id);
+    const auto path = playingCoverOf(id, phone().id);
 
     const auto first = get(server, path);
     REQUIRE(first);
     REQUIRE(first->status == 200);
     CHECK(statusOf(get(server, path)) == 200);
 
-    checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
+    checkDone(post(server, scoped(kPlayPause, id, phone().id), ""));
     CHECK(statusOf(get(server, path)) == 200);
-    checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
-    checkDone(post(server, scoped(kSeek, id, kPhone), R"({"seconds": 42})"));
+    checkDone(post(server, scoped(kPlayPause, id, phone().id), ""));
+    checkDone(post(server, scoped(kSeek, id, phone().id), R"({"seconds": 42})"));
     CHECK(bodyText(get(server, path)) == coverOf(nameOf(rows[2])));
     CHECK(statusOf(coverHolding(server, path, first->get_header_value("ETag"))) == 304);
 
     CHECK(recorder.artworkReads() == std::vector<std::string>{nameOf(rows[2])});
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
     CHECK(bodyText(get(server, path)) == coverOf(nameOf(rows[3])));
     CHECK(bodyText(get(server, path)) == coverOf(nameOf(rows[3])));
 
@@ -3437,8 +3442,8 @@ TEST_CASE("a client holding a session's cover is answered 304 until the track ch
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
-    const auto path = playingCoverOf(id, kPhone);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
+    const auto path = playingCoverOf(id, phone().id);
 
     const auto first = get(server, path);
     REQUIRE(first);
@@ -3452,7 +3457,7 @@ TEST_CASE("a client holding a session's cover is answered 304 until the track ch
     CHECK(again->get_header_value("ETag") == tag);
     CHECK(again->get_header_value("Cache-Control") == kAskEveryTime);
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
 
     const auto moved = coverHolding(server, path, tag);
     REQUIRE(moved);
@@ -3466,13 +3471,13 @@ TEST_CASE("a client holding a session's cover is answered 304 until the track ch
 TEST_CASE("a stopped session, and a track with no cover, are the engine's 404 for no cover") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto fresh = createdId(server, kPhone);
-    const auto stopped = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
-    checkDone(post(server, scoped(kStop, stopped, kPhone), ""));
+    const auto fresh = createdId(server, phone().id);
+    const auto stopped = playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
+    checkDone(post(server, scoped(kStop, stopped, phone().id), ""));
 
     for (const auto& session : {fresh, stopped}) {
         CAPTURE(session);
-        const auto response = get(server, playingCoverOf(session, kPhone));
+        const auto response = get(server, playingCoverOf(session, phone().id));
         REQUIRE(response);
         CHECK(response->status == 404);
         CHECK(bodyOf(response) == json{{"error", "no artwork for that track"}});
@@ -3480,19 +3485,20 @@ TEST_CASE("a stopped session, and a track with no cover, are the engine's 404 fo
     }
     CHECK(recorder.artworkReads().empty());
 
-    const auto bareFirst =
-        playingSession(server, recorder, kPhone, {track("Bare 0"), track("Road with a cover")}, 0);
+    const auto bareFirst = playingSession(server, recorder, phone().id,
+                                          {track("Bare 0"), track("Road with a cover")}, 0);
     for (int ask = 0; ask < 2; ++ask) {
         CAPTURE(ask);
-        const auto response = get(server, playingCoverOf(bareFirst, kPhone));
+        const auto response = get(server, playingCoverOf(bareFirst, phone().id));
         REQUIRE(response);
         CHECK(response->status == 404);
         CHECK(bodyOf(response) == json{{"error", "no artwork for that track"}});
     }
     CHECK(recorder.artworkReads() == std::vector<std::string>{"Bare 0"});
 
-    checkDone(post(server, scoped(kNext, bareFirst, kPhone), ""));
-    CHECK(bodyText(get(server, playingCoverOf(bareFirst, kPhone))) == coverOf("Road with a cover"));
+    checkDone(post(server, scoped(kNext, bareFirst, phone().id), ""));
+    CHECK(bodyText(get(server, playingCoverOf(bareFirst, phone().id))) ==
+          coverOf("Road with a cover"));
     CHECK(recorder.calls() == 0);
 }
 
@@ -3501,9 +3507,9 @@ TEST_CASE("a stopped session, and a track with no cover, are the engine's 404 fo
 TEST_CASE("a session's held cover goes with its track, so the next track with none is a 404") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id =
-        playingSession(server, recorder, kPhone, {track("Road with a cover"), track("Bare 1")}, 0);
-    const auto path = playingCoverOf(id, kPhone);
+    const auto id = playingSession(server, recorder, phone().id,
+                                   {track("Road with a cover"), track("Bare 1")}, 0);
+    const auto path = playingCoverOf(id, phone().id);
 
     const auto first = get(server, path);
     REQUIRE(first);
@@ -3511,7 +3517,7 @@ TEST_CASE("a session's held cover goes with its track, so the next track with no
     REQUIRE(first->body == coverOf("Road with a cover"));
     const auto tag = first->get_header_value("ETag");
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
 
     const auto plain = get(server, path);
     REQUIRE(plain);
@@ -3535,9 +3541,9 @@ TEST_CASE("a session's cover a byte past kMaxArtworkBytes is the engine's 413, r
     NowPlayingArtwork engine;
     engine.hold(pictureOf("Oversized at the engine"));
     const TestServer server = servingCovers(recorder.player(), &engine);
-    const auto id = playingSession(server, recorder, kPhone,
+    const auto id = playingSession(server, recorder, phone().id,
                                    {track("Oversized 0"), track("Road with a cover")}, 0);
-    const auto path = playingCoverOf(id, kPhone);
+    const auto path = playingCoverOf(id, phone().id);
 
     const auto engines = get(server, kPlayingCover);
     REQUIRE(engines);
@@ -3554,7 +3560,7 @@ TEST_CASE("a session's cover a byte past kMaxArtworkBytes is the engine's 413, r
     }
     CHECK(recorder.artworkReads() == std::vector<std::string>{"Oversized 0"});
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
     CHECK(bodyText(get(server, path)) == coverOf("Road with a cover"));
     CHECK(recorder.artworkReads() == std::vector<std::string>{"Oversized 0", "Road with a cover"});
     CHECK(recorder.calls() == 0);
@@ -3564,16 +3570,16 @@ TEST_CASE("a session's cover a byte past kMaxArtworkBytes is the engine's 413, r
 TEST_CASE("a client holding the last track's cover tag is refused the next track's oversized one") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = playingSession(server, recorder, kPhone,
+    const auto id = playingSession(server, recorder, phone().id,
                                    {track("Road with a cover"), track("Oversized 1")}, 0);
-    const auto path = playingCoverOf(id, kPhone);
+    const auto path = playingCoverOf(id, phone().id);
 
     const auto first = get(server, path);
     REQUIRE(first);
     REQUIRE(first->status == 200);
     const auto tag = first->get_header_value("ETag");
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
 
     const auto holding = coverHolding(server, path, tag);
     REQUIRE(holding);
@@ -3590,14 +3596,14 @@ TEST_CASE("a session answers a matching tag 304 before it judges the size, as th
     NowPlayingArtwork engine;
     engine.hold(pictureOf("Oversized 0"));
     const TestServer server = servingCovers(recorder.player(), &engine);
-    const auto id = playingSession(server, recorder, kPhone, {track("Oversized 0")}, 0);
+    const auto id = playingSession(server, recorder, phone().id, {track("Oversized 0")}, 0);
     const auto tag = artworkTag(pictureOf("Oversized 0"));
 
     const auto engines = coverHolding(server, kPlayingCover, tag);
     REQUIRE(engines);
     REQUIRE(engines->status == 304);
 
-    const auto sessions = coverHolding(server, playingCoverOf(id, kPhone), tag);
+    const auto sessions = coverHolding(server, playingCoverOf(id, phone().id), tag);
     REQUIRE(sessions);
     CHECK(sessions->status == engines->status);
     CHECK(sessions->body.empty());
@@ -3609,9 +3615,9 @@ TEST_CASE("a session answers a matching tag 304 before it judges the size, as th
 TEST_CASE("a session's cover exactly kMaxArtworkBytes long is sent whole") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = playingSession(server, recorder, kPhone, {track("Full 0")}, 0);
+    const auto id = playingSession(server, recorder, phone().id, {track("Full 0")}, 0);
 
-    const auto response = get(server, playingCoverOf(id, kPhone));
+    const auto response = get(server, playingCoverOf(id, phone().id));
 
     REQUIRE(response);
     CHECK(response->status == 200);
@@ -3629,9 +3635,9 @@ TEST_CASE("a session's playing track answers its columns where the player could 
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
     recorder.cannotName(nameOf(rows[2]), PlayerOutcome::done);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
 
-    const auto response = get(server, playingTrackOf(id, kPhone));
+    const auto response = get(server, playingTrackOf(id, phone().id));
 
     REQUIRE(response);
     CHECK(response->status == 200);
@@ -3646,13 +3652,13 @@ TEST_CASE(
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
     recorder.cannotName(nameOf(rows[2]), PlayerOutcome::done);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
-    const auto ears = listening(recorder, id, kPhone);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
+    const auto ears = listening(recorder, id, phone().id);
     const auto readsBefore = recorder.trackReads().size();
 
     for (size_t poll = 1; poll <= 3; ++poll) {
         CAPTURE(poll);
-        const auto player = playerPolled(server, id, kPhone);
+        const auto player = playerPolled(server, id, phone().id);
         CHECK(player["playback"] == "playing");
         for (const char* key : {"title", "artist", "album", "albumArtist"}) {
             CAPTURE(key);
@@ -3663,8 +3669,8 @@ TEST_CASE(
 
     recorder.canName(nameOf(rows[2]));
 
-    CHECK(playerPolled(server, id, kPhone)["title"] == nameOf(rows[2]));
-    CHECK(playerPolled(server, id, kPhone)["artist"] == "Artist of " + nameOf(rows[2]));
+    CHECK(playerPolled(server, id, phone().id)["title"] == nameOf(rows[2]));
+    CHECK(playerPolled(server, id, phone().id)["artist"] == "Artist of " + nameOf(rows[2]));
     CHECK(recorder.trackReads().size() == readsBefore + 4);
     CHECK(recorder.calls() == 0);
 }
@@ -3676,9 +3682,9 @@ TEST_CASE(
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
     recorder.cannotName(nameOf(rows[2]), PlayerOutcome::timedOut);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
 
-    const auto response = get(server, playingTrackOf(id, kPhone));
+    const auto response = get(server, playingTrackOf(id, phone().id));
     REQUIRE(response);
     CHECK(response->status == httpStatusFor(PlayerOutcome::timedOut));
     CHECK(errorOf(*response) == describe(PlayerOutcome::timedOut));
@@ -3686,7 +3692,7 @@ TEST_CASE(
     const auto readsBefore = recorder.trackReads().size();
     for (size_t poll = 1; poll <= 2; ++poll) {
         CAPTURE(poll);
-        CHECK(playerPolled(server, id, kPhone)["title"].is_null());
+        CHECK(playerPolled(server, id, phone().id)["title"].is_null());
         CHECK(recorder.trackReads().size() == readsBefore + poll);
     }
     CHECK(recorder.calls() == 0);
@@ -3697,17 +3703,17 @@ TEST_CASE(
     "a private session's playing track and cover are 404 to a stranger, and nothing is read") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
+    const auto id = playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
     const auto readsBefore = recorder.trackReads().size();
     const auto unknown = unknownSessionAnswer(server);
 
-    for (const char* device : {kLaptop, ""}) {
+    for (const std::string& device : std::vector<std::string>{laptop().id, ""}) {
         CAPTURE(device);
         checkSameAnswer(get(server, playingTrackOf(id, device)), unknown);
         checkSameAnswer(get(server, playingCoverOf(id, device)), unknown);
     }
-    checkSameAnswer(get(server, playingTrackOf("Zz00q", kPhone)), unknown);
-    checkSameAnswer(get(server, playingCoverOf("Zz00q", kPhone)), unknown);
+    checkSameAnswer(get(server, playingTrackOf("Zz00q", phone().id)), unknown);
+    checkSameAnswer(get(server, playingCoverOf("Zz00q", phone().id)), unknown);
 
     CHECK(recorder.trackReads().size() == readsBefore);
     CHECK(recorder.artworkReads().empty());
@@ -3719,13 +3725,13 @@ TEST_CASE(
 TEST_CASE("a session's playing track spends the budget the engine's playing track spends") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
+    const auto id = playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
     const auto readsBefore = recorder.trackReads().size();
 
     const auto engine = askRepeatedly(server, withQuery(kPlayingTrack, kTwoColumns), 120);
     REQUIRE(engine.count > 0);
 
-    const auto session = get(server, playingTrackOf(id, kPhone));
+    const auto session = get(server, playingTrackOf(id, phone().id));
     REQUIRE(session);
     CHECK(session->status == 429);
     CHECK(errorOf(*session) == "too many track reads");
@@ -3737,9 +3743,9 @@ TEST_CASE("a session's playing cover spends the budget the engine's playing cove
     NowPlayingArtwork engineHeld;
     engineHeld.hold(engineCover());
     const TestServer server = servingCovers(recorder.player(), &engineHeld);
-    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
+    const auto id = playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
 
-    const auto session = askRepeatedly(server, playingCoverOf(id, kPhone), 600);
+    const auto session = askRepeatedly(server, playingCoverOf(id, phone().id), 600);
     REQUIRE(session.count > 0);
     CHECK(session.error == "too many artwork requests");
 
@@ -3776,19 +3782,19 @@ TEST_CASE("a session's document reports each failure with the track it happened 
     rows[0].libraryPath.reset();
     rows[0].subsong = 2;
     rows[1].subsong = 5;
-    const auto id = playingSession(server, recorder, kPhone, rows, 0);
+    const auto id = playingSession(server, recorder, phone().id, rows, 0);
     const auto session = recorder.session(id);
 
     REQUIRE(failTheTurn(*session, Thrower::decoder) == AfterThrow::skipTrack);
 
-    const auto undecodable = documentOf(server, id, kPhone);
+    const auto undecodable = documentOf(server, id, phone().id);
     CHECK(undecodable["reports"] == json::array({reportOf(1, "undecodable", rows[0])}));
     CHECK(undecodable["reports"][0]["libraryPath"].is_null());
     CHECK(undecodable["chainDropped"] == false);
 
     REQUIRE(failTheTurn(*session, Thrower::chain) == AfterThrow::dropChain);
 
-    const auto dropped = documentOf(server, id, kPhone);
+    const auto dropped = documentOf(server, id, phone().id);
     CHECK(dropped["reports"] ==
           json::array({reportOf(1, "undecodable", rows[0]), reportOf(2, "chainDropped", rows[1])}));
     CHECK(dropped["chainDropped"] == true);
@@ -3797,8 +3803,8 @@ TEST_CASE("a session's document reports each failure with the track it happened 
         CHECK(keysOf(report) == Keys{"sequence", "kind", "path", "subsong", "libraryPath"});
     }
 
-    CHECK(sessionsSeenBy(server, kPhone)[1] == dropped);
-    checkSameAnswer(read(server, id, kLaptop), unknownSessionAnswer(server));
+    CHECK(sessionsSeenBy(server, phone().id)[1] == dropped);
+    checkSameAnswer(read(server, id, laptop().id), unknownSessionAnswer(server));
     CHECK(recorder.calls() == 0);
 }
 
@@ -3807,7 +3813,7 @@ TEST_CASE("a session's document holds its last eight reports, the ninth dropping
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", 12);
-    const auto id = playingSession(server, recorder, kPhone, rows, 0);
+    const auto id = playingSession(server, recorder, phone().id, rows, 0);
     const auto session = recorder.session(id);
 
     for (int i = 0; i < 9; ++i)
@@ -3817,7 +3823,7 @@ TEST_CASE("a session's document holds its last eight reports, the ninth dropping
     for (size_t row = 1; row <= 8; ++row)
         expected.push_back(reportOf(row + 1, "undecodable", rows[row]));
 
-    CHECK(documentOf(server, id, kPhone)["reports"] == expected);
+    CHECK(documentOf(server, id, phone().id)["reports"] == expected);
     CHECK(recorder.calls() == 0);
 }
 
@@ -3825,22 +3831,22 @@ TEST_CASE("a session's document holds its last eight reports, the ninth dropping
 TEST_CASE("a session's poll moves sessionRevision and its tag for each report") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 1);
+    const auto id = playingSession(server, recorder, phone().id, tracks("Road", kRows), 1);
     const auto session = recorder.session(id);
 
-    const auto start = poll(server, id, kPhone);
+    const auto start = poll(server, id, phone().id);
     const auto startTag = tagOf(start);
     const auto startRevision = bodyOf(start)["player"]["sessionRevision"];
 
     REQUIRE(failTheTurn(*session, Thrower::chain) == AfterThrow::dropChain);
-    const auto dropped = pollHolding(server, id, kPhone, startTag);
+    const auto dropped = pollHolding(server, id, phone().id, startTag);
     checkMoved(dropped, startTag);
     const auto droppedRevision = bodyOf(dropped)["player"]["sessionRevision"];
     CHECK(droppedRevision > startRevision);
 
     const auto droppedTag = tagOf(dropped);
     REQUIRE(failTheTurn(*session, Thrower::decoder) == AfterThrow::skipTrack);
-    const auto undecodable = pollHolding(server, id, kPhone, droppedTag);
+    const auto undecodable = pollHolding(server, id, phone().id, droppedTag);
     checkMoved(undecodable, droppedTag);
     CHECK(bodyOf(undecodable)["player"]["sessionRevision"] > droppedRevision);
     CHECK(recorder.calls() == 0);
@@ -3860,9 +3866,9 @@ TEST_CASE("one past maxSessions is 503 'too many sessions', and leaves the sessi
     Recorder recorder;
     const TestServer server = cappedAt(recorder.player(), 1);
 
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
 
-    for (const char* device : {kLaptop, kPhone}) {
+    for (const std::string& device : std::vector<std::string>{laptop().id, phone().id}) {
         CAPTURE(device);
         const auto refused = create(server, json{{"deviceId", device}, {"name", "Kitchen phone"}});
         REQUIRE(refused);
@@ -3870,8 +3876,8 @@ TEST_CASE("one past maxSessions is 503 'too many sessions', and leaves the sessi
         CHECK(errorOf(*refused) == "too many sessions");
     }
 
-    CHECK(idsSeenBy(server, kPhone) == std::vector<std::string>{kEngineSessionId, id});
-    CHECK(idsSeenBy(server, kLaptop) == engineOnly());
+    CHECK(idsSeenBy(server, phone().id) == std::vector<std::string>{kEngineSessionId, id});
+    CHECK(idsSeenBy(server, laptop().id) == engineOnly());
 
     // A capability, not a vacancy: creating is still possible here once a place is free.
     const auto capabilities = capabilitiesOf(server);
@@ -3883,16 +3889,16 @@ TEST_CASE("one past maxSessions is 503 'too many sessions', and leaves the sessi
 TEST_CASE("a session reaped once its grace runs out gives its place under the cap back") {
     Recorder recorder;
     const TestServer server = cappedAt(recorder.player(), 1);
-    createdId(server, kPhone);
+    createdId(server, phone().id);
 
     server.advanceClock(std::chrono::minutes(14));
-    CHECK(statusOf(create(server, json{{"deviceId", kLaptop}})) == 503);
+    CHECK(statusOf(create(server, json{{"deviceId", laptop().id}})) == 503);
 
     server.advanceClock(std::chrono::minutes(2));
-    const auto laptops = create(server, json{{"deviceId", kLaptop}});
+    const auto laptops = create(server, json{{"deviceId", laptop().id}});
     REQUIRE(laptops);
     CHECK(laptops->status == 200);
-    CHECK(idsSeenBy(server, kLaptop) ==
+    CHECK(idsSeenBy(server, laptop().id) ==
           std::vector<std::string>{kEngineSessionId, bodyOf(laptops)["id"].get<std::string>()});
     CHECK(recorder.calls() == 0);
 }
@@ -3902,11 +3908,11 @@ TEST_CASE("a session reaped once its grace runs out gives its place under the ca
 TEST_CASE("a session its last member left gives its place under the cap back") {
     Recorder recorder;
     const TestServer server = cappedAt(recorder.player(), 1);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
 
-    recorder.session(id)->leave(kPhone);
+    recorder.session(id)->leave(phone().id);
 
-    CHECK(statusOf(create(server, json{{"deviceId", kLaptop}})) == 200);
+    CHECK(statusOf(create(server, json{{"deviceId", laptop().id}})) == 200);
     CHECK(recorder.calls() == 0);
 }
 
@@ -3923,7 +3929,7 @@ TEST_CASE(
         return read;
     };
     const TestServer server = serving(player);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
 
     const std::vector<Route> routes{{"/api/volume", R"({"muted": true})"},
                                     {"/api/outputs/active", json{{"deviceId", kSpeakers}}.dump()}};
@@ -3937,7 +3943,7 @@ TEST_CASE(
         for (const std::string& session :
              {id, std::string("Zz00q"), std::string(kEngineSessionId)}) {
             CAPTURE(session);
-            checkSameAnswer(command(server, route, session, kPhone), unnamed);
+            checkSameAnswer(command(server, route, session, phone().id), unnamed);
         }
         CHECK(recorder.calls() == before + 4);
     }
@@ -3950,7 +3956,7 @@ TEST_CASE("DELETE /api/stream/hold answers the same naming any session or none, 
     std::atomic<int> releases{0};
     player.stream.releaseOutput = [&releases] { ++releases; };
     const TestServer server = serving(player);
-    const auto id = createdId(server, kPhone);
+    const auto id = createdId(server, phone().id);
     auto client = server.client();
 
     const auto unnamed = client.Delete("/api/stream/hold");
@@ -3959,7 +3965,7 @@ TEST_CASE("DELETE /api/stream/hold answers the same naming any session or none, 
 
     for (const std::string& session : {id, std::string("Zz00q"), std::string(kEngineSessionId)}) {
         CAPTURE(session);
-        checkSameAnswer(client.Delete(scoped("/api/stream/hold", session, kPhone)), unnamed);
+        checkSameAnswer(client.Delete(scoped("/api/stream/hold", session, phone().id)), unnamed);
     }
     CHECK(releases == 4);
     CHECK(recorder.calls() == 0);
@@ -3969,7 +3975,7 @@ TEST_CASE("maxSessions at 0 answers every create 503 'sessions are not available
     Recorder recorder;
     const TestServer server = cappedAt(recorder.player(), 0);
 
-    for (const char* device : {kPhone, kLaptop}) {
+    for (const std::string& device : std::vector<std::string>{phone().id, laptop().id}) {
         CAPTURE(device);
         const auto refused = create(server, json{{"deviceId", device}});
         REQUIRE(refused);
@@ -3980,7 +3986,7 @@ TEST_CASE("maxSessions at 0 answers every create 503 'sessions are not available
     const auto capabilities = capabilitiesOf(server);
     CHECK(capabilities["maxSessions"] == 0);
     CHECK(capabilities["canCreateSessions"] == false);
-    CHECK(idsSeenBy(server, kPhone) == engineOnly());
+    CHECK(idsSeenBy(server, phone().id) == engineOnly());
     CHECK(recorder.calls() == 0);
 }
 
@@ -4012,11 +4018,11 @@ TEST_CASE("a player with no session stream or no stream format cannot create ses
         CHECK(capabilities["maxSessions"] == 4);
         CHECK(capabilities["canCreateSessions"] == false);
 
-        const auto refused = create(*server, json{{"deviceId", kPhone}});
+        const auto refused = create(*server, json{{"deviceId", phone().id}});
         REQUIRE(refused);
         CHECK(refused->status == 503);
         CHECK(errorOf(*refused) == "sessions are not available");
-        CHECK(idsSeenBy(*server, kPhone) == engineOnly());
+        CHECK(idsSeenBy(*server, phone().id) == engineOnly());
     }
     CHECK(capabilitiesOf(noFormat)["canStream"] == false);
     CHECK(recorder.calls() == 0);
@@ -4032,47 +4038,47 @@ TEST_CASE("with streaming off, no session can be created and the list still answ
     CHECK(capabilities["canStream"] == false);
     CHECK(capabilities["canCreateSessions"] == false);
 
-    const auto refused = create(server, json{{"deviceId", kPhone}});
+    const auto refused = create(server, json{{"deviceId", phone().id}});
     REQUIRE(refused);
     CHECK(refused->status == 503);
     CHECK(errorOf(*refused) == "sessions are not available");
 
-    CHECK(idsSeenBy(server, kPhone) == engineOnly());
-    CHECK(statusOf(read(server, kEngineSessionId, kPhone)) == 200);
+    CHECK(idsSeenBy(server, phone().id) == engineOnly());
+    CHECK(statusOf(read(server, kEngineSessionId, phone().id)) == 200);
     CHECK(recorder.calls() == 0);
 }
 
 TEST_CASE("a reload turning streaming off refuses the next create, and turning it on allows one") {
     Recorder recorder;
     TestServer server = serving(recorder.player());
-    createdId(server, kPhone);
+    createdId(server, phone().id);
 
     server.reload(R"({"streamingEnabled": false})");
 
     CHECK(capabilitiesOf(server)["canCreateSessions"] == false);
-    const auto refused = create(server, json{{"deviceId", kLaptop}});
+    const auto refused = create(server, json{{"deviceId", laptop().id}});
     REQUIRE(refused);
     CHECK(refused->status == 503);
     CHECK(errorOf(*refused) == "sessions are not available");
-    CHECK(idsSeenBy(server, kLaptop) == engineOnly());
+    CHECK(idsSeenBy(server, laptop().id) == engineOnly());
 
     server.reload("{}");
 
     CHECK(capabilitiesOf(server)["canCreateSessions"] == true);
-    CHECK(statusOf(create(server, json{{"deviceId", kLaptop}})) == 200);
+    CHECK(statusOf(create(server, json{{"deviceId", laptop().id}})) == 200);
     CHECK(recorder.calls() == 0);
 }
 
 TEST_CASE("a reload moving maxSessions changes nothing until foobar2000 restarts") {
     Recorder recorder;
     TestServer server = cappedAt(recorder.player(), 1);
-    createdId(server, kPhone);
+    createdId(server, phone().id);
 
     const auto restart = server.reload(R"({"maxSessions": 3})").restartKeys;
     REQUIRE(std::find(restart.begin(), restart.end(), "maxSessions") != restart.end());
 
     CHECK(capabilitiesOf(server)["maxSessions"] == 1);
-    const auto refused = create(server, json{{"deviceId", kLaptop}});
+    const auto refused = create(server, json{{"deviceId", laptop().id}});
     REQUIRE(refused);
     CHECK(refused->status == 503);
     CHECK(errorOf(*refused) == "too many sessions");
@@ -4082,8 +4088,8 @@ TEST_CASE("a reload moving maxSessions changes nothing until foobar2000 restarts
 namespace {
 
 std::string playbackRead(const TestServer& server, const std::string& id) {
-    const auto document = documentOf(server, id, kPhone)["playback"];
-    CHECK(playerPolled(server, id, kPhone)["playback"] == document);
+    const auto document = documentOf(server, id, phone().id)["playback"];
+    CHECK(playerPolled(server, id, phone().id)["playback"] == document);
     return document.get<std::string>();
 }
 
@@ -4092,13 +4098,13 @@ std::string playbackRead(const TestServer& server, const std::string& id) {
 TEST_CASE("play-pause on a session nobody hears leaves it set to play, so it plays once heard") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
+    const auto id = playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
     CHECK(playbackRead(server, id) == "paused");
 
-    checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
+    checkDone(post(server, scoped(kPlayPause, id, phone().id), ""));
     CHECK(playbackRead(server, id) == "paused");
 
-    const auto ears = listening(recorder, id, kPhone);
+    const auto ears = listening(recorder, id, phone().id);
     CHECK(playbackRead(server, id) == "playing");
     CHECK(recorder.calls() == 0);
 }
@@ -4106,16 +4112,16 @@ TEST_CASE("play-pause on a session nobody hears leaves it set to play, so it pla
 TEST_CASE("play-pause on a session its controller paused answers 204, and it plays once heard") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
-    auto ears = listening(recorder, id, kPhone);
-    checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
+    const auto id = playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
+    auto ears = listening(recorder, id, phone().id);
+    checkDone(post(server, scoped(kPlayPause, id, phone().id), ""));
     REQUIRE(playbackRead(server, id) == "paused");
     ears.reset();
 
-    checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
+    checkDone(post(server, scoped(kPlayPause, id, phone().id), ""));
     CHECK(playbackRead(server, id) == "paused");
 
-    ears = listening(recorder, id, kPhone);
+    ears = listening(recorder, id, phone().id);
     CHECK(playbackRead(server, id) == "playing");
     CHECK(recorder.calls() == 0);
 }
@@ -4123,15 +4129,15 @@ TEST_CASE("play-pause on a session its controller paused answers 204, and it pla
 TEST_CASE("play-pause on a session reading playing pauses it, and a reconnect finds it paused") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 2);
-    auto ears = listening(recorder, id, kPhone);
+    const auto id = playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
+    auto ears = listening(recorder, id, phone().id);
     REQUIRE(playbackRead(server, id) == "playing");
 
-    checkDone(post(server, scoped(kPlayPause, id, kPhone), ""));
+    checkDone(post(server, scoped(kPlayPause, id, phone().id), ""));
     CHECK(playbackRead(server, id) == "paused");
 
     ears.reset();
-    ears = listening(recorder, id, kPhone);
+    ears = listening(recorder, id, phone().id);
     CHECK(playbackRead(server, id) == "paused");
     CHECK(recorder.calls() == 0);
 }
@@ -4140,22 +4146,22 @@ TEST_CASE(
     "a listener arriving and leaving moves a session's poll and its tag, not sessionRevision") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = playingSession(server, recorder, kPhone, tracks("Road", kRows), 1);
+    const auto id = playingSession(server, recorder, phone().id, tracks("Road", kRows), 1);
 
-    const auto unheard = poll(server, id, kPhone);
+    const auto unheard = poll(server, id, phone().id);
     const auto unheardTag = tagOf(unheard);
     const auto revision = bodyOf(unheard)["player"]["sessionRevision"];
     CHECK(bodyOf(unheard)["player"]["playback"] == "paused");
 
-    auto ears = listening(recorder, id, kPhone);
-    const auto heard = pollHolding(server, id, kPhone, unheardTag);
+    auto ears = listening(recorder, id, phone().id);
+    const auto heard = pollHolding(server, id, phone().id, unheardTag);
     checkMoved(heard, unheardTag);
     CHECK(bodyOf(heard)["player"]["playback"] == "playing");
     CHECK(bodyOf(heard)["player"]["sessionRevision"] == revision);
 
     const auto heardTag = tagOf(heard);
     ears.reset();
-    const auto left = pollHolding(server, id, kPhone, heardTag);
+    const auto left = pollHolding(server, id, phone().id, heardTag);
     checkMoved(left, heardTag);
     CHECK(bodyOf(left)["player"]["playback"] == "paused");
     CHECK(bodyOf(left)["player"]["sessionRevision"] == revision);
@@ -4167,15 +4173,15 @@ TEST_CASE(
     Recorder recorder;
     const TestServer server = serving(recorder.player());
     const auto rows = tracks("Road", kRows);
-    const auto id = playingSession(server, recorder, kPhone, rows, 2);
-    checkDone(post(server, scoped(kSeek, id, kPhone), R"({"seconds": 10})"));
-    REQUIRE(playerPolled(server, id, kPhone)["position"]["seconds"] == 10);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
+    checkDone(post(server, scoped(kSeek, id, phone().id), R"({"seconds": 10})"));
+    REQUIRE(playerPolled(server, id, phone().id)["position"]["seconds"] == 10);
     const auto seeked = recorder.session(id)->turn();
     REQUIRE(seeked.has_value());
 
-    checkDone(post(server, scoped(kPrevious, id, kPhone), ""));
+    checkDone(post(server, scoped(kPrevious, id, phone().id), ""));
 
-    const auto player = playerPolled(server, id, kPhone);
+    const auto player = playerPolled(server, id, phone().id);
     CHECK(player["path"] == rows[2].path);
     CHECK(player["libraryPath"] == libraryPathOf(rows[2]));
     CHECK(player["position"]["seconds"] == 0);
@@ -4190,14 +4196,14 @@ TEST_CASE(
 TEST_CASE("next and previous on a session with nothing to play answer 204 and move nothing") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
-    const auto id = createdId(server, kPhone);
-    const auto tag = tagOf(poll(server, id, kPhone));
+    const auto id = createdId(server, phone().id);
+    const auto tag = tagOf(poll(server, id, phone().id));
 
-    checkDone(post(server, scoped(kNext, id, kPhone), ""));
-    checkDone(post(server, scoped(kPrevious, id, kPhone), ""));
+    checkDone(post(server, scoped(kNext, id, phone().id), ""));
+    checkDone(post(server, scoped(kPrevious, id, phone().id), ""));
 
-    checkUnchanged(pollHolding(server, id, kPhone, tag), tag);
-    const auto session = documentOf(server, id, kPhone);
+    checkUnchanged(pollHolding(server, id, phone().id, tag), tag);
+    const auto session = documentOf(server, id, phone().id);
     CHECK(session["playback"] == "stopped");
     CHECK(session["libraryPath"].is_null());
     CHECK(recorder.engine().transports.empty());
@@ -4212,14 +4218,14 @@ TEST_CASE(
     const auto structure = library.state().structure;
     const TestServer server = servingWith(recorder.player(), &library, nullptr,
                                           parseSettings(R"({"controlPlayback": false})"));
-    createdId(server, kPhone);
+    createdId(server, phone().id);
     const auto body = fromIndex(librarySet(structure, "ordinals", {1, 2}), 0);
 
     const auto unnamed = playing(server, "", "", body);
     REQUIRE(unnamed);
     CHECK(unnamed->status == 403);
     CHECK(errorOf(*unnamed) == describe(PlayerOutcome::playbackDisabled));
-    checkSameAnswer(playing(server, kEngineSessionId, kPhone, body), unnamed);
+    checkSameAnswer(playing(server, kEngineSessionId, phone().id, body), unnamed);
 
     CHECK(recorder.libraryTaken().empty());
     CHECK(recorder.calls() == 0);

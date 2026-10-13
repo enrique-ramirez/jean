@@ -2,6 +2,7 @@
 
 #include "core/session.h"
 #include "core/stream_ticket.h"
+#include "support/devices.h"
 #include "support/fixtures.h"
 
 #include <algorithm>
@@ -22,18 +23,6 @@ TicketStore::Clock::time_point at(int64_t elapsed) {
 
 TicketStore store(seconds ttl = seconds(120), size_t maxOutstanding = 8) {
     return TicketStore(countingMint(), ttl, maxOutstanding);
-}
-
-DeviceIdentity phone() {
-    return {"phone", "Kitchen phone"};
-}
-
-DeviceIdentity laptop() {
-    return {"laptop", "Study laptop"};
-}
-
-DeviceIdentity tablet() {
-    return {"tablet", "Sofa tablet"};
 }
 
 size_t admittedOf(TicketStore& tickets, const std::vector<std::string>& issued) {
@@ -160,9 +149,8 @@ TEST_CASE("a thousand requests leave only the cap outstanding") {
 // of the ticket issued last, or first, names the wrong one.
 TEST_CASE("an admission names the session its ticket was issued for") {
     auto tickets = store();
-    const auto forKitchen =
-        tickets.issue(kStart, DeviceIdentity{"phone", "Android phone"}, "Wb3kq");
-    const auto forDesk = tickets.issue(kStart, DeviceIdentity{"laptop", "Laptop"}, "Ad9xz");
+    const auto forKitchen = tickets.issue(kStart, phone(), "Wb3kq");
+    const auto forDesk = tickets.issue(kStart, laptop(), "Ad9xz");
 
     const auto desk = tickets.admits(forDesk.ticket, kStart);
     const auto kitchen = tickets.admits(forKitchen.ticket, kStart);
@@ -170,14 +158,14 @@ TEST_CASE("an admission names the session its ticket was issued for") {
     REQUIRE(desk);
     REQUIRE(kitchen);
     CHECK(desk.session == "Ad9xz");
-    CHECK(desk.device.id == "laptop");
+    CHECK(desk.device.id == laptop().id);
     CHECK(kitchen.session == "Wb3kq");
-    CHECK(kitchen.device.id == "phone");
+    CHECK(kitchen.device.id == phone().id);
 }
 
 TEST_CASE("a ticket issued for no session admits to the engine session") {
     auto tickets = store();
-    const auto issued = tickets.issue(kStart, DeviceIdentity{"phone", "Android phone"});
+    const auto issued = tickets.issue(kStart, phone());
 
     const auto admission = tickets.admits(issued.ticket, kStart);
 
@@ -266,10 +254,10 @@ TEST_CASE("a named device minting into a full store leaves an anonymous ticket a
 TEST_CASE("a device that changed its name is still the device its id says") {
     auto tickets = store(seconds(120), 3);
     const auto bystander = tickets.issue(kStart, laptop());
-    const auto older = tickets.issue(kStart, DeviceIdentity{"phone", "Kitchen phone"});
-    const auto newer = tickets.issue(kStart, DeviceIdentity{"phone", "Kitchen phone"});
+    const auto older = tickets.issue(kStart, phone());
+    const auto newer = tickets.issue(kStart, phone());
 
-    const auto renamed = tickets.issue(kStart, DeviceIdentity{"phone", "Bedroom phone"});
+    const auto renamed = tickets.issue(kStart, DeviceIdentity{phone().id, "Bedroom phone"});
 
     CHECK(tickets.admits(bystander.ticket, kStart));
     CHECK_FALSE(tickets.admits(older.ticket, kStart));
@@ -280,10 +268,10 @@ TEST_CASE("a device that changed its name is still the device its id says") {
 TEST_CASE("two devices that share a name are two devices") {
     auto tickets = store(seconds(120), 3);
     const auto oldest = tickets.issue(kStart, laptop());
-    const auto namesake = tickets.issue(kStart, DeviceIdentity{"phone", "Jean"});
-    const auto namesakeAgain = tickets.issue(kStart, DeviceIdentity{"phone", "Jean"});
+    const auto namesake = tickets.issue(kStart, DeviceIdentity{phone().id, "Jean"});
+    const auto namesakeAgain = tickets.issue(kStart, DeviceIdentity{phone().id, "Jean"});
 
-    const auto arrived = tickets.issue(kStart, DeviceIdentity{"tablet", "Jean"});
+    const auto arrived = tickets.issue(kStart, DeviceIdentity{tablet().id, "Jean"});
 
     CHECK_FALSE(tickets.admits(oldest.ticket, kStart));
     CHECK(tickets.admits(namesake.ticket, kStart));
@@ -294,10 +282,10 @@ TEST_CASE("two devices that share a name are two devices") {
 TEST_CASE("an id sent with blanks around it is the device the bare id names") {
     auto tickets = store(seconds(120), 3);
     const auto bystander = tickets.issue(kStart, laptop());
-    const auto older = tickets.issue(kStart, DeviceIdentity{"phone", {}});
-    const auto newer = tickets.issue(kStart, DeviceIdentity{" phone\t", {}});
+    const auto older = tickets.issue(kStart, DeviceIdentity{phone().id, {}});
+    const auto newer = tickets.issue(kStart, DeviceIdentity{" " + phone().id + "\t", {}});
 
-    const auto next = tickets.issue(kStart, DeviceIdentity{"\t phone ", {}});
+    const auto next = tickets.issue(kStart, DeviceIdentity{"\t " + phone().id + " ", {}});
 
     CHECK(tickets.admits(bystander.ticket, kStart));
     CHECK_FALSE(tickets.admits(older.ticket, kStart));

@@ -12,9 +12,6 @@ namespace jean::testing {
 
 constexpr size_t kTicketDigits = 64;
 
-constexpr char kPhone[] = R"({"deviceId": "phone-4c1e", "name": "Kitchen phone"})";
-constexpr char kLaptop[] = R"({"deviceId": "laptop-9a07", "name": "Study laptop"})";
-
 constexpr int kMoreTicketsThanAnyoneHolds = 64;
 
 TicketMint hexMint();

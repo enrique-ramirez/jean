@@ -4,6 +4,7 @@
 
 #include "third_party/doctest.h"
 
+#include "support/devices.h"
 #include "support/http.h"
 #include "support/streams.h"
 #include "support/test_server.h"
@@ -447,13 +448,13 @@ TEST_CASE(
 
     std::string looping;
     SUBCASE("a device that names itself") {
-        looping = kPhone;
+        looping = bodyNaming(phone());
     }
     SUBCASE("a page that names no device") {
         looping = "";
     }
 
-    const auto bystander = ticketFrom(server, kLaptop);
+    const auto bystander = ticketFrom(server, bodyNaming(laptop()));
     const auto first = ticketFrom(server, looping);
 
     std::string last;
@@ -481,9 +482,9 @@ TEST_CASE("a device arriving after another filled the store is handed a ticket t
 
     std::string last;
     for (int mint = 0; mint < kMoreTicketsThanAnyoneHolds; ++mint)
-        last = ticketFrom(server, kPhone);
+        last = ticketFrom(server, bodyNaming(phone()));
 
-    const auto arrived = listen(server, ticketFrom(server, kLaptop));
+    const auto arrived = listen(server, ticketFrom(server, bodyNaming(laptop())));
     REQUIRE(arrived);
     CHECK(arrived->status == 200);
 

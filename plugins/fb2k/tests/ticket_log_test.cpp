@@ -1,5 +1,6 @@
 #include "third_party/doctest.h"
 
+#include "support/devices.h"
 #include "support/http.h"
 #include "support/log_capture.h"
 #include "support/streams.h"
@@ -36,7 +37,8 @@ StreamOpener countingOpens(int* opens) {
 }
 
 std::string ticketFrom(const TestServer& server, std::vector<std::string>& sent,
-                       const std::string& path = kTicketPath, const std::string& body = kPhone) {
+                       const std::string& path = kTicketPath,
+                       const std::string& body = bodyNaming(phone())) {
     const auto response = post(server, path, body);
     REQUIRE(response);
     REQUIRE(response->status == 200);
@@ -255,7 +257,7 @@ TEST_CASE("a good ticket turned away after it was accepted is in no log line") {
         CHECK(response->status == 503);
         CHECK(opens == 0);
 
-        const auto another = post(server, kTicketPath, kPhone);
+        const auto another = post(server, kTicketPath, bodyNaming(phone()));
         REQUIRE(another);
         CHECK(another->status == 503);
     }
@@ -300,7 +302,7 @@ TEST_CASE("a ticket for a detached session is in no log line, while the session 
     {
         const TestServer server = serving(streamingToSessions(countingOpens(&opens)));
 
-        const auto created = post(server, "/api/sessions", kPhone);
+        const auto created = post(server, "/api/sessions", bodyNaming(phone()));
         REQUIRE(created);
         REQUIRE(created->status == 200);
         session = json::parse(created->body)["id"].get<std::string>();
@@ -309,7 +311,7 @@ TEST_CASE("a ticket for a detached session is in no log line, while the session 
         const auto forSession = std::string(kTicketPath) + "?session=" + session;
         const auto ticket = ticketFrom(server, sent, forSession);
 
-        const auto stranger = post(server, forSession, kLaptop);
+        const auto stranger = post(server, forSession, bodyNaming(laptop()));
         REQUIRE(stranger);
         CHECK(stranger->status == 404);
 
@@ -319,7 +321,7 @@ TEST_CASE("a ticket for a detached session is in no log line, while the session 
         CHECK(heard->body == kAudio);
         CHECK(opens == 1);
 
-        const auto left = post(server, "/api/stream/leave?session=" + session, kPhone);
+        const auto left = post(server, "/api/stream/leave?session=" + session, bodyNaming(phone()));
         REQUIRE(left);
         REQUIRE(left->status == 204);
 
@@ -374,13 +376,13 @@ TEST_CASE(
         REQUIRE(listeners);
         CHECK(listeners->status == 200);
 
-        const auto reissue = post(server, kTicketPath + carried, kPhone);
+        const auto reissue = post(server, kTicketPath + carried, bodyNaming(phone()));
         REQUIRE(reissue);
         CHECK(reissue->status == 200);
         sent.push_back(json::parse(reissue->body)["ticket"].get<std::string>());
 
         const auto notJson =
-            server.client().Post("/api/stream/leave" + carried, kPhone, "text/plain");
+            server.client().Post("/api/stream/leave" + carried, bodyNaming(phone()), "text/plain");
         REQUIRE(notJson);
         CHECK(notJson->status == 415);
 

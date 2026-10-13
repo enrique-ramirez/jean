@@ -13,6 +13,7 @@
 #include "core/audience.h"
 #include "core/output_hold.h"
 
+#include "support/devices.h"
 #include "support/eventually.h"
 #include "support/fixtures.h"
 #include "support/log_capture.h"
@@ -80,14 +81,6 @@ struct FakePlayer {
 // assert rather than sleeping for a guessed interval.
 bool becomes(const std::atomic<bool>& flag, bool wanted) {
     return eventually([&flag, wanted] { return flag.load() == wanted; });
-}
-
-DeviceIdentity phone() {
-    return DeviceIdentity{"phone", "Android phone"};
-}
-
-DeviceIdentity laptop() {
-    return DeviceIdentity{"laptop", "Laptop"};
 }
 
 }  // namespace

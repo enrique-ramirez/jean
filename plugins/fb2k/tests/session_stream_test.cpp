@@ -9,6 +9,7 @@
 #include "core/audience.h"
 #include "core/output_hold.h"
 #include "core/session.h"
+#include "support/devices.h"
 #include "support/eventually.h"
 #include "support/fixtures.h"
 #include "support/http.h"
@@ -38,10 +39,6 @@ using namespace jean::testing;
 using nlohmann::json;
 
 namespace {
-
-constexpr char kPhone[] = "phone-4c1e";
-constexpr char kLaptop[] = "laptop-9a07";
-constexpr char kTablet[] = "tablet-2b55";
 
 // An id of the shape the mint gives that no session was ever issued.
 constexpr char kNobodysSession[] = "Zz00q";
@@ -247,7 +244,7 @@ bool holdsDevice(const Audience& audience, const std::string& deviceId) {
     return audience.holds(deviceId, audience.now());
 }
 
-std::string bodyNaming(const std::string& deviceId) {
+std::string idOnlyBody(const std::string& deviceId) {
     return deviceId.empty() ? std::string() : json{{"deviceId", deviceId}}.dump();
 }
 
@@ -283,7 +280,7 @@ std::vector<std::string> idsSeenBy(const TestServer& server, const std::string& 
 
 // What an id nobody issued answers, which a refusal for a private session must not differ from.
 httplib::Result unknownSessionAnswer(const TestServer& server) {
-    return read(server, kNobodysSession, kTablet);
+    return read(server, kNobodysSession, tablet().id);
 }
 
 void share(const TestServer& server, const std::string& id, const std::string& deviceId,
@@ -304,7 +301,7 @@ void play(const TestServer& server, const std::string& id, const std::string& de
 
 httplib::Result askForTicket(const TestServer& server, const std::string& session,
                              const std::string& deviceId) {
-    return post(server, scoped("/api/stream/ticket", session, ""), bodyNaming(deviceId));
+    return post(server, scoped("/api/stream/ticket", session, ""), idOnlyBody(deviceId));
 }
 
 std::string ticketFor(const TestServer& server, const std::string& session,
@@ -322,7 +319,7 @@ httplib::Result listen(const TestServer& server, const std::string& ticket,
 
 httplib::Result leave(const TestServer& server, const std::string& session,
                       const std::string& deviceId) {
-    return post(server, scoped("/api/stream/leave", session, ""), bodyNaming(deviceId));
+    return post(server, scoped("/api/stream/leave", session, ""), idOnlyBody(deviceId));
 }
 
 void checkLeft(const httplib::Result& response) {
@@ -365,15 +362,15 @@ TEST_CASE(
     "a ticket naming a private session is 404 to a stranger and to no device, as an unknown id") {
     Source source;
     const TestServer server = oneClock(source);
-    const auto id = createdBy(server, kPhone);
+    const auto id = createdBy(server, phone().id);
     const auto unknown = unknownSessionAnswer(server);
 
-    checkSameAnswer(askForTicket(server, id, kTablet), unknown);
+    checkSameAnswer(askForTicket(server, id, tablet().id), unknown);
     checkSameAnswer(askForTicket(server, id, ""), unknown);
-    checkSameAnswer(askForTicket(server, kNobodysSession, kPhone), unknown);
+    checkSameAnswer(askForTicket(server, kNobodysSession, phone().id), unknown);
 
     // A refused ticket is no joining: the stranger is still nobody's member.
-    checkSameAnswer(read(server, id, kTablet), unknown);
+    checkSameAnswer(read(server, id, tablet().id), unknown);
 }
 
 // The tablet only read the shared session, which joins nothing, so it is the control: the laptop
@@ -382,26 +379,26 @@ TEST_CASE(
     "a ticket naming a shared session makes its device a member that keeps it once unshared") {
     Source source;
     const TestServer server = oneClock(source);
-    const auto id = createdBy(server, kPhone);
-    share(server, id, kPhone, true);
+    const auto id = createdBy(server, phone().id);
+    share(server, id, phone().id, true);
 
-    ticketFor(server, id, kLaptop);
-    CHECK(statusOf(read(server, id, kTablet)) == 200);
-    share(server, id, kPhone, false);
+    ticketFor(server, id, laptop().id);
+    CHECK(statusOf(read(server, id, tablet().id)) == 200);
+    share(server, id, phone().id, false);
 
-    CHECK(statusOf(read(server, id, kLaptop)) == 200);
-    CHECK(idsSeenBy(server, kLaptop) == std::vector<std::string>{kEngineSessionId, id});
-    checkSameAnswer(read(server, id, kTablet), unknownSessionAnswer(server));
+    CHECK(statusOf(read(server, id, laptop().id)) == 200);
+    CHECK(idsSeenBy(server, laptop().id) == std::vector<std::string>{kEngineSessionId, id});
+    checkSameAnswer(read(server, id, tablet().id), unknownSessionAnswer(server));
 }
 
 TEST_CASE("a ticket naming no session or the engine session is today's ticket to the engine") {
     Source source;
     const TestServer server = oneClock(source);
-    createdBy(server, kPhone);
+    createdBy(server, phone().id);
 
     for (const std::string& session : {std::string(), std::string(kEngineSessionId)}) {
         CAPTURE(session);
-        const auto response = listen(server, ticketFor(server, session, kPhone));
+        const auto response = listen(server, ticketFor(server, session, phone().id));
         REQUIRE(response);
         CHECK(response->status == 200);
         CHECK(response->body == bytesOf(kEngineSessionId));
@@ -413,16 +410,16 @@ TEST_CASE("a ticket naming no session or the engine session is today's ticket to
 TEST_CASE("with streamingEnabled off, a session's ticket and stream are refused as the engine's") {
     Source source;
     TestServer server = oneClock(source);
-    const auto id = createdBy(server, kPhone);
-    const auto engineTicket = ticketFor(server, "", kPhone);
-    const auto sessionTicket = ticketFor(server, id, kPhone);
+    const auto id = createdBy(server, phone().id);
+    const auto engineTicket = ticketFor(server, "", phone().id);
+    const auto sessionTicket = ticketFor(server, id, phone().id);
 
     server.reload(R"({"streamingEnabled": false})");
 
-    const auto engine = askForTicket(server, "", kPhone);
+    const auto engine = askForTicket(server, "", phone().id);
     REQUIRE(engine);
     CHECK(engine->status == 503);
-    checkSameAnswer(askForTicket(server, id, kPhone), engine);
+    checkSameAnswer(askForTicket(server, id, phone().id), engine);
 
     const auto engineStream = listen(server, engineTicket);
     REQUIRE(engineStream);
@@ -436,12 +433,12 @@ TEST_CASE("with streamingEnabled off, a session's ticket and stream are refused 
 TEST_CASE("a ticket issued for a session streams that session's bytes, and no other's") {
     Source source;
     const TestServer server = oneClock(source);
-    const auto kitchen = createdBy(server, kPhone);
-    const auto desk = createdBy(server, kLaptop);
+    const auto kitchen = createdBy(server, phone().id);
+    const auto desk = createdBy(server, laptop().id);
 
-    const auto fromKitchen = listen(server, ticketFor(server, kitchen, kPhone));
-    const auto fromDesk = listen(server, ticketFor(server, desk, kLaptop));
-    const auto fromEngine = listen(server, ticketFor(server, "", kTablet));
+    const auto fromKitchen = listen(server, ticketFor(server, kitchen, phone().id));
+    const auto fromDesk = listen(server, ticketFor(server, desk, laptop().id));
+    const auto fromEngine = listen(server, ticketFor(server, "", tablet().id));
 
     REQUIRE(fromKitchen);
     CHECK(fromKitchen->status == 200);
@@ -466,21 +463,21 @@ TEST_CASE(
     "the stream reads no session of its own, so one named beside the ticket changes nothing") {
     Source source;
     const TestServer server = oneClock(source);
-    const auto kitchen = createdBy(server, kPhone);
-    const auto desk = createdBy(server, kLaptop);
-    share(server, desk, kLaptop, true);
+    const auto kitchen = createdBy(server, phone().id);
+    const auto desk = createdBy(server, laptop().id);
+    share(server, desk, laptop().id, true);
 
     for (const std::string& named :
          {desk, std::string(kEngineSessionId), std::string(kNobodysSession)}) {
         CAPTURE(named);
         const auto response =
-            listen(server, ticketFor(server, kitchen, kPhone), "&session=" + named);
+            listen(server, ticketFor(server, kitchen, phone().id), "&session=" + named);
         REQUIRE(response);
         CHECK(response->status == 200);
         CHECK(response->body == bytesOf(kitchen));
     }
 
-    const auto engine = listen(server, ticketFor(server, "", kPhone), "&session=" + kitchen);
+    const auto engine = listen(server, ticketFor(server, "", phone().id), "&session=" + kitchen);
     REQUIRE(engine);
     CHECK(engine->status == 200);
     CHECK(engine->body == bytesOf(kEngineSessionId));
@@ -491,10 +488,10 @@ TEST_CASE(
 TEST_CASE("a ticket whose session was reaped before it connected is 404, as an unknown id") {
     Source source;
     const TestServer server = oneClock(source);
-    const auto id = createdBy(server, kPhone);
-    const auto ticket = ticketFor(server, id, kPhone);
+    const auto id = createdBy(server, phone().id);
+    const auto ticket = ticketFor(server, id, phone().id);
 
-    checkLeft(leave(server, id, kPhone));
+    checkLeft(leave(server, id, phone().id));
 
     checkSameAnswer(listen(server, ticket), unknownSessionAnswer(server));
     CHECK(source.opens(id).empty());
@@ -504,18 +501,18 @@ TEST_CASE(
     "a session's stream opens in the format asked for, and refuses what the engine's refuses") {
     Source source;
     const TestServer server = oneClock(source);
-    const auto id = createdBy(server, kPhone);
+    const auto id = createdBy(server, phone().id);
 
-    const auto aac = listen(server, ticketFor(server, id, kPhone), "&format=aac");
+    const auto aac = listen(server, ticketFor(server, id, phone().id), "&format=aac");
     REQUIRE(aac);
     CHECK(aac->status == 200);
     CHECK(aac->get_header_value("Content-Type") == "audio/aac");
     CHECK(source.opens(id) == std::vector<std::string>{"aac"});
 
-    const auto engineFlac = listen(server, ticketFor(server, "", kPhone), "&format=flac");
+    const auto engineFlac = listen(server, ticketFor(server, "", phone().id), "&format=flac");
     REQUIRE(engineFlac);
     CHECK(engineFlac->status == 400);
-    checkSameAnswer(listen(server, ticketFor(server, id, kPhone), "&format=flac"), engineFlac);
+    checkSameAnswer(listen(server, ticketFor(server, id, phone().id), "&format=flac"), engineFlac);
 
     const auto unissued = listen(server, "ticket-nobody-issued");
     REQUIRE(unissued);
@@ -524,7 +521,7 @@ TEST_CASE(
 
     CHECK(source.opens(id) == std::vector<std::string>{"aac"});
     CHECK(source.opens(kEngineSessionId).empty());
-    CHECK(documentOf(server, id, kPhone)["listeners"] == 0);
+    CHECK(documentOf(server, id, phone().id)["listeners"] == 0);
 }
 
 // A session plays to nobody without decoding, and a linger is nobody: decoding then would play to
@@ -533,26 +530,26 @@ TEST_CASE("a session decodes only while a connection listens, and its document c
     Source source;
     const TestServer server = oneClock(source);
     Connections live(server, source);
-    const auto id = createdBy(server, kPhone);
-    play(server, id, kPhone);
+    const auto id = createdBy(server, phone().id);
+    play(server, id, phone().id);
     const auto session = source.session(id);
     REQUIRE(session->turn().has_value());
     CHECK_FALSE(session->running());
 
     source.hold(id);
-    live.open(ticketFor(server, id, kPhone));
+    live.open(ticketFor(server, id, phone().id));
     settlesAt(session->audience(), 1);
 
     CHECK(session->running());
-    CHECK(documentOf(server, id, kPhone)["listeners"] == 1);
-    CHECK(devicesOn(rosterOf(server, id, kPhone)) == std::vector<std::string>{kPhone});
+    CHECK(documentOf(server, id, phone().id)["listeners"] == 1);
+    CHECK(devicesOn(rosterOf(server, id, phone().id)) == std::vector<std::string>{phone().id});
 
     source.letGo(id);
     settlesAt(session->audience(), 0);
 
     CHECK_FALSE(session->running());
-    CHECK(documentOf(server, id, kPhone)["listeners"] == 0);
-    CHECK(rosterOf(server, id, kPhone)["devices"].empty());
+    CHECK(documentOf(server, id, phone().id)["listeners"] == 0);
+    CHECK(rosterOf(server, id, phone().id)["devices"].empty());
 }
 
 // Past the grace, the connection alone holds the session, and once it closes the linger alone.
@@ -560,23 +557,23 @@ TEST_CASE("a device that stops listening holds the session through its linger, a
     Source source;
     const TestServer server = oneClock(source);
     Connections live(server, source);
-    const auto id = createdBy(server, kPhone);
+    const auto id = createdBy(server, phone().id);
     const auto session = source.session(id);
 
     source.hold(id);
-    live.open(ticketFor(server, id, kPhone));
+    live.open(ticketFor(server, id, phone().id));
     settlesAt(session->audience(), 1);
     server.advanceClock(kPastTheGrace);
-    REQUIRE(statusOf(read(server, id, kPhone)) == 200);
+    REQUIRE(statusOf(read(server, id, phone().id)) == 200);
 
     source.letGo(id);
     settlesAt(session->audience(), 0);
     server.advanceClock(std::chrono::seconds(kMuteLingerSeconds - 1));
-    CHECK(statusOf(read(server, id, kPhone)) == 200);
+    CHECK(statusOf(read(server, id, phone().id)) == 200);
 
     server.advanceClock(std::chrono::seconds(2));
-    checkSameAnswer(read(server, id, kPhone), unknownSessionAnswer(server));
-    CHECK(idsSeenBy(server, kPhone) == std::vector<std::string>{kEngineSessionId});
+    checkSameAnswer(read(server, id, phone().id), unknownSessionAnswer(server));
+    CHECK(idsSeenBy(server, phone().id) == std::vector<std::string>{kEngineSessionId});
     CHECK(source.stops(id) == 1);
 }
 
@@ -586,18 +583,18 @@ TEST_CASE("a reconnect inside the linger keeps a session its listener was the on
     Source source;
     const TestServer server = oneClock(source);
     Connections live(server, source);
-    const auto id = createdBy(server, kPhone);
+    const auto id = createdBy(server, phone().id);
     const auto session = source.session(id);
 
     source.hold(id);
-    live.open(ticketFor(server, id, kPhone));
+    live.open(ticketFor(server, id, phone().id));
     settlesAt(session->audience(), 1);
     server.advanceClock(kPastTheGrace);
     source.letGo(id);
     settlesAt(session->audience(), 0);
 
     server.advanceClock(std::chrono::seconds(kMuteLingerSeconds - 1));
-    const auto back = listen(server, ticketFor(server, id, kPhone));
+    const auto back = listen(server, ticketFor(server, id, phone().id));
 
     REQUIRE(back);
     CHECK(back->status == 200);
@@ -608,23 +605,23 @@ TEST_CASE("a reconnect inside the linger keeps a session its listener was the on
 TEST_CASE("the timeline naming a session is that session's clock, and naming none the engine's") {
     Source source;
     const TestServer server = oneClock(source);
-    const auto kitchen = createdBy(server, kPhone);
-    const auto desk = createdBy(server, kLaptop);
+    const auto kitchen = createdBy(server, phone().id);
+    const auto desk = createdBy(server, laptop().id);
 
     const auto engine = askForTimeline(server, "", "");
     REQUIRE(engine);
     CHECK(engine->status == 200);
     CHECK(engine->body == timelineOf(kEngineSessionId));
-    checkSameAnswer(askForTimeline(server, kEngineSessionId, kPhone), engine);
+    checkSameAnswer(askForTimeline(server, kEngineSessionId, phone().id), engine);
 
-    const auto ofKitchen = askForTimeline(server, kitchen, kPhone);
+    const auto ofKitchen = askForTimeline(server, kitchen, phone().id);
     REQUIRE(ofKitchen);
     CHECK(ofKitchen->status == 200);
     CHECK(ofKitchen->body == timelineOf(kitchen));
     CHECK(ofKitchen->get_header_value("Cache-Control") ==
           engine->get_header_value("Cache-Control"));
 
-    const auto ofDesk = askForTimeline(server, desk, kLaptop);
+    const auto ofDesk = askForTimeline(server, desk, laptop().id);
     REQUIRE(ofDesk);
     CHECK(ofDesk->body == timelineOf(desk));
 }
@@ -632,12 +629,12 @@ TEST_CASE("the timeline naming a session is that session's clock, and naming non
 TEST_CASE("the timeline naming a private session is 404 to a stranger and to no device") {
     Source source;
     const TestServer server = oneClock(source);
-    const auto id = createdBy(server, kPhone);
+    const auto id = createdBy(server, phone().id);
     const auto unknown = unknownSessionAnswer(server);
 
-    checkSameAnswer(askForTimeline(server, id, kTablet), unknown);
+    checkSameAnswer(askForTimeline(server, id, tablet().id), unknown);
     checkSameAnswer(askForTimeline(server, id, ""), unknown);
-    checkSameAnswer(askForTimeline(server, kNobodysSession, kPhone), unknown);
+    checkSameAnswer(askForTimeline(server, kNobodysSession, phone().id), unknown);
 }
 
 // The laptop created both sessions, so the phone's leave reaps neither and its linger in each is
@@ -646,18 +643,18 @@ TEST_CASE("a leave naming a session ends the device's linger in that session and
     Source source;
     const TestServer server = oneClock(source);
     Connections live(server, source);
-    const auto kitchen = createdBy(server, kLaptop);
-    const auto desk = createdBy(server, kLaptop);
-    share(server, kitchen, kLaptop, true);
-    share(server, desk, kLaptop, true);
+    const auto kitchen = createdBy(server, laptop().id);
+    const auto desk = createdBy(server, laptop().id);
+    share(server, kitchen, laptop().id, true);
+    share(server, desk, laptop().id, true);
     const auto inKitchen = source.session(kitchen);
     const auto atDesk = source.session(desk);
 
     for (const std::string& key : {std::string(kEngineSessionId), kitchen, desk})
         source.hold(key);
-    live.open(ticketFor(server, "", kPhone));
-    live.open(ticketFor(server, kitchen, kPhone));
-    live.open(ticketFor(server, desk, kPhone));
+    live.open(ticketFor(server, "", phone().id));
+    live.open(ticketFor(server, kitchen, phone().id));
+    live.open(ticketFor(server, desk, phone().id));
     settlesAt(server.audience(), 1);
     settlesAt(inKitchen->audience(), 1);
     settlesAt(atDesk->audience(), 1);
@@ -667,60 +664,60 @@ TEST_CASE("a leave naming a session ends the device's linger in that session and
     settlesAt(server.audience(), 0);
     settlesAt(inKitchen->audience(), 0);
     settlesAt(atDesk->audience(), 0);
-    REQUIRE(holdsDevice(inKitchen->audience(), kPhone));
+    REQUIRE(holdsDevice(inKitchen->audience(), phone().id));
 
-    checkLeft(leave(server, kitchen, kPhone));
+    checkLeft(leave(server, kitchen, phone().id));
 
-    CHECK_FALSE(holdsDevice(inKitchen->audience(), kPhone));
-    CHECK(holdsDevice(atDesk->audience(), kPhone));
-    CHECK(holdsDevice(server.audience(), kPhone));
+    CHECK_FALSE(holdsDevice(inKitchen->audience(), phone().id));
+    CHECK(holdsDevice(atDesk->audience(), phone().id));
+    CHECK(holdsDevice(server.audience(), phone().id));
 }
 
 TEST_CASE("a leave naming no session or the engine session ends the engine's linger and no other") {
     Source source;
     const TestServer server = oneClock(source);
     Connections live(server, source);
-    const auto id = createdBy(server, kPhone);
+    const auto id = createdBy(server, phone().id);
     const auto session = source.session(id);
 
     source.hold(kEngineSessionId);
     source.hold(id);
-    live.open(ticketFor(server, "", kPhone));
-    live.open(ticketFor(server, id, kPhone));
+    live.open(ticketFor(server, "", phone().id));
+    live.open(ticketFor(server, id, phone().id));
     settlesAt(server.audience(), 1);
     settlesAt(session->audience(), 1);
     source.letGo(kEngineSessionId);
     source.letGo(id);
     settlesAt(server.audience(), 0);
     settlesAt(session->audience(), 0);
-    REQUIRE(holdsDevice(server.audience(), kPhone));
+    REQUIRE(holdsDevice(server.audience(), phone().id));
 
     SUBCASE("naming none") {
-        checkLeft(leave(server, "", kPhone));
+        checkLeft(leave(server, "", phone().id));
     }
     SUBCASE("naming the engine session") {
-        checkLeft(leave(server, kEngineSessionId, kPhone));
+        checkLeft(leave(server, kEngineSessionId, phone().id));
     }
 
-    CHECK_FALSE(holdsDevice(server.audience(), kPhone));
-    CHECK(holdsDevice(session->audience(), kPhone));
-    CHECK(statusOf(read(server, id, kPhone)) == 200);
-    CHECK(statusOf(read(server, kEngineSessionId, kPhone)) == 200);
+    CHECK_FALSE(holdsDevice(server.audience(), phone().id));
+    CHECK(holdsDevice(session->audience(), phone().id));
+    CHECK(statusOf(read(server, id, phone().id)) == 200);
+    CHECK(statusOf(read(server, kEngineSessionId, phone().id)) == 200);
 }
 
 TEST_CASE("a leave naming a detached session ends the device's controlling grace there too") {
     Source source;
     const TestServer server = oneClock(source);
-    const auto id = createdBy(server, kLaptop);
-    share(server, id, kLaptop, true);
-    ticketFor(server, id, kPhone);
-    share(server, id, kLaptop, false);
-    REQUIRE(statusOf(read(server, id, kPhone)) == 200);
+    const auto id = createdBy(server, laptop().id);
+    share(server, id, laptop().id, true);
+    ticketFor(server, id, phone().id);
+    share(server, id, laptop().id, false);
+    REQUIRE(statusOf(read(server, id, phone().id)) == 200);
 
-    checkLeft(leave(server, id, kPhone));
+    checkLeft(leave(server, id, phone().id));
 
-    checkSameAnswer(read(server, id, kPhone), unknownSessionAnswer(server));
-    CHECK(statusOf(read(server, id, kLaptop)) == 200);
+    checkSameAnswer(read(server, id, phone().id), unknownSessionAnswer(server));
+    CHECK(statusOf(read(server, id, laptop().id)) == 200);
 }
 
 // Shared, so a stranger could read it until the leave: gone means gone for everybody, at once,
@@ -728,33 +725,33 @@ TEST_CASE("a leave naming a detached session ends the device's controlling grace
 TEST_CASE("a session whose last member leaves is gone at once for everyone and frees its place") {
     Source source;
     const TestServer server = oneClock(source, parseSettings(R"({"maxSessions": 1})"));
-    const auto id = createdBy(server, kPhone);
-    share(server, id, kPhone, true);
-    REQUIRE(statusOf(read(server, id, kLaptop)) == 200);
+    const auto id = createdBy(server, phone().id);
+    share(server, id, phone().id, true);
+    REQUIRE(statusOf(read(server, id, laptop().id)) == 200);
 
-    checkLeft(leave(server, id, kPhone));
+    checkLeft(leave(server, id, phone().id));
 
     // Read before any other request, whose own sweep would reap an expired session anyway.
     CHECK(source.stops(id) == 1);
     const auto unknown = unknownSessionAnswer(server);
-    checkSameAnswer(read(server, id, kPhone), unknown);
-    checkSameAnswer(read(server, id, kLaptop), unknown);
-    CHECK(statusOf(post(server, "/api/sessions", json{{"deviceId", kLaptop}}.dump())) == 200);
+    checkSameAnswer(read(server, id, phone().id), unknown);
+    checkSameAnswer(read(server, id, laptop().id), unknown);
+    CHECK(statusOf(post(server, "/api/sessions", json{{"deviceId", laptop().id}}.dump())) == 200);
 }
 
 TEST_CASE("a leave keeps a session another member controls, the leaver no longer a member") {
     Source source;
     const TestServer server = oneClock(source);
-    const auto id = createdBy(server, kPhone);
-    share(server, id, kPhone, true);
-    ticketFor(server, id, kLaptop);
+    const auto id = createdBy(server, phone().id);
+    share(server, id, phone().id, true);
+    ticketFor(server, id, laptop().id);
 
-    checkLeft(leave(server, id, kPhone));
+    checkLeft(leave(server, id, phone().id));
 
-    CHECK(statusOf(read(server, id, kLaptop)) == 200);
+    CHECK(statusOf(read(server, id, laptop().id)) == 200);
     CHECK(source.stops(id) == 0);
-    share(server, id, kLaptop, false);
-    checkSameAnswer(read(server, id, kPhone), unknownSessionAnswer(server));
+    share(server, id, laptop().id, false);
+    checkSameAnswer(read(server, id, phone().id), unknownSessionAnswer(server));
 }
 
 // No route ends a session for a device still in it: the leave takes the grace, the connection
@@ -763,24 +760,24 @@ TEST_CASE("a leave by a device still connected keeps it on the roster and keeps 
     Source source;
     const TestServer server = oneClock(source);
     Connections live(server, source);
-    const auto id = createdBy(server, kPhone);
+    const auto id = createdBy(server, phone().id);
     const auto session = source.session(id);
     source.hold(id);
-    live.open(ticketFor(server, id, kPhone));
+    live.open(ticketFor(server, id, phone().id));
     settlesAt(session->audience(), 1);
 
-    checkLeft(leave(server, id, kPhone));
+    checkLeft(leave(server, id, phone().id));
 
-    CHECK(devicesOn(rosterOf(server, id, kPhone)) == std::vector<std::string>{kPhone});
-    CHECK(documentOf(server, id, kPhone)["listeners"] == 1);
+    CHECK(devicesOn(rosterOf(server, id, phone().id)) == std::vector<std::string>{phone().id});
+    CHECK(documentOf(server, id, phone().id)["listeners"] == 1);
     CHECK(source.stops(id) == 0);
 
     source.letGo(id);
     settlesAt(session->audience(), 0);
-    CHECK(statusOf(read(server, id, kPhone)) == 200);
+    CHECK(statusOf(read(server, id, phone().id)) == 200);
 
     server.advanceClock(kPastTheLinger);
-    checkSameAnswer(read(server, id, kPhone), unknownSessionAnswer(server));
+    checkSameAnswer(read(server, id, phone().id), unknownSessionAnswer(server));
 }
 
 // Each refusal faces a device lingering in the session and in the engine, because a 404 that still
@@ -791,12 +788,12 @@ TEST_CASE(
     Source source;
     const TestServer server = oneClock(source);
     Connections live(server, source);
-    const auto id = createdBy(server, kPhone);
+    const auto id = createdBy(server, phone().id);
     const auto session = source.session(id);
     source.hold(kEngineSessionId);
     source.hold(id);
-    live.open(ticketFor(server, "", kPhone));
-    live.open(ticketFor(server, id, kPhone));
+    live.open(ticketFor(server, "", phone().id));
+    live.open(ticketFor(server, id, phone().id));
     settlesAt(server.audience(), 1);
     settlesAt(session->audience(), 1);
     source.letGo(kEngineSessionId);
@@ -805,12 +802,12 @@ TEST_CASE(
     settlesAt(session->audience(), 0);
     const auto unknown = unknownSessionAnswer(server);
 
-    checkSameAnswer(leave(server, id, kTablet), unknown);
-    checkSameAnswer(leave(server, kNobodysSession, kPhone), unknown);
+    checkSameAnswer(leave(server, id, tablet().id), unknown);
+    checkSameAnswer(leave(server, kNobodysSession, phone().id), unknown);
 
-    CHECK(holdsDevice(session->audience(), kPhone));
-    CHECK(holdsDevice(server.audience(), kPhone));
-    CHECK(statusOf(read(server, id, kPhone)) == 200);
+    CHECK(holdsDevice(session->audience(), phone().id));
+    CHECK(holdsDevice(server.audience(), phone().id));
+    CHECK(statusOf(read(server, id, phone().id)) == 200);
 }
 
 // The sequence the conformance probe drives, once, end to end: the leave is the one request that
@@ -820,9 +817,9 @@ TEST_CASE("a session is created, played, listened to, closed and left, and is th
     const TestServer server = oneClock(source);
     Connections live(server, source);
 
-    const auto id = createdBy(server, kPhone);
-    play(server, id, kPhone);
-    const auto ticket = ticketFor(server, id, kPhone);
+    const auto id = createdBy(server, phone().id);
+    play(server, id, phone().id);
+    const auto ticket = ticketFor(server, id, phone().id);
     const auto session = source.session(id);
     source.hold(id);
     live.open(ticket);
@@ -833,11 +830,11 @@ TEST_CASE("a session is created, played, listened to, closed and left, and is th
     settlesAt(session->audience(), 0);
     REQUIRE(source.stops(id) == 0);
 
-    checkLeft(leave(server, id, kPhone));
+    checkLeft(leave(server, id, phone().id));
 
     CHECK(source.stops(id) == 1);
-    checkSameAnswer(read(server, id, kPhone), unknownSessionAnswer(server));
-    CHECK(idsSeenBy(server, kPhone) == std::vector<std::string>{kEngineSessionId});
+    checkSameAnswer(read(server, id, phone().id), unknownSessionAnswer(server));
+    CHECK(idsSeenBy(server, phone().id) == std::vector<std::string>{kEngineSessionId});
     CHECK(source.opens(id).size() == 1);
 }
 
@@ -846,12 +843,12 @@ TEST_CASE("a session is created, played, listened to, closed and left, and is th
 TEST_CASE("stopping the server stops a session once and ends the stream its listener is reading") {
     Source source;
     auto server = std::make_unique<TestServer>(oneClock(source));
-    const auto id = createdBy(*server, kPhone);
+    const auto id = createdBy(*server, phone().id);
     const auto session = source.session(id);
     source.hold(id);
 
     auto client = server->client();
-    const auto url = "/api/stream?ticket=" + ticketFor(*server, id, kPhone);
+    const auto url = "/api/stream?ticket=" + ticketFor(*server, id, phone().id);
     std::atomic<bool> readEnded{false};
     std::thread listener([&client, &url, &readEnded] {
         client.Get(url);
@@ -859,7 +856,7 @@ TEST_CASE("stopping the server stops a session once and ends the stream its list
     });
 
     settlesAt(session->audience(), 1);
-    REQUIRE(devicesOn(rosterOf(*server, id, kPhone)) == std::vector<std::string>{kPhone});
+    REQUIRE(devicesOn(rosterOf(*server, id, phone().id)) == std::vector<std::string>{phone().id});
     REQUIRE_FALSE(readEnded);
 
     std::atomic<bool> stopped{false};
@@ -877,29 +874,29 @@ TEST_CASE("the roster naming a session lists its own devices, and counts connect
     Source source;
     const TestServer server = oneClock(source);
     Connections live(server, source);
-    const auto kitchen = createdBy(server, kPhone);
-    const auto desk = createdBy(server, kLaptop);
+    const auto kitchen = createdBy(server, phone().id);
+    const auto desk = createdBy(server, laptop().id);
     const auto inKitchen = source.session(kitchen);
     const auto atDesk = source.session(desk);
 
     for (const std::string& key : {std::string(kEngineSessionId), kitchen, desk})
         source.hold(key);
-    live.open(ticketFor(server, kitchen, kPhone));
-    live.open(ticketFor(server, desk, kLaptop));
-    live.open(ticketFor(server, "", kTablet));
+    live.open(ticketFor(server, kitchen, phone().id));
+    live.open(ticketFor(server, desk, laptop().id));
+    live.open(ticketFor(server, "", tablet().id));
     settlesAt(inKitchen->audience(), 1);
     settlesAt(atDesk->audience(), 1);
     settlesAt(server.audience(), 1);
 
-    const auto ofKitchen = rosterOf(server, kitchen, kPhone);
-    const auto ofDesk = rosterOf(server, desk, kLaptop);
+    const auto ofKitchen = rosterOf(server, kitchen, phone().id);
+    const auto ofDesk = rosterOf(server, desk, laptop().id);
     const auto ofEngine = rosterOf(server, "", "");
-    const auto ofEngineNamed = rosterOf(server, kEngineSessionId, kPhone);
+    const auto ofEngineNamed = rosterOf(server, kEngineSessionId, phone().id);
 
-    CHECK(devicesOn(ofKitchen) == std::vector<std::string>{kPhone});
-    CHECK(devicesOn(ofDesk) == std::vector<std::string>{kLaptop});
-    CHECK(devicesOn(ofEngine) == std::vector<std::string>{kTablet});
-    CHECK(devicesOn(ofEngineNamed) == std::vector<std::string>{kTablet});
+    CHECK(devicesOn(ofKitchen) == std::vector<std::string>{phone().id});
+    CHECK(devicesOn(ofDesk) == std::vector<std::string>{laptop().id});
+    CHECK(devicesOn(ofEngine) == std::vector<std::string>{tablet().id});
+    CHECK(devicesOn(ofEngineNamed) == std::vector<std::string>{tablet().id});
 
     for (const auto* roster : {&ofKitchen, &ofDesk, &ofEngine, &ofEngineNamed}) {
         CHECK((*roster)["connections"] == 3);
@@ -910,13 +907,13 @@ TEST_CASE("the roster naming a session lists its own devices, and counts connect
 TEST_CASE("playerMuted on a session's roster is the player's, whichever session is named") {
     Source source;
     const TestServer server = oneClock(source);
-    const auto id = createdBy(server, kPhone);
+    const auto id = createdBy(server, phone().id);
 
     for (const bool muted : {true, false}) {
         CAPTURE(muted);
         source.mutePlayer(muted);
-        CHECK(rosterOf(server, id, kPhone)["playerMuted"] == muted);
-        CHECK(rosterOf(server, kEngineSessionId, kPhone)["playerMuted"] == muted);
+        CHECK(rosterOf(server, id, phone().id)["playerMuted"] == muted);
+        CHECK(rosterOf(server, kEngineSessionId, phone().id)["playerMuted"] == muted);
         CHECK(rosterOf(server, "", "")["playerMuted"] == muted);
     }
 }
@@ -924,16 +921,16 @@ TEST_CASE("playerMuted on a session's roster is the player's, whichever session 
 TEST_CASE("a private session's roster is a member's alone, and a shared one's is anybody's") {
     Source source;
     const TestServer server = oneClock(source);
-    const auto id = createdBy(server, kPhone);
+    const auto id = createdBy(server, phone().id);
     const auto unknown = unknownSessionAnswer(server);
 
-    CHECK(statusOf(askForRoster(server, id, kPhone)) == 200);
-    checkSameAnswer(askForRoster(server, id, kTablet), unknown);
+    CHECK(statusOf(askForRoster(server, id, phone().id)) == 200);
+    checkSameAnswer(askForRoster(server, id, tablet().id), unknown);
     checkSameAnswer(askForRoster(server, id, ""), unknown);
-    checkSameAnswer(askForRoster(server, kNobodysSession, kPhone), unknown);
+    checkSameAnswer(askForRoster(server, kNobodysSession, phone().id), unknown);
 
-    share(server, id, kPhone, true);
-    CHECK(statusOf(askForRoster(server, id, kTablet)) == 200);
+    share(server, id, phone().id, true);
+    CHECK(statusOf(askForRoster(server, id, tablet().id)) == 200);
     CHECK(statusOf(askForRoster(server, id, "")) == 200);
 }
 
@@ -976,21 +973,21 @@ TEST_CASE(
     const OutputHold hold(server.audience(), volume.seam(), true);
     source.heldBy(&hold);
     Connections live(server, source);
-    const auto id = createdBy(server, kPhone);
+    const auto id = createdBy(server, phone().id);
     const auto session = source.session(id);
 
     source.hold(id);
-    live.open(ticketFor(server, id, kPhone));
+    live.open(ticketFor(server, id, phone().id));
     settlesAt(session->audience(), 1);
 
     CHECK_FALSE(server.audience().anyListening(server.audience().now()));
-    CHECK(rosterOf(server, id, kPhone)["playerMuted"] == false);
+    CHECK(rosterOf(server, id, phone().id)["playerMuted"] == false);
 
     source.hold(kEngineSessionId);
-    live.open(ticketFor(server, "", kLaptop));
+    live.open(ticketFor(server, "", laptop().id));
     settlesAt(server.audience(), 1);
     REQUIRE(eventually([&volume] { return volume.muted.load(); }));
-    CHECK(rosterOf(server, id, kPhone)["playerMuted"] == true);
+    CHECK(rosterOf(server, id, phone().id)["playerMuted"] == true);
     CHECK(rosterOf(server, "", "")["playerMuted"] == true);
 
     source.letGo(id);
@@ -1008,32 +1005,32 @@ TEST_CASE("maxConcurrentStreams bounds the connections of every session and the 
     Source source;
     const TestServer server = oneClock(source, settings);
     Connections live(server, source);
-    const auto kitchen = createdBy(server, kPhone);
-    const auto desk = createdBy(server, kLaptop);
+    const auto kitchen = createdBy(server, phone().id);
+    const auto desk = createdBy(server, laptop().id);
     const auto inKitchen = source.session(kitchen);
     const auto atDesk = source.session(desk);
 
     for (const std::string& key : {std::string(kEngineSessionId), kitchen, desk})
         source.hold(key);
-    live.open(ticketFor(server, "", kPhone));
-    live.open(ticketFor(server, kitchen, kPhone));
+    live.open(ticketFor(server, "", phone().id));
+    live.open(ticketFor(server, kitchen, phone().id));
     settlesAt(server.audience(), 1);
     settlesAt(inKitchen->audience(), 1);
 
-    const auto engine = listen(server, ticketFor(server, "", kTablet));
+    const auto engine = listen(server, ticketFor(server, "", tablet().id));
     REQUIRE(engine);
     CHECK(engine->status == 503);
     CHECK(errorOf(*engine) == kAtTheCap);
-    checkSameAnswer(listen(server, ticketFor(server, desk, kLaptop)), engine);
-    checkSameAnswer(listen(server, ticketFor(server, kitchen, kPhone)), engine);
+    checkSameAnswer(listen(server, ticketFor(server, desk, laptop().id)), engine);
+    checkSameAnswer(listen(server, ticketFor(server, kitchen, phone().id)), engine);
     CHECK(source.opens(desk).empty());
 
     source.letGo(kitchen);
     settlesAt(inKitchen->audience(), 0);
-    live.open(ticketFor(server, desk, kLaptop));
+    live.open(ticketFor(server, desk, laptop().id));
     settlesAt(atDesk->audience(), 1);
 
-    checkSameAnswer(listen(server, ticketFor(server, kitchen, kPhone)), engine);
+    checkSameAnswer(listen(server, ticketFor(server, kitchen, phone().id)), engine);
     CHECK(source.opens(kitchen).size() == 1);
     CHECK(source.opens(desk).size() == 1);
 }
@@ -1042,7 +1039,7 @@ namespace {
 
 httplib::Result pollHolding(const TestServer& server, const std::string& id,
                             const std::string& tag) {
-    return server.client().Get(scoped("/api/state", id, kPhone),
+    return server.client().Get(scoped("/api/state", id, phone().id),
                                httplib::Headers{{"If-None-Match", tag}});
 }
 
@@ -1067,25 +1064,25 @@ TEST_CASE(
     Source source;
     const TestServer server = oneClock(source);
     Connections live(server, source);
-    const auto id = createdBy(server, kPhone);
-    play(server, id, kPhone);
+    const auto id = createdBy(server, phone().id);
+    play(server, id, phone().id);
     const auto session = source.session(id);
 
-    const auto unheard = get(server, scoped("/api/state", id, kPhone));
+    const auto unheard = get(server, scoped("/api/state", id, phone().id));
     const auto unheardTag = tagOf(unheard);
     const auto revision = playerOf(unheard)["sessionRevision"];
     CHECK(playerOf(unheard)["playback"] == "paused");
-    CHECK(documentOf(server, id, kPhone)["playback"] == "paused");
+    CHECK(documentOf(server, id, phone().id)["playback"] == "paused");
 
     source.hold(id);
-    live.open(ticketFor(server, id, kPhone));
+    live.open(ticketFor(server, id, phone().id));
     runsAt(*session, true);
 
     const auto heard = pollHolding(server, id, unheardTag);
     CHECK(playerOf(heard)["playback"] == "playing");
     CHECK(heard->get_header_value("ETag") != unheardTag);
     CHECK(playerOf(heard)["sessionRevision"] == revision);
-    CHECK(documentOf(server, id, kPhone)["playback"] == "playing");
+    CHECK(documentOf(server, id, phone().id)["playback"] == "playing");
 
     const auto heardTag = tagOf(heard);
     source.letGo(id);
@@ -1095,5 +1092,5 @@ TEST_CASE(
     CHECK(playerOf(left)["playback"] == "paused");
     CHECK(left->get_header_value("ETag") != heardTag);
     CHECK(playerOf(left)["sessionRevision"] == revision);
-    CHECK(documentOf(server, id, kPhone)["playback"] == "paused");
+    CHECK(documentOf(server, id, phone().id)["playback"] == "paused");
 }

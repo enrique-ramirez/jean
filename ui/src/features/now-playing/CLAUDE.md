@@ -1,10 +1,5 @@
 # Now playing
 
-## The screen
-
-- `LyricsScreen` is a sibling of the screen, not a child, or a flick in it also skips a track.
-- Every scroller lookup here is bounded by `data-now-playing`, or it finds the track list behind the layer.
-
 ## Gestures and the cover wheel
 
 - A control that follows the finger carries `data-owns-touch`, on its popover as well, and so does every action sheet. The sleeve takes no touch (`pointer-events: none`), and nothing on the screen is keyed on the track.

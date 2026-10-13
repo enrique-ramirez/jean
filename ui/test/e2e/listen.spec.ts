@@ -15,6 +15,7 @@ import {
 	requestsTo,
 	statusBar,
 	test,
+	ticksTaken,
 	untilQuiet,
 } from "./fixtures.ts";
 import { dragTo } from "./gestures.ts";
@@ -1273,6 +1274,38 @@ test.describe("a player held silent by somebody else, while this device listens 
 		expect(await silentPhrasesShown(page)).toEqual([]);
 		strict.release();
 		expect(refused).toEqual([]);
+	});
+});
+
+// `foo_jean` meters the roster like any other read, so it is asked for only while
+// the answer is on screen or decides what the status bar draws: the panel open,
+// this device listening, or the player muted.
+test.describe("asking who is listening", () => {
+	test.use({ fooJean: {} });
+
+	const PAST_THE_NEXT_READ_MS = 4000 + 500;
+
+	const rosterReads = (player: FakePlayer) =>
+		requestsTo(player, "/api/stream/listeners").length;
+
+	test("asks nothing until the panel opens, and nothing more once it shuts", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await page.goto("/");
+		await expect(pickerOpener(page)).toBeVisible();
+		await expect.poll(() => ticksTaken(player)).toBeGreaterThan(1);
+		await expectSettlesAt(player, () => rosterReads(player), 0);
+
+		await pickerOpener(page).click();
+		await expect.poll(() => rosterReads(player)).toBeGreaterThan(0);
+
+		await shutThePicker(page, isMobile);
+		await untilQuiet(player);
+		const asked = rosterReads(player);
+		await page.waitForTimeout(PAST_THE_NEXT_READ_MS);
+		expect(rosterReads(player)).toBe(asked);
 	});
 });
 

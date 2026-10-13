@@ -16,6 +16,7 @@ import {
 	test,
 	trackRow,
 } from "./fixtures.ts";
+import { restingBox, touchDrag } from "./gestures.ts";
 import {
 	expectPanelOpen,
 	openPanels,
@@ -911,5 +912,29 @@ test.describe("full-screen lyrics", () => {
 		await page.keyboard.press("Escape");
 		await expect(queuePanel(page)).toHaveAttribute("data-open", "false");
 		await expect(nowPlayingScreen(page)).toBeVisible();
+	});
+
+	// A laptop with a touch screen: wide enough for the expand control, and a
+	// finger to flick with. The now-playing screen under the lyric answers a
+	// downward flick by closing too, and React hands a touch to the ancestors of
+	// the component that drew it, wherever that is drawn on the page.
+	test.describe("on a touch screen", () => {
+		test.use({ hasTouch: true });
+
+		test("a flick down closes it, and leaves the now-playing screen up", async ({
+			page,
+		}) => {
+			await playRow(page, 0);
+			await panelTab(nowPlayingScreen(page), "Lyrics").click();
+			await expand(page).click();
+			const bar = await restingBox(close(page));
+
+			const x = (page.viewportSize()?.width ?? 0) / 2;
+			await touchDrag(page, { x, y: bar.y }, { x, y: bar.y + 300 });
+
+			await expect(fullScreen(page)).toHaveCount(0);
+			expect(page.url()).toMatch(/#\/playing/);
+			await expect(panelTab(nowPlayingScreen(page), "Details")).toBeVisible();
+		});
 	});
 });

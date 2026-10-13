@@ -9,14 +9,7 @@
 - Row order is the snapshot's own. Re-sorting by a tag splits an album whose artist is spelt two ways.
 - `isAutoPlaylist` from `foo_jean` only ever removes an affordance.
 
-## Search
-
-- In `useLibrarySearch` the draft reaches only the field and its dropdown, and `query` moves on a commitment; nothing outside the field reads the draft.
-- The scratch is hidden and still holds a position in the player's list, so a reorder among visible rows is translated through the hidden one.
-- Dismissing a search leaves the scratch alone while the player is on it, and a GUID `useResolvedPlaylistId` has not resolved yet counts as playing.
-
 ## Genres
 
-- A genre is a route, never a search, which would tokenise the name and match titles.
 - `genreQuery.ts` composes the one player query and owns its quoting; the component's preview, the only check, runs on foobar2000's main thread and goes through react-query, since a bare effect fires twice under StrictMode.
 - A genre autoplaylist carries no `#Jean` prefix and no managed key, since a key makes it the component's to manage and a second one a `409`.

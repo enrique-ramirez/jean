@@ -186,8 +186,6 @@ test.describe("the media session", () => {
 		await play(page);
 		await listenHere(page);
 
-		// The album is the one field the update stream does not carry, so it
-		// arrives a request behind the rest.
 		await expect
 			.poll(() => session(page).then((live) => live.album))
 			.not.toBeNull();
@@ -202,6 +200,30 @@ test.describe("the media session", () => {
 		expect(await page.title()).toBe(`${live.title} — ${live.artist} · Jean`);
 		expect(live.album).not.toBe("");
 		expect(live.state).toBe("playing");
+	});
+
+	// The album and its cover come off the poll that names the track. The read the
+	// now-playing screen makes for the rest of the tags is another request, which
+	// a lock screen would otherwise wait on and go without whenever it failed.
+	test.describe("with the read of the playing track's tags refused", () => {
+		test.use({ fooJean: { failPlayingTrack: 500 } });
+
+		test("still names the album and carries its cover", async ({ page }) => {
+			await page.goto("/");
+			await play(page);
+			await listenHere(page);
+
+			await expect
+				.poll(() =>
+					session(page).then((live) => ({
+						title: live.title,
+						album: live.album,
+						isEncoded:
+							live.artwork?.startsWith("data:image/jpeg;base64,") ?? false,
+					})),
+				)
+				.toEqual({ title: "Los Calientes", album: "Jessico", isEncoded: true });
+		});
 	});
 
 	// Redrawn rather than addressed: the OS fetches the artwork out of process, and

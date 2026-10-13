@@ -12,7 +12,7 @@ Punctuation is declared as the character typed (`?`, never `Shift+/`), and a let
 
 ## Overlays
 
-**An overlay owns the keyboard through `keyboardOwner.ts`.** While it does, only registrations naming it stay enabled, and a binding that both opens and closes the overlay has to be one of them. Claims are ordered: the latest still held owns the keyboard, and one released out of turn hands it to the next.
+**An overlay owns the keyboard through `keyboardOwner.ts`.** While it does, only registrations naming it stay enabled, and a binding that both opens and closes the overlay has to be one of them.
 
 **An overlay takes Escape in the capture phase, through `useEscapeCapture`**, because the playlist scope binds Escape to clearing the selection and a bubbling handler would do both in one keystroke. A capture listener does not stop its siblings on the same node, so the layers that claim nothing (the queue panel, the sidebar drawer, track info, the now-playing screen) stand down while `keyboardOwner` names an owner. A layer that claims the keyboard does not read it. An `ActionMenu` takes it through `useDismissable` at bubble, since capture would close the whole menu from a nested page.
 

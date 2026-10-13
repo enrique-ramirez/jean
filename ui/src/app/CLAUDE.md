@@ -9,7 +9,6 @@
 ## Routing
 
 - A route can be drawn as a layer while `App` resolves the route underneath, which leaves the app behind it live; `shared/keyboard` answers that.
-- The front door opens where the sound is once per load.
 - Where a layer was opened from is recorded before the hash changes, since `useHashRoute` reads the new hash in the same render. `navigation.spec.ts`, "with a track loaded it opens that track, over the set it came from", holds the order.
 
 ## Theming
@@ -20,7 +19,3 @@
 
 - `favicon.ts` turns `public/favicon.svg` on a canvas, so everything in that file but the sheen is centred and circular, and it carries no `prefers-color-scheme`.
 - Anything the code fetches for itself resolves against the document, never root-relative, because the build's `base` is relative for the demo.
-
-## The media session
-
-- Album and album artist come off `PlayerState.activeItem`, never `useNowPlayingTrack`.

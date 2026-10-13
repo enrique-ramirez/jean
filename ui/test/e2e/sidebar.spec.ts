@@ -1249,6 +1249,35 @@ test.describe("reordering playlists", () => {
 			.poll(() => titlesInOrder(player).slice(0, 2))
 			.toEqual([LIBRARY, DEFAULT_PLAYLIST]);
 	});
+
+	// The scratch is drawn nowhere and still holds a place in the player's list, so
+	// the row below Default Playlist on screen is two places below it at the player.
+	test("a row moved past the hidden scratch lands where the sidebar put it", async ({
+		page,
+		player,
+	}) => {
+		await playAShelf(page);
+		const scratch = scratchOf(player)!;
+		player.movePlaylist(scratch.id, 1);
+		// A fresh load, so the list the sidebar holds is the one the player has now.
+		await page.reload();
+		await openApp(page);
+		await expect(row(page, scratch.title)).toHaveCount(0);
+
+		await link(page, DEFAULT_PLAYLIST).focus();
+		await page.keyboard.press("Alt+ArrowDown");
+
+		const shownAtThePlayer = () =>
+			titlesInOrder(player).filter((title) => title !== scratch.title);
+		await expectSettlesAt(player, () => shownAtThePlayer().slice(0, 2), [
+			LIBRARY,
+			DEFAULT_PLAYLIST,
+		]);
+		expect((await playlistsDrawn(page)).slice(0, 2)).toEqual([
+			LIBRARY,
+			DEFAULT_PLAYLIST,
+		]);
+	});
 });
 
 // Every one of these draws the change before the player has agreed to it, which is

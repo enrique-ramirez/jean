@@ -5,6 +5,7 @@ import {
 	openLibrary,
 	openSidebar,
 	requestsTo,
+	rowByTitle,
 	sidebar,
 	test,
 	viewHeader,
@@ -197,6 +198,27 @@ test.describe("the ways in", () => {
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Genres" }),
 		).toBeVisible();
+	});
+});
+
+// A search splits what it is given into words and looks for them in titles too,
+// so a genre opened as a search would bring this track along with its own.
+test.describe("a genre whose name is also a track's title", () => {
+	test.use({ retagged: { Fizz: { "%title%": "Post Rock" } } });
+
+	test("opens the tracks tagged with it, and not the one titled with it", async ({
+		page,
+	}) => {
+		await openGenres(page);
+		await expect(tile(page, /Post Rock/)).toContainText("13 tracks");
+		await tile(page, /Post Rock/).click();
+
+		await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+			"Post Rock",
+		);
+		await expect(viewHeader(page)).toContainText("13 tracks");
+		await expect(page.getByRole("grid")).toBeVisible();
+		await expect(rowByTitle(page, "Post Rock")).toHaveCount(0);
 	});
 });
 

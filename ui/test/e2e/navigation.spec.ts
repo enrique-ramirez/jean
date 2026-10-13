@@ -6,8 +6,10 @@ import {
 	openLibrary,
 	openSidebar,
 	sidebar,
+	statusBar,
 	test,
 	trackRow,
+	untilQuiet,
 } from "./fixtures.ts";
 import { scrollTo, scrollTop } from "./scrolling.ts";
 
@@ -309,6 +311,23 @@ test.describe("landing on the front door", () => {
 		await expect(
 			page.getByRole("heading", { level: 1, name: "Library" }),
 		).toBeVisible();
+	});
+
+	// The door opens on the sound once, as the page loads. Opening again whenever
+	// a track turned up would cover the shelves under somebody reading them.
+	test("a track started at the player later leaves the door where it is", async ({
+		page,
+		player,
+	}) => {
+		await page.goto("/");
+		await expect(statusBar(page)).toContainText("Nothing playing");
+
+		player.playItem("p7", 2);
+		await expect(statusBar(page)).toContainText("Deléctrico");
+		await untilQuiet(player);
+
+		await expect(nowPlayingScreen(page)).toBeHidden();
+		expect(await page.evaluate(() => location.hash)).toBe("");
 	});
 
 	test("asking for home is not the front door", async ({ page, player }) => {

@@ -12,23 +12,24 @@ interface Claim {
 
 let claims: readonly Claim[] = [];
 
-const ownerOf = () => claims.at(-1)?.id ?? null;
+export const keyboardOwner = () => claims.at(-1)?.id ?? null;
 
 function setClaims(next: readonly Claim[]) {
-	const before = ownerOf();
+	const before = keyboardOwner();
 	claims = next;
-	if (ownerOf() !== before) listeners.notify();
+	if (keyboardOwner() !== before) listeners.notify();
+}
+
+export function claimKeyboard(id: string) {
+	const claim = { id };
+	setClaims([...claims, claim]);
+
+	return () => setClaims(claims.filter((held) => held !== claim));
 }
 
 export function useKeyboardOwnership(id: string, isActive = true) {
-	useEffect(() => {
-		if (!isActive) return undefined;
-		const claim = { id };
-		setClaims([...claims, claim]);
-
-		return () => setClaims(claims.filter((held) => held !== claim));
-	}, [id, isActive]);
+	useEffect(() => (isActive ? claimKeyboard(id) : undefined), [id, isActive]);
 }
 
 export const useKeyboardOwner = () =>
-	useSyncExternalStore(listeners.subscribe, ownerOf);
+	useSyncExternalStore(listeners.subscribe, keyboardOwner);

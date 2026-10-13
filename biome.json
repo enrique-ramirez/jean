@@ -197,6 +197,40 @@
 			}
 		},
 		{
+			"includes": ["ui/src/domain/track/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": ["@/features/**", "@/app/**"],
+										"message": "domain/ is below features/. A domain slice that needs a view belongs in features/."
+									},
+									{
+										"group": ["@/shared/ui/dnd"],
+										"importNamePattern": "useDragState",
+										"message": "The track list does not subscribe to the drag store, which publishes each time the pointer crosses a row: a list that reads it redraws on every one. A row starts a drag through useDragSource, and dnd.ts moves the rows under it."
+									},
+									{
+										"group": [
+											"@tanstack/react-hotkeys",
+											"@tanstack/react-hotkeys/**",
+											"@tanstack/hotkeys",
+											"@tanstack/hotkeys/**"
+										],
+										"message": "The hotkeys library is reached through shared/keyboard alone. Declare a binding in keymap.ts and register it with useKeymap, so the shortcut sheet and the keys cannot drift apart."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
 			"includes": ["ui/src/features/**"],
 			"linter": {
 				"rules": {

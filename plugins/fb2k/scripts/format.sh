@@ -8,7 +8,7 @@ Formats our own C++ to .clang-format. third_party/ is never touched.
   scripts/format.sh            rewrite in place
   scripts/format.sh --check    exit non-zero if anything is unformatted
 
-CLANG_FORMAT picks the binary, for a machine carrying more than one. Only LLVM 23 is accepted.
+CLANG_FORMAT picks the binary, for a machine carrying more than one. Only the LLVM major pinned in scripts/lib/llvm.sh is accepted.
 USAGE
 }
 

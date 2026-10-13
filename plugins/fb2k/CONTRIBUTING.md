@@ -10,8 +10,8 @@ The rationale, the enforcement and what the seam buys are in `plugins/fb2k/ARCHI
 2. Anything `core/` needs from the player MUST arrive as a callback or a plain value handed in by `fb2k/`. The one exception is `core/log.h`, which declares `logInfo`/`logError` and lets each host supply them: `fb2k/log.cpp` in the component, `tests/support/log_capture.cpp` in the suite.
 3. **Put the decision in `core/` and the mechanism in `fb2k/`.** A decision compiles and is tested on any machine; a mechanism is not.
 4. `src/fb2k/` is parsed and linted on a Mac with the SDK fetched, and linked and run only on the build machine. A change there is *reviewed*, not *tested*, until `scripts/build.ps1` has run. State which of the two you did.
-5. Headers live beside their sources. This is a DLL with no exported headers; do not restructure towards `include/` + `src/`.
-6. The two directories deliberately share filenames, since each pair is one feature split at the boundary. `src/foo_jean.vcxproj` keeps their object files apart and says how beside the setting that does it. Keep it.
+5. Headers live beside their sources: this is a DLL with no exported headers.
+6. The two directories deliberately share filenames, since each pair is one feature split at the boundary.
 7. **A platform file holds the call into the operating system or the player, and nothing a second platform would have to write again.** A platform file is one that holds a platform conditional, includes an operating system header or is named for one platform. Whatever both platforms need goes in `src/core/`, with a test. `tests/platform_seams_test.cpp` lists every platform file and fails on one missing from the list and on an entry whose file no longer earns it, so adding a platform file adds a line a reviewer reads. The test does not judge what a listed file holds; the reviewer does, against the first sentence.
 
 ## 2. Comments and documentation
@@ -37,8 +37,8 @@ The rationale, the enforcement and what the seam buys are in `plugins/fb2k/ARCHI
 5. **Assert that the refusal never reached the player.** Every route test carries a recording player and checks its call count, and the playlist and queue routes share one, `tests/support/fake_player.h`, a foobar2000 in memory that judges each call the way `src/fb2k/` does: "answered 403" and "answered 403 *and did not touch the disk*" are different promises, and only the second is the feature.
 6. Fixtures live in `tests/support/`, never at the top of whichever file needed one first.
 7. **Nothing sleeps.** `RateLimiter::allow` and the ticket store take the time as an argument for this reason. A test that waits to observe a limit fails on a loaded machine, which teaches everybody to ignore it. A route test's rate limits stand still until it calls `advanceRateLimits`. A case that needs another thread to be inside a wait asks `tests/support/eventually.h`, whose watchdog fails the case rather than hanging the suite.
-8. Run the suite more than once before believing it: `tests/support/test_server.cpp` retries a port race. The assertion count is deterministic, so two runs of one tree that disagree are a real difference rather than weather. Nothing in the suite may make it depend on scheduling.
-9. **Every change runs under `scripts/test.sh --sanitize=address` before it is called ready, and anything threaded under `--sanitize=thread` too.** A plain run on the Mac does not see a write past a buffer that MSVC's heap aborts on. Threaded code is `core/pcm_ring`, `core/broadcast_ring`, `core/audience`, `core/output_hold`, `core/stream_ticket`, `core/timeline`, `core/rate_limit`, `core/library`, `core/main_thread_queue` and `core/main_thread_watch`. It runs clean, so a report is a regression. **The flag has to come first**: `scripts/test.sh` reads only its first argument for it, so `--sanitize=thread` written after a `-sf=` filter is ignored and the run passes unsanitised while still reporting success.
+8. Run the suite more than once before believing it: `tests/support/test_server.cpp` retries a port race. The assertion count is deterministic, so two runs of one tree that disagree are a real difference rather than weather.
+9. **Every C++ change runs under both `scripts/test.sh --sanitize=address` and `--sanitize=thread` before it is called ready.** A plain run on the Mac does not see a write past a buffer that MSVC's heap aborts on. It runs clean, so a report is a regression.
 10. **The suite reads `contract/openapi.yaml` at run time, and that file sits outside this tree.** A stale copy tests the wrong routes. Whatever syncs the tree to a machine that runs the suite syncs `contract/` with it, at the same position relative to it, because `tests/support/spec.cpp` and `scripts/test.sh` both climb out of the plugin directory.
 11. A doctest filter matching nothing exits 0, so a typo in one reports success.
 
@@ -63,14 +63,14 @@ Each of these is unreachable from the suite by nature, so each says how it is ve
 ## 6. Security rules
 
 1. Admission runs before anything else, on every path. A route that answers before the source address and `Host` are checked, or that carries its own exception from either check, is a security bug regardless of what the route does.
-2. Compare a stream ticket in constant time.
-3. Never trust a path from a client. Resolve against what the player reports; never concatenate.
+2. Compare a stream ticket in constant time, through `secureEquals` in `src/core/text.h`.
+3. Never trust a path from a client. Resolve against what the player reports; never concatenate. `tests/static_assets_test.cpp` holds the page route's refusals, and `tests/track_route_test.cpp`, `tests/tag_route_test.cpp` and `tests/artwork_test.cpp` hold that a track address is looked up exactly as sent. The lookup itself is in `src/fb2k/library.cpp`, which no suite reaches.
 4. Write only allowlisted fields, compared case-insensitively, and say in the response which field was refused.
-5. Never log a stream ticket.
+5. Never log a stream ticket; `tests/ticket_log_test.cpp` holds it.
 6. **Never set `SO_REUSEADDR`.** The override to `SO_EXCLUSIVEADDRUSE` must stay; `third_party/README.md` is what it overrides and why that default is there, and `tests/listener_test.cpp` holds it.
 7. A partial or failed bind MUST be loud, to the log and to the preferences page, because a headless install has nobody reading a console.
 8. Refuse before doing. Validate, then act: the tests assert the order, not just the status.
-9. **No response may compress request-controlled text beside a secret.** That is the BREACH shape: whoever can get a chosen string into a response and watch what it does to the compressed length reads the secret beside it a byte at a time. Compression is on wherever a client offers it, cpp-httplib's own for the JSON routes and this component's for the library blobs, so the rule sits on what a body may hold rather than on the compressor.
+9. **No response may compress request-controlled text beside a secret.** That is the BREACH shape: a client that can put a chosen string in a response reads the secret beside it, a byte at a time, from the compressed length. Nothing tests it; a reviewer holds it.
 10. Pin every third-party download to a SHA-256, through `scripts/lib/download.ps1` in PowerShell, and every GitHub Action to a commit, with its version in a comment beside it.
 
 ## 7. PowerShell scripts

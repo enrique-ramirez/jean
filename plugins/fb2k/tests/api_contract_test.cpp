@@ -12,6 +12,7 @@
 #include "support/keys.h"
 #include "support/repository.h"
 #include "support/spec.h"
+#include "support/streams.h"
 #include "support/test_server.h"
 #include "support/wire.h"
 #include "third_party/json.hpp"

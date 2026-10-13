@@ -5,13 +5,12 @@
 #include "third_party/doctest.h"
 
 #include "support/eventually.h"
+#include "support/streams.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
-#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -23,47 +22,16 @@ using nlohmann::json;
 
 namespace {
 
-// Stays open until it is let go, which is the only way to read a roster with somebody
-// actually on it.
-class HeldStream : public StreamListener {
-public:
-    struct Gate {
-        std::mutex mutex;
-        std::condition_variable released;
-        bool open = true;
-    };
-
-    explicit HeldStream(std::shared_ptr<Gate> gate) : gate_(std::move(gate)) {}
-
-    bool next(std::vector<std::uint8_t>& out) override {
-        if (!sent_) {
-            sent_ = true;
-            out = {'o', 'g', 'g'};
-            return true;
-        }
-
-        std::unique_lock<std::mutex> lock(gate_->mutex);
-        gate_->released.wait(lock, [this] { return !gate_->open; });
-        return false;
-    }
-
-private:
-    std::shared_ptr<Gate> gate_;
-    bool sent_ = false;
-};
-
 // The gate every listener blocks on, and the player built over it. Separate from the
 // connections below because the order matters both ways: this has to exist before the
 // server, and the connections have to be let go before the server stops -- stopping joins
 // the connection threads, and a listener still inside next() would hold them forever.
 struct Source {
-    std::shared_ptr<HeldStream::Gate> gate = std::make_shared<HeldStream::Gate>();
+    std::shared_ptr<Gate> gate = std::make_shared<Gate>();
 
     Player player(std::function<bool()> outputHeld = {},
                   std::function<void()> releaseOutput = {}) const {
-        auto built = TestServer::streaming([gate = gate](const std::string&) -> OpenedStream {
-            return {"audio/ogg", std::make_unique<HeldStream>(gate)};
-        });
+        auto built = TestServer::streaming(opensHeldBy(gate));
         built.stream.outputHeld = std::move(outputHeld);
         built.stream.releaseOutput = std::move(releaseOutput);
         return built;
@@ -83,11 +51,7 @@ public:
     }
 
     ~Listeners() {
-        {
-            const std::lock_guard<std::mutex> held(gate_->mutex);
-            gate_->open = false;
-        }
-        gate_->released.notify_all();
+        gate_->release();
 
         for (auto& thread : threads_)
             thread.join();
@@ -95,7 +59,7 @@ public:
 
 private:
     const TestServer& server_;
-    const std::shared_ptr<HeldStream::Gate> gate_;
+    const std::shared_ptr<Gate> gate_;
     std::vector<std::thread> threads_;
 };
 
@@ -381,43 +345,6 @@ TEST_CASE("canMuteWhileStreaming says in advance what the hold route will answer
     }
 }
 
-namespace {
-
-struct Cut {
-    std::atomic<bool> reloaded{false};
-    std::atomic<int> callsAfterReload{0};
-    std::atomic<bool> overran{false};
-};
-
-constexpr int kCallsAllowedAfterReload = 4;
-
-// Never ends by itself while it is wanted. Once the reload has landed it allows a few more calls
-// and then ends anyway, so a server that never cuts fails this test rather than hanging it.
-class LiveStream : public StreamListener {
-public:
-    LiveStream(std::shared_ptr<Cut> cut, bool paused) : cut_(std::move(cut)), paused_(paused) {}
-
-    bool next(std::vector<std::uint8_t>& out) override {
-        if (cut_->reloaded && ++cut_->callsAfterReload > kCallsAllowedAfterReload) {
-            cut_->overran = true;
-            return false;
-        }
-
-        out.clear();
-        if (!sent_ || !paused_)
-            out = {'o', 'g', 'g'};
-        sent_ = true;
-        return true;
-    }
-
-private:
-    std::shared_ptr<Cut> cut_;
-    bool paused_;
-    bool sent_ = false;
-};
-
-}  // namespace
-
 // A paused player sends nothing, so a server that only looks at the switch when it writes audio
 // would keep a paused listener for as long as the pause lasts.
 TEST_CASE("a listener is cut when a reload turns streamingEnabled off, playing or paused") {
@@ -425,10 +352,7 @@ TEST_CASE("a listener is cut when a reload turns streamingEnabled off, playing o
         INFO("player: ", std::string(paused ? "paused" : "playing"));
 
         auto cut = std::make_shared<Cut>();
-        TestServer server(servingSettings(),
-                          TestServer::streaming([cut, paused](const std::string&) -> OpenedStream {
-                              return {"audio/ogg", std::make_unique<LiveStream>(cut, paused)};
-                          }));
+        TestServer server(servingSettings(), TestServer::streaming(opensLive(cut, paused)));
 
         const auto ticket = ticketFor(server, "");
         server.client().Get("/api/stream?ticket=" + ticket, [&server, &cut](const char*, size_t) {

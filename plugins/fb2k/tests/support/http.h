@@ -7,7 +7,7 @@
 
 namespace jean::testing {
 
-std::string ticketFrom(const TestServer& server);
+std::string ticketFrom(const TestServer& server, const std::string& device = {});
 
 std::string scoped(const std::string& path, const std::string& session,
                    const std::string& deviceId);

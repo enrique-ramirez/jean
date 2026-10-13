@@ -7,8 +7,8 @@
 
 namespace jean::testing {
 
-std::string ticketFrom(const TestServer& server) {
-    const auto response = server.client().Post("/api/stream/ticket", "", "application/json");
+std::string ticketFrom(const TestServer& server, const std::string& device) {
+    const auto response = server.client().Post("/api/stream/ticket", device, "application/json");
     REQUIRE(response);
     REQUIRE(response->status == 200);
     return nlohmann::json::parse(response->body)["ticket"].get<std::string>();

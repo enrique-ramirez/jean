@@ -92,7 +92,4 @@ TicketMint countingMint();
 
 SessionRandom countingUp();
 
-StreamOpener opensWith(std::vector<std::string> chunks, std::string contentType = "audio/ogg",
-                       int* opens = nullptr);
-
 }  // namespace jean::testing

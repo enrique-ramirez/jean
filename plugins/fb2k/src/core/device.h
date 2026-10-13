@@ -5,9 +5,10 @@
 
 namespace jean {
 
-// Both fields are text a client chose. They label a row in somebody else's picker and
-// nothing branches on them, so a wrong one costs a wrong word rather than a wrong decision,
-// and a forged one is available to anybody already holding the token.
+// Both fields are text a client chose. They label a row in somebody else's picker, and the id
+// is the one thing a full TicketStore branches on. A forged id costs the device it names its
+// pending tickets, which anybody holding the token can already do to every device by minting
+// under fresh ids.
 struct DeviceIdentity {
     std::string id;
 

@@ -2,6 +2,7 @@
 
 #include "support/http.h"
 #include "support/log_capture.h"
+#include "support/streams.h"
 #include "support/test_server.h"
 #include "support/tickets.h"
 #include "third_party/json.hpp"
@@ -21,8 +22,6 @@ using nlohmann::json;
 namespace {
 
 constexpr char kTicketPath[] = "/api/stream/ticket";
-constexpr char kPhone[] = R"({"deviceId": "phone-4c1e", "name": "Kitchen phone"})";
-constexpr char kLaptop[] = R"({"deviceId": "laptop-9a07", "name": "Study laptop"})";
 constexpr char kAudio[] = "OggS and what follows it";
 
 constexpr char kTicketRequired[] = "a valid stream ticket is required";
@@ -194,9 +193,8 @@ TEST_CASE("a ticket the store no longer honours is in no log line") {
         const auto first = ticketFrom(server, sent);
         int pushedOutAfter = 0;
 
-        constexpr int kMoreThanAnyoneHolds = 64;
-        for (int newer = 1; newer <= kMoreThanAnyoneHolds && pushedOutAfter == 0; ++newer) {
-            ticketFrom(server, sent, kTicketPath, kLaptop);
+        for (int newer = 1; newer <= kMoreTicketsThanAnyoneHolds && pushedOutAfter == 0; ++newer) {
+            ticketFrom(server, sent);
             if (statusOf(listen(server, first)) == 401)
                 pushedOutAfter = newer;
         }

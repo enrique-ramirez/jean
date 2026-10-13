@@ -1,11 +1,11 @@
 #include "third_party/doctest.h"
 
 #include "support/http.h"
+#include "support/streams.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
-#include <cstdint>
-#include <memory>
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -32,30 +32,15 @@ Player listingManyPlaylists() {
         [playlists] { return PlaylistsResult{PlayerOutcome::done, playlists}; });
 }
 
-class Repetitive : public StreamListener {
-public:
-    static constexpr int kPages = 40;
-    static constexpr char kPage[] = "an ogg page, and the next one looks a great deal like it. ";
+constexpr size_t kPages = 40;
+constexpr char kPage[] = "an ogg page, and the next one looks a great deal like it. ";
 
-    bool next(std::vector<std::uint8_t>& out) override {
-        if (sent_ >= kPages)
-            return false;
-
-        ++sent_;
-        out.assign(std::begin(kPage), std::end(kPage) - 1);
-        return true;
-    }
-
-    static std::string whole() {
-        std::string all;
-        for (int i = 0; i < kPages; ++i)
-            all += kPage;
-        return all;
-    }
-
-private:
-    int sent_ = 0;
-};
+std::string wholeStream() {
+    std::string all;
+    for (size_t i = 0; i < kPages; ++i)
+        all += kPage;
+    return all;
+}
 
 }  // namespace
 
@@ -99,10 +84,9 @@ TEST_CASE("the gzipped answer decodes back to the bytes the plain one gave") {
 // cpp-httplib's content-type gate is the only thing leaving this body alone;
 // third_party/README.md has why, and why an upgrade could land on this case.
 TEST_CASE("the audio stream is never compressed, however the listener asks") {
-    const TestServer server(servingSettings(),
-                            TestServer::streaming([](const std::string&) -> OpenedStream {
-                                return {"audio/ogg", std::make_unique<Repetitive>()};
-                            }));
+    const TestServer server(
+        servingSettings(),
+        TestServer::streaming(opensWith(std::vector<std::string>(kPages, kPage))));
 
     const auto response =
         undecoding(server).Get("/api/stream?ticket=" + ticketFrom(server), accepting("gzip"));
@@ -111,5 +95,5 @@ TEST_CASE("the audio stream is never compressed, however the listener asks") {
     CHECK(response->status == 200);
     CHECK(response->get_header_value("Content-Encoding").empty());
     CHECK_FALSE(isGzip(response->body));
-    CHECK(response->body == Repetitive::whole());
+    CHECK(response->body == wholeStream());
 }

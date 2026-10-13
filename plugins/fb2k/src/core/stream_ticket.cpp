@@ -22,10 +22,16 @@ TicketStore::Issued TicketStore::issue(Clock::time_point now, DeviceIdentity dev
                                   [now](const Entry& entry) { return entry.expiresAt <= now; }),
                    entries_.end());
 
-    if (entries_.size() >= maxOutstanding_)
-        entries_.erase(entries_.begin());
+    device = sanitised(std::move(device));
 
-    entries_.push_back({ticket, now + ttl_, sanitised(std::move(device)), std::move(session)});
+    if (entries_.size() >= maxOutstanding_) {
+        const auto ownOldest =
+            std::find_if(entries_.begin(), entries_.end(),
+                         [&device](const Entry& entry) { return entry.device.id == device.id; });
+        entries_.erase(ownOldest != entries_.end() ? ownOldest : entries_.begin());
+    }
+
+    entries_.push_back({ticket, now + ttl_, std::move(device), std::move(session)});
     return {std::move(ticket), ttl_};
 }
 

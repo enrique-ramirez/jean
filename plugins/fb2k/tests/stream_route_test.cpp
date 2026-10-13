@@ -5,8 +5,13 @@
 #include "third_party/doctest.h"
 
 #include "support/http.h"
+#include "support/streams.h"
 #include "support/test_server.h"
+#include "support/tickets.h"
 #include "third_party/json.hpp"
+
+#include <string>
+#include <vector>
 
 using namespace jean;
 using namespace jean::testing;
@@ -313,32 +318,9 @@ TEST_CASE("a mint that fails refuses to issue rather than serving an empty ticke
 TEST_CASE("a stream with nothing to send yet is not a stream that ended") {
     // What a listener does while the player is paused: it has no audio, and says so rather
     // than blocking, so the route gets a chance to check that anybody is still there.
-    class IdleThenAudio : public StreamListener {
-    public:
-        bool next(std::vector<std::uint8_t>& out) override {
-            out.clear();
-            if (idles_ < 3) {
-                ++idles_;
-                return true;
-            }
-
-            if (sent_)
-                return false;
-
-            sent_ = true;
-            out = {'o', 'g', 'g'};
-            return true;
-        }
-
-    private:
-        int idles_ = 0;
-        bool sent_ = false;
-    };
-
+    const std::vector<std::string> threeIdlePollsThenAudio{"", "", "", "ogg"};
     const TestServer server(servingSettings(),
-                            TestServer::streaming([](const std::string&) -> OpenedStream {
-                                return {"audio/ogg", std::make_unique<IdleThenAudio>()};
-                            }));
+                            TestServer::streaming(opensWith(threeIdlePollsThenAudio)));
 
     const auto response = listen(server, ticketFrom(server));
 
@@ -412,4 +394,57 @@ TEST_CASE("canStream follows streamingEnabled through a reload") {
 
     server.reload("{}");
     CHECK(canStream(server));
+}
+
+TEST_CASE(
+    "a device minting tickets in a loop shuts out its own oldest and never another device's") {
+    int opens = 0;
+    const TestServer server(servingSettings(),
+                            TestServer::streaming(opensWith({"a"}, "audio/ogg", &opens)));
+
+    std::string looping;
+    SUBCASE("a device that names itself") {
+        looping = kPhone;
+    }
+    SUBCASE("a page that names no device") {
+        looping = "";
+    }
+
+    const auto bystander = ticketFrom(server, kLaptop);
+    const auto first = ticketFrom(server, looping);
+
+    std::string last;
+    for (int mint = 0; mint < kMoreTicketsThanAnyoneHolds; ++mint)
+        last = ticketFrom(server, looping);
+
+    const auto spared = listen(server, bystander);
+    REQUIRE(spared);
+    CHECK(spared->status == 200);
+
+    const auto shutOut = listen(server, first);
+    REQUIRE(shutOut);
+    CHECK(shutOut->status == 401);
+    CHECK(errorOf(*shutOut) == "a valid stream ticket is required");
+
+    const auto newest = listen(server, last);
+    REQUIRE(newest);
+    CHECK(newest->status == 200);
+
+    CHECK(opens == 2);
+}
+
+TEST_CASE("a device arriving after another filled the store is handed a ticket that works") {
+    const TestServer server(servingSettings(), TestServer::streaming(opensWith({"a"})));
+
+    std::string last;
+    for (int mint = 0; mint < kMoreTicketsThanAnyoneHolds; ++mint)
+        last = ticketFrom(server, kPhone);
+
+    const auto arrived = listen(server, ticketFrom(server, kLaptop));
+    REQUIRE(arrived);
+    CHECK(arrived->status == 200);
+
+    const auto stillGood = listen(server, last);
+    REQUIRE(stillGood);
+    CHECK(stillGood->status == 200);
 }

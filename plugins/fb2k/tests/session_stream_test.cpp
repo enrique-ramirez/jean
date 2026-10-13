@@ -12,6 +12,7 @@
 #include "support/eventually.h"
 #include "support/fixtures.h"
 #include "support/http.h"
+#include "support/streams.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
@@ -65,21 +66,6 @@ std::string timelineOf(const std::string& key) {
 std::string contentTypeOf(const std::string& format) {
     return format == "aac" ? "audio/aac" : "audio/ogg";
 }
-
-class Source;
-
-// One connection's stream: the bytes of the stream it opened, then whatever the source says.
-class KeyedStream : public StreamListener {
-public:
-    KeyedStream(Source& source, std::string key) : source_(source), key_(std::move(key)) {}
-
-    bool next(std::vector<std::uint8_t>& out) override;
-
-private:
-    Source& source_;
-    const std::string key_;
-    bool sent_ = false;
-};
 
 // The player every case here runs against. The engine's stream and each session's answer the
 // bytes of their own key, kEngineSessionId for the engine and the id for a session, so a body says
@@ -191,7 +177,8 @@ private:
             const std::lock_guard<std::mutex> held(mutex_);
             opens_[key].push_back(format);
         }
-        return {contentTypeOf(format), std::make_unique<KeyedStream>(*this, key)};
+        return {contentTypeOf(format),
+                finiteStream({bytesOf(key)}, [this, key] { awaitLetGo(key); })};
     }
 
     void stopped(const std::string& key) {
@@ -213,18 +200,6 @@ private:
     std::atomic<bool> playerMuted_{false};
     std::atomic<const OutputHold*> hold_{nullptr};
 };
-
-bool KeyedStream::next(std::vector<std::uint8_t>& out) {
-    if (!sent_) {
-        sent_ = true;
-        const auto bytes = bytesOf(key_);
-        out.assign(bytes.begin(), bytes.end());
-        return true;
-    }
-
-    source_.awaitLetGo(key_);
-    return false;
-}
 
 // Connections on threads of their own, let go of and joined as this goes out of scope. Declared
 // after the server they dial, so they end before it stops: stopping joins the connection threads,

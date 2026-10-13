@@ -1,4 +1,5 @@
-# Builds and runs the test suite on Windows with cl.exe. Needs neither the foobar2000 SDK nor WTL: everything it covers lives in src/core/.
+# Builds and runs the test suite on Windows with cl.exe. Needs no WTL, and the foobar2000 SDK only for the AAC encoder: everything else it covers lives in src/core/.
+# With the SDK fetched it also compiles src/fb2k/aac_encoder.cpp, so the AAC encoder is tested.
 #
 #   scripts/test.ps1                        everything
 #   scripts/test.ps1 "-sf=*cors_test.cpp"   one file
@@ -27,6 +28,9 @@ $codec = Join-Path $root 'bin\codec'
 $codecLib = Join-Path $codec 'codec.lib'
 $deflate = Join-Path $root 'bin\zlib'
 $zlibLib = Join-Path $deflate 'zlib.lib'
+# Only the SDK's headers are needed, not a library: pfc::com_ptr_t is a template.
+$sdk = Join-Path $root 'sdk'
+$haveSdk = Test-Path (Join-Path $sdk 'foobar2000\SDK\foobar2000.h')
 
 # cl's command line runs past the limit long before this many sources fit on it.
 function Invoke-Tool {
@@ -118,6 +122,20 @@ function Read-CompileFlags {
   }
 }
 
+# The flags are copied from src\foo_jean.vcxproj, so a change there is a change here: /permissive- is its ConformanceMode, /DUNICODE its
+# CharacterSet, /DNDEBUG its Release configuration (without which the SDK's pfc-lite.h warns), NOMINMAX because the SDK pulls in
+# <windows.h>, and the SDK is external so its warnings stay off while ours stay on.
+function Build-AacEncoder {
+  $obj = Join-Path $out 'fb2k'
+  New-Item -ItemType Directory -Force -Path $obj | Out-Null
+
+  Invoke-Tool -Tool 'cl' -ResponseFile (Join-Path $obj 'compile.rsp') -Failure 'AAC encoder build failed' -Arguments @(
+    "/c /nologo /EHsc /W3 /MD /Zc:lambda /permissive- /std:c++20 /DNOMINMAX /DUNICODE /D_UNICODE /DNDEBUG",
+    "/external:W0 /external:anglebrackets /external:I`"$sdk`" /external:I`"$root\third_party`"",
+    "/I`"$root\src`" /I`"$sdk`" /I`"$root`"",
+    "/Fo:`"$obj\\`" `"$root\src\fb2k\aac_encoder.cpp`"")
+}
+
 function Build-Tests {
   New-Item -ItemType Directory -Force -Path $out | Out-Null
 
@@ -127,6 +145,15 @@ function Build-Tests {
     Get-ChildItem (Join-Path $root 'src\core') -Filter *.cpp
   ) | ForEach-Object { "`"$($_.FullName)`"" }
 
+  $aac = @()
+  if ($haveSdk) {
+    Build-AacEncoder
+    $aac = @("/DJEAN_TESTS_HAVE_AAC", "`"$out\fb2k\aac_encoder.obj`"", "ole32.lib")
+  }
+  else {
+    Write-Host "The AAC encoder was left out of this run: the foobar2000 SDK is not fetched (scripts\fetch-sdk.ps1)."
+  }
+
   # /W3 rather than /W4 because these translation units include the vendored headers. /Zc:lambda is MSVC's
   # conforming lambda processor: without it a lambda reading a constexpr local it never captured fails as C3493,
   # which clang accepts and the suite relies on.
@@ -134,7 +161,7 @@ function Build-Tests {
   # and a single one before the closing quote escapes it, failing as "D8036: not allowed with multiple source files".
   Invoke-Tool -Tool 'cl' -ResponseFile (Join-Path $out 'compile.rsp') -Failure 'Test build failed' -Arguments (@(
       "/nologo /EHsc /W3 /MD /Zc:lambda"
-    ) + @(Read-CompileFlags) + $sources + @(
+    ) + @(Read-CompileFlags) + $aac + $sources + @(
       "/Fe:`"$exe`" /Fo:`"$out\\`" `"$codecLib`" `"$zlibLib`" ws2_32.lib"))
 }
 

@@ -9,8 +9,7 @@
 
 namespace jean {
 
-// AAC-LC in ADTS, through the encoder that ships with Windows. Windows only, so unlike
-// core/opus_stream it is not covered by the portable test suite.
+// AAC-LC in ADTS, through the encoder that ships with Windows.
 class AacEncoder : public StreamEncoder {
 public:
     AacEncoder(unsigned channels, unsigned sampleRate, int bitrate);

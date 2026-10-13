@@ -48,9 +48,9 @@ Each of these is unreachable from the suite by nature, so each says how it is ve
 
 | | how it is actually verified |
 |---|---|
-| Everything in `src/fb2k/` | compiled on the build machine. `scripts/verify-tag-write.ps1`, `verify-stream.ps1`, `verify-listeners.ps1` and `verify-library.ps1` drive four of its paths against a real player |
+| Everything in `src/fb2k/` but the AAC encoder | compiled on the build machine. `scripts/verify-tag-write.ps1`, `verify-stream.ps1`, `verify-listeners.ps1` and `verify-library.ps1` drive four of its paths against a real player |
 | A `setsockopt` failure, and the refusal to listen that follows | neither can be induced from a test, so the path is reviewed only |
-| The AAC encoder | Windows-only and unreachable from the suite at all. `verify-stream.ps1` drives it |
+| That the AAC encoder's frames decode to the audio that went in | nothing in the suite decodes AAC. `verify-stream.ps1` drives the encoder inside a real player, and `scripts\test.ps1` runs its cases only on Windows with the SDK fetched |
 | The preferences page's `GWLP_USERDATA` teardown | opening and closing **Preferences → Tools → Jean** is the whole test |
 | A person at the player taking back the mute hold while a stream runs | no live coverage, since no verify script writes the volume or the mute; `tests/output_hold_test.cpp` holds it |
 | `notAnAutoPlaylist`, the guard refusing to replace a plain playlist's rows with a query's | no live coverage; exercised by hand against a playlist created for the purpose |

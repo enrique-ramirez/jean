@@ -133,7 +133,7 @@ Two runs at once share `plugins/fb2k/bin/`, so two agents never run the suite at
 
 ### What cannot be verified here
 
-`plugins/fb2k/src/fb2k/` is parsed and linted on a Mac where `scripts/fetch-sdk.sh` has fetched the SDK, all but the files `fb2k_unparsed_sources` lists in `plugins/fb2k/scripts/lib/compile-flags.sh`. It is linked and run only on the build machine, and no test reaches it. A change there is reviewed, not tested, until a Windows build has run. Say which of the two you did, and whether you also linted it.
+`plugins/fb2k/src/fb2k/` is parsed and linted on a Mac where `scripts/fetch-sdk.sh` has fetched the SDK, all but the files `fb2k_unparsed_sources` lists in `plugins/fb2k/scripts/lib/compile-flags.sh`. It is linked and run only on the build machine. No suite on a Mac or Linux runs anything from it; on Windows with the SDK, `scripts\test.ps1` runs the AAC encoder's cases and nothing else from it. A change there is reviewed, not tested, until a Windows build has run, and a change to `aac_encoder.cpp` also wants `scripts\test.ps1` on the build machine. Say which of the two you did, and whether you also linted it.
 
 The files `fb2k_unparsed_sources` lists in `compile-flags.sh`, and everything MSVC-specific (its warnings, its headers, `scripts\lint.ps1`), are known only to a Windows build.
 

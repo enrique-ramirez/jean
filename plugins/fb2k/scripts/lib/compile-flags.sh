@@ -45,7 +45,8 @@ compile_flags=(
 # ${platform_flags[@]+...} because bash 3.2, which is macOS's /bin/bash, calls an empty array unset.
 compile_flags+=(${platform_flags[@]+"${platform_flags[@]}"})
 
-# Files the foobar2000 SDK or the Windows headers keep clang on a Mac from parsing.
+# Files the foobar2000 SDK or the Windows headers keep clang on a Mac from parsing. .clangd names
+# the same files.
 fb2k_unparsed_sources=(preferences.cpp aac_encoder.cpp browser.cpp ui_assets.cpp)
 
 fb2k_compile_flags=(

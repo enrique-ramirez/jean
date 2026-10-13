@@ -10,13 +10,16 @@ Diagnostics:
   MissingIncludes: None
 
 ---
-# src/fb2k/ has no entry in the compilation database and cannot get one: it needs the foobar2000
-# SDK and the Windows SDK, and MSBuild emits no database for clangd to read. So clangd guesses the
-# flags from a sibling, the first SDK header is a file-not-found, and every diagnostic after it is
-# cascade from that. None of them is about the code. CONTRIBUTING.md's rule 4 is what does govern
-# this half: it is reviewed here and compiled for the first time by scripts/build.ps1.
+# The files in fb2k_unparsed_sources (scripts/lib/compile-flags.sh), which the pattern below
+# repeats, have no entry in the compilation database, because this Mac's clang cannot parse them.
+# So clangd guesses the flags from a sibling, the first missing header is a file-not-found, and
+# every diagnostic after it is cascade from that. None of them is about the code.
+# CONTRIBUTING.md's section 1, rule 4, is what does govern these files: they are reviewed here
+# and compiled for the first time by scripts/build.ps1. The rest of src/fb2k/ has database
+# entries once scripts/fetch-sdk.sh has fetched the SDK, and shows its diagnostics; without
+# the SDK, every file there shows the cascade.
 If:
-  PathMatch: src/fb2k/.*
+  PathMatch: src/fb2k/(preferences|aac_encoder|browser|ui_assets)\.cpp
 # Suppress does not reach the fatal clang emits when it gives up counting, so the count is
 # lifted instead and nothing is left to give up over.
 CompileFlags:

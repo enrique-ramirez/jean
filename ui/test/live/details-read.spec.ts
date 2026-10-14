@@ -12,8 +12,8 @@ import {
 	FIXTURES,
 	fixtureRows,
 	type PlaybackMode,
+	PROBES,
 	player,
-	playlists,
 	playRow,
 	removePlaylist,
 	send,
@@ -41,7 +41,7 @@ import {
 // `foo_jean` adds only media library tracks to a playlist, so the stream and the file the library
 // does not hold are copied from the fixture playlist `fixtureRows()` reads, built with foobar2000's
 // own `/add`.
-const PROBE = "#Jean 016 probe";
+const PROBE = PROBES.detailsRead;
 
 // An announcement lands when the station's song ends, and a station plays whole songs.
 const ANNOUNCEMENT_WAIT_MS = 9 * 60_000;
@@ -240,9 +240,6 @@ let offLibrary = "";
 
 test.beforeAll(async ({ install }) => {
 	await refuseUnmuted();
-
-	const stale = (await playlists()).filter((entry) => entry.title === PROBE);
-	for (const entry of stale) await removePlaylist(entry.id);
 
 	const fixtures = await findFixtureRows();
 	stream = fixtures.stream.path;

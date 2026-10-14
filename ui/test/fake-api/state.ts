@@ -1150,8 +1150,7 @@ export function createState({
 		copyItems(sourceId: string, targetId: string, indices: number[]) {
 			const source = byId(sourceId);
 			const target = byId(targetId);
-			if (!source || !target) return false;
-			if (target.isAuto) return true;
+			if (!source || !target || target.isAuto) return false;
 			// Appended without a duplicate check and in the source's order rather than the
 			// caller's, because that is what the player does.
 			const ordered = [...indices].sort((a, b) => a - b);

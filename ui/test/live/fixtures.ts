@@ -6,8 +6,10 @@ import {
 	capabilities,
 	component,
 	type Playlist,
+	PROBES,
 	player,
 	playlists,
+	removePlaylist,
 	rowsOf,
 	send,
 	underRoot,
@@ -48,7 +50,9 @@ export const searchTerm = (install: Install) => {
 };
 
 const LIBRARY_BUILD_MS = 5 * 60_000;
-const LIBRARY_BUILDS = 2;
+// Playwright runs a fixture's teardown against what is left of the same timeout its setup used, so
+// this budgets the closing read beside the two opening ones.
+const LIBRARY_BUILDS = 3;
 
 // The same client the app polls the export from, so a caller waits out a build exactly as Jean
 // does rather than through a second copy of the 202/429 protocol.
@@ -159,6 +163,12 @@ const readPlaylists = async (): Promise<PlaylistContents[]> =>
 				};
 			}),
 	);
+
+const sweepProbes = async () => {
+	const titles = new Set<string>(Object.values(PROBES));
+	for (const entry of await playlists())
+		if (titles.has(entry.title)) await removePlaylist(entry.id);
+};
 
 const describeRows = (before: string[], after: string[]): string | null => {
 	if (before.length !== after.length)
@@ -274,6 +284,7 @@ export const test = base.extend<Record<never, never>, LiveFixtures>({
 		// biome-ignore lint/correctness/noEmptyPattern: playwright reads dependencies off this pattern
 		async ({}, use) => {
 			const install = await readInstall();
+			await sweepProbes();
 			const before = await readPlaylists();
 			recordedQueue = await readQueue(install);
 			await use(install);

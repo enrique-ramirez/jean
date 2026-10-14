@@ -1,3 +1,4 @@
+import { en } from "../../src/shared/i18n/en.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	expect,
@@ -32,6 +33,8 @@ import { scrollTop, scrollUntilMounted } from "./scrolling.ts";
 //
 // Driven through the track menu, which has a nested page, a typed filter, and a
 // list long enough to filter.
+
+const IN_EVERY_TRACK_MENU = en["track.queue"];
 
 const menuItem = (page: Page, name: string | RegExp) =>
 	page.getByRole("menuitem", { name });
@@ -83,14 +86,14 @@ test.describe("the menu names what it is about", () => {
 		isMobile,
 	}) => {
 		await openLibrary(page);
-		await openRowMenu(page, isMobile, 0, "Add to playlist");
+		await openRowMenu(page, isMobile, 0, IN_EVERY_TRACK_MENU);
 
 		// On a phone the sheet covers the row it was summoned from, so the header is
 		// the only thing naming the track. Scoped to the menu, because the row it
 		// names is on screen behind it.
 		const menu = page
 			.locator("body > div")
-			.filter({ has: menuItem(page, "Add to playlist") });
+			.filter({ has: menuItem(page, IN_EVERY_TRACK_MENU) });
 		await expect(menu).toContainText("Los Calientes");
 		await expect(menu).toContainText("Babasónicos");
 	});
@@ -108,7 +111,7 @@ test.describe("the menu names what it is about", () => {
 			page.locator('[role="row"][data-selected="true"]'),
 		).toHaveCount(3);
 
-		await openRowMenu(page, isMobile, 0, "Add to playlist");
+		await openRowMenu(page, isMobile, 0, IN_EVERY_TRACK_MENU);
 		await expect(page.getByText("3 tracks")).toBeVisible();
 	});
 });
@@ -243,7 +246,7 @@ test.describe("while a menu is open", () => {
 		test.skip(isMobile, "these are keyboard events");
 
 		await openLibrary(page);
-		await openRowMenu(page, isMobile, 0, "Add to playlist");
+		await openRowMenu(page, isMobile, 0, IN_EVERY_TRACK_MENU);
 
 		// Without stopping propagation these seek the player and toggle playback.
 		await page.keyboard.press("ArrowRight");
@@ -263,10 +266,10 @@ test.describe("while a menu is open", () => {
 		await page.keyboard.press("ArrowDown");
 		await expect(trackRow(page, 1)).toHaveAttribute("data-cursor", "true");
 
-		await openRowMenu(page, isMobile, 0, "Add to playlist");
+		await openRowMenu(page, isMobile, 0, IN_EVERY_TRACK_MENU);
 		await page.keyboard.press("Escape");
 
-		await expect(menuItem(page, "Add to playlist")).toHaveCount(0);
+		await expect(menuItem(page, IN_EVERY_TRACK_MENU)).toHaveCount(0);
 		// The same key clears the track selection when no menu is open, so this is
 		// also the check that it did not reach past the menu.
 		await expect(
@@ -308,7 +311,7 @@ test.describe("while a menu is open", () => {
 		test.skip(isMobile, "a sheet is modal, and keeps Tab inside it");
 
 		await openLibrary(page);
-		await openRowMenu(page, isMobile, 0, "Add to playlist");
+		await openRowMenu(page, isMobile, 0, IN_EVERY_TRACK_MENU);
 		await page.keyboard.press("Shift+Tab");
 		await expect
 			.poll(() => isFocusInTheMenu(page), { message: "focus, in the menu" })
@@ -335,7 +338,7 @@ test.describe("the action sheet, from a keyboard", () => {
 		isMobile,
 	}) => {
 		await openLibrary(page);
-		await openRowMenu(page, isMobile, 0, "Add to playlist");
+		await openRowMenu(page, isMobile, 0, IN_EVERY_TRACK_MENU);
 		const sheet = page.getByRole("dialog");
 
 		await page.keyboard.press("Tab");

@@ -93,9 +93,27 @@ function Get-MissingHeaderNames($value, [string[]]$required) {
 # expression per line back here if fields.ts changes. This is the one place both this probe and
 # the export a later check takes read the declared columns.
 $script:DeclaredColumns = @(
-  '%tracknumber%', '%discnumber%', '%title%', '%artist%', '%album%', '%album artist%',
-  '%length_seconds%', '%lastfm_play_count%', '%lastfm_last_played%', '%rating%', '%year%',
-  '%genre%', '%codec%', '%bitrate%', '%play_count%', '%last_played%'
+  '%tracknumber%'
+  '%discnumber%'
+  '%title%'
+  '%artist%'
+  '%album%'
+  '%album artist%'
+  '%length_seconds%'
+  '%lastfm_play_count%'
+  '%lastfm_last_played%'
+  '$if2($meta(rating),%rating%)'
+  '%year%'
+  '$if2($meta_sep(genre,$char(31)),%genre%)'
+  '%codec%'
+  '%bitrate%'
+  '%play_count%'
+  '%last_played%'
+  '%added%'
+  '$meta_sep(artists,$char(31))'
+  '$meta_sep(musicbrainz_artistid,$char(31))'
+  '$meta_sep(albumartists,$char(31))'
+  '$meta_sep(musicbrainz_albumartistid,$char(31))'
 )
 
 function Test-SameColumns([string[]]$a, [string[]]$b) {

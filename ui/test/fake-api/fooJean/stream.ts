@@ -335,7 +335,11 @@ export function handleStream({
 
 	if (method === "DELETE" && path === "/api/stream/hold") {
 		if (!fake.canMuteWhileStreaming)
-			return json(response, { error: "this install does not mute" }, 503);
+			return json(
+				response,
+				{ error: "this install does not mute the player" },
+				503,
+			);
 
 		state.holdReleased = true;
 		state.announceHold();

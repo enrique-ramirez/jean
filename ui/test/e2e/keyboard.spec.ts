@@ -1,5 +1,6 @@
 import { getHotkeyManager } from "@tanstack/react-hotkeys";
 
+import { en } from "../../src/shared/i18n/en.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	checkedOrderRows,
@@ -1177,9 +1178,9 @@ test.describe("selecting in a playlist", () => {
 		await trackRow(page, 0).click({ button: "right" });
 		// Scoped to the menu, which is a portal outside the app root: the view
 		// header behind it counts the playlist and says "54 tracks" as well.
-		const menu = page
-			.locator("body > div")
-			.filter({ has: page.getByRole("menuitem", { name: "Add to playlist" }) });
+		const menu = page.locator("body > div").filter({
+			has: page.getByRole("menuitem", { name: en["track.queue"] }),
+		});
 		await expect(menu).toContainText("54 tracks");
 		await page.keyboard.press("Escape");
 

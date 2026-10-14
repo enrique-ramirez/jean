@@ -60,14 +60,14 @@ const ORDERS = [
 		declared: "Repeat (playlist)",
 		mode: "repeatAll",
 		english: "Repeat playlist",
-		spanish: "Repetir lista",
+		spanish: "Repetir playlist",
 		icon: "list-restart",
 	},
 	{
 		declared: "Repeat (track)",
 		mode: "repeatOne",
 		english: "Repeat track",
-		spanish: "Repetir pista",
+		spanish: "Repetir canción",
 		icon: "repeat-1",
 	},
 	{
@@ -81,7 +81,7 @@ const ORDERS = [
 		declared: "Shuffle (tracks)",
 		mode: "shuffleTracks",
 		english: "Shuffle tracks",
-		spanish: "Aleatorio por pistas",
+		spanish: "Aleatorio por canciones",
 		icon: "shuffle",
 	},
 	{
@@ -939,8 +939,11 @@ test.describe("on a desktop", () => {
 			await expect(page.locator("html")).toHaveAttribute("lang", "es");
 
 			const button = orderButton(page, false, TITLE);
-			await expect(button).toHaveAccessibleName(`${TITLE}: Repetir lista`);
-			await expect(button).toHaveAttribute("title", `${TITLE}: Repetir lista`);
+			await expect(button).toHaveAccessibleName(`${TITLE}: Repetir playlist`);
+			await expect(button).toHaveAttribute(
+				"title",
+				`${TITLE}: Repetir playlist`,
+			);
 
 			await button.click();
 

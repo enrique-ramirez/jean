@@ -47,7 +47,7 @@ export async function handleConnection({ state, fake, path, response }: Asked) {
 			volumeMax: state.player.volume.max,
 			volumeUnit: state.player.volume.type,
 			playbackModes: playbackModesOf(state),
-			streamFormats: fake.canStream ? fake.streamFormats : [],
+			streamFormats: fake.streamFormats,
 			maxSessions: fake.maxSessions,
 			canCreateSessions: createsSessions(fake),
 			...(fake.canWritePlaylists === "absent"

@@ -258,18 +258,19 @@ const harness = (
 	const stop = startPlayerPoll(client, ORIGIN, capabilities);
 	const teardowns: (() => void)[] = [];
 
-	t.after(() => {
+	const settle = async () => {
+		for (let step = 0; step < 3; step += 1) await flush();
+	};
+
+	t.after(async () => {
 		for (const teardown of teardowns) teardown();
 		stop();
 		client.clear();
+		await settle();
 		mock.timers.reset();
 		globalThis.fetch = realFetch;
 		globalThis.document = realDocument;
 	});
-
-	const settle = async () => {
-		for (let step = 0; step < 3; step += 1) await flush();
-	};
 
 	return {
 		client,

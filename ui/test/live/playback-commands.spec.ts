@@ -2,6 +2,7 @@ import {
 	COMPONENT,
 	component,
 	type PlaybackMode,
+	PROBES,
 	player,
 	removePlaylist,
 	send,
@@ -13,7 +14,7 @@ import { expect, test } from "./fixtures.ts";
 //
 // Plays nothing unless the player is already muted. Every level and mute check runs stopped.
 
-const PROBE = "#Jean 017 probe";
+const PROBE = PROBES.playbackCommands;
 const LONG_ENOUGH_S = 120;
 const PROBE_ROWS = 3;
 const HELD_SKIPS = 20;
@@ -126,13 +127,6 @@ test.beforeAll(async ({ install }) => {
 	ownerLevel = (await player()).volume;
 	await send("/api/volume", { muted: true });
 	await expect.poll(async () => (await player()).muted).toBe(true);
-
-	const stale = (
-		await component<{ playlists: { id: string; title: string }[] }>(
-			"/api/playlists",
-		)
-	).playlists.filter((entry) => entry.title === PROBE);
-	for (const entry of stale) await removePlaylist(entry.id);
 
 	const ordinals = install.tracks
 		.map((track, ordinal) => ({ ordinal, seconds: Number(track.seconds) }))

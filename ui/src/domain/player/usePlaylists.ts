@@ -35,6 +35,7 @@ const playlistsFollowers = new WeakMap<QueryClient, FollowRevision>();
 function playlistsFollower(client: QueryClient): FollowRevision {
 	let follower = playlistsFollowers.get(client);
 	if (!follower) {
+		client.setQueryDefaults(PLAYLISTS_KEY, { gcTime: Infinity });
 		follower = followRevision<PlaylistAnnotation[]>({
 			resource: "playlist list",
 			read: fetchPlaylistAnnotations,

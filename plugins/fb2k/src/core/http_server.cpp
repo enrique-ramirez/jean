@@ -355,7 +355,7 @@ std::string heldAddressError(const std::vector<std::string>& heldAddresses, int 
 
 std::string sharedPortNotice(int port) {
     return "another program on this machine can take port " + std::to_string(port) +
-           " at an address of its own; set bindAddress to one address to close that";
+           " at an IPv4 address of its own; set bindAddress to one address to close that";
 }
 
 ConnectionPool connectionPoolFor(unsigned hardwareThreads) {

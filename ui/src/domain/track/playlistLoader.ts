@@ -178,6 +178,7 @@ async function load(entry: Entry, origin: string, playlistId: string) {
 
 function reloadPlaylist(entry: Entry, origin: string, playlistId: string) {
 	entry.controller?.abort();
+	entry.isStarted = true;
 	entry.controller = new AbortController();
 	entry.feed = null;
 	emit(entry, { isLoading: true, error: null });

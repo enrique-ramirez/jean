@@ -186,10 +186,11 @@ TEST_CASE("the error for held addresses names each one, the port and the bindAdd
     CHECK_FALSE(namesAnOperatingSystem(error));
 }
 
-TEST_CASE("the notice for a shared port is one line naming the port and bindAddress") {
+TEST_CASE("the notice for a shared port is one line naming the port, IPv4 and bindAddress") {
     const auto notice = sharedPortNotice(8881);
 
     CHECK(names(notice, "8881"));
+    CHECK(names(notice, "IPv4"));
     CHECK(names(notice, "bindAddress"));
     CHECK_FALSE(names(notice, "\n"));
     CHECK_FALSE(names(notice, "\r"));

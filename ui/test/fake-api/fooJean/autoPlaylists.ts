@@ -27,6 +27,11 @@ const NOT_AN_AUTOPLAYLIST = {
 	detail: "",
 };
 
+const KEY_REFUSED = {
+	error: "unacceptable key",
+	detail: "a key names a playlist this component made",
+};
+
 interface AutoPlaylistAsked {
 	title?: string;
 	key?: string;
@@ -96,7 +101,10 @@ export function handleAutoPlaylists({
 		if (!GUID_PATTERN.test(autoPlaylistMatch[1]))
 			return json(
 				response,
-				{ error: "unacceptable playlist id", detail: "" },
+				{
+					error: "unacceptable playlist id",
+					detail: "the playlist id must be one this component reported",
+				},
 				400,
 			);
 
@@ -116,7 +124,7 @@ export function handleAutoPlaylists({
 
 		const isJeans = fake.managedAutoPlaylists.has(playlist.id);
 		if (!isJeans && asked?.key !== undefined && asked.key !== "")
-			return json(response, { error: "unacceptable key", detail: "" }, 400);
+			return json(response, KEY_REFUSED, 400);
 
 		if (isJeans) fake.managedAutoPlaylists.set(playlist.id, managedOf(asked));
 		if (typeof asked?.title === "string" && asked.title.length > 0)

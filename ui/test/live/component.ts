@@ -112,6 +112,11 @@ export const rowsOf = (
 
 export const FIXTURES = "#foo_jean test";
 
+export const PROBES = {
+	detailsRead: "#Jean 016 probe",
+	playbackCommands: "#Jean 017 probe",
+} as const;
+
 export interface FixtureRow {
 	row: number;
 	path: string;

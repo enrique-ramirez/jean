@@ -95,6 +95,8 @@ interface FakePlayer {
 	changesRefused: number[];
 	/** Revisions a changes read cannot catch up from, answered `410` every time. */
 	changesGoneSince: string[];
+	/** Offsets a rows read is refused at, every time. */
+	rowsRefusedAt: number[];
 }
 
 const playerHolding = (t: TestContext, rows: Row[]): FakePlayer => {
@@ -106,6 +108,7 @@ const playerHolding = (t: TestContext, rows: Row[]): FakePlayer => {
 		changeReads: [],
 		changesRefused: [],
 		changesGoneSince: [],
+		rowsRefusedAt: [],
 	};
 
 	const realFetch = globalThis.fetch;
@@ -137,14 +140,19 @@ const playerHolding = (t: TestContext, rows: Row[]): FakePlayer => {
 		}
 		if (url.includes("/items?")) {
 			player.rowReads += 1;
+			const query = new URL(url).searchParams;
+			const offset = Number(query.get("offset"));
+			if (player.rowsRefusedAt.includes(offset))
+				return Promise.resolve(
+					Response.json({ error: "refused", detail: "" }, { status: 500 }),
+				);
+			const page = pageOf(
+				player.rows.slice(offset, offset + Number(query.get("count"))),
+				player.changes?.revision ?? FIRST_READ,
+				player.structure,
+			);
 			return Promise.resolve(
-				answer(
-					pageOf(
-						player.rows,
-						player.changes?.revision ?? FIRST_READ,
-						player.structure,
-					),
-				),
+				answer({ ...page, totalCount: player.rows.length }),
 			);
 		}
 		return Promise.reject(new Error(`unexpected request: ${url}`));
@@ -156,6 +164,9 @@ const playerHolding = (t: TestContext, rows: Row[]): FakePlayer => {
 // The load resolves over several microtask turns and never over a timer, so
 // the page has settled once the queue drains rather than once a clock passes.
 const STEPS_TO_SETTLE = 100;
+
+const FIRST_PAGE = 2500;
+const PAST_FIRST_PAGE = FIRST_PAGE + 1;
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -576,4 +587,37 @@ test("holding one playlist's loads leaves another playlist's read alone", async 
 	await loaded(other, 4);
 
 	assert.equal(player.rowReads, 1);
+});
+
+test("a view mounting while a failed playlist is read again joins that read", async (t) => {
+	const playlistId = "6f1d3d1e-0b0a-4c4a-9d7a-8f2f6c9a1b19";
+	const rows = Array.from({ length: PAST_FIRST_PAGE }, (_, at) => ({
+		libraryPath: TRACK,
+		subsong: at,
+		title: `Track ${at}`,
+		rating: "",
+	}));
+	const player = playerHolding(t, rows);
+	player.rowsRefusedAt = [FIRST_PAGE];
+
+	const key = loadPlaylist(ORIGIN, playlistId, STRUCTURE, rows.length);
+	await settled();
+	assert.ok(playlistSnapshot(key).error, "the second page was never refused");
+
+	player.rowsRefusedAt = [];
+	player.changesRefused = [409];
+	const reread = recheckPlaylist(ORIGIN, playlistId, {
+		structure: STRUCTURE,
+		revision: SECOND_READ,
+	});
+	for (let step = 0; step < STEPS_TO_SETTLE && player.rowReads < 3; step += 1)
+		await flush();
+
+	loadPlaylist(ORIGIN, playlistId, STRUCTURE, rows.length);
+	await reread;
+	await settled();
+
+	assert.equal(player.rowReads, 4);
+	assert.equal(playlistSnapshot(key).error, null);
+	assert.equal(playlistSnapshot(key).loaded, rows.length);
 });

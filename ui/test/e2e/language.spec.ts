@@ -48,7 +48,7 @@ test.describe("choosing a language", () => {
 		await page.reload();
 
 		await expect(page.locator("html")).toHaveAttribute("lang", "es");
-		await expect(page.locator("main")).toContainText("pistas");
+		await expect(page.locator("main")).toContainText("canciones");
 	});
 
 	test("going back to the browser's language leaves nothing behind", async ({

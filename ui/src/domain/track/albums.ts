@@ -1,15 +1,16 @@
 import { type FuzzyKey, fuzzyKey } from "@/shared/lib/text";
 import {
 	artistGroups,
-	columnReader,
 	coverKey,
 	FIELD,
+	lastPlayedIn,
+	playCountsIn,
 	readNumber,
 	readTimestamp,
 	readValue,
 	tagGroups,
 	tagKey,
-	withAlternatives,
+	withBothSources,
 } from "./fields";
 import { growingIndex } from "./growingIndex";
 import { byValue, type LibraryColumns } from "./libraryColumns";
@@ -79,8 +80,8 @@ function collect(
 	const albums = tagGroups(album);
 	const artists = artistGroups(columns);
 
-	const plays = columnReader(columns, FIELD.playCount, readNumber);
-	const playedAt = columnReader(columns, FIELD.lastPlayed, readTimestamp);
+	const plays = playCountsIn(columns);
+	const playedAt = lastPlayedIn(columns);
 	const addedAt = byValue(columns.fields[FIELD.added], readTimestamp);
 	const years = byValue(columns.fields[FIELD.year], readNumber);
 	const bitrates = byValue(columns.fields[FIELD.bitrate], readNumber);
@@ -156,7 +157,7 @@ export function albumsOf(rows: TrackRows): Album[] {
 	return derive(byKey);
 }
 
-const COLLECTED = withAlternatives([
+const COLLECTED = withBothSources([
 	FIELD.album,
 	FIELD.albumArtist,
 	FIELD.artist,

@@ -1,4 +1,4 @@
-import { columnReader, FIELD, readNumber, value } from "@/domain/track/fields";
+import { FIELD, playCountsIn, value } from "@/domain/track/fields";
 import type { TrackRows } from "@/domain/track/project";
 import type { Translate } from "@/shared/i18n/locale";
 
@@ -16,7 +16,7 @@ export function topTracksOf(
 	artworkUrl: (ref: number) => string | null,
 	t: Translate,
 ): TopTrack[] {
-	const playsOf = columnReader(rows.columns, FIELD.playCount, readNumber);
+	const playsOf = playCountsIn(rows.columns);
 
 	const played: { position: number; plays: number }[] = [];
 	for (let position = 0; position < rows.length; position += 1) {

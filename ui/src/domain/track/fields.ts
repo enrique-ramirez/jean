@@ -53,62 +53,104 @@ const ABSENT = new Set([UNRESOLVED, "", "N/A"]);
 export const readValue = (raw: string | undefined): string | null =>
 	raw === undefined || ABSENT.has(raw) ? null : raw;
 
-// One fact the player may spell two ways, preferred in this order. `%lastfm_play_count%` is
-// foo_enhanced_playcount's and counts scrobbles across every device; `%play_count%` is
-// foo_playcount's and counts plays on this machine. They are different numbers, so the order is a
-// choice. Neither component is bundled with foobar2000.
-//
-// An index means nothing outside its own table, so the map is applied by the named readers below and
-// never inside `value()`, which `nowPlayingFields.ts` shares against its own, differently numbered set.
-const TRACK_ALTERNATIVE: Partial<Record<number, number>> = {
-	[FIELD.playCount]: FIELD.playCountLocal,
-	[FIELD.lastPlayed]: FIELD.lastPlayedLocal,
-};
+// `%lastfm_play_count%` and its kin are foo_enhanced_playcount's, counting scrobbles from every
+// device and answering `0` and `N/A` for a track last.fm has not matched. `%play_count%` and its kin
+// are foo_playcount's, counting plays on this machine. Neither component is bundled with foobar2000.
+const UNPLAYED = "0";
 
-export const withAlternatives = (fields: readonly number[]): number[] =>
-	fields.flatMap((field) => {
-		const alternative = TRACK_ALTERNATIVE[field];
-		return alternative === undefined ? [field] : [field, alternative];
-	});
-
-export const alternativeReader =
-	(alternatives: Partial<Record<number, number>>) =>
-	(row: TrackColumns, field: number): string | undefined => {
-		const primary = row[field];
-		if (readValue(primary) !== null) return primary;
-		const alternative = alternatives[field];
-		return alternative === undefined ? primary : row[alternative];
-	};
-
-const eitherSpelling = alternativeReader(TRACK_ALTERNATIVE);
-
-export const playCountOf = (row: TrackColumns): number | null =>
-	readNumber(eitherSpelling(row, FIELD.playCount));
-
-export const lastPlayedOf = (row: TrackColumns): number | null =>
-	readTimestamp(eitherSpelling(row, FIELD.lastPlayed));
-
-export function columnReader<T>(
-	columns: LibraryColumns,
-	field: number,
-	read: (raw: string) => T | null,
-): (ref: number) => T | null {
-	const primary = columns.fields[field];
-	const preferred = byValue(primary, read);
-
-	const alternative = TRACK_ALTERNATIVE[field];
-	if (alternative === undefined) return (ref) => preferred[primary.ids[ref]];
-
-	const other = columns.fields[alternative];
-	const spare = byValue(other, read);
-	return (ref) => preferred[primary.ids[ref]] ?? spare[other.ids[ref]];
+export interface Combination {
+	readonly read: (raw: string | undefined) => number | null;
+	readonly pick: (a: number, b: number) => number;
 }
 
+export const HIGHER: Combination = { read: readNumber, pick: Math.max };
+export const LATER: Combination = { read: readTimestamp, pick: Math.max };
+export const EARLIER: Combination = { read: readTimestamp, pick: Math.min };
+
+export interface Pair {
+	readonly scrobbled: number;
+	readonly local: number;
+	readonly by: Combination;
+}
+
+const PLAY_COUNT: Pair = {
+	scrobbled: FIELD.playCount,
+	local: FIELD.playCountLocal,
+	by: HIGHER,
+};
+
+const LAST_PLAYED: Pair = {
+	scrobbled: FIELD.lastPlayed,
+	local: FIELD.lastPlayedLocal,
+	by: LATER,
+};
+
+const pairsByField = (pairs: readonly Pair[]) =>
+	new Map(pairs.map((pair) => [pair.scrobbled, pair]));
+
+const TRACK_PAIRS = pairsByField([PLAY_COUNT, LAST_PLAYED]);
+
+const answerOf = (by: Combination, raw: string | undefined) =>
+	raw === UNPLAYED ? null : by.read(raw);
+
+const either = (by: Combination, a: number | null, b: number | null) =>
+	a === null ? b : b === null ? a : by.pick(a, b);
+
+function combined(
+	{ scrobbled, local, by }: Pair,
+	row: TrackColumns,
+): string | undefined {
+	const remote = answerOf(by, row[scrobbled]);
+	const here = answerOf(by, row[local]);
+	if (remote === null && here === null)
+		return readValue(row[scrobbled]) === null ? row[local] : row[scrobbled];
+	return either(by, remote, here) === remote ? row[scrobbled] : row[local];
+}
+
+export const pairedReader = (pairs: readonly Pair[]) => {
+	const byField = pairsByField(pairs);
+	return (row: TrackColumns, field: number): string | undefined => {
+		const pair = byField.get(field);
+		return pair === undefined ? row[field] : combined(pair, row);
+	};
+};
+
+const answerIn = (pair: Pair) => (row: TrackColumns) =>
+	answerOf(pair.by, combined(pair, row));
+
+export const playCountOf = answerIn(PLAY_COUNT);
+export const lastPlayedOf = answerIn(LAST_PLAYED);
+
+function columnReader(
+	columns: LibraryColumns,
+	{ scrobbled, local, by }: Pair,
+): (ref: number) => number | null {
+	const remote = columns.fields[scrobbled];
+	const here = columns.fields[local];
+	const answer = (raw: string) => answerOf(by, raw);
+	const remoteAnswers = byValue(remote, answer);
+	const localAnswers = byValue(here, answer);
+	return (ref) =>
+		either(by, remoteAnswers[remote.ids[ref]], localAnswers[here.ids[ref]]);
+}
+
+export const playCountsIn = (columns: LibraryColumns) =>
+	columnReader(columns, PLAY_COUNT);
+
+export const lastPlayedIn = (columns: LibraryColumns) =>
+	columnReader(columns, LAST_PLAYED);
+
+export const withBothSources = (fields: readonly number[]): number[] =>
+	fields.flatMap((field) => {
+		const pair = TRACK_PAIRS.get(field);
+		return pair === undefined ? [field] : [field, pair.local];
+	});
+
 export const resolvesAnywhere = (columns: LibraryColumns, field: number) => {
-	const alternative = TRACK_ALTERNATIVE[field];
+	const pair = TRACK_PAIRS.get(field);
 	return (
 		!columns.fields[field].allUnresolved ||
-		(alternative !== undefined && !columns.fields[alternative].allUnresolved)
+		(pair !== undefined && !columns.fields[pair.local].allUnresolved)
 	);
 };
 

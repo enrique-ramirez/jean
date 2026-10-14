@@ -12,7 +12,7 @@
 
 ## Holding a library
 
-- Nothing per row is held, and `rowAt()` is the only thing that builds a row. A question of the whole library sweeps the dictionary through `byValue()`, `tagGrouper()` or `columnReader()`, never the rows.
+- Nothing per row is held, and `rowAt()` is the only thing that builds a row. A question of the whole library sweeps the dictionary through `byValue()`, `tagGrouper()`, `playCountsIn()` or `lastPlayedIn()`, never the rows.
 - `pathTable.ts` interns the one path Jean holds. A sliced string keeps its whole original alive, and a string is one byte per character only if every character is, so remainders are joined in blocks.
 
 ## TanStack Virtual

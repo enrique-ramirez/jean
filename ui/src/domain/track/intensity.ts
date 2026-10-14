@@ -1,14 +1,8 @@
 import { clamp } from "@/shared/lib/math";
-import {
-	columnReader,
-	FIELD,
-	readNumber,
-	readTimestamp,
-	withAlternatives,
-} from "./fields";
+import { FIELD, lastPlayedIn, playCountsIn, withBothSources } from "./fields";
 import type { LibraryColumns } from "./libraryColumns";
 
-export const INTENSITY_FIELDS = withAlternatives([
+export const INTENSITY_FIELDS = withBothSources([
 	FIELD.playCount,
 	FIELD.lastPlayed,
 ]);
@@ -18,8 +12,8 @@ const YEAR_MS = 365.25 * 24 * 60 * 60 * 1000;
 
 export function deriveIntensity(columns: LibraryColumns) {
 	const { trackCount } = columns;
-	const playsOf = columnReader(columns, FIELD.playCount, readNumber);
-	const playedAt = columnReader(columns, FIELD.lastPlayed, readTimestamp);
+	const playsOf = playCountsIn(columns);
+	const playedAt = lastPlayedIn(columns);
 
 	const playCounts = new Int32Array(trackCount);
 	for (let ref = 0; ref < trackCount; ref += 1)

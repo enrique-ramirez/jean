@@ -16,10 +16,9 @@ import {
 import { albumsOf } from "@/domain/track/albums";
 import { useAvailableFields } from "@/domain/track/fieldAvailability";
 import {
-	columnReader,
 	FIELD,
-	readNumber,
-	readTimestamp,
+	lastPlayedIn,
+	playCountsIn,
 	titleOf,
 	value,
 } from "@/domain/track/fields";
@@ -114,8 +113,8 @@ function Records({
 }
 
 function historyOf(view: TrackView, t: Translate) {
-	const playsOf = columnReader(view.columns, FIELD.playCount, readNumber);
-	const playedAt = columnReader(view.columns, FIELD.lastPlayed, readTimestamp);
+	const playsOf = playCountsIn(view.columns);
+	const playedAt = lastPlayedIn(view.columns);
 
 	let plays = 0;
 	let unplayed = 0;

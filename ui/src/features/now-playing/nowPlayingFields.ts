@@ -1,4 +1,4 @@
-import { alternativeReader } from "@/domain/track/fields";
+import { EARLIER, HIGHER, LATER, pairedReader } from "@/domain/track/fields";
 import { fieldTable } from "@/shared/api/fieldTable";
 import { GENRE_EXPRESSION } from "@/shared/api/multiValue";
 import { RATING_EXPRESSION } from "@/shared/api/rating";
@@ -55,8 +55,20 @@ export const {
 	index: NOW_PLAYING_FIELD,
 } = fieldTable(FIELDS);
 
-export const readNowPlaying = alternativeReader({
-	[NOW_PLAYING_FIELD.playCount]: NOW_PLAYING_FIELD.playCountLocal,
-	[NOW_PLAYING_FIELD.lastPlayed]: NOW_PLAYING_FIELD.lastPlayedLocal,
-	[NOW_PLAYING_FIELD.firstPlayed]: NOW_PLAYING_FIELD.firstPlayedLocal,
-});
+export const readNowPlaying = pairedReader([
+	{
+		scrobbled: NOW_PLAYING_FIELD.playCount,
+		local: NOW_PLAYING_FIELD.playCountLocal,
+		by: HIGHER,
+	},
+	{
+		scrobbled: NOW_PLAYING_FIELD.lastPlayed,
+		local: NOW_PLAYING_FIELD.lastPlayedLocal,
+		by: LATER,
+	},
+	{
+		scrobbled: NOW_PLAYING_FIELD.firstPlayed,
+		local: NOW_PLAYING_FIELD.firstPlayedLocal,
+		by: EARLIER,
+	},
+]);

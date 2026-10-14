@@ -169,6 +169,25 @@ test.describe("a player that spells play counts the other way", () => {
 	});
 });
 
+test.describe("a player with both play-count components", () => {
+	test.use({
+		retagged: {
+			"Los Calientes": { "%play_count%": "42" },
+			Fizz: { "%play_count%": "95" },
+		},
+	});
+
+	test("each track shows the higher count rather than the sum", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+
+		await expect(trackRow(page, 0)).toContainText("108");
+		await expect(trackRow(page, 0)).not.toContainText("150");
+		await expect(trackRow(page, 1)).toContainText("95");
+	});
+});
+
 test.describe("on a phone", () => {
 	test.skip(
 		({ isMobile }) => !isMobile,

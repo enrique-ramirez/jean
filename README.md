@@ -55,7 +55,7 @@ Anything your library cannot support is not drawn. No ratings, no starred shelf.
 <!-- site:requirements -->
 Jean is not a music player, and on its own it does nothing at all. It draws a player that is already running somewhere else, so one thing has to be in place before it has anything to talk to.
 
-**[`foo_jean`](https://github.com/enrique-ramirez/jean/tree/main/plugins/fb2k), installed in foobar2000 on Windows.** Playback, playlists, the queue, your library, its covers, ratings written back to your tags, the sound sent to this device, and Jean itself all come from here. There is nothing else to install. The media library needs foobar2000 2.0 or newer; on an older version you still get playback, playlists and the queue.
+**[`foo_jean`](https://github.com/enrique-ramirez/jean/tree/main/plugins/fb2k), installed in foobar2000 on Windows or macOS.** Playback, playlists, the queue, your library, its covers, ratings written back to your tags, the sound sent to this device, and Jean itself all come from here. There is nothing else to install. The media library needs foobar2000 2.0 or newer; on an older version you still get playback, playlists and the queue.
 
 One more is optional:
 

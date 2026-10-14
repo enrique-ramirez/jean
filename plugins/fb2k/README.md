@@ -47,7 +47,7 @@ scripts\package.ps1                                # -> dist\foo_jean.fb2k-compo
 
 ### Build traps
 
-The Windows build has several traps, each of which fails in a way that does not name its cause, and each is written down where it is enforced rather than listed here. `src/foo_jean.vcxproj` covers the four traps its header names, and settles `/MP`, `third_party/` and `sdk/` as external headers, and `/W4` on `core/`; `Directory.Build.targets` WTL's include path, the static C++ runtime and a Release build's Control Flow Guard and CET compatibility; `scripts/build.ps1` the toolset, the compiler flags and its refusal of a DLL that imports the C++ runtime or lacks either hardening flag; `scripts/package.ps1` where an x64 payload goes in the archive; and `scripts/generate-sln.ps1` the per-project configuration. Read all five before debugging a link, a packaging or a resource-compiler error.
+The Windows build has several traps, each of which fails in a way that does not name its cause, and each is written down where it is enforced: the header of `src/foo_jean.vcxproj`, `Directory.Build.targets`, `scripts/build.ps1`, `scripts/package.ps1` and `scripts/generate-sln.ps1`. Read all five before debugging a link, a packaging or a resource-compiler error.
 
 Two things about the solutions, which no script says. **`scripts\generate-sln.ps1` exists to build the SDK's own `foo_sample`**, which proves a new machine's toolchain before there is any of this code to blame. **`foo_jean.sln` in this directory is for opening the tree in Visual Studio** and is not used by the build.
 
@@ -66,7 +66,7 @@ The script builds the SDK's four static libraries from their own Xcode project f
 
 ## Installing
 
-On a Mac, the archive installs through foobar2000's Preferences, Components, Install, and loads after a restart. On Windows:
+On a Mac, the archive installs through foobar2000's Preferences, Components, Install, and loads after a restart. Install takes the ad-hoc-signed bundle as a browser downloaded it and strips its quarantine flag, so nothing is asked. On Windows:
 
 ```powershell
 scripts\install.ps1 -Foobar2000Dir <foobar2000-install>
@@ -146,7 +146,7 @@ npx openapi-typescript contract/openapi.yaml -o fooJean.d.ts
 
 `contract/` beside it is the conformance suite that measures an implementation against it. `plugins/fb2k/ARCHITECTURE.md` is the design behind the spec: how a request is admitted and what keeps that safe, how the media library snapshot is built and kept current, and what the audio path is made of.
 
-Two things hold across the whole surface. Every request is checked first for where it came from and what `Host` it named, refused before it reaches a route where either fails; `/api/stream` needs a ticket as well, because an `<audio>` element cannot send a header. `plugins/fb2k/ARCHITECTURE.md`, *Admission*, is what decides both checks and what they leave for the switches in `config.json` to decide instead. And a response is gzipped whenever the client offers `Accept-Encoding: gzip`, which `third_party/README.md` has the mechanics of, including what keeps the live encode out of the compressor.
+Two things hold across the whole surface. Every request is checked first for where it came from and what `Host` it named, and `/api/stream` needs a ticket as well; `plugins/fb2k/ARCHITECTURE.md`, *Admission*, has both checks. And a response is gzipped whenever the client offers `Accept-Encoding: gzip`, which `third_party/README.md` has the mechanics of, including what keeps the live encode out of the compressor.
 
 ## Testing
 
@@ -162,7 +162,7 @@ scripts/lint.sh                           # clang-tidy over src/core/ and tests/
 scripts/compile-commands.sh               # what an editor's clangd reads
 ```
 
-`scripts/compile-commands.sh` writes `compile_commands.json`, and an editor is wrong without it. clangd finds no compilation database, falls back to compiling each file with no include paths and no `-std`, and reports the first `#include "core/..."` as a file-not-found followed by a hundred errors that are all cascade from it. The file holds absolute paths and is gitignored, so it is generated per machine. It covers `src/core/` and `tests/`, and `src/fb2k/` on a Mac where `scripts/fetch-sdk.sh` has fetched the foobar2000 SDK, all but the files `fb2k_unparsed_sources` lists in `scripts/lib/compile-flags.sh`. Anywhere else the script says it skipped `src/fb2k/` and why.
+`scripts/compile-commands.sh` writes `compile_commands.json`, and an editor is wrong without it. clangd finds no compilation database, falls back to compiling each file with no include paths and no `-std`, and reports the first `#include "core/..."` as a file-not-found followed by a hundred errors that are all cascade from it. The file holds absolute paths and is gitignored, so it is generated per machine. It covers `src/core/` and `tests/`, and `src/fb2k/` on a Mac where the SDK is fetched. Anywhere else the script says it skipped `src/fb2k/` and why.
 
 `.github/workflows/plugin.yml` runs `scripts/test.sh`, both sanitizer suites, `scripts/format.sh --check` and `scripts/lint.sh` on a Linux runner for every change under `plugins/fb2k/` or to `contract/openapi.yaml`, and builds the component on a Windows runner, where `scripts\build.ps1` lints `src/fb2k/` and `scripts\test.ps1` runs. A macOS runner builds the bundle, runs `scripts/test.sh` and lints `src/fb2k/`. `scripts/lib/llvm.sh` pins the LLVM major, which the workflow's `llvm_major` follows: `scripts/format.sh` and `scripts/lint.sh` refuse any other clang-format or clang-tidy, since a local run matches CI only at that version. `CLANG_FORMAT` and `CLANG_TIDY` name the binary on a machine carrying more than one.
 
@@ -172,13 +172,11 @@ On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\tes
 
 `scripts/test.sh`'s own header has the rest of its arguments and what each one costs.
 
-The tests need **neither Windows nor the foobar2000 SDK nor a running player**: everything they cover but the AAC codec files lives in `src/core/`, which compiles standalone. One set of AAC cases drives each platform's codec. `scripts/test.sh` on a Mac compiles `src/fb2k/aac_encoder_mac.cpp` and drives AudioToolbox's encoder; `scripts\test.ps1` on Windows with the SDK fetched compiles `src/fb2k/aac_encoder.cpp` and drives Media Foundation's; on Linux no AAC encoder is built in. Every run prints one line saying which: `AAC tested through this platform's codec.`, `AAC not tested: this platform's AAC encoder is unavailable on this machine`, or `AAC not tested: no AAC encoder is built into this suite.` They are feature tests rather than unit tests: `tests/` starts a real `HttpServer` on a real port and drives it with a real HTTP client, so an assertion about admission or a CORS header is about the bytes a browser would see.
+The tests need **neither Windows nor the foobar2000 SDK nor a running player**: everything they cover but the AAC codec files lives in `src/core/`, which compiles standalone. One set of AAC cases drives each platform's codec. `scripts/test.sh` on a Mac compiles `src/fb2k/aac_encoder_mac.cpp` and drives AudioToolbox's encoder; `scripts\test.ps1` on Windows with the SDK fetched compiles `src/fb2k/aac_encoder.cpp` and drives Media Foundation's; on Linux no AAC encoder is built in. Every run prints one line saying which: `AAC tested through this platform's codec.`, `AAC not tested: this platform's AAC encoder is unavailable on this machine`, or `AAC not tested: no AAC encoder is built into this suite.`
 
-Covered: admission, CORS and preflight, every way a hand-edited `config.json` can be wrong including a reload while the listener runs, the listener and its port collision, the preferences page's decisions, tag-write permission and the tag route, autoplaylist requests and their routes, the rate limiter with time passed in, the main-thread queue and its stall watch, the order refusals are weighed in and the order a budgeted route refuses in, stream tickets, the stream route, the audience and the listener roster, the output hold, the PCM and broadcast rings, the Ogg Opus encoder (whose tests decode their own output), the 16-bit conversion AAC is fed, AAC's framing, bitrates and refusals against a fake codec, the timeline and its route, the artwork route and what it will and will not send, and every key set and status `contract/openapi.yaml` publishes.
 
-**No test reaches `src/fb2k/` but the two AAC codec files.** Both builds compile and link the rest, and on a Mac with the SDK fetched all of it but `preferences.cpp` and `aac_encoder.cpp` is parsed and linted. A compile is not a test: that code runs inside a player only.
 
-Four end-to-end checks, in PowerShell, run against a real player on Windows. `scripts/verify-tag-write.ps1` writes a rating to every track in the test fixture playlist and reads it back **from the player**, through each row's `%rating%` column, which is the point rather than a formality: the failure this design exists to avoid is a write the player performed but its own database did not learn about. It refuses the whole playlist if any row sits outside the tree `scripts/test-fixtures.ps1` built, and puts back each track's own rating afterwards. `scripts/verify-stream.ps1` refuses a player that is not playing or not muted, then checks two listeners reading one encoder, a ticket, both formats well formed, the clock advancing, and a skipped track or a seek leaving a mark; the track and the place in it go back afterwards, pass or fail. `scripts/verify-listeners.ps1` checks the roster and the mute hold without writing the volume or the mute: who is listening, the linger, a hold taken and given back on an unmuted player or a person's own mute left alone on a muted one, and the player left at the level it was found at. `scripts/verify-library.ps1` checks the library routes against a real library, writing no tag and no playlist: `GET /api/state`'s library object, export and changes revalidation by ETag, the export capture with `-Full`, the player's own path order, covers through `/api/artwork`, and a forced rebuild, plus the two CORS checks when `-Origin` names an allowed origin.
+Four end-to-end checks, in PowerShell, run against a real player on Windows: `scripts/verify-tag-write.ps1`, `verify-stream.ps1`, `verify-listeners.ps1` and `verify-library.ps1`. Each script's header says what it checks. `verify-tag-write.ps1` reads the rating back **from the player**, through each row's `%rating%` column, because the failure this design exists to avoid is a write the player performed but its own database did not learn about.
 
 `scripts/test-fixtures.ps1` builds the corpus those run against, out of files kept for the purpose rather than anybody's music. `-Corpus`, or `FOO_JEAN_CORPUS_DIR`, is the folder holding them, and the script refuses to run without it. It copies them into a tree of its own beside the player and adds the copies to a playlist of their own, with an internet radio stream beside them. **Tag writes are only ever pointed at that tree**, never at a real library.
 
@@ -186,7 +184,7 @@ The tree is two media library roots and a folder outside both, so one run reache
 
 ## Releasing
 
-`.github/workflows/release.yml` assembles `foo_jean.fb2k-component` from two builds of one page. A `ui` job builds `ui/` once and generates the table; the `build` job compiles it into `foo_jean.dll` on `windows-2022`; the `build-mac` job compiles it into the bundle on `macos-15` and runs `scripts/package-mac.sh` on that DLL, so the archive holds `x64/foo_jean.dll` and `mac/foo_jean.component`. `build-mac` needs `build`, so the archive exists only where both builds passed, and a tag publishes nothing otherwise. Every push to `main` uploads the archive as a workflow artifact. Pushing a tag matching `v*` also publishes it to a GitHub Release of that tag, once `scripts/release-tag.sh` has confirmed the tag is `v` followed by `kVersion` in `src/core/version.h`; a tag that does not match fails the workflow before anything is built.
+`.github/workflows/release.yml` assembles `foo_jean.fb2k-component` from a Windows build and a macOS build of one page, and the archive exists only where both passed. Every push to `main` uploads it as a workflow artifact. Pushing a tag matching `v*` also publishes it to a GitHub Release, once `scripts/release-tag.sh` has confirmed the tag is `v` followed by `kVersion` in `src/core/version.h`; a tag that does not match fails the workflow before anything is built.
 
 A release carries `SHA256SUMS` and a build provenance attestation. To check a downloaded component, in the folder holding both files:
 
@@ -196,18 +194,6 @@ gh attestation verify foo_jean.fb2k-component --repo enrique-ramirez/jean
 ```
 
 ## Layout
-
-```
-src/core/     the portable half. Knows nothing about foobar2000
-src/fb2k/     everything that touches the SDK, or an operating system
-tests/        the suite, which runs against src/core/ on any machine
-third_party/  cpp-httplib, nlohmann/json, doctest -- single MIT headers, committed.
-              zlib -- a directory of C rather than a header, committed, zlib licence.
-              libopus and libogg land here too, fetched rather than committed
-sdk/          foobar2000 SDK, fetched not vendored (gitignored)
-scripts/      fetch, build, test, lint, format, package, install, fixtures, verify
-bin/, obj/, dist/   build output and the packaged component (gitignored)
-```
 
 `plugins/fb2k/ARCHITECTURE.md` is how the pieces fit and which thread owns what, `src/README.md` maps the source tree file by file, `plugins/fb2k/CONTRIBUTING.md` is how to write code in it, and `third_party/README.md` carries the vendored versions.
 

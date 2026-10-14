@@ -10,7 +10,7 @@ Four things, each of which spells the path out for itself, so a move breaks all 
 
 - `spec.ts`, which inlines every `$ref` and hands the operations to both suites.
 - `pnpm types:api`, which regenerates `ui/src/shared/api/fooJeanSchema.d.ts`.
-- `plugins/fb2k/tests/support/spec.cpp`, which opens it at run time by taking `__FILE__` and stripping the literal suffix in `kSelf` to reach the repository root.
+- `plugins/fb2k/tests/support/repository.cpp`, which `spec.cpp` asks for the repository root: it takes `__FILE__` and strips the literal suffix in `kSelf`.
 - `plugins/fb2k/scripts/test.sh` and `test.ps1`, which climb to the repository root and check the spec's `version:` against `kVersion` in `plugins/fb2k/src/core/version.h` before either builds anything.
 
 ## Running the suite

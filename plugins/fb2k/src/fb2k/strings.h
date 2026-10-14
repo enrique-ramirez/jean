@@ -13,7 +13,8 @@ inline std::string toStd(const pfc::string8& text) {
 }
 
 // The separator foobar2000's library_manager::get_relative_path writes is undocumented. Windows
-// writes a backslash; macOS is taken to write a forward slash, as its own paths do.
+// writes a backslash; macOS writes a forward slash, and keeps a backslash that is part of a file's
+// name.
 #ifdef _WIN32
 constexpr char kLibraryPathSeparator = '\\';
 #else

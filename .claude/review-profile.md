@@ -106,7 +106,9 @@ This boundary pays twice. A decision moved into `core/` becomes coverable by a s
 | `plugins/fb2k/ARCHITECTURE.md` | how the pieces fit, which thread owns what, why the boundaries sit there |
 | `plugins/fb2k/CLAUDE.md` | what an agent cannot read off the code: the priorities and the rules about driving a real player |
 | `plugins/fb2k/src/README.md` | the source tree, file by file |
+| `plugins/fb2k/third_party/README.md` | the vendored libraries: their versions, and what in each is load-bearing |
 | `contract/openapi.yaml` | the HTTP contract, hand-written, and what clients generate types from |
+| `contract/README.md` | what reads the spec by path, and so what a move of it breaks |
 
 `contract/openapi.yaml` is the contract. A change to a response shape, a status code or an error string that does not change the spec in the same diff is a defect whatever else it is. Check every route list, status code, default and field name against it, and say which side is wrong rather than assuming it is the prose.
 
@@ -133,7 +135,7 @@ Two runs at once share `plugins/fb2k/bin/`, so two agents never run the suite at
 
 ### What cannot be verified here
 
-`plugins/fb2k/src/fb2k/` is compiled and linked by the Windows build (`scripts\build.ps1`, which leaves out `aac_encoder_mac.cpp`) and by the macOS build (`scripts/build-mac.sh`, which leaves out `preferences.cpp` and `aac_encoder.cpp`), and it runs inside a player only. On a Mac where `scripts/fetch-sdk.sh` has fetched the SDK it is also parsed and linted, all but the files `fb2k_unparsed_sources` lists in `plugins/fb2k/scripts/lib/compile-flags.sh`. The suites run one codec file each: `scripts/test.sh` on a Mac compiles `aac_encoder_mac.cpp` and drives AudioToolbox through the AAC cases, `scripts\test.ps1` on Windows with the SDK fetched compiles `aac_encoder.cpp` and drives Media Foundation through the same cases, and on Linux no AAC encoder is built in. A run prints which in one AAC line. Nothing else from `src/fb2k/` runs under a suite. A change there is reviewed, not tested, until the build of its platform has run, and a change to a codec file also wants the suite of its platform. Say which of the two you did, on which platform, and whether you also linted it.
+`plugins/fb2k/src/fb2k/` is compiled and linked by the Windows build (`scripts\build.ps1`, which leaves out `aac_encoder_mac.cpp`) and by the macOS build (`scripts/build-mac.sh`, which leaves out `preferences.cpp` and `aac_encoder.cpp`), and it runs inside a player only. On a Mac where `scripts/fetch-sdk.sh` has fetched the SDK it is also parsed and linted, all but the files `fb2k_unparsed_sources` lists in `plugins/fb2k/scripts/lib/compile-flags.sh`. Each platform's suite runs its own AAC codec file and nothing else from `src/fb2k/`; `plugins/fb2k/README.md`, *Testing*, says which and how a run reports it. A change there is reviewed, not tested, until the build of its platform has run, and a change to a codec file also wants the suite of its platform. Say which of the two you did, on which platform, and whether you also linted it.
 
 The files `fb2k_unparsed_sources` lists in `compile-flags.sh`, and everything MSVC-specific (its warnings, its headers, `scripts\lint.ps1`), are known only to a Windows build.
 

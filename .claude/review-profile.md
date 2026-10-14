@@ -2,7 +2,7 @@
 
 What the review agents need to know about this repository. They read this first and treat it as fact.
 
-**Two projects live in this tree and their rules are not the same.** `ui/` is the web app, TypeScript and React, and `site/` is the landing page beside it under the same rules. `plugins/fb2k/` is `foo_jean`, a foobar2000 component written in C++ and built on Windows. Work out which side the diff is on, read *Everywhere* and then that side, and skip the other. A diff that spans both is reviewed once under each set, and the review says that it did.
+**Two projects live in this tree and their rules are not the same.** `ui/` is the web app, TypeScript and React, and `site/` is the landing page beside it under the same rules. `plugins/fb2k/` is `foo_jean`, a foobar2000 component written in C++ and built on Windows and on macOS. Work out which side the diff is on, read *Everywhere* and then that side, and skip the other. A diff that spans both is reviewed once under each set, and the review says that it did.
 
 ## Everywhere
 
@@ -89,7 +89,7 @@ Run from the repository root. Each delegates into `ui/`, so a path argument is r
 
 `core/` knows nothing of foobar2000, and everything it needs arrives as a callback from `fb2k/`. Flag anything that softens it, and equally any new abstraction layer added behind it.
 
-This boundary pays twice. A decision moved into `core/` becomes coverable by a suite that runs on any machine, and a mechanism left in `fb2k/` is coverable by nothing.
+This boundary pays twice. A decision moved into `core/` becomes coverable by a suite that runs on any machine, and a mechanism left in `fb2k/` is coverable by nothing but the two AAC codec files' cases. A platform split under `src/` is an `#ifdef _WIN32` inside the file that owns the call, and `tests/platform_seams_test.cpp` lists the files that hold one.
 
 ### Functional directives
 
@@ -133,7 +133,7 @@ Two runs at once share `plugins/fb2k/bin/`, so two agents never run the suite at
 
 ### What cannot be verified here
 
-`plugins/fb2k/src/fb2k/` is parsed and linted on a Mac where `scripts/fetch-sdk.sh` has fetched the SDK, all but the files `fb2k_unparsed_sources` lists in `plugins/fb2k/scripts/lib/compile-flags.sh`. It is linked and run only on the build machine. No suite on a Mac or Linux runs anything from it; on Windows with the SDK, `scripts\test.ps1` runs the AAC encoder's cases and nothing else from it. A change there is reviewed, not tested, until a Windows build has run, and a change to `aac_encoder.cpp` also wants `scripts\test.ps1` on the build machine. Say which of the two you did, and whether you also linted it.
+`plugins/fb2k/src/fb2k/` is compiled and linked by the Windows build (`scripts\build.ps1`, which leaves out `aac_encoder_mac.cpp`) and by the macOS build (`scripts/build-mac.sh`, which leaves out `preferences.cpp` and `aac_encoder.cpp`), and it runs inside a player only. On a Mac where `scripts/fetch-sdk.sh` has fetched the SDK it is also parsed and linted, all but the files `fb2k_unparsed_sources` lists in `plugins/fb2k/scripts/lib/compile-flags.sh`. The suites run one codec file each: `scripts/test.sh` on a Mac compiles `aac_encoder_mac.cpp` and drives AudioToolbox through the AAC cases, `scripts\test.ps1` on Windows with the SDK fetched compiles `aac_encoder.cpp` and drives Media Foundation through the same cases, and on Linux no AAC encoder is built in. A run prints which in one AAC line. Nothing else from `src/fb2k/` runs under a suite. A change there is reviewed, not tested, until the build of its platform has run, and a change to a codec file also wants the suite of its platform. Say which of the two you did, on which platform, and whether you also linted it.
 
 The files `fb2k_unparsed_sources` lists in `compile-flags.sh`, and everything MSVC-specific (its warnings, its headers, `scripts\lint.ps1`), are known only to a Windows build.
 

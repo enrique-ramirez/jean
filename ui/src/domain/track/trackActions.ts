@@ -37,6 +37,7 @@ export const ratingItems = (
 		id: "rate-none",
 		label: t("rating.none"),
 		icon: current === null ? Check : undefined,
+		current: current === null,
 		onSelect: () => onRate(null),
 	},
 ];

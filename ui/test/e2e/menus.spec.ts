@@ -214,11 +214,9 @@ test.describe("the Rating page from the keyboard", () => {
 		await expect(menuItem(page, "4 stars")).toBeFocused();
 	});
 
-	test("on an unrated track focus lands on the first star", async ({
-		page,
-	}) => {
+	test("on an unrated track focus lands on No rating", async ({ page }) => {
 		await enterRating(page, SOY_ROCK_ROW);
-		await expect(menuItem(page, "5 stars")).toBeFocused();
+		await expect(menuItem(page, en["rating.none"])).toBeFocused();
 	});
 
 	test("Enter rates with the star focused", async ({ page, player }) => {

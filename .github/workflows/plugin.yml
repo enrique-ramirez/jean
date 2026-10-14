@@ -1,7 +1,8 @@
 # foo_jean's own suite, which nothing else here runs: `contract.yml` checks the generated types and
 # `site.yml` builds the page. src/core/ and tests/ compile on any machine, so a runner covers them.
-# src/fb2k/ does not: it needs the foobar2000 SDK and Windows, so the `windows` job builds it the
-# way release.yml does, and scripts/build.ps1 lints it with clang-tidy afterwards.
+# src/fb2k/ does not: it needs the foobar2000 SDK and an operating system the plugin runs on, so the
+# `windows` and `macos` jobs build it the way release.yml does. scripts/build.ps1 lints the Windows
+# build with clang-tidy afterwards and the `macos` job lints src/fb2k/ with scripts/lint.sh.
 
 name: plugin
 
@@ -97,6 +98,8 @@ jobs:
 
       - run: pnpm --dir ui build
 
+      - run: node plugins/fb2k/scripts/embed-ui.mjs
+
       - run: .\scripts\fetch-sdk.ps1
         working-directory: plugins/fb2k
 
@@ -111,5 +114,53 @@ jobs:
       - run: .\scripts\build.ps1 -Project src\foo_jean.vcxproj
         working-directory: plugins/fb2k
 
-      - run: .\scripts\test.ps1
+      # Windows Server images carry Media Foundation's AAC encoder only if the feature is installed, so
+      # the suite may say "unavailable on this machine" here; "no AAC encoder is built into this suite"
+      # means the SDK was not fetched.
+      - run: |
+          .\scripts\test.ps1 *>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\suite.log"
+          $line = Select-String -Path "$env:RUNNER_TEMP\suite.log" -Pattern 'AAC (tested|not tested)' |
+            Select-Object -First 1 -ExpandProperty Line
+          Write-Host "AAC line: $line"
+          if ($line -notmatch "AAC tested through this platform's codec\.|unavailable on this machine") {
+            throw 'The suite did not test AAC and did not report the encoder unavailable.'
+          }
         working-directory: plugins/fb2k
+
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --dir ui build
+
+      - run: node plugins/fb2k/scripts/embed-ui.mjs
+
+      - run: plugins/fb2k/scripts/fetch-sdk.sh
+
+      - run: plugins/fb2k/scripts/fetch-opus.sh
+
+      - run: plugins/fb2k/scripts/build-mac.sh
+
+      # AudioToolbox is on every macOS runner, so anything but the "tested" line means the suite
+      # was built without it. `shell: bash` adds -o pipefail, which the default shell lacks, so a
+      # failing suite fails the pipe rather than tee's exit status hiding it.
+      - shell: bash
+        run: |
+          plugins/fb2k/scripts/test.sh | tee "$RUNNER_TEMP/suite.log"
+          grep -F "AAC tested through this platform's codec." "$RUNNER_TEMP/suite.log"
+
+      # Homebrew keeps the newest LLVM under `llvm` and adds `llvm@N` only once N+1 is out. Both are
+      # keg-only, and scripts/lint.sh looks in each and refuses any major but $llvm_major.
+      - run: brew install "llvm@$llvm_major" || brew install llvm
+
+      - run: plugins/fb2k/scripts/lint.sh plugins/fb2k/src/fb2k/*.cpp

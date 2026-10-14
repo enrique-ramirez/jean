@@ -60,8 +60,7 @@ Run decode(Pacer& pacer, const std::vector<Block>& blocks, Time first) {
             if (asks > 2)
                 return run;
 
-            const auto verdict =
-                pacer.ask(block.frames, block.sampleRate, kPlentyOfRoom, run.now);
+            const auto verdict = pacer.ask(block.frames, block.sampleRate, kPlentyOfRoom, run.now);
             if (verdict.release) {
                 const double ahead = run.audio - secondsBetween(first, run.now);
                 run.mostAhead = std::max(run.mostAhead, ahead);
@@ -138,8 +137,8 @@ TEST_CASE("over ten minutes the audio released stays one lead ahead of the clock
 }
 
 TEST_CASE("blocks of mixed rates and sizes are each paced by their own length") {
-    const std::vector<Block> cycle{{4096, 44100}, {512, 96000}, {1152, 48000}, {2048, 22050},
-                                   {960, 48000}};
+    const std::vector<Block> cycle{
+        {4096, 44100}, {512, 96000}, {1152, 48000}, {2048, 22050}, {960, 48000}};
     Pacer pacer(kSessionLead);
     const auto run = decode(pacer, lasting(300, cycle), kStart);
 
@@ -164,8 +163,7 @@ TEST_CASE("a block asked for early is held until it is due, and goes when asked 
     const auto early = pacer.ask(kUneven.frames, kUneven.sampleRate, kPlentyOfRoom, due - 1ms);
     CHECK_FALSE(early.release);
     CHECK(early.askAgain == due);
-    CHECK_FALSE(
-        pacer.ask(kUneven.frames, kUneven.sampleRate, kPlentyOfRoom, due - 1ns).release);
+    CHECK_FALSE(pacer.ask(kUneven.frames, kUneven.sampleRate, kPlentyOfRoom, due - 1ns).release);
 
     CHECK(pacer.ask(kUneven.frames, kUneven.sampleRate, kPlentyOfRoom, due).release);
 }

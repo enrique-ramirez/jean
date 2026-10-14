@@ -299,7 +299,7 @@ void Decoder::openTurn(Pipeline& pipeline, const Turn& turn, MarkPlacer& marks) 
 
     // A cut drops what was decoded for the turn before and empties the chain. A turn the track
     // before ran out into keeps both, so it follows on without a gap.
-    if (chainFlagsFor(turn.cut ?ChainRun::afterCut : ChainRun::audio).flushFirst) {
+    if (chainFlagsFor(turn.cut ? ChainRun::afterCut : ChainRun::audio).flushFirst) {
         pipeline.waiting.clear();
         if (!pipeline.chainDropped && !chainStep(pipeline, [&] { pipeline.chain.flush(); }))
             return;

@@ -298,9 +298,8 @@ void runEncoder(const std::shared_ptr<Streamer::State>& state) {
 }  // namespace
 
 PcmSourceFactory engineCapture() {
-    return [](PcmRing& ring) -> std::unique_ptr<PcmSource> {
-        return std::make_unique<Capture>(ring);
-    };
+    return
+        [](PcmRing& ring) -> std::unique_ptr<PcmSource> { return std::make_unique<Capture>(ring); };
 }
 
 Streamer::Streamer(int opusBitrate, int aacBitrate, double bufferSeconds,

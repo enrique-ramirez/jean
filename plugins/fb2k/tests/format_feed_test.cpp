@@ -96,7 +96,7 @@ void playEach(FormatFeed& feed, const std::vector<int>& ids) {
 }
 
 CountingEncoderOptions holdingTwoBlocks() {
-    return {.heldBlocks = 2};
+    return {.heldBlocks = 2, .startFailure = {}};
 }
 
 using WritesBefore = std::vector<size_t>;
@@ -223,7 +223,7 @@ TEST_CASE("a listener that leaves stops counting, and the last one to leave stop
 }
 
 TEST_CASE("what an encoder holds back is sent when the encoder lets it go, and not before") {
-    CountingEncoder encoder('a', {.heldBlocks = 2});
+    CountingEncoder encoder('a', {.heldBlocks = 2, .startFailure = {}});
     const auto feed = feedOf(encoder);
 
     const auto listener = feed->listen();

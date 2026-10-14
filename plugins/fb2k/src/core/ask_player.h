@@ -111,12 +111,14 @@ T failureOf(PlayerOutcome outcome) {
 // PlayerOutcome: a wait that runs out answers `timedOut`, and a job that throws `playerRefused`.
 template <typename T>
 T askForOutcome(MainThreadQueue& mainThread, const std::string& what, std::function<T()> job) {
+    // clang's analyzer loses track of the closure std::function allocates, and reports it on the
+    // lambda with libc++ and on the call with libstdc++.
+    // NOLINTBEGIN(clang-analyzer-cplusplus.NewDeleteLeaks)
     return askPlayer<T>(
         mainThread, what,
-        // clang's analyzer loses track of the closure libc++'s std::function allocates.
-        // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
         [job = std::move(job)](const AnswerPtr<T>& answer) { answer->set(job()); },
         failureOf<T>(PlayerOutcome::timedOut), failureOf<T>(PlayerOutcome::playerRefused));
+    // NOLINTEND(clang-analyzer-cplusplus.NewDeleteLeaks)
 }
 
 }  // namespace jean

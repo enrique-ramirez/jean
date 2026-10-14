@@ -222,7 +222,7 @@ TEST_CASE("one set sent as runs, as a bitset and as a plain list names the same 
     // contract/openapi.yaml's worked example: ordinals 0, 1 and 9 of a 16-track library.
     CHECK(bitsetOf({0, 1, 9}, kTracks) == "AwI=");
 
-    for (const std::string& form :
+    for (const char* const form :
          {R"("runs": [[0, 2], [9, 1]])", R"("bitset": "AwI=")", R"("ordinals": [0, 1, 9])"}) {
         INFO("form: ", form);
         const auto request = filling(form);
@@ -247,7 +247,7 @@ TEST_CASE("only a plain list carries an order, and the other two forms come back
 }
 
 TEST_CASE("a body names exactly one of the three forms, so two is refused and so is none") {
-    for (const std::string& forms :
+    for (const char* const forms :
          {R"("runs": [[0, 2]], "bitset": "AwI=")", R"("runs": [[0, 2]], "ordinals": [0, 1])",
           R"("bitset": "AwI=", "ordinals": [0, 1])",
           R"("runs": [[0, 2]], "bitset": "AwI=", "ordinals": [0, 1])"}) {
@@ -272,7 +272,7 @@ TEST_CASE("a body that is not JSON is a malformed body rather than a bad ordinal
     // Two refusals a client switches on, and contract/openapi.yaml keeps them apart: a body the
     // parser could not read, and a set it read and would not take. One string for both would
     // send a caller looking at ordinals it never managed to send.
-    for (const std::string& body : {"not json", "[0, 1, 9]", R"("a string")"}) {
+    for (const char* const body : {"not json", "[0, 1, 9]", R"("a string")"}) {
         INFO("body: ", body);
         const auto request = parseFill(parseJsonObject(body), kTracks, std::nullopt);
 
@@ -304,7 +304,7 @@ TEST_CASE("runs resolving to more rows than the library holds are refused") {
     // Runs are the one form whose wire cost and resolved cost come apart: overlapping pairs
     // cost eight bytes each and resolve to a whole library each, and about 20,000 of them fit
     // inside kMaxBodyBytes.
-    for (const std::string& form :
+    for (const char* const form :
          {R"("runs": [[0, 12], [0, 1]])", R"("runs": [[0, 12], [0, 12], [0, 12]])"}) {
         INFO("form: ", form);
         const auto request = filling(form, kShortLibrary);

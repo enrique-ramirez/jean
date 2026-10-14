@@ -264,8 +264,11 @@ public:
             trackReads_.push_back(nameOf(playing));
             trackColumns_.push_back(columns);
             const auto unread = unnamed_.find(nameOf(playing));
-            if (unread != unnamed_.end() && unread->second != PlayerOutcome::done)
-                return SessionTrackRead{.outcome = unread->second};
+            if (unread != unnamed_.end() && unread->second != PlayerOutcome::done) {
+                SessionTrackRead refused;
+                refused.outcome = unread->second;
+                return refused;
+            }
 
             auto read = namesOf(playing, columns);
             const auto length = lengths_.find(nameOf(playing));

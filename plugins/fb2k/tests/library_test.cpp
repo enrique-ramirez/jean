@@ -149,7 +149,7 @@ TEST_CASE("multi-byte UTF-8 survives the dictionary and the ids") {
 TEST_CASE("every offset a client indexes on is four-byte aligned, header padding included") {
     // The column name is what moves the header's length, and three of these four leave it at a
     // length that is not a multiple of four on its own.
-    for (const std::string& name : {"%a%", "%ab%", "%abc%", "%abcd%"}) {
+    for (const char* const name : {"%a%", "%ab%", "%abc%", "%abcd%"}) {
         const std::string message = serialiseSnapshot(
             built({name}, {track("a/", "1.mp3", {"x"}), track("a/", "2.mp3", {"yy"})}));
 

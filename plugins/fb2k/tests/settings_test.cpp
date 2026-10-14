@@ -232,6 +232,21 @@ TEST_CASE("every bitrate the AAC encoder documents is accepted") {
     }
 }
 
+TEST_CASE("an AAC bitrate of 96000, 128000, 160000 or 192000 is kept, and 64000 is not") {
+    for (const int rate : {96000, 128000, 160000, 192000}) {
+        INFO("aacBitrate: ", rate);
+        const auto settings = parseFresh(R"({"aacBitrate": )" + std::to_string(rate) + "}");
+
+        CHECK(settings.aacBitrate == rate);
+        CHECK_FALSE(logged("'aacBitrate'"));
+    }
+
+    const auto fifth = parseFresh(R"({"aacBitrate": 64000})");
+
+    CHECK(fifth.aacBitrate == Settings().aacBitrate);
+    CHECK(logged("'aacBitrate'"));
+}
+
 TEST_CASE("the autoplaylist cap is read, and a negative one is not") {
     CHECK(parseFresh(R"({"maxAutoPlaylists": 12})").maxAutoPlaylists == 12);
 

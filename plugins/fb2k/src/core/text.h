@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -11,12 +12,16 @@ enum class Need { required, optional };
 
 std::string toLower(std::string value);
 
+std::string toHex(std::span<const unsigned char> bytes);
+
 // The non-empty elements of a delimited header field, each trimmed of the optional whitespace
 // RFC 9110 allows around it.
 std::vector<std::string> splitOn(const std::string& text, char delimiter);
 
 // An allowlist of "rating" that let "RATING" through would not be an allowlist.
 bool equalsIgnoringCase(const std::string& a, const std::string& b);
+
+std::string forwardSlashed(std::string path, char separator);
 
 // No C0 controls and no DEL. Everything a client sends is eventually written somewhere that
 // treats those as structure rather than text: a newline forges a line in foo_jean.log, a NUL

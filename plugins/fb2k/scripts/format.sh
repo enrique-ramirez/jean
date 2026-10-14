@@ -25,10 +25,13 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$root/scripts/lib/llvm.sh"
 formatter="$(find_llvm_tool clang-format CLANG_FORMAT)" || exit 127
 
+# shellcheck source=lib/compile-flags.sh
+. "$root/scripts/lib/compile-flags.sh"
+
 # macOS ships bash 3.2, which has no mapfile.
 files=()
 while IFS= read -r file; do
-  files+=("$file")
+  is_fb2k_generated "$file" || files+=("$file")
 done < <(find "$root/src" "$root/tests" -type f \( -name '*.cpp' -o -name '*.h' \) | sort)
 
 if [ "${1:-}" = "--check" ]; then

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <random>
 #include <set>
 #include <string>
@@ -143,6 +144,51 @@ std::vector<std::uint8_t> encodeWhole(OpusStream& stream, const std::vector<floa
     std::vector<std::uint8_t> whole = stream.headers();
     stream.write(pcm.data(), pcm.size() / channels, whole);
     return whole;
+}
+
+std::vector<std::uint8_t> written(OpusStream& stream, const std::vector<float>& pcm,
+                                  unsigned channels) {
+    std::vector<std::uint8_t> out;
+    stream.write(pcm.data(), pcm.size() / channels, out);
+    return out;
+}
+
+// What a listener joining at `later` is sent. RFC 7845 section 3 puts the two header pages first,
+// and RFC 3533 section 6 lets a decoder pick an Ogg stream up at any page after them.
+std::vector<std::uint8_t> asJoinedAt(const OpusStream& stream,
+                                     const std::vector<std::uint8_t>& later) {
+    std::vector<std::uint8_t> sent = stream.headers();
+    sent.insert(sent.end(), later.begin(), later.end());
+    return sent;
+}
+
+std::vector<float> quiet(size_t frames, unsigned channels) {
+    return std::vector<float>(frames * channels, 0.0F);
+}
+
+constexpr size_t kPacketsAPage = 5;
+constexpr int kPagesBeforeTheDrop = 5;
+constexpr size_t kPacketsWaiting = 3;
+constexpr size_t kFramesShortOfAPacket = 500;
+
+constexpr size_t kFramesLeavingSomethingHeld =
+    (((size_t{kPagesBeforeTheDrop} * kPacketsAPage) + kPacketsWaiting) * OpusStream::kFrameSize) +
+    kFramesShortOfAPacket;
+
+// libopus 1.5.2, measured through a new decoder: silence from an encoder that was reset peaks at
+// 2e-34. The held tone peaks at 0.36 to 0.51, and silence from an encoder left as the tone left it
+// at 3.4.
+constexpr float kSilent = 0.001F;
+
+bool risesByOne(const std::vector<long>& numbers) {
+    return std::adjacent_find(numbers.begin(), numbers.end(), [](long earlier, long later) {
+               return later != earlier + 1;
+           }) == numbers.end();
+}
+
+bool rises(const std::vector<std::int64_t>& granules) {
+    return std::adjacent_find(granules.begin(), granules.end(), std::greater_equal<>()) ==
+           granules.end();
 }
 
 double widestPageSeconds(const std::vector<std::uint8_t>& bytes) {
@@ -359,4 +405,113 @@ TEST_CASE("the bitrate follows the music rather than the clock") {
     const double ratio =
         static_cast<double>(sparseBytes.size()) / static_cast<double>(denseBytes.size());
     CHECK(std::fabs(ratio - 1.0) > 0.15);
+}
+
+TEST_CASE(
+    "after a loud tone and a drop, silence decodes to silence from the first page a new "
+    "listener is sent") {
+    for (const unsigned channels : {1U, 2U}) {
+        CAPTURE(channels);
+
+        OpusStream stream(channels, 128000);
+        const auto before = written(stream, tone(kFramesLeavingSomethingHeld, channels), channels);
+        REQUIRE(scan(before).count == kPagesBeforeTheDrop);
+        REQUIRE(loudestAfterDecoding(asJoinedAt(stream, before), channels) > 0.3F);
+
+        stream.dropHeld();
+        const auto after = written(stream, quiet(OpusStream::kSampleRate, channels), channels);
+
+        REQUIRE(scan(after).count > 0);
+        CHECK(loudestAfterDecoding(asJoinedAt(stream, after), channels) < kSilent);
+    }
+}
+
+TEST_CASE(
+    "a drop leaves the stream going: whole pages, one serial, one first page, page numbers "
+    "and granule positions still rising, and the same headers") {
+    OpusStream stream(2, 128000);
+    const std::vector<std::uint8_t> headers = stream.headers();
+
+    const auto before = written(stream, tone(kFramesLeavingSomethingHeld, 2), 2);
+    stream.dropHeld();
+    CHECK(stream.headers() == headers);
+
+    const auto after = written(stream, quiet(OpusStream::kSampleRate, 2), 2);
+    CHECK(stream.ok());
+    CHECK(stream.headers() == headers);
+
+    const auto pagesBefore = scan(before);
+    const auto pagesAfter = scan(after);
+    REQUIRE(pagesBefore.count == kPagesBeforeTheDrop);
+    REQUIRE(pagesAfter.count > 2);
+
+    CHECK(pagesAfter.consumed == after.size());
+    CHECK(pagesAfter.bos == 0);
+    CHECK(pagesAfter.serials == scan(headers).serials);
+    CHECK(pagesAfter.serials == pagesBefore.serials);
+
+    CHECK(pagesAfter.numbers.front() > pagesBefore.numbers.back());
+    CHECK(risesByOne(pagesAfter.numbers));
+
+    CHECK(pagesAfter.granules.front() ==
+          pagesBefore.lastGranule +
+              static_cast<std::int64_t>(kPacketsAPage * OpusStream::kFrameSize));
+    CHECK(rises(pagesAfter.granules));
+}
+
+TEST_CASE("a sound played after a drop is heard, whether the stream held anything or not") {
+    const auto sound = tone(OpusStream::kSampleRate / 2, 2);
+
+    SUBCASE("a stream holding packets and part of a frame") {
+        OpusStream stream(2, 128000);
+        written(stream, quiet(kFramesLeavingSomethingHeld, 2), 2);
+
+        stream.dropHeld();
+        const auto after = written(stream, sound, 2);
+
+        CHECK(scan(after).consumed == after.size());
+        CHECK(loudestAfterDecoding(asJoinedAt(stream, after), 2) > 0.3F);
+    }
+
+    SUBCASE("a stream that ended its last write on a page") {
+        OpusStream stream(2, 128000);
+        const auto before = written(stream, quiet(kPacketsAPage * OpusStream::kFrameSize, 2), 2);
+        REQUIRE(scan(before).count == 1);
+
+        stream.dropHeld();
+        const auto after = written(stream, sound, 2);
+
+        CHECK(scan(after).consumed == after.size());
+        CHECK(scan(after).numbers.front() > scan(before).numbers.back());
+        CHECK(loudestAfterDecoding(asJoinedAt(stream, after), 2) > 0.3F);
+    }
+
+    SUBCASE("a stream never written to") {
+        OpusStream stream(2, 128000);
+        const std::vector<std::uint8_t> headers = stream.headers();
+
+        stream.dropHeld();
+        const auto after = written(stream, sound, 2);
+
+        CHECK(stream.headers() == headers);
+        CHECK(scan(asJoinedAt(stream, after)).bos == 1);
+        CHECK(scan(after).consumed == after.size());
+        CHECK(loudestAfterDecoding(asJoinedAt(stream, after), 2) > 0.3F);
+    }
+}
+
+TEST_CASE("a stream that was refused is still refused after a drop, in the same words") {
+    OpusStream stream(6, 128000);
+    REQUIRE_FALSE(stream.ok());
+    const std::string refusal = stream.error();
+
+    stream.dropHeld();
+
+    REQUIRE_FALSE(stream.ok());
+    CHECK(stream.error() == refusal);
+    CHECK(stream.headers().empty());
+
+    const auto after = written(stream, tone(OpusStream::kSampleRate, 6), 6);
+    CHECK(after.empty());
+    CHECK_FALSE(stream.ok());
 }

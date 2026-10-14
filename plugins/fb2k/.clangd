@@ -19,7 +19,7 @@ Diagnostics:
 # entries once scripts/fetch-sdk.sh has fetched the SDK, and shows its diagnostics; without
 # the SDK, every file there shows the cascade.
 If:
-  PathMatch: src/fb2k/(preferences|aac_encoder|browser|ui_assets)\.cpp
+  PathMatch: src/fb2k/(preferences|aac_encoder)\.cpp
 # Suppress does not reach the fatal clang emits when it gives up counting, so the count is
 # lifted instead and nothing is left to give up over.
 CompileFlags:

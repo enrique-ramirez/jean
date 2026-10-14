@@ -2,8 +2,8 @@
 
 #include "fb2k/streamer.h"
 
-#include "core/broadcast_ring.h"
 #include "core/documents.h"
+#include "core/format_feed.h"
 #include "core/log.h"
 #include "core/opus_stream.h"
 #include "core/pcm_ring.h"
@@ -17,7 +17,6 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
-#include <initializer_list>
 #include <iterator>
 #include <optional>
 #include <string>
@@ -53,30 +52,14 @@ void copyAs(const From* first, size_t count, std::vector<To>& out) {
                    [](From value) { return static_cast<To>(value); });
 }
 
-struct Format {
-    Format(std::string name, std::string contentType, int bitrate, StreamEncoder& encoder)
-        : name(std::move(name)),
-          contentType(std::move(contentType)),
-          encoder(encoder),
-          broadcast(broadcastBytes(bitrate)) {}
-
-    const std::string name;
-    const std::string contentType;
-    StreamEncoder& encoder;
-
-    BroadcastRing broadcast;
-    std::atomic<int> listeners{0};
-    std::vector<std::uint8_t> preamble;
-};
-
 }  // namespace
 
 struct Streamer::State {
     PcmRing pcm;
     OpusStream opus;
-    AacEncoder aac;
-    Format ogg;
-    Format adts;
+    AacStream aac;
+    FormatFeed ogg;
+    FormatFeed adts;
     Timeline timeline;
     std::thread thread;
     std::atomic<bool> stopping{false};
@@ -84,32 +67,33 @@ struct Streamer::State {
     State(int opusBitrate, int aacBitrate, double bufferSeconds, std::function<void()> marked)
         : pcm(bufferSeconds),
           opus(kOutputChannels, opusBitrate),
-          aac(kOutputChannels, OpusStream::kSampleRate, aacBitrate),
-          ogg("opus", "audio/ogg", opusBitrate, opus),
-          adts("aac", "audio/aac", aacBitrate, aac),
+          aac(platformAacCodec(), kOutputChannels, OpusStream::kSampleRate, aacBitrate),
+          ogg("opus", "audio/ogg", broadcastBytes(opusBitrate), kIdlePatience, opus,
+              opus.headers()),
+          adts("aac", "audio/aac", broadcastBytes(aacBitrate), kIdlePatience, aac),
           timeline(kTimelineMarks, std::move(marked)) {
-        ogg.preamble = opus.headers();
-
-        for (Format* format : {&ogg, &adts}) {
-            if (format->encoder.ok())
-                working.push_back(format);
+        const std::pair<FormatFeed*, const StreamEncoder*> formats[] = {{&ogg, &opus},
+                                                                        {&adts, &aac}};
+        for (const auto& [feed, encoder] : formats) {
+            if (feed->working())
+                working.push_back(feed);
             else
-                logError(format->name + " streaming is unavailable: " + format->encoder.error());
+                logError(feed->name() + " streaming is unavailable: " + encoder->error());
         }
     }
 
     bool anyoneListening() const {
         return std::any_of(working.begin(), working.end(),
-                           [](const Format* format) { return format->listeners > 0; });
+                           [](const FormatFeed* feed) { return feed->hasListeners(); });
     }
 
-    Format* formatNamed(const std::string& name) const {
+    FormatFeed* formatNamed(const std::string& name) const {
         const auto found = std::find_if(working.begin(), working.end(),
-                                        [&name](const Format* f) { return f->name == name; });
+                                        [&name](const FormatFeed* f) { return f->name() == name; });
         return found == working.end() ? nullptr : *found;
     }
 
-    std::vector<Format*> working;
+    std::vector<FormatFeed*> working;
 };
 
 namespace {
@@ -191,6 +175,11 @@ public:
         return true;
     }
 
+    // dsp_manager::flush discards what the chain's DSPs hold. A resampler buffers samples across
+    // blocks, so audio from before a stretch nobody listened through would otherwise come out
+    // ahead of the next.
+    void flush() { dsp_.flush(); }
+
 private:
     // The foobar2000 SDK's dsp_impl_base hands back what a DSP has buffered ahead from
     // on_endofplayback, which only dsp::FLUSH calls. END_OF_TRACK alone reaches on_endoftrack,
@@ -252,46 +241,12 @@ private:
     bool complained_ = false;
 };
 
-class Listener : public StreamListener {
-public:
-    Listener(std::shared_ptr<Streamer::State> state, Format* format)
-        : state_(std::move(state)), format_(format), cursor_(format->broadcast.subscribe()) {
-        ++format_->listeners;
-    }
-
-    ~Listener() override { --format_->listeners; }
-
-    bool next(std::vector<std::uint8_t>& out) override {
-        if (!sentPreamble_) {
-            out = format_->preamble;
-            sentPreamble_ = true;
-            return true;
-        }
-
-        out.clear();
-
-        switch (format_->broadcast.read(cursor_, out, kIdlePatience)) {
-            case BroadcastRing::Read::ok:
-            case BroadcastRing::Read::idle:
-                return true;
-            default:
-                return false;
-        }
-    }
-
-private:
-    std::shared_ptr<Streamer::State> state_;
-    Format* format_;
-    BroadcastRing::Cursor cursor_;
-    bool sentPreamble_ = false;
-};
-
 void encode(const std::shared_ptr<Streamer::State>& state) {
     const ComOnThisThread com;
     Converter converter;
     std::vector<float> converted;
-    std::vector<std::uint8_t> encoded;
     double streamSeconds = 0;
+    bool nobodyHeardTheLast = true;
 
     PcmBlock block;
     while (state->pcm.read(block)) {
@@ -303,8 +258,15 @@ void encode(const std::shared_ptr<Streamer::State>& state) {
         streamSeconds += block.seconds();
         state->timeline.setStreamTime(streamSeconds);
 
-        if (!state->anyoneListening())
+        if (!state->anyoneListening()) {
+            nobodyHeardTheLast = true;
             continue;
+        }
+
+        if (nobodyHeardTheLast) {
+            converter.flush();
+            nobodyHeardTheLast = false;
+        }
 
         if (!converter.convert(block, converted) || converted.empty())
             continue;
@@ -312,21 +274,8 @@ void encode(const std::shared_ptr<Streamer::State>& state) {
         const size_t frames = converted.size() / kOutputChannels;
 
         // The formats fail apart on purpose; see ARCHITECTURE.md, "The audio path".
-        for (Format* format : state->working) {
-            if (format->listeners == 0 || !format->encoder.ok())
-                continue;
-
-            encoded.clear();
-            format->encoder.write(converted.data(), frames, encoded);
-
-            if (!encoded.empty())
-                format->broadcast.write(encoded.data(), encoded.size());
-
-            if (!format->encoder.ok()) {
-                logError(format->name + " streaming stopped: " + format->encoder.error());
-                format->broadcast.close();
-            }
-        }
+        for (FormatFeed* feed : state->working)
+            feed->feed(converted.data(), frames);
     }
 }
 
@@ -342,8 +291,8 @@ void runEncoder(const std::shared_ptr<Streamer::State>& state) {
         logError("the stream encoder stopped with an unknown exception");
     }
 
-    state->ogg.broadcast.close();
-    state->adts.broadcast.close();
+    state->ogg.close();
+    state->adts.close();
 }
 
 }  // namespace
@@ -389,7 +338,7 @@ std::vector<std::string> Streamer::formats() const {
     std::vector<std::string> available;
     available.reserve(state_->working.size());
     std::transform(state_->working.begin(), state_->working.end(), std::back_inserter(available),
-                   [](const Format* format) { return format->name; });
+                   [](const FormatFeed* feed) { return feed->name(); });
     return available;
 }
 
@@ -398,11 +347,11 @@ StreamOpener Streamer::opener() const {
         return {};
 
     return [state = state_](const std::string& name) -> OpenedStream {
-        Format* format = state->formatNamed(name);
-        if (format == nullptr)
+        FormatFeed* feed = state->formatNamed(name);
+        if (feed == nullptr)
             return {};
 
-        return {format->contentType, std::make_unique<Listener>(state, format)};
+        return {feed->contentType(), feed->listen(state)};
     };
 }
 
@@ -412,8 +361,8 @@ void Streamer::stop() {
 
     source_.reset();
     state_->pcm.close();
-    state_->ogg.broadcast.close();
-    state_->adts.broadcast.close();
+    state_->ogg.close();
+    state_->adts.close();
 
     if (state_->thread.joinable())
         state_->thread.join();

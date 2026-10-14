@@ -1,6 +1,8 @@
 #pragma once
 
+#include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -43,6 +45,18 @@ struct PageRoute {
     std::string name;
     std::string diskPath;
 };
+
+struct EmbeddedFile {
+    std::string_view path;
+    std::string_view bytes;
+};
+
+std::optional<std::string_view> findEmbeddedFile(std::span<const EmbeddedFile> files,
+                                                 std::string_view path);
+
+std::vector<std::string> embeddedRootNames(std::span<const EmbeddedFile> files);
+
+bool isWithin(const std::filesystem::path& root, const std::filesystem::path& candidate);
 
 PageRoute routePage(const std::string& resolvedPath, const std::vector<std::string>& pageNames);
 

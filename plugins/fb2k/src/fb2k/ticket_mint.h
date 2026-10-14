@@ -4,7 +4,7 @@
 
 namespace jean {
 
-// Empty on failure, and on any platform with no decided source of real randomness.
+// Empty on failure.
 std::string mintTicket();
 
 }  // namespace jean

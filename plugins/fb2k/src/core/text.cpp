@@ -1,7 +1,6 @@
 #include "core/text.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -24,6 +23,13 @@ constexpr uint64_t kFoldBasis = 14695981039346656037ULL;
 constexpr uint64_t kFoldPrime = 1099511628211ULL;
 
 constexpr size_t kHexDigitsPerByte = 2;
+constexpr char kHexDigits[] = "0123456789abcdef";
+
+// macOS's tolower maps 0xC3 to 0xE3 under a UTF-8 LC_CTYPE, which would corrupt the lead byte of
+// a UTF-8 sequence, so the fold is written out and answers to no locale.
+unsigned char foldAscii(unsigned char c) {
+    return c >= 'A' && c <= 'Z' ? static_cast<unsigned char>(c + ('a' - 'A')) : c;
+}
 
 uint64_t fold(std::string_view bytes) {
     uint64_t digest = kFoldBasis;
@@ -35,11 +41,9 @@ uint64_t fold(std::string_view bytes) {
 }
 
 std::string quotedHex(uint64_t digest) {
-    constexpr char kDigits[] = "0123456789abcdef";
-
     std::string text(sizeof(digest) * kHexDigitsPerByte, '0');
     for (size_t at = text.size(); at > 0; --at) {
-        text[at - 1] = kDigits[digest & 0xFU];
+        text[at - 1] = kHexDigits[digest & 0xFU];
         digest >>= 4U;
     }
 
@@ -50,8 +54,23 @@ std::string quotedHex(uint64_t digest) {
 
 std::string toLower(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                   [](unsigned char c) { return static_cast<char>(foldAscii(c)); });
     return value;
+}
+
+std::string toHex(std::span<const unsigned char> bytes) {
+    std::string text;
+    text.reserve(bytes.size() * kHexDigitsPerByte);
+    for (const unsigned char byte : bytes) {
+        text.push_back(kHexDigits[byte >> 4U]);
+        text.push_back(kHexDigits[byte & 0xFU]);
+    }
+    return text;
+}
+
+std::string forwardSlashed(std::string path, char separator) {
+    std::replace(path.begin(), path.end(), separator, '/');
+    return path;
 }
 
 std::vector<std::string> splitOn(const std::string& text, char delimiter) {
@@ -73,7 +92,7 @@ std::vector<std::string> splitOn(const std::string& text, char delimiter) {
 bool equalsIgnoringCase(const std::string& a, const std::string& b) {
     return a.size() == b.size() &&
            std::equal(a.begin(), a.end(), b.begin(), [](unsigned char x, unsigned char y) {
-               return std::tolower(x) == std::tolower(y);
+               return foldAscii(x) == foldAscii(y);
            });
 }
 

@@ -31,6 +31,11 @@
 #include <random>
 #include <system_error>
 #include <thread>
+#include <vector>
+
+#ifndef _WIN32
+#include <ifaddrs.h>
+#endif
 
 namespace jean {
 
@@ -89,8 +94,11 @@ ListenerStatus portTaken(std::string why) {
 #ifdef _WIN32
 constexpr int kAddressOption = SO_EXCLUSIVEADDRUSE;
 constexpr const char* kAddressOptionName = "SO_EXCLUSIVEADDRUSE";
-// Only Windows lets a second socket bind a port this one is already listening on, so only
-// there does losing the option cost anything but a retry after a restart.
+// Windows lets a second socket bind a port this one is already listening on, so there losing the
+// option costs more than a retry after a restart. macOS is not exclusive either, but nothing a
+// listener sets closes it: a port held on the wildcard address there still admits another
+// program that binds one of the machine's addresses on it with SO_REUSEADDR, and that program
+// takes the connections to that address.
 constexpr bool kAddressOptionIsMandatory = true;
 #else
 constexpr int kAddressOption = SO_REUSEADDR;
@@ -122,6 +130,41 @@ bool socketErrorMeansAddressInUse(int code) {
 }
 #endif
 
+constexpr char kWildcardAddress[] = "0.0.0.0";
+
+std::optional<sockaddr_in> ipv4Address(const std::string& address, int port) {
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(static_cast<uint16_t>(port));
+    if (inet_pton(AF_INET, address.c_str(), &addr.sin_addr) != 1)
+        return std::nullopt;
+
+    return addr;
+}
+
+// The probe sets the listener's own address option first: on Windows a plain bind of the wildcard
+// address succeeds beside a socket holding one address, which SO_EXCLUSIVEADDRUSE refuses.
+std::optional<int> probeBind(const sockaddr_in& addr) {
+#ifdef _WIN32
+    const SOCKET probe = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (probe == INVALID_SOCKET)
+        return std::nullopt;
+    static_cast<void>(setAddressOption(probe));
+    const bool bound = ::bind(probe, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == 0;
+    const int code = bound ? 0 : lastSocketError();
+    closesocket(probe);
+#else
+    const int probe = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (probe < 0)
+        return std::nullopt;
+    static_cast<void>(setAddressOption(probe));
+    const bool bound = ::bind(probe, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == 0;
+    const int code = bound ? 0 : lastSocketError();
+    ::close(probe);
+#endif
+    return code;
+}
+
 struct BindDiagnosis {
     bool inUse = false;
     std::string osError;
@@ -132,36 +175,97 @@ struct BindDiagnosis {
 // itself cannot say anything: an address inet_pton cannot parse, a probe socket this process
 // could not open, or a probe that raced past whatever refused the real attempt and bound fine.
 std::optional<BindDiagnosis> diagnoseBindFailure(const std::string& bindAddress, int port) {
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(static_cast<uint16_t>(port));
-    if (inet_pton(AF_INET, bindAddress.c_str(), &addr.sin_addr) != 1)
+    const auto addr = ipv4Address(bindAddress, port);
+    if (!addr)
         return std::nullopt;
 
-#ifdef _WIN32
-    const SOCKET probe = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (probe == INVALID_SOCKET)
-        return std::nullopt;
-    const bool bound = ::bind(probe, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0;
-    const int code = bound ? 0 : lastSocketError();
-    closesocket(probe);
-#else
-    const int probe = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (probe < 0)
-        return std::nullopt;
-    const bool bound = ::bind(probe, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0;
-    const int code = bound ? 0 : lastSocketError();
-    ::close(probe);
-#endif
-
-    if (bound)
+    const auto code = probeBind(*addr);
+    if (!code || *code == 0)
         return std::nullopt;
 
     BindDiagnosis diagnosis;
-    diagnosis.inUse = socketErrorMeansAddressInUse(code);
-    diagnosis.osError = std::error_code(code, std::system_category()).message();
+    diagnosis.inUse = socketErrorMeansAddressInUse(*code);
+    diagnosis.osError = std::error_code(*code, std::system_category()).message();
     return diagnosis;
 }
+
+struct PortSharing {
+    bool shared = false;
+    std::vector<std::string> held;
+};
+
+#ifdef _WIN32
+PortSharing inspectWildcardPort(int /*port*/) {
+    return {};
+}
+#else
+std::vector<std::string> localIpv4Addresses() {
+    ifaddrs* list = nullptr;
+    if (getifaddrs(&list) != 0)
+        return {};
+    const std::unique_ptr<ifaddrs, decltype(&freeifaddrs)> owned(list, freeifaddrs);
+
+    std::vector<std::string> addresses;
+    for (const ifaddrs* entry = list; entry != nullptr; entry = entry->ifa_next) {
+        if (entry->ifa_addr == nullptr || entry->ifa_addr->sa_family != AF_INET)
+            continue;
+
+        char text[INET_ADDRSTRLEN] = {};
+        const auto* inet = reinterpret_cast<const sockaddr_in*>(entry->ifa_addr);
+        if (inet_ntop(AF_INET, &inet->sin_addr, text, sizeof(text)) == nullptr)
+            continue;
+
+        if (std::find(addresses.begin(), addresses.end(), text) == addresses.end())
+            addresses.emplace_back(text);
+    }
+
+    return addresses;
+}
+
+// Measured on a listener of our own at a port the operating system chooses, so the answer is the
+// platform's and does not depend on who holds the real port: a platform that refuses a second
+// bind to a listening port refuses every address, which a held address cannot be told from.
+bool wildcardListenerAdmitsOthers(const std::string& address) {
+    const int listener = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (listener < 0)
+        return false;
+
+    bool admitted = false;
+    const int on = 1;
+    sockaddr_in any{};
+    any.sin_family = AF_INET;
+    any.sin_addr.s_addr = htonl(INADDR_ANY);
+    socklen_t length = sizeof(any);
+    if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) == 0 &&
+        ::bind(listener, reinterpret_cast<const sockaddr*>(&any), sizeof(any)) == 0 &&
+        ::listen(listener, 1) == 0 &&
+        ::getsockname(listener, reinterpret_cast<sockaddr*>(&any), &length) == 0) {
+        const auto probed = ipv4Address(address, ntohs(any.sin_port));
+        const auto code = probed ? probeBind(*probed) : std::nullopt;
+        admitted = code && *code == 0;
+    }
+
+    ::close(listener);
+    return admitted;
+}
+
+PortSharing inspectWildcardPort(int port) {
+    PortSharing sharing;
+    const auto addresses = localIpv4Addresses();
+    if (addresses.empty() || !wildcardListenerAdmitsOthers(addresses.front()))
+        return sharing;
+
+    sharing.shared = true;
+    for (const auto& address : addresses) {
+        const auto probed = ipv4Address(address, port);
+        const auto code = probed ? probeBind(*probed) : std::nullopt;
+        if (code && socketErrorMeansAddressInUse(*code))
+            sharing.held.push_back(address);
+    }
+
+    return sharing;
+}
+#endif
 
 ListenerStatus bindFailure(const Settings& settings) {
     const std::string address = settings.bindAddress + ":" + std::to_string(settings.port);
@@ -234,6 +338,25 @@ void reportFailuresWithoutLeaking(httplib::Server& server) {
 }
 
 }  // namespace
+
+std::string heldAddressError(const std::vector<std::string>& heldAddresses, int port) {
+    if (heldAddresses.empty())
+        return {};
+
+    std::string list;
+    for (const auto& address : heldAddresses)
+        list += (list.empty() ? "" : ", ") + address;
+
+    return "another program already holds port " + std::to_string(port) + " at " + list +
+           ", so connections to " + (heldAddresses.size() == 1 ? "it" : "them") +
+           " never reach Jean. Set bindAddress to one address that nobody else holds to have the "
+           "port to itself";
+}
+
+std::string sharedPortNotice(int port) {
+    return "another program on this machine can take port " + std::to_string(port) +
+           " at an address of its own; set bindAddress to one address to close that";
+}
 
 ConnectionPool connectionPoolFor(unsigned hardwareThreads) {
     constexpr size_t kFewestThreads = 8;
@@ -496,9 +619,16 @@ ListenerStatus HttpServer::start() {
         }
     }
 
+    auto status = listening();
+    if (startupSettings->bindAddress == kWildcardAddress) {
+        const auto sharing = inspectWildcardPort(startupSettings->port);
+        status.portIsShared = sharing.shared;
+        status.heldAddresses = sharing.held;
+    }
+
     impl.thread = std::thread([&impl] { impl.server.listen_after_bind(); });
 
-    return listening();
+    return status;
 }
 
 void HttpServer::stop() {

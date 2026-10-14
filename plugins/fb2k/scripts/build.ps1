@@ -26,7 +26,14 @@ $proj = Join-Path $root $Project
 
 # Building the SDK's own foo_sample needs no ui\dist and must not be made to require one.
 if ((Split-Path -Leaf $proj) -eq 'foo_jean.vcxproj') {
-  & (Join-Path $PSScriptRoot 'embed-ui.ps1')
+  $fb2kSource = Join-Path $root 'src\fb2k'
+  if (-not (Test-Path (Join-Path $fb2kSource 'ui_assets_table.cpp'))) {
+    throw "No Jean page to compile in: src\fb2k\ui_assets_table.cpp is missing. Run 'pnpm --dir ui build' and then 'node plugins/fb2k/scripts/embed-ui.mjs'."
+  }
+
+  foreach ($leftover in 'ui_assets.rc', 'ui_assets_table.inc') {
+    Remove-Item -LiteralPath (Join-Path $fb2kSource $leftover) -Force -ErrorAction SilentlyContinue
+  }
 }
 
 Write-Output "Building $Project ($Configuration|$Platform)"

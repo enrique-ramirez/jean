@@ -1,30 +1,11 @@
 #pragma once
 
-#include "core/stream.h"
+#include "core/aac_stream.h"
 
-#include <cstdint>
 #include <memory>
-#include <string>
-#include <vector>
 
 namespace jean {
 
-// AAC-LC in ADTS, through the encoder that ships with Windows.
-class AacEncoder : public StreamEncoder {
-public:
-    AacEncoder(unsigned channels, unsigned sampleRate, int bitrate);
-    ~AacEncoder() override;
-
-    bool ok() const override;
-    const std::string& error() const override;
-
-    // Interleaved float at the sample rate given to the constructor. Appends whole ADTS
-    // frames.
-    void write(const float* samples, size_t frames, std::vector<std::uint8_t>& out) override;
-
-private:
-    struct State;
-    std::unique_ptr<State> state_;
-};
+std::unique_ptr<AacCodec> platformAacCodec();
 
 }  // namespace jean

@@ -6,6 +6,7 @@
 
 #include "core/failures.h"
 #include "core/library.h"
+#include "core/text.h"
 #include "support/eventually.h"
 #include "support/wire.h"
 #include "third_party/json.hpp"
@@ -742,6 +743,25 @@ TEST_CASE("a relative path splits where the client's own path table splits it") 
     CHECK(splitRelativePath("Artist/Album/01.mp3").filename == "01.mp3");
     CHECK(splitRelativePath("loose.mp3").directory.empty());
     CHECK(splitRelativePath("loose.mp3").filename == "loose.mp3");
+}
+
+// foobar2000 hands a path over in the operating system's own spelling, so `\` separates folders
+// on Windows and is an ordinary character of a file name on macOS.
+TEST_CASE(
+    "a path's separators become forward slashes, and a backslash that separates nothing "
+    "stays") {
+    CHECK(forwardSlashed("a\\b\\c.mp3", '\\') == "a/b/c.mp3");
+    CHECK(forwardSlashed("a\\b\\c.mp3", '/') == "a\\b\\c.mp3");
+    CHECK(forwardSlashed("dir/a\\b.mp3", '/') == "dir/a\\b.mp3");
+    CHECK(forwardSlashed("dir/a\\b.mp3", '\\') == "dir/a/b.mp3");
+
+    CHECK(forwardSlashed("\\a\\b\\", '\\') == "/a/b/");
+    CHECK(forwardSlashed("\\a\\b\\", '/') == "\\a\\b\\");
+
+    CHECK(forwardSlashed("loose.mp3", '\\') == "loose.mp3");
+    CHECK(forwardSlashed("loose.mp3", '/') == "loose.mp3");
+    CHECK(forwardSlashed("", '\\').empty());
+    CHECK(forwardSlashed("", '/').empty());
 }
 
 TEST_CASE("a well-formed request is taken apart into its pieces") {

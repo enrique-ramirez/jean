@@ -2,75 +2,24 @@
 
 #include "fb2k/ui_assets.h"
 
+#include "core/assets.h"
 #include "fb2k/paths.h"
 #include "fb2k/strings.h"
-
-// scripts/embed-ui.ps1 writes this from the same walk of ui/dist that writes ui_assets.rc, so
-// the ids FindResourceW is asked for here always name what that .rc actually embedded.
-#include "fb2k/ui_assets_table.inc"
 
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string_view>
 #include <system_error>
-#include <unordered_map>
 
 namespace jean {
 
-namespace {
-
-const std::unordered_map<std::string, int>& uiAssetIds() {
-    static const std::unordered_map<std::string, int> table = [] {
-        std::unordered_map<std::string, int> built;
-        for (const auto& entry : generated::kUiAssets)
-            built.emplace(entry.path, entry.id);
-        return built;
-    }();
-
-    return table;
-}
-
-bool isWithin(const std::filesystem::path& root, const std::filesystem::path& candidate) {
-    auto rootPart = root.begin();
-    auto candidatePart = candidate.begin();
-    for (; rootPart != root.end(); ++rootPart, ++candidatePart) {
-        if (candidatePart == candidate.end() || *candidatePart != *rootPart)
-            return false;
-    }
-
-    return true;
-}
-
-}  // namespace
-
-// The view is over the resource section of this component's own DLL, which LockResource maps
-// for as long as the module is loaded, so it outlives every response that sends it.
 std::optional<std::string_view> readEmbeddedPage(const std::string& path) {
-    const auto& ids = uiAssetIds();
-    const auto found = ids.find(path);
-    if (found == ids.end())
-        return std::nullopt;
-
-    auto* const self = core_api::get_my_instance();
-    auto* const resource =
-        FindResourceW(self, MAKEINTRESOURCEW(found->second), generated::kUiAssetResourceType);
-    if (!resource)
-        return std::nullopt;
-
-    const HGLOBAL loaded = LoadResource(self, resource);
-    if (!loaded)
-        return std::nullopt;
-
-    const void* data = LockResource(loaded);
-    if (!data)
-        return std::nullopt;
-
-    return std::string_view(static_cast<const char*>(data), SizeofResource(self, resource));
+    return findEmbeddedFile(generated::embeddedUiFiles(), path);
 }
 
 std::vector<std::string> embeddedPageNames() {
-    return {std::begin(generated::kUiRootNames), std::end(generated::kUiRootNames)};
+    return embeddedRootNames(generated::embeddedUiFiles());
 }
 
 DiskPage readWwwPage(const std::string& path) {

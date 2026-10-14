@@ -45,6 +45,8 @@ public:
     // mid-stream. Buffers whatever does not fill a frame.
     void write(const float* samples, size_t frames, std::vector<std::uint8_t>& out) override;
 
+    void dropHeld() override;
+
 private:
     struct State;
     std::unique_ptr<State> state_;

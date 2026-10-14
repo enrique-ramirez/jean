@@ -5,6 +5,7 @@
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
+#include <clocale>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -43,6 +44,38 @@ Settings fromConfigFile(const json& extra) {
     file.update(extra);
     return parseSettings(file.dump());
 }
+
+// The C library's setlocale changes the whole process, so no other thread may be running while
+// one of these lives.
+class Utf8Ctype {
+public:
+    Utf8Ctype() {
+        // NOLINTNEXTLINE(concurrency-mt-unsafe)
+        if (const char* current = std::setlocale(LC_CTYPE, nullptr))
+            before_ = current;
+
+        for (const char* name : {"en_US.UTF-8", "C.UTF-8"}) {
+            // NOLINTNEXTLINE(concurrency-mt-unsafe)
+            if (std::setlocale(LC_CTYPE, name) != nullptr) {
+                name_ = name;
+                return;
+            }
+        }
+    }
+
+    // NOLINTNEXTLINE(concurrency-mt-unsafe)
+    ~Utf8Ctype() { static_cast<void>(std::setlocale(LC_CTYPE, before_.c_str())); }
+
+    Utf8Ctype(const Utf8Ctype&) = delete;
+    Utf8Ctype& operator=(const Utf8Ctype&) = delete;
+
+    bool inForce() const { return !name_.empty(); }
+    const std::string& name() const { return name_; }
+
+private:
+    std::string before_ = "C";
+    std::string name_;
+};
 
 }  // namespace
 
@@ -211,6 +244,31 @@ TEST_CASE("a name listed in allowedHosts is admitted, matched whole and ignoring
          {"sub.music.example", "music.example.evil.example", "evil.example", "xmusic.example"}) {
         INFO("host: ", std::string(host));
         CHECK_FALSE(fromLan(host, allowedHosts).admitted);
+    }
+}
+
+// macOS's tolower, under a UTF-8 LC_CTYPE, lowers a byte above 0x7F as the Latin-1 letter of
+// that number, so 0xC3 comes back as 0xE3. U+00E9, an e with an acute, is 0xC3 0xA9 in UTF-8.
+TEST_CASE("a Host one high byte away from a listed name is refused under a UTF-8 locale") {
+    const std::string listed = std::string("caf\xC3\xA9") + ".example";
+    const std::string oneByteAway = std::string("caf\xE3\xA9") + ".example";
+    const std::vector<std::string> allowedHosts{listed, "Jukebox.Example"};
+
+    const Utf8Ctype locale;
+
+    if (locale.inForce()) {
+        INFO("LC_CTYPE: ", locale.name());
+        CHECK_FALSE(fromLan(oneByteAway, allowedHosts).admitted);
+        CHECK_FALSE(fromLan(listed, {oneByteAway}).admitted);
+    } else {
+        MESSAGE("high bytes not tested under a UTF-8 LC_CTYPE: this machine has no such locale.");
+    }
+
+    CHECK(fromLan(listed, allowedHosts).admitted);
+
+    for (const char* host : {"jukebox.example", "JUKEBOX.EXAMPLE", "jUKEBOX.eXAMPLE:8881"}) {
+        INFO("host: ", std::string(host));
+        CHECK(fromLan(host, allowedHosts).admitted);
     }
 }
 

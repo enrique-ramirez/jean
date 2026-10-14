@@ -15,6 +15,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 
 namespace jean {
 
@@ -25,7 +26,17 @@ struct ListenerStatus {
 
     // Separate because it is the one failure with a specific remedy.
     bool portInUse = false;
+
+    // After a wildcard bind where the operating system's bind is not exclusive: another program
+    // can bind one of this machine's addresses on the port and take the connections to it.
+    bool portIsShared = false;
+
+    std::vector<std::string> heldAddresses;
 };
+
+std::string heldAddressError(const std::vector<std::string>& heldAddresses, int port);
+
+std::string sharedPortNotice(int port);
 
 constexpr size_t kMaxBodyBytes = size_t{256} * 1024;
 

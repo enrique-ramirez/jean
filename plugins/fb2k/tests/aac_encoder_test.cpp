@@ -7,6 +7,7 @@
 #include "support/pcm.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -23,6 +24,29 @@ using testing::kAacFrameSamples;
 namespace {
 
 constexpr AacSetup kStreamed{2, 48000, 128000};
+
+struct Refusal {
+    AacSetup setup;
+    const char* says = "";
+};
+
+constexpr std::array<Refusal, 15> kRefusedBeforeTheCodec = {{
+    {{2, 8000, 128000}, "44100 or 48000 Hz"},
+    {{2, 22050, 128000}, "44100 or 48000 Hz"},
+    {{2, 32000, 128000}, "44100 or 48000 Hz"},
+    {{2, 88200, 128000}, "44100 or 48000 Hz"},
+    {{2, 96000, 128000}, "44100 or 48000 Hz"},
+    {{1, 96000, 128000}, "44100 or 48000 Hz"},
+    {{3, 48000, 128000}, "channel"},
+    {{4, 48000, 128000}, "channel"},
+    {{5, 48000, 128000}, "channel"},
+    {{7, 48000, 128000}, "channel"},
+    {{2, 48000, 8000}, "bitrate"},
+    {{2, 48000, 95999}, "bitrate"},
+    {{2, 48000, 100000}, "bitrate"},
+    {{2, 48000, 224000}, "bitrate"},
+    {{1, 48000, 256000}, "bitrate"},
+}};
 
 std::string named(const AacSetup& setup) {
     return std::string(setup.channels == 1 ? "mono" : "stereo") + "-" +
@@ -177,6 +201,49 @@ Encoded encodeSilence(const AacSetup& setup, size_t seconds) {
                   blocksOf(frames, kAacFrameSamples));
 }
 
+std::vector<std::uint8_t> written(StreamEncoder& encoder, const AacSetup& setup,
+                                  const std::vector<float>& pcm) {
+    const size_t frames = pcm.size() / setup.channels;
+
+    std::vector<std::uint8_t> out;
+    size_t fed = 0;
+    for (const size_t block : blocksOf(frames, kAacFrameSamples)) {
+        encoder.write(pcm.data() + (fed * setup.channels), block, out);
+        fed += block;
+    }
+    return out;
+}
+
+std::string digestOf(const std::vector<std::uint8_t>& bytes) {
+    return eTagFor(std::string(bytes.begin(), bytes.end()));
+}
+
+std::string firstDifference(const std::vector<std::uint8_t>& got,
+                            const std::vector<std::uint8_t>& wanted) {
+    if (got == wanted)
+        return {};
+
+    const auto gotFrames = testing::walkAdts(got).frames;
+    const auto wantedFrames = testing::walkAdts(wanted).frames;
+
+    const auto bytesOf = [](const std::vector<std::uint8_t>& bytes,
+                            const testing::AdtsFrame& frame) {
+        const auto first = bytes.begin() + static_cast<std::ptrdiff_t>(frame.offset);
+        return std::vector<std::uint8_t>(first, first + static_cast<std::ptrdiff_t>(frame.length));
+    };
+
+    size_t same = 0;
+    while (same < gotFrames.size() && same < wantedFrames.size() &&
+           bytesOf(got, gotFrames[same]) == bytesOf(wanted, wantedFrames[same]))
+        ++same;
+
+    return "frame " + std::to_string(same) + " is the first to differ, of " +
+           std::to_string(gotFrames.size()) + " frames in " + std::to_string(got.size()) +
+           " bytes (digest " + digestOf(got) + ") against " + std::to_string(wantedFrames.size()) +
+           " frames in " + std::to_string(wanted.size()) + " bytes (digest " + digestOf(wanted) +
+           ") from a new encoder";
+}
+
 }  // namespace
 
 TEST_CASE(
@@ -215,8 +282,8 @@ TEST_CASE("a stream the encoder cannot make is refused with a reason and nothing
         checkRefuses({2, 48000, -1}, "");
     }
 
-    SUBCASE("what this platform's codec does not take") {
-        for (const auto& refusal : testing::platformAacFacts().refusals)
+    SUBCASE("settings the shared stream refuses before a codec is asked") {
+        for (const auto& refusal : kRefusedBeforeTheCodec)
             checkRefuses(refusal.setup, refusal.says);
     }
 }
@@ -392,6 +459,47 @@ TEST_CASE(
     const auto late = static_cast<double>(bytesIn(walk.frames.size() - kCompared));
 
     CHECK(std::fabs((late / early) - 1.0) < 0.05);
+}
+
+TEST_CASE(
+    "an encoder given one sound, told to drop what it holds, then given another gives the "
+    "bytes a new encoder would give for the second") {
+    if (!aacIsTested())
+        return;
+
+    for (const AacSetup& setup : {kStreamed, AacSetup{1, 44100, 96000}}) {
+        INFO(named(setup));
+
+        const size_t firstFrames = setup.sampleRate + 300;
+        const size_t secondFrames = (size_t{setup.sampleRate} * 2) + 500;
+        REQUIRE(firstFrames % kAacFrameSamples != 0);
+
+        const auto audio =
+            testing::toneUnderNoise(firstFrames + secondFrames, setup.channels, setup.sampleRate);
+        const auto cut = audio.begin() + static_cast<std::ptrdiff_t>(firstFrames * setup.channels);
+        const std::vector<float> first(audio.begin(), cut);
+        const std::vector<float> second(cut, audio.end());
+
+        const auto used =
+            testing::platformAacEncoder(setup.channels, setup.sampleRate, setup.bitrate);
+        const auto fresh =
+            testing::platformAacEncoder(setup.channels, setup.sampleRate, setup.bitrate);
+        REQUIRE(used);
+        REQUIRE(fresh);
+
+        REQUIRE_FALSE(written(*used, setup, first).empty());
+        used->dropHeld();
+        const auto afterTheDrop = written(*used, setup, second);
+        const auto fromANewEncoder = written(*fresh, setup, second);
+
+        REQUIRE_MESSAGE(used->ok(), used->error());
+        REQUIRE_MESSAGE(fresh->ok(), fresh->error());
+        REQUIRE(testing::walkAdts(fromANewEncoder).frames.size() ==
+                framesExpectedFor(secondFrames));
+
+        const std::string difference = firstDifference(afterTheDrop, fromANewEncoder);
+        CHECK_MESSAGE(difference.empty(), difference);
+    }
 }
 
 TEST_CASE(

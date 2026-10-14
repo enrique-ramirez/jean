@@ -41,7 +41,9 @@ if [ "$#" -gt 0 ]; then
     elif [ -n "$fb2k_skipped" ]; then
       echo "$fb2k_skipped" >&2
     else
-      if is_fb2k_unparsed "$file"; then
+      if is_fb2k_generated "$file"; then
+        echo "$file was skipped: it is in fb2k_generated_sources in scripts/lib/compile-flags.sh." >&2
+      elif is_fb2k_unparsed "$file"; then
         echo "$file was skipped: it is in fb2k_unparsed_sources in scripts/lib/compile-flags.sh." >&2
       else
         fb2k_files+=("$file")

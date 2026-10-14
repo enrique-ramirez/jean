@@ -4,6 +4,7 @@
 
 #include "third_party/doctest.h"
 
+#include "core/assets.h"
 #include "core/text.h"
 #include "support/log_capture.h"
 #include "support/test_server.h"
@@ -11,10 +12,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <iterator>
 #include <map>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -141,6 +144,19 @@ std::string mediaType(const std::string& contentType) {
 
 json notFound() {
     return json{{"error", "not found"}};
+}
+
+// Vite names a built file with a hash in mixed case.
+constexpr char kHashedScript[] = "assets/index-BxK2aQ9d.js";
+
+std::vector<EmbeddedFile> embeddedBuild() {
+    static const std::string font = fontBytes();
+
+    return {
+        {"locales/en.json", kLocale},       {"index.html", kIndex},
+        {"assets/b.css", "body{margin:0}"}, {"assets/fonts/rethink-sans-latin.woff2", font},
+        {kHashedScript, kScript},
+    };
 }
 
 }  // namespace
@@ -941,4 +957,73 @@ TEST_CASE(
     const auto features = splitOn(response->get_header_value("Permissions-Policy"), ',');
     const std::set<std::string> refused(features.begin(), features.end());
     CHECK(refused == std::set<std::string>{"camera=()", "microphone=()", "geolocation=()"});
+}
+
+TEST_CASE("an embedded file is found by its path and answers its own bytes, NULs included") {
+    const auto files = embeddedBuild();
+
+    CHECK(findEmbeddedFile(files, "index.html") == std::string_view(kIndex));
+    CHECK(findEmbeddedFile(files, kHashedScript) == std::string_view(kScript));
+    CHECK(findEmbeddedFile(files, "assets/fonts/rethink-sans-latin.woff2") ==
+          std::string_view(fontBytes()));
+}
+
+TEST_CASE("a path the build does not hold finds no embedded file") {
+    const auto files = embeddedBuild();
+
+    for (const char* path : {"missing.html", "assets", "index.htm"}) {
+        INFO("path: ", std::string(path));
+        CHECK_FALSE(findEmbeddedFile(files, path).has_value());
+    }
+}
+
+TEST_CASE("a path differing from an embedded file's only in case finds nothing") {
+    const auto files = embeddedBuild();
+
+    for (const char* path :
+         {"assets/index-bxk2aq9d.js", "assets/INDEX-BXK2AQ9D.JS", "Index.html", "INDEX.HTML"}) {
+        INFO("path: ", std::string(path));
+        CHECK_FALSE(findEmbeddedFile(files, path).has_value());
+    }
+}
+
+TEST_CASE("a build that embedded nothing finds no file and names no root") {
+    const std::span<const EmbeddedFile> nothing;
+
+    CHECK_FALSE(findEmbeddedFile(nothing, "index.html").has_value());
+    CHECK(embeddedRootNames(nothing).empty());
+}
+
+TEST_CASE("the build's root names are the first segment of every path, each once and sorted") {
+    CHECK(embeddedRootNames(embeddedBuild()) ==
+          std::vector<std::string>{"assets", "index.html", "locales"});
+}
+
+TEST_CASE("a path is within a root when it is the root or under it, and a sibling is neither") {
+    namespace fs = std::filesystem;
+    const fs::path root("/srv/www");
+
+    SUBCASE("a path inside") {
+        CHECK(isWithin(root, fs::path("/srv/www/index.html")));
+        CHECK(isWithin(root, fs::path("/srv/www/skins/mine/assets/x.js")));
+    }
+
+    SUBCASE("the root itself") {
+        CHECK(isWithin(root, fs::path("/srv/www")));
+    }
+
+    SUBCASE("a sibling whose name starts with the root's") {
+        CHECK_FALSE(isWithin(root, fs::path("/srv/www-old/index.html")));
+        CHECK_FALSE(isWithin(root, fs::path("/srv/www-old")));
+        CHECK_FALSE(isWithin(root, fs::path("/srv/wwwindex.html")));
+    }
+
+    SUBCASE("a path above") {
+        CHECK_FALSE(isWithin(root, fs::path("/srv")));
+        CHECK_FALSE(isWithin(root, fs::path("/")));
+    }
+
+    SUBCASE("a path under another folder of the root's name") {
+        CHECK_FALSE(isWithin(root, fs::path("/srv/other/www/index.html")));
+    }
 }

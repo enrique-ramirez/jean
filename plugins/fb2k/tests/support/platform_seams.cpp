@@ -11,7 +11,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <optional>
 #include <string_view>
 #include <system_error>
 
@@ -180,15 +179,6 @@ std::map<std::string, std::set<Seam>> seamsUnderSource() {
     }
 
     return found;
-}
-
-std::optional<std::string> repositoryFileText(const std::string& path) {
-    const std::filesystem::path file = std::filesystem::path(repositoryRoot()) / path;
-    std::error_code failed;
-    if (!std::filesystem::is_regular_file(file, failed))
-        return std::nullopt;
-
-    return readBinary(file, path);
 }
 
 }  // namespace jean::testing

@@ -2,7 +2,6 @@
 
 #include <pfc/string_conv.h>
 
-#include <algorithm>
 #include <string>
 
 namespace jean {
@@ -13,12 +12,13 @@ inline std::string toStd(const pfc::string8& text) {
     return std::string(text.c_str(), text.length());
 }
 
-// The separator foobar2000's library_manager::get_relative_path writes is undocumented, so a
-// backslash becomes '/' whatever the platform.
-inline std::string forwardSlashed(std::string path) {
-    std::replace(path.begin(), path.end(), '\\', '/');
-    return path;
-}
+// The separator foobar2000's library_manager::get_relative_path writes is undocumented. Windows
+// writes a backslash; macOS is taken to write a forward slash, as its own paths do.
+#ifdef _WIN32
+constexpr char kLibraryPathSeparator = '\\';
+#else
+constexpr char kLibraryPathSeparator = '/';
+#endif
 
 inline std::wstring toWide(const std::string& text) {
     return pfc::stringcvt::string_wide_from_utf8(text.c_str()).get_ptr();

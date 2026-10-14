@@ -4,6 +4,7 @@
 
 #include "core/ask_player.h"
 #include "core/log.h"
+#include "core/text.h"
 #include "fb2k/artwork.h"
 #include "fb2k/columns.h"
 #include "fb2k/strings.h"
@@ -408,7 +409,7 @@ private:
             // Keyed off the unnormalised path on purpose: the separator weighs in
             // foobar2000's comparison. See ARCHITECTURE.md, *Facts about the player*.
             sortKeys[n] = fb2k::makeSortString(relative.c_str());
-            paths[n] = forwardSlashed(toStd(relative));
+            paths[n] = forwardSlashed(toStd(relative), kLibraryPathSeparator);
             tracks[n].subsong = item->get_subsong_index();
             tracks[n].canonicalPath = item->get_path();
         }

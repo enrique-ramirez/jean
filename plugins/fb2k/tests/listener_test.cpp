@@ -4,9 +4,11 @@
 #include "third_party/doctest.h"
 
 #include "core/audience.h"
+#include "core/text.h"
 
 #include "support/fixtures.h"
 #include "support/log_capture.h"
+#include "support/sockets.h"
 #include "support/spec.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
@@ -32,6 +34,35 @@ httplib::Result anonymously(const TestServer& server, const std::string& method,
 
     return server.client().Post(path, "{}", "application/json");
 }
+
+constexpr char kEveryAddress[] = "0.0.0.0";
+
+bool names(const std::string& sentence, const std::string& what) {
+    return sentence.find(what) != std::string::npos;
+}
+
+bool namesAnOperatingSystem(const std::string& sentence) {
+    const std::string lowered = toLower(sentence);
+    const std::vector<std::string> systems = {"macos", "mac os",  "os x",  "darwin",
+                                              "apple", "windows", "linux", "posix"};
+    return std::any_of(systems.begin(), systems.end(),
+                       [&lowered](const std::string& system) { return names(lowered, system); });
+}
+
+struct ListenerBesideAHolder {
+    HeldAddress holder{TestServer::kClientHost};
+    Settings settings = onTheHoldersPort();
+    Audience audience{settings.maxConcurrentStreams, std::chrono::seconds(kMuteLingerSeconds)};
+    HttpServer server{settings, audience};
+    ListenerStatus status = server.start();
+
+    Settings onTheHoldersPort() const {
+        Settings wanted = servingSettings();
+        wanted.bindAddress = kEveryAddress;
+        wanted.port = holder.port();
+        return wanted;
+    }
+};
 
 }  // namespace
 
@@ -64,6 +95,105 @@ TEST_CASE("a bind address this machine does not hold is refused as unavailable, 
     CHECK_FALSE(server.status().portInUse);
     CHECK(server.status().error.find(settings.bindAddress) != std::string::npos);
     CHECK(server.status().error.find("not one this machine holds") != std::string::npos);
+}
+
+// macOS lets a listener take the wildcard address at a port where another socket already holds one
+// address, and never delivers it a connection to that address. Linux refuses the listener the port.
+TEST_CASE(
+    "a listener on every address names the one another program holds, or is refused the "
+    "port") {
+    const ListenerBesideAHolder beside;
+    REQUIRE(beside.holder.holding());
+    const auto& status = beside.status;
+
+#ifdef __APPLE__
+    REQUIRE(status.listening);
+#endif
+
+    if (!status.listening) {
+        MESSAGE("the port was refused: this platform gives the wildcard address to one socket");
+        CHECK(status.portInUse);
+        return;
+    }
+
+    MESSAGE("the port is shared: this platform let the listener in beside the holder");
+    CHECK(status.portIsShared);
+    CHECK(status.heldAddresses == std::vector<std::string>{TestServer::kClientHost});
+
+    const auto error = heldAddressError(status.heldAddresses, beside.settings.port);
+    CHECK(names(error, TestServer::kClientHost));
+    CHECK(names(error, std::to_string(beside.settings.port)));
+    CHECK(names(error, "bindAddress"));
+}
+
+TEST_CASE("a listener sharing its port still answers on an address nobody else holds") {
+    const ListenerBesideAHolder beside;
+    REQUIRE(beside.holder.holding());
+
+    if (!beside.status.listening) {
+        MESSAGE("nothing to serve: this platform refused the listener the port");
+        return;
+    }
+
+    const auto address = addressOnTheNetwork();
+    if (!address) {
+        MESSAGE("not asserted: this machine has no IPv4 address but loopback, which is held");
+        return;
+    }
+
+    httplib::Client client(*address, beside.settings.port);
+    client.set_connection_timeout(2, 0);
+    client.set_read_timeout(5, 0);
+
+    const auto response = client.Get("/api/status");
+    REQUIRE(response);
+    CHECK(response->get_header_value("Content-Type") == "application/json");
+}
+
+TEST_CASE(
+    "a listener on every address with the port to itself reports no held address, and says "
+    "whether one can still be taken") {
+    Settings settings = servingSettings();
+    settings.bindAddress = kEveryAddress;
+
+    const TestServer server(settings);
+    REQUIRE(server.status().listening);
+    const bool shared = server.status().portIsShared;
+
+    CHECK(server.status().heldAddresses.empty());
+    CHECK(shared == canTake(TestServer::kClientHost, server.port()));
+}
+
+TEST_CASE("a listener on one address shares nothing and reports no held address") {
+    Settings settings = servingSettings();
+    settings.bindAddress = TestServer::kClientHost;
+
+    const TestServer server(settings);
+
+    REQUIRE(server.status().listening);
+    CHECK_FALSE(server.status().portIsShared);
+    CHECK(server.status().heldAddresses.empty());
+}
+
+// 192.0.2.7 is in RFC 5737's TEST-NET-1, reserved for documentation.
+TEST_CASE("the error for held addresses names each one, the port and the bindAddress remedy") {
+    const auto error = heldAddressError({"127.0.0.1", "192.0.2.7"}, 8881);
+
+    CHECK(names(error, "127.0.0.1"));
+    CHECK(names(error, "192.0.2.7"));
+    CHECK(names(error, "8881"));
+    CHECK(names(error, "bindAddress"));
+    CHECK_FALSE(namesAnOperatingSystem(error));
+}
+
+TEST_CASE("the notice for a shared port is one line naming the port and bindAddress") {
+    const auto notice = sharedPortNotice(8881);
+
+    CHECK(names(notice, "8881"));
+    CHECK(names(notice, "bindAddress"));
+    CHECK_FALSE(names(notice, "\n"));
+    CHECK_FALSE(names(notice, "\r"));
+    CHECK_FALSE(namesAnOperatingSystem(notice));
 }
 
 TEST_CASE("a collision leaves the first server serving everything, not half of it") {

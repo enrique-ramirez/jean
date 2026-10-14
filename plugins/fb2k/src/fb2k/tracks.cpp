@@ -2,6 +2,7 @@
 
 #include "fb2k/tracks.h"
 
+#include "core/text.h"
 #include "fb2k/strings.h"
 
 #include <memory>
@@ -32,7 +33,7 @@ std::optional<std::string> libraryPathOf(const metadb_handle_ptr& track,
     if (!libraryManager->get_relative_path(track, relative))
         return std::nullopt;
 
-    return forwardSlashed(toStd(relative));
+    return forwardSlashed(toStd(relative), kLibraryPathSeparator);
 }
 
 NameScripts compiledNameScripts(const char* titleScript) {

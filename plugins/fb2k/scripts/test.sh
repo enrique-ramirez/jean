@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds and runs the test suite. Needs no foobar2000 SDK and no Windows: everything it covers lives in src/core/.
+# Builds and runs the test suite. Needs no foobar2000 SDK and no Windows: everything it covers lives in src/core/, bar the
+# AAC codec on a Mac, which is src/fb2k/aac_encoder_mac.cpp and needs only AudioToolbox.
 #
 #   scripts/test.sh                        everything
 #   scripts/test.sh '-sf=*cors_test.cpp'   one file
@@ -107,15 +108,12 @@ build_codec_archive_if_missing() {
   : "${CC:=cc}"
   mkdir -p "$codec"
 
-  # The demo programs carry their own main().
   local sources
-  sources=$(ls "$opus"/src/*.c "$opus"/celt/*.c "$opus"/silk/*.c "$opus"/silk/float/*.c \
-                "$ogg"/src/*.c | grep -vE '(_demo|opus_compare)\.c$')
+  sources=$(codec_source_files)
 
   # shellcheck disable=SC2086
-  (cd "$codec" && $CC -c -O2 -w "${codec_defines[@]}" ${platform_flags[@]+"${platform_flags[@]}"} $instrument \
-    -I"$opus" -I"$opus/include" -I"$opus/celt" -I"$opus/silk" -I"$opus/silk/float" \
-    -I"$ogg/include" $sources)
+  (cd "$codec" && $CC -c "${vendor_c_flags[@]}" "${codec_defines[@]}" ${platform_flags[@]+"${platform_flags[@]}"} $instrument \
+    "${codec_include_flags[@]}" $sources)
 
   ar rcs "$codec/libcodec.a" "$codec"/*.o
 }
@@ -129,21 +127,27 @@ build_zlib_archive_if_missing() {
   mkdir -p "$deflate"
 
   # shellcheck disable=SC2086
-  (cd "$deflate" && $CC -c -O2 -w ${platform_flags[@]+"${platform_flags[@]}"} $instrument "$zlib"/*.c)
+  (cd "$deflate" && $CC -c "${vendor_c_flags[@]}" ${platform_flags[@]+"${platform_flags[@]}"} $instrument "$zlib"/*.c)
 
   ar rcs "$deflate/libz.a" "$deflate"/*.o
 }
 
 # Only what changed since the last run is compiled, in parallel; scripts/lib/tests.mk has how.
 build_tests() {
+  local aac_sources="" aac_define="" aac_link=""
+  if [ "$(uname -s)" = Darwin ]; then
+    aac_sources="$root/src/fb2k/aac_encoder_mac.cpp"
+    aac_define="-DJEAN_TESTS_HAVE_AAC"
+    aac_link="-framework AudioToolbox"
+  fi
+
   # -Wno-unused-function because doctest's SUBCASE machinery generates some. The hardening
   # defines make libc++ and libstdc++ check bounds that AddressSanitizer cannot see inside one
   # live allocation.
-  local cxxflags="-g -O0 -Wall -Wextra -Werror -Wno-unused-function \
+  local cxxflags="-g -O0 ${warning_flags[*]} -Werror -Wno-unused-function \
     -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE -D_GLIBCXX_ASSERTIONS \
-    $instrument ${compile_flags[*]}"
-  local core_cxxflags="-Wunused-function -Wpedantic -Wshadow -Wold-style-cast \
-    -Wzero-as-null-pointer-constant -Wnon-virtual-dtor -Woverloaded-virtual"
+    $instrument $aac_define ${compile_flags[*]}"
+  local core_cxxflags="${core_warning_flags[*]}"
   local flags="$out/obj/flags"
 
   mkdir -p "$out/obj"
@@ -152,9 +156,9 @@ build_tests() {
   fi
 
   make -s -j "$(getconf _NPROCESSORS_ONLN)" -f "$root/scripts/lib/tests.mk" \
-    ROOT="$root" OUT="$out" CXX="$CXX" CXXFLAGS="$cxxflags" LDFLAGS="-g $instrument ${platform_flags[*]-}" \
+    ROOT="$root" OUT="$out" CXX="$CXX" CXXFLAGS="$cxxflags" LDFLAGS="-g $instrument ${platform_flags[*]-} $aac_link" \
     CORE_CXXFLAGS="$core_cxxflags" \
-    SOURCES="$(echo "$root"/tests/*.cpp "$root"/tests/support/*.cpp "$root"/src/core/*.cpp)" \
+    SOURCES="$(echo "$root"/tests/*.cpp "$root"/tests/support/*.cpp "$root"/src/core/*.cpp) $aac_sources" \
     LIBS="$codec/libcodec.a $deflate/libz.a" FLAGS="$flags"
 }
 

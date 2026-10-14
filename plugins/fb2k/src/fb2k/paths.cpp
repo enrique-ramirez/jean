@@ -2,8 +2,11 @@
 
 #include "fb2k/paths.h"
 
+#include "core/log.h"
 #include "core/version.h"
 #include "fb2k/strings.h"
+
+#include <mutex>
 
 namespace jean {
 
@@ -49,9 +52,17 @@ void ensureComponentDir() {
 }
 
 std::filesystem::path nativePathOf(const std::string& profilePath) {
-    pfc::string8 display;
-    filesystem::g_get_display_path(profilePath.c_str(), display);
-    return std::filesystem::path(toWide(toStd(display)));
+    pfc::string8 native;
+    if (!filesystem::g_get_native_path(profilePath.c_str(), native)) {
+        static std::once_flag complained;
+        std::call_once(complained, [&profilePath] {
+            logError("foobar2000 gave no native path for " + profilePath +
+                     ", so www/ is treated as absent and config.json as unwatched");
+        });
+        return {};
+    }
+
+    return std::filesystem::path(toWide(toStd(native)));
 }
 
 }  // namespace jean

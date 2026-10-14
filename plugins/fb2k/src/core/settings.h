@@ -55,8 +55,9 @@ constexpr int kMaxPort = 65535;
 constexpr int kMinOpusBitrate = 32000;
 constexpr int kMaxOpusBitrate = 510000;
 
-// The only values `MF_MT_AUDIO_AVG_BYTES_PER_SECOND` is documented to accept for AAC-LC.
-// Anything else and `SetOutputType` refuses, which drops the ADTS format silently.
+// The four values both encoders take: Media Foundation's AAC encoder (through
+// `MF_MT_AUDIO_AVG_BYTES_PER_SECOND`) and AudioToolbox's, which takes more. Anything else and
+// Media Foundation's `SetOutputType` refuses, which drops the ADTS format silently.
 constexpr int kAacBitrates[] = {96000, 128000, 160000, 192000};
 constexpr int kMinTicketTtlSeconds = 10;
 constexpr int kMaxTicketTtlSeconds = 3600;

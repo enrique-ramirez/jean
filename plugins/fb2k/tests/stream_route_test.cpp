@@ -5,12 +5,14 @@
 #include "third_party/doctest.h"
 
 #include "support/devices.h"
+#include "support/eventually.h"
 #include "support/http.h"
 #include "support/streams.h"
 #include "support/test_server.h"
 #include "support/tickets.h"
 #include "third_party/json.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <string>
 #include <vector>
@@ -491,4 +493,43 @@ TEST_CASE("a device arriving after another filled the store is handed a ticket t
     const auto stillGood = listen(server, last);
     REQUIRE(stillGood);
     CHECK(stillGood->status == 200);
+}
+
+// macOS and Linux raise SIGPIPE for a write to a socket whose peer has reset it, and the signal
+// ends a process that has not said otherwise. cpp-httplib's Server is what says otherwise, by
+// ignoring it for the whole process. Neither system's socket buffers hold 16 MiB between them,
+// so the server is still writing when the client goes.
+TEST_CASE("a client closing its connection part way through a stream leaves the server serving") {
+    constexpr size_t kChunkBytes = size_t{1} << 20U;
+    constexpr size_t kChunks = 16;
+
+    std::atomic<bool> ranToItsEnd{false};
+    const TestServer server(
+        servingSettings(),
+        TestServer::streaming([&ranToItsEnd](const std::string&) -> OpenedStream {
+            return {"audio/ogg",
+                    finiteStream(std::vector<std::string>(kChunks, std::string(kChunkBytes, 'o')),
+                                 [&ranToItsEnd] { ranToItsEnd = true; })};
+        }));
+
+    size_t received = 0;
+    server.client().Get("/api/stream?ticket=" + ticketFrom(server),
+                        [&received](const char*, size_t length) {
+                            received += length;
+                            return false;
+                        });
+
+    CHECK(received > 0);
+    CHECK(received < kChunks * kChunkBytes);
+
+    const auto connections = [&server] {
+        const auto roster = server.client().Get("/api/stream/listeners");
+        return roster && roster->status == 200 ? json::parse(roster->body).value("connections", -1)
+                                               : -1;
+    };
+
+    eventually([&connections] { return connections() == 0; });
+
+    CHECK(connections() == 0);
+    CHECK_FALSE(ranToItsEnd);
 }

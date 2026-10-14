@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/aac_stream.h"
 #include "core/stream.h"
 
 #include <cstddef>
@@ -8,8 +9,7 @@
 
 namespace jean::testing {
 
-// ISO/IEC 14496-3: an AAC access unit is 1024 samples a channel.
-constexpr size_t kAacFrameSamples = 1024;
+constexpr size_t kAacFrameSamples = kAacBlockFrames;
 
 struct AacSetup {
     unsigned channels = 0;
@@ -21,14 +21,8 @@ struct AacSetup {
 std::unique_ptr<StreamEncoder> platformAacEncoder(unsigned channels, unsigned sampleRate,
                                                   int bitrate);
 
-struct AacRefusal {
-    AacSetup setup;
-    const char* says = "";
-};
-
 struct AacCodecFacts {
     size_t framesHeldBack = 0;
-    std::vector<AacRefusal> refusals;
 };
 
 const AacCodecFacts& platformAacFacts();

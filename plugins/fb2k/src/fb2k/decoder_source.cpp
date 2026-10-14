@@ -507,8 +507,9 @@ SessionStream startSessionStream(Session& session, MainThreadQueue& mainThread,
     const int opusBitrate = settings.opusBitrate;
     const int aacBitrate = settings.aacBitrate;
 
-    // AacEncoder's constructor calls MFStartup and CoCreateInstance on the constructing thread,
-    // so a session's Streamer is built where the engine's is, on the main thread.
+    // The AAC stream's constructor opens its codec, and Media Foundation's opening calls MFStartup
+    // and CoCreateInstance on the constructing thread, so a session's Streamer is built where the
+    // engine's is, on the main thread.
     const Built built = askForOutcome<Built>(
         mainThread, "starting a session's stream",
         [&session, &audio, opusBitrate, aacBitrate, bufferSeconds] {

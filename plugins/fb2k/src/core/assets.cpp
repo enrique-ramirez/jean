@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <map>
+#include <set>
 
 namespace jean {
 
@@ -157,6 +158,35 @@ std::optional<std::string> interfaceContentType(const std::string& path) {
         return std::nullopt;
 
     return found->second;
+}
+
+std::optional<std::string_view> findEmbeddedFile(std::span<const EmbeddedFile> files,
+                                                 std::string_view path) {
+    const auto found = std::find_if(files.begin(), files.end(),
+                                    [path](const EmbeddedFile& file) { return file.path == path; });
+    if (found == files.end())
+        return std::nullopt;
+
+    return found->bytes;
+}
+
+std::vector<std::string> embeddedRootNames(std::span<const EmbeddedFile> files) {
+    std::set<std::string> names;
+    for (const auto& file : files)
+        names.emplace(file.path.substr(0, file.path.find('/')));
+
+    return {names.begin(), names.end()};
+}
+
+bool isWithin(const std::filesystem::path& root, const std::filesystem::path& candidate) {
+    auto rootPart = root.begin();
+    auto candidatePart = candidate.begin();
+    for (; rootPart != root.end(); ++rootPart, ++candidatePart) {
+        if (candidatePart == candidate.end() || *candidatePart != *rootPart)
+            return false;
+    }
+
+    return true;
 }
 
 PageRoute routePage(const std::string& resolvedPath, const std::vector<std::string>& pageNames) {

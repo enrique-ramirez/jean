@@ -43,8 +43,14 @@ $src = Join-Path $root 'src'
 $sdk = Join-Path $root 'sdk'
 if (-not (Test-Path (Join-Path $sdk 'foobar2000'))) { throw "The foobar2000 SDK is missing. Run scripts\fetch-sdk.ps1" }
 
+$flagsText = Get-Content -LiteralPath (Join-Path $root 'scripts\lib\compile-flags.sh') -Raw
+$generatedMatch = [regex]::Match($flagsText, '(?m)^fb2k_generated_sources=\(([^)]*)\)')
+if (-not $generatedMatch.Success) { throw "scripts/lib/compile-flags.sh no longer holds a fb2k_generated_sources=( ... ) list." }
+$generated = @($generatedMatch.Groups[1].Value -split '\s+' | Where-Object { $_ })
+
 if ($Files.Count -eq 0) {
-  $Files = Get-ChildItem (Join-Path $src 'fb2k') -Filter *.cpp | Where-Object Name -ne 'PCH.cpp' |
+  $Files = Get-ChildItem (Join-Path $src 'fb2k') -Filter *.cpp |
+    Where-Object { $_.Name -notin @('PCH.cpp', 'aac_encoder_mac.cpp') -and $generated -notcontains $_.Name } |
     Sort-Object Name | ForEach-Object FullName
   # The one core file with _WIN32 branches, which no other lint reaches.
   $Files += Join-Path $src 'core\http_server.cpp'
@@ -52,8 +58,13 @@ if ($Files.Count -eq 0) {
   $Files = $Files | ForEach-Object {
     $file = if ([IO.Path]::IsPathRooted($_)) { $_ } else { Join-Path $root $_ }
     if (-not (Test-Path -LiteralPath $file)) { throw "No such file: $file" }
-    $file
+    if ($generated -contains (Split-Path -Leaf $file)) {
+      Write-Warning "$file was skipped: it is in fb2k_generated_sources in scripts/lib/compile-flags.sh."
+    } else {
+      $file
+    }
   }
+  if (-not $Files) { throw "Nothing to lint." }
 }
 
 # /imsvc marks a directory as a system one to clang-tidy, so warnings in the SDK, WTL and the

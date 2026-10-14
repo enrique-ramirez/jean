@@ -29,6 +29,8 @@ public:
     // Appends only what a listener joining at the end of `out` can start decoding from.
     virtual void write(const float* samples, size_t frames, std::vector<std::uint8_t>& out) = 0;
 
+    virtual void dropHeld() = 0;
+
     StreamEncoder(const StreamEncoder&) = delete;
     StreamEncoder& operator=(const StreamEncoder&) = delete;
 

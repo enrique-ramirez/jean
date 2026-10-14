@@ -12,9 +12,7 @@ third_party/ogg/
 # so it belongs to one machine.
 compile_commands.json
 
-# Jean's build, embedded as a resource. scripts/embed-ui.ps1 writes these from ui/dist.
-src/fb2k/ui_assets.rc
-src/fb2k/ui_assets_table.inc
+src/fb2k/ui_assets_table.cpp
 
 # MSBuild
 [Bb]in/

@@ -217,4 +217,24 @@ void OpusStream::write(const float* samples, size_t frames, std::vector<std::uin
                         state.pending.begin() + static_cast<std::ptrdiff_t>(consumed));
 }
 
+void OpusStream::dropHeld() {
+    auto& state = *state_;
+    if (!ok())
+        return;
+
+    state.pending.clear();
+    opus_encoder_ctl(state.encoder, OPUS_RESET_STATE);
+
+    // ogg_stream_reset empties libogg's queue of packets, and also restarts the page count and
+    // marks the next page a first page, which would start a second stream.
+    const auto pageNumber = state.ogg.pageno;
+    const auto firstPageWritten = state.ogg.b_o_s;
+    ogg_stream_reset(&state.ogg);
+    state.ogg.pageno = pageNumber;
+    state.ogg.b_o_s = firstPageWritten;
+
+    state.granule -= state.packetsOnPage * static_cast<std::int64_t>(kFrameSize);
+    state.packetsOnPage = 0;
+}
+
 }  // namespace jean

@@ -3,7 +3,6 @@
 #include "support/platform_seams.h"
 
 #include <map>
-#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -16,33 +15,36 @@ struct PlatformFile {
     std::string path;
     std::set<Seam> allowed;
     std::string why;
-    std::optional<std::string> writtenBy = std::nullopt;
 };
 
 const std::vector<PlatformFile>& platformFiles() {
     static const std::vector<PlatformFile> files = {
         {"plugins/fb2k/src/core/http_server.cpp",
-         {Seam::conditional},
-         "the socket's address option and its error codes, which differ between Windows and POSIX"},
+         {Seam::conditional, Seam::systemHeader},
+         "the socket's address option and its error codes, which differ between Windows and POSIX, "
+         "and the list of this machine's addresses"},
         {"plugins/fb2k/src/fb2k/aac_encoder.cpp",
          {Seam::systemHeader},
          "Media Foundation, the AAC encoder"},
+        {"plugins/fb2k/src/fb2k/aac_encoder_mac.cpp",
+         {Seam::platformName, Seam::systemHeader},
+         "AudioToolbox, the AAC encoder"},
         {"plugins/fb2k/src/fb2k/browser.cpp",
-         {Seam::systemHeader},
-         "the shell's open, to start the user's browser"},
+         {Seam::conditional, Seam::systemHeader},
+         "the system call that opens a URL in the user's browser: the shell's open on Windows, "
+         "Launch Services on macOS"},
         {"plugins/fb2k/src/fb2k/com_thread.h",
          {Seam::conditional, Seam::systemHeader},
          "COM for a thread, on Windows"},
         {"plugins/fb2k/src/fb2k/preferences.rc",
          {Seam::platformName, Seam::systemHeader},
          "the preferences dialogs' layout, a resource script that includes windows.h"},
+        {"plugins/fb2k/src/fb2k/strings.h",
+         {Seam::conditional},
+         "the separator foobar2000 writes in a library path, which differs by platform"},
         {"plugins/fb2k/src/fb2k/ticket_mint.cpp",
          {Seam::conditional, Seam::systemHeader},
          "the operating system's randomness, for stream tickets"},
-        {"plugins/fb2k/src/fb2k/ui_assets.rc",
-         {Seam::platformName},
-         "the embedded web UI's resource script, written by the Windows build",
-         "plugins/fb2k/scripts/embed-ui.ps1"},
     };
     return files;
 }
@@ -51,10 +53,6 @@ std::string ruleAndList() {
     return " A platform file may hold only the call into the operating system or the player "
            "(plugins/fb2k/CONTRIBUTING.md, section 1). The list is in "
            "plugins/fb2k/tests/platform_seams_test.cpp.";
-}
-
-std::string withoutDirectory(const std::string& path) {
-    return path.substr(path.rfind('/') + 1);
 }
 
 std::vector<std::string> unlistedSeams(const std::vector<PlatformFile>& list,
@@ -78,8 +76,7 @@ std::vector<std::string> unlistedSeams(const std::vector<PlatformFile>& list,
 }
 
 std::vector<std::string> staleEntries(const std::vector<PlatformFile>& list,
-                                      const std::map<std::string, std::set<Seam>>& found,
-                                      const std::map<std::string, std::string>& writerTexts) {
+                                      const std::map<std::string, std::set<Seam>>& found) {
     std::vector<std::string> complaints;
     const auto complain = [&](const std::string& what) {
         complaints.push_back(what + ruleAndList());
@@ -90,21 +87,9 @@ std::vector<std::string> staleEntries(const std::vector<PlatformFile>& list,
             complain(file.path +
                      " is listed for no kind of seam. Give it one or delete its entry.");
 
-        if (file.writtenBy.has_value()) {
-            const std::string& writer = *file.writtenBy;
-            const auto script = writerTexts.find(writer);
-            if (script == writerTexts.end())
-                complain(file.path + " is listed as written by " + writer +
-                         ", which is gone. Delete its entry.");
-            else if (script->second.find(withoutDirectory(file.path)) == std::string::npos)
-                complain(file.path + " is listed as written by " + writer +
-                         ", which no longer names it. Delete its entry.");
-        }
-
         const auto present = found.find(file.path);
         if (present == found.end()) {
-            if (!file.writtenBy.has_value())
-                complain(file.path + " is listed but is not in the tree. Delete its entry.");
+            complain(file.path + " is listed but is not in the tree. Delete its entry.");
             continue;
         }
 
@@ -210,16 +195,7 @@ TEST_CASE("every platform seam under src/ is listed") {
 }
 
 TEST_CASE("every listed entry still holds what it was listed for") {
-    std::map<std::string, std::string> writerTexts;
-    for (const PlatformFile& file : platformFiles()) {
-        if (!file.writtenBy.has_value())
-            continue;
-        if (const auto text = repositoryFileText(*file.writtenBy); text.has_value())
-            writerTexts[*file.writtenBy] = *text;
-    }
-
-    for (const std::string& complaint :
-         staleEntries(platformFiles(), seamsUnderSource(), writerTexts))
+    for (const std::string& complaint : staleEntries(platformFiles(), seamsUnderSource()))
         CHECK_MESSAGE(false, complaint);
 }
 
@@ -242,31 +218,14 @@ TEST_CASE("an unlisted seam is named for each file that holds it, and a listed o
 TEST_CASE("a stale entry is named, whichever way it went stale") {
     const std::map<std::string, std::set<Seam>> found = {{"src/held.cpp", {Seam::conditional}},
                                                          {"src/emptied.cpp", {}}};
-    const std::map<std::string, std::string> writerTexts = {{"s/writes.ps1", "Out 'src\\gen.rc'"},
-                                                            {"s/other.ps1", "Out 'src\\else.rc'"}};
     const auto complaintsAbout = [&](const PlatformFile& entry) {
-        return staleEntries({entry}, found, writerTexts);
+        return staleEntries({entry}, found);
     };
 
-    CHECK(complaintsAbout({"src/held.cpp", {Seam::conditional}, "", std::nullopt}).empty());
-    CHECK(complaintsAbout({"src/emptied.cpp", {Seam::conditional}, "", std::nullopt}).size() == 1);
-    CHECK(complaintsAbout({"src/gone.cpp", {Seam::conditional}, "", std::nullopt}).size() == 1);
-    CHECK(complaintsAbout({"src/held.cpp", {}, "", std::nullopt}).size() == 1);
-}
-
-TEST_CASE("a generated file may be absent only while its writer still names it") {
-    const std::map<std::string, std::set<Seam>> found = {{"src/gen.rc", {Seam::platformName}}};
-    const std::map<std::string, std::string> writerTexts = {{"s/writes.ps1", "Out 'src\\gen.rc'"},
-                                                            {"s/other.ps1", "Out 'src\\else.rc'"}};
-    const auto complaintsAbout = [&](const PlatformFile& entry) {
-        return staleEntries({entry}, found, writerTexts);
-    };
-    const std::set<Seam> named = {Seam::platformName};
-
-    CHECK(complaintsAbout({"src/absent.rc", named, "", "s/writes.ps1"}).size() == 1);
-    CHECK(complaintsAbout({"src/gen.rc", named, "", "s/writes.ps1"}).empty());
-    CHECK(complaintsAbout({"src/gen.rc", named, "", "s/other.ps1"}).size() == 1);
-    CHECK(complaintsAbout({"src/gen.rc", named, "", "s/missing.ps1"}).size() == 1);
+    CHECK(complaintsAbout({"src/held.cpp", {Seam::conditional}, ""}).empty());
+    CHECK(complaintsAbout({"src/emptied.cpp", {Seam::conditional}, ""}).size() == 1);
+    CHECK(complaintsAbout({"src/gone.cpp", {Seam::conditional}, ""}).size() == 1);
+    CHECK(complaintsAbout({"src/held.cpp", {}, ""}).size() == 1);
 }
 
 }  // namespace jean::testing

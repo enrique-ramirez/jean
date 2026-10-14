@@ -18,13 +18,38 @@
 # clang and gcc both take -isystem joined to its path, so either style is one array element.
 #
 # src/fb2k/ is parsed and linted on a Mac with sdk/foobar2000 fetched, all but the files in
-# $fb2k_unparsed_sources, and is linked and run nowhere but the build machine. The foobar2000
+# $fb2k_unparsed_sources and $fb2k_generated_sources, and is compiled and linked by the build
+# machine and by scripts/build-mac.sh, and run only inside a player. The foobar2000
 # SDK is somebody else's code and noisy, so it is always -isystem. Elsewhere the Windows SDK
 # is needed, and MSBuild produces no compilation database.
 
 : "${vendor_include:=-I}"
 
 codec_defines=(-DOPUS_BUILD -DUSE_ALLOCA -DHAVE_LRINTF)
+
+codec_include_flags=(
+  "-I$root/third_party/opus"
+  "-I$root/third_party/opus/include"
+  "-I$root/third_party/opus/celt"
+  "-I$root/third_party/opus/silk"
+  "-I$root/third_party/opus/silk/float"
+  "-I$root/third_party/ogg/include"
+)
+
+# The demo programs carry their own main().
+codec_source_files() {
+  ls "$root"/third_party/opus/src/*.c "$root"/third_party/opus/celt/*.c \
+    "$root"/third_party/opus/silk/*.c "$root"/third_party/opus/silk/float/*.c \
+    "$root"/third_party/ogg/src/*.c | grep -vE '(_demo|opus_compare)\.c$'
+}
+
+warning_flags=(-Wall -Wextra)
+vendor_c_flags=(-O2 -w)
+
+core_warning_flags=(
+  -Wunused-function -Wpedantic -Wshadow -Wold-style-cast
+  -Wzero-as-null-pointer-constant -Wnon-virtual-dtor -Woverloaded-virtual
+)
 
 platform_flags=()
 if [ "$(uname -s)" = Darwin ]; then
@@ -47,7 +72,9 @@ compile_flags+=(${platform_flags[@]+"${platform_flags[@]}"})
 
 # Files the foobar2000 SDK or the Windows headers keep clang on a Mac from parsing. .clangd names
 # the same files.
-fb2k_unparsed_sources=(preferences.cpp aac_encoder.cpp browser.cpp ui_assets.cpp)
+fb2k_unparsed_sources=(preferences.cpp aac_encoder.cpp)
+
+fb2k_generated_sources=(ui_assets_table.cpp)
 
 fb2k_compile_flags=(
   "${compile_flags[@]}"
@@ -70,9 +97,17 @@ is_fb2k_unparsed() {
   return 1
 }
 
+is_fb2k_generated() {
+  local name
+  for name in "${fb2k_generated_sources[@]}"; do
+    [ "${1##*/}" != "$name" ] || return 0
+  done
+  return 1
+}
+
 fb2k_sources=()
 if [ -z "$fb2k_skipped" ]; then
   for fb2k_file in "$root"/src/fb2k/*.cpp; do
-    is_fb2k_unparsed "$fb2k_file" || fb2k_sources+=("$fb2k_file")
+    is_fb2k_unparsed "$fb2k_file" || is_fb2k_generated "$fb2k_file" || fb2k_sources+=("$fb2k_file")
   done
 fi

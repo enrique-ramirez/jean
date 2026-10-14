@@ -2,40 +2,30 @@
 
 #include "fb2k/ticket_mint.h"
 
-#include <numeric>
+#include "core/text.h"
+
+#include <array>
 
 #ifdef _WIN32
 #include <bcrypt.h>
 #pragma comment(lib, "bcrypt.lib")
+#else
+#include <stdlib.h>
 #endif
 
 namespace jean {
 
-namespace {
-
-std::string toHex(const unsigned char* bytes, size_t count) {
-    static constexpr char kDigits[] = "0123456789abcdef";
-
-    return std::accumulate(bytes, bytes + count, std::string(),
-                           [](std::string out, unsigned char byte) {
-                               out.push_back(kDigits[byte >> 4]);
-                               out.push_back(kDigits[byte & 0x0f]);
-                               return out;
-                           });
-}
-
-}  // namespace
-
 std::string mintTicket() {
+    std::array<unsigned char, 32> bytes{};
 #ifdef _WIN32
-    unsigned char bytes[32];
-    if (BCryptGenRandom(nullptr, bytes, sizeof(bytes), BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0)
+    if (BCryptGenRandom(nullptr, bytes.data(), static_cast<ULONG>(bytes.size()),
+                        BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0)
         return std::string();
-
-    return toHex(bytes, sizeof(bytes));
 #else
-    return std::string();
+    arc4random_buf(bytes.data(), bytes.size());
 #endif
+
+    return toHex(bytes);
 }
 
 }  // namespace jean

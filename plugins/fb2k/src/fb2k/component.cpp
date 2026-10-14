@@ -258,6 +258,10 @@ public:
                 logInfo("opening " + url + " in the default browser");
                 openInBrowser(url);
             }
+            if (!status_.heldAddresses.empty())
+                logError(heldAddressError(status_.heldAddresses, settings_.port));
+            if (status_.portIsShared)
+                logInfo(sharedPortNotice(settings_.port));
         } else {
             logError(status_.error);
             if (status_.portInUse)

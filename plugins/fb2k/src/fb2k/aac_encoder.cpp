@@ -11,8 +11,10 @@
 #include <wmcodecdsp.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cstdio>
+#include <cstring>
+#include <optional>
+#include <string>
 #include <utility>
 
 #pragma comment(lib, "mfplat.lib")
@@ -24,32 +26,13 @@ namespace jean {
 namespace {
 
 constexpr unsigned kBitsPerSample = 16;
+constexpr LONGLONG kHundredNanosecondsPerSecond = 10000000;
 
-// ISO/IEC 14496-3 sampling frequency indices, and the only rates the Windows encoder
-// accepts. Anything else must be resampled before it reaches here.
-int samplingFrequencyIndex(unsigned sampleRate) {
-    switch (sampleRate) {
-        case 48000:
-            return 3;
-        case 44100:
-            return 4;
-        default:
-            return -1;
-    }
-}
-
-void appendAdtsHeader(std::vector<std::uint8_t>& out, size_t payload, int frequencyIndex,
-                      unsigned channels) {
-    const size_t total = payload + 7;
-
-    out.push_back(0xff);
-    out.push_back(0xf1);  // MPEG-4, layer 0, no CRC
-    out.push_back(
-        static_cast<std::uint8_t>((1 << 6) | (frequencyIndex << 2) | ((channels >> 2) & 1)));
-    out.push_back(static_cast<std::uint8_t>(((channels & 3) << 6) | ((total >> 11) & 3)));
-    out.push_back(static_cast<std::uint8_t>((total >> 3) & 0xff));
-    out.push_back(static_cast<std::uint8_t>(((total & 7) << 5) | 0x1f));
-    out.push_back(0xfc);
+std::string failure(const char* what, HRESULT result) {
+    char code[16];
+    static_cast<void>(
+        std::snprintf(code, sizeof code, "0x%08lx", static_cast<unsigned long>(result)));
+    return std::string(what) + " (" + code + ")";
 }
 
 class BufferLock {
@@ -72,61 +55,56 @@ void describeAudio(const pfc::com_ptr_t<IMFMediaType>& type, unsigned channels,
     type->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, channels);
 }
 
-}  // namespace
+class MediaFoundationCodec final : public AacCodec {
+public:
+    MediaFoundationCodec() = default;
+    ~MediaFoundationCodec() override { release(); }
 
-struct AacEncoder::State {
-    void fail(std::string message);
-    void fail(const char* what, HRESULT result);
+    std::optional<std::string> open(unsigned channels, unsigned sampleRate, int bitrate) override;
+    std::optional<std::string> encode(std::span<const float> block,
+                                      std::vector<std::vector<std::uint8_t>>& packets) override;
+    std::optional<std::string> reset() override;
 
-    pfc::com_ptr_t<IMFTransform> encoder;
+    void close() override { release(); }
 
-    std::string error;
-    std::atomic<bool> broken{false};
+private:
+    std::optional<std::string> refuse(std::string reason) {
+        release();
+        return reason;
+    }
 
-    unsigned channels = 2;
-    unsigned sampleRate = 48000;
-    int frequencyIndex = 3;
+    void release();
 
-    bool mfStarted = false;
-    bool started = false;
+    pfc::com_ptr_t<IMFTransform> encoder_;
 
-    LONGLONG time = 0;
+    bool mfStarted_ = false;
+    bool started_ = false;
 
-    Pcm16Converter toPcm16;
-    std::vector<std::int16_t> pcm;
+    LONGLONG blockDuration_ = 0;
+    LONGLONG time_ = 0;
+
+    Pcm16Converter toPcm16_;
+    std::vector<std::int16_t> pcm_;
 };
 
-AacEncoder::AacEncoder(unsigned channels, unsigned sampleRate, int bitrate)
-    : state_(std::make_unique<State>()) {
-    auto& state = *state_;
-    state.channels = channels;
-    state.sampleRate = sampleRate;
-    state.frequencyIndex = samplingFrequencyIndex(sampleRate);
+std::optional<std::string> MediaFoundationCodec::open(unsigned channels, unsigned sampleRate,
+                                                      int bitrate) {
+    blockDuration_ = static_cast<LONGLONG>(kAacBlockFrames) * kHundredNanosecondsPerSecond /
+                     static_cast<LONGLONG>(sampleRate);
 
-    if (state.frequencyIndex < 0) {
-        state.fail("the Windows AAC encoder takes 44100 or 48000 Hz only");
-        return;
-    }
-
-    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_LITE))) {
-        state.fail("could not start Media Foundation");
-        return;
-    }
-    state.mfStarted = true;
+    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_LITE)))
+        return refuse("could not start Media Foundation");
+    mfStarted_ = true;
 
     // fb2k::audioEncoder has no implementations registered in foobar2000 or its common
     // components, so AAC comes from the one Windows ships.
     if (FAILED(CoCreateInstance(CLSID_AACMFTEncoder, nullptr, CLSCTX_INPROC_SERVER,
-                                IID_PPV_ARGS(state.encoder.receive_ptr())))) {
-        state.fail("this Windows has no AAC encoder");
-        return;
-    }
+                                IID_PPV_ARGS(encoder_.receive_ptr()))))
+        return refuse("this Windows has no AAC encoder");
 
     pfc::com_ptr_t<IMFMediaType> output;
-    if (FAILED(MFCreateMediaType(output.receive_ptr()))) {
-        state.fail("could not describe the AAC output");
-        return;
-    }
+    if (FAILED(MFCreateMediaType(output.receive_ptr())))
+        return refuse("could not describe the AAC output");
 
     output->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
     output->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_AAC);
@@ -138,127 +116,101 @@ AacEncoder::AacEncoder(unsigned channels, unsigned sampleRate, int bitrate)
     // Foundation wants the output type set before the input type.
     output->SetUINT32(MF_MT_AAC_PAYLOAD_TYPE, 0);
 
-    if (FAILED(state.encoder->SetOutputType(0, output.get_ptr(), 0))) {
-        state.fail("the AAC encoder refused these output settings");
-        return;
-    }
+    if (FAILED(encoder_->SetOutputType(0, output.get_ptr(), 0)))
+        return refuse("the AAC encoder refused these output settings");
 
     pfc::com_ptr_t<IMFMediaType> input;
-    if (FAILED(MFCreateMediaType(input.receive_ptr()))) {
-        state.fail("could not describe the PCM input");
-        return;
-    }
+    if (FAILED(MFCreateMediaType(input.receive_ptr())))
+        return refuse("could not describe the PCM input");
 
     input->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
     input->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
     describeAudio(input, channels, sampleRate);
 
-    if (FAILED(state.encoder->SetInputType(0, input.get_ptr(), 0))) {
-        state.fail("the AAC encoder refused 16-bit PCM");
-        return;
-    }
+    if (FAILED(encoder_->SetInputType(0, input.get_ptr(), 0)))
+        return refuse("the AAC encoder refused 16-bit PCM");
 
-    state.encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
-    state.encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0);
-    state.started = true;
+    encoder_->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
+    encoder_->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0);
+    started_ = true;
+    return std::nullopt;
 }
 
-AacEncoder::~AacEncoder() {
-    if (state_->started) {
-        state_->encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0);
-        state_->encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
+void MediaFoundationCodec::release() {
+    if (started_) {
+        encoder_->ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0);
+        encoder_->ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
     }
+    started_ = false;
 
-    state_->encoder.release();
+    encoder_.release();
 
-    if (state_->mfStarted)
+    if (mfStarted_)
         MFShutdown();
+    mfStarted_ = false;
 }
 
-bool AacEncoder::ok() const {
-    return !state_->broken.load();
+std::optional<std::string> MediaFoundationCodec::reset() {
+    // MFT_MESSAGE_COMMAND_FLUSH tells a transform to discard the samples it holds and leaves it
+    // accepting input with its media types kept.
+    if (const HRESULT result = encoder_->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
+        FAILED(result))
+        return failure("the AAC encoder could not be flushed", result);
+
+    time_ = 0;
+    toPcm16_ = Pcm16Converter();
+    return std::nullopt;
 }
 
-const std::string& AacEncoder::error() const {
-    return state_->error;
-}
+std::optional<std::string> MediaFoundationCodec::encode(
+    std::span<const float> block, std::vector<std::vector<std::uint8_t>>& packets) {
+    toPcm16_.convert(block.data(), block.size(), pcm_);
 
-void AacEncoder::State::fail(std::string message) {
-    if (broken.load())
-        return;
-
-    error = std::move(message);
-    broken.store(true);
-}
-
-void AacEncoder::State::fail(const char* what, HRESULT result) {
-    if (broken.load())
-        return;
-
-    char code[16];
-    static_cast<void>(
-        std::snprintf(code, sizeof code, "0x%08lx", static_cast<unsigned long>(result)));
-    fail(std::string(what) + " (" + code + ")");
-}
-
-void AacEncoder::write(const float* samples, size_t frames, std::vector<std::uint8_t>& out) {
-    auto& state = *state_;
-    if (!ok() || frames == 0)
-        return;
-
-    const size_t count = frames * state.channels;
-    state.toPcm16.convert(samples, count, state.pcm);
-
-    const auto bytes = static_cast<DWORD>(count * sizeof(std::int16_t));
+    const auto bytes = static_cast<DWORD>(block.size() * sizeof(std::int16_t));
 
     pfc::com_ptr_t<IMFMediaBuffer> buffer;
-    if (FAILED(MFCreateMemoryBuffer(bytes, buffer.receive_ptr())))
-        return;
+    if (const HRESULT result = MFCreateMemoryBuffer(bytes, buffer.receive_ptr()); FAILED(result))
+        return failure("could not allocate the PCM buffer", result);
 
     BYTE* target = nullptr;
-    if (FAILED(buffer->Lock(&target, nullptr, nullptr)))
-        return;
-    memcpy(target, state.pcm.data(), bytes);
+    if (const HRESULT result = buffer->Lock(&target, nullptr, nullptr); FAILED(result))
+        return failure("could not lock the PCM buffer", result);
+    memcpy(target, pcm_.data(), bytes);
     buffer->Unlock();
     buffer->SetCurrentLength(bytes);
 
-    const LONGLONG duration =
-        static_cast<LONGLONG>(frames) * 10000000 / static_cast<LONGLONG>(state.sampleRate);
-
     pfc::com_ptr_t<IMFSample> sample;
-    if (FAILED(MFCreateSample(sample.receive_ptr())))
-        return;
+    if (const HRESULT result = MFCreateSample(sample.receive_ptr()); FAILED(result))
+        return failure("could not allocate the PCM sample", result);
     sample->AddBuffer(buffer.get_ptr());
     // Media Foundation refuses a sample lacking either time or duration with 0xc00d36c8.
-    sample->SetSampleTime(state.time);
-    sample->SetSampleDuration(duration);
-    state.time += duration;
+    sample->SetSampleTime(time_);
+    sample->SetSampleDuration(blockDuration_);
+    time_ += blockDuration_;
 
-    if (const HRESULT result = state.encoder->ProcessInput(0, sample.get_ptr(), 0);
-        FAILED(result)) {
-        state.fail("the encoder refused input", result);
-        return;
-    }
+    if (const HRESULT result = encoder_->ProcessInput(0, sample.get_ptr(), 0); FAILED(result))
+        return failure("the encoder refused input", result);
 
     MFT_OUTPUT_STREAM_INFO info{};
-    state.encoder->GetOutputStreamInfo(0, &info);
+    encoder_->GetOutputStreamInfo(0, &info);
 
     for (;;) {
         pfc::com_ptr_t<IMFMediaBuffer> outBuffer;
-        if (FAILED(
-                MFCreateMemoryBuffer(std::max<DWORD>(info.cbSize, 4096), outBuffer.receive_ptr())))
-            return;
+        if (const HRESULT result =
+                MFCreateMemoryBuffer(std::max<DWORD>(info.cbSize, 4096), outBuffer.receive_ptr());
+            FAILED(result))
+            return failure("could not allocate the output buffer", result);
 
         pfc::com_ptr_t<IMFSample> outSample;
-        if (FAILED(MFCreateSample(outSample.receive_ptr())))
-            return;
+        if (const HRESULT result = MFCreateSample(outSample.receive_ptr()); FAILED(result))
+            return failure("could not allocate the output sample", result);
         outSample->AddBuffer(outBuffer.get_ptr());
 
         MFT_OUTPUT_DATA_BUFFER produced{};
         produced.pSample = outSample.get_ptr();
         DWORD status = 0;
 
-        const HRESULT result = state.encoder->ProcessOutput(0, 1, &produced, &status);
+        const HRESULT result = encoder_->ProcessOutput(0, 1, &produced, &status);
 
         // Media Foundation hands back the events already referenced, for the caller to
         // release.
@@ -273,30 +225,36 @@ void AacEncoder::write(const float* samples, size_t frames, std::vector<std::uin
             replacement.attach(produced.pSample);
 
         if (result == MF_E_TRANSFORM_NEED_MORE_INPUT)
-            return;
-        if (FAILED(result)) {
-            state.fail("the encoder failed mid-stream", result);
-            return;
-        }
+            return std::nullopt;
+        if (FAILED(result))
+            return failure("the encoder failed mid-stream", result);
 
         // Read through what came back rather than what went in, so a replaced sample is not
         // silently read as an empty buffer.
+        if (produced.pSample == nullptr)
+            return std::string("the encoder answered without a sample");
+
         pfc::com_ptr_t<IMFMediaBuffer> filled;
-        if (produced.pSample == nullptr ||
-            FAILED(produced.pSample->ConvertToContiguousBuffer(filled.receive_ptr())))
-            return;
+        if (const HRESULT converted =
+                produced.pSample->ConvertToContiguousBuffer(filled.receive_ptr());
+            FAILED(converted))
+            return failure("could not read the encoded frame", converted);
 
         BYTE* data = nullptr;
         DWORD length = 0;
-        if (FAILED(filled->Lock(&data, nullptr, &length)))
-            return;
+        if (const HRESULT locked = filled->Lock(&data, nullptr, &length); FAILED(locked))
+            return failure("could not lock the encoded frame", locked);
         const BufferLock unlock(filled.get_ptr());
 
-        if (length > 0) {
-            appendAdtsHeader(out, length, state.frequencyIndex, state.channels);
-            out.insert(out.end(), data, data + length);
-        }
+        if (length > 0)
+            packets.emplace_back(data, data + length);
     }
+}
+
+}  // namespace
+
+std::unique_ptr<AacCodec> platformAacCodec() {
+    return std::make_unique<MediaFoundationCodec>();
 }
 
 }  // namespace jean

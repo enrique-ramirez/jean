@@ -13,9 +13,11 @@ import type * as Playback from "../../src/shared/api/playback.ts";
 
 const PLAYBACK_COMMANDS = [
 	"nextTrack",
+	"pause",
 	"playLibrarySet",
 	"playPause",
 	"previousTrack",
+	"resume",
 	"seekBy",
 	"seekTo",
 	"setActiveOutput",

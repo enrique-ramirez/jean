@@ -1,5 +1,6 @@
 import { CornerDownLeft, RotateCcw, RotateCw } from "lucide-react";
 
+import { refusalUnless } from "@/domain/player/usePlaybackControl";
 import {
 	KEY_SEEK_SECONDS,
 	usePlayPause,
@@ -110,7 +111,7 @@ export function EditorTransport({
 				isPlaying={snapshot?.player?.playbackState === "playing"}
 				onToggle={() => playPause.mutate()}
 				className={styles.play}
-				disabled={!canControlPlayback}
+				refusal={refusalUnless(canControlPlayback)}
 			/>
 			{seekButton(KEY_SEEK_SECONDS, "shortcut.seekForward", RotateCw)}
 		</>

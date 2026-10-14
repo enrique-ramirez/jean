@@ -62,6 +62,8 @@ export const SESSION_SCOPED = {
 	"/playlists/{id}/items/{index}/play": true,
 	"/playback/play": true,
 	"/playback/play-pause": true,
+	"/playback/pause": true,
+	"/playback/resume": true,
 	"/playback/next": true,
 	"/playback/previous": true,
 	"/playback/stop": true,

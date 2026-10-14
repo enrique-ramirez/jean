@@ -85,6 +85,7 @@ private:
         std::string format;
         Clock::time_point joinedAt;
         std::uint64_t connection = 0;
+        bool left = false;
     };
 
     struct Departure {
@@ -111,6 +112,7 @@ private:
     static void dropDepartures(std::vector<Departure>& departures, const Key& key);
     static void dropExpired(std::vector<Departure>& departures, Clock::time_point now);
     static bool stillHolding(const std::vector<Entry>& entries, const Key& key);
+    static void markLeft(std::vector<Entry>& entries, const Key& key, bool left);
 
     bool listeningLocked(Clock::time_point now) const;
 

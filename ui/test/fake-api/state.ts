@@ -650,6 +650,30 @@ export function createState({
 		afterSkipDelay(() => setActive(playlist, next, "playing"));
 	};
 
+	const pause = () => {
+		if (state.player.playbackState !== "playing") return;
+		state.player.playbackState = "paused";
+		markPosition(state.player.activeItem.position);
+		notify({ player: true });
+	};
+
+	const resume = () => {
+		const { playbackState, activeItem } = state.player;
+		if (playbackState === "playing") return;
+		if (playbackState === "stopped") {
+			// Stopped-then-play resumes the current playlist from the top, which is
+			// what foobar does with no active item.
+			const playlist =
+				state.playlists.find((entry) => entry.isCurrent) ?? state.playlists[0];
+			if (playlist?.items.length)
+				setActive(playlist, Math.max(activeItem.index, 0), "playing");
+			return;
+		}
+		state.player.playbackState = "playing";
+		markPosition(activeItem.position);
+		notify({ player: true });
+	};
+
 	const feed = state.libraryFeed;
 
 	const RETAINED_REVISIONS = 32;
@@ -992,22 +1016,12 @@ export function createState({
 		},
 
 		playPause() {
-			const { playbackState, activeItem } = state.player;
-			if (playbackState === "stopped") {
-				// Stopped-then-play resumes the current playlist from the top, which is
-				// what foobar does with no active item.
-				const playlist =
-					state.playlists.find((entry) => entry.isCurrent) ??
-					state.playlists[0];
-				if (playlist?.items.length)
-					setActive(playlist, Math.max(activeItem.index, 0), "playing");
-				return;
-			}
-			state.player.playbackState =
-				playbackState === "playing" ? "paused" : "playing";
-			markPosition(activeItem.position);
-			notify({ player: true });
+			if (state.player.playbackState === "playing") pause();
+			else resume();
 		},
+
+		pause,
+		resume,
 
 		stop() {
 			state.player.playbackState = "stopped";

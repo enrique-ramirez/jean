@@ -151,7 +151,7 @@ info:
 
     ### Revalidating a cover
 
-    `GET /artwork` answers a present cover with `Cache-Control: private, max-age=15552000`, 180 days, and a `404` with `private, max-age=600`, ten minutes. The long lifetime is what the one-URL-per-album design is for: a client holding a sleeve spends no request on it again for months. The short one is what tells a client to look again: a cover dropped into an album's folder after the last ask is drawn within ten minutes, with no reload. `private` keeps both out of a cache that is not the client's own, since nothing here should be redistributed to another client through a shared cache.
+    `GET /artwork` answers a present cover with `Cache-Control: private, max-age=604800, stale-while-revalidate=15552000`, fresh for seven days and drawn stale for 180 more while the client revalidates it, and a `404` with `private, max-age=600`, ten minutes. The long lifetime is what the one-URL-per-album design is for: a client holding a sleeve spends no request on it for a week, and after that draws the copy it holds at once while it asks, with the `ETag`, whether the cover changed. A cover replaced at the player reaches a client within a week; one that did not costs a `304`. The short one is what tells a client to look again: a cover dropped into an album's folder after the last ask is drawn within ten minutes, with no reload. `private` keeps both out of a cache that is not the client's own, since nothing here should be redistributed to another client through a shared cache.
 
     `GET /artwork/playing` and `GET /artwork/playlists/{id}/{row}` answer `Cache-Control: private, no-cache` on every outcome, present cover or refusal alike: the address names nothing durable, a track playing now or a position in a playlist, so the picture behind it changes without the URL changing and a lifetime would hand a client the wrong sleeve. `no-cache` asks a client to revalidate before it draws the copy it holds rather than forbidding the copy outright, so a client SHOULD still keep the bytes and send the `ETag` back as `If-None-Match`.
 
@@ -1689,6 +1689,58 @@ paths:
         "503": { $ref: "#/components/responses/PlaybackUnavailable" }
         "504": { $ref: "#/components/responses/PlaybackTooSlow" }
 
+  /playback/pause:
+    post:
+      tags: [player]
+      operationId: pause
+      summary: Pause, whatever playback is doing.
+      description: |
+        Playing, playback pauses. Paused or stopped, nothing changes, and the answer is the same, so a client that means pause sends this however stale its last read of `GET /state` is, and a second one sent before the first is seen changes nothing. The answer comes once the player has been handed this command and run it, and nothing comes back beyond the status.
+
+        Naming a detached session, a session set to play is paused, including one reading `paused` only because no connection listens, and it reads `paused` whether or not anybody listens.
+
+        This route takes no body. One sent is ignored.
+
+        Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
+      parameters:
+        - $ref: "#/components/parameters/Session"
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "204":
+          description: Paused, or already paused or stopped.
+        "403": { $ref: "#/components/responses/PlaybackDisabled" }
+        "404": { $ref: "#/components/responses/NoSuchSession" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/PlaybackUnavailable" }
+        "504": { $ref: "#/components/responses/PlaybackTooSlow" }
+
+  /playback/resume:
+    post:
+      tags: [player]
+      operationId: resume
+      summary: Play, whatever playback is doing.
+      description: |
+        Paused, playback resumes where it was. Stopped, it starts as `POST /playback/play-pause` starts it from a stop. Playing, nothing changes, and the answer is the same, so a client that means play sends this however stale its last read of `GET /state` is. The answer comes once the player has been handed this command and run it, and nothing comes back beyond the status.
+
+        Naming a detached session, a paused session is set to play and reads `paused` until a connection listens, and a session already set to play stays set to play.
+
+        This route takes no body. One sent is ignored.
+
+        Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
+      parameters:
+        - $ref: "#/components/parameters/Session"
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "204":
+          description: Playing, or set to play.
+        "403": { $ref: "#/components/responses/PlaybackDisabled" }
+        "404": { $ref: "#/components/responses/NoSuchSession" }
+        "415": { $ref: "#/components/responses/JsonRequired" }
+        "500": { $ref: "#/components/responses/PlayerRefused" }
+        "503": { $ref: "#/components/responses/PlaybackUnavailable" }
+        "504": { $ref: "#/components/responses/PlaybackTooSlow" }
+
   /playback/next:
     post:
       tags: [player]
@@ -2762,7 +2814,7 @@ paths:
               description: Strong, quoted and opaque. Send it back as `If-None-Match`.
             Cache-Control:
               schema: { type: string }
-              description: "`private, max-age=15552000`, 180 days: this album's cover is fresh for months, and never in a cache but that client's."
+              description: "`private, max-age=604800, stale-while-revalidate=15552000`: this album's cover is fresh for seven days, drawn stale for 180 more while it is revalidated, and never in a cache but that client's."
           content:
             image/jpeg: { schema: { type: string, format: binary } }
             image/png: { schema: { type: string, format: binary } }
@@ -2987,9 +3039,9 @@ paths:
       description: |
         A closed socket does not say why it closed. A handoff back to the player and a wireless dropout look identical from here, and they want opposite answers: the first should give the player its sound back at once, the second must not unmute into a gap the client is about to reconnect across. So a device that stopped deliberately says so, and everything else waits out the linger.
 
-        Best effort, and never required. A client that crashes, a tab that closes and a request that fails all end the same way a moment later. Ignored while the device still holds a connection, and it can only ever end its own linger — a `deviceId` nobody sent is not a way to unmute the player.
+        Best effort, and never required. A client that crashes, a tab that closes and a request that fails all end the same way a moment later. Sent while the device still holds a connection, it is remembered, and that connection's close then leaves no linger; a reconnect first cancels it. It can only ever end its own linger — a `deviceId` nobody sent is not a way to unmute the player.
 
-        It ends what it ends in the session named and in no other. Naming none or `engine`, that is the device's linger on the player's own session, and the player's session never ends. Naming a detached session, it is this device's linger there and its grace as a controller as well, so the device stops being a member unless it still holds a connection, which keeps it listening and on the roster. A detached session whose last member leaves this way ends at once, its stream stopped before this answers. This is the one way a session ends before its grace runs out, and no request ends one for a device still in it. A shared session this device was never in answers `204` and ends nothing, and a session this device may not see answers `404` and ends nothing anywhere, the player's own session included. The device is read from the body, as `POST /stream/ticket` reads it, and never from the query.
+        It ends what it ends in the session named and in no other. Naming none or `engine`, that is the device's linger on the player's own session, and the player's session never ends. Naming a detached session, it is this device's linger there and its grace as a controller as well, so the device stops being a member, or, while it still holds a connection, stays listening and on the roster until that closes. A detached session whose last member leaves this way ends at once, its stream stopped before this answers. This is the one way a session ends before its grace runs out, and no request ends one for a device still in it. A shared session this device was never in answers `204` and ends nothing, and a session this device may not see answers `404` and ends nothing anywhere, the player's own session included. The device is read from the body, as `POST /stream/ticket` reads it, and never from the query.
       parameters:
         - $ref: "#/components/parameters/Session"
       requestBody:
@@ -3787,7 +3839,7 @@ components:
           description: The same tag the `200` carried.
         Cache-Control:
           schema: { type: string }
-          description: "`private, max-age=15552000`, as on the `200`."
+          description: "`private, max-age=604800, stale-while-revalidate=15552000`, as on the `200`."
 
     RevalidatedArtworkNotModified:
       description: |
@@ -5219,7 +5271,7 @@ components:
         What rides under `library` in `GET /state`'s `200`, and what `GET /library/export` and `POST /library/refresh` hand back on a `202`. Small on purpose: it is polled.
       type: object
       additionalProperties: false
-      required: [ready, structure, revision, trackCount, columns, build]
+      required: [ready, structure, revision, trackCount, columns, build, halted]
       properties:
         ready:
           type: boolean
@@ -5253,6 +5305,10 @@ components:
           oneOf:
             - { $ref: "#/components/schemas/LibraryBuild" }
             - type: "null"
+        halted:
+          type: boolean
+          description: |
+            Whether the implementation has stopped reading the library for good, after failing too often to recover on its own. Once true it stays true until the implementation restarts: `build` is `null`, no further build starts, and the snapshot held when it stopped, if any, goes on being served at the generations above. A client waiting on a build stops waiting and tells its user the player needs restarting.
 
     LibraryBuild:
       description: |
@@ -5309,7 +5365,7 @@ components:
           type: string
           enum: [stopped, paused, playing]
           description: |
-            What the player is doing right now. A detached session set to play reads `paused` while no connection listens to its stream, a device inside its linger included, and its position stands still; it reads `playing` from the moment a connection listens. A detached session paused through `POST /playback/play-pause` reads `paused` whether or not anybody listens.
+            What the player is doing right now. A detached session set to play reads `paused` while no connection listens to its stream, a device inside its linger included, and its position stands still; it reads `playing` from the moment a connection listens. A detached session paused through `POST /playback/play-pause` or `POST /playback/pause` reads `paused` whether or not anybody listens.
         path:
           type: string
           description: |

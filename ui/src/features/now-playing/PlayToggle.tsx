@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { whenControllable } from "@/domain/player/usePlaybackControl";
+import {
+	type PlaybackRefusal,
+	whenAllowed,
+} from "@/domain/player/usePlaybackControl";
 import { useLongPress } from "@/shared/hooks/useLongPress";
 import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
 import { classNames } from "@/shared/lib/classNames";
@@ -15,13 +18,13 @@ export function PlayToggle({
 	onToggle,
 	variant = "bar",
 	className,
-	disabled = false,
+	refusal = null,
 }: {
 	isPlaying: boolean;
 	onToggle: () => void;
 	variant?: "bar" | "screen";
 	className?: string;
-	disabled?: boolean;
+	refusal?: PlaybackRefusal | null;
 }) {
 	const t = useTranslate();
 	const say = useSpoken();
@@ -58,7 +61,7 @@ export function PlayToggle({
 			data-playing={isPlaying}
 			data-motion={motion}
 			aria-label={baseLabel}
-			{...whenControllable(!disabled, onToggle, baseLabel, say)}
+			{...whenAllowed(refusal, onToggle, baseLabel, say)}
 		>
 			{isPlaying ? <PauseIcon /> : <PlayIcon />}
 		</button>

@@ -5,7 +5,8 @@ import { useAudibleVolume } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
 import {
 	useCanControlPlayback,
-	whenControllable,
+	usePlaybackRefusal,
+	whenAllowed,
 } from "@/domain/player/usePlaybackControl";
 import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import { useAudiblePlayer, usePlayer } from "@/domain/player/usePlayer";
@@ -107,14 +108,21 @@ export function NowPlaying({
 	const { track, details } = useNowPlayingTrack();
 	const { discovery } = useFooJean();
 	const canControlPlayback = useCanControlPlayback();
+	const refusal = usePlaybackRefusal();
 
 	const playPause = usePlayPause();
 	const seek = useSeek();
-	const seekTo = canControlPlayback ? (at: number) => seek.mutate(at) : NOOP;
+	const seekTo = refusal === null ? (at: number) => seek.mutate(at) : NOOP;
 	const transport = useTransport();
 	const previous = usePrevious();
 	const order = usePlaybackOrder();
-	const { isHere, canMove, volume, setValue, hasFader } = useAudibleVolume();
+	const {
+		isHere,
+		refusal: volumeRefusal,
+		volume,
+		setValue,
+		hasFader,
+	} = useAudibleVolume();
 	const menu = useNowPlayingMenu();
 
 	const [isLyricsFull, setIsLyricsFull] = useState(false);
@@ -217,8 +225,8 @@ export function NowPlaying({
 			? {
 					onDown: onDismiss,
 					onUp: () => setIsInfoOpen(true),
-					onDrag: canControlPlayback ? wheel.onDrag : undefined,
-					onDragEnd: canControlPlayback ? wheel.onDragEnd : undefined,
+					onDrag: refusal === null ? wheel.onDrag : undefined,
+					onDragEnd: refusal === null ? wheel.onDragEnd : undefined,
 				}
 			: { onDown: onDismiss },
 	);
@@ -368,11 +376,7 @@ export function NowPlaying({
 
 				{!isCompactViewport ? null : (
 					<div className={styles.controls}>
-						<SeekBar
-							snapshot={snapshot}
-							onSeek={seekTo}
-							disabled={!canControlPlayback}
-						/>
+						<SeekBar snapshot={snapshot} onSeek={seekTo} refusal={refusal} />
 						<Times snapshot={snapshot} />
 
 						<div className={styles.transport}>
@@ -381,7 +385,7 @@ export function NowPlaying({
 									order={order}
 									className={styles.order}
 									size={18}
-									disabled={!canControlPlayback}
+									refusal={refusal}
 									isSurfaceOpen={isOpen && !isInfoOpen}
 								/>
 
@@ -397,8 +401,8 @@ export function NowPlaying({
 									type="button"
 									className={styles.skip}
 									aria-label={previousLabel}
-									{...whenControllable(
-										canControlPlayback,
+									{...whenAllowed(
+										refusal,
 										() => wheel.skip(-1),
 										previousLabel,
 										t,
@@ -411,19 +415,14 @@ export function NowPlaying({
 									isPlaying={isPlaying}
 									onToggle={() => playPause.mutate()}
 									variant="screen"
-									disabled={!canControlPlayback}
+									refusal={refusal}
 								/>
 
 								<button
 									type="button"
 									className={styles.skip}
 									aria-label={nextLabel}
-									{...whenControllable(
-										canControlPlayback,
-										() => wheel.skip(1),
-										nextLabel,
-										t,
-									)}
+									{...whenAllowed(refusal, () => wheel.skip(1), nextLabel, t)}
 								>
 									<SkipForwardIcon size={22} />
 								</button>
@@ -439,7 +438,7 @@ export function NowPlaying({
 										volume={volume}
 										onChange={setValue}
 										label={t(isHere ? "player.volumeHere" : "player.volume")}
-										disabled={!canMove}
+										refusal={volumeRefusal}
 										outputs={outputs}
 									/>
 								) : null}

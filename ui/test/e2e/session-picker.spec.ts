@@ -42,7 +42,6 @@ import {
 	openOnThePlayer,
 	openPicker,
 	ownRow,
-	PAST_THE_SECOND_LEAVE_MS,
 	PLAYER_NAME,
 	pickerRows,
 	playerRowOf,
@@ -66,6 +65,7 @@ import {
 	thePlayersFace,
 	toastSaying,
 	toastsRaised,
+	WELL_AFTER_LEAVING_MS,
 	watchTheToasts,
 } from "./sessions.ts";
 
@@ -716,7 +716,7 @@ test.describe("two pages of one browser listening to what one of them started", 
 		await expect
 			.poll(() => countPostsToSession(player, "/api/stream/leave", started.id))
 			.toBeGreaterThan(0);
-		await page.waitForTimeout(PAST_THE_SECOND_LEAVE_MS);
+		await page.waitForTimeout(WELL_AFTER_LEAVING_MS);
 		await untilQuiet(player);
 		const from = polls.length;
 		await expect.poll(() => polls.length).toBeGreaterThan(from + 1);
@@ -747,7 +747,7 @@ test.describe("two pages of one browser listening to what one of them started", 
 		strict.release();
 		await leaveButton(page).click();
 		await expect(thePlayersFace(page)).toBeVisible();
-		await page.waitForTimeout(PAST_THE_SECOND_LEAVE_MS);
+		await page.waitForTimeout(WELL_AFTER_LEAVING_MS);
 		expect(player.sessions.find(started.id)).toBe(started);
 
 		await leaveButton(beside).click();
@@ -793,7 +793,7 @@ test.describe("two pages of one browser in two sessions", () => {
 		strict.release();
 		await leaveButton(page).click();
 		await expect.poll(() => player.sessions.find(started.id)).toBeNull();
-		await page.waitForTimeout(PAST_THE_SECOND_LEAVE_MS);
+		await page.waitForTimeout(WELL_AFTER_LEAVING_MS);
 		await untilQuiet(player);
 		const from = polls.length;
 		await expect.poll(() => polls.length).toBeGreaterThan(from + 1);
@@ -1213,7 +1213,7 @@ test.describe("what this device started, ended under the page", () => {
 
 		await expect(toastSaying(page, ENDED_OWN)).toBeVisible();
 		await expect(pickerOpener(page)).toHaveAccessibleName(ON_THE_PLAYER_NAME);
-		await page.waitForTimeout(PAST_THE_SECOND_LEAVE_MS);
+		await page.waitForTimeout(WELL_AFTER_LEAVING_MS);
 		await morePolls(player, 2);
 		await untilQuiet(player);
 		expect(await endedToastsRaised(page)).toEqual([ENDED_OWN]);

@@ -23,6 +23,7 @@ import {
 } from "./listenerStore";
 import { sessionSnapshot, useInSession, useSessionId } from "./session";
 import { useSessionActions } from "./sessionOperations";
+import { usePlaybackRefusal } from "./usePlaybackControl";
 import { useVolume } from "./useVolume";
 
 const deviceVolume = (value: number, isMuted: boolean): Volume => ({
@@ -84,8 +85,10 @@ export function useAudibleVolume() {
 	const player = useVolume();
 	const { discovery } = useFooJean();
 	const inSession = useInSession();
+	const playbackRefusal = usePlaybackRefusal();
 
 	const isHere = listener.isOn;
+	const canMove = isHere || (!inSession && permitsPlaybackControl(discovery));
 	const volume = isHere ? listener.volume : player.volume;
 	const setValue = isHere ? listener.setVolume : player.setValue;
 
@@ -100,7 +103,12 @@ export function useAudibleVolume() {
 
 	return {
 		isHere,
-		canMove: isHere || (!inSession && permitsPlaybackControl(discovery)),
+		canMove,
+		refusal: isHere
+			? null
+			: canMove
+				? playbackRefusal
+				: "player.controlOffName",
 		volume,
 		setValue,
 		hasFader: isHere ? Boolean(listener.volume) : !inSession,

@@ -153,6 +153,8 @@ const responseNamed = (id: string, status: number) => {
 
 const playerCommands = [
 	"playPause",
+	"pause",
+	"resume",
 	"nextTrack",
 	"previousTrack",
 	"stop",

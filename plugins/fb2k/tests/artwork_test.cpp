@@ -50,13 +50,8 @@ constexpr char kTiff[] =
 
 constexpr char kTag[] = "\"7f3a1c00deadbeef\"";
 
-constexpr int kSecondsPerDay = 24 * 60 * 60;
-constexpr int kCoverLifetime = 180 * kSecondsPerDay;
-constexpr int kMissingCoverLifetime = 10 * 60;
-
-std::string freshFor(int seconds) {
-    return "private, max-age=" + std::to_string(seconds);
-}
+constexpr char kHeldCover[] = "private, max-age=604800, stale-while-revalidate=15552000";
+constexpr char kMissingCover[] = "private, max-age=600";
 
 constexpr char kAskEveryTime[] = "private, no-cache";
 
@@ -257,9 +252,12 @@ TEST_CASE("a cover is sent with the type it actually is, and a validator to ask 
 }
 
 // One album is one address, so the lifetime is what the route is for: a client holding the
-// sleeve spends no request on it until the lifetime runs out. private is the other half, since
-// an authenticated picture has no business in a cache somebody else reads.
-TEST_CASE("a cover is fresh for 180 days, and in no cache but that client's") {
+// sleeve spends no request on it for a week, and after that draws what it holds at once while it
+// asks whether the cover changed. private is the other half, since an authenticated picture has
+// no business in a cache somebody else reads.
+TEST_CASE(
+    "a cover is fresh for a week, drawn stale while revalidated, and in no cache but that "
+    "client's") {
     ArtLog log{kJpeg};
     const TestServer server(servingSettings(), showing(&log));
 
@@ -267,7 +265,7 @@ TEST_CASE("a cover is fresh for 180 days, and in no cache but that client's") {
 
     REQUIRE(response);
     CHECK(response->status == 200);
-    CHECK(response->get_header_value("Cache-Control") == freshFor(kCoverLifetime));
+    CHECK(response->get_header_value("Cache-Control") == kHeldCover);
 }
 
 // An absence is the answer most likely to stop being true, and nothing tells a client it has:
@@ -280,7 +278,7 @@ TEST_CASE("a cover the player does not have is asked for again ten minutes later
 
     REQUIRE(response);
     CHECK(response->status == 404);
-    CHECK(response->get_header_value("Cache-Control") == freshFor(kMissingCoverLifetime));
+    CHECK(response->get_header_value("Cache-Control") == kMissingCover);
 }
 
 TEST_CASE("a client that already holds the cover is answered without the picture") {
@@ -297,7 +295,7 @@ TEST_CASE("a client that already holds the cover is answered without the picture
     CHECK(again->status == 304);
     CHECK(again->body.empty());
     CHECK(again->get_header_value("ETag") == kTag);
-    CHECK(again->get_header_value("Cache-Control") == freshFor(kCoverLifetime));
+    CHECK(again->get_header_value("Cache-Control") == kHeldCover);
 
     CHECK(log.asked.size() == 2);
 }

@@ -19,6 +19,9 @@ constexpr auto kPollRefill = std::chrono::milliseconds(100);
 constexpr char kRetryPollAfterSeconds[] = "1";
 
 std::string buildTag(const Library::State& state) {
+    if (state.halted)
+        return "-halted";
+
     if (!state.build)
         return {};
 

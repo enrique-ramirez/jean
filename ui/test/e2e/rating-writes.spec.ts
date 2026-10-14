@@ -9,6 +9,7 @@ import { STALLED_READ_MS } from "../fake-api/fooJean/latency.ts";
 import type { RecordedRequest, Track } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
+	closeNowPlaying,
 	expect,
 	expectSettlesAt,
 	guidOfPlaylist,
@@ -19,6 +20,7 @@ import {
 	openLibrary,
 	openNowPlaying,
 	openSettings,
+	playingAtThePlayer,
 	requestsTo,
 	routeOf,
 	tagWrites,
@@ -1967,6 +1969,47 @@ test.describe("rating from the track menu", () => {
 			page.getByRole("menuitem", { name: "Add to queue" }),
 		).toBeVisible();
 		await expect(page.getByRole("menuitem", { name: "Rating" })).toHaveCount(0);
+	});
+});
+
+// The playing track is drawn twice, once as its row and once on the now-playing
+// screen, and each holds the rating it was read with until something replaces it.
+test.describe("rating the playing track", () => {
+	test.use({ ...RATED, fooJean: {} });
+
+	test("from its row moves the stars on the now-playing screen", async ({
+		page,
+		player,
+	}) => {
+		await playingAtThePlayer(page, player);
+		await openNowPlaying(page);
+		await expect(starsOnScreen(page)).toHaveAccessibleName("3 of 5 stars");
+		await closeNowPlaying(page);
+
+		await pressAndHold(page, trackRow(page, 2));
+		await page.getByRole("menuitem", { name: "Rating" }).click();
+		await page.getByRole("menuitem", { name: "4 stars" }).click();
+		await expect.poll(() => ratingHeldAt(player, 2)).toBe("4");
+
+		await openNowPlaying(page);
+		await expect(starsOnScreen(page)).toHaveAccessibleName("4 of 5 stars");
+	});
+
+	test("from the now-playing screen moves the stars on its row", async ({
+		page,
+		player,
+	}) => {
+		await playingAtThePlayer(page, player);
+		await expect(ratingOf(page, 2)).toHaveAccessibleName("3 of 5 stars");
+
+		await openNowPlaying(page);
+		await starsOnScreen(page)
+			.getByRole("button", { name: "Rate 4 of 5" })
+			.click();
+		await expect.poll(() => ratingHeldAt(player, 2)).toBe("4");
+		await closeNowPlaying(page);
+
+		await expect(ratingOf(page, 2)).toHaveAccessibleName("4 of 5 stars");
 	});
 });
 

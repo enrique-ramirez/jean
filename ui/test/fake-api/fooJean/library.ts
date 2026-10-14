@@ -96,7 +96,8 @@ export const libraryStateOf = (state: FakeState, fake: FooJeanFake) => {
 		revision,
 		trackCount: ready ? state.libraryTracks.length : 0,
 		columns,
-		build: libraryBuildOf(state, fake),
+		build: fake.libraryHalted ? null : libraryBuildOf(state, fake),
+		halted: fake.libraryHalted,
 	};
 };
 
@@ -177,7 +178,11 @@ export async function handleLibrary({
 	// and the build finishes on the ticks that follow.
 	if (method === "POST" && path === "/api/library/refresh") {
 		const columns = state.libraryFeed.columns;
-		if (columns.length > 0 && state.libraryFeed.building === null)
+		if (
+			columns.length > 0 &&
+			state.libraryFeed.building === null &&
+			!fake.libraryHalted
+		)
 			state.startLibraryBuild(columns);
 		return json(response, libraryStateOf(state, fake), 202);
 	}
@@ -307,6 +312,8 @@ export async function handleLibrary({
 			const alreadyBuildingAsked =
 				state.libraryFeed.building !== null &&
 				sameMembers(state.libraryFeed.building, asked);
+			if (fake.libraryHalted)
+				return json(response, libraryStateOf(state, fake), 202);
 			if (!alreadyBuildingAsked) {
 				if (
 					fake.rateLimits &&

@@ -6,12 +6,15 @@ import type { Asked } from "./request.ts";
 
 const SECONDS_PER_DAY = 24 * 60 * 60;
 
-// Word for word what `kCoverCacheLifetimeSeconds` and `kMissingCoverCacheLifetimeSeconds` in
-// the component's `core/http_server.cpp` hold.
-const COVER_CACHE_LIFETIME_SECONDS = 180 * SECONDS_PER_DAY;
+// Word for word what `kCoverCacheLifetimeSeconds`, `kStaleCoverDrawnForSeconds` and
+// `kMissingCoverCacheLifetimeSeconds` in the component's `core/routes_artwork.cpp` hold.
+const COVER_CACHE_LIFETIME_SECONDS = 7 * SECONDS_PER_DAY;
+const STALE_COVER_DRAWN_FOR_SECONDS = 180 * SECONDS_PER_DAY;
 const MISSING_COVER_CACHE_LIFETIME_SECONDS = 10 * 60;
 
 const freshFor = (seconds: number) => `private, max-age=${seconds}`;
+
+const HELD_COVER = `${freshFor(COVER_CACHE_LIFETIME_SECONDS)}, stale-while-revalidate=${STALE_COVER_DRAWN_FOR_SECONDS}`;
 
 // Both artwork routes answer 404 with this one string, as the component does:
 // from a reader's side "no cover for that track" and "no cover for whatever is
@@ -108,7 +111,7 @@ export async function handleArtwork({
 			return json(response, NO_ARTWORK, 404);
 		}
 
-		return sendCover(file, freshFor(COVER_CACHE_LIFETIME_SECONDS));
+		return sendCover(file, HELD_COVER);
 	}
 
 	// Addressed by nothing: no path, no index, no handle. Not gated on the media

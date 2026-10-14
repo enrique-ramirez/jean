@@ -125,7 +125,7 @@ void explainPortCollision() {
 Player playerUsing(const Settings& settings, MainThreadQueue& mainThread,
                    MainThreadWatch& mainThreadWatch, const Streamer* streamer,
                    OutputHold& outputHold, LibraryFeed& libraryFeed, PlayerStateStore& playerState,
-                   const PlaylistVersions& playlistVersions, const AlbumArt& rowArt,
+                   PlaylistVersions& playlistVersions, const AlbumArt& rowArt,
                    const PlayerAudioSettings& playerAudio) {
     Player player;
     player.checkMainThread = [&mainThreadWatch](std::chrono::steady_clock::time_point now) {
@@ -178,7 +178,8 @@ Player playerUsing(const Settings& settings, MainThreadQueue& mainThread,
     player.queue.removeEntry = makeRemoveQueueEntry(mainThread, playerState);
     player.queue.clear = makeClearQueue(mainThread);
 
-    player.playback.playPlaylistRow = makePlaylistRowPlayer(mainThread);
+    player.playback.playPlaylistRow =
+        makePlaylistRowPlayer(mainThread, playerState, playlistVersions);
     player.playback.commandTransport = makeTransportCommander(mainThread);
     player.playback.seek = makePlaybackSeeker(mainThread);
     player.playback.setOrder = makePlaybackOrderSetter(mainThread);

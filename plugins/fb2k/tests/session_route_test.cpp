@@ -1087,6 +1087,8 @@ TEST_CASE("a bad share body is answered 409 for the engine and 404 for a strange
 namespace {
 
 constexpr char kPlayPause[] = "/api/playback/play-pause";
+constexpr char kPause[] = "/api/playback/pause";
+constexpr char kResume[] = "/api/playback/resume";
 constexpr char kNext[] = "/api/playback/next";
 constexpr char kPrevious[] = "/api/playback/previous";
 constexpr char kStop[] = "/api/playback/stop";
@@ -1108,9 +1110,10 @@ struct Route {
     std::string body;
 };
 
-// One well-formed request to each of the seven, each of which changes a session it reaches.
-std::vector<Route> sevenRoutes() {
+std::vector<Route> commandRoutes() {
     return {{kPlayPause, ""},
+            {kPause, ""},
+            {kResume, ""},
             {kNext, ""},
             {kPrevious, ""},
             {kStop, ""},
@@ -1272,6 +1275,46 @@ TEST_CASE("play-pause and stop move the session named and no other") {
     CHECK(recorder.calls() == 0);
 }
 
+TEST_CASE("pause and resume each land the session named where they say, however often sent") {
+    Recorder recorder;
+    const TestServer server = serving(recorder.player());
+    const auto rows = tracks("Road", kRows);
+    const auto other = playingSession(server, recorder, phone().id, rows, 0);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
+    const auto othersEars = listening(recorder, other, phone().id);
+    const auto ears = listening(recorder, id, phone().id);
+
+    for (int sent = 0; sent < 2; ++sent) {
+        checkDone(post(server, scoped(kPause, id, phone().id), ""));
+        CHECK(documentOf(server, id, phone().id)["playback"] == "paused");
+    }
+    CHECK(documentOf(server, other, phone().id)["playback"] == "playing");
+
+    for (int sent = 0; sent < 2; ++sent) {
+        checkDone(post(server, scoped(kResume, id, phone().id), ""));
+        CHECK(documentOf(server, id, phone().id)["playback"] == "playing");
+    }
+    CHECK(documentOf(server, id, phone().id)["libraryPath"] == libraryPathOf(rows[2]));
+    CHECK(recorder.calls() == 0);
+}
+
+TEST_CASE("pause on a stopped session leaves it stopped, and resume starts it as play-pause does") {
+    Recorder recorder;
+    const TestServer server = serving(recorder.player());
+    const auto rows = tracks("Road", kRows);
+    const auto id = playingSession(server, recorder, phone().id, rows, 2);
+    const auto ears = listening(recorder, id, phone().id);
+    checkDone(post(server, scoped(kStop, id, phone().id), ""));
+
+    checkDone(post(server, scoped(kPause, id, phone().id), ""));
+    CHECK(documentOf(server, id, phone().id)["playback"] == "stopped");
+
+    checkDone(post(server, scoped(kResume, id, phone().id), ""));
+    CHECK(documentOf(server, id, phone().id)["playback"] == "playing");
+    CHECK(documentOf(server, id, phone().id)["libraryPath"] == libraryPathOf(rows[2]));
+    CHECK(recorder.calls() == 0);
+}
+
 TEST_CASE("in the middle of a snapshot, next plays the following row and previous the one before") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());
@@ -1416,7 +1459,7 @@ TEST_CASE("each route naming no session or the engine session reaches the engine
     const TestServer server = serving(recorder.player());
     createdId(server, phone().id);
 
-    for (const auto& route : sevenRoutes()) {
+    for (const auto& route : commandRoutes()) {
         CAPTURE(route.path);
         const auto before = recorder.calls();
         const auto unnamed = command(server, route, "", "");
@@ -1428,10 +1471,11 @@ TEST_CASE("each route naming no session or the engine session reaches the engine
     }
 
     const auto engine = recorder.engine();
-    CHECK(engine.transports == std::vector<Transport>{Transport::playPause, Transport::playPause,
-                                                      Transport::next, Transport::next,
-                                                      Transport::previous, Transport::previous,
-                                                      Transport::stop, Transport::stop});
+    CHECK(engine.transports ==
+          std::vector<Transport>{Transport::playPause, Transport::playPause, Transport::pause,
+                                 Transport::pause, Transport::resume, Transport::resume,
+                                 Transport::next, Transport::next, Transport::previous,
+                                 Transport::previous, Transport::stop, Transport::stop});
     CHECK(engine.seeks == std::vector<std::pair<double, bool>>{{30, false}, {30, false}});
     // repeatOne is fourth in Recorder::installedOrders().
     CHECK(engine.orders == std::vector<size_t>{3, 3});
@@ -1445,7 +1489,7 @@ TEST_CASE("an unknown session on each route is 404 in the words of an id nobody 
     recorder.hold(kPlaylistId, tracks("Road", kRows));
     const auto unknown = unknownSessionAnswer(server);
 
-    for (const auto& route : sevenRoutes()) {
+    for (const auto& route : commandRoutes()) {
         CAPTURE(route.path);
         const auto response = command(server, route, "Zz00q", phone().id);
         checkSameAnswer(response, unknown);
@@ -1461,7 +1505,7 @@ TEST_CASE("with controlPlayback off, each route naming the engine or none is ref
     const TestServer server = serving(recorder.player(), nullptr, scriptedMint(),
                                       parseSettings(R"({"controlPlayback": false})"));
 
-    for (const auto& route : sevenRoutes()) {
+    for (const auto& route : commandRoutes()) {
         CAPTURE(route.path);
         const auto unnamed = command(server, route, "", "");
         REQUIRE(unnamed);
@@ -1518,7 +1562,7 @@ TEST_CASE("a private session is 404 on each route to a stranger and to no device
     const auto ears = listening(recorder, id, phone().id);
     const auto unknown = unknownSessionAnswer(server);
 
-    for (const auto& route : sevenRoutes()) {
+    for (const auto& route : commandRoutes()) {
         for (const std::string& device : std::vector<std::string>{laptop().id, ""}) {
             CAPTURE(route.path);
             CAPTURE(device);
@@ -4108,6 +4152,24 @@ TEST_CASE("play-pause on a session nobody hears leaves it set to play, so it pla
     CHECK(playbackRead(server, id) == "paused");
 
     const auto ears = listening(recorder, id, phone().id);
+    CHECK(playbackRead(server, id) == "playing");
+    CHECK(recorder.calls() == 0);
+}
+
+// Unlike the toggle, a pause cannot have meant play, so the session reading paused is no reason
+// to ignore it.
+TEST_CASE("pause on a session nobody hears pauses it, so it stays paused once heard") {
+    Recorder recorder;
+    const TestServer server = serving(recorder.player());
+    const auto id = playingSession(server, recorder, phone().id, tracks("Road", kRows), 2);
+    CHECK(playbackRead(server, id) == "paused");
+
+    checkDone(post(server, scoped(kPause, id, phone().id), ""));
+
+    const auto ears = listening(recorder, id, phone().id);
+    CHECK(playbackRead(server, id) == "paused");
+
+    checkDone(post(server, scoped(kResume, id, phone().id), ""));
     CHECK(playbackRead(server, id) == "playing");
     CHECK(recorder.calls() == 0);
 }

@@ -2,10 +2,14 @@
 
 #include "core/main_thread_queue.h"
 #include "core/player.h"
+#include "core/player_state.h"
 
 namespace jean {
 
-PlaylistRowPlayer makePlaylistRowPlayer(MainThreadQueue& mainThread);
+class PlaylistVersions;
+
+PlaylistRowPlayer makePlaylistRowPlayer(MainThreadQueue& mainThread, PlayerStateStore& store,
+                                        PlaylistVersions& versions);
 TransportCommander makeTransportCommander(MainThreadQueue& mainThread);
 PlaybackSeeker makePlaybackSeeker(MainThreadQueue& mainThread);
 PlaybackOrderSetter makePlaybackOrderSetter(MainThreadQueue& mainThread);

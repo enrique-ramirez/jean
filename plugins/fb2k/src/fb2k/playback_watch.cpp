@@ -80,15 +80,6 @@ std::optional<PlayingLocation> currentLocation() {
     return PlayingLocation{playlistId(playlist), static_cast<uint32_t>(index)};
 }
 
-// Both halves of what knowing where playback is buys, in one place so that neither can be
-// moved without the other. PlaylistVersions treats the row being left as changed whatever the
-// player announced, which is how a play count reaches the playing playlist at all.
-void publishLocation(PlayerStateStore& store, PlaylistVersions& versions,
-                     const std::optional<PlayingLocation>& location) {
-    store.playingLocationChanged(location);
-    versions.playingRowChanged(location);
-}
-
 std::mutex g_queueTargetMutex;
 MainThreadQueue* g_queueTargetMainThread = nullptr;
 PlayerStateStore* g_queueTargetStore = nullptr;
@@ -167,6 +158,12 @@ PlayerState initialStateOf(const OutputHold& outputHold,
 service_factory_single_t<QueueServiceCallback> g_queueServiceCallback;
 
 }  // namespace
+
+void publishLocation(PlayerStateStore& store, PlaylistVersions& versions,
+                     const std::optional<PlayingLocation>& location) {
+    store.playingLocationChanged(location);
+    versions.playingRowChanged(location);
+}
 
 struct PlaybackWatch::Callback : public play_callback_impl_base {
     Callback(MainThreadQueue& mainThread, PlayerStateStore& store, PlaylistVersions& versions,

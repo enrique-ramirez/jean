@@ -103,7 +103,7 @@ export const openOnThePlayer = async (
 	return refused;
 };
 
-export const PAST_THE_SECOND_LEAVE_MS = 3_000;
+export const WELL_AFTER_LEAVING_MS = 3_000;
 
 export const ANOTHER_DEVICE = {
 	deviceId: "0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a",

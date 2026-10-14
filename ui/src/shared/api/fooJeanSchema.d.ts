@@ -625,6 +625,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/playback/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause, whatever playback is doing.
+         * @description Playing, playback pauses. Paused or stopped, nothing changes, and the answer is the same, so a client that means pause sends this however stale its last read of `GET /state` is, and a second one sent before the first is seen changes nothing. The answer comes once the player has been handed this command and run it, and nothing comes back beyond the status.
+         *
+         *     Naming a detached session, a session set to play is paused, including one reading `paused` only because no connection listens, and it reads `paused` whether or not anybody listens.
+         *
+         *     This route takes no body. One sent is ignored.
+         *
+         *     Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
+         */
+        post: operations["pause"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playback/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Play, whatever playback is doing.
+         * @description Paused, playback resumes where it was. Stopped, it starts as `POST /playback/play-pause` starts it from a stop. Playing, nothing changes, and the answer is the same, so a client that means play sends this however stale its last read of `GET /state` is. The answer comes once the player has been handed this command and run it, and nothing comes back beyond the status.
+         *
+         *     Naming a detached session, a paused session is set to play and reads `paused` until a connection listens, and a session already set to play stays set to play.
+         *
+         *     This route takes no body. One sent is ignored.
+         *
+         *     Never subject to the rate limit `DELETE /queue` publishes: a held key sends a run of these and refusing one would be visible.
+         */
+        post: operations["resume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/playback/next": {
         parameters: {
             query?: never;
@@ -1257,9 +1309,9 @@ export interface paths {
          * Say that a device stopped listening on purpose.
          * @description A closed socket does not say why it closed. A handoff back to the player and a wireless dropout look identical from here, and they want opposite answers: the first should give the player its sound back at once, the second must not unmute into a gap the client is about to reconnect across. So a device that stopped deliberately says so, and everything else waits out the linger.
          *
-         *     Best effort, and never required. A client that crashes, a tab that closes and a request that fails all end the same way a moment later. Ignored while the device still holds a connection, and it can only ever end its own linger — a `deviceId` nobody sent is not a way to unmute the player.
+         *     Best effort, and never required. A client that crashes, a tab that closes and a request that fails all end the same way a moment later. Sent while the device still holds a connection, it is remembered, and that connection's close then leaves no linger; a reconnect first cancels it. It can only ever end its own linger — a `deviceId` nobody sent is not a way to unmute the player.
          *
-         *     It ends what it ends in the session named and in no other. Naming none or `engine`, that is the device's linger on the player's own session, and the player's session never ends. Naming a detached session, it is this device's linger there and its grace as a controller as well, so the device stops being a member unless it still holds a connection, which keeps it listening and on the roster. A detached session whose last member leaves this way ends at once, its stream stopped before this answers. This is the one way a session ends before its grace runs out, and no request ends one for a device still in it. A shared session this device was never in answers `204` and ends nothing, and a session this device may not see answers `404` and ends nothing anywhere, the player's own session included. The device is read from the body, as `POST /stream/ticket` reads it, and never from the query.
+         *     It ends what it ends in the session named and in no other. Naming none or `engine`, that is the device's linger on the player's own session, and the player's session never ends. Naming a detached session, it is this device's linger there and its grace as a controller as well, so the device stops being a member, or, while it still holds a connection, stays listening and on the roster until that closes. A detached session whose last member leaves this way ends at once, its stream stopped before this answers. This is the one way a session ends before its grace runs out, and no request ends one for a device still in it. A shared session this device was never in answers `204` and ends nothing, and a session this device may not see answers `404` and ends nothing anywhere, the player's own session included. The device is read from the body, as `POST /stream/ticket` reads it, and never from the query.
          */
         post: operations["leaveStream"];
         delete?: never;
@@ -2285,6 +2337,8 @@ export interface components {
             columns: string[];
             /** @description Progress on a snapshot the component is building right now, or `null` while none is. This covers every build: the first walk, one started by a newly declared column set, and a rebuild asked for through `POST /library/refresh`. */
             build: components["schemas"]["LibraryBuild"] | null;
+            /** @description Whether the implementation has stopped reading the library for good, after failing too often to recover on its own. Once true it stays true until the implementation restarts: `build` is `null`, no further build starts, and the snapshot held when it stopped, if any, goes on being served at the generations above. A client waiting on a build stops waiting and tells its user the player needs restarting. */
+            halted: boolean;
         };
         /** @description How far the running build has gotten. */
         LibraryBuild: {
@@ -2320,7 +2374,7 @@ export interface components {
          */
         PlayerState: {
             /**
-             * @description What the player is doing right now. A detached session set to play reads `paused` while no connection listens to its stream, a device inside its linger included, and its position stands still; it reads `playing` from the moment a connection listens. A detached session paused through `POST /playback/play-pause` reads `paused` whether or not anybody listens.
+             * @description What the player is doing right now. A detached session set to play reads `paused` while no connection listens to its stream, a device inside its linger included, and its position stands still; it reads `playing` from the moment a connection listens. A detached session paused through `POST /playback/play-pause` or `POST /playback/pause` reads `paused` whether or not anybody listens.
              * @enum {string}
              */
             playback: "stopped" | "paused" | "playing";
@@ -3125,7 +3179,7 @@ export interface components {
             headers: {
                 /** @description The same tag the `200` carried. */
                 ETag?: string;
-                /** @description `private, max-age=15552000`, as on the `200`. */
+                /** @description `private, max-age=604800, stale-while-revalidate=15552000`, as on the `200`. */
                 "Cache-Control"?: string;
                 [name: string]: unknown;
             };
@@ -4420,6 +4474,74 @@ export interface operations {
             504: components["responses"]["PlaybackTooSlow"];
         };
     };
+    pause: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paused, or already paused or stopped. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["PlaybackDisabled"];
+            404: components["responses"]["NoSuchSession"];
+            415: components["responses"]["JsonRequired"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaybackUnavailable"];
+            504: components["responses"]["PlaybackTooSlow"];
+        };
+    };
+    resume: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The session the request is for: an `id` `GET /sessions` answers. No `session`, an empty one and `engine` are the same request, to the player's own session, and nothing else about it changes. A detached session this device may not see answers `404`, in the same bytes as an id nobody issued.
+                 *
+                 *     `controlPlayback` governs the player's own session alone, and refuses nothing addressed to a detached one.
+                 * @example engine
+                 */
+                session?: components["parameters"]["Session"];
+                /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
+                deviceId?: components["parameters"]["DeviceId"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Playing, or set to play. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["PlaybackDisabled"];
+            404: components["responses"]["NoSuchSession"];
+            415: components["responses"]["JsonRequired"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaybackUnavailable"];
+            504: components["responses"]["PlaybackTooSlow"];
+        };
+    };
     nextTrack: {
         parameters: {
             query?: {
@@ -5395,7 +5517,7 @@ export interface operations {
                 headers: {
                     /** @description Strong, quoted and opaque. Send it back as `If-None-Match`. */
                     ETag?: string;
-                    /** @description `private, max-age=15552000`, 180 days: this album's cover is fresh for months, and never in a cache but that client's. */
+                    /** @description `private, max-age=604800, stale-while-revalidate=15552000`: this album's cover is fresh for seven days, drawn stale for 180 more while it is revalidated, and never in a cache but that client's. */
                     "Cache-Control"?: string;
                     [name: string]: unknown;
                 };

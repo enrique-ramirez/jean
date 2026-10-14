@@ -86,6 +86,8 @@ const EXAMPLES: Record<
 		body: { structure, ordinals: [0, 1], index: 0 },
 	}),
 	playPause: () => ({ method: "POST", path: "/playback/play-pause" }),
+	pause: () => ({ method: "POST", path: "/playback/pause" }),
+	resume: () => ({ method: "POST", path: "/playback/resume" }),
 	nextTrack: () => ({ method: "POST", path: "/playback/next" }),
 	previousTrack: () => ({ method: "POST", path: "/playback/previous" }),
 	stop: () => ({ method: "POST", path: "/playback/stop" }),

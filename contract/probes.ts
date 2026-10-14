@@ -95,6 +95,16 @@ export const drives: Drive[] = [
 		probe: () => ({}),
 	},
 	{
+		// Like the toggle, no shape of this reaches the player and leaves it untouched: it
+		// starts a stopped player, and the pause after it is what leaves the player paused.
+		id: "resume",
+		probe: () => ({}),
+	},
+	{
+		id: "pause",
+		probe: () => ({}),
+	},
+	{
 		id: "nextTrack",
 		probe: () => ({}),
 	},

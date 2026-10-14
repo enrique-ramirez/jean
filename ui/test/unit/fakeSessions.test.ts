@@ -568,7 +568,9 @@ test("a session ends when its last member leaves, and every route naming it says
 	}
 });
 
-test("a leave from a device that still holds a connection to the session ends nothing", async () => {
+// `foo_jean` remembers a leave that reaches it before the stream's socket closes, so a client
+// leaving once is enough whichever arrives first.
+test("a leave from a device that still holds a connection ends nothing until that connection closes, and the close ends it", async () => {
 	const state = fresh();
 	const id = await create("device-a");
 	const listening = state.addSessionListener(id, {
@@ -582,11 +584,29 @@ test("a leave from a device that still holds a connection to the session ends no
 	assert.equal(still.body.listeners, 1);
 
 	listening.close();
-	assert.equal((await leave(id, "device-a")).status, 204);
 	assertNoSuchSession(
 		await documentOf(id, "device-a"),
 		"after the connection closed",
 	);
+});
+
+test("a device that left and connects again before its last connection closes is still a member once that closes", async () => {
+	const state = fresh();
+	const id = await create("device-a");
+	const first = state.addSessionListener(id, {
+		deviceId: "device-a",
+		name: null,
+	});
+
+	await leave(id, "device-a");
+	const second = state.addSessionListener(id, {
+		deviceId: "device-a",
+		name: null,
+	});
+	first.close();
+	second.close();
+
+	assert.equal((await documentOf(id, "device-a")).status, 200);
 });
 
 test("one device holding two connections is one listener, and the session outlives the first closing", async () => {
@@ -718,6 +738,30 @@ test("a session its controller paused reads paused whoever listens, and play-pau
 	);
 
 	state.addSessionListener(id, { deviceId: "device-a", name: null });
+	assert.equal((await poll(scope)).playback, "playing");
+});
+
+test("pause on a session nobody hears pauses it, and pause and resume each land however often sent", async () => {
+	const state = fresh();
+	const id = await create("device-a");
+	const scope = { session: id, deviceId: "device-a" };
+	await playRow(scope, "p5", 1);
+
+	assert.equal((await send("POST", "/playback/pause", scope)).status, 204);
+	state.addSessionListener(id, { deviceId: "device-a", name: null });
+	assert.equal((await poll(scope)).playback, "paused");
+
+	await send("POST", "/playback/pause", scope);
+	assert.equal((await poll(scope)).playback, "paused");
+
+	await send("POST", "/playback/resume", scope);
+	await send("POST", "/playback/resume", scope);
+	assert.equal((await poll(scope)).playback, "playing");
+
+	await send("POST", "/playback/stop", scope);
+	await send("POST", "/playback/pause", scope);
+	assert.equal((await poll(scope)).playback, "stopped");
+	await send("POST", "/playback/resume", scope);
 	assert.equal((await poll(scope)).playback, "playing");
 });
 

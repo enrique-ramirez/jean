@@ -217,6 +217,19 @@ void OpusStream::write(const float* samples, size_t frames, std::vector<std::uin
                         state.pending.begin() + static_cast<std::ptrdiff_t>(consumed));
 }
 
+size_t OpusStream::heldFrames() const {
+    const auto& state = *state_;
+    if (!ok())
+        return 0;
+
+    return (state.pending.size() / state.channels) +
+           (static_cast<size_t>(state.packetsOnPage) * kFrameSize);
+}
+
+unsigned OpusStream::channels() const {
+    return state_->channels;
+}
+
 void OpusStream::dropHeld() {
     auto& state = *state_;
     if (!ok())

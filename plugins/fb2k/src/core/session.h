@@ -114,6 +114,8 @@ public:
 
     PlayerOutcome play(std::vector<SessionTrack> tracks, size_t index, Clock::time_point now);
     void playPause(Clock::time_point now);
+    void pause(Clock::time_point now);
+    void resume(Clock::time_point now);
 
     void next(Clock::time_point now);
     void previous(Clock::time_point now);
@@ -146,7 +148,6 @@ public:
     bool member(const std::string& deviceId, Clock::time_point now) const;
     void seen(const std::string& deviceId, Clock::time_point now);
 
-    // Ends this device's controlling grace and its linger. A device still connected stays.
     void leave(const std::string& deviceId);
 
     // No listener, no linger and no controller inside the grace.
@@ -224,6 +225,8 @@ private:
     void skipLocked(Advance why, Clock::time_point now);
     double positionLocked(Clock::time_point now) const;
     void markLocked(Clock::time_point now);
+    void pauseLocked(Clock::time_point now);
+    void resumeLocked(Clock::time_point now);
     void heldWithinLocked(double duration);
     void startLocked(double from, bool cut, Clock::time_point now);
     void stopLocked(Clock::time_point now);

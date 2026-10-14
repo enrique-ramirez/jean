@@ -530,3 +530,21 @@ TEST_CASE(
     streamed.stream.reset();
     CHECK(streamed.calls->closed == 1);
 }
+
+// Media Foundation's encoder answers a block's packet two blocks later, so what it holds is whole
+// blocks the stream never sees in `out` until then, and they count as held as surely as the
+// remainder short of a block does.
+TEST_CASE("a stream counts as held its remainder and every block the codec has not answered") {
+    auto streamed =
+        streamOver({.refusesToOpen = std::nullopt, .blocks = {packetsOf({}), packetsOf({})}});
+    const size_t remainder = 100;
+    const auto pcm = quiet((5 * kAacBlockFrames) + remainder);
+    Bytes out;
+
+    streamed.stream->write(pcm.data(), (5 * kAacBlockFrames) + remainder, out);
+    CHECK(walkAdts(out).frames.size() == 3);
+    CHECK(streamed.stream->heldFrames() == (2 * kAacBlockFrames) + remainder);
+
+    streamed.stream->dropHeld();
+    CHECK(streamed.stream->heldFrames() == 0);
+}

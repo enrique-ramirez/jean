@@ -134,9 +134,9 @@ const buildTagOf = (build: components["schemas"]["LibraryBuild"] | null) =>
 	build ? `${build.phase}:${build.formatted}/${build.total}` : "x";
 
 const libraryTagOf = (state: FakeState, fake: FooJeanFake) =>
-	`s${state.libraryFeed.structure}-r${state.libraryFeed.revision}-b${buildTagOf(
-		libraryBuildOf(state, fake),
-	)}`;
+	`s${state.libraryFeed.structure}-r${state.libraryFeed.revision}-b${
+		fake.libraryHalted ? "halted" : buildTagOf(libraryBuildOf(state, fake))
+	}`;
 
 const configTagOf = (fake: FooJeanFake) =>
 	`g${fake.configGeneration}${fake.mainThreadStalled ? "-stalled" : ""}`;
@@ -209,11 +209,15 @@ export async function handleState({
 		return true;
 	}
 
-	if (fake.libraryRebuilds > 0 && state.libraryFeed.columns.length > 0) {
+	if (
+		fake.libraryRebuilds > 0 &&
+		state.libraryFeed.columns.length > 0 &&
+		!fake.libraryHalted
+	) {
 		fake.libraryRebuilds -= 1;
 		state.startLibraryBuild(state.libraryFeed.columns);
 	}
-	if (state.libraryFeed.building) {
+	if (state.libraryFeed.building && !fake.libraryHalted) {
 		if (fake.libraryBuilds > 0) {
 			fake.libraryBuilds -= 1;
 			state.libraryFeed.buildTicks += 1;

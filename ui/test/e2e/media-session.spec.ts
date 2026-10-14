@@ -380,7 +380,7 @@ test.describe("the media session", () => {
 		await expect.poll(() => player.player.playbackState).toBe("playing");
 	});
 
-	test("a pause on the lock screen while the player is already paused still pauses this device's audio", async ({
+	test("a pause on the lock screen while the player is already paused still pauses this device's audio, and leaves the player paused", async ({
 		page,
 		player,
 	}) => {
@@ -395,7 +395,75 @@ test.describe("the media session", () => {
 
 		await callMediaSessionAction(page, "pause");
 		await expect.poll(() => isAudioPaused(page)).toBe(true);
+		await expectSettlesAt(player, () => player.player.playbackState, "paused");
 		expect(countPostsTo(player, "/api/playback/play-pause")).toBe(0);
+	});
+
+	test("a pause on the lock screen pauses the player even when the last poll still says it plays", async ({
+		page,
+		player,
+	}) => {
+		await recordMediaSessionHandlers(page);
+		await page.goto("/");
+		await play(page);
+		await listening(page);
+		await expect
+			.poll(() => session(page).then((live) => live.state))
+			.toBe("playing");
+
+		player.fooJean.failState = 429;
+		player.patchPlayer({ playbackState: "paused" });
+
+		await callMediaSessionAction(page, "pause");
+		await expect
+			.poll(() => countPostsTo(player, "/api/playback/pause"))
+			.toBe(1);
+		await expectSettlesAt(player, () => player.player.playbackState, "paused");
+		expect(countPostsTo(player, "/api/playback/play-pause")).toBe(0);
+	});
+
+	test("a pause on the lock screen pressed again and again leaves the player paused", async ({
+		page,
+		player,
+	}) => {
+		await recordMediaSessionHandlers(page);
+		await page.goto("/");
+		await play(page);
+		await listening(page);
+
+		for (let press = 0; press < 3; press += 1)
+			await callMediaSessionAction(page, "pause");
+
+		await expect
+			.poll(() => countPostsTo(player, "/api/playback/pause"))
+			.toBe(3);
+		await expectSettlesAt(player, () => player.player.playbackState, "paused");
+		await expect.poll(() => isAudioPaused(page)).toBe(true);
+	});
+
+	test("a pause on the lock screen while the player can't be reached pauses this device's audio and sends the player nothing", async ({
+		page,
+		player,
+	}) => {
+		await recordMediaSessionHandlers(page);
+		await page.goto("/");
+		await play(page);
+		await listening(page);
+
+		player.fooJean.dropState = true;
+		await expect(
+			statusBar(page).getByRole("button", { name: /^(Play|Pause)\b/ }),
+		).toHaveAttribute("aria-disabled", "true");
+		const before = requestsTo(player, "/api/playback/").length;
+
+		await callMediaSessionAction(page, "pause");
+		await expect.poll(() => isAudioPaused(page)).toBe(true);
+		await expectSettlesAt(
+			player,
+			() => requestsTo(player, "/api/playback/").length,
+			before,
+		);
+		expect(player.player.playbackState).toBe("playing");
 	});
 
 	test.describe("paused from elsewhere", () => {
@@ -625,14 +693,14 @@ const SESSION_MOVES: SessionMove[] = [
 		},
 		read: ({ detached }) => detached.playback(),
 		expected: () => "playing",
-		route: "/api/playback/play-pause",
+		route: "/api/playback/resume",
 	},
 	{
 		title: "pause pauses the session and keeps this device listening to it",
 		action: "pause",
 		read: ({ detached }) => detached.playback(),
 		expected: () => "paused",
-		route: "/api/playback/play-pause",
+		route: "/api/playback/pause",
 	},
 	{
 		title: "next track moves the session to its next track",

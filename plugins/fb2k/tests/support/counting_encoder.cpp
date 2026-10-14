@@ -5,8 +5,7 @@
 namespace jean::testing {
 
 std::vector<float> blockOf(int id) {
-    constexpr size_t kChannels = 2;
-    return std::vector<float>(kBlockFrames * kChannels, static_cast<float>(id));
+    return std::vector<float>(kBlockFrames * kBlockChannels, static_cast<float>(id));
 }
 
 CountingEncoder::CountingEncoder(char tag, CountingEncoderOptions options)
@@ -36,12 +35,14 @@ void CountingEncoder::write(const float* samples, size_t frames, std::vector<std
         return;
     }
 
-    held_.push_back(bytesOf(frames == 0 ? 0 : static_cast<int>(samples[0])));
-    if (held_.size() <= heldBlocks_)
-        return;
+    for (size_t first = 0; first < frames; first += kBlockFrames) {
+        held_.push_back(bytesOf(static_cast<int>(samples[first * kBlockChannels])));
+        if (held_.size() <= heldBlocks_)
+            continue;
 
-    out.insert(out.end(), held_.front().begin(), held_.front().end());
-    held_.pop_front();
+        out.insert(out.end(), held_.front().begin(), held_.front().end());
+        held_.pop_front();
+    }
 }
 
 void CountingEncoder::dropHeld() {

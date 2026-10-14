@@ -70,6 +70,8 @@ test("with playback control off, every playback, queue and scratch write is refu
 
 	const routes: [method: string, path: string, body?: unknown][] = [
 		["POST", "/api/playback/play-pause"],
+		["POST", "/api/playback/pause"],
+		["POST", "/api/playback/resume"],
 		["POST", "/api/playback/next"],
 		["POST", "/api/playback/previous"],
 		["POST", "/api/playback/stop"],

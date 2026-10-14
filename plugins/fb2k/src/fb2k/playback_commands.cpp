@@ -3,6 +3,8 @@
 #include "fb2k/playback_commands.h"
 
 #include "core/ask_player.h"
+#include "core/playlists.h"
+#include "fb2k/playback_watch.h"
 #include "fb2k/playlists.h"
 
 #include <cstdint>
@@ -21,11 +23,23 @@ PlayerOutcome askCommand(MainThreadQueue& mainThread, const std::string& what,
     });
 }
 
+// The foobar2000 SDK's playlist_lock names filter_default_action as a lock doing something else in
+// place of playing the row.
+bool lockTakesDefaultAction(const playlist_manager::ptr& manager, t_size playlist) {
+    return (manager->playlist_lock_get_filter_mask(playlist) &
+            playlist_lock::filter_default_action) != 0;
+}
+
 // The foobar2000 SDK does not say what playlist_execute_default_action's bool means when a
 // playlist lock takes the action over, so it is not read, and the playlist and row are checked
 // beforehand instead. Why the playlist is activated first is ARCHITECTURE.md, *Facts about the
 // player*.
-PlayerOutcome playRowOnMainThread(const std::string& playlistId, uint32_t index) {
+//
+// foobar2000 announces the activation at once and the playing location only once the track has
+// opened, so the row is published first, where a poll between the two would otherwise see the
+// new playlist with no row playing in it.
+PlayerOutcome playRowOnMainThread(PlayerStateStore& store, PlaylistVersions& versions,
+                                  const std::string& playlistId, uint32_t index) {
     const auto playlist = findPlaylist(playlistId);
     if (playlist == pfc::infinite_size)
         return PlayerOutcome::noSuchPlaylist;
@@ -34,6 +48,9 @@ PlayerOutcome playRowOnMainThread(const std::string& playlistId, uint32_t index)
     if (index >= manager->playlist_get_item_count(playlist))
         return PlayerOutcome::positionPastEnd;
 
+    if (!lockTakesDefaultAction(manager, playlist))
+        publishLocation(store, versions, PlayingLocation{playlistId, index});
+
     manager->set_active_playlist(playlist);
     manager->playlist_execute_default_action(playlist, index);
     return PlayerOutcome::done;
@@ -41,11 +58,13 @@ PlayerOutcome playRowOnMainThread(const std::string& playlistId, uint32_t index)
 
 }  // namespace
 
-PlaylistRowPlayer makePlaylistRowPlayer(MainThreadQueue& mainThread) {
-    return [&mainThread](const std::string& playlistId, uint32_t index) {
+PlaylistRowPlayer makePlaylistRowPlayer(MainThreadQueue& mainThread, PlayerStateStore& store,
+                                        PlaylistVersions& versions) {
+    return [&mainThread, &store, &versions](const std::string& playlistId, uint32_t index) {
         return askForOutcome<PlayerOutcome>(
-            mainThread, "playing a playlist row",
-            [playlistId, index] { return playRowOnMainThread(playlistId, index); });
+            mainThread, "playing a playlist row", [&store, &versions, playlistId, index] {
+                return playRowOnMainThread(store, versions, playlistId, index);
+            });
     };
 }
 
@@ -55,6 +74,12 @@ TransportCommander makeTransportCommander(MainThreadQueue& mainThread) {
             case Transport::playPause:
                 return askCommand(mainThread, "toggling play/pause",
                                   [] { playback_control::get()->play_or_pause(); });
+            case Transport::pause:
+                return askCommand(mainThread, "pausing playback",
+                                  [] { playback_control::get()->pause(true); });
+            case Transport::resume:
+                return askCommand(mainThread, "resuming playback",
+                                  [] { playback_control::get()->play_or_unpause(); });
             case Transport::next:
                 return askCommand(mainThread, "advancing to the next track",
                                   [] { playback_control::get()->next(); });

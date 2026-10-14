@@ -26,6 +26,7 @@ import type {
 	TrackListHandle,
 } from "./listTypes";
 import { NowPlayingPill } from "./NowPlayingPill";
+import { holdPlayingRow } from "./playingRating";
 import type { TrackRows } from "./project";
 import { setRatingTarget } from "./ratingTarget";
 import styles from "./TrackBrowser.module.css";
@@ -303,6 +304,15 @@ export function TrackBrowser({
 		});
 		return () => setRatingTarget(null);
 	}, [source, rows, selection.cursor]);
+
+	useEffect(() => {
+		if (activeIndex < 0 || activeIndex >= rows.length) return undefined;
+		return holdPlayingRow({
+			source,
+			ref: rows.ref(activeIndex),
+			columns: rows.columns,
+		});
+	}, [source, rows, activeIndex]);
 
 	useKeymap(
 		SCOPE.playlist,

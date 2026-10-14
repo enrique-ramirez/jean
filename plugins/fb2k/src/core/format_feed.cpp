@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace jean {
@@ -79,6 +80,11 @@ std::unique_ptr<StreamListener> FormatFeed::listen(std::shared_ptr<const void> o
     return std::make_unique<Listener>(*this, std::move(owner));
 }
 
+bool FormatFeed::heardThrough() const {
+    const std::lock_guard<std::mutex> held(mutex_);
+    return listeners_.load() > 0 && !unheard_;
+}
+
 void FormatFeed::feed(const float* samples, size_t frames) {
     if (!working_.load())
         return;
@@ -98,21 +104,71 @@ void FormatFeed::feed(const float* samples, size_t frames) {
         encoded_.clear();
         encoder_.write(samples, frames, encoded_);
 
-        if (!encoded_.empty())
-            ring_.write(encoded_.data(), encoded_.size());
-
-        if (encoder_.ok())
+        if (publishLocked())
             return;
-
-        working_.store(false);
-        ring_.close();
     }
 
+    reportFailure();
+}
+
+void FormatFeed::silenceHeld() {
+    if (!working_.load())
+        return;
+
+    {
+        const std::lock_guard<std::mutex> held(mutex_);
+        if (listeners_.load() == 0)
+            unheard_ = true;
+
+        if (unheard_)
+            return;
+
+        const size_t frames = encoder_.heldFrames();
+        encoder_.dropHeld();
+
+        encoded_.clear();
+        if (frames > 0) {
+            silence_.assign(frames * encoder_.channels(), 0.0F);
+            encoder_.write(silence_.data(), frames, encoded_);
+        }
+
+        if (publishLocked())
+            return;
+    }
+
+    reportFailure();
+}
+
+bool FormatFeed::publishLocked() {
+    if (!encoded_.empty())
+        ring_.write(encoded_.data(), encoded_.size());
+
+    if (encoder_.ok())
+        return true;
+
+    working_.store(false);
+    ring_.close();
+    return false;
+}
+
+void FormatFeed::reportFailure() const {
     logError(name_ + " streaming stopped: " + encoder_.error());
 }
 
 void FormatFeed::close() {
     ring_.close();
+}
+
+HeldAudio heldAudioBefore(const std::vector<FormatFeed*>& feeds, bool cut) {
+    if (std::none_of(feeds.begin(), feeds.end(),
+                     [](const FormatFeed* feed) { return feed->hasListeners(); }))
+        return HeldAudio::nobodyListening;
+
+    if (std::none_of(feeds.begin(), feeds.end(),
+                     [](const FormatFeed* feed) { return feed->heardThrough(); }))
+        return HeldAudio::drop;
+
+    return cut ? HeldAudio::silence : HeldAudio::keep;
 }
 
 }  // namespace jean

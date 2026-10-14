@@ -32,6 +32,7 @@
 	background: none;
 	padding: 0;
 	text-align: left;
+	transition: opacity 0.2s var(--ease);
 }
 
 .art {
@@ -138,7 +139,8 @@
 	white-space: nowrap;
 	transition:
 		color 0.12s var(--ease),
-		background-color 0.12s var(--ease);
+		background-color 0.12s var(--ease),
+		opacity 0.2s var(--ease);
 }
 
 .times:hover {
@@ -200,4 +202,9 @@
 	.statusbar > [role="slider"]::before {
 		content: none;
 	}
+}
+
+.statusbar[data-connected="false"] .now,
+.statusbar[data-connected="false"] .times {
+	opacity: 0.55;
 }

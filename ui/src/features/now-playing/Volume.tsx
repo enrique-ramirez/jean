@@ -1,6 +1,10 @@
 import { ChevronUp, Volume1, Volume2, VolumeX } from "lucide-react";
 import { type ButtonHTMLAttributes, useState } from "react";
-import { whenControllable } from "@/domain/player/usePlaybackControl";
+import {
+	type PlaybackRefusal,
+	refusedName,
+	whenAllowed,
+} from "@/domain/player/usePlaybackControl";
 import {
 	fractionToVolume,
 	volumePercent,
@@ -41,13 +45,13 @@ function VolumeButton({
 	volume,
 	onPress,
 	label,
-	disabled = false,
+	refusal = null,
 	...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
 	volume: VolumeState | null;
 	onPress?: () => void;
 	label: string;
-	disabled?: boolean;
+	refusal?: PlaybackRefusal | null;
 }) {
 	const t = useTranslate();
 	const percent = volumePercent(volume);
@@ -59,7 +63,7 @@ function VolumeButton({
 			className={styles.button}
 			aria-pressed={Boolean(volume?.isMuted)}
 			aria-label={baseLabel}
-			{...whenControllable(!disabled, onPress, baseLabel, t)}
+			{...whenAllowed(refusal, onPress, baseLabel, t)}
 			title={
 				volume?.isMuted
 					? t("player.muted")
@@ -78,20 +82,20 @@ export function VolumeSlider({
 	orientation = "horizontal",
 	className,
 	label,
-	disabled = false,
+	refusal = null,
 }: {
 	volume: VolumeState | null;
 	onChange: (value: number) => void;
 	orientation?: "horizontal" | "vertical";
 	className?: string;
 	label: string;
-	disabled?: boolean;
+	refusal?: PlaybackRefusal | null;
 }) {
 	const t = useTranslate();
 	const { ref, fraction, isDragging, handlers } = useDragFraction({
 		onDrag: (next) => onChange(fractionToVolume(volume as VolumeState, next)),
 		onCommit: (next) => onChange(fractionToVolume(volume as VolumeState, next)),
-		disabled: disabled || !volume,
+		disabled: refusal !== null || !volume,
 		orientation,
 	});
 
@@ -107,10 +111,8 @@ export function VolumeSlider({
 			data-muted={Boolean(volume?.isMuted)}
 			role="slider"
 			tabIndex={0}
-			aria-disabled={disabled || undefined}
-			aria-label={
-				disabled ? t("player.controlOffName", { control: label }) : label
-			}
+			aria-disabled={refusal !== null || undefined}
+			aria-label={refusedName(refusal, label, t)}
 			aria-valuemin={0}
 			aria-valuemax={100}
 			aria-valuenow={percent}
@@ -185,13 +187,13 @@ export function VolumePopover({
 	volume,
 	onChange,
 	label,
-	disabled = false,
+	refusal = null,
 	outputs,
 }: {
 	volume: VolumeState | null;
 	onChange: (value: number) => void;
 	label: string;
-	disabled?: boolean;
+	refusal?: PlaybackRefusal | null;
 	outputs?: OutputPicker;
 }) {
 	const t = useTranslate();
@@ -223,7 +225,7 @@ export function VolumePopover({
 								onChange={onChange}
 								orientation="vertical"
 								label={label}
-								disabled={disabled}
+								refusal={refusal}
 							/>
 							<span className={styles.readout}>{volumePercent(volume)}</span>
 							{outputs ? (
@@ -253,14 +255,14 @@ export function Volume({
 	onChange,
 	onToggleMute,
 	label,
-	disabled = false,
+	refusal = null,
 	outputs,
 }: {
 	volume: VolumeState | null;
 	onChange: (value: number) => void;
 	onToggleMute: () => void;
 	label: string;
-	disabled?: boolean;
+	refusal?: PlaybackRefusal | null;
 	outputs?: OutputPicker;
 }) {
 	return (
@@ -271,7 +273,7 @@ export function Volume({
 						volume={volume}
 						label={label}
 						onPress={onToggleMute}
-						disabled={disabled}
+						refusal={refusal}
 					/>
 					<OutputCaret {...outputs} />
 				</div>
@@ -280,14 +282,14 @@ export function Volume({
 					volume={volume}
 					label={label}
 					onPress={onToggleMute}
-					disabled={disabled}
+					refusal={refusal}
 				/>
 			)}
 			<VolumeSlider
 				volume={volume}
 				onChange={onChange}
 				label={label}
-				disabled={disabled}
+				refusal={refusal}
 			/>
 		</div>
 	);

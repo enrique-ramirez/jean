@@ -41,7 +41,6 @@ import {
 	openOnThePlayer,
 	openPicker,
 	ownRow,
-	PAST_THE_SECOND_LEAVE_MS,
 	PLAYER_NAME,
 	pickerRows,
 	playerRowOf,
@@ -54,6 +53,7 @@ import {
 	strictOnceSettled,
 	THIS_DEVICE,
 	thePlayersFace,
+	WELL_AFTER_LEAVING_MS,
 } from "./sessions.ts";
 
 const UNKNOWN_DEVICE = "Unknown device";
@@ -951,7 +951,7 @@ test.describe("nothing ends a session for another device in it", () => {
 		strict.release();
 		await leaveButton(page).click();
 		await expect(currentRows(page)).toContainText(PLAYER_NAME);
-		await page.waitForTimeout(PAST_THE_SECOND_LEAVE_MS);
+		await page.waitForTimeout(WELL_AFTER_LEAVING_MS);
 		await untilQuiet(player);
 
 		expect(player.sessions.find(started.id)).toBe(started);
@@ -1647,7 +1647,7 @@ test.describe("switching from what the page started to what another device start
 		await expect
 			.poll(() => countPostsToSession(player, "/api/stream/leave", started.id))
 			.toBeGreaterThan(0);
-		await page.waitForTimeout(PAST_THE_SECOND_LEAVE_MS);
+		await page.waitForTimeout(WELL_AFTER_LEAVING_MS);
 		await untilQuiet(player);
 		const from = polls.length;
 		await expect.poll(() => polls.length).toBeGreaterThan(from + 1);
@@ -1691,7 +1691,7 @@ test.describe("leaving what another device started, once joined", () => {
 		await leaveButton(page).click();
 
 		await expect(thePlayersFace(page)).toBeVisible();
-		await page.waitForTimeout(PAST_THE_SECOND_LEAVE_MS);
+		await page.waitForTimeout(WELL_AFTER_LEAVING_MS);
 		await untilQuiet(player);
 		const steps = stepsAfter(player, from, { [session.id]: CREATOR });
 		expect(steps.length).toBeGreaterThan(0);
@@ -2672,7 +2672,7 @@ test.describe("leaving what the page only controls", () => {
 
 		await expect(thePlayersFace(page)).toBeVisible();
 		if (!isMobile) await expect(thePlayersFace(page)).toBeFocused();
-		await page.waitForTimeout(PAST_THE_SECOND_LEAVE_MS);
+		await page.waitForTimeout(WELL_AFTER_LEAVING_MS);
 		await untilQuiet(player);
 		const leaves = leavesSent(player, from);
 		expect(leaves.length).toBeGreaterThan(0);
@@ -2713,7 +2713,7 @@ test.describe("leaving what the page only controls", () => {
 
 		await expect.poll(() => player.sessions.find(session.id)).toBeNull();
 		await expect(thePlayersFace(page)).toBeVisible();
-		await page.waitForTimeout(PAST_THE_SECOND_LEAVE_MS);
+		await page.waitForTimeout(WELL_AFTER_LEAVING_MS);
 		await untilQuiet(player);
 		expect(await storedSession(page)).toBeNull();
 		expect(await toastsRaised(page)).toEqual([]);
@@ -2751,7 +2751,7 @@ test.describe("leaving what the page only controls", () => {
 		await expect
 			.poll(() => countPostsToSession(player, "/api/stream/leave", session.id))
 			.toBeGreaterThan(0);
-		await page.waitForTimeout(PAST_THE_SECOND_LEAVE_MS);
+		await page.waitForTimeout(WELL_AFTER_LEAVING_MS);
 		await untilQuiet(player);
 
 		expect(player.sessions.find(session.id)).toBe(session);
@@ -3421,7 +3421,7 @@ test.describe("nobody listening any more, to what the page only controls", () =>
 		);
 
 		const from = polls.length;
-		await advanceSettled(page, player, PAST_THE_SECOND_LEAVE_MS);
+		await advanceSettled(page, player, WELL_AFTER_LEAVING_MS);
 		await untilQuiet(player);
 		expectEachNames(polls.slice(from), ON_THE_PLAYER);
 		expect(polls.length).toBeGreaterThan(from);
@@ -3599,7 +3599,11 @@ test.describe("a page that only controls what nobody else is in, when the other 
 		player,
 	}) => {
 		const creator = aDevice(CREATOR);
-		const session = startedElsewhere(player, creator);
+		// Playing, so the last listener going moves the poll, and the page reads the session at once
+		// rather than at its next turn, inside the time the other page's leave waits for an answer.
+		const session = startedElsewhere(player, creator, {
+			plays: oneOffEachRecord(player).elsewhere[0],
+		});
 		await recordToasts(page);
 		const refused = await openOnThePlayer(page);
 
@@ -3630,7 +3634,7 @@ test.describe("a page that only controls what nobody else is in, when the other 
 		expect(await toastsRaised(page)).toEqual([endedToast(CREATOR)]);
 		expect(await storedSession(page)).toBeNull();
 		expectEachNames(await nextPolls(polls), ON_THE_PLAYER);
-		await page.waitForTimeout(PAST_THE_SECOND_LEAVE_MS);
+		await page.waitForTimeout(WELL_AFTER_LEAVING_MS);
 		await untilQuiet(player);
 		expect(await toastsRaised(page)).toEqual([endedToast(CREATOR)]);
 		expect(refused).toEqual([]);

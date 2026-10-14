@@ -232,6 +232,8 @@ public:
     void reportBuild(BuildProgress progress);
     void endBuild();
 
+    void reportHalted();
+
     struct State {
         bool ready = false;
         uint64_t structure = 0;
@@ -239,6 +241,7 @@ public:
         size_t trackCount = 0;
         std::vector<std::string> columns;
         std::optional<BuildProgress> build;
+        bool halted = false;
     };
 
     State state() const;
@@ -290,6 +293,7 @@ private:
     // unlocked access through std::optional's assignment, which would hide a race here.
     bool building_ = false;
     BuildProgress build_;
+    bool halted_ = false;
 
     mutable std::mutex exportLock_;
     mutable Export lastExport_;
@@ -334,6 +338,10 @@ public:
     bool startIfWanted();
 
     void finished();
+
+    // The worker failed. The build it was running is wanted again, of the set declared since if
+    // there is one; with no build running, a rebuild stands in for the row changes it lost.
+    void failed();
 
     const std::vector<std::string>& columns() const;
 

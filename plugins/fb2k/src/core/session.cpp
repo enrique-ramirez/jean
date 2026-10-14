@@ -201,6 +201,33 @@ PlayerOutcome Session::play(std::vector<SessionTrack> tracks, size_t index, Cloc
 void Session::playPause(Clock::time_point now) {
     const std::lock_guard<std::mutex> held(mutex_);
 
+    if (playback_ != PlaybackState::playing)
+        resumeLocked(now);
+    else if (listeners_ > 0)
+        pauseLocked(now);
+}
+
+void Session::pause(Clock::time_point now) {
+    const std::lock_guard<std::mutex> held(mutex_);
+    pauseLocked(now);
+}
+
+void Session::resume(Clock::time_point now) {
+    const std::lock_guard<std::mutex> held(mutex_);
+    resumeLocked(now);
+}
+
+void Session::pauseLocked(Clock::time_point now) {
+    if (playback_ != PlaybackState::playing)
+        return;
+
+    markLocked(now);
+    playback_ = PlaybackState::paused;
+    ++revisions_.version;
+    woken_.notify_all();
+}
+
+void Session::resumeLocked(Clock::time_point now) {
     switch (playback_) {
         case PlaybackState::stopped:
             if (queue_.empty() && snapshot_.empty())
@@ -217,20 +244,14 @@ void Session::playPause(Clock::time_point now) {
             startLocked(0, true, now);
             return;
         case PlaybackState::playing:
-            if (listeners_ == 0)
-                return;
-
-            markLocked(now);
-            playback_ = PlaybackState::paused;
-            break;
+            return;
         case PlaybackState::paused:
             markLocked(now);
             playback_ = PlaybackState::playing;
-            break;
+            ++revisions_.version;
+            woken_.notify_all();
+            return;
     }
-
-    ++revisions_.version;
-    woken_.notify_all();
 }
 
 void Session::next(Clock::time_point now) {

@@ -16,6 +16,7 @@ import {
 } from "@/domain/player/sessionOperations";
 import { type ListenPhase, useListener } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
+import { refusalUnless } from "@/domain/player/usePlaybackControl";
 import { useIsPlaying, usePlayer } from "@/domain/player/usePlayer";
 import { useVolume } from "@/domain/player/useVolume";
 import { namedTrack } from "@/domain/track/fields";
@@ -333,7 +334,7 @@ export function PlayingOn({
 							onChange={setValue}
 							className={styles.slider}
 							label={t("listen.volumeOn", { player: playerName })}
-							disabled={!canControlPlayback}
+							refusal={refusalUnless(canControlPlayback)}
 						/>
 					</span>
 				) : null}

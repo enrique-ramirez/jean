@@ -1,8 +1,9 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
+import { playingTrackPaint } from "@/domain/track/playingRating";
 import { isWritableScale, rawRatingOfValue } from "@/domain/track/rating";
 import { RATING_FIELD, useTagWriting } from "@/domain/track/useTagWriter";
-import { NOW_PLAYING_FIELD } from "./nowPlayingFields";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
 
 const isLocalPath = (path: string | null) =>
@@ -10,15 +11,12 @@ const isLocalPath = (path: string | null) =>
 
 export function useNowPlayingRating() {
 	const { hasWritableAddress, writableAddress, rateTrack } = useTagWriting();
-	const { track, addresses, details, setRating, confirmRating, restoreRating } =
-		useNowPlayingTrack();
+	const { track, addresses, details, activeItem } = useNowPlayingTrack();
+	const queryClient = useQueryClient();
 
 	const isLocalFile = track !== null && isLocalPath(track.path);
 
-	const raw =
-		details === null
-			? null
-			: rawRatingOfValue(details.row[NOW_PLAYING_FIELD.rating]);
+	const raw = details === null ? null : rawRatingOfValue(details.rating);
 
 	const title = track?.title ?? null;
 	const canWrite =
@@ -29,25 +27,25 @@ export function useNowPlayingRating() {
 
 	const write = useCallback(
 		(stars: number | null) => {
-			if (!canWrite || title === null) return;
+			if (!canWrite || title === null || activeItem === null) return;
 
 			const writable = writableAddress(RATING_FIELD, addresses);
 			if (!writable) return;
 
-			rateTrack(writable, title, stars, {
-				adopt: setRating,
-				confirm: confirmRating,
-				restore: restoreRating,
-			});
+			rateTrack(
+				writable,
+				title,
+				stars,
+				playingTrackPaint(queryClient, activeItem),
+			);
 		},
 		[
 			canWrite,
 			title,
 			addresses,
+			activeItem,
 			writableAddress,
-			setRating,
-			confirmRating,
-			restoreRating,
+			queryClient,
 			rateTrack,
 		],
 	);

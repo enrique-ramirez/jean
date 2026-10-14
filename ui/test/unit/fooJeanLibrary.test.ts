@@ -41,17 +41,20 @@ const building = (
 interface Player {
 	buildAt: (now: number) => Build | null;
 	readyAt: number;
+	haltedAt?: number;
 }
 
 const libraryAt = (player: Player, now: number): StateDocument["library"] => {
 	const ready = now >= player.readyAt;
+	const halted = now >= (player.haltedAt ?? Number.POSITIVE_INFINITY);
 	return {
 		ready,
 		structure: ready ? 1 : 0,
 		revision: ready ? 1 : 0,
 		trackCount: ready ? SNAPSHOT_TRACKS : 0,
 		columns: ready ? COLUMNS : [],
-		build: ready ? null : player.buildAt(now),
+		build: ready || halted ? null : player.buildAt(now),
+		halted,
 	};
 };
 
@@ -63,7 +66,7 @@ const answer = (player: Player, url: string): Response => {
 	if (pathname === "/api/library/export")
 		return now >= player.readyAt
 			? new Response(SNAPSHOT)
-			: new Response(null, { status: 202 });
+			: Response.json(libraryAt(player, now), { status: 202 });
 	return new Response(null, { status: 404 });
 };
 
@@ -145,6 +148,31 @@ test("a build that keeps moving is waited out past five minutes and answers the 
 	const result = run.result();
 	assert.ok(result?.ok, `answered ${failedWith(run)} rather than the snapshot`);
 	assert.equal(result.library.trackCount, SNAPSHOT_TRACKS);
+});
+
+// A component whose worker halted builds nothing more, so waiting out the stall would cost a
+// minute and then a retry every minute after it, each answered the same.
+test("a build whose worker halts answers halted at the next poll rather than waiting out the stall", async (t) => {
+	const haltedAt = 10 * SECOND;
+	const run = start(t, {
+		buildAt: (now) => building("formatting", Math.floor(now / SECOND) * 100),
+		readyAt: Number.POSITIVE_INFINITY,
+		haltedAt,
+	});
+
+	await run.until(haltedAt + POLL_MAX_MS + SECOND);
+	assert.equal(failedWith(run), "halted");
+});
+
+test("an export a halted component answers 202 answers halted without polling", async (t) => {
+	const run = start(t, {
+		buildAt: () => null,
+		readyAt: Number.POSITIVE_INFINITY,
+		haltedAt: 0,
+	});
+
+	await run.until(STEP_MS);
+	assert.equal(failedWith(run), "halted");
 });
 
 test("a build standing still answers timeout once sixty seconds pass without movement, and not a second before", async (t) => {

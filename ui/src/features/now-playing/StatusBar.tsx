@@ -1,8 +1,10 @@
+import { useConnection } from "@/domain/player/connection";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
 import {
 	useCanControlPlayback,
-	whenControllable,
+	usePlaybackRefusal,
+	whenAllowed,
 } from "@/domain/player/usePlaybackControl";
 import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import { useAudiblePlayer, usePlayer } from "@/domain/player/usePlayer";
@@ -84,6 +86,8 @@ export function StatusBar({
 	const snapshot = useAudiblePlayer();
 	const { discovery } = useFooJean();
 	const canControlPlayback = useCanControlPlayback();
+	const refusal = usePlaybackRefusal();
+	const isConnected = useConnection() === "connected";
 	const isCompactViewport = useIsCompactViewport();
 	// iOS exposes no level to set, so the fader is dropped rather than drawn dead.
 	const {
@@ -92,7 +96,7 @@ export function StatusBar({
 		setValue: changeVolume,
 		toggleMute,
 		hasFader,
-		canMove,
+		refusal: volumeRefusal,
 	} = useAudibleVolume();
 
 	const swipeUp = useSwipe({ onUp: onRevealNowPlaying });
@@ -157,11 +161,11 @@ export function StatusBar({
 	const nextLabel = t("shortcut.nextTrack");
 
 	return (
-		<footer className={styles.statusbar}>
+		<footer className={styles.statusbar} data-connected={isConnected}>
 			<SeekBar
 				snapshot={snapshot}
-				onSeek={canControlPlayback ? (position) => seek.mutate(position) : NOOP}
-				disabled={!canControlPlayback}
+				onSeek={refusal === null ? (position) => seek.mutate(position) : NOOP}
+				refusal={refusal}
 			/>
 
 			<div className={styles.row} {...swipeUp}>
@@ -200,19 +204,14 @@ export function StatusBar({
 								order={order}
 								className={styles.order}
 								size={16}
-								disabled={!canControlPlayback}
+								refusal={refusal}
 							/>
 
 							<button
 								type="button"
 								className={styles.skip}
 								aria-label={previousLabel}
-								{...whenControllable(
-									canControlPlayback,
-									() => previous(),
-									previousLabel,
-									t,
-								)}
+								{...whenAllowed(refusal, () => previous(), previousLabel, t)}
 							>
 								<SkipBackIcon size={18} />
 							</button>
@@ -227,7 +226,7 @@ export function StatusBar({
 									volume={shownVolume}
 									onChange={changeVolume}
 									label={t(isHere ? "player.volumeHere" : "player.volume")}
-									disabled={!canMove}
+									refusal={volumeRefusal}
 									outputs={outputs}
 								/>
 							) : null}
@@ -237,7 +236,7 @@ export function StatusBar({
 					<PlayToggle
 						isPlaying={isPlaying}
 						onToggle={() => playPause.mutate()}
-						disabled={!canControlPlayback}
+						refusal={refusal}
 					/>
 
 					{isCompactViewport ? null : (
@@ -246,8 +245,8 @@ export function StatusBar({
 								type="button"
 								className={styles.skip}
 								aria-label={nextLabel}
-								{...whenControllable(
-									canControlPlayback,
+								{...whenAllowed(
+									refusal,
 									() => transport.next.mutate(),
 									nextLabel,
 									t,
@@ -271,7 +270,7 @@ export function StatusBar({
 								onChange={changeVolume}
 								onToggleMute={toggleMute}
 								label={t(isHere ? "player.volumeHere" : "player.volume")}
-								disabled={!canMove}
+								refusal={volumeRefusal}
 								outputs={outputs}
 							/>
 						) : null}

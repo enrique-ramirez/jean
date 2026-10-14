@@ -4,8 +4,10 @@ import type { AddressInfo } from "node:net";
 import { after, before, beforeEach, test } from "node:test";
 import {
 	nextTrack,
+	pause,
 	playPause,
 	previousTrack,
+	resume,
 	stop,
 } from "../../src/shared/api/playback.ts";
 import { playPlaylistItem } from "../../src/shared/api/playlists.ts";
@@ -45,6 +47,8 @@ const isJson = (contentType: string | null) =>
 
 test("every command Jean posts with no body still says it is JSON", async () => {
 	await playPause(origin);
+	await pause(origin);
+	await resume(origin);
 	await nextTrack(origin);
 	await previousTrack(origin);
 	await stop(origin);
@@ -57,6 +61,8 @@ test("every command Jean posts with no body still says it is JSON", async () => 
 		})),
 		[
 			{ path: "/api/playback/play-pause", json: true },
+			{ path: "/api/playback/pause", json: true },
+			{ path: "/api/playback/resume", json: true },
 			{ path: "/api/playback/next", json: true },
 			{ path: "/api/playback/previous", json: true },
 			{ path: "/api/playback/stop", json: true },

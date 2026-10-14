@@ -3,9 +3,11 @@ import {
 	REMEDY_AFTER_MS,
 } from "../../src/domain/player/connection.ts";
 import { en } from "../../src/shared/i18n/en.ts";
-import type { Page } from "./fixtures.ts";
+import type { Locator, Page } from "./fixtures.ts";
 import {
 	expect,
+	nowPlayingScreen,
+	openNowPlaying,
 	playFirstRow,
 	statusBar,
 	test,
@@ -18,6 +20,62 @@ const DISCONNECTED_TITLE = `${en["player.disconnected"]} · Jean`;
 
 const notice = (page: Page) =>
 	toastRegion(page).filter({ hasText: RECONNECTING });
+
+const UNREACHABLE = new RegExp(
+	en["player.unreachableName"]
+		.replace(/[()]/g, "\\$&")
+		.replace("{control}", ".+"),
+);
+
+const position = (scope: Locator) =>
+	scope.getByRole("slider", { name: /^Playback position\b/ });
+
+const button = (scope: Locator, name: RegExp) =>
+	scope.getByRole("button", { name });
+
+const playToggle = (scope: Locator) => button(scope, /^(Play|Pause)\b/);
+
+const transport = (scope: Locator) => [
+	playToggle(scope),
+	position(scope),
+	button(scope, /^Playback order\b/),
+	button(scope, /^Previous track\b/),
+	button(scope, /^Next track\b/),
+];
+
+const statusBarControls = (page: Page, isCompact: boolean) => {
+	const bar = statusBar(page);
+	if (isCompact) return [playToggle(bar), position(bar)];
+	return [
+		...transport(bar),
+		button(bar, /^(Mute|Unmute)\b/),
+		bar.getByRole("slider", { name: /^Volume\b/ }),
+	];
+};
+
+const CLOCK_TICKS_TWICE_MS = 2500;
+
+const secondsShown = async (page: Page) =>
+	Number(await position(statusBar(page)).getAttribute("aria-valuenow"));
+
+const loseThePlayer = async (page: Page) => {
+	await setReachable(page, false);
+	await expect(notice(page)).toBeVisible();
+};
+
+const expectRefused = async (controls: Locator[]) => {
+	for (const control of controls) {
+		await expect(control).toHaveAttribute("aria-disabled", "true");
+		await expect(control).toHaveAccessibleName(UNREACHABLE);
+	}
+};
+
+const expectAllowed = async (controls: Locator[]) => {
+	for (const control of controls) {
+		await expect(control).not.toHaveAttribute("aria-disabled", "true");
+		await expect(control).not.toHaveAccessibleName(UNREACHABLE);
+	}
+};
 
 const setReachable = async (page: Page, reachable: boolean) => {
 	const answered = await page.request.post("/__control/reachable", {
@@ -116,5 +174,70 @@ test.describe("losing the connection to foo_jean mid-session", () => {
 		await expect(notice(page)).toHaveCount(0);
 		await expect(statusBar(page)).toContainText("Fizz");
 		await expect(page).toHaveTitle(/^Fizz/);
+	});
+
+	test("the clock stops and the status bar dims while the player can't be reached, and both come back", async ({
+		page,
+		isMobile,
+	}) => {
+		await playFirstRow(page, isMobile);
+		const bar = statusBar(page);
+		const identity = bar.getByRole("button", { name: "Show current track" });
+		await expect(identity).toHaveCSS("opacity", "1");
+
+		await loseThePlayer(page);
+		await expect(identity).not.toHaveCSS("opacity", "1");
+
+		const frozenAt = await secondsShown(page);
+		const elapsed = isMobile
+			? null
+			: bar.getByTitle(en["player.showRemaining"]);
+		const frozenText = await elapsed?.textContent();
+		await page.waitForTimeout(CLOCK_TICKS_TWICE_MS);
+		expect(await secondsShown(page)).toBe(frozenAt);
+		if (elapsed) expect(await elapsed.textContent()).toBe(frozenText);
+
+		await setReachable(page, true);
+
+		await expect(notice(page)).toHaveCount(0);
+		await expect(identity).toHaveCSS("opacity", "1");
+		await expect.poll(() => secondsShown(page)).toBeGreaterThan(frozenAt);
+	});
+
+	test("the status bar's transport is disabled, named with the reason, while the player can't be reached, and returns once it answers", async ({
+		page,
+		isMobile,
+	}) => {
+		await playFirstRow(page, isMobile);
+		const controls = statusBarControls(page, isMobile);
+		await expectAllowed(controls);
+
+		await loseThePlayer(page);
+		await expectRefused(controls);
+
+		await setReachable(page, true);
+		await expect(notice(page)).toHaveCount(0);
+		await expectAllowed(controls);
+	});
+
+	test("the now-playing screen's transport is disabled with the reason while the player can't be reached, and returns once it answers", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(
+			!isMobile,
+			"the screen draws a transport only on a phone; on a desktop the status bar is it",
+		);
+		await playFirstRow(page, isMobile);
+		await openNowPlaying(page);
+		const controls = transport(nowPlayingScreen(page));
+		await expectAllowed(controls);
+
+		await loseThePlayer(page);
+		await expectRefused(controls);
+
+		await setReachable(page, true);
+		await expect(notice(page)).toHaveCount(0);
+		await expectAllowed(controls);
 	});
 });

@@ -62,6 +62,14 @@ function LibraryNotice({
 	const { failure } = status;
 	const message = t(READ_FAILED[failure.reason]);
 
+	if (failure.reason === "halted")
+		return (
+			<div className={styles.notice}>
+				<p className={styles.summary}>{message}</p>
+				<p className={styles.fix}>{t("library.halted.fix")}</p>
+			</div>
+		);
+
 	return (
 		<div className={styles.notice}>
 			<p className={styles.summary}>

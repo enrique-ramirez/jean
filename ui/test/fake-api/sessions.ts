@@ -57,9 +57,11 @@ function detachedSession(
 	id: string,
 	createdBy: SessionDevice,
 	{ evaluate, marksKept }: SessionNeeds,
+	leaveLanded: () => void,
 ) {
 	let shared = false;
 	const members = new Set([createdBy.deviceId]);
+	const leftWhileHeard = new Set<string>();
 	const roster = new Map<string, ListeningDevice>();
 	const hangUps = new Set<() => void>();
 	let anonymous = 0;
@@ -141,6 +143,24 @@ function detachedSession(
 			? (row - 1 + snapshot.length) % snapshot.length
 			: Math.max(row - 1, 0);
 
+	const pause = () => {
+		if (intent !== "playing") return;
+		intent = "paused";
+		markPosition(position.seconds);
+		version += 1;
+	};
+
+	const resume = () => {
+		if (intent === "stopped") {
+			if (!startQueued() && row >= 0) startRow(row);
+			return;
+		}
+		if (intent === "playing") return;
+		intent = "playing";
+		markPosition(position.seconds);
+		version += 1;
+	};
+
 	const queueMoved = () => {
 		queueRevision += 1;
 		version += 1;
@@ -200,7 +220,8 @@ function detachedSession(
 		},
 
 		leave(deviceId: string) {
-			if (!roster.has(deviceId)) members.delete(deviceId);
+			if (roster.has(deviceId)) leftWhileHeard.add(deviceId);
+			else members.delete(deviceId);
 		},
 
 		get kept() {
@@ -220,6 +241,7 @@ function detachedSession(
 			const named = device?.deviceId ?? "";
 			if (named) members.add(named);
 			else anonymous += 1;
+			leftWhileHeard.delete(named);
 			const deviceId = named || `#${anonymous}`;
 			changingAudience(() => {
 				const held = roster.get(deviceId);
@@ -246,6 +268,9 @@ function detachedSession(
 						if (held.connections > 1) held.connections -= 1;
 						else roster.delete(deviceId);
 					});
+					if (roster.has(deviceId) || !leftWhileHeard.delete(deviceId)) return;
+					members.delete(deviceId);
+					leaveLanded();
 				},
 			};
 		},
@@ -272,16 +297,12 @@ function detachedSession(
 		},
 
 		playPause() {
-			if (intent === "stopped") {
-				if (!startQueued() && row >= 0) startRow(row);
-				return;
-			}
-			if (playback() === "playing") intent = "paused";
-			else if (intent === "paused") intent = "playing";
-			else return;
-			markPosition(position.seconds);
-			version += 1;
+			if (playback() === "playing") pause();
+			else if (intent !== "playing") resume();
 		},
+
+		pause,
+		resume,
 
 		next() {
 			if (startQueued() || snapshot.length === 0) return;
@@ -387,7 +408,14 @@ export function createSessions(needs: SessionNeeds) {
 		},
 
 		create(createdBy: SessionDevice) {
-			const session = detachedSession(mintId(), createdBy, needs);
+			const session: DetachedSession = detachedSession(
+				mintId(),
+				createdBy,
+				needs,
+				() => {
+					if (!session.kept) end(session);
+				},
+			);
 			held.set(session.id, session);
 			return session;
 		},

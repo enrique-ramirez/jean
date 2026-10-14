@@ -30,6 +30,8 @@ public:
     }
 
     void dropHeld() override { stream_.dropHeld(); }
+    size_t heldFrames() const override { return stream_.heldFrames(); }
+    unsigned channels() const override { return stream_.channels(); }
 
 private:
     const ComOnThisThread com_;

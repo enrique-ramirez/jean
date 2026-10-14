@@ -6,12 +6,12 @@ import {
 	configureListening,
 	connect,
 } from "../../src/domain/player/listenerStore.ts";
-import { POLL_MS } from "../../src/domain/player/playerPoll.ts";
 import * as session from "../../src/domain/player/session.ts";
 import type { SessionOutcome } from "../../src/domain/player/sessionOperations.ts";
 import { sessionScope } from "../../src/shared/api/client.ts";
 import {
 	FORMATS,
+	LONG_AFTER_MS,
 	loadOperations,
 	named,
 	sessionStoreHarness,
@@ -271,7 +271,7 @@ test("leaving a session closes its stream, puts the tab on the player, and sends
 	);
 });
 
-test("where the stream's connection outlives the element letting go, the first leave leaves the session alive and the retry ends it", async (t) => {
+test("where the stream's connection outlives the element letting go, the one leave ends the session once the player sees the connection close", async (t) => {
 	const store = await harness.begin(t);
 	const id = await startedSession(store);
 	store.element()?.closeLate();
@@ -288,41 +288,34 @@ test("where the stream's connection outlives the element letting go, the first l
 	);
 	assert.ok(
 		store.fake.state.sessions.find(id),
-		"the first leave ended a session whose connection the player still held",
+		"the leave ended a session whose connection the player still held",
 	);
 	assert.deepEqual(session.sessionSnapshot(), ON_THE_PLAYER);
 
 	store.element()?.letGo();
 	await store.settle();
+	await store.advance(LONG_AFTER_MS);
+
 	assert.equal(store.openStreams(), 0);
-	assert.ok(
-		store.fake.state.sessions.find(id),
-		"the session ended with no leave after the close",
-	);
-
-	await store.advance(operations.LEAVE_RETRY_MS);
-
-	assert.deepEqual(store.said(from, NOT_POLLS), [`leave ${id}`, `leave ${id}`]);
 	assert.equal(
 		store.fake.state.sessions.find(id),
 		null,
-		"the retry did not end the session this device was the last member of",
+		"the close did not end the session this device had left",
 	);
+	assert.deepEqual(store.said(from, NOT_POLLS), [`leave ${id}`]);
 	assert.deepEqual(outcome(), { ok: true });
 });
 
-test("where the connection closed before the first leave, the leave is sent again after the retry interval, its answer changes nothing, and no poll ever names the session left", async (t) => {
+test("where the connection closed before the leave, one leave is sent and no poll ever names the session left", async (t) => {
 	const store = await harness.begin(t);
 	const id = await startedSession(store);
 	const from = store.mark();
 
 	const outcome = outcomeOf(operations.leaveSession(store.context));
 	await store.settle();
-	assert.equal(store.leavesTo(id, from), 1);
+	await store.advance(LONG_AFTER_MS);
 
-	await store.advance(operations.LEAVE_RETRY_MS + POLL_MS);
-
-	assert.deepEqual(store.said(from, NOT_POLLS), [`leave ${id}`, `leave ${id}`]);
+	assert.deepEqual(store.said(from, NOT_POLLS), [`leave ${id}`]);
 	assert.deepEqual(
 		store.said(from, ["poll"]).filter((one) => one !== "poll player"),
 		[],
@@ -331,38 +324,12 @@ test("where the connection closed before the first leave, the leave is sent agai
 	assert.deepEqual(outcome(), { ok: true });
 });
 
-test("the leave's retry is not sent where the tab has entered the session again before it was due", async (t) => {
-	const store = await harness.begin(t);
-	const id = await startedSession(store);
-	await store.fake.share(id, store.thisDevice(), true);
-	store.fake.state.addSessionListener(id, {
-		deviceId: OTHER_DEVICE,
-		name: null,
-	});
-	const from = store.mark();
-
-	void operations.leaveSession(store.context);
-	await store.settle();
-	assert.equal(store.leavesTo(id, from), 1);
-
-	session.commitSession({ id, role: "controlling" });
-	await store.settle();
-	await store.advance(operations.LEAVE_RETRY_MS + POLL_MS);
-
-	assert.equal(
-		store.leavesTo(id, from),
-		1,
-		"the retry left the session re-entered",
-	);
-	assert.equal(session.sessionSnapshot().id, id);
-});
-
 test("leaving while on the player sends nothing", async (t) => {
 	const store = await harness.begin(t);
 	const from = store.mark();
 
 	await operations.leaveSession(store.context);
-	await store.advance(operations.LEAVE_RETRY_MS);
+	await store.advance(LONG_AFTER_MS);
 
 	assert.deepEqual(store.said(from, NOT_POLLS), []);
 	assert.deepEqual(session.sessionSnapshot(), ON_THE_PLAYER);
@@ -410,7 +377,7 @@ test("stopping listening in a session this tab only controls sends nothing and s
 	const from = store.mark();
 
 	await operations.stopListening(store.context);
-	await store.advance(operations.LEAVE_RETRY_MS);
+	await store.advance(LONG_AFTER_MS);
 
 	assert.deepEqual(store.said(from, NOT_POLLS), []);
 	assert.deepEqual(session.sessionSnapshot(), {
@@ -617,7 +584,7 @@ test("a session reported gone while an operation is in flight takes the tab off 
 	creates.release();
 	assert.deepEqual(await next, { ok: true });
 	await store.settle();
-	await store.advance(operations.LEAVE_RETRY_MS + POLL_MS);
+	await store.advance(LONG_AFTER_MS);
 
 	const started = session.sessionSnapshot().id;
 	assert.ok(started && started !== gone);
@@ -644,7 +611,7 @@ test("a session reported gone while its start waits on the player's leave is fol
 
 	leaves.release();
 	await store.settle();
-	await store.advance(operations.LEAVE_RETRY_MS + POLL_MS);
+	await store.advance(LONG_AFTER_MS);
 
 	assert.ok(outcome(), "the start never resolved");
 	assert.deepEqual(store.said(from, NOT_POLLS), ["create", "leave player"]);
@@ -675,11 +642,11 @@ test("Leave pressed while a sharing change is on its way leaves this device in n
 	await changes.reached;
 	const leaving = operations.leaveSession(store.context);
 	await store.settle();
-	await store.advance(operations.LEAVE_RETRY_MS + POLL_MS);
+	await store.advance(LONG_AFTER_MS);
 	changes.release();
 	await Promise.all([sharing, leaving]);
 	await store.settle();
-	await store.advance(operations.LEAVE_RETRY_MS + POLL_MS);
+	await store.advance(LONG_AFTER_MS);
 
 	assert.deepEqual(session.sessionSnapshot(), ON_THE_PLAYER);
 	assert.equal(inIt(), false, "this device still holds a connection");

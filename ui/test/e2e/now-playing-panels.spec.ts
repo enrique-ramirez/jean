@@ -20,6 +20,7 @@ import {
 	playRow,
 	TAGGED,
 	trackInfo,
+	untilThePageKnowsPlaying,
 } from "./nowPlaying.ts";
 
 test.describe("which panel opens", () => {
@@ -70,17 +71,13 @@ test.describe("a panel chosen by hand", () => {
 		},
 	});
 
-	test.skip(
-		({ isMobile }) => isMobile,
-		"a phone opens its panels from the Lyrics button, and a track change picks none",
-	);
-
 	test("stays open when the next track has lyrics", async ({
 		page,
 		player,
+		isMobile,
 	}) => {
 		await playRow(page, 0);
-		const panel = nowPlayingScreen(page);
+		const panel = await openPanels(page, isMobile);
 		await expectPanelOpen(panel, "Lyrics");
 
 		await panelTab(panel, "Details").click();
@@ -89,6 +86,22 @@ test.describe("a panel chosen by hand", () => {
 		player.next();
 		await expect(panel).toContainText("Discos Dos");
 		await expectPanelOpen(panel, "Details");
+	});
+
+	test("holds Artist through the next track the same way", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await playRow(page, 0);
+		const panel = await openPanels(page, isMobile);
+
+		await panelTab(panel, "Artist").click();
+		await expectPanelOpen(panel, "Artist");
+
+		player.next();
+		await untilThePageKnowsPlaying(page, "Fizz");
+		await expectPanelOpen(panel, "Artist");
 	});
 });
 

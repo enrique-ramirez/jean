@@ -155,6 +155,11 @@ export function handleControl({
 		return empty(response);
 	}
 
+	if (action === "libraryHalted") {
+		state.fooJean.libraryHalted = input.halted !== false;
+		return empty(response);
+	}
+
 	if (action === "previewBusy") {
 		state.fooJean.previewBusy = Number(input.times) || 0;
 		return empty(response);

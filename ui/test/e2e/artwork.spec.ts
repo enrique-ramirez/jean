@@ -322,7 +322,8 @@ test.describe("what a cover looks like before it arrives", () => {
 
 // A library cover comes from the component, addressed by the track's library-relative path. The
 // route authenticates, so nothing can point an `<img>` straight at it, and keeping the bytes
-// between visits is the browser's own cache answering a long `max-age` against a strong validator.
+// between visits is the browser's own cache answering a week's `max-age`, then a stale copy while it
+// revalidates, against a strong validator.
 test.describe("a cover from the library", () => {
 	const artworkAnswers = (page: Page) => {
 		const answered: { path: string; status: number }[] = [];
@@ -340,7 +341,8 @@ test.describe("a cover from the library", () => {
 	const settled = (page: Page) =>
 		expect(page.locator("main [data-artwork='ok']").first()).toBeVisible();
 
-	const HELD_FOR_180_DAYS = "private, max-age=15552000";
+	const HELD_FOR_A_WEEK_THEN_STALE =
+		"private, max-age=604800, stale-while-revalidate=15552000";
 
 	test("is asked for by the track's path, on the component", async ({
 		page,
@@ -370,7 +372,7 @@ test.describe("a cover from the library", () => {
 
 		expect(headers.length).toBeGreaterThan(0);
 		for (const head of headers) {
-			expect(head["cache-control"]).toBe(HELD_FOR_180_DAYS);
+			expect(head["cache-control"]).toBe(HELD_FOR_A_WEEK_THEN_STALE);
 			expect(head.etag).toMatch(/^"[^"]+"$/);
 		}
 	});

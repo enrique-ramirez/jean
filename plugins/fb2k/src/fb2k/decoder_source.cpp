@@ -159,6 +159,7 @@ struct Pipeline {
     // started further in may end with no audio at all, as a seek to the very end does.
     bool owesAudio = false;
     std::deque<PcmBlock> waiting;
+    bool cutBeforeNextBlock = false;
 };
 
 class Decoder : public PcmSource {
@@ -261,6 +262,7 @@ void Decoder::decode() {
         PcmBlock block = std::move(pipeline.waiting.front());
         pipeline.waiting.pop_front();
         block.mark = marks.take(block.seconds());
+        block.cut = std::exchange(pipeline.cutBeforeNextBlock, false);
         ring_.write(std::move(block));
     }
 
@@ -301,6 +303,7 @@ void Decoder::openTurn(Pipeline& pipeline, const Turn& turn, MarkPlacer& marks) 
     // before ran out into keeps both, so it follows on without a gap.
     if (chainFlagsFor(turn.cut ? ChainRun::afterCut : ChainRun::audio).flushFirst) {
         pipeline.waiting.clear();
+        pipeline.cutBeforeNextBlock = true;
         if (!pipeline.chainDropped && !chainStep(pipeline, [&] { pipeline.chain.flush(); }))
             return;
         pipeline.latency = 0;

@@ -515,3 +515,28 @@ TEST_CASE("a stream that was refused is still refused after a drop, in the same 
     CHECK(after.empty());
     CHECK_FALSE(stream.ok());
 }
+
+TEST_CASE("what a stream held, written again after a drop, leaves it as long as if never dropped") {
+    const auto before = quiet(kFramesLeavingSomethingHeld, 2);
+    const auto after = tone(OpusStream::kSampleRate / 2, 2);
+
+    OpusStream untouched(2, 128000);
+    auto untouchedBytes = written(untouched, before, 2);
+    const auto untouchedAfter = written(untouched, after, 2);
+    untouchedBytes.insert(untouchedBytes.end(), untouchedAfter.begin(), untouchedAfter.end());
+
+    OpusStream dropped(2, 128000);
+    auto droppedBytes = written(dropped, before, 2);
+    const size_t held = dropped.heldFrames();
+    CHECK(held == (kPacketsWaiting * OpusStream::kFrameSize) + kFramesShortOfAPacket);
+
+    dropped.dropHeld();
+    CHECK(dropped.heldFrames() == 0);
+
+    for (const auto& next : {quiet(held, 2), after}) {
+        const auto bytes = written(dropped, next, 2);
+        droppedBytes.insert(droppedBytes.end(), bytes.begin(), bytes.end());
+    }
+
+    CHECK(scan(droppedBytes).granules == scan(untouchedBytes).granules);
+}

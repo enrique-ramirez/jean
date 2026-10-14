@@ -239,3 +239,18 @@ TEST_CASE("a reader waiting on an empty ring is woken by a write") {
     CHECK(result);
     CHECK(first == doctest::Approx(9.F));
 }
+
+TEST_CASE("a cut travels with the block it belongs to, and with no other") {
+    PcmRing ring(10.0);
+
+    auto cut = blockOf(kStereo, 10, 1.F);
+    cut.cut = true;
+    ring.write(std::move(cut));
+    ring.write(blockOf(kStereo, 10, 2.F));
+
+    PcmBlock got;
+    REQUIRE(ring.read(got));
+    CHECK(got.cut);
+    REQUIRE(ring.read(got));
+    CHECK_FALSE(got.cut);
+}

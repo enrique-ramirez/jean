@@ -286,6 +286,18 @@ export async function handlePlayback({
 		return empty(response);
 	}
 
+	if (method === "POST" && path === "/api/playback/pause") {
+		if (state.latency > 0) await delay(state.latency);
+		addressed.pause();
+		return empty(response);
+	}
+
+	if (method === "POST" && path === "/api/playback/resume") {
+		if (state.latency > 0) await delay(state.latency);
+		addressed.resume();
+		return empty(response);
+	}
+
 	if (method === "POST" && path === "/api/playback/next") {
 		if (state.latency > 0) await delay(state.latency);
 		addressed.next();

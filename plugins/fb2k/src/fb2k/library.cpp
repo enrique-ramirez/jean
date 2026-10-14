@@ -5,6 +5,7 @@
 #include "core/ask_player.h"
 #include "core/log.h"
 #include "core/text.h"
+#include "core/worker_restarts.h"
 #include "fb2k/artwork.h"
 #include "fb2k/columns.h"
 #include "fb2k/strings.h"
@@ -293,13 +294,40 @@ struct LibraryFeed::State {
 
 private:
     void run() {
-        try {
-            serve();
-        } catch (const std::exception& e) {
-            logError(std::string("the library snapshot thread stopped: ") + e.what());
-        } catch (...) {
-            logError("the library snapshot thread stopped with an unknown exception");
+        for (;;) {
+            try {
+                serve();
+                return;
+            } catch (const std::exception& e) {
+                logError(std::string("the library snapshot thread failed: ") + e.what());
+            } catch (...) {
+                logError("the library snapshot thread failed with an unknown exception");
+            }
+
+            if (!restartsAfterFailure())
+                return;
         }
+    }
+
+    bool restartsAfterFailure() {
+        library_.endBuild();
+        const WorkerRestart restart = restarts_.failed(std::chrono::steady_clock::now());
+
+        std::unique_lock<std::mutex> lock(mutex_);
+        queue_.failed();
+
+        if (restart.halts) {
+            lock.unlock();
+            logError(
+                "the library snapshot thread kept failing and has stopped; the last "
+                "snapshot is still served, and restarting foobar2000 reads the library again");
+            library_.reportHalted();
+            return false;
+        }
+
+        logInfo("restarting the library snapshot thread in " +
+                std::to_string(restart.after.count()) + " s");
+        return !wake_.wait_for(lock, restart.after, [this] { return stopping_.load(); });
     }
 
     void serve() {
@@ -454,6 +482,7 @@ private:
         publish(ordered);
         library_.replace(std::move(snapshot));
         built_ = true;
+        restarts_.succeeded();
 
         logInfo("built a library snapshot of " + std::to_string(count) + " track(s) and " +
                 std::to_string(columns.size()) + " client column(s)");
@@ -578,6 +607,7 @@ private:
     RebuildQueue queue_;
     std::vector<metadb_handle_ptr> dirty_;
     size_t hookMarks_ = 0;
+    WorkerRestarts restarts_;
 
     const AlbumArt art_;
 

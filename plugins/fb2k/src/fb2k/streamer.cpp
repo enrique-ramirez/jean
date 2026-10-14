@@ -82,11 +82,6 @@ struct Streamer::State {
         }
     }
 
-    bool anyoneListening() const {
-        return std::any_of(working.begin(), working.end(),
-                           [](const FormatFeed* feed) { return feed->hasListeners(); });
-    }
-
     FormatFeed* formatNamed(const std::string& name) const {
         const auto found = std::find_if(working.begin(), working.end(),
                                         [&name](const FormatFeed* f) { return f->name() == name; });
@@ -180,6 +175,12 @@ public:
     // ahead of the next.
     void flush() { dsp_.flush(); }
 
+    void silenceHeld(std::vector<float>& out) {
+        out.clear();
+        drain(out);
+        std::fill(out.begin(), out.end(), 0.0F);
+    }
+
 private:
     // The foobar2000 SDK's dsp_impl_base hands back what a DSP has buffered ahead from
     // on_endofplayback, which only dsp::FLUSH calls. END_OF_TRACK alone reaches on_endoftrack,
@@ -241,12 +242,21 @@ private:
     bool complained_ = false;
 };
 
+// The formats fail apart on purpose; see ARCHITECTURE.md, "The audio path".
+void feedEach(const std::vector<FormatFeed*>& feeds, const std::vector<float>& audio) {
+    if (audio.empty())
+        return;
+
+    const size_t frames = audio.size() / kOutputChannels;
+    for (FormatFeed* feed : feeds)
+        feed->feed(audio.data(), frames);
+}
+
 void encode(const std::shared_ptr<Streamer::State>& state) {
     const ComOnThisThread com;
     Converter converter;
     std::vector<float> converted;
     double streamSeconds = 0;
-    bool nobodyHeardTheLast = true;
 
     PcmBlock block;
     while (state->pcm.read(block)) {
@@ -258,24 +268,24 @@ void encode(const std::shared_ptr<Streamer::State>& state) {
         streamSeconds += block.seconds();
         state->timeline.setStreamTime(streamSeconds);
 
-        if (!state->anyoneListening()) {
-            nobodyHeardTheLast = true;
-            continue;
+        switch (heldAudioBefore(state->working, block.cut)) {
+            case HeldAudio::nobodyListening:
+                continue;
+            case HeldAudio::drop:
+                converter.flush();
+                break;
+            case HeldAudio::silence:
+                converter.silenceHeld(converted);
+                for (FormatFeed* feed : state->working)
+                    feed->silenceHeld();
+                feedEach(state->working, converted);
+                break;
+            case HeldAudio::keep:
+                break;
         }
 
-        if (nobodyHeardTheLast) {
-            converter.flush();
-            nobodyHeardTheLast = false;
-        }
-
-        if (!converter.convert(block, converted) || converted.empty())
-            continue;
-
-        const size_t frames = converted.size() / kOutputChannels;
-
-        // The formats fail apart on purpose; see ARCHITECTURE.md, "The audio path".
-        for (FormatFeed* feed : state->working)
-            feed->feed(converted.data(), frames);
+        if (converter.convert(block, converted))
+            feedEach(state->working, converted);
     }
 }
 

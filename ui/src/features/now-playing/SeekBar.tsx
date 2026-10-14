@@ -1,5 +1,10 @@
 import { type RefObject, useEffect, useMemo, useState } from "react";
+import { useConnection } from "@/domain/player/connection";
 import { audibleAt } from "@/domain/player/position";
+import {
+	type PlaybackRefusal,
+	refusedName,
+} from "@/domain/player/usePlaybackControl";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useDragFraction } from "@/shared/hooks/useDragFraction";
 import { useTranslate } from "@/shared/i18n/useTranslate";
@@ -11,6 +16,7 @@ const useTickingPosition = (
 	snapshot: PlayerSnapshot | null | undefined,
 	resolution: (at: number) => number,
 ) => {
+	const isFrozen = useConnection() !== "connected";
 	const [held, setHeld] = useState(() => ({
 		snapshot,
 		resolution,
@@ -18,15 +24,18 @@ const useTickingPosition = (
 	}));
 
 	let { value } = held;
-	if (held.snapshot !== snapshot || held.resolution !== resolution) {
+	if (
+		!isFrozen &&
+		(held.snapshot !== snapshot || held.resolution !== resolution)
+	) {
 		value = resolution(audibleAt(snapshot));
 		setHeld({ snapshot, resolution, value });
 	}
 
-	const isPlaying = snapshot?.player?.playbackState === "playing";
+	const isTicking = !isFrozen && snapshot?.player?.playbackState === "playing";
 
 	useEffect(() => {
-		if (!isPlaying) return undefined;
+		if (!isTicking) return undefined;
 		let frame = requestAnimationFrame(function tick() {
 			const next = resolution(audibleAt(snapshot));
 			setHeld((current) =>
@@ -37,7 +46,7 @@ const useTickingPosition = (
 			frame = requestAnimationFrame(tick);
 		});
 		return () => cancelAnimationFrame(frame);
-	}, [snapshot, resolution, isPlaying]);
+	}, [snapshot, resolution, isTicking]);
 
 	return value;
 };
@@ -68,11 +77,11 @@ export const useElapsedSeconds = (
 export function SeekBar({
 	snapshot,
 	onSeek,
-	disabled = false,
+	refusal = null,
 }: {
 	snapshot: PlayerSnapshot | null | undefined;
 	onSeek: (position: number) => void;
-	disabled?: boolean;
+	refusal?: PlaybackRefusal | null;
 }) {
 	const t = useTranslate();
 
@@ -81,7 +90,7 @@ export function SeekBar({
 
 	const { ref, fraction, isDragging, handlers } = useDragFraction({
 		onCommit: (next) => onSeek(next * duration),
-		disabled: disabled || !canSeek,
+		disabled: refusal !== null || !canSeek,
 	});
 
 	const devicePixels = useDevicePixelWidth(ref);
@@ -103,13 +112,9 @@ export function SeekBar({
 			data-scrubbing={isDragging}
 			data-seekable={canSeek}
 			role="slider"
-			tabIndex={disabled || canSeek ? 0 : -1}
-			aria-disabled={disabled || undefined}
-			aria-label={
-				disabled
-					? t("player.controlOffName", { control: baseLabel })
-					: baseLabel
-			}
+			tabIndex={refusal !== null || canSeek ? 0 : -1}
+			aria-disabled={refusal !== null || undefined}
+			aria-label={refusedName(refusal, baseLabel, t)}
 			aria-valuemin={0}
 			aria-valuemax={Math.round(duration)}
 			aria-valuenow={Math.round(position)}

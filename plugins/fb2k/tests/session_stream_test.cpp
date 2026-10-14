@@ -46,9 +46,6 @@ constexpr char kNobodysSession[] = "Zz00q";
 constexpr char kAtTheCap[] =
     "this component is already serving as many streams as it is configured to";
 
-// One past the listening linger, so a device that left has stopped holding anything.
-constexpr auto kPastTheLinger = std::chrono::seconds(kMuteLingerSeconds + 1);
-
 // Past the controlling grace, so only a connection or a linger holds a session.
 constexpr auto kPastTheGrace = kControllingGrace + std::chrono::minutes(1);
 
@@ -754,11 +751,12 @@ TEST_CASE("a leave keeps a session another member controls, the leaver no longer
     checkSameAnswer(read(server, id, phone().id), unknownSessionAnswer(server));
 }
 
-// No route ends a session for a device still in it: the leave takes the grace, the connection
-// keeps the device on the roster, and its linger is what holds the session once it closes.
-TEST_CASE("a leave by a device still connected keeps it on the roster and keeps the session") {
+// No route ends a session for a device still in it: the leave takes the grace and the connection
+// keeps the device on the roster. A client's leave routinely beats its own audio element's close,
+// so the close that follows ends the session at once rather than holding its place for a linger.
+TEST_CASE("a leave by a device still connected keeps the session until the connection closes") {
     Source source;
-    const TestServer server = oneClock(source);
+    const TestServer server = oneClock(source, parseSettings(R"({"maxSessions": 1})"));
     Connections live(server, source);
     const auto id = createdBy(server, phone().id);
     const auto session = source.session(id);
@@ -774,10 +772,8 @@ TEST_CASE("a leave by a device still connected keeps it on the roster and keeps 
 
     source.letGo(id);
     settlesAt(session->audience(), 0);
-    CHECK(statusOf(read(server, id, phone().id)) == 200);
-
-    server.advanceClock(kPastTheLinger);
     checkSameAnswer(read(server, id, phone().id), unknownSessionAnswer(server));
+    CHECK(statusOf(post(server, "/api/sessions", json{{"deviceId", laptop().id}}.dump())) == 200);
 }
 
 // Each refusal faces a device lingering in the session and in the engine, because a 404 that still

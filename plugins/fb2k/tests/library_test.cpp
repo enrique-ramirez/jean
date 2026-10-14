@@ -391,6 +391,23 @@ TEST_CASE("a build that ends without a snapshot clears its progress and keeps th
     CHECK(after.columns == before.columns);
 }
 
+TEST_CASE("a library whose worker halted ends its build and keeps the snapshot it held") {
+    Library library;
+    library.replace(built({"%artist%"}, {track("a/", "1.mp3", {"One"})}));
+    const auto before = library.state();
+    CHECK_FALSE(before.halted);
+
+    library.reportBuild({BuildPhase::formatting, 1, 2});
+    library.reportHalted();
+
+    const auto after = library.state();
+    CHECK(after.halted);
+    CHECK_FALSE(after.build.has_value());
+    CHECK(after.ready);
+    CHECK(after.structure == before.structure);
+    CHECK(after.trackCount == 1);
+}
+
 // The build's worker reports while request threads read, so the pair has to agree on the
 // lock. A torn read shows up as progress that runs backwards or a total the build never had.
 TEST_CASE("progress reported from one thread reads back whole from another") {
@@ -1007,4 +1024,40 @@ TEST_CASE("a declaration made once nothing is building is built even if it is th
 
     queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
     CHECK(queue.wanted());
+}
+
+TEST_CASE("a build the worker failed in is wanted again, of the set it was building") {
+    RebuildQueue queue;
+    queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
+    REQUIRE(queue.startIfWanted());
+
+    queue.failed();
+
+    CHECK(queue.wanted());
+    CHECK_FALSE(queue.wantedForDataAlone());
+    CHECK(runOne(queue) == declaring("%album%"));
+}
+
+TEST_CASE("a build the worker failed in gives way to a set declared while it ran") {
+    RebuildQueue queue;
+    queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
+    REQUIRE(queue.startIfWanted());
+    queue.ask(declaring("%comment%"), RebuildReason::columnsDeclared);
+
+    queue.failed();
+
+    CHECK(runOne(queue) == declaring("%comment%"));
+}
+
+// Row changes the worker had taken off the queue are gone with the failure, and only a rebuild
+// brings them back.
+TEST_CASE("a failure with no build running wants a rebuild of the set already held") {
+    RebuildQueue queue;
+    queue.ask(declaring("%album%"), RebuildReason::columnsDeclared);
+    CHECK(runOne(queue) == declaring("%album%"));
+
+    queue.failed();
+
+    CHECK(queue.wanted());
+    CHECK(runOne(queue) == declaring("%album%"));
 }

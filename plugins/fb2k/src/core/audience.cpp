@@ -63,6 +63,13 @@ bool Audience::stillHolding(const std::vector<Entry>& entries, const Key& key) {
                        [&key](const Entry& live) { return live.key == key; });
 }
 
+void Audience::markLeft(std::vector<Entry>& entries, const Key& key, bool left) {
+    for (Entry& entry : entries) {
+        if (entry.key == key)
+            entry.left = left;
+    }
+}
+
 class Audience::Membership {
 public:
     Membership(std::shared_ptr<State> state, Key key, std::uint64_t connection)
@@ -75,14 +82,16 @@ public:
             const auto now = state_->now();
             const std::lock_guard<std::mutex> held(state_->mutex);
 
-            state_->entries.erase(std::remove_if(state_->entries.begin(), state_->entries.end(),
-                                                 [this](const Entry& live) {
-                                                     return live.connection == connection_;
-                                                 }),
-                                  state_->entries.end());
+            auto& entries = state_->entries;
+            const auto mine =
+                std::find_if(entries.begin(), entries.end(),
+                             [this](const Entry& live) { return live.connection == connection_; });
+            const bool left = mine != entries.end() && mine->left;
+            if (mine != entries.end())
+                entries.erase(mine);
 
             dropExpired(state_->departures, now);
-            if (!stillHolding(state_->entries, key_))
+            if (!left && !stillHolding(entries, key_))
                 state_->departures.push_back({key_, now + state_->linger});
         } catch (...) {
             state_->changed.notify_all();
@@ -122,6 +131,7 @@ std::shared_ptr<Audience::Membership> Audience::join(const DeviceIdentity& devic
         entry.key = keyFor(entry.device, entry.connection);
 
         dropDepartures(state->departures, entry.key);
+        markLeft(state->entries, entry.key, false);
 
         state->entries.push_back(entry);
     }
@@ -140,9 +150,7 @@ void Audience::leave(const std::string& deviceId) {
     {
         const std::lock_guard<std::mutex> held(state_->mutex);
 
-        if (stillHolding(state_->entries, key))
-            return;
-
+        markLeft(state_->entries, key, true);
         dropDepartures(state_->departures, key);
     }
 

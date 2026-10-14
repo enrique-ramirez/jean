@@ -4,14 +4,16 @@ import { orThrow, type Result } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
 import {
 	nextTrack,
+	pause,
 	playPause,
 	previousTrack,
+	resume,
 	seekBy,
 	seekTo,
 	stop,
 } from "@/shared/api/playback";
 import { playPlaylistItem } from "@/shared/api/playlists";
-import type { PlayerSnapshot } from "@/shared/api/types";
+import type { PlaybackState, PlayerSnapshot } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { clamp } from "@/shared/lib/math";
 import { sleep } from "@/shared/lib/sleep";
@@ -52,22 +54,39 @@ export const usePlayItem = () => {
 	);
 };
 
-export const usePlayPause = () => {
+const usePlaybackCommand = (
+	command: (origin: string) => Promise<Result<unknown>>,
+	landsOn: (from: PlaybackState) => PlaybackState | null,
+) => {
 	const { discovery } = useFooJean();
 	return usePlayerPatch<void>(
 		async () => {
 			const origin = requireFooJean(discovery.origin);
-			orThrow(await playPause(origin));
+			orThrow(await command(origin));
 		},
-		(player, _input, previous) => ({
-			playbackState: player.playbackState === "playing" ? "paused" : "playing",
-			activeItem: {
-				...player.activeItem,
-				position: positionAt(previous, performance.now()),
-			},
-		}),
+		(player, _input, previous) => {
+			const playbackState = landsOn(player.playbackState);
+			if (!playbackState) return null;
+			return {
+				playbackState,
+				activeItem: {
+					...player.activeItem,
+					position: positionAt(previous, performance.now()),
+				},
+			};
+		},
 	);
 };
+
+export const usePlayPause = () =>
+	usePlaybackCommand(playPause, (from) =>
+		from === "playing" ? "paused" : "playing",
+	);
+
+export const usePause = () =>
+	usePlaybackCommand(pause, (from) => (from === "stopped" ? null : "paused"));
+
+export const useResume = () => usePlaybackCommand(resume, () => "playing");
 
 export const useSeek = () => {
 	const { discovery } = useFooJean();

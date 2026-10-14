@@ -2,10 +2,14 @@ import { useEffect, useState } from "react";
 import { audibleAt } from "@/domain/player/position";
 import { inSession } from "@/domain/player/session";
 import { useListener } from "@/domain/player/useListener";
-import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import {
-	usePlayPause,
+	useCanControlPlayback,
+	usePlaybackRefusal,
+} from "@/domain/player/usePlaybackControl";
+import {
+	usePause,
 	usePrevious,
+	useResume,
 	useSeek,
 	useSeekBy,
 	useTransport,
@@ -110,7 +114,8 @@ export function useMediaSession(
 	hasTrack: boolean,
 ) {
 	const listener = useListener();
-	const playPause = usePlayPause().mutate;
+	const pause = usePause().mutate;
+	const resume = useResume().mutate;
 	const transport = useTransport();
 	const previous = usePrevious();
 	const seek = useSeek().mutate;
@@ -132,6 +137,7 @@ export function useMediaSession(
 	const isReady = isFooJeanReady(discovery);
 	const origin = isReady ? discovery.origin : null;
 	const canControlPlayback = useCanControlPlayback();
+	const reachesPlayer = usePlaybackRefusal() === null;
 
 	const canonical = album
 		? canonicalPlayingArtworkUrl(origin, album, credited || "")
@@ -219,14 +225,23 @@ export function useMediaSession(
 			return () => setHandlers({});
 		}
 
+		if (!reachesPlayer) {
+			setHandlers({
+				play: () => playHere(),
+				pause: () => pauseHere(),
+				stop: () => disconnect(),
+			});
+			return () => setHandlers({});
+		}
+
 		setHandlers({
 			play: () => {
 				playHere();
-				if (!isPlaying) playPause();
+				resume();
 			},
 			pause: () => {
 				pauseHere();
-				if (isPlaying) playPause();
+				pause();
 			},
 			previoustrack: () => previous(),
 			nexttrack: () => next(),
@@ -246,8 +261,9 @@ export function useMediaSession(
 	}, [
 		live,
 		canControlPlayback,
-		isPlaying,
-		playPause,
+		reachesPlayer,
+		pause,
+		resume,
 		previous,
 		next,
 		stopPlayer,

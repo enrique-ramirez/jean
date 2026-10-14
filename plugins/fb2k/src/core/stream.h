@@ -31,6 +31,12 @@ public:
 
     virtual void dropHeld() = 0;
 
+    // Frames written and not yet in `out`, counted so that writing that many again after
+    // dropHeld() leaves the stream as long as if nothing had been dropped.
+    virtual size_t heldFrames() const = 0;
+
+    virtual unsigned channels() const = 0;
+
     StreamEncoder(const StreamEncoder&) = delete;
     StreamEncoder& operator=(const StreamEncoder&) = delete;
 

@@ -110,8 +110,22 @@ void AacStream::write(const float* samples, size_t frames, std::vector<std::uint
     encodeBlocks(out);
 }
 
+size_t AacStream::heldFrames() const {
+    if (broken_.load())
+        return 0;
+
+    const size_t blocksHeld = blocksIn_ > packetsOut_ ? blocksIn_ - packetsOut_ : 0;
+    return (pending_.size() / channels_) + (blocksHeld * kAacBlockFrames);
+}
+
+unsigned AacStream::channels() const {
+    return channels_;
+}
+
 void AacStream::dropHeld() {
     pending_.clear();
+    blocksIn_ = 0;
+    packetsOut_ = 0;
     if (!opened_ || broken_.load())
         return;
 
@@ -132,6 +146,9 @@ void AacStream::encodeBlocks(std::vector<std::uint8_t>& out) {
             fail(*failure);
             return;
         }
+
+        ++blocksIn_;
+        packetsOut_ += packets_.size();
 
         const bool tooLong = std::any_of(packets_.begin(), packets_.end(), [](const auto& packet) {
             return packet.size() > kMaxPayloadBytes;

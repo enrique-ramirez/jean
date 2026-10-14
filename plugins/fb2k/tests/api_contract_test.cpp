@@ -503,7 +503,8 @@ TEST_CASE("the library answers are the shapes contract/openapi.yaml publishes") 
 
     // `build` is required and nullable, so a library nobody is building still sends the key.
     const auto idle = json::parse(libraryDocument(state));
-    CHECK(keysOf(idle) == Keys{"ready", "structure", "revision", "trackCount", "columns", "build"});
+    CHECK(keysOf(idle) ==
+          Keys{"ready", "structure", "revision", "trackCount", "columns", "build", "halted"});
     CHECK((idle.contains("build") && idle.at("build").is_null()));
 
     const auto refused = parseLibraryRequest({"%title%", "%title%"}, std::string());
@@ -525,7 +526,7 @@ TEST_CASE("a library being built carries its progress in the shape LibraryBuild 
 
     const auto library = json::parse(libraryDocument(state));
     CHECK(keysOf(library) ==
-          Keys{"ready", "structure", "revision", "trackCount", "columns", "build"});
+          Keys{"ready", "structure", "revision", "trackCount", "columns", "build", "halted"});
 
     REQUIRE(library.contains("build"));
     const auto& build = library.at("build");

@@ -10,7 +10,10 @@ import {
 	isListening,
 	listeningSnapshot,
 } from "../../src/domain/player/listenerStore.ts";
-import { startPlayerPoll } from "../../src/domain/player/playerPoll.ts";
+import {
+	POLL_MS,
+	startPlayerPoll,
+} from "../../src/domain/player/playerPoll.ts";
 import {
 	commitSession,
 	SESSION_KEY,
@@ -30,6 +33,8 @@ import { fakePlayer } from "./fakeSessionHarness.ts";
 export const ON_PLAYER = { id: null, role: null } as const;
 
 export const FORMATS = ["opus"];
+
+export const LONG_AFTER_MS = 3 * POLL_MS;
 
 const realFetch = globalThis.fetch;
 const realDocument = globalThis.document;

@@ -9,7 +9,10 @@ import {
 	Shuffle,
 } from "lucide-react";
 import { useRef, useState } from "react";
-import { whenControllable } from "@/domain/player/usePlaybackControl";
+import {
+	type PlaybackRefusal,
+	whenAllowed,
+} from "@/domain/player/usePlaybackControl";
 import type { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
 import type { PlaybackMode } from "@/shared/api/types";
 import type { Point } from "@/shared/hooks/useLongPress";
@@ -36,13 +39,13 @@ export function PlaybackOrderButton({
 	order,
 	className,
 	size,
-	disabled = false,
+	refusal = null,
 	isSurfaceOpen = true,
 }: {
 	order: ReturnType<typeof usePlaybackOrder>;
 	className: string;
 	size: number;
-	disabled?: boolean;
+	refusal?: PlaybackRefusal | null;
 	isSurfaceOpen?: boolean;
 }) {
 	const t = useTranslate();
@@ -67,7 +70,7 @@ export function PlaybackOrderButton({
 	useKeymap(
 		SCOPE.global,
 		{ playbackOrder: press },
-		{ enabled: isDrawn && !disabled && isSurfaceOpen },
+		{ enabled: isDrawn && refusal === null && isSurfaceOpen },
 	);
 
 	if (!isDrawn) return null;
@@ -89,7 +92,7 @@ export function PlaybackOrderButton({
 				aria-expanded={isList ? isListOpen : undefined}
 				data-tone={toneOf(order.mode)}
 				title={name}
-				{...whenControllable(!disabled, press, name, t)}
+				{...whenAllowed(refusal, press, name, t)}
 			>
 				<Icon size={size} strokeWidth={2} />
 			</button>

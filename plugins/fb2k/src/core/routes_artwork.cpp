@@ -19,12 +19,20 @@ constexpr auto kArtworkRefill = std::chrono::milliseconds(50);
 
 constexpr int kSecondsPerDay = 24 * 60 * 60;
 
-// See ARCHITECTURE.md, *Artwork*, for why these two and kAskEveryTime are what they are.
-constexpr int kCoverCacheLifetimeSeconds = 180 * kSecondsPerDay;
+constexpr int kCoverCacheLifetimeSeconds = 7 * kSecondsPerDay;
+constexpr int kStaleCoverDrawnForSeconds = 180 * kSecondsPerDay;
 constexpr int kMissingCoverCacheLifetimeSeconds = 10 * 60;
 
 std::string freshFor(int seconds) {
     return "private, max-age=" + std::to_string(seconds);
+}
+
+std::string artworkCacheControl(bool cover) {
+    if (!cover)
+        return freshFor(kMissingCoverCacheLifetimeSeconds);
+
+    return freshFor(kCoverCacheLifetimeSeconds) +
+           ", stale-while-revalidate=" + std::to_string(kStaleCoverDrawnForSeconds);
 }
 
 enum class ArtworkAnswer { cover, nothingToSend };
@@ -124,9 +132,7 @@ void ArtworkRoutes::addTo(httplib::Server& server) {
             return;
 
         const auto answer = sendArtwork(req, res, library_.readArtwork(track));
-        const auto lifetime = answer == ArtworkAnswer::cover ? kCoverCacheLifetimeSeconds
-                                                             : kMissingCoverCacheLifetimeSeconds;
-        res.set_header("Cache-Control", freshFor(lifetime));
+        res.set_header("Cache-Control", artworkCacheControl(answer == ArtworkAnswer::cover));
     });
 
     server.Get("/api/artwork/playing", [this](const httplib::Request& req, httplib::Response& res) {

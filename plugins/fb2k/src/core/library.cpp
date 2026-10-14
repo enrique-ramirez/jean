@@ -453,6 +453,13 @@ void Library::endBuild() {
     build_ = BuildProgress{};
 }
 
+void Library::reportHalted() {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    halted_ = true;
+    building_ = false;
+    build_ = BuildProgress{};
+}
+
 Library::State Library::state() const {
     const std::lock_guard<std::mutex> lock(mutex_);
 
@@ -468,6 +475,7 @@ Library::State Library::state() const {
     if (building_)
         state.build = build_;
 
+    state.halted = halted_;
     return state;
 }
 
@@ -641,6 +649,15 @@ bool RebuildQueue::startIfWanted() {
 }
 
 void RebuildQueue::finished() {
+    building_.reset();
+}
+
+void RebuildQueue::failed() {
+    if (building_.has_value())
+        forColumns_ = true;
+    else
+        dataMoved();
+
     building_.reset();
 }
 

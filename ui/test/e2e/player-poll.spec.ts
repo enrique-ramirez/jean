@@ -2137,7 +2137,7 @@ test("a second track of the same album costs no cover request at all", async ({
 
 	// One ask reached the player across both tracks. The address does not move
 	// when the track does, so whether the second track was answered by the handle
-	// Jean already holds or by the copy the browser is keeping for 180 days, it
+	// Jean already holds or by the copy the browser holds fresh for a week, it
 	// asks the player for nothing -- and that is what the list surfaces get out
 	// of one address an album as well.
 	await expectSettlesAt(player, () => coversFromTheComponent(player), [

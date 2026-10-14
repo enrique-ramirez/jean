@@ -262,7 +262,7 @@ export const statusBar = (page: Page) => page.locator("footer");
 
 // The search route before anything has been searched for, which is the one view that draws no rows
 // at all. Any other view of tracks asks for the cover of every record in it, and a cover already
-// fetched is held for months, so a case that means to watch which address a playing surface reaches
+// fetched is fresh for a week, so a case that means to watch which address a playing surface reaches
 // for has to open on a page that draws none.
 //
 // Waited on the status bar rather than on the empty list: no rows is true of a page that has not

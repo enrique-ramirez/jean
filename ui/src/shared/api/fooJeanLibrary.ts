@@ -12,6 +12,7 @@ import { decodeJlib, type JlibDelta, type JlibSnapshot } from "./jlib";
 import { fetchState } from "./state";
 
 type LibraryBuild = components["schemas"]["LibraryBuild"];
+type LibraryState = components["schemas"]["Library"];
 
 export type LibraryFailureReason =
 	| "unavailable"
@@ -19,6 +20,7 @@ export type LibraryFailureReason =
 	| "refused"
 	| "unreachable"
 	| "timeout"
+	| "halted"
 	| "failed";
 
 export interface LibraryFailure {
@@ -120,6 +122,15 @@ const decoded = <T>(
 	}
 };
 
+const haltedIn = (body: ArrayBuffer | undefined) => {
+	try {
+		const library: LibraryState = JSON.parse(new TextDecoder().decode(body));
+		return library.halted === true;
+	} catch {
+		return false;
+	}
+};
+
 async function attemptExport(
 	origin: string,
 	columns: readonly string[],
@@ -139,7 +150,10 @@ async function attemptExport(
 	if (!asked.ok) return { kind: "done", result: asked };
 
 	const { response, data } = asked.answer;
-	if (response.status === 202) return { kind: "building" };
+	if (response.status === 202)
+		return haltedIn(data)
+			? { kind: "done", result: failure("halted") }
+			: { kind: "building" };
 	if (response.status === 429)
 		return { kind: "wait", ms: retryAfterOf(response) };
 
@@ -235,6 +249,7 @@ export async function fetchLibrary(
 				continue;
 			}
 			if (polled.kind !== "state") continue;
+			if (polled.state.library.halted) return failure("halted");
 
 			const build = polled.state.library.build;
 			if (!sameBuild(lastBuild, build)) {

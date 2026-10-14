@@ -1,7 +1,14 @@
 import { TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import { en } from "../../src/shared/i18n/en.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
-import { expect, guidOfPlaylist, test, trackRow } from "./fixtures.ts";
+import {
+	expect,
+	expectSettlesAt,
+	guidOfPlaylist,
+	requestsTo,
+	test,
+	trackRow,
+} from "./fixtures.ts";
 
 // Every state a library view can be in before, or instead of, a snapshot: the
 // component not answering, discovery not back yet, a build under way, and an
@@ -212,6 +219,20 @@ const NOTICE_STATES = [
 		},
 	},
 	{
+		state: "a component that stopped reading the library",
+		fooJean: { libraryHalted: true },
+		promise: "says so, says to restart foobar2000, and offers nothing to press",
+		expectNotice: async (page: Page) => {
+			await expect(
+				main(page).getByText(en["library.halted.summary"]),
+			).toBeVisible();
+			await expect(
+				main(page).getByText(en["library.halted.fix"]),
+			).toBeVisible();
+			expect(await tryAgain(page).count()).toBe(0);
+		},
+	},
+	{
 		state: "an export that failed at the player",
 		fooJean: EXPORT_FAILS(500),
 		promise: "says foo_jean could not answer, and offers to try again",
@@ -342,6 +363,35 @@ test.describe("a build that reports how far along it is", () => {
 		const bar = main(page).getByRole("progressbar");
 		await expect(bar).toHaveAttribute("aria-valuenow", "40");
 		await expect(bar).toHaveAttribute("aria-valuemax", "54");
+	});
+});
+
+const PAST_FIRST_RETRY_MS = 6_000;
+
+test.describe("a build whose worker halts partway", () => {
+	test.use({ fooJean: { libraryBuilds: 1000, librarySlice: 20 } });
+
+	test("says foo_jean stopped reading the library, offers nothing to press, and asks for the library no more", async ({
+		page,
+		player,
+	}) => {
+		await page.goto(ALL_MUSIC.path);
+		await expect(
+			main(page).getByText("Reading 40 of 54 tracks…"),
+		).toBeVisible();
+
+		player.fooJean.libraryHalted = true;
+
+		await expect(
+			main(page).getByText(en["library.halted.summary"]),
+		).toBeVisible();
+		await expect(main(page).getByText(en["library.halted.fix"])).toBeVisible();
+		expect(await tryAgain(page).count()).toBe(0);
+
+		const exports = () => requestsTo(player, "/api/library/export").length;
+		const asked = exports();
+		await page.waitForTimeout(PAST_FIRST_RETRY_MS);
+		await expectSettlesAt(player, exports, asked);
 	});
 });
 

@@ -161,6 +161,40 @@ TEST_CASE("one device cannot end another's linger, or its own while it is connec
     CHECK(audience.anyListening(now));
 }
 
+// A client leaves before its audio element has let go of the connection, so the leave routinely
+// arrives while the device is still connected. Without this the close that follows lingers, and
+// a detached session holds its place under maxSessions for the whole linger.
+TEST_CASE("a device that left while connected leaves no linger when the connection closes") {
+    Audience audience(8, 30s);
+    const auto now = Audience::Clock::now();
+
+    {
+        const auto held = audience.join(named("phone"), "opus", now);
+        audience.leave("phone");
+        CHECK(audience.anyListening(now));
+    }
+
+    CHECK_FALSE(audience.anyListening(now));
+    CHECK(audience.departuresHeld() == 0);
+    CHECK_FALSE(audience.holds("phone", now));
+}
+
+TEST_CASE("a device reconnecting after it left lingers again when it drops") {
+    Audience audience(8, 30s);
+    const auto now = Audience::Clock::now();
+
+    auto first = audience.join(named("phone"), "opus", now);
+    audience.leave("phone");
+    auto second = audience.join(named("phone"), "opus", now);
+    first.reset();
+    REQUIRE(audience.departuresHeld() == 0);
+
+    second.reset();
+
+    CHECK(audience.departuresHeld() == 1);
+    CHECK(audience.holds("phone", now));
+}
+
 TEST_CASE("an anonymous connection's key is not a device id anybody can send") {
     Audience audience(8, 30s);
     const auto now = Audience::Clock::now();

@@ -1105,6 +1105,24 @@ TEST_CASE("a device still connected stays in a session after it leaves") {
     REQUIRE(session->audience().roster(sessions.now()).size() == 1);
 }
 
+TEST_CASE("a device that left while connected ends the session when its connection closes") {
+    Sessions sessions(1);
+    const auto session = sessions.createShared("phone");
+    auto ears = session->listen(device("phone"), "opus", sessions.now());
+    REQUIRE(ears);
+    sessions.wait(1min);
+
+    sessions.registry.leave(session->id(), "phone", sessions.now());
+    REQUIRE(sessions.exists(session));
+
+    ears.reset();
+
+    CHECK(sessions.whichFor(session->id(), "phone") == SessionAnswer::Which::none);
+    CHECK_FALSE(sessions.exists(session));
+    CHECK(sessions.registry.create(device("laptop"), sessions.now()).how ==
+          SessionCreation::created);
+}
+
 TEST_CASE("a device leaving a session it was never in reaps nothing") {
     Sessions sessions;
     const auto shared = sessions.createShared("phone");

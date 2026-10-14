@@ -8,12 +8,12 @@ import {
 	listenTarget,
 	resume,
 } from "../../src/domain/player/listenerStore.ts";
-import { POLL_MS } from "../../src/domain/player/playerPoll.ts";
 import type * as SessionModule from "../../src/domain/player/session.ts";
 import * as session from "../../src/domain/player/session.ts";
 import { sessionScope } from "../../src/shared/api/client.ts";
 import {
 	FORMATS,
+	LONG_AFTER_MS,
 	loadOperations,
 	sessionStoreHarness,
 } from "./sessionStoreHarness.ts";
@@ -143,7 +143,7 @@ test("a session reported gone closes this tab's stream, sends no leave, and puts
 
 	session.noteSessionGone(id);
 	await store.settle();
-	await store.advance(operations.LEAVE_RETRY_MS + POLL_MS);
+	await store.advance(LONG_AFTER_MS);
 
 	assert.deepEqual(session.sessionSnapshot(), {
 		id: null,
@@ -169,7 +169,7 @@ test("a change of streaming formats while listening to a session closes the stre
 
 	configureListening({ ...target, formats: ["aac"] });
 	await store.settle();
-	await store.advance(operations.LEAVE_RETRY_MS + POLL_MS);
+	await store.advance(LONG_AFTER_MS);
 
 	assert.equal(store.openStreams(), 0);
 	assert.deepEqual(store.said(from, NOT_POLLS), []);

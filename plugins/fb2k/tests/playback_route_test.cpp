@@ -24,6 +24,10 @@ struct StringMaker<jean::Transport> {
         switch (command) {
             case jean::Transport::playPause:
                 return "playPause";
+            case jean::Transport::pause:
+                return "pause";
+            case jean::Transport::resume:
+                return "resume";
             case jean::Transport::next:
                 return "next";
             case jean::Transport::previous:
@@ -56,6 +60,8 @@ using nlohmann::json;
 namespace {
 
 constexpr char kPlayPause[] = "/api/playback/play-pause";
+constexpr char kPause[] = "/api/playback/pause";
+constexpr char kResume[] = "/api/playback/resume";
 constexpr char kNext[] = "/api/playback/next";
 constexpr char kPrevious[] = "/api/playback/previous";
 constexpr char kStop[] = "/api/playback/stop";
@@ -68,7 +74,9 @@ struct TransportRoute {
     Transport sent;
 };
 
-constexpr std::array<TransportRoute, 4> kTransportRoutes{{{kPlayPause, Transport::playPause},
+constexpr std::array<TransportRoute, 6> kTransportRoutes{{{kPlayPause, Transport::playPause},
+                                                          {kPause, Transport::pause},
+                                                          {kResume, Transport::resume},
                                                           {kNext, Transport::next},
                                                           {kPrevious, Transport::previous},
                                                           {kStop, Transport::stop}}};
@@ -78,8 +86,9 @@ struct Command {
     const char* body;
 };
 
-// One well-formed request to each of the seven, every one of which the stock player can meet.
-constexpr std::array<Command, 7> kOneOfEach{{{kPlayPause, ""},
+constexpr std::array<Command, 9> kOneOfEach{{{kPlayPause, ""},
+                                             {kPause, ""},
+                                             {kResume, ""},
                                              {kNext, ""},
                                              {kPrevious, ""},
                                              {kStop, ""},
@@ -87,15 +96,17 @@ constexpr std::array<Command, 7> kOneOfEach{{{kPlayPause, ""},
                                              {kMode, R"({"mode": "random"})"},
                                              {kVolume, R"({"step": "up"})"}}};
 
-constexpr std::array<Command, 9> kEveryForm{{{kPlayPause, ""},
-                                             {kNext, ""},
-                                             {kPrevious, ""},
-                                             {kStop, ""},
-                                             {kSeek, R"({"seconds": 30})"},
-                                             {kMode, R"({"mode": "random"})"},
-                                             {kVolume, R"({"value": -30})"},
-                                             {kVolume, R"({"step": "up"})"},
-                                             {kVolume, R"({"muted": true})"}}};
+constexpr std::array<Command, 11> kEveryForm{{{kPlayPause, ""},
+                                              {kPause, ""},
+                                              {kResume, ""},
+                                              {kNext, ""},
+                                              {kPrevious, ""},
+                                              {kStop, ""},
+                                              {kSeek, R"({"seconds": 30})"},
+                                              {kMode, R"({"mode": "random"})"},
+                                              {kVolume, R"({"value": -30})"},
+                                              {kVolume, R"({"step": "up"})"},
+                                              {kVolume, R"({"muted": true})"}}};
 
 constexpr std::array<const char*, 3> kRoutesWithABody{{kSeek, kMode, kVolume}};
 

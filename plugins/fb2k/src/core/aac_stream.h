@@ -49,6 +49,8 @@ public:
     void write(const float* samples, size_t frames, std::vector<std::uint8_t>& out) override;
 
     void dropHeld() override;
+    size_t heldFrames() const override;
+    unsigned channels() const override;
 
 private:
     void fail(std::string message);
@@ -64,6 +66,9 @@ private:
 
     std::vector<float> pending_;
     std::vector<std::vector<std::uint8_t>> packets_;
+
+    size_t blocksIn_ = 0;
+    size_t packetsOut_ = 0;
 };
 
 }  // namespace jean

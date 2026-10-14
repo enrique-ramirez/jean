@@ -1984,7 +1984,7 @@ test.describe("the cover on a queued row", () => {
 		}) => {
 			// Over no list, and this is what makes the read below mean anything. A playlist view
 			// mounts a tile per record and asks for every one of their covers, and a cover already
-			// fetched is held for months, so a later ask at that address is answered
+			// fetched is fresh for a week, so a later ask at that address is answered
 			// inside the browser and never reaches the player. Nothing here has been near this
 			// record, so the first ask for it has to arrive.
 			await withNoListOnScreen(page);

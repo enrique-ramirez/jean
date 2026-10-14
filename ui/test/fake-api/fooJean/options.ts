@@ -168,6 +168,10 @@ export interface FooJeanOptions {
 	libraryBuilds?: number;
 	libraryBusy?: number;
 	libraryRebuilds?: number;
+	// `foo_jean` stopping its library worker for good after it kept failing: `GET /api/state`
+	// answers `library.halted`, no build starts or finishes, and the snapshot held is served.
+	// `POST /__control/libraryHalted` sets it mid-test.
+	libraryHalted?: boolean;
 
 	librarySlice?: number;
 
@@ -314,6 +318,7 @@ const DEFAULTS: FooJeanFake = {
 	libraryBuilds: 0,
 	libraryBusy: 0,
 	libraryRebuilds: 0,
+	libraryHalted: false,
 	librarySlice: Infinity,
 	failLibraryExport: null,
 	maxAutoPlaylists: 0,

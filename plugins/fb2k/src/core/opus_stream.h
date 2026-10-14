@@ -46,6 +46,8 @@ public:
     void write(const float* samples, size_t frames, std::vector<std::uint8_t>& out) override;
 
     void dropHeld() override;
+    size_t heldFrames() const override;
+    unsigned channels() const override;
 
 private:
     struct State;

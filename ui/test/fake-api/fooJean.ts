@@ -53,6 +53,8 @@ const PLAYBACK_DISABLED = {
 const PLAYBACK_COMMAND_PATHS = new Set([
 	"/api/playback/play",
 	"/api/playback/play-pause",
+	"/api/playback/pause",
+	"/api/playback/resume",
 	"/api/playback/next",
 	"/api/playback/previous",
 	"/api/playback/stop",
@@ -80,7 +82,10 @@ const needsPlaybackControl = (method: string, path: string): boolean => {
 const SESSION_SCOPED: [string, RegExp][] = [
 	["GET", /^\/api\/state$/],
 	["POST", PLAY_ROW_PATH],
-	["POST", /^\/api\/playback\/(play|play-pause|next|previous|stop|seek|mode)$/],
+	[
+		"POST",
+		/^\/api\/playback\/(play|play-pause|pause|resume|next|previous|stop|seek|mode)$/,
+	],
 	["GET", /^\/api\/queue$/],
 	["POST", /^\/api\/queue$/],
 	["DELETE", /^\/api\/queue$/],

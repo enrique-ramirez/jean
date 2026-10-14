@@ -37,8 +37,6 @@ import {
 } from "./sessionDocument";
 import { SESSIONS_KEY } from "./sessionList";
 
-export const LEAVE_RETRY_MS = 2_000;
-
 export type SessionRefusal =
 	| "full"
 	| "unavailable"
@@ -86,9 +84,6 @@ const relist = (queryClient: QueryClient) =>
 
 let sharingFlip: Promise<SessionOutcome> | null = null;
 
-// `foo_jean` does nothing with a leave that reaches it before it has noticed the stream's socket
-// close, so the leave goes again once that has had time to happen. The second answers `404` where
-// the first ended the session.
 async function leaveOnceLetGo(
 	letGo: Promise<void>,
 	origin: string,
@@ -99,9 +94,6 @@ async function leaveOnceLetGo(
 	// reaching it before a change in flight would leave the device in.
 	await sharingFlip?.catch(() => undefined);
 	await leaveStream(origin, deviceId(), id);
-	setTimeout(() => {
-		if (sessionSnapshot().id !== id) void leaveStream(origin, deviceId(), id);
-	}, LEAVE_RETRY_MS);
 }
 
 function leaveHeld(origin: string): Promise<void> {

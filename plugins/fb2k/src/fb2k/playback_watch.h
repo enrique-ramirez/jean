@@ -5,6 +5,7 @@
 #include "core/player_state.h"
 
 #include <memory>
+#include <optional>
 
 namespace jean {
 
@@ -38,5 +39,8 @@ private:
 };
 
 PlayingTrackReader playingTrackReader(MainThreadQueue& mainThread);
+
+void publishLocation(PlayerStateStore& store, PlaylistVersions& versions,
+                     const std::optional<PlayingLocation>& location);
 
 }  // namespace jean

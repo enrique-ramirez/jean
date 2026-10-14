@@ -1,7 +1,13 @@
 import { UNRESPONSIVE_AFTER_MS } from "../../src/domain/player/connection.ts";
 import { en } from "../../src/shared/i18n/en.ts";
 import type { Page } from "./fixtures.ts";
-import { expect, playFirstRow, test, toastRegion } from "./fixtures.ts";
+import {
+	expect,
+	playFirstRow,
+	statusBar,
+	test,
+	toastRegion,
+} from "./fixtures.ts";
 
 // `foo_jean` answers `GET /api/state` from its own store, so while foobar2000's
 // main thread is held by a modal dialog, a scan or a hung DSP the poll goes on
@@ -13,6 +19,11 @@ const REMEDY = en["connection.unresponsiveRemedy"];
 const UNRESPONSIVE_TITLE = `${en["player.unresponsive"]} · Jean`;
 
 const notice = (page: Page) => toastRegion(page).filter({ hasText: HEADLINE });
+
+const UNRESPONSIVE_PLAY = en["player.unresponsiveName"].replace(
+	"{control}",
+	en["player.play"],
+);
 
 // Resolves once the page has been handed a poll reporting the stall, rather
 // than once one was asked, so the stall is known to have reached Jean.
@@ -92,5 +103,29 @@ test.describe("foobar2000's main thread not answering", () => {
 		expect(await wasAlarmed(page)).toBe(false);
 		await expect(notice(page)).toHaveCount(0);
 		await expect(page).toHaveTitle(/^Los Calientes/);
+	});
+
+	test("play is disabled and says foobar2000 is not responding until it answers again", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await playFirstRow(page, isMobile);
+		await statusBar(page)
+			.getByRole("button", { name: /^Pause\b/ })
+			.click();
+		const play = statusBar(page).getByRole("button", { name: /^Play\b/ });
+		await expect(play).not.toHaveAttribute("aria-disabled", "true");
+
+		player.fooJean.mainThreadStalled = true;
+
+		await expect(notice(page)).toBeVisible();
+		await expect(play).toHaveAttribute("aria-disabled", "true");
+		await expect(play).toHaveAccessibleName(UNRESPONSIVE_PLAY);
+
+		player.fooJean.mainThreadStalled = false;
+
+		await expect(notice(page)).toHaveCount(0);
+		await expect(play).not.toHaveAttribute("aria-disabled", "true");
 	});
 });

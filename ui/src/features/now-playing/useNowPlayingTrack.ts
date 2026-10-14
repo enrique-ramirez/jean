@@ -8,6 +8,7 @@ import { useCallback, useEffect } from "react";
 import { useAudiblePlayer } from "@/domain/player/usePlayer";
 import { usePlaylists } from "@/domain/player/usePlaylists";
 import { namedTrack, readValue } from "@/domain/track/fields";
+import { type HeldRating, nowPlayingKey } from "@/domain/track/playingRating";
 import { orThrow, retryWhenTooFast } from "@/shared/api/client";
 import { playingTrack } from "@/shared/api/playerState";
 import { fetchPlayingTrack } from "@/shared/api/tracks";
@@ -21,9 +22,6 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { NOW_PLAYING_EXPRESSIONS, NOW_PLAYING_FIELD } from "./nowPlayingFields";
 
-const keyOf = (path: string | null, subsong: number) =>
-	path ? ["nowPlaying", path, subsong] : ["nowPlaying", null];
-
 // Which announcement a key has already been read for is a fact about the key, not about
 // whichever mounted instance of this hook notices it first, and several notice it in the
 // same render (`App.tsx` through `useNowPlayingRating`, and `NowPlaying.tsx`): a per-instance
@@ -36,10 +34,9 @@ let lastAnnouncedPoll: {
 	artist: string | undefined;
 } | null = null;
 
-export interface NowPlayingDetails {
+export interface NowPlayingDetails extends HeldRating {
 	row: TrackColumns;
 	path: string;
-	agreedRating: string;
 }
 
 const withColumn = (
@@ -59,7 +56,7 @@ export function setCachedLyrics(
 	raw: string,
 ) {
 	queryClient.setQueryData(
-		keyOf(path, subsong),
+		nowPlayingKey(path, subsong),
 		(current: NowPlayingDetails | null | undefined) =>
 			current ? withColumn(current, NOW_PLAYING_FIELD.lyrics, raw) : current,
 	);
@@ -71,7 +68,7 @@ export function cachedLyrics(
 	subsong: number,
 ): string {
 	const details = queryClient.getQueryData<NowPlayingDetails>(
-		keyOf(path, subsong),
+		nowPlayingKey(path, subsong),
 	);
 	return readValue(details?.row[NOW_PLAYING_FIELD.lyrics]) ?? "";
 }
@@ -136,7 +133,7 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 
 	const queryClient = useQueryClient();
 	const query = useQuery({
-		queryKey: keyOf(path, subsong),
+		queryKey: nowPlayingKey(path, subsong),
 		enabled: ready,
 		queryFn: async ({ signal }): Promise<NowPlayingDetails> => {
 			if (!origin) throw new Error("foo_jean is not ready");
@@ -148,18 +145,15 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 				throw new Error("the playing track answered for another track");
 
 			const holding = queryClient.getQueryData<NowPlayingDetails>(
-				keyOf(path, subsong),
+				nowPlayingKey(path, subsong),
 			);
-			const row = [...answer.columns];
-			if (holding)
-				row[NOW_PLAYING_FIELD.rating] = holding.row[NOW_PLAYING_FIELD.rating];
+			const answered = answer.columns[NOW_PLAYING_FIELD.rating];
 
 			return {
-				row,
+				row: answer.columns,
 				path: answer.path,
-				agreedRating: holding
-					? holding.agreedRating
-					: answer.columns[NOW_PLAYING_FIELD.rating],
+				rating: holding ? holding.rating : answered,
+				agreedRating: holding ? holding.agreedRating : answered,
 			};
 		},
 		staleTime: Infinity,
@@ -183,40 +177,6 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 		void query.refetch();
 	}, [path, subsong, track?.title, track?.artist, query.refetch]);
 
-	const patch = useCallback(
-		(change: (current: NowPlayingDetails) => NowPlayingDetails) => {
-			queryClient.setQueryData(
-				keyOf(path, subsong),
-				(current: NowPlayingDetails | null | undefined) =>
-					current ? change(current) : current,
-			);
-		},
-		[queryClient, path, subsong],
-	);
-
-	const setRating = useCallback(
-		(raw: string) =>
-			patch((current) => withColumn(current, NOW_PLAYING_FIELD.rating, raw)),
-		[patch],
-	);
-
-	const confirmRating = useCallback(
-		(raw: string) =>
-			patch((current) => ({
-				...withColumn(current, NOW_PLAYING_FIELD.rating, raw),
-				agreedRating: raw,
-			})),
-		[patch],
-	);
-
-	const restoreRating = useCallback(
-		() =>
-			patch((current) =>
-				withColumn(current, NOW_PLAYING_FIELD.rating, current.agreedRating),
-			),
-		[patch],
-	);
-
 	const setLyrics = useCallback(
 		(raw: string) => {
 			if (path !== null) setCachedLyrics(queryClient, path, subsong, raw);
@@ -232,9 +192,7 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 		duration,
 		details: query.isError ? null : (query.data ?? null),
 		isPending: ready && query.isPending,
-		setRating,
-		confirmRating,
-		restoreRating,
+		activeItem: item ?? null,
 		setLyrics,
 	};
 }

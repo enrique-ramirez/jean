@@ -32,6 +32,10 @@ struct PcmBlock {
     // audio path*, for why it travels with the block rather than being read separately.
     std::optional<StreamMark> mark;
 
+    // The first block after a seek, a skip or a play from stopped: nothing from before it may
+    // still be heard ahead of it.
+    bool cut = false;
+
     size_t frames() const;
     double seconds() const;
 };

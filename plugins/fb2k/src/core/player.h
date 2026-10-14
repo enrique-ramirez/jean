@@ -214,7 +214,7 @@ struct QueueCalls {
     ClearQueue clear;
 };
 
-enum class Transport { playPause, next, previous, stop };
+enum class Transport { playPause, pause, resume, next, previous, stop };
 enum class VolumeStep { up, down };
 
 using PlaylistRowPlayer =

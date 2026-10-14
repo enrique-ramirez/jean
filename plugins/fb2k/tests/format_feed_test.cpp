@@ -827,3 +827,120 @@ TEST_CASE(
         CHECK(firstBlockIn(visit.audio) <= visit.begunAfter);
     }
 }
+
+// A seek or a stop leaves the old track's last moments inside the encoder. A listener hearing
+// through hears silence in their place rather than the old track, and as long a silence, because
+// the timeline counts every block the encoder was given and a shorter stream would put each later
+// mark early for that listener.
+TEST_CASE("silencing a format a listener hears through replaces what its encoder holds") {
+    CountingEncoder encoder('o', holdingTwoBlocks());
+    const auto feed = feedOf(encoder, headers());
+
+    const auto listener = feed->listen();
+    playEach(*feed, {1, 2, 3, 4});
+    feed->silenceHeld();
+    playEach(*feed, {5, 6, 7, 8});
+    feed->close();
+
+    CHECK(toTheEnd(*listener).bytes == headers() + "o1;o2;o0;o0;o5;o6;");
+    CHECK(encoder.frames() == 10 * kBlockFrames);
+}
+
+TEST_CASE(
+    "silencing a format nobody hears through writes no silence and still drops what it held") {
+    SUBCASE("nobody is listening") {
+        CountingEncoder encoder('o', holdingTwoBlocks());
+        const auto feed = feedOf(encoder, headers());
+
+        auto earlier = feed->listen();
+        playEach(*feed, {1, 2, 3, 4});
+        earlier.reset();
+        feed->silenceHeld();
+
+        const auto later = feed->listen();
+        playEach(*feed, {5, 6, 7, 8});
+        feed->close();
+
+        CHECK(toTheEnd(*later).bytes == headers() + "o5;o6;");
+        CHECK(encoder.frames() == 8 * kBlockFrames);
+    }
+
+    SUBCASE("a listener arrived since the last block") {
+        CountingEncoder encoder('o', holdingTwoBlocks());
+        const auto feed = feedOf(encoder, headers());
+
+        auto earlier = feed->listen();
+        playEach(*feed, {1, 2, 3, 4});
+        earlier.reset();
+
+        const auto later = feed->listen();
+        feed->silenceHeld();
+        playEach(*feed, {5, 6, 7, 8});
+        feed->close();
+
+        CHECK(toTheEnd(*later).bytes == headers() + "o5;o6;");
+        CHECK(encoder.frames() == 8 * kBlockFrames);
+    }
+}
+
+namespace {
+
+struct BothFormats {
+    CountingEncoder opus{'o', holdingTwoBlocks()};
+    CountingEncoder aac{'a', holdingTwoBlocks()};
+    FormatFeed ogg{"opus", "audio/ogg", kRingBytes, kBriefly, opus, bytes(headers())};
+    FormatFeed adts{"aac", "audio/aac", kRingBytes, kBriefly, aac};
+    std::vector<FormatFeed*> feeds{&ogg, &adts};
+
+    void play(int id) {
+        ::play(ogg, id);
+        ::play(adts, id);
+    }
+
+    HeldAudio before(bool cut) const { return heldAudioBefore(feeds, cut); }
+};
+
+}  // namespace
+
+TEST_CASE("a block nobody is listening to is not encoded, cut or not") {
+    BothFormats formats;
+    formats.play(1);
+
+    CHECK(formats.before(false) == HeldAudio::nobodyListening);
+    CHECK(formats.before(true) == HeldAudio::nobodyListening);
+}
+
+TEST_CASE("held audio is kept for a listener hearing through, and silenced at a cut") {
+    BothFormats formats;
+    const auto listener = formats.ogg.listen();
+    formats.play(1);
+
+    CHECK(formats.before(false) == HeldAudio::keep);
+    CHECK(formats.before(true) == HeldAudio::silence);
+}
+
+// The stop case: nothing reaches the encoder while playback is stopped, so the last listener
+// leaving and the next arriving can fall between the same two blocks. What the converter holds
+// then is the old track, and nobody who heard it is still here.
+TEST_CASE("held audio is dropped where every listener since the last block is a newcomer") {
+    BothFormats formats;
+    auto earlier = formats.ogg.listen();
+    formats.play(1);
+    earlier.reset();
+    const auto later = formats.adts.listen();
+
+    CHECK(formats.before(false) == HeldAudio::drop);
+    CHECK(formats.before(true) == HeldAudio::drop);
+}
+
+TEST_CASE(
+    "held audio is kept while one format hears through, whoever comes and goes on the other") {
+    BothFormats formats;
+    const auto resident = formats.ogg.listen();
+    auto visitor = formats.adts.listen();
+    formats.play(1);
+    visitor.reset();
+    const auto returning = formats.adts.listen();
+
+    CHECK(formats.before(false) == HeldAudio::keep);
+}

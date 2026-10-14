@@ -52,6 +52,7 @@ const stateDocument = (
 		trackCount: 3,
 		columns: ["%title%"],
 		build: null,
+		halted: false,
 	},
 	configGeneration: 0,
 	mainThread: { answering: true, unansweredSeconds: null },

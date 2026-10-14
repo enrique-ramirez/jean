@@ -23,7 +23,7 @@ import { pushToast } from "@/shared/ui/toastStore";
 import { FIELD, TRACK_EXPRESSIONS, titleOf } from "./fields";
 import { type LibraryColumns, rowAt } from "./libraryColumns";
 import { type LibrarySource, libraryAddressesResolve } from "./librarySource";
-import { clearWrittenRating, setWrittenRating } from "./ratingStore";
+import { rowRatingPaint } from "./playingRating";
 import {
 	NO_WRITER,
 	type TagWriter,
@@ -310,25 +310,20 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 	);
 
 	const rate = useCallback(
-		({ source, ref, columns }: RateTarget, stars: number | null) => {
+		(target: RateTarget, stars: number | null) => {
+			const { source, ref, columns } = target;
 			const writable = writableAddress(RATING_FIELD, source.addresses(ref));
 			if (!writable) return;
-
-			const overlay = (raw: string) => setWrittenRating(columns, ref, raw);
 
 			queueRating({
 				...writable,
 				key: addressKey(writable.address),
 				label: titleOf(rowAt(columns, ref), translate),
 				raw: tagValueOf(stars),
-				paint: {
-					adopt: overlay,
-					confirm: overlay,
-					restore: () => clearWrittenRating(columns, ref),
-				},
+				paint: rowRatingPaint(queryClient, target),
 			});
 		},
-		[queueRating, writableAddress],
+		[queueRating, writableAddress, queryClient],
 	);
 
 	const rateTrack = useCallback(

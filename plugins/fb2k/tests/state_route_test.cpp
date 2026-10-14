@@ -391,7 +391,8 @@ TEST_CASE("the poll document carries what the player is doing beside the library
                                   {"revision", 1},
                                   {"trackCount", 3},
                                   {"columns", json::array({kTitle, kPlays})},
-                                  {"build", nullptr}});
+                                  {"build", nullptr},
+                                  {"halted", false}});
 }
 
 // The first poll of a component that has just started, before a playback callback has fired.
@@ -1490,6 +1491,34 @@ TEST_CASE("a conditional poll is a 200 once the build's progress moves, and a 30
     CHECK(again->get_header_value("ETag") != tag);
 }
 
+// A worker that stopped mid-build moves neither generation, so a tag made without the halt would
+// hold a client on a 304 and on the progress it last read, waiting on a build that never ends.
+TEST_CASE("a halt mid-build is published, ends the build, keeps the library, and moves the tag") {
+    Library library;
+    fill(library);
+    library.reportBuild(BuildProgress{BuildPhase::formatting, 8192, 30441});
+    const TestServer server = serving(&library);
+
+    const auto building = get(server, "/api/state");
+    REQUIRE(building);
+    REQUIRE(building->status == 200);
+    CHECK(json::parse(building->body)["library"]["halted"] == false);
+    const auto tag = building->get_header_value("ETag");
+
+    library.reportHalted();
+
+    const auto halted = getHolding(server, "/api/state", tag);
+    REQUIRE(halted);
+    CHECK(halted->status == 200);
+    CHECK(halted->get_header_value("ETag") != tag);
+
+    const auto body = json::parse(halted->body)["library"];
+    CHECK(body["halted"] == true);
+    CHECK(body["build"] == nullptr);
+    CHECK(body["ready"] == true);
+    CHECK(body["trackCount"] == 3);
+}
+
 // The export and the delta are the same bytes until the build lands, so a tag that moved with
 // progress would send a client holding either of them the whole thing again once a slice.
 TEST_CASE("a build's progress leaves the export and the delta a client holds current") {
@@ -1962,7 +1991,8 @@ TEST_CASE("a player with no media library still answers what it is playing") {
                                   {"revision", 0},
                                   {"trackCount", 0},
                                   {"columns", json::array()},
-                                  {"build", nullptr}});
+                                  {"build", nullptr},
+                                  {"halted", false}});
 }
 
 // Every other validator case fills the library, so this is the one where the player half of the

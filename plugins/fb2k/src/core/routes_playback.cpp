@@ -37,6 +37,12 @@ void commandSession(Session& session, Transport command, Session::Clock::time_po
         case Transport::playPause:
             session.playPause(now);
             return;
+        case Transport::pause:
+            session.pause(now);
+            return;
+        case Transport::resume:
+            session.resume(now);
+            return;
         case Transport::next:
             session.next(now);
             return;
@@ -367,6 +373,8 @@ void PlaybackRoutes::readSessionTrack(const Session& session,
 
 void PlaybackRoutes::addTo(httplib::Server& server) {
     addTransportRoute(server, "/api/playback/play-pause", Transport::playPause);
+    addTransportRoute(server, "/api/playback/pause", Transport::pause);
+    addTransportRoute(server, "/api/playback/resume", Transport::resume);
     addTransportRoute(server, "/api/playback/next", Transport::next);
     addTransportRoute(server, "/api/playback/previous", Transport::previous);
     addTransportRoute(server, "/api/playback/stop", Transport::stop);

@@ -35,6 +35,7 @@ export const READ_FAILED = {
 	refused: "library.readRefused",
 	unreachable: "library.readUnreachable",
 	timeout: "library.readTimedOut",
+	halted: "library.halted.summary",
 	failed: "library.readFailed",
 } as const satisfies Record<LibraryFailureReason, Phrase>;
 

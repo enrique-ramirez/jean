@@ -16,6 +16,16 @@ export const playPause = (origin: string) =>
 		api.POST("/playback/play-pause", { ...init, headers: BODYLESS_POST }),
 	);
 
+export const pause = (origin: string) =>
+	command(origin, (api, init) =>
+		api.POST("/playback/pause", { ...init, headers: BODYLESS_POST }),
+	);
+
+export const resume = (origin: string) =>
+	command(origin, (api, init) =>
+		api.POST("/playback/resume", { ...init, headers: BODYLESS_POST }),
+	);
+
 export const ASKED_MS = 4000;
 let asked: { by: number; at: number } | null = null;
 

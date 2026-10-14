@@ -1,13 +1,16 @@
 // The box Playwright hands back from boundingBox(), which it does not name.
 type BoundingBox = { x: number; y: number; width: number; height: number };
 
+import type { Request } from "@playwright/test";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectSettlesAt,
+	holdRequests,
 	openLibrary,
 	statusBar,
 	test,
+	ticksTaken,
 	trackRow,
 	volumesSent,
 } from "./fixtures.ts";
@@ -35,6 +38,14 @@ const bodiesTo = (player: FakePlayer, route: string) =>
 	player.requests
 		.filter((entry) => entry.method === "POST" && entry.path === route)
 		.map((entry) => entry.body ?? {});
+
+const isStatePoll = (request: Request) =>
+	request.method() === "GET" &&
+	new URL(request.url()).pathname === "/api/state";
+
+const isVolumeWrite = (request: Request) =>
+	request.method() === "POST" &&
+	new URL(request.url()).pathname === "/api/volume";
 
 const levelsSent = (player: FakePlayer) =>
 	volumesSent(player)
@@ -155,6 +166,43 @@ test.describe("the mute button", () => {
 		]);
 		expect(player.player.volume.isMuted).toBe(false);
 		await expect(mute).toBeVisible();
+	});
+
+	test("a poll answered before the first press reached the player does not make the second press mute again", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		const button = (name: string) =>
+			statusBar(page).getByRole("button", { name, exact: true });
+		await expect(button("Mute")).toBeVisible();
+
+		const poll = await holdRequests(page, isStatePoll, {
+			answered: true,
+			count: 1,
+		});
+		await poll.untilHeld();
+		const writes = await holdRequests(page, isVolumeWrite);
+		await button("Mute").click();
+		await writes.untilHeld();
+		await expect(button("Unmute")).toBeVisible();
+
+		const asked = ticksTaken(player);
+		poll.release();
+		await expect.poll(() => ticksTaken(player)).toBeGreaterThan(asked + 1);
+		await button("Unmute").click();
+		await writes.untilHeld(2);
+
+		writes.release();
+		await expectSettlesAt(player, () => bodiesTo(player, "/api/volume"), [
+			{ muted: true },
+		]);
+		writes.release();
+		await expectSettlesAt(player, () => bodiesTo(player, "/api/volume"), [
+			{ muted: true },
+			{ muted: false },
+		]);
+		await expect(button("Mute")).toBeVisible();
 	});
 });
 

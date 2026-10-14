@@ -1,6 +1,7 @@
 #include "third_party/httplib.h"
 
 #include "core/admission.h"
+#include "core/connection_threads.h"
 #include "core/http_responses.h"
 #include "core/http_server.h"
 #include "core/log.h"
@@ -290,8 +291,8 @@ void applyLimits(httplib::Server& server) {
     server.set_payload_max_length(kMaxBodyBytes);
 
     server.new_task_queue = [] {
-        const auto pool = connectionPoolFor(std::thread::hardware_concurrency());
-        return new httplib::ThreadPool(pool.threads, pool.maxThreads, pool.queued);
+        return new ConnectionThreads(connectionPoolFor(std::thread::hardware_concurrency()),
+                                     std::chrono::seconds(CPPHTTPLIB_THREAD_POOL_IDLE_TIMEOUT));
     };
 }
 

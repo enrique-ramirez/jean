@@ -3208,6 +3208,41 @@ TEST_CASE("a cap of zero refuses a create before the player is asked") {
     CHECK(foobar.count(Call::createAutoPlaylist) == 0);
 }
 
+// Lowering the cap must not strand what the component already made: a client can still edit
+// each one and delete it to get back under.
+TEST_CASE("the autoplaylist cap refuses only a create: at zero, at the cap and over it") {
+    auto jazz = rock();
+    jazz.id = kAutoPlaylistId;
+    jazz.managed->key = "folder:genre:Jazz";
+
+    for (const auto& [cap, refusal] : {std::pair{0, 503}, std::pair{2, 409}, std::pair{1, 409}}) {
+        INFO("maxAutoPlaylists: ", cap);
+        auto settings = servingSettings();
+        settings.maxAutoPlaylists = cap;
+
+        FakePlayer foobar;
+        holdingAnAutoPlaylist(foobar);
+        foobar.add(jazz);
+        const TestServer server(settings, foobar.player());
+
+        const auto created = post(server, "/api/autoplaylists", kCreate);
+        REQUIRE(created);
+        CHECK(created->status == refusal);
+        CHECK(idsIn(listingOf(server)).size() == 2);
+
+        const auto updated = post(server, autoPlaylistPath(kPlaylistId),
+                                  R"({"title": "#Jean Rock again", "query": "%genre% IS Rock"})");
+        REQUIRE(updated);
+        CHECK(updated->status == 200);
+        CHECK(titleOf(server, kPlaylistId) == "#Jean Rock again");
+
+        const auto removed = server.client().Delete(autoPlaylistPath(kAutoPlaylistId));
+        REQUIRE(removed);
+        CHECK(removed->status == 200);
+        CHECK(idsIn(listingOf(server)) == std::vector<std::string>{kPlaylistId});
+    }
+}
+
 TEST_CASE(
     "updating an autoplaylist with a query the player cannot compile is a 400 that changes "
     "nothing") {

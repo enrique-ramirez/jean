@@ -9,6 +9,7 @@ import {
 	playRequests,
 	sidebar,
 	statusBar,
+	tagWrites,
 	test,
 	toastRegion,
 	trackRow,
@@ -171,6 +172,80 @@ test.describe("a nested page", () => {
 		await expect(menuItem(page, "Rock en Español")).toBeVisible();
 		await expect(menuItem(page, "#Jean Library")).toHaveCount(1);
 		await expect(menuItem(page, /^Library$/)).toHaveCount(0);
+	});
+});
+
+// Rating is the nested page with no field to take focus, so without the menu
+// handing focus to a star it falls to the page behind, the arrows reach nothing
+// and Escape closes the whole menu.
+test.describe("the Rating page from the keyboard", () => {
+	test.use({
+		settings: { "jean.columns": ["duration", "rating"] },
+		retagged: {
+			Deléctrico: { "%rating%": "3" },
+			"Soy Rock": { "%rating%": "0" },
+		},
+	});
+	const DELECTRICO_ROW = 2;
+	const SOY_ROCK_ROW = 3;
+
+	const enterRating = async (page: Page, row: number) => {
+		await openLibrary(page);
+		await trackRow(page, row).click({ button: "right" });
+		await menuItem(page, en["rating.title"]).focus();
+		await page.keyboard.press("Enter");
+	};
+
+	test.beforeEach(({ isMobile }) => {
+		test.skip(isMobile, "the action sheet leaves focus where a tap puts it");
+	});
+
+	test("focus lands on the rating the track holds, and the arrows walk the stars", async ({
+		page,
+	}) => {
+		await enterRating(page, DELECTRICO_ROW);
+		await expect(menuItem(page, "3 stars")).toBeFocused();
+
+		await page.keyboard.press("ArrowDown");
+		await expect(menuItem(page, "2 stars")).toBeFocused();
+
+		await page.keyboard.press("ArrowUp");
+		await page.keyboard.press("ArrowUp");
+		await expect(menuItem(page, "4 stars")).toBeFocused();
+	});
+
+	test("on an unrated track focus lands on the first star", async ({
+		page,
+	}) => {
+		await enterRating(page, SOY_ROCK_ROW);
+		await expect(menuItem(page, "5 stars")).toBeFocused();
+	});
+
+	test("Enter rates with the star focused", async ({ page, player }) => {
+		await enterRating(page, DELECTRICO_ROW);
+		await expect(menuItem(page, "3 stars")).toBeFocused();
+		await page.keyboard.press("ArrowUp");
+		await page.keyboard.press("Enter");
+
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
+		expect(tagWrites(player)[0].body).toMatchObject({
+			fields: { rating: "4" },
+		});
+		await expect(page.getByRole("menu")).toHaveCount(0);
+	});
+
+	test("Escape steps back to the menu with Rating focused, and Escape again closes it", async ({
+		page,
+	}) => {
+		await enterRating(page, DELECTRICO_ROW);
+		await expect(menuItem(page, "3 stars")).toBeFocused();
+
+		await page.keyboard.press("Escape");
+		await expect(menuItem(page, en["rating.title"])).toBeFocused();
+		await expect(menuItem(page, IN_EVERY_TRACK_MENU)).toBeVisible();
+
+		await page.keyboard.press("Escape");
+		await expect(page.getByRole("menu")).toHaveCount(0);
 	});
 });
 

@@ -591,6 +591,8 @@ paths:
         Existing playlists are never converted. There is no route that turns an existing playlist into an autoplaylist, because the core replaces the contents of a playlist when it takes one over.
 
         Refused with `403` under the read-only-playlists setting: every playlist this creates would hold the user's music, and the setting refuses every write but the component's own scratch playlist.
+
+        `maxAutoPlaylists` caps this route and no other: at the cap it is a `409`, and at `0` a `503`.
       requestBody:
         required: true
         content:
@@ -3544,7 +3546,7 @@ components:
 
     PlaylistUnavailable:
       description: |
-        Autoplaylists are not available in this install, either because the component could not reach that part of the player or because `maxAutoPlaylists` is `0` in `config.json`. `GET /capabilities` reports this in advance.
+        Autoplaylists are not available in this install, either because the component could not reach that part of the player or, on `POST /autoplaylists` alone, because `maxAutoPlaylists` is `0` in `config.json`. `GET /capabilities` reports this in advance.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/PlaylistFailed" }
@@ -4082,7 +4084,7 @@ components:
           type: integer
           minimum: 0
           description: |
-            How many autoplaylists this component will keep at once, counting only the ones it created. `0` switches creation off.
+            How many autoplaylists this component will keep at once, counting only the ones it created. The cap applies to creating only: `0` switches creation off, and updating or deleting one it made is never refused for the cap.
 
             The cap bounds a client bug rather than an attacker; anything admitted onto this origin can already write tags.
           examples: [100]

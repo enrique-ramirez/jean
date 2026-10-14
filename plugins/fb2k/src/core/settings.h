@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -86,6 +87,12 @@ Settings parseSettings(const std::string& text);
 
 std::string serialiseSettings(const Settings& settings);
 
-std::string localUrl(const Settings& settings);
+struct BrowserAtStart {
+    std::optional<std::string> url;
+    std::string logLine;
+};
+
+BrowserAtStart browserAtStart(const Settings& settings,
+                              const std::vector<std::string>& heldAddresses);
 
 }  // namespace jean

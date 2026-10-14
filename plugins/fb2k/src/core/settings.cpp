@@ -237,9 +237,22 @@ std::string serialiseSettings(const Settings& settings) {
     return root.dump(2) + "\n";
 }
 
-std::string localUrl(const Settings& settings) {
+BrowserAtStart browserAtStart(const Settings& settings,
+                              const std::vector<std::string>& heldAddresses) {
+    if (!settings.openBrowserAtStart)
+        return {};
+
     const auto host = settings.bindAddress == "0.0.0.0" ? "127.0.0.1" : settings.bindAddress;
-    return "http://" + host + ":" + std::to_string(settings.port) + "/";
+    const auto port = std::to_string(settings.port);
+    const auto url = "http://" + host + ":" + port + "/";
+
+    if (std::find(heldAddresses.begin(), heldAddresses.end(), host) != heldAddresses.end())
+        return {.url = std::nullopt,
+                .logLine = "not opening " + url + " in the default browser: another program " +
+                           "holds port " + port + " at " + host +
+                           ", so the page there would not be Jean's"};
+
+    return {.url = url, .logLine = "opening " + url + " in the default browser"};
 }
 
 }  // namespace jean

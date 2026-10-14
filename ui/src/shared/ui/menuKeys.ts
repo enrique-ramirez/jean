@@ -14,7 +14,9 @@ type BeyondHandler = (context: {
 const ITEMS =
 	'[role="menuitem"]:not(:disabled), [role="menuitemcheckbox"]:not(:disabled), [role="menuitemradio"]:not(:disabled)';
 
-const itemsIn = (container: HTMLElement | null | undefined): HTMLElement[] => [
+export const itemsIn = (
+	container: HTMLElement | null | undefined,
+): HTMLElement[] => [
 	...(container?.querySelectorAll<HTMLElement>(ITEMS) ?? []),
 ];
 

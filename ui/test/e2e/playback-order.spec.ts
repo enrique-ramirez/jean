@@ -1,3 +1,4 @@
+import type { Request } from "@playwright/test";
 import {
 	DETACHED_PLAYBACK_MODES,
 	type DetachedSession,
@@ -31,6 +32,7 @@ import {
 	putThePickerAway,
 	statusBar,
 	test,
+	ticksTaken,
 	tokenColourIn,
 	trackRow,
 	untilQuiet,
@@ -145,6 +147,10 @@ const holdModeWrites = (page: Page) =>
 			request.method() === "POST" &&
 			new URL(request.url()).pathname === "/api/playback/mode",
 	);
+
+const isStatePoll = (request: Request) =>
+	request.method() === "GET" &&
+	new URL(request.url()).pathname === "/api/state";
 
 const startATrack = async (page: Page, player: FakePlayer) => {
 	await trackRow(page, 1).dblclick();
@@ -878,12 +884,9 @@ test.describe("on a desktop", () => {
 				page,
 				player,
 			}) => {
-				// A poll answered after the choice would draw the order the player is still in, and
-				// with the write held nothing would correct it.
 				await expect(orderButton(page, false)).toHaveAccessibleName(
 					"Playback order: In order",
 				);
-				await holdThePoll(page);
 				const held = await holdModeWrites(page);
 				await openList(page, false);
 				await orderRow(page, REPEAT_TRACK.english).click();
@@ -905,6 +908,44 @@ test.describe("on a desktop", () => {
 					REPEAT_TRACK.mode,
 				]);
 				await expect(orderButton(page, false)).toHaveAccessibleName(
+					"Playback order: Repeat track",
+				);
+			});
+
+			test("keeps the choice through a poll the player answered before taking it", async ({
+				page,
+				player,
+			}) => {
+				// The poll is asked before the choice and its answer lands while the write is still
+				// out, so it carries the order the player was in rather than a change.
+				const button = orderButton(page, false);
+				await expect(button).toHaveAccessibleName("Playback order: In order");
+				const poll = await holdRequests(page, isStatePoll, {
+					answered: true,
+					count: 1,
+				});
+				await poll.untilHeld();
+				const held = await holdModeWrites(page);
+				await openList(page, false);
+				await orderRow(page, REPEAT_TRACK.english).click();
+				await held.untilHeld();
+				await expect(button).toHaveAccessibleName(
+					"Playback order: Repeat track",
+				);
+
+				const asked = ticksTaken(player);
+				poll.release();
+				await expect.poll(() => ticksTaken(player)).toBeGreaterThan(asked + 1);
+				await expect(button).toHaveAccessibleName(
+					"Playback order: Repeat track",
+				);
+				expect(modesSent(player)).toEqual([]);
+
+				held.releaseAll();
+				await expectSettlesAt(player, () => modesSent(player), [
+					REPEAT_TRACK.mode,
+				]);
+				await expect(button).toHaveAccessibleName(
 					"Playback order: Repeat track",
 				);
 			});
@@ -1352,10 +1393,7 @@ test.describe("an install offering two orders", () => {
 		isMobile,
 	}) => {
 		const button = orderButton(page, isMobile);
-		// A poll answered after the press would draw the order the player is still in, and with
-		// the write held nothing would correct it.
 		await expect(button).toHaveAccessibleName("Playback order: In order");
-		await holdThePoll(page);
 		const held = await holdModeWrites(page);
 
 		await button.click();

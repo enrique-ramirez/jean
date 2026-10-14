@@ -20,6 +20,7 @@ import type { FooJeanCapabilities } from "../../src/shared/api/discovery.ts";
 import { playingTrack } from "../../src/shared/api/playerState.ts";
 import type { StateDocument } from "../../src/shared/api/state.ts";
 import type {
+	PlaybackMode,
 	PlayerSnapshot,
 	PlayerState,
 } from "../../src/shared/api/types.ts";
@@ -968,4 +969,139 @@ test("a second change seen while a look is pending adds no second look", async (
 	});
 
 	assert.deepEqual(looks, [SECOND_SIGHTING_MS, MARK_FOLLOW_UP_MS]);
+});
+
+const EVEN_LATER_TAG = '"s1-r4-p9"';
+
+const holdMode = (client: QueryClient, playbackMode: PlaybackMode) =>
+	playerPoll.holdPlayerWrite(client, () => ({ playbackMode }));
+
+const modeIn = (client: QueryClient) => playerIn(client)?.playbackMode ?? null;
+
+const answeredLater = () => {
+	let answer: (response: Response) => void = () => {};
+	const pending = new Promise<Response>((resolve) => {
+		answer = resolve;
+	});
+	return { pending: () => pending, answer };
+};
+
+test("a poll asked before a write was answered keeps the write's value and draws everything else", async (t) => {
+	const poll = harness(
+		t,
+		stateOnly(() => document200("playing", TAG, { playbackMode: "inOrder" })),
+		CAPABILITIES,
+	);
+	await poll.settle();
+
+	const write = holdMode(poll.client, "repeatOne");
+	const late = answeredLater();
+	poll.answersState(late.pending);
+	await poll.ticks(1);
+	write?.answered();
+	late.answer(
+		await document200("paused", LATER_TAG, { playbackMode: "inOrder" }),
+	);
+	await poll.settle();
+
+	assert.equal(modeIn(poll.client), "repeatOne");
+	assert.equal(playbackIn(poll.client), "paused");
+});
+
+test("a poll asked after a write was answered draws the player's value", async (t) => {
+	const poll = harness(
+		t,
+		stateOnly(() => document200("playing", TAG, { playbackMode: "inOrder" })),
+		CAPABILITIES,
+	);
+	await poll.settle();
+
+	const write = holdMode(poll.client, "repeatOne");
+	write?.answered();
+	poll.answersState(() =>
+		document200("playing", LATER_TAG, { playbackMode: "shuffleTracks" }),
+	);
+	await poll.ticks(1);
+
+	assert.equal(modeIn(poll.client), "shuffleTracks");
+});
+
+test("a write the player answered without taking is drawn back by the next poll, though nothing else moved", async (t) => {
+	// The poll that drew over the write carried the player's validator for a state the key did not
+	// show, so a `304` to it would leave the write's value standing for good.
+	const poll = harness(
+		t,
+		stateOnly(() => document200("playing", TAG, { playbackMode: "inOrder" })),
+		CAPABILITIES,
+	);
+	await poll.settle();
+
+	const write = holdMode(poll.client, "repeatOne");
+	await poll.ticks(1);
+	assert.equal(modeIn(poll.client), "repeatOne");
+
+	write?.answered();
+	poll.answersState((ifNoneMatch) =>
+		ifNoneMatch === TAG
+			? unchanged()
+			: document200("playing", TAG, { playbackMode: "inOrder" }),
+	);
+	await poll.ticks(1);
+
+	assert.equal(modeIn(poll.client), "inOrder");
+});
+
+test("a write refused after a newer poll rolls back to what that poll said, not to what was drawn before the press", async (t) => {
+	const poll = harness(
+		t,
+		stateOnly(() => document200("playing", TAG, { playbackMode: "inOrder" })),
+		CAPABILITIES,
+	);
+	await poll.settle();
+
+	const write = holdMode(poll.client, "repeatOne");
+	poll.answersState(() =>
+		document200("paused", LATER_TAG, { playbackMode: "shuffleTracks" }),
+	);
+	await poll.ticks(1);
+	assert.equal(modeIn(poll.client), "repeatOne");
+
+	write?.rollBack();
+
+	assert.equal(modeIn(poll.client), "shuffleTracks");
+	assert.equal(playbackIn(poll.client), "paused");
+});
+
+test("a write refused before any poll answered rolls back to what was drawn before the press", async (t) => {
+	const poll = harness(
+		t,
+		stateOnly(() => document200("playing", TAG, { playbackMode: "inOrder" })),
+		CAPABILITIES,
+	);
+	await poll.settle();
+
+	const write = holdMode(poll.client, "repeatOne");
+	assert.equal(modeIn(poll.client), "repeatOne");
+	write?.rollBack();
+
+	assert.equal(modeIn(poll.client), "inOrder");
+});
+
+test("of two writes to one field, the first refused leaves the second's value through a poll", async (t) => {
+	const poll = harness(
+		t,
+		stateOnly(() => document200("playing", TAG, { playbackMode: "inOrder" })),
+		CAPABILITIES,
+	);
+	await poll.settle();
+
+	const first = holdMode(poll.client, "repeatOne");
+	holdMode(poll.client, "shuffleTracks");
+	poll.answersState(() =>
+		document200("playing", EVEN_LATER_TAG, { playbackMode: "inOrder" }),
+	);
+	await poll.ticks(1);
+	first?.rollBack();
+
+	assert.equal(modeIn(poll.client), "shuffleTracks");
 });

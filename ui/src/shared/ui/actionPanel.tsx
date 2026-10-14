@@ -13,7 +13,7 @@ import { fold, matchesTokens, tokenize } from "@/shared/lib/text";
 import styles from "./ActionMenu.module.css";
 import { Input } from "./Input";
 import type { IconComponent } from "./icons";
-import { handleMenuKeys } from "./menuKeys";
+import { handleMenuKeys, itemsIn } from "./menuKeys";
 
 export interface ActionEntry {
 	type?: undefined;
@@ -25,6 +25,7 @@ export interface ActionEntry {
 	checked?: boolean;
 	iconTone?: "accent";
 	disabled?: boolean;
+	current?: boolean;
 	onSelect?: () => void;
 	keepOpen?: boolean;
 	items?: ActionNode[];
@@ -87,18 +88,20 @@ function usePages(actions: ActionNode[]) {
 	return { pages, depth: pages.length - 1, push, pop };
 }
 
-// `focusFilter` is on for the popover and off for the sheet: autofocus summons the software
-// keyboard, which costs half the screen on touch.
+const CURRENT_ITEM = '[aria-checked="true"], [aria-current="true"]';
+
+// `movesFocus` is on for the popover and off for the sheet: autofocus on a filter summons the
+// software keyboard, which costs half the screen on touch.
 export function usePanel({
 	actions,
 	onDismiss,
 	canFilter = false,
-	focusFilter = false,
+	movesFocus = false,
 }: {
 	actions: ActionNode[];
 	onDismiss: () => void;
 	canFilter?: boolean;
-	focusFilter?: boolean;
+	movesFocus?: boolean;
 }) {
 	const { pages, depth, push, pop } = usePages(actions);
 	const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -146,12 +149,24 @@ export function usePanel({
 		[active, isFiltered],
 	);
 
+	const shownPages = useRef(pages);
 	useEffect(() => {
-		if (!isFiltered || !focusFilter) return;
-		pageRefs.current[depth]
-			?.querySelector("input")
-			?.focus({ preventScroll: true });
-	}, [isFiltered, focusFilter, depth]);
+		const previous = shownPages.current;
+		shownPages.current = pages;
+		const element = pageRefs.current[depth];
+		if (!movesFocus || !element || previous.length === pages.length) return;
+
+		const target =
+			previous.length > pages.length
+				? element.querySelector<HTMLElement>(
+						`[data-submenu="${CSS.escape(previous[depth + 1].id)}"]`,
+					)
+				: isFiltered
+					? element.querySelector("input")
+					: (element.querySelector<HTMLElement>(CURRENT_ITEM) ??
+						itemsIn(element)[0]);
+		target?.focus({ preventScroll: true });
+	}, [pages, depth, isFiltered, movesFocus]);
 
 	const pageKeys = ({
 		event,
@@ -278,9 +293,10 @@ function Node({
 			className={styles.item}
 			data-danger={node.danger ? "true" : undefined}
 			data-icon-tone={node.iconTone}
-			data-submenu={hasSubmenu ? "true" : undefined}
+			data-submenu={hasSubmenu ? node.id : undefined}
 			disabled={node.disabled}
 			aria-haspopup={hasSubmenu ? "menu" : undefined}
+			aria-current={node.current || undefined}
 			onClick={() => onSelect(node)}
 		>
 			<span className={styles.rail} aria-hidden="true" />

@@ -11,7 +11,7 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
 import { type CachePatch, patchCache } from "@/shared/lib/patchCache";
 import { pushToast } from "@/shared/ui/toastStore";
-import { PLAYER_KEY } from "./playerPoll";
+import { holdPlayerWrite } from "./playerPoll";
 import { sessionEpoch } from "./session";
 
 export function patchInSession<T>(
@@ -82,8 +82,6 @@ export function useOptimisticWrite<TData, TInput, TResult = unknown>(
 	});
 }
 
-// Always re-anchors the interpolation: freezing a position without moving `syncedAt` leaves the seek
-// bar carrying on from where the last update put it.
 export const usePlayerPatch = <TInput>(
 	mutationFn: (input: TInput) => Promise<unknown>,
 	patchPlayer: (
@@ -91,19 +89,23 @@ export const usePlayerPatch = <TInput>(
 		input: TInput,
 		previous: PlayerSnapshot,
 	) => Partial<PlayerState> | null,
-) =>
-	useOptimisticWrite<PlayerSnapshot, TInput>(
-		PLAYER_KEY,
+) => {
+	const queryClient = useQueryClient();
+	const { recheck } = useFooJean();
+
+	return useMutation({
 		mutationFn,
-		(previous, input) => {
-			const player = previous.player;
-			if (!player) return null;
-			const next = patchPlayer(player, input, previous);
-			return (
-				next && { player: { ...player, ...next }, syncedAt: performance.now() }
-			);
+		onMutate: (input: TInput) =>
+			holdPlayerWrite(queryClient, (previous) =>
+				patchPlayer(previous.player, input, previous),
+			),
+		onSuccess: (_result, _input, held) => held?.answered(),
+		onError: (error, _input, held) => {
+			reportPlaybackRefusal(error, recheck);
+			held?.rollBack();
 		},
-	);
+	});
+};
 
 export const useCommand = (
 	discovery: FooJeanDiscovery,

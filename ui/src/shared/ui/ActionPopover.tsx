@@ -17,7 +17,7 @@ export function ActionPopover({
 		actions,
 		onDismiss,
 		canFilter: true,
-		focusFilter: true,
+		movesFocus: true,
 	});
 	const ref = useDismissable<HTMLDivElement>(true, onDismiss);
 	const [placement, setPlacement] = useState<{

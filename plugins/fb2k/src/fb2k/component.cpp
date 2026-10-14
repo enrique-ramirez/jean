@@ -254,15 +254,16 @@ public:
           configWatch_(server_, settings_) {
         if (status_.listening) {
             logInfo("listening on " + settings_.bindAddress + ":" + std::to_string(settings_.port));
-            if (settings_.openBrowserAtStart) {
-                const auto url = localUrl(settings_);
-                logInfo("opening " + url + " in the default browser");
-                openInBrowser(url);
-            }
             if (!status_.heldAddresses.empty())
                 logError(heldAddressError(status_.heldAddresses, settings_.port));
             if (status_.portIsShared)
                 logInfo(sharedPortNotice(settings_.port));
+
+            const auto browser = browserAtStart(settings_, status_.heldAddresses);
+            if (!browser.logLine.empty())
+                logInfo(browser.logLine);
+            if (browser.url)
+                openInBrowser(*browser.url);
         } else {
             logError(status_.error);
             if (status_.portInUse)

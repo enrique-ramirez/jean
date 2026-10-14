@@ -23,6 +23,7 @@ import {
 	notePlaybackState,
 } from "./listenerStore";
 import { watchForNobodyListening } from "./nobodyListening";
+import { positionAt } from "./position";
 import { followQueue, forgetQueue } from "./queue";
 import {
 	noteSessionGone,
@@ -97,6 +98,13 @@ interface AnnouncedRevisions {
 	sessionRevision: number;
 }
 
+interface HeldWrite {
+	fields: Partial<PlayerState>;
+	patched: PlayerSnapshot;
+	answeredAfterAsk: number | null;
+	epoch: number;
+}
+
 // `foo_jean`'s `GET /api/state` body carries no counter that orders two answers, and its `ETag` is
 // opaque, so the order the reads were asked in stands in for the order the player answered them.
 interface DrawnAnswer {
@@ -105,6 +113,8 @@ interface DrawnAnswer {
 	tag: string | null;
 	revisions: AnnouncedRevisions | null;
 	epoch: number;
+	held: HeldWrite[];
+	reported: PlayerSnapshot | null;
 }
 
 const drawnAnswers = new WeakMap<QueryClient, DrawnAnswer>();
@@ -118,10 +128,98 @@ function drawnAnswerOf(client: QueryClient): DrawnAnswer {
 			tag: null,
 			revisions: null,
 			epoch: sessionEpoch(),
+			held: [],
+			reported: null,
 		};
 		drawnAnswers.set(client, drawn);
 	}
 	return drawn;
+}
+
+const stillHeldAt = (ask: number) => (write: HeldWrite) =>
+	write.answeredAfterAsk === null || ask <= write.answeredAfterAsk;
+
+function releaseAnswered(drawn: DrawnAnswer, ask: number) {
+	drawn.held = drawn.held.filter(stillHeldAt(ask));
+}
+
+const fieldsAt = (
+	{ fields, patched }: HeldWrite,
+	now: number,
+): Partial<PlayerState> =>
+	fields.activeItem
+		? {
+				...fields,
+				activeItem: {
+					...fields.activeItem,
+					position: positionAt(patched, now),
+				},
+			}
+		: fields;
+
+const rebasedTo = (snapshot: PlayerSnapshot, now: number): PlayerSnapshot => ({
+	player: {
+		...snapshot.player,
+		activeItem: {
+			...snapshot.player.activeItem,
+			position: positionAt(snapshot, now),
+		},
+	},
+	syncedAt: now,
+});
+
+function keepHeld(held: HeldWrite[], reported: PlayerSnapshot): PlayerSnapshot {
+	if (held.length === 0) return reported;
+	const kept = held.map((write) => fieldsAt(write, reported.syncedAt));
+	return {
+		player: Object.assign({}, reported.player, ...kept),
+		syncedAt: reported.syncedAt,
+	};
+}
+
+export interface HeldPlayerWrite {
+	answered: () => void;
+	rollBack: () => void;
+}
+
+export function holdPlayerWrite(
+	client: QueryClient,
+	fieldsOf: (previous: PlayerSnapshot) => Partial<PlayerState> | null,
+): HeldPlayerWrite | null {
+	forgetSession(client);
+	const previous = client.getQueryData<PlayerSnapshot>(PLAYER_KEY);
+	if (!previous?.player) return null;
+	const fields = fieldsOf(previous);
+	if (!fields) return null;
+
+	const patched: PlayerSnapshot = {
+		player: { ...previous.player, ...fields },
+		syncedAt: performance.now(),
+	};
+	client.setQueryData(PLAYER_KEY, patched);
+	const drawn = drawnAnswerOf(client);
+	const write: HeldWrite = {
+		fields,
+		patched,
+		answeredAfterAsk: null,
+		epoch: sessionEpoch(),
+	};
+	drawn.held = [...drawn.held, write];
+
+	return {
+		answered: () => {
+			write.answeredAfterAsk = drawn.asked;
+		},
+		rollBack: () => {
+			if (write.epoch !== sessionEpoch() || !drawn.held.includes(write)) return;
+			drawn.held = drawn.held.filter((other) => other !== write);
+			const now = performance.now();
+			client.setQueryData(
+				PLAYER_KEY,
+				keepHeld(drawn.held, rebasedTo(drawn.reported ?? previous, now)),
+			);
+		},
+	};
 }
 
 const pendingMarkFollowUps = new WeakMap<
@@ -183,6 +281,8 @@ function forgetSession(client: QueryClient): boolean {
 	drawn.tag = null;
 	drawn.revisions = null;
 	drawn.drawn = drawn.asked;
+	drawn.held = [];
+	drawn.reported = null;
 	cancelMarkFollowUp(client);
 	forgetQueue(client);
 	forgetSessionDocument(client);
@@ -242,7 +342,10 @@ async function applyPoll(
 	void watchForNobodyListening(client, origin, result.kind !== "unchanged");
 	const answersNewerAsk = ask > drawn.drawn;
 	if (result.kind === "unchanged") {
-		if (answersNewerAsk && tag === drawn.tag) drawn.drawn = ask;
+		if (answersNewerAsk && tag === drawn.tag) {
+			drawn.drawn = ask;
+			releaseAnswered(drawn, ask);
+		}
 		const { revisions } = drawn;
 		if (revisions) {
 			followQueue(client, origin, revisions.queueRevision);
@@ -258,10 +361,13 @@ async function applyPoll(
 	notePlayerAnswering(result.state.mainThread.answering, askedAt);
 
 	const previous = client.getQueryData<PlayerSnapshot>(PLAYER_KEY);
-	const snapshot: PlayerSnapshot = {
+	const reported: PlayerSnapshot = {
 		player: mergePlayer(previous?.player, result.state.player, capabilities),
 		syncedAt: performance.now(),
 	};
+	releaseAnswered(drawn, ask);
+	const snapshot = keepHeld(drawn.held, reported);
+	drawn.reported = reported;
 	client.setQueryData<PlayerSnapshot>(PLAYER_KEY, snapshot);
 	const sawChangeOrSeek = rememberSnapshot(snapshot);
 	notePlaybackState(snapshot.player.playbackState);
@@ -281,7 +387,7 @@ async function applyPoll(
 		sessionRevision: result.state.player.sessionRevision,
 	};
 	drawn.drawn = ask;
-	drawn.tag = result.tag;
+	drawn.tag = snapshot === reported ? result.tag : null;
 	drawn.revisions = revisions;
 	followQueue(client, origin, revisions.queueRevision);
 	followPlaylists(client, origin, revisions.playlistsRevision);

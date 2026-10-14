@@ -436,12 +436,41 @@ TEST_CASE("openBrowserAtStart is read as written and refused as text") {
     CHECK(logged("'openBrowserAtStart'"));
 }
 
-TEST_CASE("the local address is loopback for a bind to every interface, and the bind otherwise") {
-    CHECK(localUrl(parseFresh("{}")) == "http://127.0.0.1:8881/");
-    CHECK(localUrl(parseFresh(R"({"port": 9000})")) == "http://127.0.0.1:9000/");
-    CHECK(localUrl(parseFresh(R"({"bindAddress": "127.0.0.1"})")) == "http://127.0.0.1:8881/");
-    CHECK(localUrl(parseFresh(R"({"bindAddress": "192.168.1.20", "port": 8080})")) ==
+TEST_CASE(
+    "the browser opens at loopback for a bind to every interface, and at the bind otherwise") {
+    const auto opened = [](const std::string& text) {
+        return browserAtStart(parseFresh(text), {}).url.value_or("");
+    };
+
+    CHECK(opened(R"({"openBrowserAtStart": true})") == "http://127.0.0.1:8881/");
+    CHECK(opened(R"({"openBrowserAtStart": true, "port": 9000})") == "http://127.0.0.1:9000/");
+    CHECK(opened(R"({"openBrowserAtStart": true, "bindAddress": "127.0.0.1"})") ==
+          "http://127.0.0.1:8881/");
+    CHECK(opened(R"({"openBrowserAtStart": true, "bindAddress": "192.168.1.20", "port": 8080})") ==
           "http://192.168.1.20:8080/");
+
+    const auto opening = browserAtStart(parseFresh(R"({"openBrowserAtStart": true})"), {});
+    CHECK(opening.logLine == "opening http://127.0.0.1:8881/ in the default browser");
+}
+
+TEST_CASE("openBrowserAtStart left off opens nothing and says nothing, held address or not") {
+    const auto skipped = browserAtStart(parseFresh("{}"), {"127.0.0.1"});
+
+    CHECK_FALSE(skipped.url);
+    CHECK(skipped.logLine.empty());
+}
+
+TEST_CASE("the browser stays shut where another program holds the address it would open") {
+    const auto settings = parseFresh(R"({"openBrowserAtStart": true})");
+
+    const auto skipped = browserAtStart(settings, {"192.0.2.7", "127.0.0.1"});
+
+    CHECK_FALSE(skipped.url);
+    CHECK(skipped.logLine.find("http://127.0.0.1:8881/") != std::string::npos);
+    CHECK(skipped.logLine.find("holds port 8881 at 127.0.0.1") != std::string::npos);
+
+    const auto elsewhere = browserAtStart(settings, {"192.0.2.7"});
+    CHECK(elsewhere.url == "http://127.0.0.1:8881/");
 }
 
 TEST_CASE("maxSessions survives a round trip through the file format") {

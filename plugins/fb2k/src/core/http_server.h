@@ -47,7 +47,7 @@ constexpr size_t kMaxBodyBytes = size_t{256} * 1024;
 // what a client has to hold once it has decoded is the number this caps.
 constexpr size_t kMaxLibraryBytes = size_t{64} * 1024 * 1024;
 
-// cpp-httplib serves each connection on a pool thread: `threads` start with the server, the pool
+// Each connection is served on a pool thread: `threads` start with the server, the pool
 // grows to `maxThreads` while every one is busy, and a connection accepted past that waits in a
 // queue at most `queued` deep. One accepted past the queue is closed unanswered.
 struct ConnectionPool {

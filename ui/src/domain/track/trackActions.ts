@@ -28,6 +28,7 @@ export const ratingItems = (
 			id: `rate-${stars}`,
 			label: t("rating.stars", { count: stars }),
 			icon: stars === current ? Check : Star,
+			current: stars === current,
 			onSelect: () => onRate(stars),
 		};
 	}),

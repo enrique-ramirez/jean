@@ -4,7 +4,7 @@ A foobar2000 component that serves [Jean](https://github.com/enrique-ramirez/jea
 
 ## What it does
 
-**Writes metadata tags.** Your request arrives over HTTP and *foobar2000* performs the write, through `metadb_io_v2::update_info_async`, so the player's own database is current the instant the write returns. Anything writing tags from outside the player leaves that database stale until a rescan, so the rating your client just set does not come back when it asks. Ratings are the first caller, but nothing here is rating-shaped: it writes fields.
+**Writes metadata tags.** A request arrives over HTTP and *foobar2000* performs the write, through `metadb_io_v2::update_info_async`, so the player's own database is current the instant the write returns. Anything writing tags from outside the player leaves that database stale until a rescan, so the rating a client just set does not come back when it asks. Ratings are the first caller, but nothing here is rating-shaped: it writes fields.
 
 **Creates autoplaylists.** An autoplaylist is a live query over foobar2000's Media Library that then shows up in `GET /api/playlists` like any other playlist. This creates, updates, previews and deletes them, and the playlist list says which playlists are autoplaylists, and which of those are this component's. Updating and deleting accept any autoplaylist, whoever made it.
 
@@ -29,7 +29,7 @@ node plugins/fb2k/scripts/embed-ui.mjs   # -> src/fb2k/ui_assets_table.cpp
 
 ### Windows
 
-On the build machine you need:
+The build machine needs:
 
 - **Visual Studio 2022 Build Tools** with the C++ workload **and the ATL component** (`Microsoft.VisualStudio.Component.VC.ATL`). `--includeRecommended` does not bring ATL, and the SDK's helpers include `atlbase.h`. The SDK ships MSBuild project files, so there is no CMake to write.
 - **The foobar2000 SDK**, fetched by `scripts/fetch-sdk.ps1` into `sdk/`. It is not vendored: its licence does not permit redistribution.
@@ -49,7 +49,7 @@ scripts\package.ps1                                # -> dist\foo_jean.fb2k-compo
 
 The Windows build has several traps, each of which fails in a way that does not name its cause, and each is written down where it is enforced rather than listed here. `src/foo_jean.vcxproj` covers the four traps its header names, and settles `/MP`, `third_party/` and `sdk/` as external headers, and `/W4` on `core/`; `Directory.Build.targets` WTL's include path, the static C++ runtime and a Release build's Control Flow Guard and CET compatibility; `scripts/build.ps1` the toolset, the compiler flags and its refusal of a DLL that imports the C++ runtime or lacks either hardening flag; `scripts/package.ps1` where an x64 payload goes in the archive; and `scripts/generate-sln.ps1` the per-project configuration. Read all five before debugging a link, a packaging or a resource-compiler error.
 
-Two things about the solutions, which no script says. **`scripts\generate-sln.ps1` exists to build the SDK's own `foo_sample`**, which is how you prove a new machine's toolchain before there is any of this code to blame. **`foo_jean.sln` in this directory is for opening the tree in Visual Studio** and is not used by the build.
+Two things about the solutions, which no script says. **`scripts\generate-sln.ps1` exists to build the SDK's own `foo_sample`**, which proves a new machine's toolchain before there is any of this code to blame. **`foo_jean.sln` in this directory is for opening the tree in Visual Studio** and is not used by the build.
 
 ### macOS
 
@@ -80,7 +80,7 @@ A hand installation has to reproduce what the script does, and `scripts/install.
 
 ## Configuring
 
-Everything is a file. `<profile>/foo_jean/config.json` is written on first start with every key at its default, and it is the source of truth rather than a fallback for a dialog: this component is built for installs with nobody at the keyboard. A Mac install's settings are `config.json` until it has a page, and a failed bind or a held address is said in the log alone.
+Everything is a file. `<profile>/foo_jean/config.json` is written on first start with every key at its default, and it is the source of truth rather than a fallback for a dialog: this component is built for installs with nobody at the keyboard. A Mac install has no preferences page: its settings are `config.json`, and a failed bind or a held address is said in the log alone.
 
 ```json
 {
@@ -104,7 +104,7 @@ Everything is a file. `<profile>/foo_jean/config.json` is written on first start
 }
 ```
 
-Every key is optional. An absent key keeps its default; a present but malformed one logs a line naming it, the value it refused and the default it took, so a single bad edit cannot stop a headless player coming up and never leaves silent about what happened. A key that is not a setting at all is reported too, because a typo like `bindaddress` otherwise changes nothing and says nothing.
+Every key is optional. An absent key keeps its default; a present but malformed one logs a line naming it, the value it refused and the default it took, so a single bad edit cannot stop a headless player coming up, and the log says what happened. A key that is not a setting at all is reported too, because a typo like `bindaddress` otherwise changes nothing and says nothing.
 
 `controlPlayback`, `writePlaylists`, `allowedFields`, `changeOutput`, `streamingEnabled`, `maxAutoPlaylists`, `allowedHosts` and `allowedOrigins` take effect on the next request once the file changes on disk, with no restart. `port`, `bindAddress`, `opusBitrate`, `aacBitrate`, `maxConcurrentStreams`, `streamTicketTtlSeconds`, `muteWhileStreaming`, `maxSessions` and `openBrowserAtStart` keep their running values until foobar2000 restarts, because nothing rebinds a listening socket, reopens a stream already open or resizes the session cap the listener started with, and the browser is opened once, at start.
 
@@ -117,7 +117,7 @@ Every key is optional. An absent key keeps its default; a present but malformed 
 | `allowedFields` | The write allowlist. Nothing outside it is ever written, and clients read it from `/api/capabilities` rather than being configured twice. Empty switches writing off. |
 | `maxAutoPlaylists` | How many autoplaylists this component will keep at once, counting only the ones it created. `0` switches creation off. |
 | `writePlaylists` | `true` by default, so leaving it alone permits every playlist write this component can make: create, add, edit, delete, reorder, rename. Set it to `false` to make every playlist and autoplaylist read-only except the component's own scratch playlist, which stays writable because it is how Jean works rather than the user's music. |
-| `controlPlayback` | `true` by default. Set it to `false` and the volume, every scratch write, and every playback command, seek, playback mode, row played and queue write addressed to the player's own session answer `403 playbackDisabled`; reading the queue and the state still answers. A detached session is governed by none of it, and creating one is not refused. |
+| `controlPlayback` | `true` by default. Set it to `false` and the volume, every scratch write, and every playback command, seek, playback mode, row played and queue write addressed to the player's own session answer `403`; reading the queue and the state still answers. A detached session is governed by none of it, and creating one is not refused. |
 | `changeOutput` | `true` by default. Set it to `false` and `POST /api/outputs/active` answers `403`, so no client can switch the player's output device; `GET /api/outputs` still lists them. |
 | `streamingEnabled` | `false` refuses every stream, the player's own session's and every detached session's, and refuses creating a detached session, since a detached session is heard nowhere else. `/api/capabilities` then reports `canStream: false` and `canCreateSessions: false`. A `maxConcurrentStreams` of `0` does the same, and then the capture callback is never registered at all. |
 | `opusBitrate` | Bits per second for the Opus stream, between 32000 and 510000. One bitrate rather than a per-request choice: each distinct value would need its own encoder and buffer for as long as anybody listened to it. Opus is hard to tell from the source above 192000, and libopus can barely spend more than 256000. |
@@ -164,7 +164,7 @@ scripts/compile-commands.sh               # what an editor's clangd reads
 
 `scripts/compile-commands.sh` writes `compile_commands.json`, and an editor is wrong without it. clangd finds no compilation database, falls back to compiling each file with no include paths and no `-std`, and reports the first `#include "core/..."` as a file-not-found followed by a hundred errors that are all cascade from it. The file holds absolute paths and is gitignored, so it is generated per machine. It covers `src/core/` and `tests/`, and `src/fb2k/` on a Mac where `scripts/fetch-sdk.sh` has fetched the foobar2000 SDK, all but the files `fb2k_unparsed_sources` lists in `scripts/lib/compile-flags.sh`. Anywhere else the script says it skipped `src/fb2k/` and why.
 
-`.github/workflows/plugin.yml` runs `scripts/test.sh`, `scripts/format.sh --check` and `scripts/lint.sh` on a Linux runner for every change under `plugins/fb2k/` or to `contract/openapi.yaml`, and builds the component on a Windows runner, where `scripts\build.ps1` lints `src/fb2k/` and `scripts\test.ps1` runs. A macOS runner builds the bundle, runs `scripts/test.sh` and lints `src/fb2k/`. The workflow pins the LLVM major in `scripts/lib/llvm.sh`: `scripts/format.sh` and `scripts/lint.sh` refuse any other clang-format or clang-tidy, since a local run matches CI only at that version. `CLANG_FORMAT` and `CLANG_TIDY` name the binary on a machine carrying more than one.
+`.github/workflows/plugin.yml` runs `scripts/test.sh`, both sanitizer suites, `scripts/format.sh --check` and `scripts/lint.sh` on a Linux runner for every change under `plugins/fb2k/` or to `contract/openapi.yaml`, and builds the component on a Windows runner, where `scripts\build.ps1` lints `src/fb2k/` and `scripts\test.ps1` runs. A macOS runner builds the bundle, runs `scripts/test.sh` and lints `src/fb2k/`. `scripts/lib/llvm.sh` pins the LLVM major, which the workflow's `llvm_major` follows: `scripts/format.sh` and `scripts/lint.sh` refuse any other clang-format or clang-tidy, since a local run matches CI only at that version. `CLANG_FORMAT` and `CLANG_TIDY` name the binary on a machine carrying more than one.
 
 On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\test.ps1`. `scripts\lint.ps1` is clang-tidy over `src/fb2k/` against MSVC's headers, with the vcxproj's own defines and include paths, and the only lint of the files `fb2k_unparsed_sources` lists in `scripts/lib/compile-flags.sh`; `scripts\build.ps1` runs it after every build of the component, so a finding fails the build. It wants the LLVM major `scripts\lint.ps1` pins: `winget install LLVM.LLVM` on a machine, `.github/actions/windows-llvm` on a runner. The `.ps1` and `.sh` fetchers are the same fetch for different shells; run whichever belongs to the machine the tests will run on.
 

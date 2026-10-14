@@ -61,7 +61,7 @@ info:
 
     `GET /state` is a small JSON document a client polls, carrying the library's two generations under `library`. The library itself is a binary snapshot from `GET /library/export`, patched afterwards by `GET /library/changes`. There is no paged route: a client holds the whole library and asks the questions locally. `GET /track/library` is the one per-entity route, and it reads a single track back after a write rather than standing in for a browse.
 
-    Two generations say what changed. `structure` moves when tracks are added or removed, which shifts every ordinal after the change, so a client throws its arrays away and exports again. It also moves when the column set changes. A rebuild that finds the same tracks and columns keeps `structure` and moves `revision` only for the rows whose values changed, so a refresh costs a client still inside the retained window a delta rather than an export. `revision` moves when rows change in place, which leaves ordinals alone, so a client fetches a delta and patches. Modifications are constant, roughly one per track played; additions and removals are rare and the user just caused them.
+    Two generations say what changed. `structure` moves when tracks are added or removed, which shifts every ordinal after the change, so a client throws its arrays away and exports again. It also moves when the column set changes, or when a rebuild puts the same tracks in another order, since every ordinal then names a different track. A rebuild that finds the same tracks and columns in the same order keeps `structure` and moves `revision` only for the rows whose values changed, so a refresh costs a client still inside the retained window a delta rather than an export. `revision` moves when rows change in place, which leaves ordinals alone, so a client fetches a delta and patches. Modifications are constant, roughly one per track played; additions and removals are rare and the user just caused them.
 
     An **ordinal** is a track's position in the snapshot, counted from zero, and it is the only handle these routes use. Ordinals follow the player's own ordering of library-relative paths, which need not be byte order: a player may put `2 Mello` ahead of `10cc`, where byte order would put it after. Ties are broken by subsong and then by the player's own canonical path, so the order is total and does not change between rebuilds of an unchanged library. A client MUST NOT reproduce the comparison or read meaning into where a path lands: an ordinal is a position the component handed it, never one it could have worked out. An ordinal means nothing across a `structure` change.
 
@@ -4048,7 +4048,7 @@ components:
           description: |
             What `GET /stream?format=` accepts, best first. `opus` is Ogg Opus, which every current browser except older Safari plays. `aac` is AAC-LC in ADTS, for Safari before 18.4.
 
-            A client SHOULD omit `format` and take the first entry unless it knows the browser needs otherwise. The list varies by install: one whose Windows has no AAC encoder reports `opus` alone.
+            A client SHOULD omit `format` and take the first entry unless it knows the browser needs otherwise. The list varies by install: one with no AAC encoder reports `opus` alone.
           examples: [["opus", "aac"]]
         canMuteWhileStreaming:
           type: boolean

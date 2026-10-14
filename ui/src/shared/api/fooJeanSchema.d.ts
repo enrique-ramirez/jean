@@ -1462,7 +1462,7 @@ export interface components {
             /**
              * @description What `GET /stream?format=` accepts, best first. `opus` is Ogg Opus, which every current browser except older Safari plays. `aac` is AAC-LC in ADTS, for Safari before 18.4.
              *
-             *     A client SHOULD omit `format` and take the first entry unless it knows the browser needs otherwise. The list varies by install: one whose Windows has no AAC encoder reports `opus` alone.
+             *     A client SHOULD omit `format` and take the first entry unless it knows the browser needs otherwise. The list varies by install: one with no AAC encoder reports `opus` alone.
              * @example [
              *       "opus",
              *       "aac"

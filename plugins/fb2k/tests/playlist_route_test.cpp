@@ -364,7 +364,7 @@ FakeRow strayRow(const std::string& title, uint32_t subsong = 0) {
     return row;
 }
 
-constexpr size_t kStrayRow = 2;
+constexpr uint32_t kStrayRow = 2;
 
 std::vector<FakeRow> playlistRows() {
     return {libraryRow("First", "01.flac"), libraryRow("Second", "02.flac"), strayRow("Dragged in"),

@@ -83,17 +83,63 @@ $flags = @(
 )
 
 $out = Join-Path $root 'bin\lint'
+Remove-Item -Recurse -Force -LiteralPath $out -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $out | Out-Null
-$responseFile = Join-Path $out 'clang-tidy.rsp'
-# --driver-mode=cl goes first after --: clang-tidy otherwise parses what follows as a GNU command
-# line, and /std and /I have no effect (-v shows -std=c++14 and no include path).
-$arguments = @('--quiet', '--warnings-as-errors=*') +
-  ($Files | ForEach-Object { "`"$_`"" }) + @('--', '--driver-mode=cl') + $flags
-# clang-tidy reads a response file GNU-style: a path with backslashes does not resolve.
-Set-Content -LiteralPath $responseFile -Value ($arguments | ForEach-Object { $_ -replace '\\', '/' }) -Encoding Ascii
 
-Write-Output "Linting $($Files.Count) file(s) with $tidy. This is slow: every file parses the whole SDK."
-# clang-tidy reports progress on stderr, which Windows PowerShell turns into errors under a caller that redirects it.
-cmd /c "`"$vcvars`" >nul && `"$tidy`" @`"$responseFile`" 2>&1"
-if ($LASTEXITCODE -ne 0) { throw "clang-tidy reported findings (exit $LASTEXITCODE)." }
+# clang-tidy finds MSVC's headers through the INCLUDE that vcvars64.bat sets, so its environment
+# is read once and handed to every clang-tidy rather than run again per file.
+$vcEnvironment = @{}
+foreach ($line in (cmd /c "`"$vcvars`" >nul && set")) {
+  $at = $line.IndexOf('=')
+  if ($at -gt 0) { $vcEnvironment[$line.Substring(0, $at)] = $line.Substring($at + 1) }
+}
+if ($LASTEXITCODE -ne 0 -or -not $vcEnvironment.ContainsKey('INCLUDE')) { throw "$vcvars did not set INCLUDE." }
+
+$jobs = [Environment]::ProcessorCount
+Write-Output "Linting $($Files.Count) file(s) with $tidy, $jobs at a time."
+
+$runs = for ($index = 0; $index -lt $Files.Count; $index++) {
+  $file = $Files[$index]
+  $responseFile = Join-Path $out "$index.rsp"
+  # --driver-mode=cl goes first after --: clang-tidy otherwise parses what follows as a GNU command
+  # line, and /std and /I have no effect (-v shows -std=c++14 and no include path).
+  $arguments = @('--quiet', '--warnings-as-errors=*', "`"$file`"", '--', '--driver-mode=cl') + $flags
+  # clang-tidy reads a response file GNU-style: a path with backslashes does not resolve.
+  Set-Content -LiteralPath $responseFile -Value ($arguments | ForEach-Object { $_ -replace '\\', '/' }) -Encoding Ascii
+  [pscustomobject]@{ File = $file; ResponseFile = $responseFile; Log = Join-Path $out "$index.log"; Process = $null }
+}
+
+# Each clang-tidy writes to a file of its own through cmd, so nothing it prints reaches this
+# console until it has finished: clang-tidy reports progress on stderr, which Windows PowerShell
+# turns into errors under a caller that redirects it, and parallel runs would interleave.
+function Start-Lint($run) {
+  $start = New-Object System.Diagnostics.ProcessStartInfo
+  $start.FileName = $env:ComSpec
+  $start.Arguments = "/d /s /c `"`"$tidy`" @`"$($run.ResponseFile)`" > `"$($run.Log)`" 2>&1`""
+  $start.UseShellExecute = $false
+  foreach ($name in $vcEnvironment.Keys) { $start.EnvironmentVariables[$name] = $vcEnvironment[$name] }
+  $run.Process = [System.Diagnostics.Process]::Start($start)
+}
+
+$pending = [System.Collections.Generic.Queue[object]]::new()
+foreach ($run in $runs) { $pending.Enqueue($run) }
+$running = [System.Collections.Generic.List[object]]::new()
+while ($pending.Count -gt 0 -or $running.Count -gt 0) {
+  while ($pending.Count -gt 0 -and $running.Count -lt $jobs) {
+    $run = $pending.Dequeue()
+    Start-Lint $run
+    $running.Add($run)
+  }
+  Start-Sleep -Milliseconds 100
+  foreach ($run in @($running)) {
+    if ($run.Process.HasExited) { [void]$running.Remove($run) }
+  }
+}
+
+$failed = @($runs | Where-Object { $_.Process.ExitCode -ne 0 })
+foreach ($run in $failed) {
+  Write-Output "--- $($run.File) (exit $($run.Process.ExitCode)) ---"
+  Get-Content -LiteralPath $run.Log
+}
+if ($failed) { throw "clang-tidy reported findings in $($failed.Count) of $($Files.Count) file(s)." }
 Write-Output "clang-tidy is clean."

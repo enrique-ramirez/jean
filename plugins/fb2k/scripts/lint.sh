@@ -10,6 +10,12 @@ Runs clang-tidy over src/core/, tests/ and, on a Mac with the SDK fetched, src/f
 
 src/fb2k/ is linted where scripts/fetch-sdk.sh has fetched the foobar2000 SDK and the host is a
 Mac, less the files scripts/lib/compile-flags.sh names. It is linked and run only on the build machine.
+
+Where ctcache's clang-tidy-cache is in bin/ (scripts/fetch-ctcache.sh puts it there), on PATH, or
+named by CLANG_TIDY_CACHE, a file clean in an earlier run with the same source, flags, config and
+LLVM is not linted again. The cache lives in CTCACHE_DIR, bin/ctcache by default, and needs
+clang++ of the same LLVM major to preprocess with (CLANGXX points at one elsewhere).
+CLANG_TIDY_CACHE= turns it off.
 USAGE
 }
 
@@ -67,6 +73,28 @@ fi
 
 jobs="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
 
+fetched_cache="$root/bin/clang-tidy-cache"
+[ -x "$fetched_cache" ] || fetched_cache="$(command -v clang-tidy-cache || true)"
+cache="${CLANG_TIDY_CACHE-$fetched_cache}"
+preprocessor=""
+if [ -n "$cache" ] && ! preprocessor="$(find_llvm_tool clang++ CLANGXX 2>/dev/null)"; then
+  echo "clang-tidy-cache was not used: it needs clang++ $required_major to preprocess with." >&2
+  cache=""
+fi
+if [ -n "$cache" ]; then
+  # ctcache keys an entry on the preprocessed source, the flags and clang-tidy --dump-config,
+  # which names check globs rather than the checks a release puts under them, and not on
+  # clang-tidy's version: so each LLVM build gets a directory of its own.
+  llvm_build="$({ "$tidy" --version; "$preprocessor" --version; } | cksum | cut -d ' ' -f 1)"
+  export CTCACHE_DIR="${CTCACHE_DIR:-$root/bin/ctcache}/$llvm_build"
+  # ctcache preprocesses with comments stripped unless told otherwise, so removing a NOLINT
+  # would hit the entry the NOLINT made clean.
+  export CTCACHE_KEEP_COMMENTS=1
+  # ctcache's hit and miss counts take a lock file per entry bucket, and one left by a killed
+  # run sends every later lookup in that bucket to a timeout.
+  export CTCACHE_NO_LOCAL_STATS=1
+fi
+
 lint_each() {
   local files=()
   while [ "$1" != -- ]; do
@@ -74,16 +102,27 @@ lint_each() {
     shift
   done
   shift
-  # Without --warnings-as-errors clang-tidy prints its findings and exits 0.
+  # Without --warnings-as-errors clang-tidy prints its findings and exits 0. ctcache stores a run
+  # only when clang-tidy exits 0 with nothing on stdout, and preprocesses with the compiler
+  # command after --, turning its -c into -E; clang-tidy drops the compiler and the file there.
+  # -E alone leaves out each #define, which checks such as bugprone-reserved-identifier read, so
+  # -dD keeps them; clang-tidy ignores it.
   printf '%s\0' "${files[@]}" | xargs -0 -n 1 -P "$jobs" bash -c '
+    cache="$1" preprocessor="$2"
+    shift 2
     file="${@: -1}"
-    out="$("$0" --quiet --warnings-as-errors="*" "$file" -- "${@:1:$#-1}" 2>&1)" && exit 0
+    flags=("${@:1:$#-1}")
+    if [ -n "$cache" ]; then
+      out="$("$cache" "$0" --quiet --warnings-as-errors="*" "$file" -- "$preprocessor" "${flags[@]}" -dD -c "$file" 2>&1)" && exit 0
+    else
+      out="$("$0" --quiet --warnings-as-errors="*" "$file" -- "${flags[@]}" 2>&1)" && exit 0
+    fi
     printf "%s\n" "$out"
     exit 1
-  ' "$tidy" "$@"
+  ' "$tidy" "$cache" "$preprocessor" "$@"
 }
 
-echo "Linting $((${#core_files[@]} + ${#fb2k_files[@]})) file(s), $jobs at a time."
+echo "Linting $((${#core_files[@]} + ${#fb2k_files[@]})) file(s), $jobs at a time${cache:+, through clang-tidy-cache in $CTCACHE_DIR}."
 findings=0
 if [ "${#core_files[@]}" -gt 0 ]; then
   lint_each "${core_files[@]}" -- "${compile_flags[@]}" || findings=1

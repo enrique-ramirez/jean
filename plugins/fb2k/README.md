@@ -159,6 +159,7 @@ scripts/test.sh --sanitize=address        # AddressSanitizer and UBSan
 scripts/test.sh --sanitize=thread         # ThreadSanitizer
 scripts/format.sh --check                 # clang-format, without writing
 scripts/lint.sh                           # clang-tidy over src/core/ and tests/, and src/fb2k/ on a Mac
+scripts/fetch-ctcache.sh                  # optional; lint.sh then skips files clean last time
 scripts/compile-commands.sh               # what an editor's clangd reads
 ```
 

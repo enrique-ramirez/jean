@@ -14,45 +14,79 @@ on:
       - 'contract/openapi.yaml'
       - '.github/workflows/plugin.yml'
       - '.github/actions/windows-llvm/**'
+      - '.github/actions/apt-llvm/**'
   pull_request:
     paths:
       - 'plugins/fb2k/**'
       - 'contract/openapi.yaml'
       - '.github/workflows/plugin.yml'
       - '.github/actions/windows-llvm/**'
+      - '.github/actions/apt-llvm/**'
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   # scripts/lint.sh carries the authoritative pin and refuses any other major, so this follows it.
   llvm_major: '23'
 
 jobs:
-  tests:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # libopus and libogg are fetched rather than vendored, so the suite cannot link without this.
-      - run: plugins/fb2k/scripts/fetch-opus.sh
-
-      - run: plugins/fb2k/scripts/test.sh
-
   address-sanitizer:
     runs-on: ubuntu-24.04
+    env:
+      JEAN_CCACHE: '1'
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - run: sudo apt-get update && sudo apt-get install -y ccache
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache
+          key: ccache-${{ runner.os }}-address-gcc-${{ hashFiles('plugins/fb2k/scripts/lib/compile-flags.sh', 'plugins/fb2k/scripts/lib/tests.mk') }}-${{ github.run_id }}
+          restore-keys: ccache-${{ runner.os }}-address-gcc-${{ hashFiles('plugins/fb2k/scripts/lib/compile-flags.sh', 'plugins/fb2k/scripts/lib/tests.mk') }}-
+
       - run: plugins/fb2k/scripts/fetch-opus.sh
       - run: plugins/fb2k/scripts/test.sh --sanitize=address
 
+      - if: ${{ !cancelled() && github.event_name == 'push' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache
+          key: ccache-${{ runner.os }}-address-gcc-${{ hashFiles('plugins/fb2k/scripts/lib/compile-flags.sh', 'plugins/fb2k/scripts/lib/tests.mk') }}-${{ github.run_id }}
+
   thread-sanitizer:
     runs-on: ubuntu-24.04
+    env:
+      JEAN_CCACHE: '1'
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - run: sudo apt-get update && sudo apt-get install -y ccache
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache
+          key: ccache-${{ runner.os }}-thread-gcc-${{ hashFiles('plugins/fb2k/scripts/lib/compile-flags.sh', 'plugins/fb2k/scripts/lib/tests.mk') }}-${{ github.run_id }}
+          restore-keys: ccache-${{ runner.os }}-thread-gcc-${{ hashFiles('plugins/fb2k/scripts/lib/compile-flags.sh', 'plugins/fb2k/scripts/lib/tests.mk') }}-
+
       - run: plugins/fb2k/scripts/fetch-opus.sh
       - run: plugins/fb2k/scripts/test.sh --sanitize=thread
+
+      - if: ${{ !cancelled() && github.event_name == 'push' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache
+          key: ccache-${{ runner.os }}-thread-gcc-${{ hashFiles('plugins/fb2k/scripts/lib/compile-flags.sh', 'plugins/fb2k/scripts/lib/tests.mk') }}-${{ github.run_id }}
 
   format:
     runs-on: ubuntu-24.04
@@ -72,15 +106,37 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # scripts/lint.sh finds clang-tidy-$llvm_major on its own and refuses anything else.
+      # scripts/lint.sh finds clang-tidy-$llvm_major on its own and refuses anything else, and
+      # clang-tidy-cache preprocesses each file with clang++ of the same major to key its cache.
       - uses: ./.github/actions/apt-llvm
         with:
-          tool: clang-tidy
+          tool: clang-tidy clang
           major: ${{ env.llvm_major }}
 
       - run: plugins/fb2k/scripts/fetch-opus.sh
 
+      - run: plugins/fb2k/scripts/fetch-ctcache.sh
+
+      # Restored and saved apart, so a run with a finding still keeps every clean file's entry.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: plugins/fb2k/bin/ctcache
+          key: ctcache-${{ runner.os }}-llvm${{ env.llvm_major }}-${{ hashFiles('plugins/fb2k/.clang-tidy', 'plugins/fb2k/tests/.clang-tidy', 'plugins/fb2k/src/fb2k/.clang-tidy') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ctcache-${{ runner.os }}-llvm${{ env.llvm_major }}-${{ hashFiles('plugins/fb2k/.clang-tidy', 'plugins/fb2k/tests/.clang-tidy', 'plugins/fb2k/src/fb2k/.clang-tidy') }}-
+            ctcache-${{ runner.os }}-llvm${{ env.llvm_major }}-
+
       - run: plugins/fb2k/scripts/lint.sh
+
+      # ctcache touches an entry on every hit, so anything older than this run is one no file asked for.
+      - if: ${{ !cancelled() }}
+        run: find plugins/fb2k/bin/ctcache -type f -mmin +120 -delete
+
+      - if: ${{ !cancelled() }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: plugins/fb2k/bin/ctcache
+          key: ctcache-${{ runner.os }}-llvm${{ env.llvm_major }}-${{ hashFiles('plugins/fb2k/.clang-tidy', 'plugins/fb2k/tests/.clang-tidy', 'plugins/fb2k/src/fb2k/.clang-tidy') }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   windows:
     runs-on: windows-2022
@@ -129,6 +185,10 @@ jobs:
 
   macos:
     runs-on: macos-15
+    env:
+      JEAN_CCACHE: '1'
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -151,6 +211,14 @@ jobs:
 
       - run: plugins/fb2k/scripts/build-mac.sh
 
+      - run: brew install ccache
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache
+          key: ccache-${{ runner.os }}-plain-appleclang-${{ hashFiles('plugins/fb2k/scripts/lib/compile-flags.sh', 'plugins/fb2k/scripts/lib/tests.mk') }}-${{ github.run_id }}
+          restore-keys: ccache-${{ runner.os }}-plain-appleclang-${{ hashFiles('plugins/fb2k/scripts/lib/compile-flags.sh', 'plugins/fb2k/scripts/lib/tests.mk') }}-
+
       # AudioToolbox is on every macOS runner, so anything but the "tested" line means the suite
       # was built without it. `shell: bash` adds -o pipefail, which the default shell lacks, so a
       # failing suite fails the pipe rather than tee's exit status hiding it.
@@ -158,6 +226,12 @@ jobs:
         run: |
           plugins/fb2k/scripts/test.sh | tee "$RUNNER_TEMP/suite.log"
           grep -F "AAC tested through this platform's codec." "$RUNNER_TEMP/suite.log"
+
+      - if: ${{ !cancelled() && github.event_name == 'push' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache
+          key: ccache-${{ runner.os }}-plain-appleclang-${{ hashFiles('plugins/fb2k/scripts/lib/compile-flags.sh', 'plugins/fb2k/scripts/lib/tests.mk') }}-${{ github.run_id }}
 
       # Homebrew keeps the newest LLVM under `llvm` and adds `llvm@N` only once N+1 is out. Both are
       # keg-only, and scripts/lint.sh looks in each and refuses any major but $llvm_major.

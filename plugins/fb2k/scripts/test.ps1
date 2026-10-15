@@ -143,12 +143,16 @@ function Build-Tests {
     Get-ChildItem (Join-Path $root 'tests') -Filter *.cpp
     Get-ChildItem (Join-Path $root 'tests\support') -Filter *.cpp
     Get-ChildItem (Join-Path $root 'src\core') -Filter *.cpp
-  ) | ForEach-Object { "`"$($_.FullName)`"" }
+  )
+  $main = $sources | Where-Object { $_.FullName -eq (Join-Path $root 'tests\main.cpp') }
+  $users = $sources | Where-Object { $_.FullName -ne $main.FullName }
 
-  $aac = @()
+  $aacDefine = @()
+  $aacLink = @()
   if ($haveSdk) {
     Build-AacEncoder
-    $aac = @("/DJEAN_TESTS_HAVE_AAC", "`"$out\fb2k\aac_encoder.obj`"", "ole32.lib")
+    $aacDefine = @("/DJEAN_TESTS_HAVE_AAC")
+    $aacLink = @("`"$out\fb2k\aac_encoder.obj`"", "ole32.lib")
   }
   else {
     Write-Host "The AAC encoder was left out of this run: the foobar2000 SDK is not fetched (scripts\fetch-sdk.ps1)."
@@ -157,12 +161,26 @@ function Build-Tests {
   # /W3 rather than /W4 because these translation units include the vendored headers. /Zc:lambda is MSVC's
   # conforming lambda processor: without it a lambda reading a constexpr local it never captured fails as C3493,
   # which clang accepts and the suite relies on.
+  $flags = @("/c /nologo /EHsc /W3 /MD /Zc:lambda") + @(Read-CompileFlags) + $aacDefine
+
+  # cl matches /Yc, /Yu and /FI by the header's spelling, so all three take the same path string.
+  $header = Join-Path $root 'tests\support\precompiled.h'
+  $pchFlags = "/Fp`"$out\precompiled.pch`" /FI`"$header`""
+  $stub = Join-Path $out 'precompiled.cpp'
+  Set-Content -LiteralPath $stub -Value '' -Encoding Ascii
+  Invoke-Tool -Tool 'cl' -ResponseFile (Join-Path $out 'pch.rsp') -Failure 'Precompiled header build failed' -Arguments (
+    $flags + @("/Yc`"$header`" $pchFlags /Fo:`"$out\precompiled.obj`" `"$stub`""))
+
   # The object directory ends in a doubled backslash: cl needs the trailing separator to treat /Fo: as a directory,
   # and a single one before the closing quote escapes it, failing as "D8036: not allowed with multiple source files".
-  Invoke-Tool -Tool 'cl' -ResponseFile (Join-Path $out 'compile.rsp') -Failure 'Test build failed' -Arguments (@(
-      "/nologo /EHsc /W3 /MD /Zc:lambda"
-    ) + @(Read-CompileFlags) + $aac + $sources + @(
-      "/Fe:`"$exe`" /Fo:`"$out\\`" `"$codecLib`" `"$zlibLib`" ws2_32.lib"))
+  Invoke-Tool -Tool 'cl' -ResponseFile (Join-Path $out 'compile.rsp') -Failure 'Test build failed' -Arguments (
+    $flags + @("/MP /Yu`"$header`" $pchFlags /Fo:`"$out\\`"") + ($users | ForEach-Object { "`"$($_.FullName)`"" }))
+  Invoke-Tool -Tool 'cl' -ResponseFile (Join-Path $out 'main.rsp') -Failure 'Test build failed' -Arguments (
+    $flags + @("/Fo:`"$out\\`" `"$($main.FullName)`""))
+
+  $objects = @($sources | ForEach-Object { "`"$out\$($_.BaseName).obj`"" }) + @("`"$out\precompiled.obj`"")
+  Invoke-Tool -Tool 'link' -ResponseFile (Join-Path $out 'link.rsp') -Failure 'Test link failed' -Arguments (
+    @("/nologo /OUT:`"$exe`"") + $objects + $aacLink + @("`"$codecLib`" `"$zlibLib`" ws2_32.lib"))
 }
 
 $exe = Join-Path $out 'foo_jean_tests.exe'

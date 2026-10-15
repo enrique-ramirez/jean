@@ -21,6 +21,15 @@
 # leaks scans conservatively rather than proving anything, so a clean run promises less than a clean
 # LeakSanitizer run would.
 #
+#   JEAN_CCACHE=1 scripts/test.sh          every compile through ccache, which must be on the PATH
+#
+# Under clang every object but tests/main.cpp's is built against one precompiled header,
+# tests/support/precompiled.h, so doctest, cpp-httplib and nlohmann/json are parsed and their
+# inline functions compiled once per build. GCC builds without one: GCC 13 drops doctest's
+# diagnostic pragmas from a precompiled header, so -Wsign-compare fails inside doctest's own
+# comparisons, and parsing is the smaller part of a GCC compile here, most of it being code
+# generation a precompiled header does not share.
+#
 # doctest's source-file filter is -sf and needs the glob. -ts is test *suite*, matches nothing here and exits 0.
 set -euo pipefail
 
@@ -34,6 +43,9 @@ zlib="$root/third_party/zlib"
 . "$root/scripts/lib/compile-flags.sh"
 
 : "${CXX:=c++}"
+: "${CC:=cc}"
+launcher=""
+jobs="$(getconf _NPROCESSORS_ONLN)"
 
 sanitize=""
 case "${1-}" in
@@ -93,6 +105,19 @@ require_codec_sources() {
   fi
 }
 
+# ccache needs these to hit on objects built against a precompiled header.
+use_ccache_if_asked() {
+  if [ -z "${JEAN_CCACHE-}" ]; then
+    return
+  fi
+  if ! command -v ccache >/dev/null 2>&1; then
+    echo "JEAN_CCACHE is set, and ccache is not on the PATH." >&2
+    exit 1
+  fi
+  launcher="ccache "
+  export CCACHE_SLOPPINESS="${CCACHE_SLOPPINESS:-pch_defines,time_macros,include_file_mtime,include_file_ctime}"
+}
+
 require_leaks_tool() {
   if ! command -v leaks >/dev/null 2>&1; then
     echo "--sanitize=leaks needs leaks(1), which ships with macOS and exists nowhere else." >&2
@@ -105,15 +130,15 @@ build_codec_archive_if_missing() {
     return
   fi
 
-  : "${CC:=cc}"
   mkdir -p "$codec"
 
   local sources
   sources=$(codec_source_files)
 
+  # ccache caches a compile of one source only, so each source gets a compiler of its own.
   # shellcheck disable=SC2086
-  (cd "$codec" && $CC -c "${vendor_c_flags[@]}" "${codec_defines[@]}" ${platform_flags[@]+"${platform_flags[@]}"} $instrument \
-    "${codec_include_flags[@]}" $sources)
+  printf "%s\0" $sources | (cd "$codec" && xargs -0 -n 1 -P "$jobs" $launcher$CC -c "${vendor_c_flags[@]}" "${codec_defines[@]}" \
+    ${platform_flags[@]+"${platform_flags[@]}"} $instrument "${codec_include_flags[@]}")
 
   ar rcs "$codec/libcodec.a" "$codec"/*.o
 }
@@ -123,11 +148,11 @@ build_zlib_archive_if_missing() {
     return
   fi
 
-  : "${CC:=cc}"
   mkdir -p "$deflate"
 
   # shellcheck disable=SC2086
-  (cd "$deflate" && $CC -c "${vendor_c_flags[@]}" ${platform_flags[@]+"${platform_flags[@]}"} $instrument "$zlib"/*.c)
+  printf "%s\0" "$zlib"/*.c | (cd "$deflate" && xargs -0 -n 1 -P "$jobs" $launcher$CC -c "${vendor_c_flags[@]}" \
+    ${platform_flags[@]+"${platform_flags[@]}"} $instrument)
 
   ar rcs "$deflate/libz.a" "$deflate"/*.o
 }
@@ -150,16 +175,28 @@ build_tests() {
   local core_cxxflags="${core_warning_flags[*]}"
   local flags="$out/obj/flags"
 
+  # clang's -fpch-codegen and -fpch-debuginfo compile the header's inline functions and debug
+  # information once, into an object of their own, rather than into every object;
+  # -fno-pch-timestamp is what ccache needs from clang.
+  local pch_header="" pch_flags=""
+  case "$($CXX --version 2>/dev/null)" in
+    *clang*)
+      pch_header="$root/tests/support/precompiled.h"
+      pch_flags="-fpch-instantiate-templates -fpch-codegen -fpch-debuginfo -Xclang -fno-pch-timestamp"
+      ;;
+  esac
+
   mkdir -p "$out/obj"
-  if [ ! -f "$flags" ] || [ "$(cat "$flags")" != "$CXX $cxxflags $core_cxxflags" ]; then
-    printf '%s' "$CXX $cxxflags $core_cxxflags" >"$flags"
+  local recorded="$CXX $cxxflags $core_cxxflags $pch_flags"
+  if [ ! -f "$flags" ] || [ "$(cat "$flags")" != "$recorded" ]; then
+    printf '%s' "$recorded" >"$flags"
   fi
 
-  make -s -j "$(getconf _NPROCESSORS_ONLN)" -f "$root/scripts/lib/tests.mk" \
-    ROOT="$root" OUT="$out" CXX="$CXX" CXXFLAGS="$cxxflags" LDFLAGS="-g $instrument ${platform_flags[*]-} $aac_link" \
+  make -s -j "$jobs" -f "$root/scripts/lib/tests.mk" \
+    ROOT="$root" OUT="$out" CXX="$launcher$CXX" CXXFLAGS="$cxxflags" LDFLAGS="-g $instrument ${platform_flags[*]-} $aac_link" \
     CORE_CXXFLAGS="$core_cxxflags" \
     SOURCES="$(echo "$root"/tests/*.cpp "$root"/tests/support/*.cpp "$root"/src/core/*.cpp) $aac_sources" \
-    LIBS="$codec/libcodec.a $deflate/libz.a" FLAGS="$flags"
+    LIBS="$codec/libcodec.a $deflate/libz.a" FLAGS="$flags" PCH_HEADER="$pch_header" PCH_FLAGS="$pch_flags"
 }
 
 # macOS's own tool, not LeakSanitizer: LSan has no implementation on this platform and an ASan binary
@@ -173,6 +210,7 @@ run_with_leak_check() {
 }
 
 mkdir -p "$out"
+use_ccache_if_asked
 assert_openapi_version_matches_code
 require_codec_sources
 if [ "$sanitize" = leaks ]; then

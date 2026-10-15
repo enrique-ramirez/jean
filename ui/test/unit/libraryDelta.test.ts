@@ -149,11 +149,14 @@ test("a revision from before a rebuild is refused rather than patched", () => {
 	assert.equal(state.libraryChanges(library.revision).status, 409);
 });
 
+// More plays than the 1920 revisions `kRetainedRevisions` keeps.
+const PAST_THE_WINDOW = 2000;
+
 test("a revision that fell out of the retained window is refused too", () => {
 	const state = declared();
 	const { library } = exported(state);
 
-	for (let play = 0; play < 40; play += 1)
+	for (let play = 0; play < PAST_THE_WINDOW; play += 1)
 		state.countPlay(state.libraryTracks[play % state.libraryTracks.length]);
 
 	assert.equal(state.libraryChanges(library.revision).status, 410);

@@ -23,13 +23,27 @@ const offersGzip = (headers: RequestHeaders) => {
 	return offered[1] === undefined || Number(offered[1]) > 0;
 };
 
-const gzipped = async (bytes: Uint8Array<ArrayBuffer>) => {
+const compress = async (bytes: Uint8Array<ArrayBuffer>) => {
 	const zip = new CompressionStream("gzip");
 	const writer = zip.writable.getWriter();
 	void writer.write(bytes);
 	void writer.close();
 	return new Uint8Array(await new Response(zip.readable).arrayBuffer());
 };
+
+// `libraryExport()` answers the same bytes object until the library moves, so the object is the key.
+const packed = new WeakMap<Uint8Array, Promise<Uint8Array<ArrayBuffer>>>();
+
+const gzipped = (bytes: Uint8Array<ArrayBuffer>) => {
+	let held = packed.get(bytes);
+	if (!held) {
+		held = compress(bytes);
+		packed.set(bytes, held);
+	}
+	return held;
+};
+
+export { MAX_LIBRARY_BYTES } from "./options.ts";
 
 export const MAX_TRACK_ADDRESS = 4096;
 
@@ -124,7 +138,7 @@ const refuseColumns = (asked: string[]) => {
 };
 
 // 413 and 503 are `kLibraryTooLarge` and `kNoLibrary` in
-// `plugins/fb2k/src/core/http_server.cpp`, verbatim. 500 stands for a failure
+// `plugins/fb2k/src/core/failures.h`, verbatim. 500 stands for a failure
 // this route has no fixed wording for. `errorDocument` there writes only
 // `error`, with no `detail` field.
 const LIBRARY_EXPORT_FAILURE: Record<413 | 500 | 503, { error: string }> = {
@@ -136,25 +150,48 @@ const LIBRARY_EXPORT_FAILURE: Record<413 | 500 | 503, { error: string }> = {
 };
 
 const tagOf = (state: FakeState, coding: string, since?: string) =>
-	`"s${state.libraryFeed.structure}-r${state.libraryFeed.revision}${
+	`"s${state.libraryFeed.structure}-r${state.libraryFeed.revision}-e${state.libraryFeed.edits}${
 		since === undefined ? "" : `-f${since}`
 	}-${coding}"`;
 
+const holdsTag = (headers: RequestHeaders, tag: string) =>
+	one(headers["if-none-match"])
+		.split(",")
+		.some((candidate) => candidate.trim() === "*" || candidate.trim() === tag);
+
+// `produce` runs after the `If-None-Match` check and before the ceiling, the order
+// `sendBodyIfChanged` in `plugins/fb2k/src/core/http_responses.cpp` keeps.
 const sendBlob = async (
 	response: Responder,
 	headers: RequestHeaders,
 	state: FakeState,
-	bytes: Uint8Array<ArrayBuffer>,
+	fake: FooJeanFake,
+	produce: () => Uint8Array<ArrayBuffer>,
 	since?: string,
 ) => {
 	const gzip = offersGzip(headers);
+	const tag = tagOf(state, gzip ? "gzip" : "identity", since);
+	const revalidating = {
+		"Cache-Control": ASK_EVERY_TIME,
+		Vary: "Origin, Accept-Encoding",
+		ETag: tag,
+	};
+
+	if (holdsTag(headers, tag)) {
+		response.writeHead(304, revalidating);
+		response.end();
+		return true;
+	}
+
+	const bytes = produce();
+	if (fake.libraryCeiling !== null && bytes.length > fake.libraryCeiling)
+		return json(response, LIBRARY_EXPORT_FAILURE[413], 413);
+
 	const body = gzip ? await gzipped(bytes) : bytes;
 
 	response.writeHead(200, {
 		"Content-Type": "application/octet-stream",
-		"Cache-Control": ASK_EVERY_TIME,
-		Vary: "Origin, Accept-Encoding",
-		ETag: tagOf(state, gzip ? "gzip" : "identity", since),
+		...revalidating,
 		...(gzip ? { "Content-Encoding": "gzip" } : null),
 	});
 	response.end(body);
@@ -329,7 +366,7 @@ export async function handleLibrary({
 			state.finishLibraryBuild();
 		}
 
-		return sendBlob(response, headers, state, state.libraryExport());
+		return sendBlob(response, headers, state, fake, state.libraryExport);
 	}
 
 	if (path === "/api/library/changes") {
@@ -364,7 +401,7 @@ export async function handleLibrary({
 				410,
 			);
 
-		return sendBlob(response, headers, state, changes.bytes, since);
+		return sendBlob(response, headers, state, fake, () => changes.bytes, since);
 	}
 
 	return notFound(response);

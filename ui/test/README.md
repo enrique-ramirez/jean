@@ -26,6 +26,30 @@ Both projects, `desktop` and `mobile` (Pixel 7, touch on), run every spec. Skip 
 
 **The component is installed and serving by default**, because it is what answers the library and a run without it has no music at all. A spec that wants no component sets `fooJean: { reachable: false }`, the one state most of the suite is not about.
 
+## Profiling
+
+`pnpm perf` measures seven costs of a large library, named B1 to B7: the cold load to the first rows of All Music (B1), a play-count delta (B2), a keystroke in search (B3), opening an album, an artist or a genre (B4), the JavaScript heap once idle (B5), a reload (B6) and one album added (B7). It writes one JSON report to `_tmp/035-perf/report-<timestamp>.json`. It drives the `playwright` browsers directly rather than the test runner, so it reads no project from `playwright.config.ts`.
+
+```sh
+pnpm perf --tracks 37000                       # a fake of that size, on a free port, in a process of its own
+pnpm perf --tracks 37000,400000 --runs 5       # several sizes, one fake each
+pnpm perf --tracks 37000 --projects desktop    # desktop, mobile, iphone and firefox are the projects
+pnpm perf --url https://player.example         # a player already serving Jean
+pnpm perf --tracks 37000 --trace               # also a Chromium timeline of B2 and B3 from the first run
+```
+
+The page is built once into `_tmp/035-perf/dist` and served by the fake beside its API, as the component serves it. The fake runs without its export ceiling, and every size says whether its export is over the component's (`aboveCeiling`), since a number taken there is not one the component could serve. Against a player, B2 and B7 are unavailable: they need the fake's `/__control/` routes.
+
+The report is rewritten after every cell, so a run that is killed keeps what it measured. A cell not finished in its bound (two minutes for a load, one for the rest) is recorded as `{ over, reason }`, the reason carrying what the page showed. If the page then stops answering, the cells left in that run are recorded the same way and the next run starts in a fresh browser.
+
+Each project runs its cells `--runs` times (three by default) in a fresh browser context and reports `{ runs, median, spread }`, the spread being the largest run minus the smallest. `mobile` is Pixel 7 emulation under Chromium's 4x CPU throttle. `iphone` is Playwright's WebKit with the iPhone 15 descriptor and cannot be throttled; `firefox` is the desktop descriptor.
+
+- **B2 and B3's tasks** are the longest gap between two turns of a zero-delay timer, the one measure every engine has. Chromium's `longtask` observer is reported beside it as `longestLongTask`; it reports nothing under 50 ms, and Firefox and WebKit have none.
+- **B5** is `Runtime.getHeapUsage` after a forced collection, which is Chromium's alone and does not count the memory behind typed arrays.
+- **B7** starts at the control request, so it includes the player's own settle, and its bytes are every response finished until the list shows the album, state polls included.
+- **The export block** holds the plain and gzipped bytes of the export for the columns Jean declares, each column's bytes and share of the plain total, and `decodeMs`, `decodeJlib` in Node over those bytes.
+- **`scroll`** holds the tallest element each browser honours and the last row of a 46 px list that gives, found by bisection on the `scrollHeight` of a plain overflow element, and the track list itself scrolled to its end, with the last row it rendered against its `aria-rowcount`.
+
 ## Touch gestures
 
 `touchDrag` in `gestures.ts` drives a finger through CDP rather than dispatching DOM events, since most of these tests are about *the browser's* decision on who a gesture belongs to and a dispatched `touchmove` sails past that.
@@ -40,6 +64,7 @@ Run it alone to develop with no player in reach:
 
 ```sh
 pnpm fake                                    # the component's API, on :8881
+pnpm fake --tracks 1000000 --no-ceiling      # a generated library of that size, past the component's export ceiling
 FOO_JEAN_URL=http://localhost:8881 pnpm dev  # in another shell
 
 pnpm build && node test/fake-api/main.ts --serve dist   # page and API together, as the component serves them
@@ -108,7 +133,7 @@ An export taken off a real player is far too large to commit, so the test that r
 JEAN_LIBRARY_EXPORT=/path/to/export.jlib pnpm test:unit
 ```
 
-The routes model the declaration the contract describes rather than answering from nothing. Nothing is built until an export names a column set, so a fresh fake reports `ready: false` and both generations at zero. Eight options drive the paths a client has to survive:
+The routes model the declaration the contract describes rather than answering from nothing. Nothing is built until an export names a column set, so a fresh fake reports `ready: false` and both generations at zero. Nine options drive the paths a client has to survive:
 
 | | |
 |---|---|
@@ -119,6 +144,7 @@ The routes model the declaration the contract describes rather than answering fr
 | `libraryRebuilds: n` | structure rebuilds, one performed at the next poll of `GET /api/state` each. This is the `409` and the re-export behind it |
 | `librarySlice: n` | slices `formatting` into steps of `n` tracks: while `libraryBuilds` still counts a build down, each `GET /api/state` walks `build` one step further, `listing` then `ordering` then a `formatted` at every slice boundary but the last, which is the build finishing rather than a report of its own. Unset takes the whole library, so a build of one slice or fewer never reports a `formatted` above `0` |
 | `libraryHalted: true` | `foo_jean`'s library worker has stopped for good: `GET /api/state` answers `library.halted`, `build` goes `null`, no build starts or finishes, and an export naming a set the snapshot does not hold answers `202` carrying the halt. Assignable mid-test, or through `POST /__control/libraryHalted { halted }` |
+| `libraryCeiling: n \| null` | the largest export or delta in plain bytes the library routes send; one over it is a `413` in the component's words. Defaults to the component's `kMaxLibraryBytes`, and `null` lifts it |
 | `failLibraryExport: { status, times }` | refuses that many `GET /api/library/export` requests with `status`, then answers normally |
 
 **`GET /api/track/library` answers one track's declared columns**, addressed the way a cover is, by library-relative path and subsong, or by an `ordinal` and the `structure` it was read at, the pair `POST /api/tags` takes. Both forms at once, neither, or half the pair is a `400`, a `structure` the library has moved past a `409`, and an ordinal past the end a `404`. It is the read a client goes back with when a write's own answer never arrived, so two options reach it and no other traffic: `failLibraryTrack` refuses it with a status, and `hangLibraryTrack` holds it open and never answers, not even late. `twoRootsHold` names a library-relative path that two media library roots both hold, and this route and the tag write both answer `409` for it rather than choosing one of the two tracks.
@@ -258,13 +284,14 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 
 ### Control routes
 
-- **`POST /__control/play`** drives the player the way the desktop would: the case Jean has to survive and cannot provoke reliably against a real one. **`/__control/append`** is the same for playlists: the desktop adding tracks while Jean holds a range of indices. **`/__control/removeItems`**, `{ playlistId, items }`, is the same for removing them.
+- **`POST /__control/play`** drives the player the way the desktop would (with `{ ordinal }` and no `playlistId` it counts one play of the library track at that ordinal, whether or not `countsPlays` is on, and answers `404` when the library does not declare a play count or holds no such ordinal): the case Jean has to survive and cannot provoke reliably against a real one. **`/__control/append`** is the same for playlists: the desktop adding tracks while Jean holds a range of indices. **`/__control/removeItems`**, `{ playlistId, items }`, is the same for removing them.
 - **`POST /__control/latency`** holds writes for N milliseconds, and `GET /api/playlists` and the eight playlist writes on `foo_jean`'s side besides, since a slow join is what `useAutoPlaylists.ts` has to be caught catching up with and an optimistic playlist edit is indistinguishable from a fast one without it. On localhost every request settles before the next pointer event, so a control coalescing forty moves into three looks identical to one sending forty. `useCoalescedWrite` is untestable without it.
 - **`POST /__control/latency { route, ms, jitterMs }`** holds back one route's answers rather than every write, the way `routeLatency` does, and `ms: 0` takes it off again.
 - **`POST /__control/writePlaylists { canWrite }`** flips `foo_jean`'s `canWritePlaylists` mid-test, the one way a spec can put a refusal in front of a control still drawn: the component answers its capabilities once, at discovery, so an install with the setting off from the start draws no playlist-editing control at all.
 - **`POST /__control/controlPlayback { canControl }`** flips `canControlPlayback` mid-test the same way: while it is off, every playback command, seek, playback mode, volume, playing a row, every queue write and both scratch routes answer the component's own `403` unless the request names a detached session, which the switch does not govern, and reading the queue and the state still answers. Either flip moves `GET /api/state`'s `configGeneration`, but only when the value actually changes.
 - **`POST /__control/changeOutput { canChange }`** flips `canChangeOutput` mid-test the same way: while it is off, `POST /api/outputs/active` answers `403` and `GET /api/outputs` is unaffected. Moves `configGeneration` the same way the two above do.
 - **`POST /__control/activeOutput { deviceId }`** moves the active output device the way a switch made at the player would, with no other side effect: `configGeneration` does not move, since nothing in `config.json` changed. `deviceId` may name a device `GET /api/outputs` no longer lists, which is what an unplugged one looks like.
+- **`POST /__control/library { add, remove }`** adds new files beside the first track and removes tracks from the end of the library's order, as a change at the player would. Both in one call are one rebuild: `structure` moves on the poll of `GET /api/state` that finishes it, which a halted worker never does, and the track count moves with it.
 - **`POST /__control/libraryHalted { halted }`** halts the library worker mid-test, the way `foo_jean` does after its worker keeps failing, and `{ halted: false }` takes it back, which the component never does.
 - **`POST /__control/skipDelay`** holds a skip for N milliseconds before the next track starts, the time foobar2000 takes to open the next file, while `GET /api/state` goes on naming the outgoing track. Off by default, since the delay makes `next` asynchronous and no other spec should have to wait one out.
 - **`GET /__control/state`** returns the player, the playlists, the queue and the request log in one read, for a spec driving the fake from outside the fixture. **`POST /__control/state { failState: n }`** switches `GET /api/state`'s refusal on mid-test and `{ failState: null }` turns it back off, the one thing `failWrites` cannot do: a spec cuts the poll off, drives the player through the routes above while it is blind, then lets it back and reads the next tick.

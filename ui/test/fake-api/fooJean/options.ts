@@ -3,6 +3,9 @@ import type { Bucket, Limiter, RateLimits } from "./rateLimits.ts";
 
 export type OwnPlaylistRole = "scratch";
 
+// `kMaxLibraryBytes` in `plugins/fb2k/src/core/http_server.h`.
+export const MAX_LIBRARY_BYTES = 64 * 1024 * 1024;
+
 // Spelled the way foobar2000 prints a device pair: one module GUID shared by every device it
 // offers, joined by a colon to each device's own, both upper case and without braces. The default
 // endpoint's device GUID is all zeros, which is why the first entry carries one. Three, so the
@@ -175,6 +178,10 @@ export interface FooJeanOptions {
 
 	librarySlice?: number;
 
+	// The largest export or delta, in bytes before any content coding, that the library routes
+	// send; `null` lifts it, as a profiling run over a library the component would refuse does.
+	libraryCeiling?: number | null;
+
 	failLibraryExport?: { status: 413 | 500 | 503; times: number } | null;
 
 	maxAutoPlaylists?: number;
@@ -320,6 +327,7 @@ const DEFAULTS: FooJeanFake = {
 	libraryRebuilds: 0,
 	libraryHalted: false,
 	librarySlice: Infinity,
+	libraryCeiling: MAX_LIBRARY_BYTES,
 	failLibraryExport: null,
 	maxAutoPlaylists: 0,
 	autoPlaylists: [],

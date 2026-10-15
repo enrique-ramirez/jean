@@ -85,6 +85,29 @@ const openAllMusic = async (page: Page) => {
 
 const FAVORITES = "Favorites";
 
+const changeLibrary = async (
+	page: Page,
+	change: { add?: number; remove?: number },
+) => {
+	const answer = await page.request.post("/__control/library", {
+		data: change,
+	});
+	expect(
+		answer.status(),
+		`POST /__control/library ${JSON.stringify(change)}`,
+	).toBeLessThan(300);
+};
+
+const libraryState = async (page: Page) =>
+	(
+		(await (await page.request.get("/api/state")).json()) as {
+			library: { structure: number; trackCount: number; halted: boolean };
+		}
+	).library;
+
+const pathsIn = (player: FakePlayer) =>
+	new Set(player.libraryTracks.map((track) => track["%path%"]));
+
 const menuItem = (page: Page, name: string) =>
 	page.getByRole("menuitem", { name, exact: true });
 
@@ -268,6 +291,35 @@ test.describe("a library that moved while Jean was open", () => {
 		expect(deltasAsked(player).length).toBeGreaterThan(0);
 		expect(exportsAsked(player)).toHaveLength(1);
 	});
+
+	test("a play started at the player is counted the same way", async ({
+		page,
+		player,
+	}) => {
+		await openAllMusic(page);
+
+		const plays = playsOf(page, 0);
+		const before = Number(await plays.innerText());
+		const playlist = player.playlists.find((entry) =>
+			entry.items.some((track) => track["%title%"] === "Rotten Apple"),
+		)!;
+		const index = playlist.items.findIndex(
+			(track) => track["%title%"] === "Rotten Apple",
+		);
+
+		for (const row of [index, index === 0 ? 1 : 0]) {
+			const answer = await page.request.post("/__control/play", {
+				data: { playlistId: playlist.id, index: row },
+			});
+			expect(answer.ok()).toBe(true);
+		}
+
+		await expect(plays).toHaveText(String(before + 1), { timeout: 20_000 });
+		expect(deltasAsked(player).length).toBeGreaterThan(0);
+		expect(exportsAsked(player)).toHaveLength(1);
+		// Jean asked for neither play, so the count came from the player alone.
+		expect(playRequests(player)).toHaveLength(0);
+	});
 });
 
 test.describe("a library rebuilt under Jean", () => {
@@ -297,23 +349,6 @@ test.describe("a library rebuilt under Jean", () => {
 
 test.describe("a library rebuilt while Jean was reading the one before it", () => {
 	test.use({ fooJean: {} });
-
-	const ADDED = "Late Arrival";
-
-	// A rescan that found one more file, in a folder the fixture already has: the
-	// library root stays where it was, so every other track keeps its ordinal and
-	// the added one is the whole difference between the two generations.
-	const rebuildWithOneMoreTrack = (player: FakePlayer) => {
-		const template = player.libraryTracks[0];
-		player.libraryTracks.push({
-			...template,
-			"%title%": ADDED,
-			"%tracknumber%": "99",
-			"%path%": template["%path%"].replace(/[^\\]+$/, `99 ${ADDED}.mp3`),
-		});
-		player.libraryFeed.building = [...player.libraryFeed.columns];
-		player.finishLibraryBuild();
-	};
 
 	// The component reads the snapshot off the library it holds at that moment, so a
 	// rescan that starts afterwards leaves what is on the wire a generation old.
@@ -365,10 +400,22 @@ test.describe("a library rebuilt while Jean was reading the one before it", () =
 		await page.goto("/#/all");
 		await onTheWire;
 
+		const known = pathsIn(player);
 		const noticed = noticeOfTheRebuild(page, player.libraryFeed.structure);
-		rebuildWithOneMoreTrack(player);
+		await changeLibrary(page, { add: 1 });
 		await noticed;
 		release();
+
+		const added = player.libraryTracks.filter(
+			(track) => !known.has(track["%path%"]),
+		);
+		expect(added).toHaveLength(1);
+		const title = added[0]["%title%"];
+		// Found on screen by its title, so a copy of another track's title would let
+		// the click land on that track and still pass.
+		expect(
+			player.libraryTracks.filter((track) => track["%title%"].includes(title)),
+		).toHaveLength(1);
 
 		await expect(page.getByRole("grid")).toHaveAttribute(
 			"aria-rowcount",
@@ -376,11 +423,87 @@ test.describe("a library rebuilt while Jean was reading the one before it", () =
 			{ timeout: 20_000 },
 		);
 
-		const row = rowByTitle(page, ADDED);
+		const row = rowByTitle(page, title);
 		await scrollUntilMounted(page, row);
 		await row.dblclick();
 
-		await expect.poll(() => trackPlayed(player)).toBe(ADDED);
+		await expect.poll(() => trackPlayed(player)).toBe(title);
+	});
+});
+
+test.describe("tracks added and removed at the player", () => {
+	test.use({ fooJean: {} });
+
+	test("tracks removed leave the list, through a second export", async ({
+		page,
+		player,
+	}) => {
+		await openAllMusic(page);
+		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "54");
+
+		await changeLibrary(page, { remove: 3 });
+
+		await expect(page.getByRole("grid")).toHaveAttribute(
+			"aria-rowcount",
+			"51",
+			{ timeout: 20_000 },
+		);
+		expect(player.libraryTracks).toHaveLength(51);
+		expect(exportsAsked(player)).toHaveLength(2);
+	});
+
+	test("an add and a remove asked together are one rebuild", async ({
+		page,
+		player,
+	}) => {
+		await openAllMusic(page);
+		const before = await libraryState(page);
+
+		await changeLibrary(page, { add: 2, remove: 1 });
+
+		await expect
+			.poll(async () => (await libraryState(page)).structure)
+			.not.toBe(before.structure);
+		expect(await libraryState(page)).toMatchObject({
+			structure: before.structure + 1,
+			trackCount: before.trackCount + 1,
+		});
+		await expect(page.getByRole("grid")).toHaveAttribute(
+			"aria-rowcount",
+			String(before.trackCount + 1),
+			{ timeout: 20_000 },
+		);
+	});
+
+	// `foo_jean` builds no snapshot while its library worker is halted and serves the
+	// one it holds, so a change waits for the worker as a rescan's rebuild does.
+	test("waits out a halted library before the structure moves", async ({
+		page,
+	}) => {
+		await openAllMusic(page);
+		const before = await libraryState(page);
+		await page.request.post("/__control/libraryHalted", {
+			data: { halted: true },
+		});
+
+		await changeLibrary(page, { add: 1 });
+
+		// Each read is a poll, the moment a rebuild settles, so two of them give a
+		// finished build two chances to show.
+		for (const _ of [1, 2])
+			expect(await libraryState(page)).toMatchObject({
+				halted: true,
+				structure: before.structure,
+			});
+
+		await page.request.post("/__control/libraryHalted", {
+			data: { halted: false },
+		});
+
+		await expect
+			.poll(async () => (await libraryState(page)).structure)
+			.toBe(before.structure + 1);
+		expect((await libraryState(page)).trackCount).toBe(before.trackCount + 1);
 	});
 });
 

@@ -23,6 +23,29 @@ const KIND_ORDER: Record<Token["kind"], number> = {
 
 const isDigit = (char: string) => char >= "0" && char <= "9";
 
+// Tokens other than numbers come from a bounded alphabet, so one object stands for each of them
+// and a key held per path costs a pointer per token. `compareLevel` takes the same object as equal.
+const symbolTokens = new Map<number, Token>();
+const plainLetterTokens = new Map<string, Token>();
+const accentedLetterTokens = new Map<string, Token>();
+const scriptTokens = new Map<number, Token>();
+
+const interned = <K>(held: Map<K, Token>, key: K, make: () => Token) => {
+	let token = held.get(key);
+	if (!token) {
+		token = make();
+		held.set(key, token);
+	}
+	return token;
+};
+
+const letterToken = (letter: string, accented: boolean) =>
+	interned(accented ? accentedLetterTokens : plainLetterTokens, letter, () => ({
+		kind: "letter",
+		base: letter,
+		accented,
+	}));
+
 function tokens(text: string): { primary: Token[]; ignored: string } {
 	const primary: Token[] = [];
 	let ignored = "";
@@ -43,17 +66,29 @@ function tokens(text: string): { primary: Token[]; ignored: string } {
 		}
 		const symbol = SYMBOLS.indexOf(char);
 		if (symbol >= 0) {
-			primary.push({ kind: "symbol", rank: symbol });
+			primary.push(
+				interned(symbolTokens, symbol, () => ({
+					kind: "symbol",
+					rank: symbol,
+				})),
+			);
+			continue;
+		}
+		if (char >= "a" && char <= "z") {
+			primary.push(letterToken(char, false));
 			continue;
 		}
 		const expanded = EXPANSIONS[char];
 		const base = expanded ?? char.normalize("NFD").replace(/\p{M}/gu, "");
 		if (/^[a-z]+$/.test(base)) {
 			for (const letter of base)
-				primary.push({ kind: "letter", base: letter, accented: base !== char });
+				primary.push(letterToken(letter, base !== char));
 			continue;
 		}
-		primary.push({ kind: "script", code: char.codePointAt(0) ?? 0 });
+		const code = char.codePointAt(0) ?? 0;
+		primary.push(
+			interned(scriptTokens, code, () => ({ kind: "script", code })),
+		);
 	}
 
 	return { primary, ignored };
@@ -94,19 +129,29 @@ const byIgnoredRank = (a: string, b: string) =>
 
 function compareLevel<T>(a: T[], b: T[], level: (a: T, b: T) => number) {
 	for (let at = 0; at < Math.min(a.length, b.length); at++) {
+		if (a[at] === b[at]) continue;
 		const order = level(a[at], b[at]);
 		if (order !== 0) return order;
 	}
 	return a.length - b.length;
 }
 
-export function compareText(a: unknown, b: unknown): number {
-	const left = String(a);
-	const right = String(b);
-	const x = tokens(left);
-	const y = tokens(right);
+// A text with its tokens already read, for a caller that compares one text against many.
+export interface TextKey {
+	text: string;
+	primary: Token[];
+	ignored: string;
+}
 
-	for (const level of [byPrimary, byAccent, byLeadingZeros]) {
+export const textKey = (text: unknown): TextKey => {
+	const read = String(text);
+	return { text: read, ...tokens(read) };
+};
+
+const PRIMARY_LEVELS = [byPrimary, byAccent, byLeadingZeros];
+
+export function compareKeys(x: TextKey, y: TextKey): number {
+	for (const level of PRIMARY_LEVELS) {
 		const order = compareLevel(x.primary, y.primary, level);
 		if (order !== 0) return order;
 	}
@@ -114,8 +159,11 @@ export function compareText(a: unknown, b: unknown): number {
 	const ignored = compareLevel([...x.ignored], [...y.ignored], byIgnoredRank);
 	if (ignored !== 0) return ignored;
 
-	return left < right ? -1 : left > right ? 1 : 0;
+	return x.text < y.text ? -1 : x.text > y.text ? 1 : 0;
 }
+
+export const compareText = (a: unknown, b: unknown): number =>
+	compareKeys(textKey(a), textKey(b));
 
 // foobar2000 compares a path with `\` between folders, and `\` and `/` weigh differently.
 export const pathKey = (value: unknown) => String(value).replace(/\//g, "\\");

@@ -21,6 +21,7 @@
 		"test:e2e": "pnpm --filter @jean/ui run test:e2e",
 		"test:ui": "pnpm --filter @jean/ui run test:ui",
 		"fake": "pnpm --filter @jean/ui run fake",
+		"perf": "pnpm --filter @jean/ui run perf",
 		"test:live": "pnpm --filter @jean/ui run test:live",
 		"test:contract": "pnpm --filter @jean/contract run test:conformance",
 		"sync-kit": "\"${AI_ENGINEERING:-../ai-engineering}/bin/install.sh\" . --mode copy --force"

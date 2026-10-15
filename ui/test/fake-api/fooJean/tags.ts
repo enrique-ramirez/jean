@@ -80,6 +80,7 @@ const applyTags = (
 	for (const playlist of state.playlists)
 		for (const track of playlist.items) patch(track);
 	for (const track of state.libraryTracks) patch(track);
+	state.libraryEdited();
 };
 
 export async function handleTags({

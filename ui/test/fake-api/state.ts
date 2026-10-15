@@ -17,7 +17,7 @@ import {
 } from "./jlib.ts";
 import { generateTracks } from "./libraryShapes.ts";
 import capturedPlayer from "./player.json" with { type: "json" };
-import { compareText, pathKey } from "./playerOrder.ts";
+import { compareKeys, pathKey, textKey } from "./playerOrder.ts";
 import { createSessions, type SessionDevice } from "./sessions.ts";
 import { evaluate, sortedOrder } from "./titleFormat.ts";
 
@@ -234,8 +234,17 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 export const trackKey = (track: Track) =>
 	`${track["%path%"]}\u0000${Number(track["%subsong%"]) || 0}`;
 
-const byLibraryPath = (a: LibraryEntry, b: LibraryEntry) =>
-	compareText(pathKey(a.path), pathKey(b.path)) || a.subsong - b.subsong;
+// Each path is read once rather than once per comparison; the order is `compareText`'s.
+const sortedByLibraryPath = (entries: LibraryEntry[]): LibraryEntry[] => {
+	const keyed = entries.map((entry) => ({
+		entry,
+		key: textKey(pathKey(entry.path)),
+	}));
+	keyed.sort(
+		(a, b) => compareKeys(a.key, b.key) || a.entry.subsong - b.entry.subsong,
+	);
+	return keyed.map(({ entry }) => entry);
+};
 
 const QUERY_FIELDS: Record<string, string> = {
 	genre: GENRE_EXPRESSION,
@@ -360,12 +369,14 @@ export function createState({
 						: allTracks()
 	).map(retag);
 
-	const libraryPathByTrackKey = new Map(
-		libraryItemsOf(libraryTracks).map((entry) => [
-			trackKey(entry.track),
-			entry.path,
-		]),
-	);
+	const pathsByTrackKey = () =>
+		new Map(
+			libraryItemsOf(libraryTracks).map((entry) => [
+				trackKey(entry.track),
+				entry.path,
+			]),
+		);
+	let libraryPathByTrackKey = pathsByTrackKey();
 
 	if (generatedForLibrarySize) {
 		const library = playlists.find((entry) => entry.title === "Library");
@@ -397,6 +408,8 @@ export function createState({
 			buildTicks: 0,
 			structureFrom: 0,
 			dictionaries: new Map<string, Dictionary>(),
+			// Tag writes change what the library holds without moving `revision`.
+			edits: 0,
 			history: [] as {
 				revision: number;
 				changed: Map<string, number[]>;
@@ -676,20 +689,38 @@ export function createState({
 
 	const feed = state.libraryFeed;
 
-	const RETAINED_REVISIONS = 32;
+	// `kRetainedRevisions` in `plugins/fb2k/src/core/library.h`.
+	const RETAINED_REVISIONS = 1920;
 
 	const PLAY_COUNT = "%lastfm_play_count%";
 
-	const ordinalOrder = () => libraryItemsOf(libraryTracks).sort(byLibraryPath);
+	// The order and the first ordinal of each `%path%` hold until the structure moves: a play or a
+	// tag write changes no path.
+	let numbered: {
+		structure: number;
+		entries: LibraryEntry[];
+		firstOrdinalOf: Map<string, number>;
+	} | null = null;
 
-	// A tag write changes no path, so the order a preview counts in holds for the fake's life.
-	let previewOrder: LibraryEntry[] | null = null;
+	const numberedLibrary = () => {
+		if (numbered?.structure === feed.structure) return numbered;
+		const entries = sortedByLibraryPath(libraryItemsOf(libraryTracks));
+		const firstOrdinalOf = new Map<string, number>();
+		entries.forEach((entry, ordinal) => {
+			const path = entry.track["%path%"];
+			if (path !== undefined && !firstOrdinalOf.has(path))
+				firstOrdinalOf.set(path, ordinal);
+		});
+		numbered = { structure: feed.structure, entries, firstOrdinalOf };
+		return numbered;
+	};
+
+	const ordinalOrder = (): readonly LibraryEntry[] => numberedLibrary().entries;
 
 	const previewMatches = (query: string): number[] => {
 		const matches = queryMatcher(query);
 		if (!matches) return [];
-		previewOrder ??= ordinalOrder();
-		return previewOrder.flatMap((entry, ordinal) =>
+		return ordinalOrder().flatMap((entry, ordinal) =>
 			matches(entry.track) ? [ordinal] : [],
 		);
 	};
@@ -713,10 +744,30 @@ export function createState({
 				]),
 			),
 		});
-		if (feed.history.length > RETAINED_REVISIONS) feed.history.shift();
+		// The build's own entry stands for the revision a client holds, so one more than the
+		// component's count is kept.
+		if (feed.history.length > RETAINED_REVISIONS + 1) feed.history.shift();
 	};
 
-	const buildLibrary = () => {
+	type BuiltLibrary = ReturnType<typeof buildLibrary>;
+
+	// Held per structure, revision and declaration, and dropped by a tag write. The columns are
+	// kept only until they are encoded.
+	let held:
+		| { key: string; built: BuiltLibrary; bytes: null }
+		| { key: string; built: null; bytes: Uint8Array<ArrayBuffer> }
+		| null = null;
+
+	const heldKey = () =>
+		[feed.structure, feed.revision, feed.edits, ...feed.columns].join("\u0000");
+
+	const builtLibrary = () => {
+		const key = heldKey();
+		if (held?.key !== key) held = { key, built: buildLibrary(), bytes: null };
+		return held;
+	};
+
+	function buildLibrary() {
 		const items = ordinalOrder();
 		const cut = (path: string) => path.lastIndexOf("/") + 1;
 		const bone = (name: string, values: string[]) =>
@@ -746,15 +797,67 @@ export function createState({
 				),
 			},
 		};
-	};
+	}
 
 	function startLibraryBuild(columns: string[]) {
 		feed.building = [...columns];
 		feed.buildTicks = 0;
 	}
 
+	// Held until the build finishes, so the track count and the structure move together.
+	const pendingChange = { add: 0, remove: 0 };
+	let addedSoFar = 0;
+
+	const newTrackBesides = (neighbour: Track): Track => {
+		addedSoFar += 1;
+		const directory = (neighbour["%path%"] ?? "").replace(/[^\\]*$/, "");
+		const added: Track = {
+			...neighbour,
+			"%title%": `Added track ${addedSoFar} (new)`,
+			"%path%": `${directory}Added ${addedSoFar}.mp3`,
+		};
+		delete added["%subsong%"];
+		if (PLAY_COUNT in added) added[PLAY_COUNT] = "0";
+		if ("$meta(title)" in added) added["$meta(title)"] = added["%title%"];
+		return added;
+	};
+
+	// Tracks arriving or leaving at the player: removed from the end in ordinal order, added
+	// beside the first one. The structure moves when the build this starts finishes.
+	function changeLibrary({ add, remove }: { add: number; remove: number }) {
+		pendingChange.add += add;
+		pendingChange.remove += remove;
+		if (feed.columns.length > 0) startLibraryBuild(feed.columns);
+		else applyPendingChange();
+	}
+
+	function applyPendingChange() {
+		const { add, remove } = pendingChange;
+		pendingChange.add = 0;
+		pendingChange.remove = 0;
+		if (add === 0 && remove === 0) return;
+
+		const { entries } = numberedLibrary();
+		const dropped = new Set(
+			entries.slice(Math.max(0, entries.length - remove)).map((e) => e.track),
+		);
+		const neighbour = entries[0]?.track ?? libraryTracks[0];
+		const additions = neighbour
+			? Array.from({ length: add }, () => newTrackBesides(neighbour))
+			: [];
+
+		let kept = 0;
+		for (const track of libraryTracks)
+			if (!dropped.has(track)) libraryTracks[kept++] = track;
+		libraryTracks.length = kept;
+		for (const track of additions) libraryTracks.push(track);
+		libraryPathByTrackKey = pathsByTrackKey();
+		numbered = null;
+	}
+
 	function finishLibraryBuild() {
 		if (!feed.building) return;
+		applyPendingChange();
 		feed.columns = feed.building;
 		feed.building = null;
 		feed.structure += 1;
@@ -762,30 +865,46 @@ export function createState({
 		feed.structureFrom = feed.revision;
 		feed.dictionaries.clear();
 		feed.history.length = 0;
-		buildLibrary();
+		builtLibrary();
 		remember(new Map());
 	}
 
 	function countPlay(track: Track) {
-		if (!countsPlays || !feed.columns.includes(PLAY_COUNT)) return;
+		if (!countsPlays) return;
 
-		const items = ordinalOrder();
-		const ordinal = items.findIndex(
-			(entry) => entry.track["%path%"] === track["%path%"],
-		);
-		if (ordinal < 0) return;
+		const path = track["%path%"];
+		const ordinal =
+			path === undefined
+				? undefined
+				: numberedLibrary().firstOrdinalOf.get(path);
+		if (ordinal !== undefined) countPlayAt(ordinal);
+	}
 
-		const row = items[ordinal].track;
+	// A play asked for by ordinal ignores `countsPlays`: a caller naming the track wants it counted.
+	function countPlayAt(ordinal: number) {
+		if (!feed.columns.includes(PLAY_COUNT)) return false;
+
+		const { entries } = numberedLibrary();
+		if (!(ordinal >= 0 && ordinal < entries.length)) return false;
+
+		const row = entries[ordinal].track;
+		const path = row["%path%"];
 		const count = String(Number(row[PLAY_COUNT] ?? 0) + 1);
-		for (const copy of [
-			...state.playlists.flatMap((playlist) => playlist.items),
-			...libraryTracks,
-		])
-			if (copy["%path%"] === track["%path%"]) copy[PLAY_COUNT] = count;
+		// Tracks sharing a file sort next to one another, so the library's copies are a run.
+		for (
+			let at = ordinal;
+			at < entries.length && entries[at].track["%path%"] === path;
+			at += 1
+		)
+			entries[at].track[PLAY_COUNT] = count;
+		for (const playlist of state.playlists)
+			for (const copy of playlist.items)
+				if (copy["%path%"] === path) copy[PLAY_COUNT] = count;
 		dictionaryFor(PLAY_COUNT).id(count);
 
 		feed.revision += 1;
 		remember(new Map([[PLAY_COUNT, [ordinal]]]));
+		return true;
 	}
 
 	function libraryChanges(since: number) {
@@ -1100,8 +1219,7 @@ export function createState({
 		previewMatches,
 
 		previewTracks(query: string): Track[] {
-			previewOrder ??= ordinalOrder();
-			const order = previewOrder;
+			const order = ordinalOrder();
 			return previewMatches(query).map((ordinal) => order[ordinal].track);
 		},
 
@@ -1193,8 +1311,10 @@ export function createState({
 		},
 
 		libraryExport(): Uint8Array<ArrayBuffer> {
-			const built = buildLibrary();
-			return encodeJlib({
+			const exported = builtLibrary();
+			if (exported.built === null) return exported.bytes;
+			const { built } = exported;
+			const bytes = encodeJlib({
 				kind: "snapshot",
 				structure: state.libraryFeed.structure,
 				revision: state.libraryFeed.revision,
@@ -1202,12 +1322,20 @@ export function createState({
 				columns: built.columns,
 				spine: built.spine,
 			});
+			held = { key: exported.key, built: null, bytes };
+			return bytes;
+		},
+
+		libraryEdited() {
+			state.libraryFeed.edits += 1;
 		},
 
 		startLibraryBuild,
 		finishLibraryBuild,
+		changeLibrary,
 
 		countPlay,
+		countPlayAt,
 
 		libraryChanges,
 

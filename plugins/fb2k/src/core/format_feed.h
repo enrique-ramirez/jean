@@ -30,6 +30,8 @@ public:
     // A listener is here who was here for the last block this format encoded.
     bool heardThrough() const;
 
+    void settleArrivals();
+
     std::unique_ptr<StreamListener> listen(std::shared_ptr<const void> owner = nullptr);
 
     void feed(const float* samples, size_t frames);
@@ -46,6 +48,7 @@ public:
 private:
     class Listener;
 
+    void settleArrivalsLocked();
     bool publishLocked();
     void reportFailure() const;
 

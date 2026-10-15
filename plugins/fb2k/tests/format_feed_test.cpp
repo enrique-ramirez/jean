@@ -929,8 +929,39 @@ TEST_CASE("held audio is dropped where every listener since the last block is a 
     earlier.reset();
     const auto later = formats.adts.listen();
 
+    SUBCASE("and kept from the block after, which is theirs") {
+        CHECK(formats.before(false) == HeldAudio::drop);
+        CHECK(formats.before(false) == HeldAudio::keep);
+    }
+
+    SUBCASE("and silenced at a cut from the block after") {
+        CHECK(formats.before(true) == HeldAudio::drop);
+        CHECK(formats.before(true) == HeldAudio::silence);
+    }
+}
+
+// The player's resampler gives nothing back from the first block after it is flushed, so no block
+// reaches the formats on the newcomer's first decision. The second decision has to find them heard
+// through all the same, or the converter is flushed before every block and nothing ever arrives.
+TEST_CASE(
+    "a newcomer's held audio is dropped once, though no block reaches the encoder after the "
+    "decision") {
+    BothFormats formats;
+    auto earlier = formats.ogg.listen();
+    formats.play(1);
+    formats.play(2);
+    earlier.reset();
+    const auto later = formats.ogg.listen();
+
     CHECK(formats.before(false) == HeldAudio::drop);
-    CHECK(formats.before(true) == HeldAudio::drop);
+    CHECK(dropsOnceWritten(formats.opus) == WritesBefore{2});
+    CHECK(formats.before(false) == HeldAudio::keep);
+
+    playEach(formats.ogg, {3, 4, 5});
+
+    CHECK(dropsOnceWritten(formats.opus) == WritesBefore{2});
+    CHECK(readOnce(*later).bytes == headers());
+    CHECK(readOnce(*later).bytes == "o3;");
 }
 
 TEST_CASE(

@@ -85,6 +85,20 @@ bool FormatFeed::heardThrough() const {
     return listeners_.load() > 0 && !unheard_;
 }
 
+void FormatFeed::settleArrivals() {
+    const std::lock_guard<std::mutex> held(mutex_);
+    if (listeners_.load() > 0)
+        settleArrivalsLocked();
+}
+
+void FormatFeed::settleArrivalsLocked() {
+    if (!unheard_)
+        return;
+
+    encoder_.dropHeld();
+    unheard_ = false;
+}
+
 void FormatFeed::feed(const float* samples, size_t frames) {
     if (!working_.load())
         return;
@@ -96,10 +110,7 @@ void FormatFeed::feed(const float* samples, size_t frames) {
             return;
         }
 
-        if (unheard_) {
-            encoder_.dropHeld();
-            unheard_ = false;
-        }
+        settleArrivalsLocked();
 
         encoded_.clear();
         encoder_.write(samples, frames, encoded_);
@@ -164,8 +175,17 @@ HeldAudio heldAudioBefore(const std::vector<FormatFeed*>& feeds, bool cut) {
                      [](const FormatFeed* feed) { return feed->hasListeners(); }))
         return HeldAudio::nobodyListening;
 
-    if (std::none_of(feeds.begin(), feeds.end(),
-                     [](const FormatFeed* feed) { return feed->heardThrough(); }))
+    const bool heardThrough = std::any_of(
+        feeds.begin(), feeds.end(), [](const FormatFeed* feed) { return feed->heardThrough(); });
+
+    // Settled on the decision rather than on the block reaching the encoders: the foobar2000
+    // SDK's dsp::flush returns a DSP to the state before any audio, so the player's resampler
+    // gives nothing back from the first block after a drop, and a decision that waited for that
+    // block would drop every block for ever.
+    for (FormatFeed* feed : feeds)
+        feed->settleArrivals();
+
+    if (!heardThrough)
         return HeldAudio::drop;
 
     return cut ? HeldAudio::silence : HeldAudio::keep;

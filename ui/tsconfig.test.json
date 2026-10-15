@@ -22,6 +22,7 @@
 	"include": [
 		"test/e2e",
 		"test/live",
+		"test/perf",
 		"test/unit",
 		"test/*.ts",
 		"test/fake-api/**/*.ts",
@@ -153,6 +154,7 @@
 		"src/shared/lib/randomId.ts",
 		"src/shared/ui/artworkHandles.ts",
 		"src/shared/ui/dnd.ts",
+		"src/shared/ui/scaledScroll.ts",
 		"src/shared/ui/toastStore.ts",
 		"playwright.config.ts",
 		"../contract/shape.ts",

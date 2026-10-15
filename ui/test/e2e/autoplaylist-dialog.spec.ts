@@ -465,6 +465,86 @@ test.describe("the autoplaylist dialog", () => {
 		});
 	});
 
+	// Over every engine's height limit, as in `all-music.spec.ts`: at a million matches the results
+	// list cannot be drawn at full height in any of them.
+	test.describe("a query matching all of a million tracks", {
+		tag: "@firefox",
+	}, () => {
+		test.skip(
+			({ isMobile }) => isMobile,
+			"the height limit is the engine's, which this project shares with desktop",
+		);
+
+		const MILLION = 1_000_000;
+		const MILLION_MS = 10 * 60_000;
+		const LIBRARY_LANDS_MS = 6 * 60_000;
+		test.setTimeout(MILLION_MS);
+
+		// The cardinalities `pnpm fake --tracks` builds.
+		test.use({
+			libraryShape: {
+				tracks: MILLION,
+				albums: MILLION / 10,
+				artists: MILLION / 100,
+				genres: 40,
+				years: [1960, 2024],
+			},
+			fooJean: { ...WITH_AUTOPLAYLISTS, libraryCeiling: null },
+		});
+
+		test("scrolls to the last match", async ({ page, player }) => {
+			await page.goto("/#/all");
+			await expect(page.getByRole("grid")).toHaveAttribute(
+				"aria-rowcount",
+				String(MILLION),
+				{ timeout: LIBRARY_LANDS_MS },
+			);
+			const dialog = await openDialog(page);
+
+			const last = player.previewTracks("ALL").at(-1)!["%title%"];
+			const answered = page.waitForResponse(
+				(response) =>
+					new URL(response.url()).pathname === "/api/autoplaylists/preview" &&
+					response.request().postDataJSON()?.query === "ALL",
+				{ timeout: LIBRARY_LANDS_MS },
+			);
+			await queryField(dialog).fill("ALL");
+			await answered;
+			await expect(statsLine(dialog)).toContainText("1,000,000 tracks", {
+				timeout: LIBRARY_LANDS_MS,
+			});
+
+			const scroller = results(dialog);
+			const lastRow = resultRows(dialog).filter({
+				has: page.getByText(last, { exact: true }),
+			});
+			const lastRowOnScreen = () =>
+				scroller.evaluate((element, title) => {
+					const row = [...element.querySelectorAll("[data-result-row]")].find(
+						(entry) => entry.firstElementChild?.textContent === title,
+					);
+					if (!row) return false;
+					const seen = row.getBoundingClientRect();
+					const view = element.getBoundingClientRect();
+					return seen.top >= view.top - 1 && seen.bottom <= view.bottom + 1;
+				}, last);
+
+			// Measured rows move the list's end as they mount, so the bottom is asked for again until it holds.
+			await expect
+				.poll(
+					async () => {
+						await scroller.evaluate((element) => {
+							element.scrollTop = element.scrollHeight;
+						});
+						return lastRowOnScreen();
+					},
+					{ message: `the last match, ${last}, came on screen` },
+				)
+				.toBe(true);
+			await expect(lastRow).toHaveCount(1);
+		});
+	});
+
 	test("the results are drawn in library order and neither play nor queue", async ({
 		page,
 		player,

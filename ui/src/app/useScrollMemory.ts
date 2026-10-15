@@ -5,6 +5,10 @@ import {
 	useLayoutEffect,
 	useRef,
 } from "react";
+import {
+	contentOffsetOfElement,
+	scrollTopOfElement,
+} from "@/shared/ui/scaledScroll";
 
 const MAX_REMEMBERED = 50;
 
@@ -27,7 +31,10 @@ export function useScrollMemory(
 		const onScroll = () => {
 			const key = activeKey.current;
 			if (!key) return;
-			offsets.current.set(key, element.scrollTop);
+			offsets.current.set(
+				key,
+				contentOffsetOfElement(element, element.scrollTop),
+			);
 			if (offsets.current.size > MAX_REMEMBERED) {
 				offsets.current.delete(offsets.current.keys().next().value as string);
 			}
@@ -48,21 +55,25 @@ export function useScrollMemory(
 			return undefined;
 		}
 
-		const target = offsets.current.get(viewKey) ?? 0;
-		element.scrollTop = target;
-		if (target === 0) return undefined;
+		// Remembered as a content offset, and mapped to a scrollTop afresh each frame: over the cap the
+		// mapping depends on the list's height and header, which are not measured until after this runs.
+		const offset = offsets.current.get(viewKey) ?? 0;
+		const targetNow = () => scrollTopOfElement(element, offset);
+		element.scrollTop = targetNow();
+		if (offset === 0) return undefined;
 
 		let frame = 0;
-		let lastHeight = 0;
+		let lastSeen = "";
 		let handle = requestAnimationFrame(function step() {
+			const target = targetNow();
 			// A fractional scrollTop from a trackpad never compares equal, hence the tolerance.
 			if (Math.abs(element.scrollTop - target) < 1 || frame >= RESTORE_FRAMES)
 				return;
 
-			const height = element.scrollHeight;
-			if (frame > 0 && height === lastHeight) return;
+			const seen = `${element.scrollHeight}/${target}`;
+			if (frame > 0 && seen === lastSeen) return;
 
-			lastHeight = height;
+			lastSeen = seen;
 			element.scrollTop = target;
 			frame += 1;
 			handle = requestAnimationFrame(step);

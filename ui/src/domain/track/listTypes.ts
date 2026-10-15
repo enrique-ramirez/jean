@@ -24,7 +24,7 @@ export type ActiveDirection = "up" | "down" | null;
 
 export interface ScrollToTrackOptions {
 	animate?: boolean;
-	align?: "start" | "center" | "end" | "auto";
+	align?: "center" | "auto";
 	ifNeeded?: boolean;
 }
 

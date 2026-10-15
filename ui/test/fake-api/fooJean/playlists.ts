@@ -68,7 +68,7 @@ export function insertTracks(
 	const start = replace ? 0 : playlist.items.length;
 	state.editItems(playlist, () => {
 		if (replace) playlist.items = [];
-		playlist.items.push(...tracks);
+		for (const track of tracks) playlist.items.push(track);
 	});
 	return tracks.map((_, at) => start + at);
 }

@@ -14,6 +14,16 @@ import {
 	useState,
 } from "react";
 import { animateScrollTo } from "@/shared/ui/animateScroll";
+import {
+	isScaled,
+	registerScaledScroller,
+	scaledHeight,
+	scaledVirtualizerOptions,
+	scrollScale,
+	scrollShift,
+	scrollTopFor,
+	settleOnRow,
+} from "@/shared/ui/scaledScroll";
 import { ALBUM_COVER, ALBUM_COVER_COMPACT, AlbumGroup } from "./AlbumGroup";
 import { type AlbumRun, albumCoverRows, multiDiscRows } from "./grouping";
 import type {
@@ -167,7 +177,13 @@ export function TrackList({
 		measureElement: isAlbumLayout
 			? (element) => element.getBoundingClientRect().height
 			: undefined,
+		...scaledVirtualizerOptions,
 	});
+
+	useLayoutEffect(() => {
+		const scroller = scrollRef.current;
+		return scroller ? registerScaledScroller(scroller, virtualizer) : undefined;
+	}, [scrollRef, virtualizer]);
 
 	const cancelScroll = useRef<(() => void) | null>(null);
 
@@ -214,14 +230,19 @@ export function TrackList({
 				cancelScroll.current?.();
 				cancelScroll.current = null;
 
+				// Content pixels per scroll pixel: a row seen `d` px off centre is `d / scale` scroll pixels
+				// from it, and the scale is 1 under the cap.
+				const scale = () =>
+					scrollScale(virtualizer.getTotalSize(), element.clientHeight);
+
 				const centreOnRow = () => {
 					const seen = rowRect();
 					if (!seen) return null;
 					const view = element.getBoundingClientRect();
 					return (
 						element.scrollTop +
-						(seen.top + seen.bottom) / 2 -
-						(view.top + view.bottom) / 2
+						((seen.top + seen.bottom) / 2 - (view.top + view.bottom) / 2) /
+							scale()
 					);
 				};
 
@@ -229,6 +250,16 @@ export function TrackList({
 					(align === "center" ? centreOnRow() : null) ??
 					virtualizer.getOffsetForIndex(target, align)?.[0] ??
 					null;
+
+				// Over the cap a flight crosses millions of scroll pixels in under a second and ends before
+				// the row it aims at is mounted, so it jumps and settles on the row instead.
+				if (isScaled(virtualizer)) {
+					const item = virtualizer.measurementsCache[target];
+					if (item) element.scrollTop = scrollTopFor(virtualizer, item, align);
+					if (align === "center")
+						cancelScroll.current = settleOnRow(element, centreOnRow);
+					return;
+				}
 
 				if (!animate) {
 					virtualizer.scrollToIndex(target, { align });
@@ -282,6 +313,7 @@ export function TrackList({
 	}, [isAlbumLayout, isCompactViewport]);
 
 	const virtualItems = virtualizer.getVirtualItems();
+	const shift = scrollShift(virtualizer);
 
 	const listId = useId();
 	const rowId = (index: number) => `${listId}-${index}`;
@@ -338,7 +370,7 @@ export function TrackList({
 		<div
 			ref={listElement}
 			className={showHeat ? styles.list : `${styles.list} heat-off`}
-			style={{ height: virtualizer.getTotalSize() }}
+			style={{ height: scaledHeight(virtualizer.getTotalSize()) }}
 			role="grid"
 			tabIndex={0}
 			aria-rowcount={rows.length}
@@ -358,7 +390,7 @@ export function TrackList({
 					ref={isAlbumLayout ? virtualizer.measureElement : undefined}
 					className={styles.row}
 					style={{
-						transform: `translateY(${virtualRow.start - scrollMargin}px)`,
+						transform: `translateY(${virtualRow.start - scrollMargin - shift}px)`,
 						...(isAlbumLayout ? null : { height: virtualRow.size }),
 					}}
 				>

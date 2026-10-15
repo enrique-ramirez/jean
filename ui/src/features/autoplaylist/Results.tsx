@@ -12,6 +12,11 @@ import type { TrackView } from "@/domain/track/project";
 import { formatDuration } from "@/domain/track/stats";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { formatTime } from "@/shared/lib/time";
+import {
+	scaledHeight,
+	scaledVirtualizerOptions,
+	scrollShift,
+} from "@/shared/ui/scaledScroll";
 import styles from "./Results.module.css";
 import type { Previewed } from "./usePreviewedQuery";
 
@@ -31,10 +36,15 @@ function Rows({
 		getScrollElement: () => scroller.current,
 		estimateSize: () => ESTIMATED_ROW,
 		overscan: OVERSCAN,
+		...scaledVirtualizerOptions,
 	});
+	const shift = scrollShift(virtualizer);
 
 	return (
-		<ul className={styles.rows} style={{ height: virtualizer.getTotalSize() }}>
+		<ul
+			className={styles.rows}
+			style={{ height: scaledHeight(virtualizer.getTotalSize()) }}
+		>
 			{virtualizer.getVirtualItems().map((item) => {
 				const row = view.at(item.index);
 				const artist = artistOf(row, t);
@@ -48,7 +58,7 @@ function Rows({
 						data-index={item.index}
 						data-result-row
 						className={styles.row}
-						style={{ transform: `translateY(${item.start}px)` }}
+						style={{ transform: `translateY(${item.start - shift}px)` }}
 					>
 						<span className={styles.title}>{titleOf(row, t)}</span>
 						<span className={styles.by}>

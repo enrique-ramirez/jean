@@ -142,6 +142,8 @@ export interface paths {
          *     Existing playlists are never converted. There is no route that turns an existing playlist into an autoplaylist, because the core replaces the contents of a playlist when it takes one over.
          *
          *     Refused with `403` under the read-only-playlists setting: every playlist this creates would hold the user's music, and the setting refuses every write but the component's own scratch playlist.
+         *
+         *     `maxAutoPlaylists` caps this route and no other: at the cap it is a `409`, and at `0` a `503`.
          */
         post: operations["createAutoPlaylist"];
         delete?: never;
@@ -1501,7 +1503,7 @@ export interface components {
             /** @description Whether this install permits switching the player's output device. `changeOutput` in `config.json`, defaulting to `true`. It refuses `POST /outputs/active` alone: `GET /outputs` stays open regardless, and the volume, the mute flag and every playback command to the player's own session answer to `controlPlayback` instead. */
             canChangeOutput: boolean;
             /**
-             * @description How many autoplaylists this component will keep at once, counting only the ones it created. `0` switches creation off.
+             * @description How many autoplaylists this component will keep at once, counting only the ones it created. The cap applies to creating only: `0` switches creation off, and updating or deleting one it made is never refused for the cap.
              *
              *     The cap bounds a client bug rather than an attacker; anything admitted onto this origin can already write tags.
              * @example 100
@@ -2909,7 +2911,7 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
-        /** @description Autoplaylists are not available in this install, either because the component could not reach that part of the player or because `maxAutoPlaylists` is `0` in `config.json`. `GET /capabilities` reports this in advance. */
+        /** @description Autoplaylists are not available in this install, either because the component could not reach that part of the player or, on `POST /autoplaylists` alone, because `maxAutoPlaylists` is `0` in `config.json`. `GET /capabilities` reports this in advance. */
         PlaylistUnavailable: {
             headers: {
                 [name: string]: unknown;

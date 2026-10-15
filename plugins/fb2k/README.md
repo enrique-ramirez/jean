@@ -184,7 +184,7 @@ The tree is two media library roots and a folder outside both, so one run reache
 
 ## Releasing
 
-`.github/workflows/release.yml` assembles `foo_jean.fb2k-component` from a Windows build and a macOS build of one page, and the archive exists only where both passed. Every push to `main` uploads it as a workflow artifact. Pushing a tag matching `v*` also publishes it to a GitHub Release, once `scripts/release-tag.sh` has confirmed the tag is `v` followed by `kVersion` in `src/core/version.h`; a tag that does not match fails the workflow before anything is built.
+`.github/workflows/release.yml` assembles `foo_jean.fb2k-component` from a Windows build and a macOS build of one page, and the archive exists only where both passed. It runs when started by hand from the Actions tab and on a tag, and uploads the archive as a workflow artifact either way; `plugin.yml` builds and tests both platforms on every change without packaging them. Pushing a tag matching `v*` also publishes it to a GitHub Release, once `scripts/release-tag.sh` has confirmed the tag is `v` followed by `kVersion` in `src/core/version.h`; a tag that does not match fails the workflow before anything is built.
 
 A release carries `SHA256SUMS` and a build provenance attestation. To check a downloaded component, in the folder holding both files:
 

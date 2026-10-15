@@ -127,7 +127,7 @@ Run from the repository root. `scripts/test.sh` finds its own tree, so the path 
 | one case | `plugins/fb2k/scripts/test.sh '-tc=*private address*'` | the same |
 | any C++ change, before it is called ready | `plugins/fb2k/scripts/test.sh --sanitize=address` | about 2 minutes from clean, then incremental in its own directories |
 | the same change, under the other sanitizer | `plugins/fb2k/scripts/test.sh --sanitize=thread` | 15s from clean, then incremental in its own directories |
-| one `src/fb2k/` file, on a Mac with the SDK | `plugins/fb2k/scripts/lint.sh plugins/fb2k/src/fb2k/library.cpp` | about 5s a file. Without arguments it lints everything, about 18 minutes |
+| one `src/fb2k/` file, on a Mac with the SDK | `plugins/fb2k/scripts/lint.sh plugins/fb2k/src/fb2k/library.cpp` | about 5s a file. Without arguments it lints everything, one file per core, in about a minute |
 
 The build is incremental and the filters narrow only what runs, never what compiles. Run the whole suite rather than a filtered one: it costs the same and covers everything. Filter only to read less output.
 

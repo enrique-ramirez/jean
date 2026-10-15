@@ -1,5 +1,5 @@
-# The parent .clang-tidy, minus the one check doctest defeats. InheritParentConfig keeps
-# everything else, so this file is the exception rather than a second check list.
+# The parent .clang-tidy, minus what doctest defeats. InheritParentConfig keeps everything else,
+# so this file is the exception rather than a second check list.
 #
 #   bugprone-unchecked-optional-access
 #     An access guarded by REQUIRE(x.has_value()) reads as unguarded here. REQUIRE is a doctest
@@ -8,8 +8,17 @@
 #     value_or(), which supplies a fallback on a line the REQUIRE above has proved cannot need
 #     one, so every site would say something weaker than it means.
 #
-# It stays on for src/core/, where an unguarded access would be a real defect, and where the
-# tree passes clean under it.
+#   clang-analyzer-*
+#     The analyzer explores every path through each function, and a doctest case is one function
+#     whose CHECK and REQUIRE macros each expand into a branch and an exception handler, so a long
+#     case costs it minutes where every other check here takes seconds. What it hunts for (a null
+#     dereference, a leak, a use after free) is what the suite's address and thread sanitizer runs
+#     find in this code by executing it.
+#
+# Both stay on for src/core/, where an unguarded access would be a real defect, and where the
+# tree passes clean under them.
 ---
 InheritParentConfig: true
-Checks: '-bugprone-unchecked-optional-access'
+Checks: >
+  -bugprone-unchecked-optional-access,
+  -clang-analyzer-*

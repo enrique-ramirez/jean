@@ -1,17 +1,15 @@
 # Builds ui/ once, compiles it into foo_jean.dll and the macOS bundle, and packages
 # foo_jean.fb2k-component holding both. plugin.yml's `windows` and `macos` jobs build the same way on
 # every change.
-# Every push to main uploads the component as a workflow artifact; a v* tag also publishes it as
-# a GitHub Release, once scripts/release-tag.sh confirms the tag names the version
-# plugins/fb2k/src/core/version.h carries. That check is the first step of the first job to run,
-# so a wrong tag fails before any of the build below runs rather than after. contract.yml
-# is where the Node setup below is copied from.
+# A v* tag also publishes the component as a GitHub Release, once scripts/release-tag.sh confirms
+# the tag names the version plugins/fb2k/src/core/version.h carries. That check is the first step
+# of the first job to run, so a wrong tag fails before any of the build below runs rather than
+# after. contract.yml is where the Node setup below is copied from.
 
 name: release
 
 on:
   push:
-    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 

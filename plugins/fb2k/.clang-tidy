@@ -3,7 +3,7 @@
 # compile standalone on any machine and are where the security-sensitive code lives, and over
 # src/fb2k/ on a Mac with the SDK fetched, where src/fb2k/.clang-tidy applies on top.
 #
-#   scripts/lint.sh                     everything (slow: doctest is a large header)
+#   scripts/lint.sh                     everything
 #   scripts/lint.sh src/core/text.cpp   one file
 #
 # The selection leans on bugprone, cert and the analyzer. cppcoreguidelines and modernize

@@ -65,14 +65,31 @@ if [ "$((${#core_files[@]} + ${#fb2k_files[@]}))" = 0 ]; then
   exit 1
 fi
 
-# Without --warnings-as-errors clang-tidy prints its findings and exits 0.
-echo "Linting $((${#core_files[@]} + ${#fb2k_files[@]})) file(s). This is slow: doctest is a large header."
+jobs="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
+
+lint_each() {
+  local files=()
+  while [ "$1" != -- ]; do
+    files+=("$1")
+    shift
+  done
+  shift
+  # Without --warnings-as-errors clang-tidy prints its findings and exits 0.
+  printf '%s\0' "${files[@]}" | xargs -0 -n 1 -P "$jobs" bash -c '
+    file="${@: -1}"
+    out="$("$0" --quiet --warnings-as-errors="*" "$file" -- "${@:1:$#-1}" 2>&1)" && exit 0
+    printf "%s\n" "$out"
+    exit 1
+  ' "$tidy" "$@"
+}
+
+echo "Linting $((${#core_files[@]} + ${#fb2k_files[@]})) file(s), $jobs at a time."
 findings=0
 if [ "${#core_files[@]}" -gt 0 ]; then
-  "$tidy" --quiet --warnings-as-errors='*' "${core_files[@]}" -- "${compile_flags[@]}" || findings=1
+  lint_each "${core_files[@]}" -- "${compile_flags[@]}" || findings=1
 fi
 if [ "${#fb2k_files[@]}" -gt 0 ]; then
-  "$tidy" --quiet --warnings-as-errors='*' "${fb2k_files[@]}" -- "${fb2k_compile_flags[@]}" || findings=1
+  lint_each "${fb2k_files[@]}" -- "${fb2k_compile_flags[@]}" || findings=1
 fi
 [ "$findings" = 0 ] || exit 1
 echo "clang-tidy is clean."

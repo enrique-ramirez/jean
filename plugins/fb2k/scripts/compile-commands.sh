@@ -52,6 +52,7 @@ sources+=(${fb2k_sources[@]+"${fb2k_sources[@]}"})
   for index in "${!sources[@]}"; do
     [ "$index" = 0 ] || printf ',\n'
     case "${sources[$index]}" in
+      "$root"/src/fb2k/*.mm) entry "${sources[$index]}" "${fb2k_objc_compile_flags[@]}" ;;
       "$root"/src/fb2k/*) entry "${sources[$index]}" "${fb2k_compile_flags[@]}" ;;
       *) entry "${sources[$index]}" "${compile_flags[@]}" ;;
     esac

@@ -82,6 +82,9 @@ fb2k_compile_flags=(
   -isystem "$root/sdk/foobar2000"
 )
 
+# ARC, which the SDK's own Xcode projects build with (CLANG_ENABLE_OBJC_ARC).
+fb2k_objc_compile_flags=("${fb2k_compile_flags[@]}" -fobjc-arc)
+
 fb2k_skipped=""
 if [ "$(uname -s)" != Darwin ]; then
   fb2k_skipped="src/fb2k/ was skipped: it is parsed on macOS only."
@@ -97,6 +100,10 @@ is_fb2k_unparsed() {
   return 1
 }
 
+is_objc_source() {
+  [ "${1##*.}" = mm ]
+}
+
 is_fb2k_generated() {
   local name
   for name in "${fb2k_generated_sources[@]}"; do
@@ -107,7 +114,8 @@ is_fb2k_generated() {
 
 fb2k_sources=()
 if [ -z "$fb2k_skipped" ]; then
-  for fb2k_file in "$root"/src/fb2k/*.cpp; do
+  for fb2k_file in "$root"/src/fb2k/*.cpp "$root"/src/fb2k/*.mm; do
+    [ -e "$fb2k_file" ] || continue
     is_fb2k_unparsed "$fb2k_file" || is_fb2k_generated "$fb2k_file" || fb2k_sources+=("$fb2k_file")
   done
 fi

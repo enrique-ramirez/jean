@@ -38,3 +38,24 @@ SpacesBeforeTrailingComments: 2
 # include in a block of its own is what makes sorting safe.
 SortIncludes: CaseSensitive
 IncludeBlocks: Preserve
+
+# clang-format reads a *.mm file as Objective-C and refuses one when no section of this file has
+# Language: ObjC.
+---
+Language: ObjC
+BasedOnStyle: Google
+
+ColumnLimit: 100
+IndentWidth: 4
+ObjCBlockIndentWidth: 4
+AccessModifierOffset: -4
+
+PointerAlignment: Left
+DerivePointerAlignment: false
+
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve

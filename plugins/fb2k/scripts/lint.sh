@@ -127,8 +127,16 @@ findings=0
 if [ "${#core_files[@]}" -gt 0 ]; then
   lint_each "${core_files[@]}" -- "${compile_flags[@]}" || findings=1
 fi
-if [ "${#fb2k_files[@]}" -gt 0 ]; then
-  lint_each "${fb2k_files[@]}" -- "${fb2k_compile_flags[@]}" || findings=1
+fb2k_cpp_files=()
+fb2k_objc_files=()
+for file in ${fb2k_files[@]+"${fb2k_files[@]}"}; do
+  if is_objc_source "$file"; then fb2k_objc_files+=("$file"); else fb2k_cpp_files+=("$file"); fi
+done
+if [ "${#fb2k_cpp_files[@]}" -gt 0 ]; then
+  lint_each "${fb2k_cpp_files[@]}" -- "${fb2k_compile_flags[@]}" || findings=1
+fi
+if [ "${#fb2k_objc_files[@]}" -gt 0 ]; then
+  lint_each "${fb2k_objc_files[@]}" -- "${fb2k_objc_compile_flags[@]}" || findings=1
 fi
 [ "$findings" = 0 ] || exit 1
 echo "clang-tidy is clean."

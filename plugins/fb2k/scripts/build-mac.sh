@@ -308,6 +308,7 @@ build_component_objects() {
   mkdir -p "$dir"
   write_rsp "$dir/core.rsp" "${compile_flags[@]}" -DNDEBUG "${warning_flags[@]}" "${core_warning_flags[@]}"
   write_rsp "$dir/fb2k.rsp" "${fb2k_compile_flags[@]}" -DNDEBUG "${warning_flags[@]}"
+  write_rsp "$dir/objc.rsp" "${fb2k_objc_compile_flags[@]}" -DNDEBUG "${warning_flags[@]}"
   write_rsp "$dir/table.rsp" "${fb2k_compile_flags[@]}" -DNDEBUG -w
   write_rsp "$dir/codec.rsp" "${codec_defines[@]}" "${vendor_c_flags[@]}" "${codec_include_flags[@]}"
   write_rsp "$dir/zlib.rsp" "${vendor_c_flags[@]}"
@@ -325,12 +326,13 @@ build_component_objects() {
     component_objects+=("$archdir/obj/${source#"$root"/}")
   done
   component_objects=("${component_objects[@]/%.cpp/.o}")
+  component_objects=("${component_objects[@]/%.mm/.o}")
 
   make -s -j "$(getconf _NPROCESSORS_ONLN)" -f - \
     ROOT="$root" OUT="$archdir" ARCH="$arch" CXX="$CXX" CC="${CC:-cc}" BASE="$base" FLAGS="$dir" \
     CORE_SRC="$(echo "$root"/src/core/*.cpp)" FB2K_SRC="${fb2k_all[*]}" \
     CODEC_SRC="$(echo $codec_sources)" ZLIB_SRC="$(echo $zlib_sources)" <<'MK'
-cxx_obj = $(patsubst $(ROOT)/%.cpp,$(OUT)/obj/%.o,$(1))
+cxx_obj = $(patsubst $(ROOT)/%.mm,$(OUT)/obj/%.o,$(patsubst $(ROOT)/%.cpp,$(OUT)/obj/%.o,$(1)))
 c_obj = $(patsubst $(ROOT)/%.c,$(OUT)/obj/%.o,$(1))
 TABLE_OBJ := $(OUT)/obj/src/fb2k/ui_assets_table.o
 COMPONENT := $(call cxx_obj,$(CORE_SRC) $(FB2K_SRC))
@@ -350,6 +352,9 @@ $(OUT)/obj/src/core/%.o: $(ROOT)/src/core/%.cpp $(FLAGS)/core.rsp $(BASE)
 $(OUT)/obj/src/fb2k/%.o: $(ROOT)/src/fb2k/%.cpp $(FLAGS)/fb2k.rsp $(BASE)
 	@mkdir -p $(dir $@)
 	$(CXX) -arch $(ARCH) @$(BASE) @$(FLAGS)/fb2k.rsp -MMD -MP -c $< -o $@
+$(OUT)/obj/src/fb2k/%.o: $(ROOT)/src/fb2k/%.mm $(FLAGS)/objc.rsp $(BASE)
+	@mkdir -p $(dir $@)
+	$(CXX) -arch $(ARCH) @$(BASE) @$(FLAGS)/objc.rsp -MMD -MP -c $< -o $@
 $(TABLE_OBJ): $(ROOT)/src/fb2k/ui_assets_table.cpp $(FLAGS)/table.rsp $(BASE)
 	@mkdir -p $(dir $@)
 	$(CXX) -arch $(ARCH) @$(BASE) @$(FLAGS)/table.rsp -c $< -o $@

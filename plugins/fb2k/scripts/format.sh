@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Formats our own C++ to .clang-format. third_party/ is never touched.
+Formats our own C++ and Objective-C++ to .clang-format. third_party/ is never touched.
 
   scripts/format.sh                              rewrite everything in place
   scripts/format.sh src/core/text.cpp            rewrite one file
@@ -53,7 +53,7 @@ if [ "$#" -gt 0 ]; then
 else
   while IFS= read -r file; do
     is_fb2k_generated "$file" || files+=("$file")
-  done < <(find "$root/src" "$root/tests" -type f \( -name '*.cpp' -o -name '*.h' \) | sort)
+  done < <(find "$root/src" "$root/tests" -type f \( -name '*.cpp' -o -name '*.mm' -o -name '*.h' \) | sort)
 fi
 
 if [ "${#files[@]}" = 0 ]; then

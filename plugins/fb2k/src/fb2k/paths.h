@@ -10,6 +10,8 @@ std::string configPath();
 std::string logPath();
 std::string wwwDir();
 
+std::string displayConfigPath();
+
 void ensureComponentDir();
 
 // core_api::pathInProfile answers a "file://" path, and std::filesystem needs the form the

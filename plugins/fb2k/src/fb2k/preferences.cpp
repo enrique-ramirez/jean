@@ -1,9 +1,11 @@
 #include "fb2k/PCH.h"
 
-#include "core/log.h"
+#include <windows.h>
+
 #include "core/preferences.h"
 #include "fb2k/config_file.h"
 #include "fb2k/paths.h"
+#include "fb2k/preferences_ids.h"
 #include "fb2k/resource.h"
 #include "fb2k/running_server.h"
 #include "fb2k/running_settings.h"
@@ -12,81 +14,47 @@
 #include <foobar2000/SDK/coreDarkMode.h>
 
 #include <cstddef>
+#include <iterator>
+#include <optional>
 #include <string>
 
 namespace {
 
 using namespace jean;
 
-constexpr char kPageName[] = "Jean";
+constexpr int kNoControl = 0;
 
-constexpr char kPermissionsName[] = "Permissions";
-
-constexpr GUID kPageGuid = {
-    0x833e5a93, 0x92ba, 0x4dfe, {0x95, 0x93, 0xd5, 0x02, 0x90, 0xd8, 0xdd, 0x4c}};
-
-constexpr GUID kPermissionsGuid = {
-    0x7e78cbe3, 0xc7ac, 0x4484, {0xae, 0x0d, 0x59, 0xe1, 0x06, 0x5a, 0xae, 0xcf}};
-
-struct Control {
-    int id;
-    std::string SettingsForm::* field;
+struct EntryControls {
+    int value;
+    int label;
+    int hint;
 };
 
-struct BoolControl {
-    int id;
-    bool SettingsForm::* field;
+constexpr EntryControls kEntryControls[] = {
+    {IDC_PORT, IDC_PORT_LABEL, kNoControl},
+    {IDC_BIND, IDC_BIND_LABEL, IDC_BIND_HINT},
+    {IDC_ORIGINS, IDC_ORIGINS_GROUP, IDC_ORIGINS_HINT},
+    {IDC_OPEN_BROWSER, IDC_OPEN_BROWSER, kNoControl},
+    {IDC_CONTROL_PLAYBACK, IDC_CONTROL_PLAYBACK, kNoControl},
+    {IDC_WRITE_PLAYLISTS, IDC_WRITE_PLAYLISTS, kNoControl},
+    {IDC_CHANGE_OUTPUT, IDC_CHANGE_OUTPUT, kNoControl},
+    {IDC_STREAMING_ENABLED, IDC_STREAMING_ENABLED, kNoControl},
+    {IDC_FIELDS, IDC_FIELDS_GROUP, IDC_FIELDS_HINT},
+    {IDC_MAX_AUTOPLAYLISTS, IDC_MAX_AUTOPLAYLISTS_LABEL, kNoControl},
+    {IDC_HOSTS, IDC_HOSTS_GROUP, IDC_HOSTS_HINT},
 };
+static_assert(std::size(kEntryControls) == kSettingEntryCount);
 
-template <typename Entry>
-class ControlList {
-public:
-    constexpr ControlList() : first_(nullptr), last_(nullptr) {}
-
-    template <size_t N>
-    explicit constexpr ControlList(const Entry (&table)[N]) : first_(table), last_(table + N) {}
-
-    constexpr const Entry* begin() const { return first_; }
-    constexpr const Entry* end() const { return last_; }
-
-private:
-    const Entry* first_;
-    const Entry* last_;
-};
-
-using Controls = ControlList<Control>;
-using BoolControls = ControlList<BoolControl>;
-
-constexpr Control kMainControls[] = {{IDC_PORT, &SettingsForm::port},
-                                     {IDC_BIND, &SettingsForm::bindAddress},
-                                     {IDC_ORIGINS, &SettingsForm::allowedOrigins}};
-
-constexpr BoolControl kMainBoolControls[] = {{IDC_OPEN_BROWSER, &SettingsForm::openBrowserAtStart}};
-
-constexpr Control kPermissionsControls[] = {
-    {IDC_FIELDS, &SettingsForm::allowedFields},
-    {IDC_MAX_AUTOPLAYLISTS, &SettingsForm::maxAutoPlaylists},
-    {IDC_HOSTS, &SettingsForm::allowedHosts}};
-
-constexpr BoolControl kPermissionsBoolControls[] = {
-    {IDC_CONTROL_PLAYBACK, &SettingsForm::controlPlayback},
-    {IDC_WRITE_PLAYLISTS, &SettingsForm::writePlaylists},
-    {IDC_CHANGE_OUTPUT, &SettingsForm::changeOutput},
-    {IDC_STREAMING_ENABLED, &SettingsForm::streamingEnabled}};
+constexpr int kGroupControls[] = {IDC_NETWORKING_GROUP, IDC_STARTUP_GROUP, IDC_PERMISSIONS_GROUP};
+static_assert(std::size(kGroupControls) == std::size(kSettingGroups));
 
 struct Page {
-    const char* name;
+    PageId id;
     int templateId;
-    Controls controls;
-    BoolControls boolControls;
-
-    bool configPath;
 };
 
-constexpr Page kMainPage{kPageName, IDD_PREFERENCES, Controls(kMainControls),
-                         BoolControls(kMainBoolControls), true};
-constexpr Page kPermissionsPage{kPermissionsName, IDD_PERMISSIONS, Controls(kPermissionsControls),
-                                BoolControls(kPermissionsBoolControls), false};
+constexpr Page kMainPage{PageId::jean, IDD_PREFERENCES};
+constexpr Page kPermissionsPage{PageId::permissions, IDD_PERMISSIONS};
 
 std::string readControl(HWND dialog, int id) {
     auto* const control = GetDlgItem(dialog, id);
@@ -110,17 +78,14 @@ void writeCheckbox(HWND dialog, int id, bool checked) {
     CheckDlgButton(dialog, id, checked ? BST_CHECKED : BST_UNCHECKED);
 }
 
-std::string displayConfigPath() {
-    pfc::string8 display;
-    filesystem::g_get_display_path(configPath().c_str(), display);
-    return toStd(display);
-}
-
 class PreferencesInstance : public preferences_page_instance {
 public:
     PreferencesInstance(const Page& page, fb2k::hwnd_t parent,
                         preferences_page_callback::ptr callback)
-        : page_(page), callback_(std::move(callback)), saved_(loadSettings()) {
+        : page_(page),
+          callback_(std::move(callback)),
+          editor_(loadSettings, saveSettings,
+                  [](const Settings& saved) { return restartNeeded(saved); }) {
         if (!CreateDialogParamW(core_api::get_my_instance(), MAKEINTRESOURCEW(page.templateId),
                                 parent, proc, reinterpret_cast<LPARAM>(this))) {
             throw exception_win32(GetLastError());
@@ -132,46 +97,33 @@ public:
     t_uint32 get_state() override {
         t_uint32 state = preferences_state::resettable | preferences_state::dark_mode_supported;
 
-        if (currentForm() != toForm(saved_))
+        if (editor_.differs(currentForm()))
             state |= preferences_state::changed;
 
-        if (restartNeeded(saved_))
+        if (restartNeeded(editor_.saved()))
             state |= preferences_state::needs_restart;
 
         return state;
     }
 
     void reset() override {
-        show(defaultForm());
+        show(editor_.reset());
         callback_->on_state_changed();
     }
 
     void apply() override {
-        saved_ = loadSettings();
-
-        const auto reading = readForm(currentForm(), saved_);
-        if (!reading.ok()) {
-            popup_message::g_show(reading.error.c_str(), page_.name);
+        const auto outcome = editor_.apply(page_.id, currentForm());
+        if (!outcome.refusal.empty()) {
+            popup_message::g_show(outcome.refusal.c_str(), pageName(page_.id));
+            return;
+        }
+        if (!outcome.saveFailure.empty()) {
+            popup_message::g_complain("Saving the Jean configuration", outcome.saveFailure.c_str());
             return;
         }
 
-        try {
-            saveSettings(reading.settings);
-        } catch (const std::exception& e) {
-            logError(std::string("could not save the configuration: ") + e.what());
-            popup_message::g_complain("Saving the Jean configuration", e);
-            return;
-        }
-
-        logInfo(restartNeeded(reading.settings)
-                    ? "configuration saved from the preferences page; a restart is needed "
-                      "for some changes to take effect"
-                    : "configuration saved from the preferences page");
-
-        saved_ = reading.settings;
-        show(toForm(saved_));
-        if (page_.configPath)
-            updateConfigNote();
+        show(outcome.form);
+        updateConfigNote();
         callback_->on_state_changed();
     }
 
@@ -200,20 +152,22 @@ private:
     void onInitDialog(HWND dialog) {
         dialog_ = dialog;
 
+        writeWording();
+
         // foobar2000's own copy of the hooks, so libPPUI is not needed.
         dark_.AddDialogWithControls(dialog);
 
-        show(toForm(saved_));
-
-        if (page_.configPath)
-            updateConfigNote();
+        show(editor_.shown());
+        updateConfigNote();
 
         live_ = true;
     }
 
     INT_PTR onCommand(int notification, int id) {
-        for (const BoolControl& control : page_.boolControls) {
-            if (control.id == id && notification == BN_CLICKED) {
+        for (size_t i = 0; i < kSettingEntryCount; ++i) {
+            const SettingEntry& entry = kSettingEntries[i];
+            if (entry.page == page_.id && entry.kind == ControlKind::toggle &&
+                kEntryControls[i].value == id && notification == BN_CLICKED) {
                 if (live_)
                     callback_->on_state_changed();
                 return TRUE;
@@ -227,41 +181,70 @@ private:
         return TRUE;
     }
 
-    void updateConfigNote() {
-        const auto status = listenerStatus();
-        if (!status.listening && !status.error.empty()) {
-            writeControl(dialog_, IDC_CONFIG_PATH, status.error);
-            return;
+    void writeWording() {
+        for (size_t i = 0; i < std::size(kSettingGroups); ++i) {
+            if (kSettingGroups[i].page == page_.id)
+                writeControl(dialog_, kGroupControls[i], kSettingGroups[i].caption);
         }
 
-        auto note = "Saved to " + displayConfigPath() + ".";
-        if (restartNeeded(saved_))
-            note += " A restart is needed for some changes to take effect.";
-        writeControl(dialog_, IDC_CONFIG_PATH, note);
+        for (size_t i = 0; i < kSettingEntryCount; ++i) {
+            const SettingEntry& entry = kSettingEntries[i];
+            if (entry.page != page_.id)
+                continue;
+
+            const EntryControls& controls = kEntryControls[i];
+            writeControl(dialog_, controls.label, entry.label);
+            if (controls.hint != kNoControl)
+                writeControl(dialog_, controls.hint, entry.hint);
+        }
+    }
+
+    void updateConfigNote() {
+        if (page_.id != PageId::jean)
+            return;
+
+        const auto& saved = editor_.saved();
+        writeControl(dialog_, IDC_CONFIG_PATH,
+                     pageNote(listenerStatus(), runningPort().value_or(saved.port),
+                              displayConfigPath(), restartNeeded(saved)));
     }
 
     void show(const SettingsForm& form) {
-        for (const Control& control : page_.controls)
-            writeControl(dialog_, control.id, form.*control.field);
-        for (const BoolControl& control : page_.boolControls)
-            writeCheckbox(dialog_, control.id, form.*control.field);
+        for (size_t i = 0; i < kSettingEntryCount; ++i) {
+            const SettingEntry& entry = kSettingEntries[i];
+            if (entry.page != page_.id)
+                continue;
+
+            const int id = kEntryControls[i].value;
+            if (entry.kind == ControlKind::toggle)
+                writeCheckbox(dialog_, id, form.*entry.toggle);
+            else
+                writeControl(dialog_, id, form.*entry.text);
+        }
     }
 
     SettingsForm currentForm() const {
+        auto form = editor_.shown();
         if (!live_)
-            return toForm(saved_);
+            return form;
 
-        auto form = toForm(saved_);
-        for (const Control& control : page_.controls)
-            form.*control.field = readControl(dialog_, control.id);
-        for (const BoolControl& control : page_.boolControls)
-            form.*control.field = readCheckbox(dialog_, control.id);
+        for (size_t i = 0; i < kSettingEntryCount; ++i) {
+            const SettingEntry& entry = kSettingEntries[i];
+            if (entry.page != page_.id)
+                continue;
+
+            const int id = kEntryControls[i].value;
+            if (entry.kind == ControlKind::toggle)
+                form.*entry.toggle = readCheckbox(dialog_, id);
+            else
+                form.*entry.text = readControl(dialog_, id);
+        }
         return form;
     }
 
     const Page page_;
     const preferences_page_callback::ptr callback_;
-    Settings saved_;
+    SettingsEditor editor_;
     HWND dialog_ = nullptr;
     bool live_ = false;
     fb2k::CCoreDarkModeHooks dark_;
@@ -269,8 +252,8 @@ private:
 
 class PreferencesPage : public preferences_page_v3 {
 public:
-    const char* get_name() override { return kPageName; }
-    GUID get_guid() override { return kPageGuid; }
+    const char* get_name() override { return pageName(PageId::jean); }
+    GUID get_guid() override { return kJeanPageGuid; }
     GUID get_parent_guid() override { return guid_tools; }
 
     preferences_page_instance::ptr instantiate(fb2k::hwnd_t parent,
@@ -281,9 +264,9 @@ public:
 
 class PermissionsPage : public preferences_page_v3 {
 public:
-    const char* get_name() override { return kPermissionsName; }
-    GUID get_guid() override { return kPermissionsGuid; }
-    GUID get_parent_guid() override { return kPageGuid; }
+    const char* get_name() override { return pageName(PageId::permissions); }
+    GUID get_guid() override { return kPermissionsPageGuid; }
+    GUID get_parent_guid() override { return kJeanPageGuid; }
 
     preferences_page_instance::ptr instantiate(fb2k::hwnd_t parent,
                                                preferences_page_callback::ptr callback) override {

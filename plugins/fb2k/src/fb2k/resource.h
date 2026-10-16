@@ -4,8 +4,6 @@
 // Included by preferences.rc as well as by C++, so classic include guards rather than
 // #pragma once: rc.exe's preprocessor is not the compiler's.
 
-#define IDC_STATIC (-1)
-
 #define IDD_PREFERENCES 101
 #define IDD_PERMISSIONS 102
 
@@ -21,5 +19,19 @@
 #define IDC_MAX_AUTOPLAYLISTS 1015
 #define IDC_HOSTS 1016
 #define IDC_OPEN_BROWSER 1017
+
+#define IDC_NETWORKING_GROUP 1020
+#define IDC_PORT_LABEL 1021
+#define IDC_BIND_LABEL 1022
+#define IDC_BIND_HINT 1023
+#define IDC_ORIGINS_GROUP 1024
+#define IDC_ORIGINS_HINT 1025
+#define IDC_STARTUP_GROUP 1026
+#define IDC_PERMISSIONS_GROUP 1027
+#define IDC_FIELDS_GROUP 1028
+#define IDC_FIELDS_HINT 1029
+#define IDC_MAX_AUTOPLAYLISTS_LABEL 1030
+#define IDC_HOSTS_GROUP 1031
+#define IDC_HOSTS_HINT 1032
 
 #endif  // FOO_JEAN_RESOURCE_H

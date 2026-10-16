@@ -36,6 +36,12 @@ std::string logPath() {
     return inComponentDir(std::string(kComponentName) + ".log");
 }
 
+std::string displayConfigPath() {
+    pfc::string8 display;
+    filesystem::g_get_display_path(configPath().c_str(), display);
+    return toStd(display);
+}
+
 std::string wwwDir() {
     return inComponentDir("www");
 }

@@ -1,5 +1,7 @@
 #include "core/preferences.h"
 
+#include "core/http_server.h"
+#include "core/log.h"
 #include "core/reload.h"
 
 #include <algorithm>
@@ -13,8 +15,6 @@ namespace jean {
 
 namespace {
 
-// What a Win32 multiline edit box hands back, and therefore what it must be given.
-constexpr char kLineBreak[] = "\r\n";
 constexpr char kBlank[] = " \t\r\n\f\v";
 
 std::string trimmed(const std::string& text) {
@@ -43,7 +43,7 @@ std::string joinLines(const std::vector<std::string>& entries) {
     return std::accumulate(entries.begin(), entries.end(), std::string(),
                            [](std::string out, const std::string& entry) {
                                if (!out.empty())
-                                   out += kLineBreak;
+                                   out += kListLineBreak;
                                out += entry;
                                return out;
                            });
@@ -167,6 +167,91 @@ FormReading readForm(const SettingsForm& form, const Settings& unshown) {
 
 bool restartNeeded(const Settings& running, const Settings& saved) {
     return !decideReload(running, serialiseSettings(saved)).restartKeys.empty();
+}
+
+SettingsEditor::SettingsEditor(std::function<Settings()> load,
+                               std::function<void(const Settings&)> save,
+                               std::function<bool(const Settings&)> restartNeeded)
+    : load_(std::move(load)),
+      save_(std::move(save)),
+      restartNeeded_(std::move(restartNeeded)),
+      saved_(load_()) {}
+
+SettingsForm SettingsEditor::shown() const {
+    return toForm(saved_);
+}
+
+bool SettingsEditor::differs(const SettingsForm& onScreen) const {
+    return onScreen != shown();
+}
+
+const Settings& SettingsEditor::saved() const {
+    return saved_;
+}
+
+ApplyOutcome SettingsEditor::apply(PageId page, const SettingsForm& onScreen) {
+    saved_ = load_();
+
+    SettingsForm form = toForm(saved_);
+    for (const SettingEntry& entry : kSettingEntries) {
+        if (entry.page != page)
+            continue;
+        if (entry.text != nullptr)
+            form.*entry.text = onScreen.*entry.text;
+        if (entry.toggle != nullptr)
+            form.*entry.toggle = onScreen.*entry.toggle;
+    }
+
+    ApplyOutcome outcome;
+    const auto reading = readForm(form, saved_);
+    if (!reading.ok()) {
+        outcome.refusal = reading.error;
+        return outcome;
+    }
+
+    try {
+        save_(reading.settings);
+    } catch (const std::exception& e) {
+        logError(std::string("could not save the configuration: ") + e.what());
+        outcome.saveFailure = e.what()[0] != '\0' ? e.what() : "the save gave no reason";
+        return outcome;
+    }
+
+    outcome.saved = true;
+    outcome.restartNeeded = restartNeeded_(reading.settings);
+    logInfo(outcome.restartNeeded
+                ? "configuration saved from the preferences page; a restart is needed for some "
+                  "changes to take effect"
+                : "configuration saved from the preferences page");
+
+    saved_ = reading.settings;
+    outcome.form = toForm(saved_);
+    return outcome;
+}
+
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+SettingsForm SettingsEditor::reset() const {
+    return defaultForm();
+}
+
+const char* pageName(PageId page) {
+    for (const PageName& entry : kPageNames) {
+        if (entry.page == page)
+            return entry.name;
+    }
+    return "";
+}
+
+std::string pageNote(const ListenerStatus& status, int port, const std::string& configPathShown,
+                     bool restartNeeded) {
+    if (!status.listening && !status.error.empty())
+        return status.error;
+
+    if (!status.heldAddresses.empty())
+        return heldAddressError(status.heldAddresses, port);
+
+    return "Saved to " + configPathShown + "." +
+           (restartNeeded ? " A restart is needed for some changes to take effect." : "");
 }
 
 }  // namespace jean

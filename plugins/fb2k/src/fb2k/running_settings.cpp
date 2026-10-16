@@ -31,4 +31,11 @@ bool restartNeeded(const Settings& saved) {
     return !g_running || restartNeeded(*g_running, saved);
 }
 
+std::optional<int> runningPort() {
+    const std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_running)
+        return std::nullopt;
+    return g_running->port;
+}
+
 }  // namespace jean

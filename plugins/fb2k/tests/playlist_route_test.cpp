@@ -3830,7 +3830,7 @@ TEST_CASE(
         {"the scratch role", "the component's own playlists are not available"},
         {"a user's playlist", "playlist changes are not available"}};
 
-    for (const auto& target : targets(kUnresolvableStructure)) {
+    for (const auto& target : targets(library.state().structure)) {
         INFO("target: ", target.name);
 
         const auto response = post(server, target.path, target.body);

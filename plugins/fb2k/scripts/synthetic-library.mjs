@@ -1,13 +1,3 @@
-// Writes a library of tiny tagged MP3 files for a real foobar2000 to scan, with the cardinalities
-// of `libraryOfShape` as the profiler uses them (ui/test/fake-api/main.ts, `largeLibrary`): 10 tracks
-// to an album, 10 albums to an artist, 40 genres, years 1960 to 2024. Run it on the machine that
-// holds the player, with no dependency.
-//
-//   node plugins/fb2k/scripts/synthetic-library.mjs write <root> <tracks>
-//   node plugins/fb2k/scripts/synthetic-library.mjs remove <root>
-//
-// Files land at <root>/Artist n/Album n/NN Track n.mp3. `remove` deletes only a root that `write`
-// marked.
 import {
 	existsSync,
 	mkdirSync,
@@ -78,7 +68,6 @@ function audio() {
 	return Buffer.concat([first, silent, silent]);
 }
 
-// The same arithmetic as `libraryOfShape`: tracks deal round-robin over albums, albums over artists.
 function shapeOf(count) {
 	const albums = Math.max(1, Math.ceil(count / TRACKS_PER_ALBUM));
 	const artists = Math.max(1, Math.ceil(albums / ALBUMS_PER_ARTIST));

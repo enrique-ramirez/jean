@@ -503,8 +503,8 @@ TEST_CASE("the library answers are the shapes contract/openapi.yaml publishes") 
 
     // `build` is required and nullable, so a library nobody is building still sends the key.
     const auto idle = json::parse(libraryDocument(state));
-    CHECK(keysOf(idle) ==
-          Keys{"ready", "structure", "revision", "trackCount", "columns", "build", "halted"});
+    CHECK(keysOf(idle) == Keys{"ready", "structure", "revision", "snapshotId", "trackCount",
+                               "columns", "build", "halted"});
     CHECK((idle.contains("build") && idle.at("build").is_null()));
 
     const auto refused = parseLibraryRequest({"%title%", "%title%"}, std::string());
@@ -525,8 +525,8 @@ TEST_CASE("a library being built carries its progress in the shape LibraryBuild 
     state.build = BuildProgress{BuildPhase::formatting, 16384, 30441};
 
     const auto library = json::parse(libraryDocument(state));
-    CHECK(keysOf(library) ==
-          Keys{"ready", "structure", "revision", "trackCount", "columns", "build", "halted"});
+    CHECK(keysOf(library) == Keys{"ready", "structure", "revision", "snapshotId", "trackCount",
+                                  "columns", "build", "halted"});
 
     REQUIRE(library.contains("build"));
     const auto& build = library.at("build");
@@ -695,8 +695,8 @@ TEST_CASE("the snapshot is framed the way contract/openapi.yaml describes") {
     CHECK((8 + headerLength) % 4 == 0);
 
     const auto header = json::parse(snapshot.substr(8, headerLength));
-    CHECK(keysOf(header) ==
-          Keys{"kind", "structure", "revision", "trackCount", "columns", "spine"});
+    CHECK(keysOf(header) == Keys{"kind", "structure", "revision", "snapshotId", "trackCount",
+                                 "carried", "spineCarried", "columns", "spine"});
     CHECK(header["kind"] == "snapshot");
 
     CHECK(keysOf(header["columns"][0]) ==
@@ -721,13 +721,13 @@ TEST_CASE("a delta is the shape contract/openapi.yaml publishes") {
     const uint64_t before = library.state().revision;
     REQUIRE(library.apply({{0, {"Music/", "a.flac", "0", "A title", "2"}}}) > before);
 
-    const auto changes = library.changes(before);
+    const auto changes = library.changes(library.state().structure, before);
     REQUIRE(changes.outcome == DeltaOutcome::ok);
 
     const auto header = decode(serialiseDelta(changes.delta)).header;
 
-    CHECK(keysOf(header) ==
-          Keys{"kind", "structure", "revision", "since", "trackCount", "columns", "spine"});
+    CHECK(keysOf(header) == Keys{"kind", "structure", "revision", "since", "snapshotId",
+                                 "trackCount", "columns", "spine"});
     CHECK(header["kind"] == "delta");
 
     const auto& moved = header["columns"][0];

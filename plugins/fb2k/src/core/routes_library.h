@@ -9,6 +9,8 @@
 #include "core/rate_limit.h"
 
 #include <cstdint>
+#include <deque>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -32,6 +34,8 @@ private:
                        const Library::State& state);
     bool rebuildingTooFast(httplib::Response& res);
 
+    std::shared_ptr<GzipOnce> packingFor(const Library::State& state, const std::string& partKey);
+
     void readTrack(const httplib::Request& req, httplib::Response& res);
     bool readingTooFast(httplib::Response& res);
     bool readingChangesTooFast(httplib::Response& res);
@@ -52,6 +56,15 @@ private:
     Throttle deltaReads_;
 
     GzipOnce packedExport_;
+
+    struct PackedPart {
+        std::string key;
+        std::shared_ptr<GzipOnce> packing;
+    };
+    std::mutex packedPartsLock_;
+    uint64_t packedPartsStructure_ = 0;
+    uint64_t packedPartsRevision_ = 0;
+    std::deque<PackedPart> packedParts_;
 
     // An export names the columns it wants and this is what it named, so a later rebuild,
     // whether from the player noticing a change or from POST /library/refresh, reproduces the

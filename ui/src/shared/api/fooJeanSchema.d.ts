@@ -884,7 +884,7 @@ export interface paths {
          * What the player is doing, and the library's two generations.
          * @description The document a client polls. It is small, it is `ETag`ged, and a poll that finds nothing new is a `304` with no body.
          *
-         *     Read `library.structure` and `library.revision` from here and compare them with the ones in the header of the snapshot already held. A different `structure` means export again. A higher `revision` with the same `structure` means fetch a delta. Both the same means there is nothing to do.
+         *     Read `library.structure` and `library.revision` from here and compare them with the ones in the header of the snapshot already held. A different `structure` means fetch a splice, which is an export again where the component answers `410`, or `409` when the pair names no position this run has held. A higher `revision` with the same `structure` means fetch a delta. Both the same means there is nothing to do. `snapshotId` names the content at that pair.
          *
          *     `library.ready` is `false` between the component starting and its first snapshot being built, and also on an install with no media library at all: the two are indistinguishable from this document alone. This is also what a client polls after a `202` from `GET /library/export`: wait until `library.ready` is true and `library.columns` has the same members as the set declared, then ask for the export again.
          *
@@ -1008,7 +1008,7 @@ export interface paths {
          *
          *     There is no paged variant and none is planned. Paging a library needs a stable sorted order, producing one needs a full pass, and the component is where the whole database already sits in memory. A client that holds everything answers its own searches, counts and shelves without another request.
          *
-         *     The response is `ETag`ged on the two generations, so a client that polls `GET /state` and finds nothing new never gets here, and one that arrives anyway is answered `304`.
+         *     The response is `ETag`ged on the two generations, so a client that polls `GET /state` and finds nothing new never gets here, and one that arrives anyway is answered `304`. With `only` or `spine` the tag names the subset as well. See *Asking for part of the declaration*.
          *
          *     Large. Expect single-digit megabytes for a library of thirty thousand tracks, growing roughly linearly. A client MUST read it as an `ArrayBuffer` rather than as text.
          */
@@ -1029,12 +1029,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * What has changed since a revision, per column.
-         * @description The patch between the revision a client holds and the current one, in the same binary format as the snapshot. It carries only the columns that moved and, within each, only the rows that moved, so the common case of a play count and a last-played date advancing touches two columns and leaves the rest of a client's arrays untouched by identity as well as by value.
+         * What has changed since a revision, per column, or as a splice.
+         * @description The patch between the pair a client holds and the current one, in the same binary format as the snapshot. Where `structure` is the current one it is a delta: it carries only the columns that moved and, within each, only the rows that moved, so the common case of a play count and a last-played date advancing touches two columns and leaves the rest of a client's arrays untouched by identity as well as by value.
          *
-         *     Call this when `GET /state` reports the same `library.structure` and a higher `library.revision`. A different `structure` is a `409`: ordinals have shifted and the patch would be meaningless, so export again.
+         *     Call this when `GET /state` reports a higher `library.revision`. Where `library.structure` is also different, tracks were added or removed and ordinals have shifted, so the answer is a splice: the rows removed, the rows inserted and what was appended, from which the client reaches the current pair without exporting. See *Reading a splice*. It is a `410` when no splice is held or one would cost half an export or more, and the client exports again.
          *
-         *     There is no `columns` here, because `since` already names the generation. A rebuild with a different set moves `structure`, so a client whose declaration is stale reaches the `409` and exports, which is where it declares again.
+         *     There is no `columns` here, because the pair already names the generation. A rebuild with a different set moves `structure` in a way no splice describes, so a client whose declaration is stale reaches the `410` and exports, which is where it declares again.
          *
          *     The component keeps a bounded window of past revisions, and falling behind it is a `410`, whose description is where that window's reach is written down. The answer is the same one: export again. A client that polls at any sane interval will not see it.
          *
@@ -2312,7 +2312,7 @@ export interface components {
             /** @description Whether a snapshot has been built. False only between the component starting and its first walk finishing. Every other library route answers `503` while it is false. */
             ready: boolean;
             /**
-             * @description Moves when tracks are added to or removed from the library. A different value from the one a client's snapshot header carries means every ordinal it holds is meaningless: export again. `0` before the first build.
+             * @description Moves when tracks are added to or removed from the library. A different value from the one a client's snapshot header carries means every ordinal it holds is meaningless: apply a splice, or export again where `GET /library/changes` answers `410`. `0` before the first build. The first value of a run is seeded at start and never repeats across runs of the component, within the range of an integer JSON can carry exactly, so a `structure` names one generation of one run.
              * @example 41
              */
             structure: number;
@@ -2321,6 +2321,11 @@ export interface components {
              * @example 903
              */
             revision: number;
+            /**
+             * @description The validator of the snapshot at the `structure` and `revision` beside it: 16 lowercase hexadecimal digits, a 64-bit sum of one hash per cell. The same across a restart of the player with an unchanged library, and different after any change to a cell, a column, the count or the order of the rows. A client compares it for equality, with `trackCount` beside it, and reads nothing else into it. Sixteen zeros before the first build. See *The validator*.
+             * @example 9f3c2a71b5d04e68
+             */
+            snapshotId: string;
             /**
              * @description Rows in the snapshot, which is the length of every `ids` array in it.
              * @example 30441
@@ -2623,21 +2628,33 @@ export interface components {
         /** @description The JSON header inside a snapshot or a delta, between the four-byte magic number and the blob. It is not served on its own by any route; it is documented here so a client can be generated for it. *The media library*, at the top of this document, has the framing and how to read a column. */
         LibraryHeader: {
             /**
-             * @description Which of the two routes produced this. A client MUST check it rather than infer it from the URL it asked for.
+             * @description What this body is. `GET /library/export` answers a snapshot. `GET /library/changes` answers a delta or a splice. A client MUST check it rather than infer it from the URL it asked for or from `structure` having moved.
              * @enum {string}
              */
-            kind: "snapshot" | "delta";
+            kind: "snapshot" | "delta" | "splice";
             /** @description The generation the ordinals in this body belong to. */
             structure: number;
             /** @description The generation this body brings a client up to. */
             revision: number;
-            /** @description Deltas only, and absent from a snapshot. The revision this body patches from, echoing the request so a client can confirm what it is applying. */
+            /** @description Deltas and splices only, and absent from a snapshot. The revision this body patches from, echoing the request so a client can confirm what it is applying. */
             since?: number;
-            /** @description Rows in the whole snapshot, in a delta as well as in a snapshot. In a snapshot it is the length of every `ids` array; in a delta it is what `ordinals` are bounded by, and it is what their width was chosen from. */
+            /** @description Splices only. The `structure` this body patches from, echoing the request. `structure` is the one it reaches. */
+            sinceStructure?: number;
+            /** @description The validator of the snapshot this body brings a client to: what `library.snapshotId` in `GET /state` is at `structure` and `revision`. In a subset of an export it still names the whole export. See *The validator*. */
+            snapshotId: string;
+            /** @description Snapshots only. The `name` of each declared column whose `ids` and `dict` the body carries. Every other entry in `columns` has only `name`, `distinct`, `hasUnresolved` and `allUnresolved`. Every declared column when the request named no `only`. */
+            carried?: string[];
+            /** @description Snapshots only. Whether the entries under `spine` carry their `ids` and `dict`. `false` when the request said `spine=false`, in which case they have only `distinct`, `hasUnresolved` and `allUnresolved`. */
+            spineCarried?: boolean;
+            /** @description Splices only. The ordinals of the rows to remove, ascending, in the numbering of `sinceStructure`. See *Reading a splice*. */
+            removed?: components["schemas"]["LibrarySection"];
+            /** @description Splices only. The ordinals the inserted rows take, ascending, in the numbering of `structure`. Each is also in every carried column's `ordinals`. */
+            inserted?: components["schemas"]["LibrarySection"];
+            /** @description Rows in the whole snapshot, in a delta or a splice as well as in a snapshot, and never the subset's. In a snapshot it is the length of every `ids` array; in a delta or a splice it is the count after the patch, what `ordinals` are bounded by, and what their width was chosen from. */
             trackCount: number;
-            /** @description The columns the client declared, each carrying its own `name`, in the order it named them. In a delta, only the ones that moved. */
+            /** @description The columns the client declared, each carrying its own `name`, in the order it named them. In a snapshot, every one, though a subset's body carries the `ids` and `dict` of only the ones in `carried`. In a delta, only the ones that moved. In a splice, every one when it inserts rows, and otherwise only the ones that moved or whose dictionary grew. */
             columns: components["schemas"]["LibraryColumn"][];
-            /** @description The three columns the component always builds, keyed by name rather than carrying one. A snapshot has all three. A delta has only the ones that moved, which for the spine is rare: a track whose path changed is a removal and an addition, and that moves `structure`. */
+            /** @description The three columns the component always builds, keyed by name rather than carrying one. A snapshot has all three. A delta has only the ones that moved, which for the spine is rare: a track whose path changed is a removal and an addition, which is a splice. A splice that inserts rows has all three, with one id per inserted row and `ordinals` equal to `inserted`; one that only removes has only the ones whose dictionary grew, with no ordinals. */
             spine: {
                 /** @description The track's directory relative to the library root, forward-slashed on every platform and keeping its trailing slash, so `directory + filename` is the whole relative path. Empty for a track at the root. The library root itself is never published. */
                 directory?: components["schemas"]["LibraryColumn"];
@@ -2650,7 +2667,7 @@ export interface components {
         /**
          * @description One column: a dictionary of distinct strings, and one dictionary id per row. Every `offset` is a byte offset from the start of the blob and is a multiple of four.
          *
-         *     Both routes answer with this shape. A delta's columns carry `ordinals` and `dict.base` on top of it; a snapshot's carry neither, and a client reads `kind` on the header to know which it is holding rather than testing for a key.
+         *     Both routes answer with this shape. A delta's or a splice's columns carry `ordinals` and `dict.base` on top of it; a snapshot's carry neither, and a client reads `kind` on the header to know which it is holding rather than testing for a key.
          */
         LibraryColumn: {
             /**
@@ -2658,11 +2675,12 @@ export interface components {
              * @example %title%
              */
             name?: string;
-            /** @description One dictionary id per row. In a snapshot `count` is `trackCount` and entry *i* belongs to ordinal *i*. In a delta `count` is `ordinals.count` and entry *i* belongs to ordinal `ordinals[i]`. */
-            ids: components["schemas"]["LibrarySection"];
-            /** @description Deltas only, and absent from a snapshot. The ordinals this column changed at, ascending and without repeats, one for each entry in `ids`. Its `width` is the narrowest of 1, 2 and 4 that holds every ordinal from `0` to `trackCount - 1`: these index rows rather than dictionary entries, so it is chosen from a different number than `ids.width` and is often a different width. */
+            /** @description Absent from the entry of a column the body does not carry (see `carried` and `spineCarried`), and present on every other. One dictionary id per row. In a snapshot `count` is `trackCount` and entry *i* belongs to ordinal *i*. In a delta `count` is `ordinals.count` and entry *i* belongs to ordinal `ordinals[i]`. */
+            ids?: components["schemas"]["LibrarySection"];
+            /** @description Deltas and splices only, and absent from a snapshot. The ordinals this column changed at, ascending and without repeats, one for each entry in `ids`. In a splice they are in the numbering of `structure`, after the removals and the insertions, and include every `inserted` ordinal. Its `width` is the narrowest of 1, 2 and 4 that holds every ordinal from `0` to `trackCount - 1`: these index rows rather than dictionary entries, so it is chosen from a different number than `ids.width` and is often a different width. */
             ordinals?: components["schemas"]["LibrarySection"];
-            dict: {
+            /** @description Absent on the same entries as `ids`. */
+            dict?: {
                 /** @description Every value in the dictionary, concatenated with nothing between them, `length` bytes of UTF-8 as the player produced it. One `TextDecoder` call reads the lot; slice it lazily rather than building every string up front. */
                 text: {
                     offset: number;
@@ -2670,7 +2688,7 @@ export interface components {
                 };
                 /** @description Where each value ends within `text`, exclusive. Value *i* spans `[ends[i - 1], ends[i])`, reading `ends[-1]` as `0`. In a snapshot `count` is `distinct`; in a delta it is `distinct - base`, because a delta carries only what was appended. */
                 ends: components["schemas"]["LibrarySection"];
-                /** @description Deltas only, and absent from a snapshot. How many entries the client's dictionary already holds. Dictionaries are append-only within a `structure` generation, so the values in `text` are appended at this index and nothing already held is restated. */
+                /** @description Deltas and splices only, and absent from a snapshot. How many entries the client's dictionary already holds. Dictionaries are append-only within a `structure` generation, so the values in `text` are appended at this index and nothing already held is restated. */
                 base?: number;
             };
             /** @description Values in the whole dictionary, in a delta as well as in a snapshot. This is what `ids.width` was chosen from. */
@@ -2725,14 +2743,14 @@ export interface components {
         /** @description A refusal the client can act on. The request was understood and declined before the snapshot was touched. */
         LibraryRefusal: {
             /** @enum {string} */
-            error: "too many columns" | "unacceptable column" | "duplicate column" | "unacceptable revision";
+            error: "too many columns" | "unacceptable column" | "duplicate column" | "column not declared" | "unacceptable spine" | "unacceptable revision";
             /** @description What specifically was wrong, naming the position of the offending column where there is one. Safe to show a person: it describes the request the client sent and nothing on the player's disk. */
             detail: string;
         };
         /** @description The request was acceptable and the snapshot could not answer it. */
         LibraryFailed: {
             /** @enum {string} */
-            error: "the library snapshot has not been built yet" | "tracks were added or removed; export the library again" | "that revision is older than the retained window; export the library again" | "no such revision";
+            error: "the library snapshot has not been built yet" | "tracks were added or removed; export the library again" | "that revision is older than the retained window; export the library again" | "no such revision" | "that structure and revision name no position this library held; export the library again" | "the tracks added or removed since then are too many to send; export the library again" | "the library was rebuilt with its dictionaries compacted; export the library again" | "the library was rebuilt with other columns or in another order; export the library again";
             /** @description Always empty. It is present so that every library failure reads as one shape. */
             detail: string;
         };
@@ -2838,7 +2856,7 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
-        /** @description The `structure` the request named is no longer the current one: tracks were added to or removed from the library, so every ordinal it carries has shifted and inserting them would land the wrong rows. This is the same `409` `GET /api/library/changes` answers for the same reason, and the remedy is the same: export the library again and resolve the set against the `structure` that export reports. */
+        /** @description The `structure` the request named is no longer the current one: tracks were added to or removed from the library, so every ordinal it carries has shifted and inserting them would land the wrong rows. The remedy is to bring the library up to date, with the splice `GET /api/library/changes` answers or by exporting again, and to resolve the set against the `structure` the client then holds. */
         StructureMoved: {
             headers: {
                 [name: string]: unknown;
@@ -2847,7 +2865,7 @@ export interface components {
                 "application/json": components["schemas"]["LibraryFailed"];
             };
         };
-        /** @description The `structure` the request named is no longer the current one, or another component has locked the target playlist against having rows added. The `error` string distinguishes them. The first is the same `409` `GET /library/changes` answers, and the remedy is the same: export the library again and resolve the set against the `structure` it reports. The second is released at the player, by whatever put it there, and nothing a client sends changes that. */
+        /** @description The `structure` the request named is no longer the current one, or another component has locked the target playlist against having rows added. The `error` string distinguishes them. The remedy for the first is to bring the library up to date, with the splice `GET /library/changes` answers or by exporting again, and to resolve the set against the `structure` the client then holds. The second is released at the player, by whatever put it there, and nothing a client sends changes that. */
         FillConflict: {
             headers: {
                 [name: string]: unknown;
@@ -3080,7 +3098,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description The request was understood and declined before the snapshot was touched: no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, or a `since` that is missing or not a whole number. */
+        /** @description The request was understood and declined before the snapshot was touched: no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, a `since` or a `structure` that is missing or not a whole number, or, on `GET /library/export`, an `only` naming a column `columns` does not declare or naming one twice in two spellings, or a `spine` that is neither `true` nor `false`. */
         LibraryRefused: {
             headers: {
                 [name: string]: unknown;
@@ -3089,7 +3107,11 @@ export interface components {
                 "application/json": components["schemas"]["LibraryRefusal"];
             };
         };
-        /** @description `structure` has moved since the revision named in `since`, so ordinals have shifted and a patch would be meaningless. Export again, which is also where a client declares its columns afresh. */
+        /**
+         * @description The pair `structure` and `since` names no position this run of the component has held: `since` does not belong to that `structure`, or the `structure` is ahead of the current one. This is what a client that kept a snapshot across a restart can see, and a patch would be meaningless. Export again, which is also where a client declares its columns afresh.
+         *
+         *     Tracks having been added or removed is not this: that is a splice, or a `410` where none can be sent.
+         */
         LibraryConflict: {
             headers: {
                 [name: string]: unknown;
@@ -3099,7 +3121,7 @@ export interface components {
             };
         };
         /**
-         * @description The revision asked to catch up from is outside the retained window of 1920, or it is ahead of the current one, which is what a client that kept a snapshot across a component restart sees. Both mean the same thing: export again.
+         * @description No delta or splice can be sent from the pair asked to catch up from: the revision is outside the retained window of 1920 or ahead of the current one, or `structure` has moved and no splice can be sent. That last is a splice of half the export's serialised bytes or more, one no longer held, a compaction of the dictionaries, and a move of `structure` that was not an addition or a removal. All mean the same thing: export again.
          *
          *     That window is spent by listening rather than by the clock. Every track that stops playing is re-read and moves `revision`, and nothing moves it while nobody is listening, so a client asleep overnight comes back inside it. One away across days of playback does not, and exports again.
          */
@@ -3112,7 +3134,7 @@ export interface components {
             };
         };
         /**
-         * @description The snapshot serialises to more than 64 MiB and this component will not send it. The ceiling is on the serialised bytes rather than on what crosses the wire, so gzip does not buy room underneath it. That is a ceiling on the *response*; `413` on a request body is a different limit and a different number.
+         * @description The snapshot serialises to more than 256 MiB and this component will not send it. The ceiling is on the serialised bytes rather than on what crosses the wire, so gzip does not buy room underneath it. That is a ceiling on the *response*; `413` on a request body is a different limit and a different number.
          *
          *     Nothing a client can do about it. It means a library far larger than this format was measured against, and it is worth reporting.
          */
@@ -5254,6 +5276,14 @@ export interface operations {
                  *     At most 64, each 1 to 1024 printable characters, and no repeats. Two spellings of one column, such as `a` and `%61`, are a repeat and are refused. An identical pair sent twice is not: the server collapses it before the component sees it, so it is accepted.
                  */
                 columns: string[];
+                /**
+                 * @description Some of the declared columns, repeated once per column and spelled exactly as in `columns`: the body carries only these columns' ids and dictionaries, and the header says which in `carried`. It never changes the declaration, so it starts no rebuild and is answered at once whenever the declaration is built. Absent means every declared column.
+                 *
+                 *     Each must be one of `columns`. One that is not is a `400` with the error `column not declared`, and a repeat spelled differently from the first, such as `a` and `%61`, is a `400` with `duplicate column`. A byte-identical pair sent twice is collapsed by the server before the component reads it and is accepted. The spine cannot be named; `spine` decides it. See *Asking for part of the declaration*.
+                 */
+                only?: string[];
+                /** @description Whether the body carries the three spine columns. `true` when absent. `false` leaves them out and the header's `spineCarried` says so, which is what a request for the rest of a declaration sends, since the client already holds the spine. Any other value is a `400` with the error `unacceptable spine`. */
+                spine?: boolean;
             };
             header?: never;
             path?: never;
@@ -5270,7 +5300,7 @@ export interface operations {
                     "Content-Encoding"?: "gzip";
                     /** @description `Accept-Encoding`. */
                     Vary?: string;
-                    /** @description The generations and the coding, quoted. */
+                    /** @description The generations, the subset when the request named one, and the coding, quoted. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -5302,10 +5332,15 @@ export interface operations {
         parameters: {
             query: {
                 /**
-                 * @description The `revision` the client currently holds. A whole number. `revision` values are contiguous, so this is exactly what the last snapshot or delta header reported.
+                 * @description The `revision` the client currently holds. A whole number. `revision` values are contiguous, so this is exactly what the last snapshot, delta or splice header reported.
                  * @example 900
                  */
                 since: number;
+                /**
+                 * @description The `structure` the client currently holds, from the same header as `since`. A whole number. The pair is what the component answers from: `since` alone cannot say which numbering a client's ordinals are in.
+                 * @example 41
+                 */
+                structure: number;
             };
             header?: never;
             path?: never;
@@ -5313,7 +5348,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The delta. Its header carries `since`, so a client can confirm what it was patched from. A revision that moved with no id changing is not a revision at all, so an answer here always has something in it. `Cache-Control` is `private, no-cache`, and the bytes are gzipped on the same terms as the snapshot; see *Compression*. */
+            /** @description The delta, or the splice when `structure` is not the current one. Its header carries `kind`, `since` and, on a splice, `sinceStructure`, so a client can confirm what it was patched from. A revision that moved with no id changing is not a revision at all, so an answer here always has something in it. `Cache-Control` is `private, no-cache`, and the bytes are gzipped on the same terms as the snapshot; see *Compression*. */
             200: {
                 headers: {
                     /** @description `private, no-cache`. */
@@ -5322,7 +5357,7 @@ export interface operations {
                     "Content-Encoding"?: "gzip";
                     /** @description `Accept-Encoding`. */
                     Vary?: string;
-                    /** @description The generations, the revision patched from, and the coding, quoted. */
+                    /** @description The generations, the pair patched from, and the coding, quoted. */
                     ETag?: string;
                     [name: string]: unknown;
                 };

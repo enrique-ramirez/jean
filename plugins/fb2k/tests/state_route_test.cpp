@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <optional>
@@ -77,9 +78,9 @@ void fill(Library& library) {
     library.replace(builder.finish());
 }
 
-void fillPastTheCap(Library& library) {
-    constexpr size_t kValueBytes = size_t{1024} * 1024;
-    const size_t rows = (kMaxLibraryBytes / kValueBytes) + 4;
+void fillPastTheCap(Library& library, size_t ceiling) {
+    constexpr size_t kValueBytes = 1024;
+    const size_t rows = (ceiling / kValueBytes) + 4;
 
     LibraryBuilder builder({kTitle}, rows);
     auto& sink = builder.sink();
@@ -90,6 +91,13 @@ void fillPastTheCap(Library& library) {
     }
 
     library.replace(builder.finish());
+}
+
+void checkRefusedForSize(const httplib::Result& response) {
+    REQUIRE(response);
+    CHECK(response->status == 413);
+    CHECK(errorOf(*response) == "the library snapshot is larger than this component sends");
+    CHECK(response->get_header_value("ETag").empty());
 }
 
 // A player halfway through a track, with its position marked well in the past so that a
@@ -161,6 +169,11 @@ std::vector<PlaylistMark> oneListed() {
 
 uint64_t playOne(Library& library, const std::string& count) {
     return library.apply({{0, {"Artist/Album/", "01.flac", "0", "One", count}}});
+}
+
+std::string changesFrom(const Library& library, uint64_t since) {
+    return "/api/library/changes?since=" + std::to_string(since) +
+           "&structure=" + std::to_string(library.state().structure);
 }
 
 // cpp-httplib emits one field line per set_header, and applyCors has already put Origin in one
@@ -366,8 +379,8 @@ TEST_CASE("the poll document carries both generations and the set that is ready"
 
     const auto body = json::parse(response->body)["library"];
     CHECK(body["ready"] == true);
-    CHECK(body["structure"] == 1);
-    CHECK(body["revision"] == 1);
+    CHECK(body["structure"] == library.state().structure);
+    CHECK(body["revision"] == library.state().revision);
     CHECK(body["trackCount"] == 3);
     CHECK(body["columns"] == json::array({kTitle, kPlays}));
 }
@@ -387,8 +400,9 @@ TEST_CASE("the poll document carries what the player is doing beside the library
 
     REQUIRE(body.contains("library"));
     CHECK(body["library"] == json{{"ready", true},
-                                  {"structure", 1},
-                                  {"revision", 1},
+                                  {"structure", library.state().structure},
+                                  {"revision", library.state().revision},
+                                  {"snapshotId", "199c1c42cde1f501"},
                                   {"trackCount", 3},
                                   {"columns", json::array({kTitle, kPlays})},
                                   {"build", nullptr},
@@ -763,7 +777,7 @@ TEST_CASE("every poll route asks again, in no cache but that client's, and keeps
     const TestServer server = serving(&library);
 
     const auto from = playOne(library, "5") - 1;
-    const std::string changes = "/api/library/changes?since=" + std::to_string(from);
+    const std::string changes = changesFrom(library, from);
 
     for (const std::string& path : {std::string("/api/state"), std::string(kExport), changes}) {
         INFO("path: ", path);
@@ -791,8 +805,8 @@ TEST_CASE("a tag one run of the component answered is never current in the next 
     Library after;
     fill(before);
     fill(after);
-    const auto since = playOne(before, "5") - 1;
-    REQUIRE(playOne(after, "5") - 1 == since);
+    const auto sinceBefore = playOne(before, "5") - 1;
+    const auto sinceAfter = playOne(after, "5") - 1;
 
     PlayerStateStore beforePlayer;
     PlayerStateStore afterPlayer;
@@ -802,9 +816,12 @@ TEST_CASE("a tag one run of the component answered is never current in the next 
     const TestServer first = serving(&before, &beforePlayer);
     const TestServer second = serving(&after, &afterPlayer);
 
-    const std::string changes = "/api/library/changes?since=" + std::to_string(since);
+    const std::vector<std::pair<std::string, std::string>> asked{
+        {"/api/state", "/api/state"},
+        {kExport, kExport},
+        {changesFrom(before, sinceBefore), changesFrom(after, sinceAfter)}};
 
-    for (const std::string& path : {std::string("/api/state"), std::string(kExport), changes}) {
+    for (const auto& [path, nextPath] : asked) {
         INFO("path: ", path);
 
         const auto held = get(first, path);
@@ -814,12 +831,12 @@ TEST_CASE("a tag one run of the component answered is never current in the next 
         const auto tag = held->get_header_value("ETag");
         REQUIRE_FALSE(tag.empty());
 
-        const auto fresh = get(second, path);
+        const auto fresh = get(second, nextPath);
         REQUIRE(fresh);
         REQUIRE(fresh->status == 200);
         CHECK(fresh->get_header_value("ETag") != tag);
 
-        const auto revalidated = getHolding(second, path, tag);
+        const auto revalidated = getHolding(second, nextPath, tag);
         REQUIRE(revalidated);
         CHECK(revalidated->status == 200);
         CHECK_FALSE(revalidated->body.empty());
@@ -1524,11 +1541,11 @@ TEST_CASE("a halt mid-build is published, ends the build, keeps the library, and
 TEST_CASE("a build's progress leaves the export and the delta a client holds current") {
     Library library;
     fill(library);
-    playOne(library, "5");
+    const auto since = playOne(library, "5") - 1;
     const TestServer server = serving(&library);
 
     const auto exported = get(server, kExport);
-    const auto patched = get(server, "/api/library/changes?since=1");
+    const auto patched = get(server, changesFrom(library, since));
     REQUIRE(exported);
     REQUIRE(patched);
     REQUIRE(exported->status == 200);
@@ -1538,7 +1555,7 @@ TEST_CASE("a build's progress leaves the export and the delta a client holds cur
 
     const auto exportedAgain = getHolding(server, kExport, exported->get_header_value("ETag"));
     const auto patchedAgain =
-        getHolding(server, "/api/library/changes?since=1", patched->get_header_value("ETag"));
+        getHolding(server, changesFrom(library, since), patched->get_header_value("ETag"));
     REQUIRE(exportedAgain);
     REQUIRE(patchedAgain);
     CHECK(exportedAgain->status == 304);
@@ -1571,7 +1588,7 @@ TEST_CASE(
     fill(library);
     const TestServer server = serving(&library);
     const auto from = playOne(library, "5") - 1;
-    const std::string path = "/api/library/changes?since=" + std::to_string(from);
+    const std::string path = changesFrom(library, from);
 
     auto client = server.client();
     int refusals = 0;
@@ -1593,7 +1610,7 @@ TEST_CASE(
     CHECK(retryAfter == "1");
     CHECK(error == "too many library delta reads");
 
-    const auto malformed = client.Get("/api/library/changes?since=soon");
+    const auto malformed = client.Get("/api/library/changes?since=soon&structure=1");
     REQUIRE(malformed);
     CHECK(malformed->status == 400);
 
@@ -1610,8 +1627,7 @@ TEST_CASE("both binary routes are gzipped for a client that offers it") {
 
     const auto from = playOne(library, "5") - 1;
 
-    for (const std::string& path :
-         {std::string(kExport), "/api/library/changes?since=" + std::to_string(from)}) {
+    for (const std::string& path : {std::string(kExport), changesFrom(library, from)}) {
         INFO("path: ", path);
 
         const auto packed = undecoding(server).Get(path, accepting("gzip"));
@@ -1703,20 +1719,544 @@ TEST_CASE("each coding gets its own validator, and every answer says the body de
     }
 }
 
-// kMaxLibraryBytes bounds what the component serialised and what a client has to hold once it
-// has decoded, so a body that gzips to a few kilobytes is refused all the same.
 TEST_CASE("the size cap is on the serialised snapshot rather than on what goes over the wire") {
-    Library library;
-    fillPastTheCap(library);
+    constexpr size_t kCeiling = size_t{64} * 1024;
+    Library library(kRetainedRevisions, kCeiling);
+    fillPastTheCap(library, kCeiling);
     const TestServer server = serving(&library);
 
-    const auto response = get(server, "/api/library/export?columns=%25title%25");
+    checkRefusedForSize(
+        server.client().Get("/api/library/export?columns=%25title%25", accepting("gzip")));
+}
+
+TEST_CASE("the ceiling on a library body is 256 MiB") {
+    CHECK(kMaxLibraryBytes == size_t{256} * 1024 * 1024);
+}
+
+TEST_CASE("an export is sent at the ceiling and refused one byte past it") {
+    Library unbounded;
+    fill(unbounded);
+    const TestServer measuring = serving(&unbounded);
+    const auto whole = get(measuring, kExport);
+    REQUIRE(whole);
+    REQUIRE(whole->status == 200);
+
+    Library atTheCeiling(kRetainedRevisions, whole->body.size());
+    fill(atTheCeiling);
+    const TestServer sending = serving(&atTheCeiling);
+    const auto sent = get(sending, kExport);
+    REQUIRE(sent);
+    CHECK(sent->status == 200);
+    CHECK(sent->body == whole->body);
+
+    Library pastIt(kRetainedRevisions, whole->body.size() - 1);
+    fill(pastIt);
+    const TestServer refusing = serving(&pastIt);
+    checkRefusedForSize(get(refusing, kExport));
+}
+
+namespace {
+
+struct DeltaShape {
+    const char* name;
+
+    std::function<uint64_t(Library&)> prepare;
+};
+
+void fillWith(Library& library, const std::vector<std::string>& columns,
+              const std::vector<std::vector<std::string>>& rows) {
+    LibraryBuilder builder(columns, rows.size());
+    auto& sink = builder.sink();
+    for (size_t index = 0; index < rows.size(); ++index)
+        sink.row(index, rows[index]);
+    library.replace(builder.finish());
+}
+
+std::vector<DeltaShape> deltaShapes() {
+    constexpr uint32_t kTracks = 300;
+    constexpr uint32_t kEveryTenth = 10;
+    constexpr size_t kLongValue = 40;
+
+    return {
+        {"one play count",
+         [](Library& library) {
+             fill(library);
+             return playOne(library, "5") - 1;
+         }},
+        {"a spine column and a column, with multi-byte appends",
+         [](Library& library) {
+             fill(library);
+             return library.apply({{2, {"Artist/Ötherß/", "03.flac", "0", "Thrée", "?"}}}) - 1;
+         }},
+        {"a few long values across three hundred tracks",
+         [](Library& library) {
+             std::vector<std::vector<std::string>> rows;
+             std::vector<RowChange> changes;
+             for (uint32_t ordinal = 0; ordinal < kTracks; ++ordinal) {
+                 const auto file = std::to_string(ordinal) + ".flac";
+                 rows.push_back({"Artist/Album/", file, "0", "Title " + file, "0"});
+                 if (ordinal % kEveryTenth == 0) {
+                     changes.push_back({ordinal,
+                                        {"Artist/Album/", file, "0", "Title " + file,
+                                         file + std::string(kLongValue, 'x')}});
+                 }
+             }
+             fillWith(library, {kTitle, kPlays}, rows);
+             return library.apply(changes) - 1;
+         }},
+        {"nothing moved",
+         [](Library& library) {
+             fill(library);
+             return library.state().revision;
+         }},
+        {"column names the header escapes or replaces",
+         [](Library& library) {
+             fillWith(library, {R"(%title% "quoted" \ slashed)", "%plays%\xff"},
+                      {{"Artist/Album/", "01.flac", "0", "One", "4"}});
+             return library.apply({{0, {"Artist/Album/", "01.flac", "0", "Uno", "5"}}}) - 1;
+         }},
+    };
+}
+
+}  // namespace
+
+TEST_CASE("a delta is sent at the ceiling and refused one byte past it, whatever its shape") {
+    for (const DeltaShape& shape : deltaShapes()) {
+        CAPTURE(shape.name);
+
+        Library unbounded;
+        const uint64_t since = shape.prepare(unbounded);
+        const std::string path = changesFrom(unbounded, since);
+        const TestServer measuring = serving(&unbounded);
+        const auto whole = get(measuring, path);
+        REQUIRE(whole);
+        REQUIRE(whole->status == 200);
+
+        Library atTheCeiling(kRetainedRevisions, whole->body.size());
+        REQUIRE(shape.prepare(atTheCeiling) == since);
+        const TestServer sending = serving(&atTheCeiling);
+        const auto sent = get(sending, path);
+        REQUIRE(sent);
+        CHECK(sent->status == 200);
+        CHECK(sent->body == whole->body);
+
+        Library pastIt(kRetainedRevisions, whole->body.size() - 1);
+        REQUIRE(shape.prepare(pastIt) == since);
+        const TestServer refusing = serving(&pastIt);
+        checkRefusedForSize(get(refusing, path));
+    }
+}
+
+namespace {
+
+constexpr char kAlbum[] = "%album%";
+
+constexpr char kNowhere[] = "%nonexistent%";
+
+std::vector<std::string> declared() {
+    return {kAlbum, kTitle, kNowhere, kPlays};
+}
+
+std::vector<std::string> firstPart() {
+    return {kPlays, kTitle};
+}
+
+std::vector<std::string> latePart() {
+    return {kNowhere, kAlbum};
+}
+
+void fillDeclared(Library& library) {
+    fillWith(library, declared(),
+             {{"Artist/Album/", "01.flac", "0", "Album", "One", "?", "4"},
+              {"Artist/Album/", "02.flac", "0", "Album", "Two", "?", "0"},
+              {"Artist/Other/", "03.flac", "0", "Other", "Three", "?", "?"}});
+}
+
+uint64_t playFirstDeclared(Library& library, const std::string& count) {
+    return library.apply({{0, {"Artist/Album/", "01.flac", "0", "Album", "One", "?", count}}});
+}
+
+std::string percentEncoded(const std::string& column) {
+    std::string encoded;
+    for (const char c : column)
+        encoded += c == '%' ? std::string("%25") : std::string(1, c);
+    return encoded;
+}
+
+std::string exportPath(const std::vector<std::string>& only = {},
+                       std::optional<bool> spine = std::nullopt) {
+    std::string path = "/api/library/export?";
+    const auto add = [&path](const char* name, const std::string& value) {
+        if (path.back() != '?')
+            path += '&';
+        path += std::string(name) + '=' + percentEncoded(value);
+    };
+
+    for (const auto& column : declared())
+        add("columns", column);
+    for (const auto& column : only)
+        add("only", column);
+    if (spine)
+        add("spine", *spine ? "true" : "false");
+
+    return path;
+}
+
+Wire exportedPart(const TestServer& server, const std::string& path) {
+    const auto response = get(server, path);
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+    return decode(response->body);
+}
+
+std::vector<std::string> carriedBy(const Wire& wire) {
+    std::vector<std::string> names;
+    for (const auto& name : wire.header.value("carried", json::array()))
+        names.push_back(name.get<std::string>());
+
+    return names;
+}
+
+std::vector<std::string> inDeclarationOrder(const std::vector<std::string>& part) {
+    std::vector<std::string> ordered;
+    for (const auto& column : declared())
+        if (std::find(part.begin(), part.end(), column) != part.end())
+            ordered.push_back(column);
+
+    return ordered;
+}
+
+void collectSections(const json& placed, std::vector<std::pair<size_t, size_t>>& sections) {
+    if (placed.is_object() && placed.contains("offset")) {
+        const auto offset = placed["offset"].get<size_t>();
+        if (placed.contains("length"))
+            sections.emplace_back(offset, offset + placed["length"].get<size_t>());
+        else
+            sections.emplace_back(
+                offset, offset + (placed["count"].get<size_t>() * placed["width"].get<size_t>()));
+    }
+    if (placed.is_structured())
+        for (const auto& inner : placed)
+            collectSections(inner, sections);
+}
+
+size_t unplacedBytes(const Wire& wire) {
+    constexpr size_t kAlignment = 4;
+    std::vector<std::pair<size_t, size_t>> sections;
+    collectSections(wire.header, sections);
+    std::sort(sections.begin(), sections.end());
+
+    size_t unplaced = 0;
+    size_t at = 0;
+    for (const auto& [offset, end] : sections) {
+        if (offset >= at + kAlignment)
+            unplaced += offset - at;
+        at = std::max(at, end);
+    }
+    return unplaced + (wire.blob.size() - std::min(at, wire.blob.size()));
+}
+
+json describedOnly(json entry) {
+    entry.erase("ids");
+    entry.erase("dict");
+    return entry;
+}
+
+}  // namespace
+
+TEST_CASE(
+    "a part carries only the columns it names, row for row, and describes every declared "
+    "one") {
+    Library library;
+    fillDeclared(library);
+    const TestServer server = serving(&library);
+
+    const auto wholeResponse = get(server, exportPath());
+    REQUIRE(wholeResponse);
+    REQUIRE(wholeResponse->status == 200);
+    const Wire whole = decode(wholeResponse->body);
+
+    const auto partResponse = get(server, exportPath(firstPart()));
+    REQUIRE(partResponse);
+    REQUIRE(partResponse->status == 200);
+    const Wire part = decode(partResponse->body);
+
+    CHECK(columnNames(part.header) == declared());
+    CHECK(carriedBy(part) == inDeclarationOrder(firstPart()));
+    CHECK(part.header.value("spineCarried", json()) == true);
+
+    for (const auto& name : firstPart()) {
+        INFO("carried: ", name);
+        CHECK(column(part, namedColumn(part, name)) == column(whole, namedColumn(whole, name)));
+    }
+
+    for (const auto& name : latePart()) {
+        INFO("not carried: ", name);
+        CHECK(namedColumn(part, name) == describedOnly(namedColumn(whole, name)));
+    }
+
+    for (const char* name : kSpineFields) {
+        INFO("spine: ", name);
+        CHECK(column(part, part.header["spine"][name]) ==
+              column(whole, whole.header["spine"][name]));
+    }
+
+    for (const char* field : {"kind", "trackCount", "structure", "revision"}) {
+        INFO("field: ", field);
+        CHECK(part.header.value(field, json()) == whole.header.value(field, json()));
+    }
+
+    CHECK(unplacedBytes(part) == 0);
+}
+
+TEST_CASE("spine=false leaves the spine's rows out and still describes all three") {
+    Library library;
+    fillDeclared(library);
+    const TestServer server = serving(&library);
+
+    const Wire whole = exportedPart(server, exportPath());
+    const auto withSpine = get(server, exportPath(latePart()));
+    const auto saidTrue = get(server, exportPath(latePart(), true));
+    const auto withoutSpine = get(server, exportPath(latePart(), false));
+    REQUIRE(withSpine);
+    REQUIRE(saidTrue);
+    REQUIRE(withoutSpine);
+    REQUIRE(withoutSpine->status == 200);
+    const Wire part = decode(withoutSpine->body);
+
+    CHECK(part.header.value("spineCarried", json()) == false);
+    CHECK(carriedBy(part) == inDeclarationOrder(latePart()));
+
+    for (const char* name : kSpineFields) {
+        INFO("spine: ", name);
+        CHECK(part.header["spine"][name] == describedOnly(whole.header["spine"][name]));
+    }
+
+    for (const auto& name : latePart()) {
+        INFO("carried: ", name);
+        CHECK(column(part, namedColumn(part, name)) == column(whole, namedColumn(whole, name)));
+    }
+
+    CHECK(unplacedBytes(part) == 0);
+    CHECK(withoutSpine->body.size() < withSpine->body.size());
+
+    CHECK(saidTrue->body == withSpine->body);
+}
+
+TEST_CASE("the whole export says it carries every declared column and the spine") {
+    Library library;
+    fillDeclared(library);
+    const TestServer server = serving(&library);
+
+    const Wire whole = exportedPart(server, exportPath());
+
+    CHECK(carriedBy(whole) == inDeclarationOrder(declared()));
+    CHECK(whole.header.value("spineCarried", json()) == true);
+}
+
+TEST_CASE("a part of a built declaration is answered at once and starts no rebuild") {
+    BuildLog log;
+    Library library;
+    fillDeclared(library);
+    const auto before = library.state();
+    const TestServer server = serving(&library, building(&log));
+
+    for (const auto& part : {firstPart(), latePart()}) {
+        const auto response = get(server, exportPath(part, false));
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+        CHECK(carriedBy(decode(response->body)) == inDeclarationOrder(part));
+    }
+
+    CHECK(log.calls == 0);
+    const auto after = library.state();
+    CHECK_FALSE(after.build.has_value());
+    CHECK(after.structure == before.structure);
+    CHECK(after.revision == before.revision);
+}
+
+TEST_CASE(
+    "a part of a declaration not yet built is a 202 that builds the whole declaration, and is "
+    "the part once built") {
+    BuildLog log;
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library, building(&log));
+
+    const auto waiting = get(server, exportPath(firstPart()));
+
+    REQUIRE(waiting);
+    CHECK(waiting->status == 202);
+    CHECK(log.calls == 1);
+    CHECK(log.columns == declared());
+
+    fillDeclared(library);
+    const Wire part = exportedPart(server, exportPath(firstPart()));
+    CHECK(carriedBy(part) == inDeclarationOrder(firstPart()));
+    CHECK(log.calls == 1);
+}
+
+TEST_CASE("a part is answered at the library's current revision") {
+    Library library;
+    fillDeclared(library);
+    const TestServer server = serving(&library);
+
+    const Wire before = exportedPart(server, exportPath(firstPart()));
+    const uint64_t revision = playFirstDeclared(library, "5");
+    REQUIRE(revision == before.header.at("revision").get<uint64_t>() + 1);
+
+    const Wire after = exportedPart(server, exportPath(firstPart()));
+
+    CHECK(after.header.at("revision") == revision);
+    CHECK(column(after, namedColumn(after, kPlays)) == std::vector<std::string>{"5", "0", "?"});
+    CHECK(carriedBy(after) == inDeclarationOrder(firstPart()));
+}
+
+TEST_CASE("a part's validator names the part and the spine flag as well as the generations") {
+    Library library;
+    fillDeclared(library);
+    const TestServer server = serving(&library);
+
+    const auto whole = get(server, exportPath());
+    const auto part = get(server, exportPath(firstPart()));
+    const auto spineless = get(server, exportPath(firstPart(), false));
+    REQUIRE(whole);
+    REQUIRE(part);
+    REQUIRE(spineless);
+
+    const std::set<std::string> tags{whole->get_header_value("ETag"),
+                                     part->get_header_value("ETag"),
+                                     spineless->get_header_value("ETag")};
+    CHECK(tags.size() == 3);
+    for (const auto& tag : tags) {
+        INFO("ETag: ", tag);
+        CHECK(tag.size() > 2);
+        CHECK(tag.starts_with('"'));
+        CHECK(tag.ends_with('"'));
+    }
+
+    const auto partHoldingWhole =
+        getHolding(server, exportPath(firstPart()), whole->get_header_value("ETag"));
+    const auto partHoldingItself =
+        getHolding(server, exportPath(firstPart()), part->get_header_value("ETag"));
+    const auto spinelessHoldingPart =
+        getHolding(server, exportPath(firstPart(), false), part->get_header_value("ETag"));
+    const auto lateHoldingFirst =
+        getHolding(server, exportPath(latePart()), part->get_header_value("ETag"));
+    REQUIRE(partHoldingWhole);
+    REQUIRE(partHoldingItself);
+    REQUIRE(spinelessHoldingPart);
+    REQUIRE(lateHoldingFirst);
+    CHECK(partHoldingWhole->status == 200);
+    CHECK(partHoldingItself->status == 304);
+    CHECK(spinelessHoldingPart->status == 200);
+    CHECK(lateHoldingFirst->status == 200);
+
+    std::vector<std::string> reordered = firstPart();
+    std::reverse(reordered.begin(), reordered.end());
+    const auto reorderedHoldingPart =
+        getHolding(server, exportPath(reordered), part->get_header_value("ETag"));
+    REQUIRE(reorderedHoldingPart);
+    CHECK(reorderedHoldingPart->status == 304);
+    CHECK(reorderedHoldingPart->get_header_value("ETag") == part->get_header_value("ETag"));
+
+    playFirstDeclared(library, "5");
+    const auto moved = getHolding(server, exportPath(firstPart()), part->get_header_value("ETag"));
+    REQUIRE(moved);
+    CHECK(moved->status == 200);
+}
+
+TEST_CASE("a part naming a column the declaration lacks is refused before anything is built") {
+    BuildLog log;
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library, building(&log));
+    const TestServer off = serving(nullptr);
+
+    for (const TestServer* answering : {&server, &off}) {
+        const auto undeclared = get(*answering, exportPath({kTitle, "%genre%"}));
+        REQUIRE(undeclared);
+        CHECK(undeclared->status == 400);
+        CHECK(json::parse(undeclared->body) ==
+              json{{"error", "column not declared"},
+                   {"detail", "'only' column 1 is not one of 'columns'"}});
+    }
+
+    const auto spine = get(server, exportPath({"directory"}));
+    REQUIRE(spine);
+    CHECK(spine->status == 400);
+    CHECK(errorOf(*spine) == "column not declared");
+
+    const auto empty = get(server, exportPath({""}));
+    REQUIRE(empty);
+    CHECK(empty->status == 400);
+    CHECK(json::parse(empty->body) == json{{"error", "column not declared"},
+                                           {"detail", "'only' column 0 is not one of 'columns'"}});
+
+    CHECK(log.calls == 0);
+}
+
+TEST_CASE("a spine flag other than true or false is refused before anything is built") {
+    BuildLog log;
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library, building(&log));
+
+    for (const char* flag : {"maybe", "1", "TRUE", ""}) {
+        INFO("spine=", flag);
+        const auto response = get(server, exportPath(firstPart()) + "&spine=" + flag);
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(keysOf(response->body) == Keys{"error", "detail"});
+    }
+
+    CHECK(log.calls == 0);
+}
+
+// cpp-httplib drops a query pair whose raw text repeats an earlier one, so a repeat that
+// arrives is a second spelling of the column.
+TEST_CASE("a part naming one column twice, however it was spelled, is refused") {
+    BuildLog log;
+    Library library;
+    fill(library);
+    const TestServer server = serving(&library, building(&log));
+
+    std::string path = "/api/library/export?";
+    for (const auto& column : declared())
+        path += "columns=" + percentEncoded(column) + '&';
+    path += "only=%25title%25&only=%25t%69tle%25";
+
+    auto raw = server.client();
+    raw.set_path_encode(false);
+    const auto response = raw.Get(path);
 
     REQUIRE(response);
-    CHECK(response->status == 413);
-    CHECK(json::parse(response->body)["error"] ==
-          "the library snapshot is larger than this component sends");
-    CHECK(response->get_header_value("ETag").empty());
+    CHECK(response->status == 400);
+    CHECK(errorOf(*response) == "duplicate column");
+    CHECK(log.calls == 0);
+}
+
+TEST_CASE("a part is sent at the ceiling and refused one byte past it") {
+    Library unbounded;
+    fillDeclared(unbounded);
+    const TestServer measuring = serving(&unbounded);
+    const auto whole = get(measuring, exportPath(latePart(), false));
+    REQUIRE(whole);
+    REQUIRE(whole->status == 200);
+
+    Library atTheCeiling(kRetainedRevisions, whole->body.size());
+    fillDeclared(atTheCeiling);
+    const TestServer sending = serving(&atTheCeiling);
+    const auto sent = get(sending, exportPath(latePart(), false));
+    REQUIRE(sent);
+    CHECK(sent->status == 200);
+    CHECK(sent->body == whole->body);
+    CHECK(carriedBy(decode(sent->body)) == inDeclarationOrder(latePart()));
+
+    Library pastIt(kRetainedRevisions, whole->body.size() - 1);
+    fillDeclared(pastIt);
+    const TestServer refusing = serving(&pastIt);
+    checkRefusedForSize(get(refusing, exportPath(latePart(), false)));
 }
 
 // Order decides where a column lands in the snapshot's array and nothing else, so two
@@ -1838,7 +2378,7 @@ TEST_CASE("a malformed request is refused before the snapshot is consulted") {
     CHECK(overlong->status == 400);
     CHECK(json::parse(overlong->body)["error"] == "unacceptable column");
 
-    const auto notANumber = get(off, "/api/library/changes?since=soon");
+    const auto notANumber = get(off, "/api/library/changes?since=soon&structure=1");
     REQUIRE(notANumber);
     CHECK(notANumber->status == 400);
     CHECK(json::parse(notANumber->body)["error"] == "unacceptable revision");
@@ -1875,7 +2415,7 @@ TEST_CASE("a delta names the columns that moved and no others") {
 
     const auto from = playOne(library, "5") - 1;
 
-    const auto response = get(server, "/api/library/changes?since=" + std::to_string(from));
+    const auto response = get(server, changesFrom(library, from));
 
     REQUIRE(response);
     CHECK(response->status == 200);
@@ -1904,21 +2444,6 @@ TEST_CASE("a delta must say what it is catching up from") {
     CHECK(body["detail"] == "'since' is required");
 }
 
-// A rebuild with a different set moves `structure`, so a client holding the wrong one reaches
-// this rather than a refusal of its own. Its next move is the same either way: export.
-TEST_CASE("a client whose ordinals have shifted is told to export rather than patched") {
-    Library library;
-    fill(library);
-    const TestServer server = serving(&library);
-
-    const auto response = get(server, "/api/library/changes?since=0");
-
-    REQUIRE(response);
-    CHECK(response->status == 409);
-    CHECK(json::parse(response->body)["error"] ==
-          "tracks were added or removed; export the library again");
-}
-
 TEST_CASE("a client too far behind to be patched is told so, and so is one from the future") {
     Library library(1);
     fill(library);
@@ -1927,13 +2452,13 @@ TEST_CASE("a client too far behind to be patched is told so, and so is one from 
     playOne(library, "5");
     const auto current = playOne(library, "6");
 
-    const auto behind = get(server, "/api/library/changes?since=1");
+    const auto behind = get(server, changesFrom(library, current - 2));
     REQUIRE(behind);
     CHECK(behind->status == 410);
     CHECK(json::parse(behind->body)["error"] ==
           "that revision is older than the retained window; export the library again");
 
-    const auto ahead = get(server, "/api/library/changes?since=" + std::to_string(current + 1));
+    const auto ahead = get(server, changesFrom(library, current + 1));
     REQUIRE(ahead);
     CHECK(ahead->status == 410);
     CHECK(json::parse(ahead->body)["error"] == "no such revision");
@@ -1953,7 +2478,7 @@ TEST_CASE("an install with the library switched off says so on every library rou
     };
 
     unavailable(get(off, kExport));
-    unavailable(get(off, "/api/library/changes?since=1"));
+    unavailable(get(off, "/api/library/changes?since=1&structure=1"));
     unavailable(refresh(off));
     CHECK(log.calls == 0);
 }
@@ -1989,6 +2514,7 @@ TEST_CASE("a player with no media library still answers what it is playing") {
     CHECK(body["library"] == json{{"ready", false},
                                   {"structure", 0},
                                   {"revision", 0},
+                                  {"snapshotId", "0000000000000000"},
                                   {"trackCount", 0},
                                   {"columns", json::array()},
                                   {"build", nullptr},
@@ -2045,7 +2571,7 @@ TEST_CASE("a library that has not been built yet is a wait rather than an absenc
     CHECK(exported->status == 202);
     CHECK(log.columns == std::vector<std::string>{kTitle, kPlays});
 
-    const auto patched = get(server, "/api/library/changes?since=1");
+    const auto patched = get(server, "/api/library/changes?since=0&structure=0");
     REQUIRE(patched);
     CHECK(patched->status == 503);
     CHECK(json::parse(patched->body)["error"] == "the library snapshot has not been built yet");
@@ -2067,7 +2593,7 @@ TEST_CASE("a refresh reproduces the set a client last declared, as a change in t
     CHECK(log.columns == std::vector<std::string>{"%genre%"});
     CHECK(log.reasons.front() == RebuildReason::columnsDeclared);
     CHECK(log.reasons.back() == RebuildReason::dataChanged);
-    CHECK(json::parse(response->body)["structure"] == 1);
+    CHECK(json::parse(response->body)["structure"] == library.state().structure);
 }
 
 // Otherwise a refresh from a client that has not exported yet would replace a good snapshot
@@ -2437,11 +2963,11 @@ TEST_CASE("no library or track route answers a status contract/openapi.yaml does
     note("GET /library/export", get(off, kExport));
     note("GET /library/export", get(server, "/api/library/export"));
     note("GET /library/export", get(server, kExport));
-    note("GET /library/changes", get(server, "/api/library/changes?since=1"));
+    note("GET /library/changes", get(server, "/api/library/changes?since=0&structure=0"));
 
     fill(library);
     playOne(library, "5");
-    playOne(library, "6");
+    const auto played = playOne(library, "6");
 
     const auto exported = get(server, kExport);
     note("GET /library/export", exported);
@@ -2449,16 +2975,17 @@ TEST_CASE("no library or track route answers a status contract/openapi.yaml does
     note("GET /library/export", getHolding(server, kExport, exported->get_header_value("ETag")));
     note("GET /library/export", server.client().Get(kExport));
 
-    const auto delta = get(server, "/api/library/changes?since=2");
+    const auto delta = get(server, changesFrom(library, played - 1));
     note("GET /library/changes", delta);
     REQUIRE(delta);
     note("GET /library/changes",
-         getHolding(server, "/api/library/changes?since=2", delta->get_header_value("ETag")));
-    note("GET /library/changes", server.client().Get("/api/library/changes?since=2"));
+         getHolding(server, changesFrom(library, played - 1), delta->get_header_value("ETag")));
+    note("GET /library/changes", server.client().Get(changesFrom(library, played - 1)));
     note("GET /library/changes", get(server, "/api/library/changes"));
-    note("GET /library/changes", get(server, "/api/library/changes?since=0"));
-    note("GET /library/changes", get(server, "/api/library/changes?since=99"));
-    note("GET /library/changes", get(off, "/api/library/changes?since=1"));
+    note("GET /library/changes", get(server, "/api/library/changes?since=2"));
+    note("GET /library/changes", get(server, changesFrom(library, 0)));
+    note("GET /library/changes", get(server, changesFrom(library, played + 98)));
+    note("GET /library/changes", get(off, "/api/library/changes?since=1&structure=1"));
 
     note("POST /library/refresh", refresh(server));
     note("POST /library/refresh",

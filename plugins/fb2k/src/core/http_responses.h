@@ -114,9 +114,12 @@ public:
     // Null where compression failed.
     SharedBytes of(const SharedBytes& plain);
 
+    void forget();
+
 private:
     std::mutex lock_;
-    SharedBytes plain_;
+
+    std::weak_ptr<const std::string> plain_;
     SharedBytes packed_;
 };
 
@@ -124,6 +127,9 @@ private:
 // serialising a library is the expensive half of any of these requests.
 void sendIfChanged(const httplib::Request& req, httplib::Response& res, const std::string& name,
                    const char* contentType, const std::function<std::string()>& produce);
+
+void sendIfChanged(const httplib::Request& req, httplib::Response& res, const std::string& name,
+                   const char* contentType, const std::function<SharedBytes()>& produce);
 
 void sendIfChanged(const httplib::Request& req, httplib::Response& res, const std::string& name,
                    const char* contentType, const std::function<SharedBytes()>& produce,

@@ -79,10 +79,10 @@ json buildOf(const std::optional<BuildProgress>& build) {
 }
 
 json libraryFields(const Library::State& state) {
-    return json{{"ready", state.ready},       {"structure", state.structure},
-                {"revision", state.revision}, {"trackCount", state.trackCount},
-                {"columns", state.columns},   {"build", buildOf(state.build)},
-                {"halted", state.halted}};
+    return json{{"ready", state.ready},           {"structure", state.structure},
+                {"revision", state.revision},     {"snapshotId", snapshotIdText(state.snapshotId)},
+                {"trackCount", state.trackCount}, {"columns", state.columns},
+                {"build", buildOf(state.build)},  {"halted", state.halted}};
 }
 
 const char* playbackName(PlaybackState playback) {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/library_splice.h"
 #include "core/shared_bytes.h"
 
 #include <cstddef>
@@ -12,7 +13,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 // A snapshot of the player's media library and the wire format a client reads it from. Pure:
@@ -47,22 +47,28 @@ constexpr size_t kRetainedListeningHours = 48;
 // the client exports again.
 constexpr size_t kRetainedRevisions = kRevisionsPerListeningHour * kRetainedListeningHours;
 
+constexpr size_t kHeldParts = 2;
+
 enum class IdWidth : uint8_t { one = 1, two = 2, four = 4 };
 
 // The narrowest of the three holding every id from 0 to distinctValues - 1.
 IdWidth widthFor(size_t distinctValues);
 
-struct TransparentStringHash {
-    using is_transparent = void;
-    size_t operator()(std::string_view text) const { return std::hash<std::string_view>{}(text); }
-};
-
 // Distinct values in the order they were first seen, and the id each was given.
 struct Dictionary {
     std::vector<std::string> values;
-    std::unordered_map<std::string, uint32_t, TransparentStringHash, std::equal_to<>> ids;
 
     uint32_t intern(std::string_view value);
+    std::optional<uint32_t> find(std::string_view value) const;
+
+    std::vector<uint32_t> sortBytewise();
+
+private:
+    std::optional<uint32_t> locate(std::string_view value, uint32_t hash) const;
+    void place(uint32_t index);
+
+    std::vector<uint32_t> slots_;
+    std::vector<uint32_t> hashes_;
 };
 
 // A dictionary and one id per row. Nothing here parses, types or normalises: `?`, `''` and
@@ -78,13 +84,38 @@ struct Snapshot {
     uint64_t structure = 0;
     uint64_t revision = 0;
 
+    uint64_t snapshotId = 0;
+
     // kSpineFields first, in order, then the columns the request asked for.
     std::vector<Column> columns;
 
     size_t trackCount() const;
 };
 
+struct ExportPart {
+    std::vector<std::string> only;
+    bool spine = true;
+};
+
+struct Carrying {
+    std::vector<bool> columns;
+    bool spine = true;
+
+    bool whole() const;
+
+    std::string key() const;
+};
+
+Carrying carryingOf(const std::vector<std::string>& declared, const ExportPart& part);
+
 std::string serialiseSnapshot(const Snapshot& snapshot);
+
+std::string snapshotIdText(uint64_t snapshotId);
+
+size_t serialisedBytes(const Snapshot& snapshot);
+
+std::optional<std::string> serialiseSnapshotWithin(const Snapshot& snapshot,
+                                                   const Carrying& carrying, size_t maxBytes);
 
 struct RelativePathParts {
     std::string directory;
@@ -180,8 +211,15 @@ struct ColumnDelta {
 struct Delta {
     uint64_t structure = 0;
     uint64_t revision = 0;
+    uint64_t snapshotId = 0;
     uint64_t since = 0;
     size_t trackCount = 0;
+
+    bool splice = false;
+    uint64_t sinceStructure = 0;
+
+    std::vector<uint32_t> removed;
+    std::vector<uint32_t> inserted;
 
     // Only the columns that moved.
     std::vector<ColumnDelta> columns;
@@ -189,12 +227,22 @@ struct Delta {
 
 std::string serialiseDelta(const Delta& delta);
 
+std::optional<std::string> serialiseDeltaWithin(const Delta& delta, size_t maxBytes);
+
 enum class DeltaOutcome {
     ok,
     notBuilt,
     structureChanged,
     revisionTooOld,
     revisionUnknown,
+
+    pairNotHeld,
+
+    spliceTooLarge,
+
+    dictionariesCompacted,
+
+    rearranged,
 };
 
 // One re-queried row, values in the order LibraryBuilder::fields() gives.
@@ -218,6 +266,10 @@ class Library {
 public:
     explicit Library(size_t retainedRevisions = kRetainedRevisions);
 
+    Library(size_t retainedRevisions, size_t maxBytes);
+
+    size_t maxBytes() const { return maxBytes_; }
+
     // One thread, the snapshot worker, is the only caller of this and of apply(), so what
     // structureAfter() announced is what this lands on and no row change lands between the two.
     void replace(Snapshot snapshot);
@@ -238,6 +290,7 @@ public:
         bool ready = false;
         uint64_t structure = 0;
         uint64_t revision = 0;
+        uint64_t snapshotId = 0;
         size_t trackCount = 0;
         std::vector<std::string> columns;
         std::optional<BuildProgress> build;
@@ -255,39 +308,55 @@ public:
 
     // Serialised once per revision and handed to every caller after that. The serialising
     // happens outside the lock state() takes, so a poll never waits on an export.
-    Export exported() const;
+    Export exported(const ExportPart& part = {}) const;
 
     struct Changes {
         DeltaOutcome outcome = DeltaOutcome::ok;
         Delta delta;
     };
 
-    Changes changes(uint64_t since) const;
+    Changes changes(uint64_t structure, uint64_t since) const;
 
     Library(const Library&) = delete;
     Library& operator=(const Library&) = delete;
 
 private:
-    struct Retained {
-        uint64_t revision = 0;
-
-        // Per column, the ordinals it changed.
-        std::vector<std::vector<uint32_t>> ordinals;
-
-        // Per column, the dictionary length a client holding the previous revision has.
-        std::vector<uint32_t> dictionarySizes;
+    struct Generation {
+        uint64_t structure = 0;
+        uint64_t began = 0;
     };
 
     static bool sameShape(const Snapshot& current, const Snapshot& next);
     static std::vector<RowChange> rowChangesBetween(const Snapshot& current, const Snapshot& next);
     std::shared_ptr<const Snapshot> current() const;
 
+    struct SpliceInput {
+        std::shared_ptr<const Snapshot> snapshot;
+
+        std::vector<std::shared_ptr<const Retained>> unseen;
+    };
+
+    bool heldTogether(uint64_t structure, uint64_t since) const;
+    bool retainsFrom(uint64_t since) const;
+    std::optional<Changes> answerWithoutSplice(uint64_t structure, uint64_t since) const;
+    std::optional<SpliceInput> spliceInputFrom(uint64_t since) const;
+    Changes deltaSince(uint64_t since) const;
+    Changes spliceSince(const SpliceInput& input, uint64_t structure, uint64_t since) const;
+    size_t exportBytes(const Snapshot& snapshot) const;
+    static ColumnDelta columnDeltaOf(const Snapshot& snapshot, size_t field,
+                                     std::vector<uint32_t> ordinals, uint32_t base);
+
     const size_t retainedRevisions_;
+    const size_t maxBytes_;
 
     mutable std::mutex mutex_;
     std::shared_ptr<Snapshot> snapshot_ = std::make_shared<Snapshot>();
-    uint64_t structureBegan_ = 0;
-    std::deque<Retained> retained_;
+    std::deque<Generation> generations_;
+
+    uint64_t historyFrom_ = 0;
+    DeltaOutcome historyEndedBy_ = DeltaOutcome::rearranged;
+
+    std::deque<std::shared_ptr<const Retained>> retained_;
 
     // Held apart from an optional: ThreadSanitizer under Apple clang at -O0 does not flag an
     // unlocked access through std::optional's assignment, which would hide a race here.
@@ -295,8 +364,21 @@ private:
     BuildProgress build_;
     bool halted_ = false;
 
+    struct HeldPart {
+        std::string key;
+        Export held;
+    };
+
     mutable std::mutex exportLock_;
     mutable Export lastExport_;
+
+    struct MeasuredExport {
+        uint64_t structure = 0;
+        uint64_t revision = 0;
+        size_t bytes = 0;
+    };
+    mutable MeasuredExport measured_;
+    mutable std::deque<HeldPart> heldParts_;
 };
 
 enum class LibraryRefusal {
@@ -305,6 +387,8 @@ enum class LibraryRefusal {
     badColumn,
     duplicateColumn,
     badSince,
+    columnNotDeclared,
+    badSpine,
 };
 
 struct LibraryRequest {
@@ -316,6 +400,18 @@ struct LibraryRequest {
 
     bool ok() const { return refusal == LibraryRefusal::none; }
 };
+
+struct ExportPartRequest {
+    LibraryRefusal refusal = LibraryRefusal::none;
+    std::string detail;
+    ExportPart part;
+
+    bool ok() const { return refusal == LibraryRefusal::none; }
+};
+
+ExportPartRequest parseExportPart(const std::vector<std::string>& declared,
+                                  const std::vector<std::string>& only,
+                                  const std::optional<std::string>& spine);
 
 // Never throws: the caller is an HTTP handler. `since` is empty for an export.
 LibraryRequest parseLibraryRequest(const std::vector<std::string>& columns,

@@ -91,6 +91,31 @@ OrdinalAsked ordinalAsked(const httplib::Request& req) {
     return asked;
 }
 
+struct ChangesAsked {
+    LibraryRequest request;
+    uint64_t structure = 0;
+};
+
+ChangesAsked changesAsked(const httplib::Request& req) {
+    ChangesAsked asked;
+    if (!req.has_param("since")) {
+        asked.request = refused<LibraryRequest>(LibraryRefusal::badSince, "'since' is required");
+        return asked;
+    }
+
+    asked.request = parseLibraryRequest({}, req.get_param_value("since"));
+    if (!asked.request.ok())
+        return asked;
+
+    if (!req.has_param("structure"))
+        asked.request =
+            refused<LibraryRequest>(LibraryRefusal::badSince, "'structure' is required");
+    else if (!readDecimal(req.get_param_value("structure"), asked.structure))
+        asked.request =
+            refused<LibraryRequest>(LibraryRefusal::badSince, "'structure' must be a whole number");
+    return asked;
+}
+
 void respondTrackRead(httplib::Response& res, const LibraryTrackRead& read) {
     if (read.outcome != PlayerOutcome::done) {
         respondOutcome(res, read.outcome);
@@ -194,10 +219,41 @@ void LibraryRoutes::startBuilding(httplib::Response& res, const std::vector<std:
     respond(res, 202, libraryDocument(state));
 }
 
+std::shared_ptr<GzipOnce> LibraryRoutes::packingFor(const Library::State& state,
+                                                    const std::string& partKey) {
+    const std::lock_guard<std::mutex> lock(packedPartsLock_);
+
+    if (packedPartsStructure_ != state.structure || packedPartsRevision_ != state.revision) {
+        packedParts_.clear();
+        packedPartsStructure_ = state.structure;
+        packedPartsRevision_ = state.revision;
+    }
+
+    const auto held =
+        std::find_if(packedParts_.begin(), packedParts_.end(),
+                     [&partKey](const PackedPart& part) { return part.key == partKey; });
+    if (held != packedParts_.end())
+        return held->packing;
+
+    packedParts_.push_back({partKey, std::make_shared<GzipOnce>()});
+    while (packedParts_.size() > kHeldParts)
+        packedParts_.pop_front();
+
+    return packedParts_.back().packing;
+}
+
 void LibraryRoutes::exportSnapshot(const httplib::Request& req, httplib::Response& res) {
     const auto request = columnsDeclared(req);
     if (!request.ok()) {
         respondRefusal(res, request.refusal, request.detail);
+        return;
+    }
+
+    const auto part = parseExportPart(
+        request.columns, req.get_param_values("only"),
+        req.has_param("spine") ? std::optional(req.get_param_value("spine")) : std::nullopt);
+    if (!part.ok()) {
+        respondRefusal(res, part.refusal, part.detail);
         return;
     }
 
@@ -212,9 +268,17 @@ void LibraryRoutes::exportSnapshot(const httplib::Request& req, httplib::Respons
         return;
     }
 
-    sendIfChanged(
-        req, res, snapshotTag(state, runId_), kLibraryBytes,
-        [this] { return library_->exported().bytes; }, packedExport_);
+    const auto key = carryingOf(state.columns, part.part).key();
+    const auto produce = [this, &part] { return library_->exported(part.part).bytes; };
+    const auto name = snapshotTag(state, runId_) + (key.empty() ? std::string() : "-" + key);
+
+    if (key.empty()) {
+        sendIfChanged(req, res, name, kLibraryBytes, produce, packedExport_);
+        return;
+    }
+
+    const auto packing = packingFor(state, key);
+    sendIfChanged(req, res, name, kLibraryBytes, produce, *packing);
 }
 
 void LibraryRoutes::readTrack(const httplib::Request& req, httplib::Response& res) {
@@ -294,12 +358,9 @@ void LibraryRoutes::addTo(httplib::Server& server) {
     });
 
     server.Get("/api/library/changes", [this](const httplib::Request& req, httplib::Response& res) {
-        const auto request =
-            req.has_param("since")
-                ? parseLibraryRequest({}, req.get_param_value("since"))
-                : refused<LibraryRequest>(LibraryRefusal::badSince, "'since' is required");
-        if (!request.ok()) {
-            respondRefusal(res, request.refusal, request.detail);
+        const auto asked = changesAsked(req);
+        if (!asked.request.ok()) {
+            respondRefusal(res, asked.request.refusal, asked.request.detail);
             return;
         }
 
@@ -312,19 +373,22 @@ void LibraryRoutes::addTo(httplib::Server& server) {
             return;
 
         const auto state = library_->state();
-        const auto name = snapshotTag(state, runId_) + "-f" + std::to_string(request.since);
+        const auto name = snapshotTag(state, runId_) + "-f" + std::to_string(asked.request.since) +
+                          "-g" + std::to_string(asked.structure);
 
         std::optional<Library::Changes> missed;
         if (!alreadyHoldsCurrent(req, name)) {
-            missed = library_->changes(request.since);
+            missed = library_->changes(asked.structure, asked.request.since);
             if (missed->outcome != DeltaOutcome::ok) {
                 respondOutcome(res, missed->outcome);
                 return;
             }
         }
 
-        sendIfChanged(req, res, name, kLibraryBytes,
-                      [&missed] { return serialiseDelta(missed->delta); });
+        sendIfChanged(req, res, name, kLibraryBytes, [this, &missed]() -> SharedBytes {
+            auto body = serialiseDeltaWithin(missed->delta, library_->maxBytes());
+            return body ? std::make_shared<const std::string>(std::move(*body)) : nullptr;
+        });
     });
 
     server.Post("/api/library/refresh", [this](const httplib::Request&, httplib::Response& res) {

@@ -149,6 +149,10 @@ std::string describe(LibraryRefusal refusal) {
             return "duplicate column";
         case LibraryRefusal::badSince:
             return "unacceptable revision";
+        case LibraryRefusal::columnNotDeclared:
+            return "column not declared";
+        case LibraryRefusal::badSpine:
+            return "unacceptable spine";
     }
     return "unknown";
 }
@@ -165,6 +169,18 @@ std::string describe(DeltaOutcome outcome) {
             return "that revision is older than the retained window; export the library again";
         case DeltaOutcome::revisionUnknown:
             return "no such revision";
+        case DeltaOutcome::pairNotHeld:
+            return "that structure and revision name no position this library held; export the "
+                   "library again";
+        case DeltaOutcome::spliceTooLarge:
+            return "the tracks added or removed since then are too many to send; export the "
+                   "library again";
+        case DeltaOutcome::dictionariesCompacted:
+            return "the library was rebuilt with its dictionaries compacted; export the library "
+                   "again";
+        case DeltaOutcome::rearranged:
+            return "the library was rebuilt with other columns or in another order; export the "
+                   "library again";
     }
     return "unknown";
 }
@@ -280,6 +296,8 @@ int httpStatusFor(LibraryRefusal refusal) {
         case LibraryRefusal::badColumn:
         case LibraryRefusal::duplicateColumn:
         case LibraryRefusal::badSince:
+        case LibraryRefusal::columnNotDeclared:
+        case LibraryRefusal::badSpine:
             return 400;
     }
     return 400;
@@ -290,9 +308,13 @@ int httpStatusFor(DeltaOutcome outcome) {
         case DeltaOutcome::ok:
             return 200;
         case DeltaOutcome::structureChanged:
+        case DeltaOutcome::pairNotHeld:
             return 409;
         case DeltaOutcome::revisionTooOld:
         case DeltaOutcome::revisionUnknown:
+        case DeltaOutcome::spliceTooLarge:
+        case DeltaOutcome::dictionariesCompacted:
+        case DeltaOutcome::rearranged:
             return 410;
         case DeltaOutcome::notBuilt:
             return 503;

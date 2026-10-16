@@ -63,6 +63,9 @@ std::string ratingWriteAtRow(const std::string& playlist, uint32_t index, uint64
 
 constexpr size_t kLibraryTracks = 8;
 
+Snapshot snapshotOf(const std::vector<std::string>& columns,
+                    const std::vector<std::vector<std::string>>& rows);
+
 // A media library snapshot of `trackCount` tracks declaring the one column `%title%`, each at
 // builtTrackPath and titled builtTrackTitle.
 void buildLibrary(Library& library, size_t trackCount = kLibraryTracks);

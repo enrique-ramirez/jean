@@ -41,11 +41,7 @@ std::string sharedPortNotice(int port);
 constexpr size_t kMaxBodyBytes = size_t{256} * 1024;
 
 // The one response too big for kMaxBodyBytes to say anything about, which bounds a request.
-// A library of a quarter of a million tracks serialises to a few tens of megabytes, so this
-// leaves room above that and still refuses before a client's memory is the thing that fails.
-// It bounds the serialised body, before any content coding: gzip is what crosses the wire, and
-// what a client has to hold once it has decoded is the number this caps.
-constexpr size_t kMaxLibraryBytes = size_t{64} * 1024 * 1024;
+constexpr size_t kMaxLibraryBytes = size_t{256} * 1024 * 1024;
 
 // Each connection is served on a pool thread: `threads` start with the server, the pool
 // grows to `maxThreads` while every one is busy, and a connection accepted past that waits in a

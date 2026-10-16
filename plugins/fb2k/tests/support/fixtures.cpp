@@ -28,15 +28,25 @@ std::string ratingWriteAtRow(const std::string& playlist, uint32_t index, uint64
            kRating + R"("}})";
 }
 
-void buildLibrary(Library& library, size_t trackCount) {
-    LibraryBuilder builder({"%title%"}, trackCount);
+Snapshot snapshotOf(const std::vector<std::string>& columns,
+                    const std::vector<std::vector<std::string>>& rows) {
+    LibraryBuilder builder(columns, rows.size());
     auto& sink = builder.sink();
 
-    for (size_t index = 0; index < trackCount; ++index)
-        sink.row(index,
-                 {kBuiltFolder, std::to_string(index) + ".flac", "0", builtTrackTitle(index)});
+    for (size_t index = 0; index < rows.size(); ++index)
+        sink.row(index, rows[index]);
 
-    library.replace(builder.finish());
+    return builder.finish();
+}
+
+void buildLibrary(Library& library, size_t trackCount) {
+    std::vector<std::vector<std::string>> rows;
+    rows.reserve(trackCount);
+    for (size_t index = 0; index < trackCount; ++index)
+        rows.push_back(
+            {kBuiltFolder, std::to_string(index) + ".flac", "0", builtTrackTitle(index)});
+
+    library.replace(snapshotOf({"%title%"}, rows));
 }
 
 void moveLibraryStructure(Library& library) {

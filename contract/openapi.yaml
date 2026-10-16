@@ -61,7 +61,7 @@ info:
 
     `GET /state` is a small JSON document a client polls, carrying the library's two generations under `library`. The library itself is a binary snapshot from `GET /library/export`, patched afterwards by `GET /library/changes`. There is no paged route: a client holds the whole library and asks the questions locally. `GET /track/library` is the one per-entity route, and it reads a single track back after a write rather than standing in for a browse.
 
-    Two generations say what changed. `structure` moves when tracks are added or removed, which shifts every ordinal after the change, so a client throws its arrays away and exports again. It also moves when the column set changes, or when a rebuild puts the same tracks in another order, since every ordinal then names a different track. A rebuild that finds the same tracks and columns in the same order keeps `structure` and moves `revision` only for the rows whose values changed, so a refresh costs a client still inside the retained window a delta rather than an export. `revision` moves when rows change in place, which leaves ordinals alone, so a client fetches a delta and patches. Modifications are constant, roughly one per track played; additions and removals are rare and the user just caused them.
+    Two generations say what changed. `structure` moves when tracks are added or removed, which shifts every ordinal after the change, so a client either edits its arrays with a splice (see *Reading a splice*) or throws them away and exports again. It also moves when the column set changes, or when a rebuild puts the same tracks in another order, since every ordinal then names a different track; no splice describes those two, and a client exports again. A rebuild that finds the same tracks and columns in the same order keeps `structure` and moves `revision` only for the rows whose values changed, so a refresh costs a client still inside the retained window a delta rather than an export. `revision` moves when rows change in place, which leaves ordinals alone, so a client fetches a delta and patches. Modifications are constant, roughly one per track played; additions and removals are rare and the user just caused them.
 
     An **ordinal** is a track's position in the snapshot, counted from zero, and it is the only handle these routes use. Ordinals follow the player's own ordering of library-relative paths, which need not be byte order: a player may put `2 Mello` ahead of `10cc`, where byte order would put it after. Ties are broken by subsong and then by the player's own canonical path, so the order is total and does not change between rebuilds of an unchanged library. A client MUST NOT reproduce the comparison or read meaning into where a path lands: an ordinal is a position the component handed it, never one it could have worked out. An ordinal means nothing across a `structure` change.
 
@@ -112,6 +112,8 @@ info:
 
     Each column also carries what a client would otherwise learn by sampling rows and guessing. `distinct` is the number of values in the whole dictionary, `hasUnresolved` says whether `?` is one of them, and `allUnresolved` says whether it is the only one. A field that resolves on one track in ten thousand is therefore detected exactly rather than missed, which sampling cannot promise.
 
+    **A dictionary built fresh is compact and in order.** A snapshot the component has just built holds each column's dictionary, the spine's included, as exactly the distinct values its rows use, with no entry nothing refers to, sorted bytewise on their UTF-8 bytes. Value ids therefore run in that order. A dictionary kept across deltas and splices within a run appends as *Reading a delta* says, so it is in that order only until the first value is appended.
+
     ### The spine
 
     Three columns the component always builds, under `spine` rather than in `columns`, and they read exactly like any other column.
@@ -125,7 +127,95 @@ info:
     - `ordinals` is `ordinals.count` ascending ordinals, and `ids` is one new id for each of them, in the same order. `ids.count` equals `ordinals.count`. `ordinals.width` is the narrowest that holds every ordinal from `0` to `trackCount - 1`, which is a different number from the one `ids.width` comes from.
     - Dictionaries are append-only within a `structure` generation, so a delta never restates one. `dict.base` is the number of entries the client already holds, and `dict.text` and `dict.ends` carry only what was appended after it: `dict.ends.count` is `distinct - dict.base`, not `distinct`. Append them and the client's dictionary is current again.
 
-    A value that stops being used leaves an entry behind. The next `structure` rebuild compacts it, and nothing before then does.
+    A value that stops being used leaves an entry behind. A rebuild that adds or removes tracks keeps the dictionaries it holds and appends to them, and compacts them instead when the entries no row uses outnumber the ones that are used, or when keeping them would put the export over the ceiling. A delta or a splice never describes a compaction, which is a `410` for every client holding the structure before it.
+
+    `structure` is seeded when the component starts so that a value never repeats across runs, and `revision` counts from there. A `(structure, revision)` pair therefore names one position in one run. A pair a client stored before a restart is never a valid `since` and `structure` for `GET /library/changes` afterwards: the component answers `409`, because the pair names no position this run held.
+
+    A delta may name a column the client has not loaded, because the client asked for part of the declaration (see *Asking for part of the declaration*). The client MUST ignore the delta for that column: its ordinals, its ids and its dictionary entries.
+
+    ### Reading a splice
+
+    A splice is what `GET /library/changes` answers when tracks were added or removed since the pair a client holds. `structure` moves, and the client edits its arrays in place to reach the current pair instead of exporting again. The header's `kind` is `splice`, and a client MUST read it rather than infer it from `structure` having moved.
+
+    The request names both halves of what the client holds, `structure` and `since`, and the answer goes from that pair to the current one however many rebuilds lie between: the component merges them.
+
+    A splice has four parts, applied together:
+
+    - `removed` is the ordinals of the rows to remove, ascending, in the old numbering, which is the one the client holds.
+    - `inserted` is the ordinals the new rows take, ascending, in the new numbering: where they sit once the removals and the insertions are done.
+    - Each column carries, for the new numbering, a delta in the shape *Reading a delta* gives: `ordinals`, `ids`, and the dictionary entries appended after `dict.base`. Its `ordinals` hold every `inserted` ordinal, so every row inserted gets an id in every column, and also the rows that were already there whose value moved between `since` and now, so a client that had not yet fetched the plays in between is brought up to date by the same body.
+    - The spine is a column like any other here. When `inserted.count` is not zero the header's `spine` carries all three of `directory`, `filename` and `subsong`, each with `ordinals` equal to `inserted` and one id per inserted row, and their dictionaries append like any other. A surviving row's spine never moves, so the spine carries nothing else. A cue sheet's subsongs are rows of their own: each is removed and inserted individually.
+
+    When `inserted.count` is not zero, `columns` lists every declared column, whether or not its values moved, so that no inserted row is left without an id. When tracks were only removed, `columns` lists only the columns whose surviving rows moved or whose dictionary grew, and `spine` carries only the spine columns whose dictionary grew, each with `ordinals` empty and its appended entries after `dict.base`. A dictionary grows with no row to show for it when a row was inserted and removed again between the pair a client holds and the current one, and the export the client must end up equal to holds those entries.
+
+    The header is a delta's with these differences:
+
+    ```
+    kind            "splice"
+    structure       the new generation
+    revision        the new generation
+    since           the revision patched from, echoing the request
+    sinceStructure  the structure patched from, echoing the request
+    trackCount      rows after the splice
+    snapshotId      the validator of the snapshot the splice reaches
+    removed         a section: count, width, offset
+    inserted        a section: count, width, offset
+    columns         as in a delta, see above
+    spine           as in a delta, see above
+    ```
+
+    `removed.width` is the narrowest of 1, 2 and 4 that holds every ordinal below the old row count, and `inserted.width` the narrowest that holds every ordinal below `trackCount`, which is also the width of every column's `ordinals`. The old row count is `trackCount - inserted.count + removed.count`.
+
+    The blob is laid out in this order, each section on a four-byte boundary as everywhere else:
+
+    ```
+    removed
+    inserted
+    for each of directory, filename, subsong under spine, then each of columns, in the order of the header:
+        ids
+        dict.text
+        dict.ends
+        ordinals
+    ```
+
+    A client applies it in this order and no other:
+
+    1. Check `kind` is `splice`, `sinceStructure` and `since` are what it holds, and that its row count equals the old row count above. A mismatch is not applied: the client exports again.
+    2. For each column it holds, append the dictionary entries after `dict.base`, which MUST equal the number of entries it holds for that column. A column the client does not hold, because it asked for part of the declaration, is skipped here and in every step after.
+    3. Remove the rows `removed` names from every array it holds, spine included.
+    4. Insert one row into every array it holds at each ordinal `inserted` names, in ascending order.
+    5. Write each column's `ids` at its `ordinals`, which fills every inserted row and updates the rows that moved.
+    6. Take `structure`, `revision` and `snapshotId` from the header.
+    7. Forget every ordinal it read at the old `structure`. Every route that takes an ordinal goes on answering `409` for one read at the old `structure`, so a client reads its ordinals again from what it now holds and sends the new `structure`.
+
+    After step 6 the client holds exactly what `GET /library/export` would give it at the new `structure` and `revision`, column for column, and the same `snapshotId`.
+
+    `GET /library/changes` answers `410` rather than a splice when any of these is so:
+
+    - The splice's serialised size is half of the serialised size of the export at the current generation, for the declaration the snapshot was built with, or more.
+    - `since` is outside the retained window that `410` describes, or the component no longer holds a splice from `sinceStructure`.
+    - The rebuild between the two compacted a dictionary, so `dict.base` would not name entries the client holds.
+    - The rebuild between the two moved `structure` for a reason that is not an addition or a removal: another column set, or the same tracks in another order.
+
+    The remedy for every one is to export again.
+
+    ### Asking for part of the declaration
+
+    `GET /library/export` takes `only`, which narrows the body to some of the declared columns without changing the declaration. `columns` is still sent in full, it is still the declaration, and so asking for part of it rebuilds nothing: a component that holds a snapshot of that declaration answers at once, and the `202` this route answers is for a declaration that is not built, whatever `only` says. Asking for the rest later is another request with the same `columns` and another `only`.
+
+    - `only` is repeated once per column, as `columns` is, and each is a column expression spelled exactly as it is spelled in `columns`. A name that is not among the declared columns is a `400`, and so is a repeat spelled differently from the first (`a` and `%61`) as `duplicate column`; a byte-identical pair sent twice is collapsed by the server before the component reads it and is accepted. A spine column cannot be named because it is not declared.
+    - `spine` is `true` unless the request says `false`. A body with `spine=false` carries none of the three spine columns, which is what a second request wants, since the directory dictionary is the largest thing in the export and the client already holds it.
+    - The header describes every declared column and the spine whichever the body carries: each column entry has `name`, `distinct`, `hasUnresolved` and `allUnresolved`. Only the ones the body carries have `ids` and `dict`, and `carried` lists them by `name`. `spineCarried` says whether the three spine entries carry theirs.
+    - `trackCount`, `structure`, `revision` and `snapshotId` are the whole snapshot's, not the subset's. The answer is at the component's current revision.
+    - The `ETag` names the subset and the spine flag as well as the generations and the coding, so a subset and the whole export are two representations and never share a validator.
+
+    A client holds one revision for everything it has loaded. A part answered at a `structure` other than the one the client holds is thrown away. A part answered at a higher `revision` than the client holds is not used until the client has patched the rest of its columns up to it with `GET /library/changes`. A part answered at a lower one is patched up first, by sending `GET /library/changes` its own revision and applying the answer to the columns the part carries, and used after that.
+
+    ### The validator
+
+    `snapshotId` names the content of the library: its cells, whatever ids or dictionaries hold them, and nothing about the run that serves them. It is 16 lowercase hexadecimal digits, a 64-bit value built from one term per cell, so a changed cell costs a subtraction and an addition and the component never re-reads the library to publish it. A cell is the value of one column at one ordinal. The columns are every declared column, named by its expression exactly as declared, and the three spine columns, named `directory`, `filename` and `subsong`. A cell's term is FNV-1a 64 (offset basis `0xcbf29ce484222325`, prime `0x100000001b3`, arithmetic modulo 2^64) over these bytes, passed through SplitMix64's finaliser, which is `z ^= z >> 30; z *= 0xbf58476d1ce4e5b9; z ^= z >> 27; z *= 0x94d049bb133111eb; z ^= z >> 31` with `z` the FNV-1a result and every multiplication modulo 2^64, because FNV-1a's terms are too regular to add: two cells whose last byte changes in the same bit would cancel. The bytes are: one prefix byte, `0x01` for a declared column and `0x02` for a spine column; the column's name as UTF-8; `0x00`; the ordinal as decimal ASCII digits with no sign or padding; `0x00`; then the cell's value as UTF-8, or the single byte `0xFF` in place of the value when the cell is unresolved, which is when the value is `?`. The count has a term of its own: FNV-1a 64 over the byte `0x03` followed by `trackCount` as decimal ASCII digits, passed through the same finaliser. `snapshotId` is the sum of every term modulo 2^64, written as 16 lowercase hexadecimal digits with leading zeros kept. A sum does not depend on the order the terms are added in, so the ordinals and the names are what make it depend on the order of the rows and on the declaration. It is the same across a restart of the player with an unchanged library, and different after any change to a cell, a column, the count or the order of the rows. It does not depend on `structure`, `revision`, dictionary ids, the coding, or the subset a response carries: it names the whole library either way.
+
+    It rides in the `library` object of `GET /state`, beside `structure`, `revision` and `trackCount`, and in the header of a snapshot, a delta and a splice, where it is the value `library.snapshotId` has at the generations the header reaches. A client reloading with a stored copy compares the `structure`, `revision`, `snapshotId` and `trackCount` it stored with those `GET /state` reports. When all four are equal it draws the copy as it is and downloads nothing. At any other pair, including an equal `snapshotId` at another `structure` or `revision`, it asks `GET /library/changes` from the stored pair before it draws anything, and the answer decides. A delta or a splice brings the copy to the player's pair, and the client draws that. A `409`, which says the pair names no position this run held, means the copy is from another run: when its `snapshotId` and `trackCount` equal the player's the client re-keys it and adopts the player's pair, and otherwise it exports. A `410` means it exports. An equal `snapshotId` at another pair never lets the client adopt the player's pair on its own. Within a run, a cell changed and changed back leaves an equal `snapshotId` beside a dictionary that has grown, and tracks removed and added back leave one beside dictionaries that are not in bytewise order, so the next delta's `dict.base` would be wrong. Re-keying is: for each column, spine included, keep the values its rows use, sort them bytewise on their UTF-8 bytes, and renumber its ids to that order. The copy then holds what a fresh export would give, and the next delta applies; without it the stored dictionaries are in the order deltas appended them in, not the order the new run holds, and a delta would write the wrong value. A client compares it by equality and reads nothing else into it, and compares `trackCount` as well, since a collision must not draw a library of another size. Before the first build it is sixteen zeros.
 
     ## Artwork
 
@@ -2024,7 +2114,7 @@ paths:
       description: |
         The document a client polls. It is small, it is `ETag`ged, and a poll that finds nothing new is a `304` with no body.
 
-        Read `library.structure` and `library.revision` from here and compare them with the ones in the header of the snapshot already held. A different `structure` means export again. A higher `revision` with the same `structure` means fetch a delta. Both the same means there is nothing to do.
+        Read `library.structure` and `library.revision` from here and compare them with the ones in the header of the snapshot already held. A different `structure` means fetch a splice, which is an export again where the component answers `410`, or `409` when the pair names no position this run has held. A higher `revision` with the same `structure` means fetch a delta. Both the same means there is nothing to do. `snapshotId` names the content at that pair.
 
         `library.ready` is `false` between the component starting and its first snapshot being built, and also on an install with no media library at all: the two are indistinguishable from this document alone. This is also what a client polls after a `202` from `GET /library/export`: wait until `library.ready` is true and `library.columns` has the same members as the set declared, then ask for the export again.
 
@@ -2065,6 +2155,7 @@ paths:
                       ready: true
                       structure: 41
                       revision: 903
+                      snapshotId: "9f3c2a71b5d04e68"
                       trackCount: 30441
                       columns: ["%title%", "%album artist%", "%play_count%"]
                       build: null
@@ -2097,7 +2188,7 @@ paths:
                   value:
                     configGeneration: 0
                     library:
-                      { ready: false, structure: 0, revision: 0, trackCount: 0, columns: [], build: null }
+                      { ready: false, structure: 0, revision: 0, snapshotId: "0000000000000000", trackCount: 0, columns: [], build: null }
                     player:
                       playback: stopped
                       path: ""
@@ -2126,7 +2217,7 @@ paths:
                   value:
                     configGeneration: 3
                     library:
-                      { ready: true, structure: 41, revision: 903, trackCount: 30441, columns: ["%title%"], build: null }
+                      { ready: true, structure: 41, revision: 903, snapshotId: "9f3c2a71b5d04e68", trackCount: 30441, columns: ["%title%"], build: null }
                     player:
                       playback: playing
                       path: 'C:\Music\Fictional Artist\Imaginary Album\01 Track.flac'
@@ -2468,7 +2559,7 @@ paths:
 
         There is no paged variant and none is planned. Paging a library needs a stable sorted order, producing one needs a full pass, and the component is where the whole database already sits in memory. A client that holds everything answers its own searches, counts and shelves without another request.
 
-        The response is `ETag`ged on the two generations, so a client that polls `GET /state` and finds nothing new never gets here, and one that arrives anyway is answered `304`.
+        The response is `ETag`ged on the two generations, so a client that polls `GET /state` and finds nothing new never gets here, and one that arrives anyway is answered `304`. With `only` or `spine` the tag names the subset as well. See *Asking for part of the declaration*.
 
         Large. Expect single-digit megabytes for a library of thirty thousand tracks, growing roughly linearly. A client MUST read it as an `ArrayBuffer` rather than as text.
       parameters:
@@ -2488,6 +2579,26 @@ paths:
             maxItems: 64
           style: form
           explode: true
+        - name: only
+          in: query
+          required: false
+          description: |
+            Some of the declared columns, repeated once per column and spelled exactly as in `columns`: the body carries only these columns' ids and dictionaries, and the header says which in `carried`. It never changes the declaration, so it starts no rebuild and is answered at once whenever the declaration is built. Absent means every declared column.
+
+            Each must be one of `columns`. One that is not is a `400` with the error `column not declared`, and a repeat spelled differently from the first, such as `a` and `%61`, is a `400` with `duplicate column`. A byte-identical pair sent twice is collapsed by the server before the component reads it and is accepted. The spine cannot be named; `spine` decides it. See *Asking for part of the declaration*.
+          schema:
+            type: array
+            items: { type: string, minLength: 1, maxLength: 1024 }
+            minItems: 1
+            maxItems: 64
+          style: form
+          explode: true
+        - name: spine
+          in: query
+          required: false
+          description: |
+            Whether the body carries the three spine columns. `true` when absent. `false` leaves them out and the header's `spineCarried` says so, which is what a request for the rest of a declaration sends, since the client already holds the spine. Any other value is a `400` with the error `unacceptable spine`.
+          schema: { type: boolean, default: true }
       responses:
         "200":
           description: |
@@ -2504,7 +2615,7 @@ paths:
               description: "`Accept-Encoding`."
             ETag:
               schema: { type: string }
-              description: The generations and the coding, quoted.
+              description: The generations, the subset when the request named one, and the coding, quoted.
           content:
             application/octet-stream:
               schema: { type: string, format: binary }
@@ -2523,6 +2634,7 @@ paths:
                     ready: true
                     structure: 41
                     revision: 903
+                    snapshotId: "9f3c2a71b5d04e68"
                     trackCount: 30441
                     columns: ["%title%", "%album artist%", "%play_count%"]
                     build: { phase: formatting, formatted: 16384, total: 30441 }
@@ -2536,13 +2648,13 @@ paths:
     get:
       tags: [library]
       operationId: getLibraryChanges
-      summary: What has changed since a revision, per column.
+      summary: What has changed since a revision, per column, or as a splice.
       description: |
-        The patch between the revision a client holds and the current one, in the same binary format as the snapshot. It carries only the columns that moved and, within each, only the rows that moved, so the common case of a play count and a last-played date advancing touches two columns and leaves the rest of a client's arrays untouched by identity as well as by value.
+        The patch between the pair a client holds and the current one, in the same binary format as the snapshot. Where `structure` is the current one it is a delta: it carries only the columns that moved and, within each, only the rows that moved, so the common case of a play count and a last-played date advancing touches two columns and leaves the rest of a client's arrays untouched by identity as well as by value.
 
-        Call this when `GET /state` reports the same `library.structure` and a higher `library.revision`. A different `structure` is a `409`: ordinals have shifted and the patch would be meaningless, so export again.
+        Call this when `GET /state` reports a higher `library.revision`. Where `library.structure` is also different, tracks were added or removed and ordinals have shifted, so the answer is a splice: the rows removed, the rows inserted and what was appended, from which the client reaches the current pair without exporting. See *Reading a splice*. It is a `410` when no splice is held or one would cost half an export or more, and the client exports again.
 
-        There is no `columns` here, because `since` already names the generation. A rebuild with a different set moves `structure`, so a client whose declaration is stale reaches the `409` and exports, which is where it declares again.
+        There is no `columns` here, because the pair already names the generation. A rebuild with a different set moves `structure` in a way no splice describes, so a client whose declaration is stale reaches the `410` and exports, which is where it declares again.
 
         The component keeps a bounded window of past revisions, and falling behind it is a `410`, whose description is where that window's reach is written down. The answer is the same one: export again. A client that polls at any sane interval will not see it.
 
@@ -2552,13 +2664,20 @@ paths:
           in: query
           required: true
           description: |
-            The `revision` the client currently holds. A whole number. `revision` values are contiguous, so this is exactly what the last snapshot or delta header reported.
+            The `revision` the client currently holds. A whole number. `revision` values are contiguous, so this is exactly what the last snapshot, delta or splice header reported.
           schema: { type: integer, minimum: 0 }
           example: 900
+        - name: structure
+          in: query
+          required: true
+          description: |
+            The `structure` the client currently holds, from the same header as `since`. A whole number. The pair is what the component answers from: `since` alone cannot say which numbering a client's ordinals are in.
+          schema: { type: integer, minimum: 0 }
+          example: 41
       responses:
         "200":
           description: |
-            The delta. Its header carries `since`, so a client can confirm what it was patched from. A revision that moved with no id changing is not a revision at all, so an answer here always has something in it. `Cache-Control` is `private, no-cache`, and the bytes are gzipped on the same terms as the snapshot; see *Compression*.
+            The delta, or the splice when `structure` is not the current one. Its header carries `kind`, `since` and, on a splice, `sinceStructure`, so a client can confirm what it was patched from. A revision that moved with no id changing is not a revision at all, so an answer here always has something in it. `Cache-Control` is `private, no-cache`, and the bytes are gzipped on the same terms as the snapshot; see *Compression*.
           headers:
             Cache-Control:
               schema: { type: string }
@@ -2571,7 +2690,7 @@ paths:
               description: "`Accept-Encoding`."
             ETag:
               schema: { type: string }
-              description: The generations, the revision patched from, and the coding, quoted.
+              description: The generations, the pair patched from, and the coding, quoted.
           content:
             application/octet-stream:
               schema: { type: string, format: binary }
@@ -3469,7 +3588,7 @@ components:
 
     StructureMoved:
       description: |
-        The `structure` the request named is no longer the current one: tracks were added to or removed from the library, so every ordinal it carries has shifted and inserting them would land the wrong rows. This is the same `409` `GET /api/library/changes` answers for the same reason, and the remedy is the same: export the library again and resolve the set against the `structure` that export reports.
+        The `structure` the request named is no longer the current one: tracks were added to or removed from the library, so every ordinal it carries has shifted and inserting them would land the wrong rows. The remedy is to bring the library up to date, with the splice `GET /api/library/changes` answers or by exporting again, and to resolve the set against the `structure` the client then holds.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/LibraryFailed" }
@@ -3481,7 +3600,7 @@ components:
 
     FillConflict:
       description: |
-        The `structure` the request named is no longer the current one, or another component has locked the target playlist against having rows added. The `error` string distinguishes them. The first is the same `409` `GET /library/changes` answers, and the remedy is the same: export the library again and resolve the set against the `structure` it reports. The second is released at the player, by whatever put it there, and nothing a client sends changes that.
+        The `structure` the request named is no longer the current one, or another component has locked the target playlist against having rows added. The `error` string distinguishes them. The remedy for the first is to bring the library up to date, with the splice `GET /library/changes` answers or by exporting again, and to resolve the set against the `structure` the client then holds. The second is released at the player, by whatever put it there, and nothing a client sends changes that.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/PlaylistFailed" }
@@ -3735,7 +3854,7 @@ components:
 
     LibraryRefused:
       description: |
-        The request was understood and declined before the snapshot was touched: no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, or a `since` that is missing or not a whole number.
+        The request was understood and declined before the snapshot was touched: no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, a `since` or a `structure` that is missing or not a whole number, or, on `GET /library/export`, an `only` naming a column `columns` does not declare or naming one twice in two spellings, or a `spine` that is neither `true` nor `false`.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/LibraryRefusal" }
@@ -3746,22 +3865,26 @@ components:
               value: { error: unacceptable revision, detail: "'since' is required" }
             repeated:
               value: { error: duplicate column, detail: "column 3 repeats an earlier one" }
+            notDeclared:
+              value: { error: column not declared, detail: "'only' column 1 is not one of 'columns'" }
 
     LibraryConflict:
       description: |
-        `structure` has moved since the revision named in `since`, so ordinals have shifted and a patch would be meaningless. Export again, which is also where a client declares its columns afresh.
+        The pair `structure` and `since` names no position this run of the component has held: `since` does not belong to that `structure`, or the `structure` is ahead of the current one. This is what a client that kept a snapshot across a restart can see, and a patch would be meaningless. Export again, which is also where a client declares its columns afresh.
+
+        Tracks having been added or removed is not this: that is a splice, or a `410` where none can be sent.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/LibraryFailed" }
           examples:
-            restructured:
+            neverHeld:
               value:
-                error: "tracks were added or removed; export the library again"
+                error: "that structure and revision name no position this library held; export the library again"
                 detail: ""
 
     LibraryRevisionGone:
       description: |
-        The revision asked to catch up from is outside the retained window of 1920, or it is ahead of the current one, which is what a client that kept a snapshot across a component restart sees. Both mean the same thing: export again.
+        No delta or splice can be sent from the pair asked to catch up from: the revision is outside the retained window of 1920 or ahead of the current one, or `structure` has moved and no splice can be sent. That last is a splice of half the export's serialised bytes or more, one no longer held, a compaction of the dictionaries, and a move of `structure` that was not an addition or a removal. All mean the same thing: export again.
 
         That window is spent by listening rather than by the clock. Every track that stops playing is re-read and moves `revision`, and nothing moves it while nobody is listening, so a client asleep overnight comes back inside it. One away across days of playback does not, and exports again.
       content:
@@ -3770,7 +3893,7 @@ components:
 
     LibraryTooLarge:
       description: |
-        The snapshot serialises to more than 64 MiB and this component will not send it. The ceiling is on the serialised bytes rather than on what crosses the wire, so gzip does not buy room underneath it. That is a ceiling on the *response*; `413` on a request body is a different limit and a different number.
+        The snapshot serialises to more than 256 MiB and this component will not send it. The ceiling is on the serialised bytes rather than on what crosses the wire, so gzip does not buy room underneath it. That is a ceiling on the *response*; `413` on a request body is a different limit and a different number.
 
         Nothing a client can do about it. It means a library far larger than this format was measured against, and it is worth reporting.
       content:
@@ -5273,7 +5396,7 @@ components:
         What rides under `library` in `GET /state`'s `200`, and what `GET /library/export` and `POST /library/refresh` hand back on a `202`. Small on purpose: it is polled.
       type: object
       additionalProperties: false
-      required: [ready, structure, revision, trackCount, columns, build, halted]
+      required: [ready, structure, revision, snapshotId, trackCount, columns, build, halted]
       properties:
         ready:
           type: boolean
@@ -5282,13 +5405,19 @@ components:
         structure:
           type: integer
           description: |
-            Moves when tracks are added to or removed from the library. A different value from the one a client's snapshot header carries means every ordinal it holds is meaningless: export again. `0` before the first build.
+            Moves when tracks are added to or removed from the library. A different value from the one a client's snapshot header carries means every ordinal it holds is meaningless: apply a splice, or export again where `GET /library/changes` answers `410`. `0` before the first build. The first value of a run is seeded at start and never repeats across runs of the component, within the range of an integer JSON can carry exactly, so a `structure` names one generation of one run.
           examples: [41]
         revision:
           type: integer
           description: |
             Moves when a row changes in place, which is what a play, a rating or a tag edit does. A higher value with an unchanged `structure` means fetch a delta. Contiguous, so it is exactly the `since` to ask with.
           examples: [903]
+        snapshotId:
+          type: string
+          pattern: "^[0-9a-f]{16}$"
+          description: |
+            The validator of the snapshot at the `structure` and `revision` beside it: 16 lowercase hexadecimal digits, a 64-bit sum of one hash per cell. The same across a restart of the player with an unchanged library, and different after any change to a cell, a column, the count or the order of the rows. A client compares it for equality, with `trackCount` beside it, and reads nothing else into it. Sixteen zeros before the first build. See *The validator*.
+          examples: ["9f3c2a71b5d04e68"]
         trackCount:
           type: integer
           description: Rows in the snapshot, which is the length of every `ids` array in it.
@@ -5723,12 +5852,13 @@ components:
         The JSON header inside a snapshot or a delta, between the four-byte magic number and the blob. It is not served on its own by any route; it is documented here so a client can be generated for it. *The media library*, at the top of this document, has the framing and how to read a column.
       type: object
       additionalProperties: false
-      required: [kind, structure, revision, trackCount, columns, spine]
+      required: [kind, structure, revision, snapshotId, trackCount, columns, spine]
       properties:
         kind:
           type: string
-          enum: [snapshot, delta]
-          description: Which of the two routes produced this. A client MUST check it rather than infer it from the URL it asked for.
+          enum: [snapshot, delta, splice]
+          description: |
+            What this body is. `GET /library/export` answers a snapshot. `GET /library/changes` answers a delta or a splice. A client MUST check it rather than infer it from the URL it asked for or from `structure` having moved.
         structure:
           type: integer
           description: The generation the ordinals in this body belong to.
@@ -5738,21 +5868,47 @@ components:
         since:
           type: integer
           description: |
-            Deltas only, and absent from a snapshot. The revision this body patches from, echoing the request so a client can confirm what it is applying.
+            Deltas and splices only, and absent from a snapshot. The revision this body patches from, echoing the request so a client can confirm what it is applying.
+        sinceStructure:
+          type: integer
+          description: |
+            Splices only. The `structure` this body patches from, echoing the request. `structure` is the one it reaches.
+        snapshotId:
+          type: string
+          pattern: "^[0-9a-f]{16}$"
+          description: |
+            The validator of the snapshot this body brings a client to: what `library.snapshotId` in `GET /state` is at `structure` and `revision`. In a subset of an export it still names the whole export. See *The validator*.
+        carried:
+          type: array
+          items: { type: string }
+          description: |
+            Snapshots only. The `name` of each declared column whose `ids` and `dict` the body carries. Every other entry in `columns` has only `name`, `distinct`, `hasUnresolved` and `allUnresolved`. Every declared column when the request named no `only`.
+        spineCarried:
+          type: boolean
+          description: |
+            Snapshots only. Whether the entries under `spine` carry their `ids` and `dict`. `false` when the request said `spine=false`, in which case they have only `distinct`, `hasUnresolved` and `allUnresolved`.
+        removed:
+          allOf: [{ $ref: "#/components/schemas/LibrarySection" }]
+          description: |
+            Splices only. The ordinals of the rows to remove, ascending, in the numbering of `sinceStructure`. See *Reading a splice*.
+        inserted:
+          allOf: [{ $ref: "#/components/schemas/LibrarySection" }]
+          description: |
+            Splices only. The ordinals the inserted rows take, ascending, in the numbering of `structure`. Each is also in every carried column's `ordinals`.
         trackCount:
           type: integer
           description: |
-            Rows in the whole snapshot, in a delta as well as in a snapshot. In a snapshot it is the length of every `ids` array; in a delta it is what `ordinals` are bounded by, and it is what their width was chosen from.
+            Rows in the whole snapshot, in a delta or a splice as well as in a snapshot, and never the subset's. In a snapshot it is the length of every `ids` array; in a delta or a splice it is the count after the patch, what `ordinals` are bounded by, and what their width was chosen from.
         columns:
           type: array
           description: |
-            The columns the client declared, each carrying its own `name`, in the order it named them. In a delta, only the ones that moved.
+            The columns the client declared, each carrying its own `name`, in the order it named them. In a snapshot, every one, though a subset's body carries the `ids` and `dict` of only the ones in `carried`. In a delta, only the ones that moved. In a splice, every one when it inserts rows, and otherwise only the ones that moved or whose dictionary grew.
           items: { $ref: "#/components/schemas/LibraryColumn" }
         spine:
           type: object
           additionalProperties: false
           description: |
-            The three columns the component always builds, keyed by name rather than carrying one. A snapshot has all three. A delta has only the ones that moved, which for the spine is rare: a track whose path changed is a removal and an addition, and that moves `structure`.
+            The three columns the component always builds, keyed by name rather than carrying one. A snapshot has all three. A delta has only the ones that moved, which for the spine is rare: a track whose path changed is a removal and an addition, which is a splice. A splice that inserts rows has all three, with one id per inserted row and `ordinals` equal to `inserted`; one that only removes has only the ones whose dictionary grew, with no ordinals.
           properties:
             directory:
               allOf: [{ $ref: "#/components/schemas/LibraryColumn" }]
@@ -5770,10 +5926,10 @@ components:
       description: |
         One column: a dictionary of distinct strings, and one dictionary id per row. Every `offset` is a byte offset from the start of the blob and is a multiple of four.
 
-        Both routes answer with this shape. A delta's columns carry `ordinals` and `dict.base` on top of it; a snapshot's carry neither, and a client reads `kind` on the header to know which it is holding rather than testing for a key.
+        Both routes answer with this shape. A delta's or a splice's columns carry `ordinals` and `dict.base` on top of it; a snapshot's carry neither, and a client reads `kind` on the header to know which it is holding rather than testing for a key.
       type: object
       additionalProperties: false
-      required: [ids, dict, distinct, hasUnresolved, allUnresolved]
+      required: [distinct, hasUnresolved, allUnresolved]
       properties:
         name:
           type: string
@@ -5783,12 +5939,13 @@ components:
         ids:
           allOf: [{ $ref: "#/components/schemas/LibrarySection" }]
           description: |
-            One dictionary id per row. In a snapshot `count` is `trackCount` and entry *i* belongs to ordinal *i*. In a delta `count` is `ordinals.count` and entry *i* belongs to ordinal `ordinals[i]`.
+            Absent from the entry of a column the body does not carry (see `carried` and `spineCarried`), and present on every other. One dictionary id per row. In a snapshot `count` is `trackCount` and entry *i* belongs to ordinal *i*. In a delta `count` is `ordinals.count` and entry *i* belongs to ordinal `ordinals[i]`.
         ordinals:
           allOf: [{ $ref: "#/components/schemas/LibrarySection" }]
           description: |
-            Deltas only, and absent from a snapshot. The ordinals this column changed at, ascending and without repeats, one for each entry in `ids`. Its `width` is the narrowest of 1, 2 and 4 that holds every ordinal from `0` to `trackCount - 1`: these index rows rather than dictionary entries, so it is chosen from a different number than `ids.width` and is often a different width.
+            Deltas and splices only, and absent from a snapshot. The ordinals this column changed at, ascending and without repeats, one for each entry in `ids`. In a splice they are in the numbering of `structure`, after the removals and the insertions, and include every `inserted` ordinal. Its `width` is the narrowest of 1, 2 and 4 that holds every ordinal from `0` to `trackCount - 1`: these index rows rather than dictionary entries, so it is chosen from a different number than `ids.width` and is often a different width.
         dict:
+          description: Absent on the same entries as `ids`.
           type: object
           additionalProperties: false
           required: [text, ends]
@@ -5809,7 +5966,7 @@ components:
             base:
               type: integer
               description: |
-                Deltas only, and absent from a snapshot. How many entries the client's dictionary already holds. Dictionaries are append-only within a `structure` generation, so the values in `text` are appended at this index and nothing already held is restated.
+                Deltas and splices only, and absent from a snapshot. How many entries the client's dictionary already holds. Dictionaries are append-only within a `structure` generation, so the values in `text` are appended at this index and nothing already held is restated.
         distinct:
           type: integer
           description: |
@@ -5892,6 +6049,8 @@ components:
             - too many columns
             - unacceptable column
             - duplicate column
+            - column not declared
+            - unacceptable spine
             - unacceptable revision
         detail:
           type: string
@@ -5911,6 +6070,10 @@ components:
             - "tracks were added or removed; export the library again"
             - "that revision is older than the retained window; export the library again"
             - no such revision
+            - "that structure and revision name no position this library held; export the library again"
+            - "the tracks added or removed since then are too many to send; export the library again"
+            - "the library was rebuilt with its dictionaries compacted; export the library again"
+            - "the library was rebuilt with other columns or in another order; export the library again"
         detail:
           type: string
           description: Always empty. It is present so that every library failure reads as one shape.

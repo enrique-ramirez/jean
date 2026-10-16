@@ -270,7 +270,7 @@ void sendBodyIfChanged(const httplib::Request& req, httplib::Response& res, cons
     }
 
     const auto body = produce();
-    if (body->size() > kMaxLibraryBytes) {
+    if (!body) {
         respondError(res, 413, kLibraryTooLarge);
         return;
     }
@@ -304,9 +304,15 @@ SharedBytes packedNow(const SharedBytes& plain) {
 
 }  // namespace
 
+void GzipOnce::forget() {
+    const std::lock_guard<std::mutex> lock(lock_);
+    plain_.reset();
+    packed_.reset();
+}
+
 SharedBytes GzipOnce::of(const SharedBytes& plain) {
     const std::lock_guard<std::mutex> lock(lock_);
-    if (plain_ != plain) {
+    if (plain_.lock() != plain) {
         packed_ = packedNow(plain);
         plain_ = plain;
     }
@@ -321,9 +327,20 @@ void sendIfChanged(const httplib::Request& req, httplib::Response& res, const st
 }
 
 void sendIfChanged(const httplib::Request& req, httplib::Response& res, const std::string& name,
+                   const char* contentType, const std::function<SharedBytes()>& produce) {
+    sendBodyIfChanged(req, res, name, contentType, produce, packedNow);
+}
+
+void sendIfChanged(const httplib::Request& req, httplib::Response& res, const std::string& name,
                    const char* contentType, const std::function<SharedBytes()>& produce,
                    GzipOnce& packing) {
-    sendBodyIfChanged(req, res, name, contentType, produce,
+    const auto producing = [&produce, &packing] {
+        const auto body = produce();
+        if (!body)
+            packing.forget();
+        return body;
+    };
+    sendBodyIfChanged(req, res, name, contentType, producing,
                       [&packing](const SharedBytes& plain) { return packing.of(plain); });
 }
 

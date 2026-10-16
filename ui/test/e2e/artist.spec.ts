@@ -495,6 +495,78 @@ test.describe("before the credit columns arrive", () => {
 		await expectFirstDrawnOnceReleased(page, "an artist result");
 	});
 
+	interface DropdownStates {
+		recording: boolean;
+		states: { busy: boolean; artists: boolean }[];
+	}
+
+	const recordTheDropdown = (page: Page) =>
+		page.addInitScript((member) => {
+			const recorded: DropdownStates = { recording: false, states: [] };
+			Reflect.set(window, "__dropdown", recorded);
+			const isAnArtist = new RegExp(`^${member}(?! &)`);
+			const look = () => {
+				if (!recorded.recording) return;
+				const results = document.querySelector('[role="listbox"]');
+				recorded.states.push({
+					busy: results?.querySelector('[aria-busy="true"]') != null,
+					artists: [
+						...(results?.querySelectorAll('[role="option"]') ?? []),
+					].some((option) => isAnArtist.test(option.textContent ?? "")),
+				});
+			};
+			Reflect.set(window, "__lookAtTheDropdown", look);
+			new MutationObserver(look).observe(document, {
+				subtree: true,
+				childList: true,
+				characterData: true,
+				attributes: true,
+				attributeFilter: ["aria-busy"],
+			});
+		}, MEMBER);
+
+	// Each answer from the search worker is drawn as it lands, so the one asked before the credits
+	// arrived is drawn too, between the late part landing and the answer asked after it.
+	test("the open dropdown goes from the busy artist group to the artists, with no moment holding neither", async ({
+		page,
+	}) => {
+		await recordTheDropdown(page);
+		await openLibrary(page);
+		await revealSearch(page);
+		await searchField(page).fill("revelries");
+
+		const results = page.getByRole("listbox");
+		await expect(
+			results.getByRole("option").filter({ hasText: "Bloodhail" }),
+		).toBeVisible();
+		await expect(busyWithin(page, '[role="listbox"]').first()).toBeAttached();
+
+		await page.evaluate(() => {
+			(Reflect.get(window, "__dropdown") as DropdownStates).recording = true;
+			(Reflect.get(window, "__lookAtTheDropdown") as () => void)();
+		});
+		await page.request.post("/__control/holdSubset", { data: {} });
+		await expect(
+			results.getByRole("option").filter({ hasText: /^Revelries(?! &)/ }),
+		).toBeVisible();
+
+		const { states } = await page.evaluate(
+			() => Reflect.get(window, "__dropdown") as DropdownStates,
+		);
+		const untilTheArtists = states.slice(
+			0,
+			states.findIndex((state) => state.artists) + 1,
+		);
+		expect(
+			untilTheArtists.at(-1)?.artists,
+			"the artists were never drawn",
+		).toBe(true);
+		expect(
+			untilTheArtists.filter((state) => !state.busy && !state.artists),
+			"the dropdown showed neither the busy artist group nor the artists",
+		).toEqual([]);
+	});
+
 	test("a member's page is busy until the credits are split, and never says they have nothing here", async ({
 		page,
 	}) => {

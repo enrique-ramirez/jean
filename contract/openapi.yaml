@@ -73,7 +73,7 @@ info:
 
     Order does not matter when comparing: `columns` from `GET /state`'s `library` and the set a client declared are the same declaration when they have the same members. Order decides only where a column lands in the header's `columns` array.
 
-    Every later rebuild reuses the last declared set, whether the player raised a change notification or somebody called `POST /library/refresh`. Two clients wanting different sets will therefore take the snapshot from each other; at most two builds are kept, so a third evicts rather than accumulating.
+    Every later rebuild reuses the last declared set, whether the player raised a change notification or somebody called `POST /library/refresh`. Two clients wanting different sets will therefore take the snapshot from each other, each change of set costing a full rebuild.
 
     ### The snapshot format
 
@@ -232,8 +232,6 @@ info:
     `GET /artwork/playing` is the front cover of whatever the player is playing right now, addressed by nothing: no path, no index, no handle. It answers what `GET /artwork` cannot, because there is no library-relative path to address a stream, a CD track or a file the library has never indexed by: the player's own now-playing loader resolves a picture embedded in the file's own tags exactly as readily as one sitting beside it on disk, and this route is a window onto that loader rather than onto the snapshot.
 
     The picture is held rather than loaded per request: this component folds it once with the same validator `GET /artwork` computes, the moment the player's loader hands it over, and a conditional request that already holds the current cover costs a comparison of two strings and touches no file. The address does not move when the track does, so the next track of the same album revalidates to a `304`.
-
-    `GET /artwork` is unchanged by this. Everything that addresses a cover by library key keeps using it.
 
     ### The positional fallback
 
@@ -2114,7 +2112,7 @@ paths:
       description: |
         The document a client polls. It is small, it is `ETag`ged, and a poll that finds nothing new is a `304` with no body.
 
-        Read `library.structure` and `library.revision` from here and compare them with the ones in the header of the snapshot already held. A different `structure` means fetch a splice, which is an export again where the component answers `410`, or `409` when the pair names no position this run has held. A higher `revision` with the same `structure` means fetch a delta. Both the same means there is nothing to do. `snapshotId` names the content at that pair.
+        Read `library.structure` and `library.revision` from here and compare them with the ones in the header of the snapshot already held. A different `structure` means fetch a splice from `GET /library/changes`; a `410` there means export again, and a `409` means the pair names no position this run has held. A higher `revision` with the same `structure` means fetch a delta. Both the same means there is nothing to do. `snapshotId` names the content at that pair.
 
         `library.ready` is `false` between the component starting and its first snapshot being built, and also on an install with no media library at all: the two are indistinguishable from this document alone. This is also what a client polls after a `202` from `GET /library/export`: wait until `library.ready` is true and `library.columns` has the same members as the set declared, then ask for the export again.
 

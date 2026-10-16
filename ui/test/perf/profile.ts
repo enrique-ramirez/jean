@@ -30,7 +30,7 @@ import {
 } from "./stats.ts";
 
 const UI_ROOT = resolve(import.meta.dirname, "../..");
-const OUT_DIR = resolve(UI_ROOT, "../_tmp/035-perf");
+const OUT_DIR = resolve(UI_ROOT, "../_tmp/perf");
 const DIST_DIR = join(OUT_DIR, "dist");
 const DESKTOP_VIEWPORT = { width: 1280, height: 860 };
 const PHONE_CPU_THROTTLE = 4;

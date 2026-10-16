@@ -36,6 +36,7 @@ export type ChangesRefusal =
 	| "revisionTooOld"
 	| "revisionUnknown"
 	| "spliceTooLarge"
+	| "dictionariesCompacted"
 	| "rearranged";
 
 // Where the stream last changed what a given stream time means, in wall-clock
@@ -428,7 +429,9 @@ export function createState({
 			building: null as string[] | null,
 			buildTicks: 0,
 			structureFrom: 0,
-			redeclaredAt: 0,
+			// Mirrors `historyEndedBy_` in `library.cpp`.
+			historyEndedAt: 0,
+			historyEndedBy: "rearranged" as ChangesRefusal,
 			dictionaries: new Map<string, Dictionary>(),
 			// Tag writes change what the library holds without moving `revision`.
 			edits: 0,
@@ -774,7 +777,9 @@ export function createState({
 		if (feed.history.length > RETAINED_REVISIONS + 1) feed.history.shift();
 	};
 
-	const MAX_GENERATIONS = 8;
+	// `generations_` in `library.cpp` keeps one more than the revisions it retains, the current
+	// structure counted.
+	const MAX_GENERATIONS = RETAINED_REVISIONS + 1;
 	const generations = new Map<number, readonly LibraryEntry[]>();
 
 	type BuiltLibrary = ReturnType<typeof buildLibrary>;
@@ -929,8 +934,23 @@ export function createState({
 		numbered = null;
 	}
 
+	// `worthKeeping` in `library_splice.cpp`: entries no row uses, over every declared column and
+	// the spine, outnumber those some row does.
+	function dictionariesOutgrown() {
+		const { built } = builtLibrary();
+		let live = 0;
+		let dead = 0;
+		for (const column of [...built.columns, ...Object.values(built.spine)]) {
+			const used = new Set(column.ids).size;
+			live += used;
+			dead += column.distinct - used;
+		}
+		return dead > live;
+	}
+
 	function finishLibraryBuild() {
 		if (!feed.building) return;
+		const tracksMoved = pendingChange.add > 0 || pendingChange.remove > 0;
 		applyPendingChange();
 		const isRedeclared = !sameMembers(feed.columns, feed.building);
 		feed.columns = feed.building;
@@ -938,12 +958,17 @@ export function createState({
 		feed.structure = feed.structure === 0 ? firstStructure : feed.structure + 1;
 		feed.revision += 1;
 		feed.structureFrom = feed.revision;
-		if (isRedeclared) {
-			feed.redeclaredAt = feed.structure;
+		const startAgain = (endedBy: ChangesRefusal) => {
+			feed.historyEndedAt = feed.structure;
+			feed.historyEndedBy = endedBy;
 			feed.dictionaries.clear();
 			feed.history.length = 0;
 			generations.clear();
-		}
+			held = null;
+		};
+		if (isRedeclared) startAgain("rearranged");
+		else if (tracksMoved && dictionariesOutgrown())
+			startAgain("dictionariesCompacted");
 		builtLibrary();
 		remember(new Map());
 		generations.set(feed.structure, ordinalOrder());
@@ -1131,7 +1156,8 @@ export function createState({
 	function libraryChanges(since: number, structure = feed.structure) {
 		if (structure > feed.structure || structure < firstStructure)
 			return refused(409, "pairNotHeld");
-		if (structure < feed.redeclaredAt) return refused(410, "rearranged");
+		if (structure < feed.historyEndedAt)
+			return refused(410, feed.historyEndedBy);
 		if (structure === feed.structure && since < feed.structureFrom)
 			return refused(409, "pairNotHeld");
 		if (structure === feed.structure && since > feed.revision)

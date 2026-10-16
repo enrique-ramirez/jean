@@ -47,17 +47,18 @@ export function PlayActions({
 	});
 	const isUnanswered = wait.isWaiting;
 
-	const canShuffleHere = canPlaySets && !isEmpty && order.canShuffle;
+	const canShuffleHere = canPlaySets && order.canShuffle;
 
+	const isPressable = !wait.isOverdue && (isUnanswered || !isEmpty);
 	useKeymap(
 		SCOPE.playlist,
-		{ playAll: () => play(0) },
-		{ enabled: canPlaySets && !isEmpty && canControlPlayback },
+		{ playAll: () => press("play") },
+		{ enabled: canPlaySets && isPressable && canControlPlayback },
 	);
 	useKeymap(
 		SCOPE.playlist,
-		{ shufflePlay },
-		{ enabled: canShuffleHere && canControlPlayback },
+		{ shufflePlay: () => press("shuffle") },
+		{ enabled: canShuffleHere && isPressable && canControlPlayback },
 	);
 
 	const playLabel = t("player.play");

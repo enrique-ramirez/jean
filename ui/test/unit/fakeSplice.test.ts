@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import type { components } from "../../src/shared/api/fooJeanSchema";
 import { decodeJlib, type JlibColumn } from "../../src/shared/api/jlib.ts";
 import { handleFooJean } from "../fake-api/fooJean.ts";
@@ -17,8 +20,33 @@ const PLAY_COUNT = "%lastfm_play_count%";
 const DECLARED = ["%title%", "%album%", "%artist%", PLAY_COUNT];
 const SPINE = ["directory", "filename", "subsong"] as const;
 
-// `kRetainedRevisions` in `plugins/fb2k/src/core/library.h`.
-const RETAINED_REVISIONS = 1920;
+const RETAINED_REVISIONS = (() => {
+	const header = readFileSync(
+		join(
+			dirname(fileURLToPath(import.meta.url)),
+			"../../../plugins/fb2k/src/core/library.h",
+		),
+		"utf8",
+	);
+	const declared = new Map(
+		[...header.matchAll(/constexpr\s+size_t\s+(\w+)\s*=\s*([^;]+);/g)].map(
+			([, constant, value]) => [constant, value],
+		),
+	);
+	const evaluated = (constant: string): number => {
+		const value = declared.get(constant);
+		assert.ok(value !== undefined, `library.h declares no ${constant}`);
+		return value
+			.split("*")
+			.map((term) => term.trim())
+			.reduce(
+				(product, term) =>
+					product * (/^\d+$/.test(term) ? Number(term) : evaluated(term)),
+				1,
+			);
+	};
+	return evaluated("kRetainedRevisions");
+})();
 
 const LIBRARY = () => libraryOfShape({ tracks: 600, albums: 40, artists: 8 });
 
@@ -112,6 +140,8 @@ const SPLICE_TOO_LARGE =
 	"the tracks added or removed since then are too many to send; export the library again";
 const REARRANGED =
 	"the library was rebuilt with other columns or in another order; export the library again";
+const COMPACTED =
+	"the library was rebuilt with its dictionaries compacted; export the library again";
 
 const assertRefused = (answer: Answer, status: number, error: string) => {
 	assert.equal(answer.status, status, why(answer));
@@ -616,7 +646,10 @@ test("a structure moved by another declaration is a 410, since no splice describ
 test("a pair whose revision fell out of the retained window before the tracks moved is a 410", async () => {
 	const { state, before } = await builtFrom(LIBRARY());
 
-	for (let play = 0; play <= RETAINED_REVISIONS; play += 1) playAt(state, 0);
+	// Every play of one track would be a new play count left unused, and the rebuild would then
+	// compact, which `foo_jean` reports ahead of the window.
+	for (let play = 0; play <= RETAINED_REVISIONS; play += 1)
+		playAt(state, play % before.trackCount);
 	assertRefused(await changesFrom(state, before.pair), 410, REVISION_TOO_OLD);
 	await atThePlayer(state, { add: 1 });
 	const answer = await changesFrom(state, before.pair);
@@ -647,4 +680,120 @@ test("a revision past the current one, at the current structure, is a 410 naming
 	});
 
 	assertRefused(answer, 410, REVISION_UNKNOWN);
+});
+
+const bytewise = (a: string, b: string) =>
+	Buffer.compare(Buffer.from(a), Buffer.from(b));
+
+const usedBy = (column: HeldColumn) =>
+	new Set(column.ids.map((id) => column.values[id]));
+
+// What `worthKeeping` in `plugins/fb2k/src/core/library_splice.cpp` weighs, summed over every
+// column and the spine: entries the rows after the rebuild use, and those kept that none does.
+function entriesAfterRemoval(before: Table, after: Table) {
+	let live = 0;
+	let dead = 0;
+	for (const [name, column] of before) {
+		const used = usedBy(after.get(name) as HeldColumn);
+		live += used.size;
+		dead += new Set([...column.values, ...used]).size - used.size;
+	}
+	return { live, dead };
+}
+
+// Twelve of twenty-one tracks removed leaves one unused entry more than used ones. A play count
+// set on a surviving track first is one more used entry and lands exactly on the line, so a fake
+// that compacts at `>=`, or only well past it, answers one of the two wrongly.
+const TRACKS = 21;
+
+// Bytewise ahead of every play count the fixture holds, so appending it leaves that dictionary
+// out of order until something rebuilds it.
+const FIRST_IN_ORDER = "1";
+
+const removedAfter = async ({
+	playCount,
+	remove,
+}: {
+	playCount?: string;
+	remove: number;
+}) => {
+	const { state, before: unplayed } = await builtFrom(
+		libraryOfShape({ tracks: TRACKS }),
+	);
+	if (playCount !== undefined)
+		control(state, "play", { ordinal: 0, count: playCount });
+	const before = playCount === undefined ? unplayed : await held(state);
+	await atThePlayer(state, { remove });
+	return { state, before };
+};
+
+const ONE_DEAD_PAST_LIVE = () => removedAfter({ remove: 12 });
+const AS_MANY_DEAD_AS_LIVE = () =>
+	removedAfter({ playCount: FIRST_IN_ORDER, remove: 12 });
+const OUT_OF_ORDER_THEN_COMPACTED = () =>
+	removedAfter({ playCount: FIRST_IN_ORDER, remove: 13 });
+
+test("a removal leaving more dictionary entries unused than used, spine included, is a 410 saying the dictionaries were compacted", async () => {
+	const { state, before } = await ONE_DEAD_PAST_LIVE();
+
+	const answer = await changesFrom(state, before.pair);
+	const after = tableOf(await exportOf(state));
+
+	const { live, dead } = entriesAfterRemoval(before.table, after.table);
+	assert.equal(dead, live + 1, "the removal no longer lands one past the line");
+	assertRefused(answer, 410, COMPACTED);
+});
+
+test("the export after a compacting rebuild holds in every column, spine included, exactly the values its rows use, in bytewise order", async () => {
+	const { state, before } = await OUT_OF_ORDER_THEN_COMPACTED();
+	const counts = (before.table.get(PLAY_COUNT) as HeldColumn).values;
+	assert.notDeepEqual(
+		counts,
+		[...counts].sort(bytewise),
+		"the play count dictionary was in bytewise order before the rebuild",
+	);
+
+	const after = tableOf(await exportOf(state));
+
+	const { live, dead } = entriesAfterRemoval(before.table, after.table);
+	assert.ok(dead > live, "the removal no longer compacts");
+	for (const [name, column] of after.table)
+		assert.deepEqual(
+			column.values,
+			[...usedBy(column)].sort(bytewise),
+			`${name}'s dictionary is not the values its rows use, in bytewise order`,
+		);
+});
+
+test("a removal leaving as many dictionary entries unused as used keeps them, and is a splice", async () => {
+	const { state, before } = await AS_MANY_DEAD_AS_LIVE();
+
+	const { after } = await splicedFrom(state, before);
+
+	const { live, dead } = entriesAfterRemoval(before.table, after.table);
+	assert.equal(dead, live, "the removal no longer lands on the line");
+});
+
+test("a pair held across one rebuild after another, all inside the component's retained window, is answered a splice after each that brings the client to a fresh export", async () => {
+	const REBUILDS = 20;
+	assert.ok(REBUILDS < RETAINED_REVISIONS);
+	const { state, before } = await builtFrom(LIBRARY());
+
+	for (let rebuild = 1; rebuild <= REBUILDS; rebuild += 1) {
+		await atThePlayer(state, { add: 1 });
+		const answer = await changesFrom(state, before.pair);
+		assert.equal(
+			answer.status,
+			200,
+			`after rebuild ${rebuild}: ${why(answer)}`,
+		);
+		const splice = spliceOf(answer);
+		const after = tableOf(await exportOf(state));
+		expectSameTable(
+			spliced(before.table, splice),
+			after.table,
+			after.trackCount,
+		);
+		assert.equal(splice.inserted.length, rebuild);
+	}
 });

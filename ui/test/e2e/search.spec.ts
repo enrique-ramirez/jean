@@ -9,14 +9,18 @@ import type { Locator, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectSettlesAt,
+	modesSent,
 	openLibrary,
 	playedFrom,
+	playRequests,
 	requestsTo,
 	revealSearch,
 	runClockFor,
+	scratchOf,
 	searchField,
 	searchFor,
 	test,
+	trackPlayed,
 	trackRow,
 	viewHeader,
 } from "./fixtures.ts";
@@ -560,6 +564,12 @@ const runClockUntil = async (
 const playInHeader = (page: Page) =>
 	viewHeader(page).getByRole("button", { name: PLAY, exact: true });
 
+const shuffleInHeader = (page: Page) =>
+	viewHeader(page).getByRole("button", {
+		name: en["player.shuffle"],
+		exact: true,
+	});
+
 const expectNothingWaitedFor = (seen: HeaderSeen) => {
 	expect(
 		seen.playDisabled,
@@ -675,4 +685,184 @@ test.describe("a page's header answered within 100 ms", () => {
 			expectNothingWaitedFor(await headerSeen(page));
 		});
 	}
+});
+
+const PLAYED: {
+	kind: string;
+	route: string;
+	heading: string;
+	first: string;
+	tracks: number;
+}[] = [
+	{
+		kind: "an album",
+		route: albumRoute(ARTIST, ALBUM),
+		heading: ALBUM,
+		first: "Los Calientes",
+		tracks: 12,
+	},
+	{
+		kind: "a genre",
+		route: genreRoute(GENRE),
+		heading: GENRE,
+		first: "Rotten Apple",
+		tracks: 7,
+	},
+	{
+		kind: "an artist",
+		route: artistRoute(ARTIST),
+		heading: ARTIST,
+		first: "Los Calientes",
+		tracks: 12,
+	},
+];
+
+test.describe("the Play and Shuffle shortcuts pressed before a page's answer", () => {
+	test.beforeEach(({ page }) => watchTheWorker(page));
+	test.skip(({ isMobile }) => isMobile, "p and s are keyboard shortcuts");
+
+	const holdThePage = async (page: Page, route: string, heading: string) => {
+		await hold(page);
+		await open(page, route);
+		await untilAnAnswerIsHeld(page);
+		await expect(
+			page.getByRole("heading", { level: 1, name: heading }),
+		).toBeVisible();
+	};
+
+	const underThePatience = async (page: Page) => {
+		await page.clock.install();
+		await warmUp(page);
+		await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 250);
+	};
+
+	for (const { kind, route, heading, first, tracks } of PLAYED) {
+		test(`p on ${kind} page under the patience plays the page once its answer arrives, as the Play button does`, async ({
+			page,
+			player,
+		}) => {
+			await underThePatience(page);
+			await holdThePage(page, route, heading);
+			await expect(playInHeader(page)).toBeEnabled();
+			await page.keyboard.press("p");
+
+			await release(page);
+			await expect
+				.poll(() => trackPlayed(player), {
+					message: "the shortcut pressed before the answer played nothing",
+				})
+				.toBe(first);
+			expect(playedFrom(player)).toEqual({
+				id: scratchOf(player)?.guid,
+				index: 0,
+			});
+			expect(scratchOf(player)?.items).toHaveLength(tracks);
+			await expectSettlesAt(player, () => playRequests(player).length, 1);
+		});
+
+		test(`s on ${kind} page under the patience shuffles the page once its answer arrives, as the Shuffle button does`, async ({
+			page,
+			player,
+		}) => {
+			await underThePatience(page);
+			await holdThePage(page, route, heading);
+			await expect(shuffleInHeader(page)).toBeEnabled();
+			await page.keyboard.press("s");
+
+			await release(page);
+			await expect
+				.poll(() => trackPlayed(player), {
+					message: "the shortcut pressed before the answer played nothing",
+				})
+				.not.toBeNull();
+			const scratch = scratchOf(player);
+			expect(playedFrom(player)?.id).toBe(scratch?.guid);
+			expect(scratch?.items).toHaveLength(tracks);
+			expect(scratch?.items.map((track) => track["%title%"])).toContain(first);
+			await expectSettlesAt(
+				player,
+				() => ({
+					plays: playRequests(player).length,
+					modes: modesSent(player),
+				}),
+				{ plays: 1, modes: ["shuffleTracks"] },
+			);
+		});
+
+		test(`p and s on ${kind} page past the patience, its buttons disabled, do nothing when its answer arrives`, async ({
+			page,
+			player,
+		}) => {
+			await warmUp(page);
+			await holdThePage(page, route, heading);
+			await expect(loading(page).first()).toBeVisible();
+			await expect(playInHeader(page)).toBeDisabled();
+			await page.keyboard.press("p");
+			await page.keyboard.press("s");
+
+			await release(page);
+			await expect(playInHeader(page)).toBeEnabled();
+			await expectSettlesAt(
+				player,
+				() => ({
+					plays: playRequests(player).length,
+					modes: modesSent(player),
+				}),
+				{ plays: 0, modes: [] },
+			);
+		});
+	}
+});
+
+const SUGGESTED: {
+	kind: string;
+	query: string;
+	suggestion: RegExp;
+	heading: string;
+}[] = [
+	{
+		kind: "an artist",
+		query: NAMES_THE_ARTIST,
+		suggestion: new RegExp(`^${ARTIST}`),
+		heading: ARTIST,
+	},
+	{
+		kind: "an album",
+		query: "jessico",
+		suggestion: new RegExp(`^${ALBUM}`),
+		heading: ALBUM,
+	},
+	{
+		kind: "a genre",
+		query: "grunge",
+		suggestion: new RegExp(`^${GENRE}`),
+		heading: GENRE,
+	},
+];
+
+test.describe("a suggestion chosen from an answer the typing has moved past", () => {
+	test.beforeEach(({ page }) => watchTheWorker(page));
+
+	for (const { kind, query, suggestion, heading } of SUGGESTED)
+		test(`${kind} opens its page and leaves the query it answered in the field`, async ({
+			page,
+		}) => {
+			await openWithSearch(page);
+			await searchField(page).fill(query);
+			const chosen = options(page).filter({ hasText: suggestion });
+			await expect(chosen).toHaveCount(1);
+
+			await hold(page);
+			await searchField(page).fill(`${query} z`);
+			await untilAnAnswerIsHeld(page);
+			await chosen.click();
+			await release(page);
+
+			await expect(
+				page.getByRole("heading", { level: 1, name: heading }),
+			).toBeVisible();
+			await expect(searchField(page)).toHaveValue(query);
+			await untilTheWorkerIsQuiet(page);
+			expect(await searchField(page).inputValue()).toBe(query);
+		});
 });

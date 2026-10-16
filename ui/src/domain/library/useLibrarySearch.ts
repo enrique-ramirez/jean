@@ -312,7 +312,8 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		areArtistsPending:
 			draft.trim().length > 0 &&
 			columns.trackCount > 0 &&
-			!isLoaded(columns, CREDIT_TAGS),
+			(!isLoaded(columns, CREDIT_TAGS) ||
+				draftSearch.wasAnsweredWithCredits === false),
 		isEdited: draft !== query,
 		draftCount: draftAnswer?.matched?.length ?? 0,
 		isFiltering: draft !== deferredDraft || draftSearch.isWaiting,

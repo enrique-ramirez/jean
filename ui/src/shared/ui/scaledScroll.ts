@@ -35,12 +35,25 @@ export function toScrollTop(
 // @tanstack/virtual-core's `setOptions` replaces `instance.options`, so nothing here holds them.
 function shape<T extends Element>(instance: Virtualizer<T, Element>) {
 	const total = instance.getTotalSize();
-	return {
-		margin: instance.options.scrollMargin,
-		total,
-		viewport: instance.scrollElement?.clientHeight ?? 0,
-		isScaled: total > MAX_SCROLL_HEIGHT,
-	};
+	const margin = instance.options.scrollMargin;
+	const isScaled = total > MAX_SCROLL_HEIGHT;
+	const height = instance.scrollElement?.clientHeight ?? 0;
+	const room = isScaled
+		? Math.max(
+				0,
+				(instance.scrollElement?.scrollHeight ?? 0) -
+					margin -
+					scaledHeight(total),
+			)
+		: 0;
+	return { margin, total, room, viewport: height - room, isScaled };
+}
+
+export function scrollScaleOf<T extends Element>(
+	instance: Virtualizer<T, Element>,
+): number {
+	const { total, viewport } = shape(instance);
+	return scrollScale(total, viewport);
 }
 
 export function isScaled<T extends Element>(
@@ -111,17 +124,21 @@ export function scrollTopFor<T extends HTMLElement>(
 ): number {
 	const view = instance.scrollElement?.clientHeight ?? 0;
 	const current = instance.scrollOffset ?? 0;
+	const isAbove = align === "auto" && item.start < current;
+	const isBelow = align === "auto" && !isAbove && item.end > current + view;
+	if (align === "auto" && !isAbove && !isBelow)
+		return instance.scrollElement?.scrollTop ?? 0;
 	const wanted =
 		align === "center"
 			? item.start + (item.size - view) / 2
-			: item.start < current
+			: isAbove
 				? item.start
-				: item.end > current + view
-					? item.end - view
-					: null;
-	if (wanted === null) return instance.scrollElement?.scrollTop ?? 0;
-	const last = instance.options.scrollMargin + instance.getTotalSize() - view;
-	return scrollTopOf(instance, Math.min(Math.max(wanted, 0), last));
+				: item.end - view;
+	const { margin, total, room } = shape(instance);
+	const last = margin + total + room - view;
+	const top = scrollTopOf(instance, Math.min(Math.max(wanted, 0), last));
+	// A browser holds scrollTop in whole pixels, so rounding toward the row keeps its edge inside the view.
+	return isBelow ? Math.ceil(top) : isAbove ? Math.floor(top) : top;
 }
 
 export function nextHeldScrollTop(

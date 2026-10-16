@@ -51,6 +51,17 @@ const openWithSearch = async (page: Parameters<typeof openLibrary>[0]) => {
 	await revealSearch(page);
 };
 
+// Escape gives a draft back to the search, so a query left in the field as a draft would not survive it.
+const expectTheSearchIs = async (
+	page: Parameters<typeof openLibrary>[0],
+	query: string,
+) => {
+	await searchField(page).press("Escape");
+	await searchField(page).press("Escape");
+	await expect(options(page)).toHaveCount(0);
+	await expect(searchField(page)).toHaveValue(query);
+};
+
 test.describe("the search field on a phone", () => {
 	test.skip(
 		({ isMobile }) => !isMobile,
@@ -252,7 +263,8 @@ test.describe("what a query might mean", () => {
 		});
 	});
 
-	test("choosing an album opens the record and leaves the search alone", async ({
+	// The same rule as a track: what was chosen came from that query, so the query becomes the search.
+	test("choosing an album opens the record and makes the query it came from the search", async ({
 		page,
 		player,
 	}) => {
@@ -267,7 +279,8 @@ test.describe("what a query might mean", () => {
 		).toBeVisible();
 		await expect(page.getByRole("link", { name: ARTIST })).toBeVisible();
 
-		await expect(searchField(page)).toHaveValue(OTHER);
+		await expect(searchField(page)).toHaveValue(ALBUM);
+		await expectTheSearchIs(page, ALBUM);
 		expect(playedFrom(player)).toBe(null);
 	});
 
@@ -327,7 +340,7 @@ test.describe("what a query might mean", () => {
 		});
 	});
 
-	test("choosing an artist opens their page and leaves the search alone", async ({
+	test("choosing an artist opens their page and makes the query it came from the search", async ({
 		page,
 		player,
 	}) => {
@@ -341,7 +354,8 @@ test.describe("what a query might mean", () => {
 			page.getByRole("heading", { level: 1, name: ARTIST }),
 		).toBeVisible();
 
-		await expect(searchField(page)).toHaveValue(OTHER);
+		await expect(searchField(page)).toHaveValue(QUERY);
+		await expectTheSearchIs(page, QUERY);
 		expect(playedFrom(player)).toBe(null);
 	});
 });

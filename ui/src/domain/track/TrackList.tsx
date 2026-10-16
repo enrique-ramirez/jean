@@ -19,7 +19,7 @@ import {
 	registerScaledScroller,
 	scaledHeight,
 	scaledVirtualizerOptions,
-	scrollScale,
+	scrollScaleOf,
 	scrollShift,
 	scrollTopFor,
 	settleOnRow,
@@ -230,8 +230,7 @@ export function TrackList({
 				cancelScroll.current?.();
 				cancelScroll.current = null;
 
-				const scale = () =>
-					scrollScale(virtualizer.getTotalSize(), element.clientHeight);
+				const scale = () => scrollScaleOf(virtualizer);
 
 				const centreOnRow = () => {
 					const seen = rowRect();

@@ -313,13 +313,12 @@ function Shell() {
 	);
 
 	const selectSuggestion = (suggestion: Suggestion) => {
+		const { query, refs } = search.commit(search.suggestedQuery);
 		if (suggestion.kind !== "track") {
-			search.revert();
 			openRoute(routeOfSuggestion(suggestion));
 			return;
 		}
 
-		const { query, refs } = search.commit(search.suggestedQuery);
 		const position = refs ? refs.indexOf(suggestion.ref) : -1;
 		if (refs && position >= 0)
 			void playSet({ kind: SCRATCH_KIND.search, label: query, refs, position });

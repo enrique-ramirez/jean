@@ -231,24 +231,25 @@ export function ArtistView({
 	const held =
 		(own?.length ?? 0) + (shared?.length ?? 0) + (guest?.length ?? 0);
 	const allRefs = tracks.all;
-	const isPlayable = held > 0 && canControlPlayback;
-
-	useKeymap(
-		SCOPE.playlist,
-		{ playAll: () => onPlay(allRefs, 0) },
-		{ enabled: isPlayable && canPlay },
-	);
-	useKeymap(
-		SCOPE.playlist,
-		{ shufflePlay: () => onShuffle(allRefs) },
-		{ enabled: isPlayable && canShuffle },
-	);
+	const isPlayable =
+		(held > 0 || isAwaiting) && !wait.isOverdue && canControlPlayback;
 
 	const press = useDeferredPress<"play" | "shuffle">(isAwaiting, (kind) => {
 		if (allRefs.length === 0) return;
 		if (kind === "play") onPlay(allRefs, 0);
 		else onShuffle(allRefs);
 	});
+
+	useKeymap(
+		SCOPE.playlist,
+		{ playAll: () => press("play") },
+		{ enabled: isPlayable && canPlay },
+	);
+	useKeymap(
+		SCOPE.playlist,
+		{ shufflePlay: () => press("shuffle") },
+		{ enabled: isPlayable && canShuffle },
+	);
 
 	const notice = libraryNoticeFor(library);
 	if (notice) return notice;

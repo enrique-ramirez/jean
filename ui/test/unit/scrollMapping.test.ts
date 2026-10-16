@@ -27,10 +27,12 @@ function fakeScroller({
 	total,
 	margin = MARGIN,
 	count = Math.round(total / ROW),
+	trailing = 0,
 }: {
 	total: number;
 	margin?: number;
 	count?: number;
+	trailing?: number;
 }) {
 	const listeners = new Map<string, Set<Listener>>();
 	const calls: ScrollCall[] = [];
@@ -39,7 +41,9 @@ function fakeScroller({
 		clientHeight: VIEWPORT,
 		get scrollHeight() {
 			return (
-				instance.options.scrollMargin + Math.min(state.total, MAX_SCROLL_HEIGHT)
+				instance.options.scrollMargin +
+				Math.min(state.total, MAX_SCROLL_HEIGHT) +
+				trailing
 			);
 		},
 		addEventListener(type: string, listener: Listener) {
@@ -206,6 +210,26 @@ test("over the cap the bottom of the scroller shows the list's last row", () => 
 	const { last } = observe(scroller);
 	scroller.scrollTo(scroller.bottom());
 	assertNear(last(), MARGIN + OVER - VIEWPORT, "offset at the bottom");
+});
+
+// The view keeps a room of its own under the list, which scrolls one for one as the header does.
+test("over the cap the bottom of the scroller leaves the same room under the last row as a short list does", () => {
+	const TRAILING = 32;
+	const scroller = fakeScroller({ total: OVER, trailing: TRAILING });
+	const { last } = observe(scroller);
+	scroller.scrollTo(scroller.bottom());
+	assertNear(
+		last(),
+		MARGIN + OVER + TRAILING - VIEWPORT,
+		"offset at the bottom, with room under the list",
+	);
+
+	scaledScrollToFn(MARGIN + OVER + TRAILING - VIEWPORT, {}, scroller.instance);
+	assertNear(
+		scroller.calls.at(-1)?.top,
+		scroller.bottom(),
+		"scrollTop for the end of the room under the list",
+	);
 });
 
 test("over the cap scrolling to the last row lands at the bottom of the scroller", () => {

@@ -509,7 +509,7 @@ export async function measureRun(
 
 	try {
 		const home = `${target.origin}/#/all`;
-		const B1 = await take(
+		const firstRows = await take(
 			"B1",
 			LOAD_BOUND_MS,
 			(taken) => {
@@ -520,7 +520,7 @@ export async function measureRun(
 				return rowsPainted(page);
 			},
 		);
-		const loaded = typeof B1 === "number";
+		const loaded = typeof firstRows === "number";
 		const gate = loaded ? null : unloaded;
 
 		await take(

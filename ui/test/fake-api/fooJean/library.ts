@@ -151,6 +151,8 @@ const CHANGES_REFUSAL: Record<ChangesRefusal, string> = {
 	revisionUnknown: "no such revision",
 	spliceTooLarge:
 		"the tracks added or removed since then are too many to send; export the library again",
+	dictionariesCompacted:
+		"the library was rebuilt with its dictionaries compacted; export the library again",
 	rearranged:
 		"the library was rebuilt with other columns or in another order; export the library again",
 };

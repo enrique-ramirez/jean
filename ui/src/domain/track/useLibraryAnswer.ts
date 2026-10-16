@@ -61,12 +61,15 @@ export function useLibraryAnswer<Question extends SearchQuestion>(
 	const ofThisLibrary = isAskable && held?.key === key ? held : null;
 	const isCurrent =
 		ofThisLibrary?.asked === asked &&
-		(question?.kind !== "artist" || ofThisLibrary.hadCredits === hasCredits);
+		(question?.kind === "album" ||
+			question?.kind === "genre" ||
+			ofThisLibrary.hadCredits === hasCredits);
 	const shown = isCurrent || keepsLast ? ofThisLibrary : null;
 
 	return {
 		answer: shown?.answer ?? null,
 		answered: shown?.question ?? null,
+		wasAnsweredWithCredits: shown?.hadCredits ?? null,
 		isWaiting: isAskable && !isCurrent,
 	};
 }

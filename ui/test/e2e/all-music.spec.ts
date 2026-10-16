@@ -436,6 +436,37 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 				await expectOnScreen(page, 0);
 			});
 
+			// The view leaves a room under the list that scrolls one for one; read through the list's own
+			// scale, it showed as empty list under the last row. An album's group keeps its own padding
+			// under its last row, so what ends with the list is the entry holding the last row.
+			test("at the bottom the last row ends where the list ends, with no empty list under it", async ({
+				page,
+			}) => {
+				await openAMillion(page);
+				await scrollUntilTheLastRowIsShown(page);
+
+				const { lastEnds, listEnds } = await scroller(page).evaluate(
+					(element, last) => {
+						const row = element.querySelector(
+							`[role="row"][data-row="${last}"]`,
+						) as HTMLElement;
+						const entry = row.closest('[role="grid"] > *') as HTMLElement;
+						const grid = element.querySelector('[role="grid"]') as HTMLElement;
+						return {
+							lastEnds: entry.getBoundingClientRect().bottom,
+							listEnds: grid.getBoundingClientRect().bottom,
+						};
+					},
+					LAST,
+				);
+				// Two pixels rather than one: the header's height is fractional and the scroller reports
+				// whole pixels, and each pixel of scroll is three of list at a million rows.
+				expect(
+					Math.abs(listEnds - lastEnds),
+					`the entry holding the last row ends at ${lastEnds}px and the list at ${listEnds}px`,
+				).toBeLessThan(2);
+			});
+
 			test("End reaches the last row, and Home the first", async ({ page }) => {
 				await openAMillion(page);
 				await expect(trackRow(page, 0)).toBeVisible();

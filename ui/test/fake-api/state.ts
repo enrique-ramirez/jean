@@ -11,8 +11,16 @@ import type { Bucket } from "./fooJean/rateLimits.ts";
 import {
 	changedColumn,
 	type Dictionary,
-	dictionary,
+	declaredColumn,
+	emptyFold,
 	encodeJlib,
+	type Fold,
+	foldCell,
+	foldColumn,
+	NO_SNAPSHOT,
+	snapshotIdOf,
+	sortedDictionary,
+	spineColumn,
 	wholeColumn,
 } from "./jlib.ts";
 import { generateTracks } from "./libraryShapes.ts";
@@ -22,6 +30,13 @@ import { createSessions, type SessionDevice } from "./sessions.ts";
 import { evaluate, sortedOrder } from "./titleFormat.ts";
 
 export type { Track };
+
+export type ChangesRefusal =
+	| "pairNotHeld"
+	| "revisionTooOld"
+	| "revisionUnknown"
+	| "spliceTooLarge"
+	| "rearranged";
 
 // Where the stream last changed what a given stream time means, in wall-clock
 // milliseconds.
@@ -231,10 +246,12 @@ const DEFAULT_PLAYLISTS = (): FakePlaylist[] => [
 	},
 ];
 
+export const sameMembers = (held: string[], asked: string[]) =>
+	held.length === asked.length && asked.every((one) => held.includes(one));
+
 export const trackKey = (track: Track) =>
 	`${track["%path%"]}\u0000${Number(track["%subsong%"]) || 0}`;
 
-// Each path is read once rather than once per comparison; the order is `compareText`'s.
 const sortedByLibraryPath = (entries: LibraryEntry[]): LibraryEntry[] => {
 	const keyed = entries.map((entry) => ({
 		entry,
@@ -292,6 +309,10 @@ function queryMatcher(query: string): ((track: Track) => boolean) | null {
 	return (track) =>
 		alternatives.some((group) => group.every((term) => term(track)));
 }
+
+const STRUCTURES_PER_FAKE = 2 ** 24;
+const STRUCTURE_BASE_OF_THIRTEEN_DIGITS = 1_000_000_000_000;
+let fakesCreated = 0;
 
 export function createState({
 	playlists = DEFAULT_PLAYLISTS(),
@@ -407,10 +428,12 @@ export function createState({
 			building: null as string[] | null,
 			buildTicks: 0,
 			structureFrom: 0,
+			redeclaredAt: 0,
 			dictionaries: new Map<string, Dictionary>(),
 			// Tag writes change what the library holds without moving `revision`.
 			edits: 0,
 			history: [] as {
+				structure: number;
 				revision: number;
 				changed: Map<string, number[]>;
 				sizes: Map<string, number>;
@@ -688,14 +711,15 @@ export function createState({
 	};
 
 	const feed = state.libraryFeed;
+	fakesCreated += 1;
+	const firstStructure =
+		STRUCTURE_BASE_OF_THIRTEEN_DIGITS + fakesCreated * STRUCTURES_PER_FAKE;
 
 	// `kRetainedRevisions` in `plugins/fb2k/src/core/library.h`.
 	const RETAINED_REVISIONS = 1920;
 
 	const PLAY_COUNT = "%lastfm_play_count%";
 
-	// The order and the first ordinal of each `%path%` hold until the structure moves: a play or a
-	// tag write changes no path.
 	let numbered: {
 		structure: number;
 		entries: LibraryEntry[];
@@ -725,16 +749,19 @@ export function createState({
 		);
 	};
 
-	const dictionaryFor = (name: string) => {
+	// A dictionary built afresh holds the values its column uses in bytewise order, the order a
+	// component's own build gives; one kept within a run only appends.
+	const dictionaryFor = (name: string, values: readonly string[] = []) => {
 		const held = feed.dictionaries.get(name);
 		if (held) return held;
-		const made = dictionary();
+		const made = sortedDictionary(values);
 		feed.dictionaries.set(name, made);
 		return made;
 	};
 
 	const remember = (changed: Map<string, number[]>) => {
 		feed.history.push({
+			structure: feed.structure,
 			revision: feed.revision,
 			changed,
 			sizes: new Map(
@@ -744,44 +771,94 @@ export function createState({
 				]),
 			),
 		});
-		// The build's own entry stands for the revision a client holds, so one more than the
-		// component's count is kept.
 		if (feed.history.length > RETAINED_REVISIONS + 1) feed.history.shift();
 	};
 
+	const MAX_GENERATIONS = 8;
+	const generations = new Map<number, readonly LibraryEntry[]>();
+
 	type BuiltLibrary = ReturnType<typeof buildLibrary>;
 
-	// Held per structure, revision and declaration, and dropped by a tag write. The columns are
-	// kept only until they are encoded.
-	let held:
-		| { key: string; built: BuiltLibrary; bytes: null }
-		| { key: string; built: null; bytes: Uint8Array<ArrayBuffer> }
-		| null = null;
+	let held: {
+		key: string;
+		built: BuiltLibrary;
+		encoded: Map<string, Uint8Array<ArrayBuffer>>;
+	} | null = null;
 
 	const heldKey = () =>
 		[feed.structure, feed.revision, feed.edits, ...feed.columns].join("\u0000");
 
 	const builtLibrary = () => {
 		const key = heldKey();
-		if (held?.key !== key) held = { key, built: buildLibrary(), bytes: null };
+		if (held?.key !== key)
+			held = {
+				key,
+				built: buildLibrary(),
+				encoded: new Map(),
+			};
 		return held;
 	};
+
+	const snapshotBody = (
+		{ built }: NonNullable<typeof held>,
+		part: { carried?: string[]; spineCarried?: boolean },
+	) => ({
+		kind: "snapshot" as const,
+		structure: feed.structure,
+		revision: feed.revision,
+		snapshotId: librarySnapshotId(),
+		trackCount: built.items.length,
+		columns: built.columns,
+		spine: built.spine,
+		...part,
+	});
+
+	let folded: { key: string; fold: Fold } | null = null;
+
+	const foldKey = () =>
+		[feed.structure, feed.edits, ...feed.columns].join("\u0000");
+
+	const contentFold = () => {
+		const key = foldKey();
+		if (folded?.key === key) return folded.fold;
+		const { built } = builtLibrary();
+		const fold = emptyFold();
+		for (const column of built.columns)
+			foldColumn(
+				fold,
+				declaredColumn(column.name as string),
+				column.appended,
+				column.ids,
+			);
+		for (const [name, column] of Object.entries(built.spine))
+			foldColumn(fold, spineColumn(name), column.appended, column.ids);
+		folded = { key, fold };
+		return fold;
+	};
+
+	const librarySnapshotId = () =>
+		feed.columns.length === 0
+			? NO_SNAPSHOT
+			: snapshotIdOf(contentFold(), ordinalOrder().length);
 
 	function buildLibrary() {
 		const items = ordinalOrder();
 		const cut = (path: string) => path.lastIndexOf("/") + 1;
 		const bone = (name: string, values: string[]) =>
-			wholeColumn(null, dictionaryFor(name), values);
+			wholeColumn(null, dictionaryFor(name, values), values);
 
 		return {
 			items,
-			columns: feed.columns.map((expression) =>
-				wholeColumn(
+			columns: feed.columns.map((expression) => {
+				const values = items.map((entry) =>
+					String(evaluate(entry.track, expression)),
+				);
+				return wholeColumn(
 					expression,
-					dictionaryFor(expression),
-					items.map((entry) => String(evaluate(entry.track, expression))),
-				),
-			),
+					dictionaryFor(expression, values),
+					values,
+				);
+			}),
 			spine: {
 				directory: bone(
 					"directory",
@@ -804,7 +881,6 @@ export function createState({
 		feed.buildTicks = 0;
 	}
 
-	// Held until the build finishes, so the track count and the structure move together.
 	const pendingChange = { add: 0, remove: 0 };
 	let addedSoFar = 0;
 
@@ -822,8 +898,6 @@ export function createState({
 		return added;
 	};
 
-	// Tracks arriving or leaving at the player: removed from the end in ordinal order, added
-	// beside the first one. The structure moves when the build this starts finishes.
 	function changeLibrary({ add, remove }: { add: number; remove: number }) {
 		pendingChange.add += add;
 		pendingChange.remove += remove;
@@ -858,15 +932,23 @@ export function createState({
 	function finishLibraryBuild() {
 		if (!feed.building) return;
 		applyPendingChange();
+		const isRedeclared = !sameMembers(feed.columns, feed.building);
 		feed.columns = feed.building;
 		feed.building = null;
-		feed.structure += 1;
+		feed.structure = feed.structure === 0 ? firstStructure : feed.structure + 1;
 		feed.revision += 1;
 		feed.structureFrom = feed.revision;
-		feed.dictionaries.clear();
-		feed.history.length = 0;
+		if (isRedeclared) {
+			feed.redeclaredAt = feed.structure;
+			feed.dictionaries.clear();
+			feed.history.length = 0;
+			generations.clear();
+		}
 		builtLibrary();
 		remember(new Map());
+		generations.set(feed.structure, ordinalOrder());
+		if (generations.size > MAX_GENERATIONS)
+			generations.delete(generations.keys().next().value as number);
 	}
 
 	function countPlay(track: Track) {
@@ -880,8 +962,7 @@ export function createState({
 		if (ordinal !== undefined) countPlayAt(ordinal);
 	}
 
-	// A play asked for by ordinal ignores `countsPlays`: a caller naming the track wants it counted.
-	function countPlayAt(ordinal: number) {
+	function countPlayAt(ordinal: number, given?: number | string) {
 		if (!feed.columns.includes(PLAY_COUNT)) return false;
 
 		const { entries } = numberedLibrary();
@@ -889,29 +970,185 @@ export function createState({
 
 		const row = entries[ordinal].track;
 		const path = row["%path%"];
-		const count = String(Number(row[PLAY_COUNT] ?? 0) + 1);
-		// Tracks sharing a file sort next to one another, so the library's copies are a run.
+		const kept = folded?.key === foldKey() ? folded.fold : null;
+		const count = String(given ?? Number(row[PLAY_COUNT] ?? 0) + 1);
+		const run: number[] = [];
 		for (
 			let at = ordinal;
 			at < entries.length && entries[at].track["%path%"] === path;
 			at += 1
-		)
-			entries[at].track[PLAY_COUNT] = count;
+		) {
+			run.push(at);
+			const { track } = entries[at];
+			if (kept)
+				foldCell(
+					kept,
+					declaredColumn(PLAY_COUNT),
+					at,
+					String(evaluate(track, PLAY_COUNT)),
+					-1,
+				);
+			track[PLAY_COUNT] = count;
+			if (kept)
+				foldCell(
+					kept,
+					declaredColumn(PLAY_COUNT),
+					at,
+					String(evaluate(track, PLAY_COUNT)),
+					1,
+				);
+		}
 		for (const playlist of state.playlists)
 			for (const copy of playlist.items)
 				if (copy["%path%"] === path) copy[PLAY_COUNT] = count;
 		dictionaryFor(PLAY_COUNT).id(count);
 
 		feed.revision += 1;
-		remember(new Map([[PLAY_COUNT, [ordinal]]]));
+		remember(new Map([[PLAY_COUNT, run]]));
 		return true;
 	}
 
-	function libraryChanges(since: number) {
-		if (since < feed.structureFrom) return { status: 409 as const };
+	function libraryExport({
+		only,
+		spine = true,
+	}: {
+		only?: readonly string[];
+		spine?: boolean;
+	} = {}): Uint8Array<ArrayBuffer> {
+		const library = builtLibrary();
+		const carried = only && feed.columns.filter((name) => only.includes(name));
+		const key = `${carried?.join("\u0000") ?? "*"}|${spine}`;
+		let bytes = library.encoded.get(key);
+		if (!bytes) {
+			bytes = encodeJlib(
+				snapshotBody(library, { carried, spineCarried: spine }),
+			);
+			library.encoded.set(key, bytes);
+		}
+		return bytes;
+	}
+
+	const NO_ROW = -1;
+
+	// How the rows of one numbering relate to the one before when tracks were added and removed and
+	// nothing else moved, as `diffOrders` in `library_splice.cpp` pairs them: the k-th track the two
+	// share is the k-th of each. Null where the shared tracks changed their order.
+	function diffOrders(
+		was: readonly LibraryEntry[],
+		is: readonly LibraryEntry[],
+	) {
+		const wasKeys = was.map((entry) => trackKey(entry.track));
+		const isKeys = is.map((entry) => trackKey(entry.track));
+		const tallies = new Map<
+			string,
+			{ was: number; is: number; seen: number }
+		>();
+		const tallyOf = (key: string) => {
+			let tally = tallies.get(key);
+			if (!tally) {
+				tally = { was: 0, is: 0, seen: 0 };
+				tallies.set(key, tally);
+			}
+			return tally;
+		};
+		for (const key of wasKeys) tallyOf(key).was += 1;
+		for (const key of isKeys) tallyOf(key).is += 1;
+
+		const removed: number[] = [];
+		const sharedWas: number[] = [];
+		wasKeys.forEach((key, row) => {
+			const tally = tallyOf(key);
+			tally.seen += 1;
+			if (tally.seen <= Math.min(tally.was, tally.is)) sharedWas.push(row);
+			else removed.push(row);
+		});
+		for (const tally of tallies.values()) tally.seen = 0;
+
+		const sourceOf = new Array<number>(isKeys.length).fill(NO_ROW);
+		let paired = 0;
+		for (let row = 0; row < isKeys.length; row += 1) {
+			const tally = tallyOf(isKeys[row]);
+			tally.seen += 1;
+			if (tally.seen > Math.min(tally.was, tally.is)) continue;
+			const source = sharedWas[paired++];
+			if (wasKeys[source] !== isKeys[row]) return null;
+			sourceOf[row] = source;
+		}
+		return { sourceOf, removed };
+	}
+
+	// `originAfter` in `library_splice.cpp`: each row's ordinal in the numbering the client holds,
+	// carried across one more step of rows removed and inserted.
+	const originAfter = (
+		origin: readonly number[],
+		removed: readonly number[],
+		inserted: ReadonlySet<number>,
+	) => {
+		const removedSet = new Set(removed);
+		const kept = origin.filter((_, row) => !removedSet.has(row));
+		const after: number[] = [];
+		let next = 0;
+		for (let row = 0; row < kept.length + inserted.size; row += 1)
+			after.push(inserted.has(row) ? NO_ROW : kept[next++]);
+		return after;
+	};
+
+	function rowsSpliced(held: readonly LibraryEntry[], structure: number) {
+		const now = ordinalOrder();
+		let origin = held.map((_, ordinal) => ordinal);
+		let before = held;
+		for (let step = structure + 1; step <= feed.structure; step += 1) {
+			const next = step === feed.structure ? now : generations.get(step);
+			if (!next) return { gone: true as const };
+			const diff = diffOrders(before, next);
+			if (!diff) return null;
+			const inserted = new Set(
+				diff.sourceOf.flatMap((source, row) =>
+					source === NO_ROW ? [row] : [],
+				),
+			);
+			origin = originAfter(origin, diff.removed, inserted);
+			before = next;
+		}
+
+		const survives = new Set(origin);
+		const removed = held.flatMap((_, ordinal) =>
+			survives.has(ordinal) ? [] : [ordinal],
+		);
+		const inserted = origin.flatMap((from, row) =>
+			from === NO_ROW ? [row] : [],
+		);
+		const ordinalNow = new Map(
+			now.map((entry, ordinal) => [trackKey(entry.track), ordinal]),
+		);
+		return { removed, inserted, now, ordinalNow, origin };
+	}
+
+	// The outcomes `DeltaOutcome` in `plugins/fb2k/src/core/failures.cpp` names that this fake can reach.
+	const refused = (status: 409 | 410, outcome: ChangesRefusal) =>
+		({ status, outcome }) as const;
+
+	function libraryChanges(since: number, structure = feed.structure) {
+		if (structure > feed.structure || structure < firstStructure)
+			return refused(409, "pairNotHeld");
+		if (structure < feed.redeclaredAt) return refused(410, "rearranged");
+		if (structure === feed.structure && since < feed.structureFrom)
+			return refused(409, "pairNotHeld");
+		if (structure === feed.structure && since > feed.revision)
+			return refused(410, "revisionUnknown");
 
 		const at = feed.history.findIndex((entry) => entry.revision === since);
-		if (at < 0) return { status: 410 as const };
+		if (at < 0)
+			return refused(
+				410,
+				since < (feed.history[0]?.revision ?? 0)
+					? "revisionTooOld"
+					: "revisionUnknown",
+			);
+		if (feed.history[at].structure !== structure)
+			return refused(409, "pairNotHeld");
+
+		if (structure !== feed.structure) return libraryRespliced(at, structure);
 
 		const moved = new Map<string, Set<number>>();
 		for (const entry of feed.history.slice(at + 1))
@@ -931,6 +1168,7 @@ export function createState({
 				structure: feed.structure,
 				revision: feed.revision,
 				since,
+				snapshotId: librarySnapshotId(),
 				trackCount: items.length,
 				columns: [...moved].map(([name, ordinals]) =>
 					changedColumn(
@@ -948,6 +1186,103 @@ export function createState({
 				spine: {},
 			}),
 		};
+	}
+
+	// The contract answers `410` for a splice of half the export's bytes or more.
+	function libraryRespliced(at: number, structure: number) {
+		const held = generations.get(structure);
+		if (!held) return refused(410, "revisionTooOld");
+		const rows = rowsSpliced(held, structure);
+		if (!rows) return refused(410, "rearranged");
+		if ("gone" in rows) return refused(410, "revisionTooOld");
+		const { removed, inserted, now, ordinalNow, origin } = rows;
+
+		const moved = new Map<string, Set<number>>();
+		for (const entry of feed.history.slice(at + 1)) {
+			const numbering =
+				entry.structure === feed.structure
+					? now
+					: generations.get(entry.structure);
+			if (!numbering) return refused(410, "revisionTooOld");
+			for (const [name, ordinals] of entry.changed)
+				for (const ordinal of ordinals) {
+					const key = trackKey(numbering[ordinal].track);
+					const survivor = ordinalNow.get(key);
+					if (survivor === undefined || origin[survivor] === NO_ROW) continue;
+					const movedHere = moved.get(name) ?? new Set<number>();
+					moved.set(name, movedHere);
+					movedHere.add(survivor);
+				}
+		}
+
+		const sizes = feed.history[at].sizes;
+		const carriedColumn = (
+			name: string,
+			valueAt: (ordinal: number) => string,
+			ordinals: Iterable<number>,
+		) =>
+			changedColumn(
+				name,
+				dictionaryFor(name),
+				sizes.get(name) ?? 0,
+				[...new Set(ordinals)]
+					.sort((a, b) => a - b)
+					.map((ordinal) => ({ ordinal, value: valueAt(ordinal) })),
+			);
+
+		const grown = (name: string) =>
+			dictionaryFor(name).values.length > (sizes.get(name) ?? 0);
+		const names =
+			inserted.length > 0
+				? feed.columns
+				: feed.columns.filter((name) => moved.has(name) || grown(name));
+		const cut = (path: string) => path.lastIndexOf("/") + 1;
+		const bone = (name: string, valueAt: (ordinal: number) => string) =>
+			carriedColumn(name, valueAt, inserted);
+		const carriesBone = (name: string) => inserted.length > 0 || grown(name);
+
+		const bytes = encodeJlib({
+			kind: "splice",
+			structure: feed.structure,
+			revision: feed.revision,
+			since: feed.history[at].revision,
+			sinceStructure: structure,
+			snapshotId: librarySnapshotId(),
+			trackCount: now.length,
+			removed,
+			inserted,
+			columns: names.map((name) =>
+				carriedColumn(
+					name,
+					(ordinal) => String(evaluate(now[ordinal].track, name)),
+					[...inserted, ...(moved.get(name) ?? [])],
+				),
+			),
+			spine: Object.fromEntries(
+				[
+					[
+						"directory",
+						(ordinal: number) =>
+							now[ordinal].path.slice(0, cut(now[ordinal].path)),
+					],
+					[
+						"filename",
+						(ordinal: number) =>
+							now[ordinal].path.slice(cut(now[ordinal].path)),
+					],
+					["subsong", (ordinal: number) => String(now[ordinal].subsong)],
+				]
+					.filter(([name]) => carriesBone(name as string))
+					.map(([name, valueAt]) => [
+						name,
+						bone(name as string, valueAt as (ordinal: number) => string),
+					]),
+			),
+		});
+
+		return bytes.length * 2 >= libraryExport().length
+			? refused(410, "spliceTooLarge")
+			: { status: 200 as const, bytes };
 	}
 
 	const queuePayload = () =>
@@ -1310,21 +1645,9 @@ export function createState({
 			notify({ playlists: true });
 		},
 
-		libraryExport(): Uint8Array<ArrayBuffer> {
-			const exported = builtLibrary();
-			if (exported.built === null) return exported.bytes;
-			const { built } = exported;
-			const bytes = encodeJlib({
-				kind: "snapshot",
-				structure: state.libraryFeed.structure,
-				revision: state.libraryFeed.revision,
-				trackCount: built.items.length,
-				columns: built.columns,
-				spine: built.spine,
-			});
-			held = { key: exported.key, built: null, bytes };
-			return bytes;
-		},
+		libraryExport,
+
+		librarySnapshotId,
 
 		libraryEdited() {
 			state.libraryFeed.edits += 1;

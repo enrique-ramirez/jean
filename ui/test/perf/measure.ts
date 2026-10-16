@@ -13,13 +13,16 @@ import type { Pages } from "./exportCost.ts";
 import { postControl } from "./fakePlayer.ts";
 import {
 	armKeystroke,
+	changesAfter,
 	describePage,
 	firstRowAt,
 	installProbes,
 	keystrokeMs,
 	readProbes,
+	readTimeline,
 	resetProbes,
 	searchCount,
+	stateAnswers,
 	timeOpening,
 	timeRowCount,
 } from "./pageProbes.ts";
@@ -33,14 +36,12 @@ import {
 export interface ProjectDefinition {
 	engine: "chromium" | "firefox" | "webkit";
 	options: BrowserContextOptions;
-	// Chromium's CPU throttle, a multiple of the machine's own speed.
 	cpuThrottle: number | null;
 }
 
 export interface Target {
 	origin: string;
 	pages: Pages;
-	// The fake's `/__control/` routes; a real player has none.
 	hasControls: boolean;
 }
 
@@ -51,29 +52,81 @@ export interface Task {
 	longTaskMs: number | null;
 }
 
+export const TIMELINE_MARKS = [
+	"pagehideOfOldDocument",
+	"navigationStart",
+	"documentFirstByte",
+	"domContentLoaded",
+	"firstStateAsked",
+	"restoreAsked",
+	"restored",
+	"exportRequested",
+	"exportComplete",
+	"firstRowInDom",
+	"firstRowPainted",
+	"lateComplete",
+	"lateShown",
+] as const;
+export type TimelineMark = (typeof TIMELINE_MARKS)[number];
+
+export interface Reload {
+	// The page's clock: navigation start to the frame after the first row. Where the browser starts
+	// that clock after the old document is gone, this leaves its teardown out.
+	ms: number;
+	waitedMs: number;
+	timeline: Record<TimelineMark, number | null>;
+	stallToFirstRowsMs: number;
+	leavingMs: number | null;
+	exportRequested: boolean;
+	settled: Task;
+}
+
+export const RELOAD_KINDS = ["reload", "afterBlank", "cacheDisabled"] as const;
+export type ReloadKind = (typeof RELOAD_KINDS)[number];
+
+export interface Late {
+	responseMs: number;
+	shownMs: number;
+}
+
+export interface StoreWrite {
+	stallMs: number;
+	windowMs: number;
+}
+
+export interface Added {
+	ms: Taken;
+	sinceStateMovedMs: Taken;
+	bytes: Taken;
+	changesRequestedMs: Taken;
+	changesCompleteMs: Taken;
+	pollMs: Taken;
+}
+
 export interface RunResult {
 	B1: Taken;
+	landing: Task | Error;
+	late: Late | Error;
+	storeWrite: StoreWrite | Error;
 	B2: Task | Error;
 	B3: (Task & { keystrokeMs: number }) | Error;
 	B4: Record<"album" | "artist" | "genre", Taken>;
+	homeLanding: { cold: Task; reload: Task } | Error;
+	B4Tasks: Record<"album" | "artist" | "genre", Task | Error>;
 	B5: Taken;
-	B6: Taken;
-	B7: { ms: Taken; bytes: Taken };
+	B6: Record<ReloadKind, Reload | Error>;
+	B7: Added | Error;
 	scrollEnd: ListEnd | Error;
 }
 
-// A cell not finished in its bound is recorded as over it. A load takes longer than a keystroke, so
-// it has the longer bound; both are far past the slowest budget.
 const LOAD_BOUND_MS = 120_000;
 const CELL_BOUND_MS = 60_000;
 const PAGE_ANSWER_MS = 5000;
 export const CLOSE_MS = 15_000;
-// After the work a metric names, the page is watched this long for the tasks it causes.
 const SETTLE_MS = 2500;
 const IDLE_BEFORE_HEAP_MS = 2000;
 const ALBUM_TRACKS = 10;
 
-// What the suite's fixtures seed, so the first-run dialogs do not stand between the page and its rows.
 const SEEDED_SETTINGS = {
 	"jean.heatIntroSeen": true,
 	"jean.settingsSeen": true,
@@ -176,7 +229,6 @@ async function keystroke(page: Page, isPhone: boolean) {
 	return { ...tasks, keystrokeMs: timed };
 }
 
-// An album and a genre draw their tracks; an artist opens on its discography, a row of album links.
 const TRACK_ROWS = "[data-row]";
 const DISCOGRAPHY = 'main a[href^="#/album/"]';
 
@@ -189,10 +241,20 @@ async function openingPage(page: Page, hash: string, shown: string) {
 		shown,
 	);
 	await page.waitForTimeout(300);
-	return page.evaluate(timeOpening, { hash, shown });
+	await page.evaluate(resetProbes);
+	const ms = await page.evaluate(timeOpening, { hash, shown });
+	await page.waitForTimeout(SETTLE_MS);
+	return { ms, task: taskOf(await page.evaluate(readProbes)) };
 }
 
-async function addedAlbum(page: Page, target: Target) {
+const medianGap = (stamps: number[]) => {
+	const gaps = stamps.slice(1).map((at, index) => at - stamps[index]);
+	if (gaps.length === 0) return new Error("fewer than two state answers");
+	gaps.sort((a, b) => a - b);
+	return gaps[gaps.length >> 1];
+};
+
+async function addedAlbum(page: Page, target: Target): Promise<Added> {
 	const bytes: Promise<number>[] = [];
 	const counting = (request: Request) => {
 		bytes.push(
@@ -215,21 +277,156 @@ async function addedAlbum(page: Page, target: Target) {
 			target.pages.trackCount + ALBUM_TRACKS,
 		);
 		await control(target.origin, "library", { add: ALBUM_TRACKS });
-		const ms = await shown;
+		const { ms, sinceStateMovedMs, movedAt, began } = await shown;
+		const changes = await page.evaluate(changesAfter, began);
 		await page.waitForTimeout(500);
 		page.off("requestfinished", counting);
 		const total = (await Promise.all(bytes)).reduce(
 			(sum, size) => sum + size,
 			0,
 		);
+		const answers = await page.evaluate(stateAnswers);
 
-		// Put the library back, so the next run measures the same one.
 		const restored = page.evaluate(timeRowCount, target.pages.trackCount);
 		await control(target.origin, "library", { remove: ALBUM_TRACKS });
 		await restored;
-		return { ms, bytes: total };
+		return {
+			ms,
+			sinceStateMovedMs:
+				sinceStateMovedMs ?? new Error("no state answer moved the structure"),
+			bytes: total,
+			changesRequestedMs:
+				changes && movedAt !== null
+					? changes.start - movedAt
+					: new Error("no request for the changes followed"),
+			changesCompleteMs:
+				changes && movedAt !== null
+					? changes.end - movedAt
+					: new Error("no request for the changes followed"),
+			pollMs: medianGap(answers.map((answer) => answer.at)),
+		};
 	} finally {
 		page.off("requestfinished", counting);
+	}
+}
+
+const HOME_SHELF =
+	'section[aria-labelledby^="shelf-"], section[aria-labelledby="home-explore"]';
+
+async function homeLanding(
+	browser: Browser,
+	project: ProjectDefinition,
+	origin: string,
+): Promise<{ cold: Task; reload: Task }> {
+	const { context, page } = await openPage(browser, project);
+	try {
+		await page.goto(`${origin}/#/`, { waitUntil: "commit" });
+		await page.waitForSelector(HOME_SHELF);
+		await page
+			.waitForFunction(
+				() =>
+					performance
+						.getEntriesByType("resource")
+						.some(
+							(entry) =>
+								entry.name.includes("spine=false") &&
+								(entry as PerformanceResourceTiming).responseEnd > 0,
+						),
+				null,
+				{ timeout: LATE_PART_WAIT_MS },
+			)
+			.catch(() => undefined);
+		await page.waitForTimeout(SETTLE_MS);
+		const cold = taskOf(await page.evaluate(readProbes));
+
+		await page.reload({ waitUntil: "commit" });
+		await page.waitForSelector(HOME_SHELF);
+		await page.waitForTimeout(SETTLE_MS);
+		return { cold, reload: taskOf(await page.evaluate(readProbes)) };
+	} finally {
+		await orElse(CLOSE_MS, undefined, () => context.close());
+	}
+}
+
+const BLANK_IDLE_MS = 1000;
+// Firefox holds a navigation back for a while after a large page has loaded.
+const DOCUMENT_AGE_MS = IDLE_BEFORE_HEAP_MS;
+const LATE_PART_WAIT_MS = 10_000;
+
+async function reloadTimed(
+	page: Page,
+	isReload: boolean,
+	begin: () => Promise<unknown>,
+	leavingMs: number | null = null,
+): Promise<Reload> {
+	const calledAt = Date.now();
+	await begin();
+	const ms = await rowsPainted(page);
+	await page.waitForFunction(
+		() =>
+			(
+				globalThis as unknown as {
+					__perf: { marks: { lateShownAt: number | null } };
+				}
+			).__perf.marks.lateShownAt !== null,
+	);
+	await page.waitForTimeout(SETTLE_MS);
+	const settled = taskOf(await page.evaluate(readProbes));
+	const raw = (await page.evaluate(readTimeline)) as ReturnType<
+		typeof readTimeline
+	>;
+	const since = (at: number | null) =>
+		at === null ? null : raw.timeOrigin + at - calledAt;
+	const timeline: Reload["timeline"] = {
+		pagehideOfOldDocument:
+			isReload && raw.pagehideEpoch !== null
+				? raw.pagehideEpoch - calledAt
+				: null,
+		navigationStart: since(0),
+		documentFirstByte: since(raw.responseStart),
+		domContentLoaded: since(raw.domContentLoaded),
+		firstStateAsked: since(raw.stateAsked),
+		restoreAsked: since(raw.restoreAsked),
+		restored: since(raw.restored),
+		exportRequested: since(raw.firstExport?.start ?? null),
+		exportComplete: since(raw.firstExport?.end ?? null),
+		firstRowInDom: since(raw.rowInDom),
+		firstRowPainted: since(raw.rowPainted),
+		lateComplete: since(raw.lateExport?.end ?? null),
+		lateShown: since(raw.lateShown),
+	};
+	return {
+		ms,
+		waitedMs: timeline.firstRowPainted as number,
+		timeline,
+		exportRequested: raw.firstExport !== null,
+		stallToFirstRowsMs: raw.stallAtFirstRow as number,
+		leavingMs,
+		settled,
+	};
+}
+
+async function agedDocument(page: Page, home: string) {
+	await page.goto(home, { waitUntil: "commit" });
+	await rowsPainted(page);
+	await page.waitForTimeout(DOCUMENT_AGE_MS);
+}
+
+// What the HTTP cache holds is the thing varied: Chromium has a switch for it, and in the other
+// engines Playwright turns the cache off while a route is installed.
+async function withoutHttpCache<T>(
+	page: Page,
+	cdp: CDPSession | null,
+	work: () => Promise<T>,
+) {
+	if (cdp) await cdp.send("Network.setCacheDisabled", { cacheDisabled: true });
+	else await page.route("**/*", (route) => route.continue());
+	try {
+		return await work();
+	} finally {
+		if (cdp)
+			await cdp.send("Network.setCacheDisabled", { cacheDisabled: false });
+		else await page.unroute("**/*");
 	}
 }
 
@@ -237,19 +434,21 @@ export const unmeasured = (): RunResult => {
 	const waiting = new Error("not measured yet");
 	return {
 		B1: waiting,
+		landing: waiting,
 		B2: waiting,
 		B3: waiting,
 		B4: { album: waiting, artist: waiting, genre: waiting },
+		B4Tasks: { album: waiting, artist: waiting, genre: waiting },
+		homeLanding: waiting,
 		B5: waiting,
-		B6: waiting,
-		B7: { ms: waiting, bytes: waiting },
+		late: waiting,
+		storeWrite: waiting,
+		B6: { reload: waiting, afterBlank: waiting, cacheDisabled: waiting },
+		B7: waiting,
 		scrollEnd: waiting,
 	};
 };
 
-// Fills `into` as each cell finishes and calls `saved` after each. Resolves with whether the page
-// stopped answering, in which case the cells left are recorded as over their bound and the caller
-// should not reuse the browser.
 export async function measureRun(
 	browser: Browser,
 	project: ProjectDefinition,
@@ -269,8 +468,6 @@ export async function measureRun(
 			page.evaluate(describePage),
 		);
 
-	// Measures one cell within its bound and stores the outcome, or `skipped` where the cell cannot
-	// be taken at all. A cell over its bound ends the run if the page no longer answers.
 	const take = async <T>(
 		step: string,
 		bound: number,
@@ -326,6 +523,81 @@ export async function measureRun(
 		const loaded = typeof B1 === "number";
 		const gate = loaded ? null : unloaded;
 
+		await take(
+			"late part",
+			CELL_BOUND_MS,
+			(taken) => {
+				into.late = taken;
+			},
+			async (): Promise<Late> => {
+				await page
+					.waitForFunction(
+						() =>
+							performance
+								.getEntriesByType("resource")
+								.some(
+									(entry) =>
+										entry.name.includes("/library/export") &&
+										entry.name.includes("spine=false") &&
+										(entry as PerformanceResourceTiming).responseEnd > 0,
+								),
+						null,
+						{ timeout: LATE_PART_WAIT_MS },
+					)
+					.catch(() => {
+						throw new Error("no late part was requested");
+					});
+				const raw = await page.evaluate(readTimeline);
+				if (raw.lateExport === null || raw.lateShown === null)
+					throw new Error("no late part was requested");
+				return {
+					responseMs: raw.lateExport.end - (raw.rowPainted as number),
+					shownMs: raw.lateShown - (raw.rowPainted as number),
+				};
+			},
+			gate,
+		);
+
+		await take(
+			"store write",
+			CELL_BOUND_MS,
+			(taken) => {
+				into.storeWrite = taken;
+			},
+			async (): Promise<StoreWrite> => {
+				await page.waitForFunction(
+					() =>
+						(
+							globalThis as unknown as {
+								__perf: {
+									marks: { storeWindow: { closedAt: number | null } };
+								};
+							}
+						).__perf.marks.storeWindow.closedAt !== null,
+				);
+				const { storeWindow } = await page.evaluate(readTimeline);
+				return {
+					stallMs: storeWindow.stallMs,
+					windowMs:
+						(storeWindow.closedAt as number) - (storeWindow.openedAt as number),
+				};
+			},
+			gate,
+		);
+
+		await take(
+			"landing",
+			CELL_BOUND_MS,
+			(taken) => {
+				into.landing = taken;
+			},
+			async () => {
+				await page.waitForTimeout(SETTLE_MS);
+				return taskOf(await page.evaluate(readProbes));
+			},
+			gate,
+		);
+
 		await orElse(IDLE_BEFORE_HEAP_MS + PAGE_ANSWER_MS, undefined, () =>
 			page.waitForTimeout(IDLE_BEFORE_HEAP_MS),
 		);
@@ -360,18 +632,39 @@ export async function measureRun(
 				);
 		}
 
-		await take(
-			"B6",
-			LOAD_BOUND_MS,
-			(taken) => {
-				into.B6 = taken;
+		const reloads: Record<ReloadKind, () => Promise<Reload>> = {
+			reload: () =>
+				reloadTimed(page, true, () => page.reload({ waitUntil: "commit" })),
+			afterBlank: async () => {
+				await agedDocument(page, home);
+				const left = performance.now();
+				await page.goto("about:blank");
+				const leavingMs = performance.now() - left;
+				await page.waitForTimeout(BLANK_IDLE_MS);
+				return reloadTimed(
+					page,
+					false,
+					() => page.goto(home, { waitUntil: "commit" }),
+					leavingMs,
+				);
 			},
-			async () => {
-				await page.reload({ waitUntil: "commit" });
-				return rowsPainted(page);
+			cacheDisabled: async () => {
+				await agedDocument(page, home);
+				return withoutHttpCache(page, cdp, () =>
+					reloadTimed(page, true, () => page.reload({ waitUntil: "commit" })),
+				);
 			},
-			gate,
-		);
+		};
+		for (const kind of RELOAD_KINDS)
+			await take(
+				kind === "reload" ? "B6" : `B6 ${kind}`,
+				LOAD_BOUND_MS,
+				(taken) => {
+					into.B6[kind] = taken;
+				},
+				reloads[kind],
+				gate,
+			);
 
 		const { tracePath } = options;
 		const traced = tracePath !== null && project.engine === "chromium";
@@ -412,17 +705,33 @@ export async function measureRun(
 				`B4 ${name}`,
 				CELL_BOUND_MS,
 				(taken) => {
-					into.B4[name] = taken;
+					if (taken instanceof Error) {
+						into.B4[name] = taken;
+						into.B4Tasks[name] = taken;
+					} else {
+						into.B4[name] = taken.ms;
+						into.B4Tasks[name] = taken.task;
+					}
 				},
 				() => openingPage(page, hash, shown),
 				gate,
 			);
 
 		await take(
+			"home landing",
+			LOAD_BOUND_MS,
+			(taken) => {
+				into.homeLanding = taken;
+			},
+			() => homeLanding(browser, project, target.origin),
+			gate,
+		);
+
+		await take(
 			"B7",
 			CELL_BOUND_MS,
 			(taken) => {
-				into.B7 = taken instanceof Error ? { ms: taken, bytes: taken } : taken;
+				into.B7 = taken;
 			},
 			() => addedAlbum(page, target),
 			controlsGate,

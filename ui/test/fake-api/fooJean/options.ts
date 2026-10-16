@@ -4,7 +4,7 @@ import type { Bucket, Limiter, RateLimits } from "./rateLimits.ts";
 export type OwnPlaylistRole = "scratch";
 
 // `kMaxLibraryBytes` in `plugins/fb2k/src/core/http_server.h`.
-export const MAX_LIBRARY_BYTES = 64 * 1024 * 1024;
+export const MAX_LIBRARY_BYTES = 256 * 1024 * 1024;
 
 // Spelled the way foobar2000 prints a device pair: one module GUID shared by every device it
 // offers, joined by a colon to each device's own, both upper case and without braces. The default
@@ -178,8 +178,8 @@ export interface FooJeanOptions {
 
 	librarySlice?: number;
 
-	// The largest export or delta, in bytes before any content coding, that the library routes
-	// send; `null` lifts it, as a profiling run over a library the component would refuse does.
+	holdSubset?: string[] | null;
+
 	libraryCeiling?: number | null;
 
 	failLibraryExport?: { status: 413 | 500 | 503; times: number } | null;
@@ -262,6 +262,7 @@ export interface FooJeanFake extends Required<FooJeanOptions> {
 	mainThreadStalledAt: number | null;
 	limiter: Limiter;
 	capabilitiesHeld: (() => void)[];
+	subsetsHeld: (() => void)[];
 	// The specification of every autoplaylist `POST /api/autoplaylists` made, by the
 	// fake's own key: the only playlists the two `/api/autoplaylists/{id}` routes touch.
 	managedAutoPlaylists: Map<string, ManagedAutoPlaylist>;
@@ -293,6 +294,7 @@ const DEFAULTS: FooJeanFake = {
 	mainThreadStalled: false,
 	hangCapabilities: false,
 	capabilitiesHeld: [],
+	subsetsHeld: [],
 	failArtwork: null,
 	failPlayingArtwork: null,
 	failRowArtwork: null,
@@ -327,6 +329,7 @@ const DEFAULTS: FooJeanFake = {
 	libraryRebuilds: 0,
 	libraryHalted: false,
 	librarySlice: Infinity,
+	holdSubset: null,
 	libraryCeiling: MAX_LIBRARY_BYTES,
 	failLibraryExport: null,
 	maxAutoPlaylists: 0,
@@ -413,6 +416,19 @@ const releaseHeldCapabilitiesWhenSwitchedOff = (
 	return fake;
 };
 
+const releaseSubsetsWhenHoldChanges = (fake: FooJeanFake): FooJeanFake => {
+	let holding = fake.holdSubset;
+	Object.defineProperty(fake, "holdSubset", {
+		enumerable: true,
+		get: () => holding,
+		set: (next: string[] | null) => {
+			holding = next;
+			for (const wake of fake.subsetsHeld.splice(0)) wake();
+		},
+	});
+	return fake;
+};
+
 export const fooJeanState = (options: FooJeanOptions): FooJeanFake => {
 	const specs = options.autoPlaylistSpecs ?? {};
 	const fake = guardRefusals({
@@ -429,9 +445,12 @@ export const fooJeanState = (options: FooJeanOptions): FooJeanFake => {
 		lockedPlaylists: new Set(),
 		limiter: new Map(),
 		capabilitiesHeld: [],
+		subsetsHeld: [],
 		managedAutoPlaylists: new Map(
 			Object.entries(specs).map(([id, spec]) => [id, { ...spec }]),
 		),
 	});
-	return releaseHeldCapabilitiesWhenSwitchedOff(fake);
+	return releaseSubsetsWhenHoldChanges(
+		releaseHeldCapabilitiesWhenSwitchedOff(fake),
+	);
 };

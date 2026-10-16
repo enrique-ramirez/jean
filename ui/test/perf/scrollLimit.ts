@@ -37,7 +37,6 @@ export interface ListEnd {
 	scrollHeight: number;
 }
 
-// Scrolls the track list as far as it goes and reads which row it ended on.
 export async function scrollListToEnd(): Promise<ListEnd | null> {
 	const grid = document.querySelector<HTMLElement>('[role="grid"]');
 	const scroller = grid?.closest<HTMLElement>("[data-drop-scroller]");

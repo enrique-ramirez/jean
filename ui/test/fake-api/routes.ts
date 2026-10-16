@@ -72,9 +72,13 @@ export function handleControl({
 		return empty(response);
 	}
 
-	// With no `playlistId`, a play of the library track at `ordinal`, counted whether or not the fake counts plays.
 	if (action === "play" && input.playlistId === undefined) {
-		return state.countPlayAt(Number(input.ordinal))
+		return state.countPlayAt(
+			Number(input.ordinal),
+			typeof input.count === "number" || typeof input.count === "string"
+				? input.count
+				: undefined,
+		)
 			? empty(response)
 			: empty(response, 404);
 	}
@@ -167,12 +171,17 @@ export function handleControl({
 		return empty(response);
 	}
 
-	// Tracks added to or removed from the media library at the player. Both in one call are one
-	// rebuild, which settles on the next poll of `GET /api/state`.
 	if (action === "library") {
 		const count = (value: unknown) =>
 			Number.isInteger(value) && (value as number) > 0 ? (value as number) : 0;
 		state.changeLibrary({ add: count(input.add), remove: count(input.remove) });
+		return empty(response);
+	}
+
+	if (action === "holdSubset") {
+		state.fooJean.holdSubset = Array.isArray(input.only)
+			? input.only.filter((one): one is string => typeof one === "string")
+			: null;
 		return empty(response);
 	}
 

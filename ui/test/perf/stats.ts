@@ -40,7 +40,6 @@ export const summarise = (runs: number[], extra: object = {}): Measured => ({
 	...extra,
 });
 
-// How many of `runs` failed, and how many of those were over their bound; null when none did.
 export const shortfall = (runs: unknown[]) => {
 	const failed = runs.filter((run) => run instanceof Error);
 	return failed.length === 0
@@ -51,7 +50,6 @@ export const shortfall = (runs: unknown[]) => {
 			};
 };
 
-// Every run that produced a number, or why none did.
 export const metricOf = (
 	runs: (number | Error)[],
 	extra: object = {},

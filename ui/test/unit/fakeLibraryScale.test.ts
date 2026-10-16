@@ -36,9 +36,6 @@ interface Answer {
 	ms: number;
 }
 
-// The host seam `ui/test/README.md` names: the same route tables answer a node socket and the
-// demo's service worker. Driven here with no socket, so a time is the fake's work and not a
-// loopback copy of tens of megabytes.
 const ask = async (
 	state: FakeState,
 	path: string,
@@ -113,11 +110,14 @@ const exportOf = (
 
 const changesOf = (
 	state: FakeState,
-	since: number,
+	held: JlibSnapshot,
 	headers: Record<string, string>,
 ) =>
 	ask(state, "/api/library/changes", {
-		query: [["since", String(since)]],
+		query: [
+			["since", String(held.revision)],
+			["structure", String(held.structure)],
+		],
 		headers,
 	});
 
@@ -163,7 +163,6 @@ const libraryPathAt = (library: JlibSnapshot, ordinal: number) =>
 const relativePathOf = (track: Track) =>
 	String(evaluate(track, "%path%")).replaceAll("\\", "/");
 
-// The fake keeps the whole `%path%`; the snapshot carries it relative to the library's root.
 const ordinalOf = (library: JlibSnapshot, track: Track) => {
 	const whole = relativePathOf(track);
 	for (let ordinal = 0; ordinal < library.trackCount; ordinal += 1)
@@ -236,13 +235,9 @@ test("`pnpm fake --tracks <n>` serves a library of that many tracks", async () =
 	}
 });
 
-// Criterion 1 at the stretch size. The one build is paid in this test's setup and nowhere else;
-// every timed case after it is the fake answering from what it already holds.
 test("a library of a million tracks is sorted and encoded once, and answered again at no cost", {
 	timeout: BUILT_ONCE_TIMEOUT_MS,
 }, async (t) => {
-	// Over the component's ceiling with all 21 columns, so the ceiling is lifted as the
-	// profiler lifts it.
 	const state = createState({
 		fooJean: { libraryCeiling: null },
 		countsPlays: true,
@@ -304,9 +299,6 @@ test("a library of a million tracks is sorted and encoded once, and answered aga
 		},
 	);
 
-	// Last, since a play moves the revision every case above relies on. The track played
-	// is the last one generated, so a search that stops at the first match still walks
-	// the whole library to reach it. `plan.md` *Risks* has the delta cached with the export.
 	await t.test(
 		"a play is counted, and its delta answered, each in under 50 ms",
 		async () => {
@@ -321,7 +313,7 @@ test("a library of a million tracks is sorted and encoded once, and answered aga
 				`counting took ${counting.toFixed(0)} ms`,
 			);
 
-			const delta = await changesOf(state, held.revision, IDENTITY);
+			const delta = await changesOf(state, held, IDENTITY);
 			assert.equal(delta.status, 200);
 			assert.ok(
 				delta.ms < SERVED_AGAIN_MS,
@@ -341,9 +333,6 @@ const SMALL = () =>
 
 const COUNTED = ["%title%", PLAY_COUNT];
 
-// `libraryOfShape` deals tracks out to albums round-robin, so the order they were generated in
-// is not the order the export numbers them in: a play counted at the generated index lands on
-// another track.
 test("a play is counted against the track that was played, at its export ordinal", async () => {
 	const state = SMALL();
 	const held = await snapshotOf(await exportOf(state, COUNTED, IDENTITY));
@@ -357,7 +346,7 @@ test("a play is counted against the track that was played, at its export ordinal
 	const before = Number(held.columns.get(PLAY_COUNT)?.at(ordinal));
 
 	state.countPlay(played);
-	const delta = await changesOf(state, held.revision, IDENTITY);
+	const delta = await changesOf(state, held, IDENTITY);
 	assert.equal(delta.status, 200);
 
 	assert.deepEqual(

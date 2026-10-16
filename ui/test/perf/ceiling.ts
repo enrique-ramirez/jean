@@ -1,5 +1,3 @@
-// A cell that had not finished in its bound. The run records it and goes on, since a page that
-// never answers would otherwise hold the whole report back.
 export class Over extends Error {
 	bound: number;
 
@@ -11,8 +9,6 @@ export class Over extends Error {
 
 const never = Symbol("not finished");
 
-// Resolves with `work`'s outcome, or rejects with `Over` once `bound` milliseconds pass. The work
-// is left to run on: the context it drives is closed afterwards, which rejects whatever it awaits.
 export async function within<T>(
 	bound: number,
 	reason: () => Promise<string>,
@@ -35,7 +31,6 @@ export async function within<T>(
 	return outcome;
 }
 
-// Settles with `fallback` if `work` has not answered in `bound` milliseconds or throws.
 export async function orElse<T>(
 	bound: number,
 	fallback: T,

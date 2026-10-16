@@ -13,9 +13,12 @@ import {
 	honouredHeightOf,
 	measureRun,
 	type ProjectDefinition,
+	RELOAD_KINDS,
+	type Reload,
 	type RunResult,
 	type Target,
 	type Task,
+	TIMELINE_MARKS,
 	unmeasured,
 } from "./measure.ts";
 import {
@@ -31,7 +34,6 @@ const OUT_DIR = resolve(UI_ROOT, "../_tmp/035-perf");
 const DIST_DIR = join(OUT_DIR, "dist");
 const DESKTOP_VIEWPORT = { width: 1280, height: 860 };
 const PHONE_CPU_THROTTLE = 4;
-// The height the track list gives a row, used only where the list itself could not be read.
 const FALLBACK_ROW_HEIGHT = 46;
 
 const PROJECTS: Record<ProjectName, ProjectDefinition> = {
@@ -65,9 +67,10 @@ const failures = (runs: unknown[]) =>
 	runs.find((run): run is Error => run instanceof Error);
 
 function taskMetric(
-	runs: RunResult["B2"][],
+	runs: (Task | Error)[],
 	headline: (run: Task) => number,
 	unit: string,
+	window = "while the page works",
 ): Metric {
 	const taken = runs.filter((run): run is Task => !(run instanceof Error));
 	if (taken.length === 0) return noResult(failures(runs));
@@ -76,10 +79,50 @@ function taskMetric(
 		...summarise(taken.map(headline)),
 		unit,
 		...shortfall(runs),
-		method: "longest gap between zero-delay timer turns while the page works",
+		method: `longest gap between zero-delay timer turns ${window}`,
 		longestLongTask: longTasks.some((entry) => entry === null)
 			? { unavailable: "this engine has no longtask observer" }
 			: summarise(longTasks as number[]),
+	};
+}
+
+function reloadMetric(runs: (Reload | Error)[]) {
+	const ms = (pick: (run: Reload) => number) =>
+		runs.map((run) => (run instanceof Error ? run : pick(run)));
+	return {
+		...metricOf(ms((run) => run.ms)),
+		unit: "ms",
+		method:
+			"the page's clock, navigation start to the frame after the first row painted",
+		waited: {
+			...metricOf(ms((run) => run.waitedMs)),
+			unit: "ms",
+			method:
+				"the call that began the navigation to the same frame, on the clock outside the page",
+		},
+		landing: taskMetric(
+			runs.map((run) => (run instanceof Error ? run : run.settled)),
+			(task) => task.stallMs,
+			"ms",
+			"from navigation start until the late part is shown and the page has had a moment to itself",
+		),
+		leaving: metricOf(
+			runs.map((run) =>
+				run instanceof Error
+					? run
+					: (run.leavingMs ??
+						new Error("this navigation did not follow a blank page")),
+			),
+		),
+		exportRequested: runs.map((run) =>
+			run instanceof Error ? null : run.exportRequested,
+		),
+		timeline: Object.fromEntries(
+			TIMELINE_MARKS.map((mark) => [
+				mark,
+				metricOf(ms((run) => run.timeline[mark] as number)),
+			]),
+		),
 	};
 }
 
@@ -95,6 +138,27 @@ function projectReport(
 		return failures(each) ?? Math.max(...(each as number[]));
 	});
 
+	const openedTasks = (name: "album" | "artist" | "genre") =>
+		taskMetric(
+			runs.map((run) => run.B4Tasks[name]),
+			(task) => task.stallMs,
+			"ms",
+			"from the click on the page's link until its rows have painted and the page has had a moment to itself",
+		);
+	const slowestOpeningTasks = runs.map((run): Task | Error => {
+		const each = [run.B4Tasks.album, run.B4Tasks.artist, run.B4Tasks.genre];
+		const failed = failures(each);
+		if (failed) return failed;
+		const tasks = each as Task[];
+		const longTasks = tasks.map((task) => task.longTaskMs);
+		return {
+			stallMs: Math.max(...tasks.map((task) => task.stallMs)),
+			longTaskMs: longTasks.some((entry) => entry === null)
+				? null
+				: Math.max(...(longTasks as number[])),
+		};
+	});
+
 	const keystrokes = runs.map((run) =>
 		run.B3 instanceof Error ? run.B3 : run.B3.keystrokeMs,
 	);
@@ -108,6 +172,12 @@ function projectReport(
 		engine: project.engine,
 		cpuThrottle: project.cpuThrottle,
 		B1: { ...metricOf(runs.map((run) => run.B1)), unit: "ms" },
+		landing: taskMetric(
+			runs.map((run) => run.landing),
+			(task) => task.stallMs,
+			"ms",
+			"from navigation start until the late part is shown and the page has had a moment to itself",
+		),
 		B2: taskMetric(
 			runs.map((run) => run.B2),
 			(run) => run.stallMs,
@@ -118,6 +188,28 @@ function projectReport(
 			unit: "ms",
 			longestTask: taskMetric(b3Tasks, (run) => run.stallMs, "ms"),
 		},
+		home: {
+			cold: taskMetric(
+				runs.map((run) =>
+					run.homeLanding instanceof Error
+						? run.homeLanding
+						: run.homeLanding.cold,
+				),
+				(task) => task.stallMs,
+				"ms",
+				"from navigation start of Home on a fresh page until a shelf is drawn, the late part is in and the page has had a moment to itself",
+			),
+			reload: taskMetric(
+				runs.map((run) =>
+					run.homeLanding instanceof Error
+						? run.homeLanding
+						: run.homeLanding.reload,
+				),
+				(task) => task.stallMs,
+				"ms",
+				"from navigation start of Home reloaded with a stored copy until a shelf is drawn and the page has had a moment to itself",
+			),
+		},
 		B4: {
 			...metricOf(allOpened),
 			unit: "ms",
@@ -125,15 +217,122 @@ function projectReport(
 			album: opened("album"),
 			artist: opened("artist"),
 			genre: opened("genre"),
+			task: {
+				...taskMetric(
+					slowestOpeningTasks,
+					(task) => task.stallMs,
+					"ms",
+					"from the click on the page's link until its rows have painted and the page has had a moment to itself",
+				),
+				of: "the longest main-thread task after the click, over the album, artist and genre page in each run",
+				album: openedTasks("album"),
+				artist: openedTasks("artist"),
+				genre: openedTasks("genre"),
+			},
 		},
 		B5: { ...metricOf(runs.map((run) => run.B5)), unit: "MB" },
-		B6: { ...metricOf(runs.map((run) => run.B6)), unit: "ms" },
+		store: {
+			write: {
+				...metricOf(
+					runs.map((run) =>
+						run.storeWrite instanceof Error
+							? run.storeWrite
+							: run.storeWrite.stallMs,
+					),
+				),
+				unit: "ms",
+				method:
+					"longest gap between zero-delay timer turns from the export's response arriving until the stored copy's meta record could be read",
+				windowMs: metricOf(
+					runs.map((run) =>
+						run.storeWrite instanceof Error
+							? run.storeWrite
+							: run.storeWrite.windowMs,
+					),
+				),
+			},
+			read: {
+				...metricOf(
+					runs.map((run) =>
+						run.B6.reload instanceof Error
+							? run.B6.reload
+							: run.B6.reload.stallToFirstRowsMs,
+					),
+				),
+				unit: "ms",
+				method:
+					"longest gap between zero-delay timer turns from the reload's navigation start to the frame after the first row, the stored copy being drawn",
+			},
+		},
+		late: {
+			responseComplete: {
+				...metricOf(
+					runs.map((run) =>
+						run.late instanceof Error ? run.late : run.late.responseMs,
+					),
+				),
+				unit: "ms",
+				from: "the first rows painted, to the late part's response complete",
+			},
+			shown: {
+				...metricOf(
+					runs.map((run) =>
+						run.late instanceof Error ? run.late : run.late.shownMs,
+					),
+				),
+				unit: "ms",
+				from: "the first rows painted, to the frame after no row is marked busy",
+			},
+		},
+		B6: {
+			...reloadMetric(runs.map((run) => run.B6.reload)),
+			...Object.fromEntries(
+				RELOAD_KINDS.filter((kind) => kind !== "reload").map((kind) => [
+					kind,
+					reloadMetric(runs.map((run) => run.B6[kind])),
+				]),
+			),
+		},
 		B7: {
-			...metricOf(runs.map((run) => run.B7.ms)),
+			...metricOf(
+				runs.map((run) => (run.B7 instanceof Error ? run.B7 : run.B7.ms)),
+			),
 			unit: "ms",
 			from: "the control request, which is before the player settles",
+			sinceStateMoved: {
+				...metricOf(
+					runs.map((run) =>
+						run.B7 instanceof Error ? run.B7 : run.B7.sinceStateMovedMs,
+					),
+				),
+				unit: "ms",
+				from: "the first GET /api/state answer whose structure moved, to the added rows painted",
+			},
+			changesRequested: {
+				...metricOf(
+					runs.map((run) =>
+						run.B7 instanceof Error ? run.B7 : run.B7.changesRequestedMs,
+					),
+				),
+				unit: "ms",
+				from: "the state answer that moved structure, to the request for the changes starting",
+			},
+			changesComplete: {
+				...metricOf(
+					runs.map((run) =>
+						run.B7 instanceof Error ? run.B7 : run.B7.changesCompleteMs,
+					),
+				),
+				unit: "ms",
+				from: "the state answer that moved structure, to the changes' response complete",
+			},
+			pollMs: metricOf(
+				runs.map((run) => (run.B7 instanceof Error ? run.B7 : run.B7.pollMs)),
+			),
 			bytes: {
-				...metricOf(runs.map((run) => run.B7.bytes)),
+				...metricOf(
+					runs.map((run) => (run.B7 instanceof Error ? run.B7 : run.B7.bytes)),
+				),
 				unit: "bytes",
 				of: "every response finished in that window, headers included, the state poll too",
 			},
@@ -332,8 +531,8 @@ async function main() {
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 	const file = join(OUT_DIR, `report-${stamp}.json`);
 
-	if (args.url === null) {
-		// A page built here, never `ui/dist`, which the suite or a developer may be serving.
+	const dist = args.dist === null ? DIST_DIR : resolve(args.dist);
+	if (args.url === null && args.dist === null) {
 		execFileSync(
 			"pnpm",
 			["exec", "vite", "build", "--outDir", DIST_DIR, "--emptyOutDir"],
@@ -364,7 +563,7 @@ async function main() {
 			if (tracks !== null) {
 				fake = await startFake({
 					tracks,
-					dist: DIST_DIR,
+					dist,
 					port: args.port ?? (await freePort()),
 				});
 				log(

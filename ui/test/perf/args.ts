@@ -12,10 +12,10 @@ export interface Args {
 	runs: number;
 	projects: ProjectName[];
 	port: number | null;
+	dist: string | null;
 	trace: boolean;
 }
 
-// Where the dev server and the suite's usual player listen; the profiler never takes either.
 const FORBIDDEN_PORTS = new Set([8123, 8881]);
 
 export function parseArgs(argv: string[]): Args {
@@ -41,6 +41,7 @@ export function parseArgs(argv: string[]): Args {
 		"--runs",
 		"--projects",
 		"--port",
+		"--dist",
 	]);
 	for (const name of values.keys())
 		if (!known.has(name)) throw new Error(`unknown option ${name}`);
@@ -76,9 +77,16 @@ export function parseArgs(argv: string[]): Args {
 			`--port takes a whole number other than ${[...FORBIDDEN_PORTS].join(" or ")}`,
 		);
 
+	const dist = values.get("--dist")?.[0] ?? null;
+	if (dist !== null && url !== null)
+		throw new Error(
+			"--dist is a page for the fake to serve; --url has its own",
+		);
+
 	return {
 		tracks,
 		url,
+		dist,
 		runs,
 		projects:
 			projects.length > 0 ? (projects as ProjectName[]) : [...PROJECT_NAMES],

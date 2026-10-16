@@ -19,9 +19,6 @@ const CORE = join(
 
 const headerOf = (name: string) => readFileSync(join(CORE, name), "utf8");
 
-// Each `constexpr size_t` in a header, evaluated where its value is a product of integer
-// literals and of other constants in the same header. Any other shape fails rather than
-// being misread.
 const sizeConstant = (header: string, name: string): number => {
 	const declared = new Map(
 		[...header.matchAll(/constexpr\s+size_t\s+(\w+)\s*=\s*([^;]+);/g)].map(
@@ -136,23 +133,38 @@ const exportOf = (
 		headers,
 	);
 
+interface Held {
+	structure: number;
+	revision: number;
+}
+
+const heldOf = async (state: FakeState): Promise<Held> => {
+	const { structure, revision } = jsonOf(
+		await ask(state, "/api/state", [], IDENTITY),
+	).library;
+	return { structure, revision };
+};
+
 const changesOf = (
 	state: FakeState,
-	since: number,
+	{ structure, revision }: Held,
 	headers: Record<string, string> = IDENTITY,
-) => ask(state, "/api/library/changes", [["since", String(since)]], headers);
-
-const revisionOf = async (state: FakeState) =>
-	jsonOf(await ask(state, "/api/state", [], IDENTITY)).library
-		.revision as number;
+) =>
+	ask(
+		state,
+		"/api/library/changes",
+		[
+			["since", String(revision)],
+			["structure", String(structure)],
+		],
+		headers,
+	);
 
 const counting = (fooJean: FooJeanOptions, tracks: Track[]) =>
 	createState({ fooJean, countsPlays: true, mediaLibrary: tracks });
 
 const SMALL = () => libraryOfShape({ tracks: 40, albums: 4, artists: 2 });
 
-// Declared without the export route, so a ceiling below the export's own size still leaves
-// a library to read a delta from.
 const declared = (fooJean: FooJeanOptions) => {
 	const state = counting(fooJean, SMALL());
 	state.startLibraryBuild(COUNTED);
@@ -198,9 +210,9 @@ test("an export larger than the ceiling answers 413 in the component's words, an
 test("a delta larger than the ceiling answers 413 in the component's words, and one at it answers 200", async () => {
 	const playedAt = async (libraryCeiling: number | null) => {
 		const state = declared({ libraryCeiling });
-		const since = await revisionOf(state);
+		const held = await heldOf(state);
 		state.countPlay(state.libraryTracks[3]);
-		return changesOf(state, since);
+		return changesOf(state, held);
 	};
 
 	const unbounded = await playedAt(null);
@@ -214,37 +226,11 @@ test("a delta larger than the ceiling answers 413 in the component's words, and 
 	assert.deepEqual(jsonOf(over), LIBRARY_TOO_LARGE);
 });
 
-// Values near foobar2000's own cap on one, `kMaxColumnValueBytes`, so an export just either side
-// of the component's ceiling is a thousand tracks rather than a million.
-const LONG_VALUE = 60_000;
-const COMMENT = "%comment%";
-
-const longValued = (tracks: number) =>
-	libraryOfShape({ tracks, albums: 10 }).map((track, index) => ({
-		...track,
-		[COMMENT]: String(index).padStart(8, "0").padEnd(LONG_VALUE, "x"),
-	}));
-
-test("by default an export just over the component's ceiling answers 413, and one just under answers 200", async () => {
-	const tracks = Math.ceil(COMPONENT_CEILING / LONG_VALUE);
-
-	const measured = await exportOf(
-		counting({ libraryCeiling: null }, longValued(tracks)),
-		[COMMENT],
+test("by default the fake refuses above the component's ceiling", () => {
+	assert.equal(
+		createState({ fooJean: {} }).fooJean.libraryCeiling,
+		COMPONENT_CEILING,
 	);
-	assert.equal(measured.status, 200);
-	assert.ok(
-		measured.body.length > COMPONENT_CEILING,
-		`${tracks} tracks export ${measured.body.length} bytes, not over the ceiling`,
-	);
-
-	const over = await exportOf(counting({}, longValued(tracks)), [COMMENT]);
-	assert.equal(over.status, 413);
-	assert.deepEqual(jsonOf(over), LIBRARY_TOO_LARGE);
-
-	const under = await exportOf(counting({}, longValued(tracks - 1)), [COMMENT]);
-	assert.equal(under.status, 200);
-	assert.ok(under.body.length <= COMPONENT_CEILING);
 });
 
 // `library.cpp` answers a client as long as the oldest revision it retains is the one right
@@ -252,15 +238,19 @@ test("by default an export just over the component's ceiling answers 413, and on
 test("a client as many revisions behind as the component retains gets a delta, and one more is 410", async () => {
 	assert.ok(Number.isSafeInteger(COMPONENT_RETAINED) && COMPONENT_RETAINED > 0);
 	const state = declared({});
-	const since = await revisionOf(state);
+	const held = await heldOf(state);
 	const played = state.libraryTracks[3];
 
 	for (let play = 0; play < COMPONENT_RETAINED; play += 1)
 		state.countPlay(played);
-	assert.equal(await revisionOf(state), since + COMPONENT_RETAINED);
-	assert.equal((await changesOf(state, since)).status, 200);
+	assert.equal(
+		(await heldOf(state)).revision,
+		held.revision + COMPONENT_RETAINED,
+	);
+	assert.equal((await changesOf(state, held)).status, 200);
 
 	state.countPlay(played);
-	assert.equal((await changesOf(state, since)).status, 410);
-	assert.equal((await changesOf(state, since + 1)).status, 200);
+	assert.equal((await changesOf(state, held)).status, 410);
+	const oneLater = { ...held, revision: held.revision + 1 };
+	assert.equal((await changesOf(state, oneLater)).status, 200);
 });

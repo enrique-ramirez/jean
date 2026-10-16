@@ -23,8 +23,6 @@ const KIND_ORDER: Record<Token["kind"], number> = {
 
 const isDigit = (char: string) => char >= "0" && char <= "9";
 
-// Tokens other than numbers come from a bounded alphabet, so one object stands for each of them
-// and a key held per path costs a pointer per token. `compareLevel` takes the same object as equal.
 const symbolTokens = new Map<number, Token>();
 const plainLetterTokens = new Map<string, Token>();
 const accentedLetterTokens = new Map<string, Token>();
@@ -136,7 +134,6 @@ function compareLevel<T>(a: T[], b: T[], level: (a: T, b: T) => number) {
 	return a.length - b.length;
 }
 
-// A text with its tokens already read, for a caller that compares one text against many.
 export interface TextKey {
 	text: string;
 	primary: Token[];

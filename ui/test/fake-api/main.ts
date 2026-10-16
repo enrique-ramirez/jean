@@ -13,7 +13,6 @@ const serveDir = flag("--serve", null);
 const tracks = flag("--tracks", null);
 const noCeiling = args.includes("--no-ceiling");
 
-// A collection's albums hold about ten tracks and its artists about ten albums.
 const TRACKS_PER_ALBUM = 10;
 const ALBUMS_PER_ARTIST = 10;
 const GENRES = 40;

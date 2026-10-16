@@ -10,7 +10,6 @@ export interface RunningFake {
 
 const UI_ROOT = join(import.meta.dirname, "../..");
 
-// A port the operating system hands out, never one a developer's tools hold.
 export const freePort = () =>
 	new Promise<number>((resolve, reject) => {
 		const probe = createServer();
@@ -28,8 +27,6 @@ export const postControl = (origin: string, action: string, body: object) =>
 		body: JSON.stringify(body),
 	});
 
-// The fake runs in its own process so building, sorting and encoding a library does not share an
-// event loop with the browsers' driver. `--no-ceiling` lifts the 413 the component would answer.
 export async function startFake({
 	tracks,
 	dist,

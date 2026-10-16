@@ -33,21 +33,13 @@ export interface ColumnCost {
 export interface ExportCost {
 	plainBytes: number;
 	gzippedBytes: number;
-	// "server" when the answer arrived gzip-encoded, "local" when the server sent none and node
-	// compressed the plain bytes.
 	gzippedBy: "server" | "local";
 	ceilingBytes: number;
 	aboveCeiling: boolean;
 	columns: ColumnCost[];
-	// Header, framing and padding: what the columns above do not account for.
 	otherBytes: number;
-	// `decodeJlib` over the plain bytes, in node. The page decodes the same bytes with the same code.
 	decodeMs: Measured;
-	// The server's own time to answer, whole body included: the first request pays any build and
-	// encode, the second is the cached export.
 	answerMs: { first: number; second: number };
-	// A delta of one play, asked for as soon as it exists. Null where the player has no control
-	// routes to cause one.
 	deltaAnswerMs: number | null;
 }
 
@@ -146,7 +138,6 @@ export interface Pages {
 	genre: string;
 }
 
-// An album, an artist and a genre that the middle of the library holds, as the hashes that open them.
 function pagesOf(buffer: ArrayBuffer): Pages {
 	const library = decodeJlib(buffer);
 	if (library.kind !== "snapshot")

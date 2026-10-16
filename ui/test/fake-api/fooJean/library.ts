@@ -1,6 +1,11 @@
 import type { components } from "../../../src/shared/api/fooJeanSchema.d.ts";
 import { json, one, type RequestHeaders, type Responder } from "../http.ts";
-import { libraryItemsOf, type Track } from "../state.ts";
+import {
+	type ChangesRefusal,
+	libraryItemsOf,
+	sameMembers,
+	type Track,
+} from "../state.ts";
 import { evaluate } from "../titleFormat.ts";
 import {
 	ASK_EVERY_TIME,
@@ -31,7 +36,6 @@ const compress = async (bytes: Uint8Array<ArrayBuffer>) => {
 	return new Uint8Array(await new Response(zip.readable).arrayBuffer());
 };
 
-// `libraryExport()` answers the same bytes object until the library moves, so the object is the key.
 const packed = new WeakMap<Uint8Array, Promise<Uint8Array<ArrayBuffer>>>();
 
 const gzipped = (bytes: Uint8Array<ArrayBuffer>) => {
@@ -108,6 +112,7 @@ export const libraryStateOf = (state: FakeState, fake: FooJeanFake) => {
 		ready,
 		structure,
 		revision,
+		snapshotId: state.librarySnapshotId(),
 		trackCount: ready ? state.libraryTracks.length : 0,
 		columns,
 		build: fake.libraryHalted ? null : libraryBuildOf(state, fake),
@@ -115,10 +120,49 @@ export const libraryStateOf = (state: FakeState, fake: FooJeanFake) => {
 	};
 };
 
-const sameMembers = (held: string[], asked: string[]) =>
-	held.length === asked.length && asked.every((one) => held.includes(one));
-
 const MAX_COLUMNS = 64;
+
+const refuseOnly = (declared: string[], only: string[]) => {
+	for (let at = 0; at < only.length; at += 1) {
+		if (!declared.includes(only[at]))
+			return {
+				error: "column not declared",
+				detail: `'only' column ${at} is not one of 'columns'`,
+			};
+		if (only.indexOf(only[at]) < at)
+			return {
+				error: "duplicate column",
+				detail: `'only' column ${at} repeats an earlier one`,
+			};
+	}
+	return null;
+};
+
+// cpp-httplib drops a query pair whose raw text repeats an earlier one before the component reads
+// any, so `only=A&only=A` reaches it as one column.
+const pairsAsTheComponentReadsThem = (url: URL) =>
+	new URLSearchParams([...new Set(url.search.slice(1).split("&"))].join("&"));
+
+const CHANGES_REFUSAL: Record<ChangesRefusal, string> = {
+	pairNotHeld:
+		"that structure and revision name no position this library held; export the library again",
+	revisionTooOld:
+		"that revision is older than the retained window; export the library again",
+	revisionUnknown: "no such revision",
+	spliceTooLarge:
+		"the tracks added or removed since then are too many to send; export the library again",
+	rearranged:
+		"the library was rebuilt with other columns or in another order; export the library again",
+};
+
+const subsetReleased = async (fake: FooJeanFake, only: string[]) => {
+	const holds = () => {
+		const { holdSubset } = fake;
+		return holdSubset !== null && only.some((one) => holdSubset.includes(one));
+	};
+	while (holds())
+		await new Promise<void>((release) => fake.subsetsHeld.push(release));
+};
 
 const refuseColumns = (asked: string[]) => {
 	if (asked.length === 0)
@@ -149,10 +193,8 @@ const LIBRARY_EXPORT_FAILURE: Record<413 | 500 | 503, { error: string }> = {
 	503: { error: "the media library is not available" },
 };
 
-const tagOf = (state: FakeState, coding: string, since?: string) =>
-	`"s${state.libraryFeed.structure}-r${state.libraryFeed.revision}-e${state.libraryFeed.edits}${
-		since === undefined ? "" : `-f${since}`
-	}-${coding}"`;
+const tagOf = (state: FakeState, coding: string, variant = "") =>
+	`"s${state.libraryFeed.structure}-r${state.libraryFeed.revision}-e${state.libraryFeed.edits}${variant}-${coding}"`;
 
 const holdsTag = (headers: RequestHeaders, tag: string) =>
 	one(headers["if-none-match"])
@@ -167,10 +209,10 @@ const sendBlob = async (
 	state: FakeState,
 	fake: FooJeanFake,
 	produce: () => Uint8Array<ArrayBuffer>,
-	since?: string,
+	variant?: string,
 ) => {
 	const gzip = offersGzip(headers);
-	const tag = tagOf(state, gzip ? "gzip" : "identity", since);
+	const tag = tagOf(state, gzip ? "gzip" : "identity", variant);
 	const revalidating = {
 		"Cache-Control": ASK_EVERY_TIME,
 		Vary: "Origin, Accept-Encoding",
@@ -334,6 +376,22 @@ export async function handleLibrary({
 		const refused = refuseColumns(asked);
 		if (refused) return json(response, refused, 400);
 
+		const pairs = pairsAsTheComponentReadsThem(url);
+		const only = pairs.has("only") ? pairs.getAll("only") : undefined;
+		const refusedOnly = only && refuseOnly(asked, only);
+		if (refusedOnly) return json(response, refusedOnly, 400);
+		const flag = pairs.get("spine");
+		if (flag !== null && flag !== "true" && flag !== "false")
+			return json(
+				response,
+				{
+					error: "unacceptable spine",
+					detail: "'spine' must be true or false",
+				},
+				400,
+			);
+		const spine = flag !== "false";
+
 		if (fake.failLibraryExport && fake.failLibraryExport.times > 0) {
 			const { status } = fake.failLibraryExport;
 			fake.failLibraryExport.times -= 1;
@@ -366,7 +424,19 @@ export async function handleLibrary({
 			state.finishLibraryBuild();
 		}
 
-		return sendBlob(response, headers, state, fake, state.libraryExport);
+		if (only) await subsetReleased(fake, only);
+
+		const part = only
+			? `-o${state.libraryFeed.columns.flatMap((column, at) => (only.includes(column) ? [at] : [])).join(".")}`
+			: "";
+		return sendBlob(
+			response,
+			headers,
+			state,
+			fake,
+			() => state.libraryExport({ only, spine }),
+			`${part}${spine ? "" : "-n"}`,
+		);
 	}
 
 	if (path === "/api/library/changes") {
@@ -379,29 +449,30 @@ export async function handleLibrary({
 				{ error: "unacceptable revision", detail: "'since' is required" },
 				400,
 			);
-
-		const changes = state.libraryChanges(Number(since));
-		if (changes.status === 409)
+		const structure = url.searchParams.get("structure");
+		if (structure === null || !/^\d+$/.test(structure))
 			return json(
 				response,
-				{
-					error: "tracks were added or removed; export the library again",
-					detail: "",
-				},
-				409,
-			);
-		if (changes.status === 410)
-			return json(
-				response,
-				{
-					error:
-						"that revision is older than the retained window; export the library again",
-					detail: "",
-				},
-				410,
+				{ error: "unacceptable revision", detail: "'structure' is required" },
+				400,
 			);
 
-		return sendBlob(response, headers, state, fake, () => changes.bytes, since);
+		const changes = state.libraryChanges(Number(since), Number(structure));
+		if (changes.status !== 200)
+			return json(
+				response,
+				{ error: CHANGES_REFUSAL[changes.outcome], detail: "" },
+				changes.status,
+			);
+
+		return sendBlob(
+			response,
+			headers,
+			state,
+			fake,
+			() => changes.bytes,
+			`-f${structure}.${since}`,
+		);
 	}
 
 	return notFound(response);

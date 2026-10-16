@@ -19,7 +19,7 @@ flowchart TB
       feed["LibraryFeed<br/>change callbacks, and a worker of its own"]
       str["Streamer<br/>the player's, and one per detached session"]
       dec["decoder_source<br/>a decoder thread per detached session"]
-      prefs["preferences page<br/>Tools → Jean, Windows"]
+      prefs["preferences pages<br/>Tools → Jean"]
       assets["ui_assets<br/>Jean's build, compiled in"]
     end
 
@@ -357,6 +357,7 @@ What foobar2000, its SDK and the platforms under it do that more than one file h
 - **A browser hands cross-origin script only the CORS-safelisted response headers**: `Cache-Control`, `Content-Language`, `Content-Length`, `Content-Type`, `Expires`, `Last-Modified`, `Pragma`. `ETag` and `Retry-After` need naming in `Access-Control-Expose-Headers`. `If-None-Match` is not on the request side's safelist either, so it needs naming in `Access-Control-Allow-Headers`, or a page can read a validator and never send one back.
 - **A browser stores a `private` response and revalidates it correctly, under `no-cache` or a lifetime.** Chromium, Gecko and WebKit all store a cover marked `private`, revalidate it with `If-None-Match` where `Cache-Control` says to, and reuse it unconditionally within its `max-age`, across a browser restart and cross-origin alike. A `private` directive already forbids a shared cache from storing the response (RFC 9111 §5.2.2.7), the narrower rule `must-revalidate` would otherwise approximate (RFC 9111 §3.5), so no route here needs `must-revalidate`.
 - **A route publishing images MUST never send `image/svg+xml`.** Besides being a document a browser executes, it is the one image type cpp-httplib's own compression would reach; `third_party/README.md` has what that compressor admits and why the content type is the whole of the gate. `tests/artwork_test.cpp`, *only pictures a browser draws are given a type*, holds it.
+- **Objective-C classes share one namespace across every component the player has loaded.** Two components that name a class alike collide, which is why the SDK's Mac helpers suffix their own class names with one the component picks (`sdk/foobar2000/helpers-mac/foobar2000-mac-helpers.h`).
 
 ## Absences that shape the design
 

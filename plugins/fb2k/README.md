@@ -80,7 +80,7 @@ A hand installation has to reproduce what the script does, and `scripts/install.
 
 ## Configuring
 
-Everything is a file. `<profile>/foo_jean/config.json` is written on first start with every key at its default, and it is the source of truth rather than a fallback for a dialog: this component is built for installs with nobody at the keyboard. A Mac install has no preferences page: its settings are `config.json`, and a failed bind or a held address is said in the log alone.
+Everything is a file. `<profile>/foo_jean/config.json` is written on first start with every key at its default, and it is the source of truth rather than a fallback for a dialog: this component is built for installs with nobody at the keyboard. Both platforms also have a preferences page that edits it, described below.
 
 ```json
 {
@@ -110,7 +110,7 @@ Every key is optional. An absent key keeps its default; a present but malformed 
 
 | key | meaning |
 |---|---|
-| `port` | Default 8881. If the port is taken the component refuses to start and says so in the log, and on the preferences page where the install has one; it never quietly picks another, because a client can only find it at a port it can predict. |
+| `port` | Default 8881. If the port is taken the component refuses to start and says so in the log and on the preferences page; it never quietly picks another, because a client can only find it at a port it can predict. |
 | `bindAddress` | Every local interface by default. Set it to `127.0.0.1` for a deployment that only ever answers its own machine. On a Mac, a port held on every interface is not exclusive: another program can bind one of the machine's addresses on it and take the connections to that address. The log says so at start, and one address here closes it. |
 | `allowedOrigins` | Empty reflects no origin, so only a page served by the component itself, same-origin, can read a response. List origins to grant them the same access, matched whole and case-insensitively. |
 | `allowedHosts` | The `Host` allowlist, beside what the component already admits on its own: an IPv4 or bracketed IPv6 literal, `localhost`, a name with no dot, and a name ending `.lan`, `.local` or `.home.arpa`. Matched case-insensitively, with the port and one trailing dot stripped. A request whose `Host` matches none of these is `403`, so a public name needs listing here. A reverse proxy on another machine must pass the client's own `Host` through unchanged for this check to see it; Caddy's `reverse_proxy` does that by default. |
@@ -130,11 +130,13 @@ Every key is optional. An absent key keeps its default; a present but malformed 
 
 ### The preferences page
 
-On Windows, **Preferences → Tools → Jean** edits the port, the bind address, `allowedOrigins` and `openBrowserAtStart`; its **Permissions** child page holds everything else: a checkbox each for `controlPlayback`, `writePlaylists`, `changeOutput` and `streamingEnabled`, the `allowedFields` list, `maxAutoPlaylists`, and the `allowedHosts` list. Two pages rather than one because foobar2000 sizes a preferences page to the host window and does not scroll it, so a tall page has content nobody can reach. Between them they write `config.json` and nothing else, so a headless install loses nothing by never opening the page, and a key the page has no control for is carried through untouched rather than reset.
+On Windows and on a Mac alike, **Preferences → Tools → Jean** edits the port, the bind address, `allowedOrigins` and `openBrowserAtStart`; its **Permissions** child page holds everything else: a checkbox each for `controlPlayback`, `writePlaylists`, `changeOutput` and `streamingEnabled`, the `allowedFields` list, `maxAutoPlaylists`, and the `allowedHosts` list. Two pages rather than one because foobar2000 sizes a preferences page to the host window and does not scroll it, so a tall page has content nobody can reach. Both platforms draw the pages from one declaration in `src/core/preferences.h`, so they hold the same settings in the same English words. Between them they write `config.json` and nothing else, so a headless install loses nothing by never opening the page, and a key the page has no control for is carried through untouched rather than reset.
+
+On a Mac the page has an **Apply** and a **Reset** of its own, because macOS gives a preferences page neither. Apply is enabled only while the form differs from what is saved, and edits not applied when the page closes are dropped without asking.
 
 The page is stricter than the file parser, deliberately: a hand-edited file must never stop a headless player coming up, so a bad key there falls back to a default, while the dialog refuses and says what to type.
 
-**Applying most switches needs no restart**, since a change to `config.json` reaches a running listener within a couple of seconds. Either page shows *"a restart is needed for some changes to take effect"*, and only where a saved value differs from what the process is actually running with for one of the keys above that wait for a restart.
+**Applying most switches needs no restart**, since a change to `config.json` reaches a running listener within a couple of seconds. The first page shows *"a restart is needed for some changes to take effect"*, and only where a saved value differs from what the process is actually running with for one of the keys above that wait for a restart. The same line says where `config.json` is. Where the bind failed it shows the listener's error instead, and where another program holds an address on the port it shows the held-address sentence.
 
 ## The API
 
@@ -174,8 +176,6 @@ On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\tes
 `scripts/test.sh`'s own header has the rest of its arguments and what each one costs.
 
 The tests need **neither Windows nor the foobar2000 SDK nor a running player**: everything they cover but the AAC codec files lives in `src/core/`, which compiles standalone. One set of AAC cases drives each platform's codec. `scripts/test.sh` on a Mac compiles `src/fb2k/aac_encoder_mac.cpp` and drives AudioToolbox's encoder; `scripts\test.ps1` on Windows with the SDK fetched compiles `src/fb2k/aac_encoder.cpp` and drives Media Foundation's; on Linux no AAC encoder is built in. Every run prints one line saying which: `AAC tested through this platform's codec.`, `AAC not tested: this platform's AAC encoder is unavailable on this machine`, or `AAC not tested: no AAC encoder is built into this suite.`
-
-
 
 Four end-to-end checks, in PowerShell, run against a real player on Windows: `scripts/verify-tag-write.ps1`, `verify-stream.ps1`, `verify-listeners.ps1` and `verify-library.ps1`. Each script's header says what it checks. `verify-tag-write.ps1` reads the rating back **from the player**, through each row's `%rating%` column, because the failure this design exists to avoid is a write the player performed but its own database did not learn about.
 

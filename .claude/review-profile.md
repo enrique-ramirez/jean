@@ -89,13 +89,13 @@ Run from the repository root. Each delegates into `ui/`, so a path argument is r
 
 `core/` knows nothing of foobar2000, and everything it needs arrives as a callback from `fb2k/`. Flag anything that softens it, and equally any new abstraction layer added behind it.
 
-This boundary pays twice. A decision moved into `core/` becomes coverable by a suite that runs on any machine, and a mechanism left in `fb2k/` is coverable by nothing but the two AAC codec files' cases. A platform split under `src/` is an `#ifdef _WIN32` inside the file that owns the call, and `tests/platform_seams_test.cpp` lists the files that hold one.
+This boundary pays twice. A decision moved into `core/` becomes coverable by a suite that runs on any machine, and a mechanism left in `fb2k/` is coverable by nothing but the two AAC codec files' cases. A platform split under `src/` is an `#ifdef _WIN32` inside the file that owns the call, or a whole file for one platform, as `preferences_mac.mm` and `aac_encoder_mac.cpp` are, and `tests/platform_seams_test.cpp` lists every platform file.
 
 ### Functional directives
 
-`NOLINT`, `shellcheck disable`, `clang-format off`. Never delete or weaken one.
+`NOLINT`, `shellcheck disable`, `clang-format off`. Never delete or weaken one. They can sit in any `.cpp`, `.h` or `.mm` file, all of which the linter and the formatter read.
 
-`plugins/fb2k/src/fb2k/resource.h`'s include guards are deliberate: `rc.exe`'s preprocessor is not the compiler's.
+`plugins/fb2k/src/fb2k/resource.h`'s include guards are deliberate: `rc.exe`'s preprocessor is not the compiler's. Only the Windows build includes it.
 
 ### Documentation map
 
@@ -135,7 +135,7 @@ Two runs at once share `plugins/fb2k/bin/`, so two agents never run the suite at
 
 ### What cannot be verified here
 
-`plugins/fb2k/src/fb2k/` is compiled and linked by the Windows build (`scripts\build.ps1`, which leaves out `aac_encoder_mac.cpp`) and by the macOS build (`scripts/build-mac.sh`, which leaves out `preferences.cpp` and `aac_encoder.cpp`), and it runs inside a player only. On a Mac where `scripts/fetch-sdk.sh` has fetched the SDK it is also parsed and linted, all but the files `fb2k_unparsed_sources` lists in `plugins/fb2k/scripts/lib/compile-flags.sh`. Each platform's suite runs its own AAC codec file and nothing else from `src/fb2k/`; `plugins/fb2k/README.md`, *Testing*, says which and how a run reports it. A change there is reviewed, not tested, until the build of its platform has run, and a change to a codec file also wants the suite of its platform. Say which of the two you did, on which platform, and whether you also linted it.
+`plugins/fb2k/src/fb2k/` is compiled and linked by the Windows build (`scripts\build.ps1`, which leaves out `aac_encoder_mac.cpp`) and by the macOS build (`scripts/build-mac.sh`, which leaves out `preferences.cpp` and `aac_encoder.cpp`), and it runs inside a player only. `preferences_mac.mm` is Objective-C++ under ARC: the macOS build compiles it and the Windows build, which globs `fb2k\*.cpp`, never sees it. On a Mac where `scripts/fetch-sdk.sh` has fetched the SDK it is also parsed and linted, the `.mm` included and with `-fobjc-arc`, all but the files `fb2k_unparsed_sources` lists in `plugins/fb2k/scripts/lib/compile-flags.sh`. Each platform's suite runs its own AAC codec file and nothing else from `src/fb2k/`; `plugins/fb2k/README.md`, *Testing*, says which and how a run reports it. A change there is reviewed, not tested, until the build of its platform has run, and a change to a codec file also wants the suite of its platform. Say which of the two you did, on which platform, and whether you also linted it.
 
 The files `fb2k_unparsed_sources` lists in `compile-flags.sh`, and everything MSVC-specific (its warnings, its headers, `scripts\lint.ps1`), are known only to a Windows build.
 

@@ -14,6 +14,7 @@ The rationale, the enforcement and what the seam buys are in `plugins/fb2k/ARCHI
 6. The two directories deliberately share filenames, since each pair is one feature split at the boundary.
 7. **A platform file holds the call into the operating system or the player, and nothing a second platform would have to write again.** A platform file is one that holds a platform conditional, includes an operating system header or is named for one platform. Whatever both platforms need goes in `src/core/`, with a test. `tests/platform_seams_test.cpp` lists every platform file and fails on one missing from the list and on an entry whose file no longer earns it, so adding a platform file adds a line a reviewer reads. The test does not judge what a listed file holds; the reviewer does, against the first sentence.
 8. **A change to what the component does reaches the Windows and the macOS builds together.** Where one platform cannot have it, the change says so and why, and the gap goes in the technical debt register.
+9. **Objective-C++ lives in `src/fb2k/preferences_mac.mm` and nowhere else.** It is compiled with ARC, and every class it declares carries the suffix `_foo_jean`, for the reason *Facts about the player* in `plugins/fb2k/ARCHITECTURE.md` gives. `tests/platform_seams_test.cpp` fails on an `.mm` file it does not list; a reviewer holds the suffix and the ARC flag.
 
 ## 2. Comments and documentation
 
@@ -69,7 +70,7 @@ Each of these is unreachable from the suite by nature, so each says how it is ve
 4. Write only allowlisted fields, compared case-insensitively, and say in the response which field was refused.
 5. Never log a stream ticket; `tests/ticket_log_test.cpp` holds it.
 6. **A listener's address option is exclusive where the platform offers one.** On Windows it sets `SO_EXCLUSIVEADDRUSE` and never `SO_REUSEADDR`; `third_party/README.md` is what it overrides and why that default is there, and `tests/listener_test.cpp` holds it. Off Windows it sets `SO_REUSEADDR`, which is all those platforms offer; *Facts about the player* in `plugins/fb2k/ARCHITECTURE.md` has what that leaves open on macOS, and the cases in `tests/listener_test.cpp` on "a listener on every address" and on the two sentences hold the warning.
-7. A partial or failed bind MUST be loud, and so MUST a held address: to the log, and to the preferences page on Windows. A Mac install has no preferences page, so the log is all it has, and a headless install has nobody reading a console.
+7. A partial or failed bind MUST be loud, and so MUST a held address: to the log and to the first preferences page on both platforms. A headless install has nobody reading a console.
 8. Refuse before doing. Validate, then act: the tests assert the order, not just the status.
 9. **No response may compress request-controlled text beside a secret.** That is the BREACH shape: a client that can put a chosen string in a response reads the secret beside it, a byte at a time, from the compressed length. Nothing tests it; a reviewer holds it.
 10. Pin every third-party download to a SHA-256, through `scripts/lib/download.ps1` in PowerShell, and every GitHub Action to a commit, with its version in a comment beside it.

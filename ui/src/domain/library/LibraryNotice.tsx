@@ -12,16 +12,34 @@ type NoticeStatus = Extract<
 	{ kind: "unreachable" | "olderPlayer" | "failed" }
 >;
 
+const isDrawable = (library: Pick<Library, "columns">) =>
+	library.columns.trackCount > 0;
+
+const isNoticeStatus = (status: LibraryStatus): status is NoticeStatus =>
+	status.kind === "unreachable" ||
+	status.kind === "olderPlayer" ||
+	status.kind === "failed";
+
 export function libraryNoticeFor(
-	library: Pick<Library, "status" | "origin" | "recheck">,
+	library: Pick<Library, "status" | "origin" | "recheck" | "columns">,
 ): ReactNode | null {
 	const { status } = library;
-	if (
-		status.kind !== "unreachable" &&
-		status.kind !== "olderPlayer" &&
-		status.kind !== "failed"
-	)
-		return null;
+	if (!isNoticeStatus(status)) return null;
+	if (status.kind === "failed" && isDrawable(library)) return null;
+	return (
+		<LibraryNotice
+			status={status}
+			origin={library.origin}
+			recheck={library.recheck}
+		/>
+	);
+}
+
+export function libraryFailureBesideRows(
+	library: Pick<Library, "status" | "origin" | "recheck" | "columns">,
+): ReactNode | null {
+	const { status } = library;
+	if (status.kind !== "failed" || !isDrawable(library)) return null;
 	return (
 		<LibraryNotice
 			status={status}
@@ -44,7 +62,7 @@ function LibraryNotice({
 
 	if (status.kind === "olderPlayer")
 		return (
-			<div className={styles.notice}>
+			<div className={styles.notice} role="status">
 				<p className={styles.summary}>{t("library.olderPlayer.summary")}</p>
 				<p className={styles.fix}>{t("library.olderPlayer.fix")}</p>
 			</div>
@@ -52,7 +70,7 @@ function LibraryNotice({
 
 	if (status.kind === "unreachable")
 		return (
-			<div className={styles.notice}>
+			<div className={styles.notice} role="status">
 				<p className={styles.summary}>{t("fooJean.unreachable.summary")}</p>
 				<p className={styles.fix}>{t("fooJean.unreachable.fix")}</p>
 				<Button onClick={recheck}>{t("fooJean.checkAgain")}</Button>
@@ -64,14 +82,14 @@ function LibraryNotice({
 
 	if (failure.reason === "halted")
 		return (
-			<div className={styles.notice}>
+			<div className={styles.notice} role="status">
 				<p className={styles.summary}>{message}</p>
 				<p className={styles.fix}>{t("library.halted.fix")}</p>
 			</div>
 		);
 
 	return (
-		<div className={styles.notice}>
+		<div className={styles.notice} role="status">
 			<p className={styles.summary}>
 				{failure.detail
 					? t("library.readDetail", { message, detail: failure.detail })

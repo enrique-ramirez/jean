@@ -147,9 +147,6 @@ test("over the cap a pixel of scroll moves more than a pixel of content, from th
 	assert.ok(toScrollTop(1_000, OVER) < 1_000);
 });
 
-// A content offset rounded on its way to a scrollTop comes back up to 1.5 px off at a ratio of about 3.
-// The arbitrary offsets are there because at exactly 46 px over 46,000,000 every row boundary is a whole
-// scrollTop, which hides the rounding.
 test("over the cap a content offset survives the trip to a scrollTop and back within a pixel", () => {
 	for (let row = 0; row < ROWS; row += 997) {
 		assertNear(
@@ -192,8 +189,6 @@ test("under the cap a scroll the virtualiser asks for is the scrollTop it gets, 
 	);
 });
 
-// The header above the list is drawn at its real height, so scaling it would put row 0 below the top
-// of the scroller when the list's top meets it.
 test("over the cap the header above the list scrolls one for one", () => {
 	const scroller = fakeScroller({ total: OVER });
 	const { last } = observe(scroller);
@@ -223,7 +218,7 @@ test("over the cap scrolling to the last row lands at the bottom of the scroller
 	);
 });
 
-// The virtualiser's adjustments are measured in content pixels: a row that measured 10 px taller than
+// @tanstack/virtual-core adjustments are measured in content pixels: a row that measured 10 px taller than
 // estimated moves the content 10 px, which over the cap is fewer scroll pixels.
 test("over the cap an adjustment moves the scroll by its share of the content, not its own size", () => {
 	const scroller = fakeScroller({ total: OVER });
@@ -246,7 +241,6 @@ test("a smooth scroll stays smooth", () => {
 	}
 });
 
-// Group headers make the list taller than its rows: a million 46 px rows drawn 50,000,000 px tall.
 test("the scale follows the list's drawn height, not its row count", () => {
 	const grouped = 50_000_000;
 	const scroller = fakeScroller({ total: grouped, count: ROWS });
@@ -259,8 +253,7 @@ test("the scale follows the list's drawn height, not its row count", () => {
 	);
 });
 
-// The virtualiser subscribes once per scroll element, and the total and the margin change under it:
-// the library grows past the cap, a group opens, the header is measured after the first layout.
+// @tanstack/virtual-core subscribes once per scroll element.
 test("a total or margin that changes after subscribing is read at the next scroll", () => {
 	const scroller = fakeScroller({ total: 100 * ROW, margin: 0 });
 	const { last } = observe(scroller);

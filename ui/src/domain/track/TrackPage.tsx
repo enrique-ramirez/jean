@@ -1,4 +1,5 @@
 import type { ReactNode, RefObject } from "react";
+import { NO_WAIT, type Wait } from "@/domain/library/useOverdue";
 import { useIsPlaying } from "@/domain/player/usePlayer";
 import { useAvailableFields } from "./fieldAvailability";
 import type { TrackBrowserHandle } from "./listTypes";
@@ -19,7 +20,8 @@ type TrackPageProps = Omit<
 > & {
 	browserRef: RefObject<TrackBrowserHandle | null>;
 	heading?: PageHeading;
-	stats: TrackStats;
+	stats: TrackStats | null;
+	wait?: Wait;
 	allGenresHref?: string;
 	mosaicSeed: string;
 	canPlaySets?: boolean;
@@ -30,6 +32,7 @@ export function TrackPage({
 	browserRef,
 	heading,
 	stats,
+	wait = NO_WAIT,
 	allGenresHref,
 	mosaicSeed,
 	canPlaySets,
@@ -50,6 +53,7 @@ export function TrackPage({
 						eyebrow={heading.eyebrow}
 						title={heading.title}
 						stats={stats}
+						isStatsPending={wait.isOverdue}
 						hasPlayCounts={hasPlayCounts}
 						allGenresHref={allGenresHref}
 						aside={
@@ -63,6 +67,7 @@ export function TrackPage({
 							<PlayActions
 								browserRef={browserRef}
 								trackCount={browser.rows.length}
+								wait={wait}
 								canPlaySets={canPlaySets}
 							>
 								{actions}

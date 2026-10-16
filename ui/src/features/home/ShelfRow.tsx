@@ -2,6 +2,7 @@ import { ChevronRight } from "lucide-react";
 import type { CoveredAlbum } from "@/domain/track/albums";
 import { href, shelfRoute } from "@/domain/track/routes";
 import { useTranslate } from "@/shared/i18n/useTranslate";
+import { BusyNote, busyProps } from "@/shared/ui/Skeleton";
 import styles from "./ShelfRow.module.css";
 import { ShelfScroller } from "./ShelfScroller";
 import type { FilledShelf } from "./shelves";
@@ -15,7 +16,11 @@ export function ShelfRow({
 }) {
 	const t = useTranslate();
 	return (
-		<section className={styles.shelf} aria-labelledby={`shelf-${shelf.id}`}>
+		<section
+			className={styles.shelf}
+			aria-labelledby={`shelf-${shelf.id}`}
+			{...busyProps(shelf.isPending)}
+		>
 			<header className={styles.header}>
 				<h2 className={styles.title} id={`shelf-${shelf.id}`}>
 					<a className={styles.open} href={href(shelfRoute(shelf.id))}>
@@ -29,6 +34,7 @@ export function ShelfRow({
 					</a>
 				</h2>
 				<p className={styles.blurb}>{t(shelf.blurb)}</p>
+				{shelf.isPending ? <BusyNote /> : null}
 			</header>
 
 			<ShelfScroller shelf={shelf} onPlayAlbum={onPlayAlbum} />

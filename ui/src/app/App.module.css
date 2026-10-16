@@ -35,6 +35,10 @@
 	padding-right: env(safe-area-inset-right);
 }
 
+.main[data-late-refused="true"] :global(.loading)::before {
+	animation: none;
+}
+
 .topbar {
 	display: flex;
 	align-items: center;

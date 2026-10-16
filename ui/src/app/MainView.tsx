@@ -1,4 +1,5 @@
 import { type RefObject, useCallback, useMemo, useState } from "react";
+import { libraryFailureBesideRows } from "@/domain/library/LibraryNotice";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import type { usePlaySet } from "@/domain/library/usePlaySet";
@@ -151,6 +152,7 @@ export function MainView({
 	) => (
 		<LibraryListView
 			library={library}
+			pageKey={shown.pageKey}
 			view={shown.view}
 			kind={shown.kind}
 			label={shown.label}
@@ -160,6 +162,8 @@ export function MainView({
 			isCompactViewport={isCompactViewport}
 			onOpenPlaylist={onOpenPlaylist}
 			emptyNotice={shown.emptyNotice}
+			wait={shown.wait}
+			isAwaitingColumns={shown.isAwaitingColumns}
 		/>
 	);
 
@@ -168,14 +172,18 @@ export function MainView({
 			name={shown.name}
 			library={library}
 			tracks={shown.tracks}
+			wait={shown.wait}
 			tab={shown.tab}
 			direction={shownTab.direction}
 			tabs={artistTabs}
 			tracksPanel={listPage({
+				pageKey: `artist:${shown.name}`,
 				view: shown.view,
 				kind: SCRATCH_KIND.artist,
 				label: shown.name,
 				emptyNotice: t("library.noArtist", { artist: shown.name }),
+				wait: shown.wait,
+				isAwaitingColumns: shown.isAwaitingColumns,
 			})}
 			onPlay={playArtist}
 			onShuffle={(refs) => {
@@ -187,13 +195,18 @@ export function MainView({
 		/>
 	);
 
+	const failureBesideRows =
+		route.kind === "playlist" ? null : libraryFailureBesideRows(library);
+
 	return (
 		<main
 			className={styles.main}
+			data-late-refused={failureBesideRows ? "true" : undefined}
 			ref={scrollRef}
 			inert={isBehindDrawer ? true : undefined}
 			{...(artist ? artistSwipe : null)}
 		>
+			{failureBesideRows}
 			{route.kind === "home" ? (
 				<HomeView
 					library={library}

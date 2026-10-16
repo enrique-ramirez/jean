@@ -5,15 +5,12 @@ import {
 	type Virtualizer,
 } from "@tanstack/react-virtual";
 
-// Firefox stops growing an element at 17,895,697 px; this leaves 2,895,697 px of room.
 export const MAX_SCROLL_HEIGHT = 15_000_000;
 
 export function scaledHeight(contentHeight: number): number {
 	return Math.min(contentHeight, MAX_SCROLL_HEIGHT);
 }
 
-// Content pixels per scroll pixel. Compares the scrollable ranges, not the heights, so the last
-// scrollTop lands on the last content offset and the scale is exactly 1 at or under the cap.
 export function scrollScale(contentHeight: number, viewport = 0): number {
 	if (contentHeight <= MAX_SCROLL_HEIGHT) return 1;
 	return (contentHeight - viewport) / (MAX_SCROLL_HEIGHT - viewport);
@@ -35,9 +32,7 @@ export function toScrollTop(
 	return contentOffset / scrollScale(contentHeight, viewport);
 }
 
-// The header above `scrollMargin` is drawn at its real height, so only the list below it is scaled.
-// `getTotalSize()` and `clientHeight` are read per call because `setOptions` replaces
-// `instance.options` and the list's height changes under a subscription.
+// @tanstack/virtual-core's `setOptions` replaces `instance.options`, so nothing here holds them.
 function shape<T extends Element>(instance: Virtualizer<T, Element>) {
 	const total = instance.getTotalSize();
 	return {
@@ -54,8 +49,6 @@ export function isScaled<T extends Element>(
 	return instance.getTotalSize() > MAX_SCROLL_HEIGHT;
 }
 
-// A scrollTop at or under the cap is returned as it came, since adding the margin back to a
-// subtracted one is not exact for every fraction.
 export function contentOffsetOf<T extends Element>(
 	instance: Virtualizer<T, Element>,
 	scrollTop: number,
@@ -76,9 +69,6 @@ export function scrollTopOf<T extends Element>(
 	return margin + toScrollTop(local, total, viewport);
 }
 
-// How far the scroller has moved the list's own box from where the virtualiser believes its rows
-// are: a row at content offset `start` is drawn at `start - offset` on screen, so it is shifted
-// by this much on top of its position in the list.
 export function scrollShift<T extends Element>(
 	instance: Virtualizer<T, Element>,
 ): number {
@@ -95,7 +85,7 @@ export const scaledObserveElementOffset: typeof observeElementOffset = (
 		cb(contentOffsetOf(instance, scrollTop), isScrolling);
 	});
 
-// The virtualiser's `adjustments` are content pixels, so they join the offset before it is mapped.
+// @tanstack/virtual-core's `adjustments` are content pixels.
 export const scaledScrollToFn: typeof elementScroll = (
 	offset,
 	{ adjustments = 0, behavior },
@@ -113,8 +103,7 @@ export const scaledVirtualizerOptions = {
 	scrollToFn: scaledScrollToFn,
 };
 
-// `getOffsetForIndex` clamps to the scroller's own height, which over the cap stops short of the
-// list's end, so the offset is worked out from the item's measurements instead.
+// @tanstack/virtual-core's `getOffsetForIndex` clamps to the scroller's own height.
 export function scrollTopFor<T extends HTMLElement>(
 	instance: Virtualizer<T, Element>,
 	item: VirtualItem,
@@ -135,7 +124,6 @@ export function scrollTopFor<T extends HTMLElement>(
 	return scrollTopOf(instance, Math.min(Math.max(wanted, 0), last));
 }
 
-// Rounded away from a value the browser has already refused, so the next nearest one is tried.
 export function nextHeldScrollTop(
 	refined: number,
 	unheld: ReadonlySet<number>,
@@ -151,12 +139,9 @@ export function nextHeldScrollTop(
 
 const SETTLE_FRAMES = 240;
 const SETTLE_STILL_FRAMES = 20;
+const YIELDS_TO = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
 
-// Moves the scroller until `centreOnRow` (a scrollTop, or null while the row is unmounted) agrees
-// with where it is for a while, since a group measured after a jump changes the list's height and,
-// over the cap, every offset with it. Chromium holds a scrollTop this large only to a grid of its
-// own (every second pixel at 12,000,000), so a value it moved is not written again. A wheel or a
-// touch stops it; the returned function does too.
+// Chromium holds a scrollTop this large only to a grid of its own (every second pixel at 12,000,000).
 export function settleOnRow(
 	element: HTMLElement,
 	centreOnRow: () => number | null,
@@ -170,8 +155,7 @@ export function settleOnRow(
 	const stop = () => {
 		frames = 0;
 		cancelAnimationFrame(handle);
-		element.removeEventListener("wheel", stop);
-		element.removeEventListener("touchstart", stop);
+		for (const event of YIELDS_TO) element.removeEventListener(event, stop);
 	};
 
 	const step = () => {
@@ -193,14 +177,12 @@ export function settleOnRow(
 		else stop();
 	};
 
-	element.addEventListener("wheel", stop, { passive: true });
-	element.addEventListener("touchstart", stop, { passive: true });
+	for (const event of YIELDS_TO)
+		element.addEventListener(event, stop, { passive: true });
 	handle = requestAnimationFrame(step);
 	return stop;
 }
 
-// Each scroller's virtualiser, so code that holds only the element (scroll memory) can map the
-// scrollTop it reads and writes. An element with none registered maps as the identity.
 const registered = new WeakMap<Element, Virtualizer<HTMLElement, Element>>();
 
 export function registerScaledScroller(

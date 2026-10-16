@@ -8,7 +8,12 @@ import {
 	retryAfterMs,
 } from "./client";
 import type { components } from "./fooJeanSchema";
-import { decodeJlib, type JlibDelta, type JlibSnapshot } from "./jlib";
+import {
+	decodeJlib,
+	type JlibDelta,
+	type JlibSnapshot,
+	type JlibSplice,
+} from "./jlib";
 import { fetchState } from "./state";
 
 type LibraryBuild = components["schemas"]["LibraryBuild"];
@@ -31,12 +36,16 @@ export interface LibraryFailure {
 }
 
 export type LibraryResult =
-	| { ok: true; library: JlibSnapshot }
+	| { ok: true; library: JlibSnapshot; bytes: ArrayBuffer }
 	| LibraryFailure;
 
 export type LibraryChanges =
-	| { ok: true; kind: "delta"; delta: JlibDelta }
-	| { ok: true; kind: "restart" }
+	| { ok: true; kind: "delta"; delta: JlibDelta; bytes: ArrayBuffer }
+	| { ok: true; kind: "splice"; splice: JlibSplice; bytes: ArrayBuffer }
+	// A `409`: the pair names no position this run of the component held.
+	| { ok: true; kind: "another-run" }
+	// A `410`: the changes are no longer kept, or are too large to send.
+	| { ok: true; kind: "gone" }
 	| LibraryFailure;
 
 const EXPORT_TIMEOUT_MS = 120_000;
@@ -60,7 +69,10 @@ const failure = (
 const retryAfterOf = (response: Response) =>
 	Math.min(retryAfterMs(response) ?? BUSY_WAIT_MS, BUSY_WAIT_MAX_MS);
 
-const sameColumns = (held: readonly string[], asked: readonly string[]) => {
+export const sameColumns = (
+	held: readonly string[],
+	asked: readonly string[],
+) => {
 	const built = new Set(held);
 	return built.size === asked.length && asked.every((one) => built.has(one));
 };
@@ -131,9 +143,15 @@ const haltedIn = (body: ArrayBuffer | undefined) => {
 	}
 };
 
+export interface LibraryPart {
+	only: readonly string[];
+	hasSpine: boolean;
+}
+
 async function attemptExport(
 	origin: string,
 	columns: readonly string[],
+	part: LibraryPart | undefined,
 	signal: AbortSignal | undefined,
 ): Promise<Attempt> {
 	const asked = await askBytes(
@@ -142,7 +160,13 @@ async function attemptExport(
 		(api, init) =>
 			api.GET("/library/export", {
 				...init,
-				params: { query: { columns: [...columns] } },
+				params: {
+					query: {
+						columns: [...columns],
+						...(part && { only: [...part.only] }),
+						...(part && !part.hasSpine && { spine: false }),
+					},
+				},
 				parseAs: "arrayBuffer",
 			}),
 		signal,
@@ -169,7 +193,7 @@ async function attemptExport(
 
 	return {
 		kind: "done",
-		result: read.ok ? { ok: true, library: read.value } : read,
+		result: read.ok ? { ok: true, library: read.value, bytes } : read,
 	};
 }
 
@@ -179,11 +203,10 @@ export const TRANSIENT: ReadonlySet<LibraryFailureReason> = new Set([
 	"failed",
 ]);
 
-const RESTARTS = new Set([409, 410]);
-
 export async function fetchLibraryChanges(
 	origin: string,
 	since: number,
+	structure: number,
 	signal?: AbortSignal,
 ): Promise<LibraryChanges> {
 	const asked = await askBytes(
@@ -192,7 +215,7 @@ export async function fetchLibraryChanges(
 		(api, init) =>
 			api.GET("/library/changes", {
 				...init,
-				params: { query: { since } },
+				params: { query: { since, structure } },
 				parseAs: "arrayBuffer",
 			}),
 		signal,
@@ -200,19 +223,77 @@ export async function fetchLibraryChanges(
 	if (!asked.ok) return asked;
 
 	const { response, data } = asked.answer;
-	if (RESTARTS.has(response.status)) return { ok: true, kind: "restart" };
+	if (response.status === 409) return { ok: true, kind: "another-run" };
+	if (response.status === 410) return { ok: true, kind: "gone" };
 
 	const refused = refusalOf(asked.answer);
 	if (refused) return refused;
 
 	const bytes = data ?? new ArrayBuffer(0);
 	const read = decoded(() => {
-		const delta = decodeJlib(bytes);
-		if (delta.kind !== "delta") throw new Error("not a delta");
-		return delta;
+		const changes = decodeJlib(bytes);
+		if (changes.kind === "snapshot") throw new Error("not a delta or a splice");
+		return changes;
 	}, signal);
 
-	return read.ok ? { ok: true, kind: "delta", delta: read.value } : read;
+	if (!read.ok) return read;
+	return read.value.kind === "delta"
+		? { ok: true, kind: "delta", delta: read.value, bytes }
+		: { ok: true, kind: "splice", splice: read.value, bytes };
+}
+
+interface BuildWait {
+	pollMs: number;
+	lastBuild: LibraryBuild | null;
+	stalledSince: number;
+}
+
+const newBuildWait = (): BuildWait => ({
+	pollMs: POLL_MIN_MS,
+	lastBuild: null,
+	stalledSince: Date.now(),
+});
+
+const isStalled = (wait: BuildWait) =>
+	Date.now() - wait.stalledSince >= BUILD_STALL_MS;
+
+async function untilBuilt(
+	origin: string,
+	columns: readonly string[],
+	wait: BuildWait,
+	signal: AbortSignal | undefined,
+	onProgress: ((build: LibraryBuild) => void) | undefined,
+): Promise<LibraryFailure | null> {
+	while (!isStalled(wait)) {
+		await sleep(wait.pollMs, signal);
+		wait.pollMs = Math.min(wait.pollMs * 2, POLL_MAX_MS);
+
+		const polled = await fetchState(origin, null, signal);
+		if (!polled.ok) {
+			// `foo_jean` answers `404` here only for a session named and gone, and its library is the
+			// player's whichever session is named.
+			if (polled.reason !== "noSuchSession" && !TRANSIENT.has(polled.reason))
+				return failure(polled.reason, polled.detail);
+			continue;
+		}
+		if (polled.kind !== "state") continue;
+		if (polled.state.library.halted) return failure("halted");
+
+		const build = polled.state.library.build;
+		if (!sameBuild(wait.lastBuild, build)) {
+			wait.lastBuild = build;
+			wait.stalledSince = Date.now();
+			if (build) onProgress?.(build);
+		}
+
+		if (
+			polled.state.library.ready &&
+			sameColumns(polled.state.library.columns, columns)
+		)
+			return null;
+	}
+
+	return failure("timeout");
 }
 
 export async function fetchLibrary(
@@ -220,15 +301,12 @@ export async function fetchLibrary(
 	columns: readonly string[],
 	signal?: AbortSignal,
 	onProgress?: (build: LibraryBuild) => void,
+	part?: LibraryPart,
 ): Promise<LibraryResult> {
-	let pollMs = POLL_MIN_MS;
-	let lastBuild: LibraryBuild | null = null;
-	let stalledSince = Date.now();
+	const wait = newBuildWait();
 
-	const stalled = () => Date.now() - stalledSince >= BUILD_STALL_MS;
-
-	while (!stalled()) {
-		const attempt = await attemptExport(origin, columns, signal);
+	while (!isStalled(wait)) {
+		const attempt = await attemptExport(origin, columns, part, signal);
 		if (attempt.kind === "done") return attempt.result;
 
 		if (attempt.kind === "wait") {
@@ -236,34 +314,33 @@ export async function fetchLibrary(
 			continue;
 		}
 
-		while (!stalled()) {
-			await sleep(pollMs, signal);
-			pollMs = Math.min(pollMs * 2, POLL_MAX_MS);
+		const failed = await untilBuilt(origin, columns, wait, signal, onProgress);
+		if (failed) return failed;
+	}
 
-			const polled = await fetchState(origin, null, signal);
-			if (!polled.ok) {
-				// `foo_jean` answers `404` here only for a session named and gone, and its library is the
-				// player's whichever session is named.
-				if (polled.reason !== "noSuchSession" && !TRANSIENT.has(polled.reason))
-					return failure(polled.reason, polled.detail);
-				continue;
-			}
-			if (polled.kind !== "state") continue;
-			if (polled.state.library.halted) return failure("halted");
+	return failure("timeout");
+}
 
-			const build = polled.state.library.build;
-			if (!sameBuild(lastBuild, build)) {
-				lastBuild = build;
-				stalledSince = Date.now();
-				if (build) onProgress?.(build);
-			}
+// A component that answers the export with a body had the columns built already; the body is not read.
+export async function declareLibrary(
+	origin: string,
+	columns: readonly string[],
+	signal?: AbortSignal,
+	onProgress?: (build: LibraryBuild) => void,
+): Promise<LibraryFailure | null> {
+	const wait = newBuildWait();
 
-			if (
-				polled.state.library.ready &&
-				sameColumns(polled.state.library.columns, columns)
-			)
-				break;
+	while (!isStalled(wait)) {
+		const attempt = await attemptExport(origin, columns, undefined, signal);
+		if (attempt.kind === "done")
+			return attempt.result.ok ? null : attempt.result;
+
+		if (attempt.kind === "wait") {
+			await sleep(attempt.ms, signal);
+			continue;
 		}
+
+		return untilBuilt(origin, columns, wait, signal, onProgress);
 	}
 
 	return failure("timeout");

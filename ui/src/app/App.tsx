@@ -319,7 +319,7 @@ function Shell() {
 			return;
 		}
 
-		const { query, refs } = search.commit();
+		const { query, refs } = search.commit(search.suggestedQuery);
 		const position = refs ? refs.indexOf(suggestion.ref) : -1;
 		if (refs && position >= 0)
 			void playSet({ kind: SCRATCH_KIND.search, label: query, refs, position });

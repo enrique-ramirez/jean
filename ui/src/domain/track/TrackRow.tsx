@@ -18,6 +18,7 @@ import { classNames } from "@/shared/lib/classNames";
 import { formatTime } from "@/shared/lib/time";
 import { Artwork } from "@/shared/ui/Artwork";
 import { Equalizer } from "@/shared/ui/Equalizer";
+import { BusyNote, busyProps, Skeleton } from "@/shared/ui/Skeleton";
 import { Stars, StarsInput } from "@/shared/ui/Stars";
 import type { Column, ColumnKind } from "./columns";
 import {
@@ -31,7 +32,7 @@ import {
 	value,
 } from "./fields";
 import { discNumber } from "./grouping";
-import type { LibraryColumns } from "./libraryColumns";
+import { isLoaded, type LibraryColumns } from "./libraryColumns";
 import type { LibrarySource } from "./librarySource";
 import type { TrackRows } from "./project";
 import { isWritableScale, ratingDisplayOf, rawRatingWith } from "./rating";
@@ -152,7 +153,9 @@ function Cell({
 			)}
 			data-zero={plays === null ? undefined : plays === 0}
 		>
-			{column.kind === "rating" ? (
+			{!isLoaded(columns, [column.field]) ? (
+				<Skeleton />
+			) : column.kind === "rating" ? (
 				<Rating
 					columns={columns}
 					row={row}
@@ -219,6 +222,9 @@ function TrackRowComponent({
 	const title = titleOf(row, t);
 	const artist = artistOf(row, t);
 	const trackNumber = value(row, FIELD.trackNumber);
+	const isBusy = columns.some(
+		(column) => !isLoaded(rows.columns, [column.field]),
+	);
 
 	const disc =
 		showDisc && trackNumber !== null ? discNumber(row[FIELD.discNumber]) : null;
@@ -246,6 +252,7 @@ function TrackRowComponent({
 			role="row"
 			aria-haspopup="menu"
 			aria-selected={isSelected}
+			{...busyProps(isBusy)}
 			onPointerDown={(event) => {
 				// Secondary click must leave the selection alone, or a multi-track selection is emptied
 				// before the context menu about to act on it has opened.
@@ -260,6 +267,7 @@ function TrackRowComponent({
 				) : (
 					(trackNumber ?? index + 1)
 				)}
+				{isBusy ? <BusyNote /> : null}
 			</GridCell>
 
 			{showArtwork ? (

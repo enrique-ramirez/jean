@@ -1,34 +1,41 @@
 import { useMemo } from "react";
-import { type ArtistTracks, refsOfArtist } from "@/domain/artist/artists";
+import type { ArtistTracks } from "@/domain/artist/artists";
 import { useSplitCredits } from "@/domain/artist/splitCredits";
 import type { Library } from "@/domain/library/useLibrary";
+import { NO_WAIT, useWait, type Wait } from "@/domain/library/useOverdue";
 import { AlbumCrumb } from "@/domain/track/AlbumCrumb";
-import { type AlbumTracks, albumsOf, refsOfAlbum } from "@/domain/track/albums";
+import type { AlbumTracks } from "@/domain/track/albums";
+import { CREDIT_TAGS } from "@/domain/track/fields";
 import {
 	albumLabel,
 	SCRATCH_KIND,
 	type ScratchKind,
 } from "@/domain/track/jeanPlaylists";
+import { isLoaded } from "@/domain/track/libraryColumns";
 import {
 	EMPTY_VIEW,
 	project,
-	refsOfGenre,
 	type TrackView,
 	wholeLibrary,
 } from "@/domain/track/project";
 import { type ArtistTab, href, ROUTE } from "@/domain/track/routes";
 import type { PageHeading } from "@/domain/track/TrackPage";
-import { buildShelves, refsOfShelf } from "@/features/home/shelves";
+import { useLibraryAnswer } from "@/domain/track/useLibraryAnswer";
+import { homeData } from "@/features/home/homeData";
+import { refsOfShelf } from "@/features/home/shelves";
 import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
 import { Crumb } from "@/shared/ui/Crumb";
 import type { RouteView } from "./routes";
 
 export interface ListPage {
+	pageKey: string;
 	view: TrackView;
 	kind: ScratchKind;
 	label: string;
 	heading: PageHeading & { title: string };
 	emptyNotice: string;
+	wait: Wait;
+	isAwaitingColumns: boolean;
 }
 
 export interface ArtistPage {
@@ -36,6 +43,8 @@ export interface ArtistPage {
 	tab: ArtistTab;
 	tracks: ArtistTracks;
 	view: TrackView;
+	wait: Wait;
+	isAwaitingColumns: boolean;
 }
 
 const EMPTY_ARTIST_TRACKS: ArtistTracks = {
@@ -51,25 +60,38 @@ interface ListViews {
 	genreView: TrackView | null;
 	albumView: TrackView | null;
 	albumTracks: AlbumTracks | null;
+	isAwaitingColumns: boolean;
 }
 
 function listPageOf(
 	route: RouteView,
-	{ allMusic, shelfView, genreView, albumView, albumTracks }: ListViews,
+	{
+		allMusic,
+		shelfView,
+		genreView,
+		albumView,
+		albumTracks,
+		isAwaitingColumns,
+	}: ListViews,
+	wait: Wait,
 	t: Translate,
 ): ListPage | null {
 	switch (route.kind) {
 		case "shelf":
 			return {
+				pageKey: `shelf:${route.shelf.id}`,
 				view: shelfView ?? EMPTY_VIEW,
 				kind: SCRATCH_KIND.shelf,
 				label: t(route.shelf.title),
 				heading: { eyebrow: t("route.shelf"), title: t(route.shelf.title) },
-				emptyNotice: t("library.empty"),
+				emptyNotice: t("shelf.empty"),
+				wait,
+				isAwaitingColumns,
 			};
 		case "genre":
 			if (!route.genre) return null;
 			return {
+				pageKey: `genre:${route.genre}`,
 				view: genreView ?? EMPTY_VIEW,
 				kind: SCRATCH_KIND.genre,
 				label: route.genre,
@@ -80,10 +102,13 @@ function listPageOf(
 					title: route.genre,
 				},
 				emptyNotice: t("library.noGenre", { genre: route.genre }),
+				wait,
+				isAwaitingColumns: false,
 			};
 		case "album":
 			if (!albumTracks) return null;
 			return {
+				pageKey: `album:${route.album}`,
 				view: albumView ?? EMPTY_VIEW,
 				kind: SCRATCH_KIND.album,
 				label: albumLabel(albumTracks.artist, albumTracks.album),
@@ -92,9 +117,12 @@ function listPageOf(
 					title: albumTracks.album,
 				},
 				emptyNotice: t("library.noAlbum"),
+				wait,
+				isAwaitingColumns: false,
 			};
 		case "all":
 			return {
+				pageKey: "all",
 				view: allMusic,
 				kind: SCRATCH_KIND.all,
 				label: "",
@@ -103,6 +131,8 @@ function listPageOf(
 					title: t("library.allMusic"),
 				},
 				emptyNotice: t("library.empty"),
+				wait: NO_WAIT,
+				isAwaitingColumns: false,
 			};
 		default:
 			return null;
@@ -123,23 +153,44 @@ export function useRouteView(route: RouteView, library: Library) {
 
 	const allMusic = useMemo(() => wholeLibrary(snapshot), [snapshot]);
 
-	const shelfView = useMemo(() => {
-		if (!shelf || snapshot.columns.trackCount === 0) return null;
-		const built = buildShelves(albumsOf(allMusic)).find(
+	const shelfAnswer = useMemo(() => {
+		if (!shelf || !library.key || snapshot.columns.trackCount === 0)
+			return { view: null, isPending: false };
+		const built = homeData(library.key, snapshot.columns).shelves.find(
 			(entry) => entry.id === shelf.id,
 		);
-		return built ? project(snapshot, refsOfShelf(built)) : null;
-	}, [shelf, snapshot, allMusic]);
+		if (!built) return { view: null, isPending: false };
+		return built.isPending
+			? { view: null, isPending: true }
+			: { view: project(snapshot, refsOfShelf(built)), isPending: false };
+	}, [shelf, snapshot, library.key]);
 
+	const genreQuestion = useMemo(
+		() => (genre ? ({ kind: "genre", genre } as const) : null),
+		[genre],
+	);
+	const genreSweep = useLibraryAnswer(genreQuestion, library, false);
 	const genreView = useMemo(
-		() =>
-			genre ? project(snapshot, refsOfGenre(snapshot.columns, genre)) : null,
-		[genre, snapshot],
+		() => (genreSweep.answer ? project(snapshot, genreSweep.answer) : null),
+		[genreSweep.answer, snapshot],
 	);
 
+	const albumQuestion = useMemo(
+		() =>
+			album ? ({ kind: "album", artist: albumArtist, album } as const) : null,
+		[album, albumArtist],
+	);
+	const albumSweep = useLibraryAnswer(albumQuestion, library, false);
 	const albumTracks = useMemo(
-		() => (album ? refsOfAlbum(snapshot.columns, albumArtist, album) : null),
-		[album, albumArtist, snapshot.columns],
+		() =>
+			album
+				? (albumSweep.answer ?? {
+						refs: new Int32Array(0),
+						album,
+						artist: albumSweep.isWaiting ? albumArtist : null,
+					})
+				: null,
+		[album, albumArtist, albumSweep.answer, albumSweep.isWaiting],
 	);
 
 	const albumView = useMemo(
@@ -147,22 +198,42 @@ export function useRouteView(route: RouteView, library: Library) {
 		[albumTracks, snapshot],
 	);
 
-	const artistTracks = useMemo(
+	const artistQuestion = useMemo(
 		() =>
-			artist
-				? refsOfArtist(snapshot.columns, artist, splitsCredits)
-				: EMPTY_ARTIST_TRACKS,
-		[artist, snapshot.columns, splitsCredits],
+			artist ? ({ kind: "artist", artist, splitsCredits } as const) : null,
+		[artist, splitsCredits],
 	);
+	const artistSweep = useLibraryAnswer(artistQuestion, library, false);
+	const artistTracks = artistSweep.answer ?? EMPTY_ARTIST_TRACKS;
 
 	const artistView = useMemo(
 		() => (artist ? project(snapshot, artistTracks.all) : null),
 		[artist, snapshot, artistTracks.all],
 	);
 
+	const isAwaitingColumns =
+		shelfAnswer.isPending ||
+		(artist !== null && !isLoaded(snapshot.columns, CREDIT_TAGS));
+
+	const wait = useWait(
+		genreSweep.isWaiting ||
+			albumSweep.isWaiting ||
+			artistSweep.isWaiting ||
+			isAwaitingColumns,
+		`${route.kind}:${shelf?.id ?? genre ?? album ?? artist}`,
+	);
+
 	const list = listPageOf(
 		route,
-		{ allMusic, shelfView, genreView, albumView, albumTracks },
+		{
+			allMusic,
+			shelfView: shelfAnswer.view,
+			genreView,
+			albumView,
+			albumTracks,
+			isAwaitingColumns,
+		},
+		wait,
 		t,
 	);
 
@@ -172,6 +243,8 @@ export function useRouteView(route: RouteView, library: Library) {
 				tab: artistTab,
 				tracks: artistTracks,
 				view: artistView ?? EMPTY_VIEW,
+				wait,
+				isAwaitingColumns,
 			}
 		: null;
 

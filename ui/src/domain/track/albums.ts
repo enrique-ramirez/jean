@@ -1,4 +1,6 @@
+import { finished, SLICE_MASK, type Steps } from "@/shared/lib/idle";
 import { type FuzzyKey, fuzzyKey } from "@/shared/lib/text";
+import { overColumnsByName } from "./columnCache";
 import {
 	artistGroups,
 	coverKey,
@@ -13,7 +15,8 @@ import {
 	withBothSources,
 } from "./fields";
 import { growingIndex } from "./growingIndex";
-import { byValue, type LibraryColumns } from "./libraryColumns";
+import { INTENSITY_FIELDS, rowPlays } from "./intensity";
+import { byValueSteps, type LibraryColumns, rowsMoved } from "./libraryColumns";
 import type { TrackRows } from "./project";
 import { starsOf } from "./rating";
 
@@ -70,26 +73,32 @@ export interface CoveredAlbum extends Album {
 	artworkUrl: string | null;
 }
 
-function collect(
+function* collect(
 	byKey: Map<string, AlbumDraft>,
 	rows: TrackRows,
 	from: number,
-) {
+): Steps<void> {
 	const { columns } = rows;
 	const album = columns.fields[FIELD.album];
-	const albums = tagGroups(album);
-	const artists = artistGroups(columns);
+	const albums = yield* tagGroups.steps(album);
+	const artists = yield* artistGroups.steps(columns);
 
-	const plays = playCountsIn(columns);
-	const playedAt = lastPlayedIn(columns);
-	const addedAt = byValue(columns.fields[FIELD.added], readTimestamp);
-	const years = byValue(columns.fields[FIELD.year], readNumber);
-	const bitrates = byValue(columns.fields[FIELD.bitrate], readNumber);
-	const lossy = byValue(columns.fields[FIELD.codec], (raw) => {
+	const plays = yield* playCountsIn.steps(columns);
+	const playedAt = yield* lastPlayedIn.steps(columns);
+	const addedAt = yield* byValueSteps(
+		columns.fields[FIELD.added],
+		readTimestamp,
+	);
+	const years = yield* byValueSteps(columns.fields[FIELD.year], readNumber);
+	const bitrates = yield* byValueSteps(
+		columns.fields[FIELD.bitrate],
+		readNumber,
+	);
+	const lossy = yield* byValueSteps(columns.fields[FIELD.codec], (raw) => {
 		const codec = readValue(raw);
 		return codec !== null && !LOSSLESS.has(codec.toUpperCase());
 	});
-	const ratings = byValue(columns.fields[FIELD.rating], (raw) =>
+	const ratings = yield* byValueSteps(columns.fields[FIELD.rating], (raw) =>
 		starsOf(readNumber(raw)),
 	);
 
@@ -102,6 +111,7 @@ function collect(
 	const drafts = new Map<number, AlbumDraft>();
 
 	for (let position = from; position < rows.length; position += 1) {
+		if ((position & SLICE_MASK) === 0) yield;
 		const ref = rows.ref(position);
 		const albumGroup = albums.of[album.ids[ref]];
 		if (albumGroup < 0) continue;
@@ -113,6 +123,7 @@ function collect(
 			const artist = artistGroup < 0 ? null : artists.names[artistGroup];
 			const key = keyOf(artist, name);
 			draft = byKey.get(key) ?? blankAlbum(key, name, artist, fuzzyKey(name));
+			summaries.delete(draft);
 			byKey.set(key, draft);
 			drafts.set(artists.pairedWith(ref, albumGroup), draft);
 		}
@@ -148,12 +159,23 @@ function collect(
 	}
 }
 
+const summaries = new WeakMap<AlbumDraft, Album>();
+
+const summaryOf = (draft: AlbumDraft) => {
+	let summary = summaries.get(draft);
+	if (!summary) {
+		summary = summed(draft);
+		summaries.set(draft, summary);
+	}
+	return summary;
+};
+
 const derive = (byKey: Map<string, AlbumDraft>): Album[] =>
-	[...byKey.values()].map(summed);
+	[...byKey.values()].map(summaryOf);
 
 export function albumsOf(rows: TrackRows): Album[] {
 	const byKey = new Map<string, AlbumDraft>();
-	collect(byKey, rows, 0);
+	finished(collect(byKey, rows, 0));
 	return derive(byKey);
 }
 
@@ -170,7 +192,46 @@ const COLLECTED = withBothSources([
 	FIELD.added,
 ]);
 
-export const albumIndex = growingIndex(COLLECTED, collect, derive);
+function replay(
+	byKey: Map<string, AlbumDraft>,
+	before: LibraryColumns,
+	after: LibraryColumns,
+) {
+	const moved = rowsMoved(INTENSITY_FIELDS, before, after);
+	if (moved.length === 0) return;
+
+	const album = after.fields[FIELD.album];
+	const albums = tagGroups(album);
+	const artists = artistGroups(after);
+	const touched = new Set<AlbumDraft>();
+
+	for (const ref of moved) {
+		const albumGroup = albums.of[album.ids[ref]];
+		if (albumGroup < 0) continue;
+
+		const artistGroup = artists.at(ref);
+		const artist = artistGroup < 0 ? null : artists.names[artistGroup];
+		const draft = byKey.get(keyOf(artist, albums.names[albumGroup]));
+		if (draft) touched.add(draft);
+	}
+
+	for (const draft of touched) {
+		draft.plays = 0;
+		draft.lastPlayed = 0;
+		for (const position of draft.refs) {
+			const { plays, lastPlayed } = rowPlays(after, position);
+			draft.plays += plays;
+			if (lastPlayed !== null && lastPlayed > draft.lastPlayed)
+				draft.lastPlayed = lastPlayed;
+		}
+		summaries.delete(draft);
+	}
+}
+
+export const albumIndex = growingIndex(COLLECTED, collect, derive, {
+	patchable: INTENSITY_FIELDS,
+	patch: replay,
+});
 
 export interface AlbumTracks {
 	refs: Int32Array;
@@ -184,7 +245,14 @@ export interface AlbumTracks {
  * different bands, and a title on its own would collect both. Matched through the key `albumsOf`
  * groups by, so a count beside a title and the page behind it can never be different sets.
  */
-export function refsOfAlbum(
+export const refsOfAlbum = overColumnsByName(
+	[FIELD.album, FIELD.albumArtist, FIELD.artist],
+	(artist: string | null | undefined, album: string) =>
+		JSON.stringify([artist ?? null, album]),
+	albumRefs,
+);
+
+function albumRefs(
 	columns: LibraryColumns,
 	artist: string | null | undefined,
 	album: string,

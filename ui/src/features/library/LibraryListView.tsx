@@ -1,17 +1,18 @@
 import type { ReactNode, RefObject } from "react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { libraryNoticeFor } from "@/domain/library/LibraryNotice";
 import {
 	isLibraryReading,
 	readingNotice,
 } from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
+import { byWait, NO_WAIT, type Wait } from "@/domain/library/useOverdue";
 import { useViewPlayback } from "@/domain/library/useViewPlayback";
 import { SCRATCH_KIND, type ScratchKind } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
 import type { TrackView } from "@/domain/track/project";
 import { href, ROUTE } from "@/domain/track/routes";
-import { summarise } from "@/domain/track/stats";
+import { summarise, type TrackStats } from "@/domain/track/stats";
 import { type PageHeading, TrackPage } from "@/domain/track/TrackPage";
 import { useFinder } from "@/domain/track/useFinder";
 import type { PlaylistInfo } from "@/shared/api/types";
@@ -47,8 +48,18 @@ const summaryOf = (view: TrackView, countsGenres: boolean) => {
 	return summary;
 };
 
+function useKeptStats(pageKey: string, counted: TrackStats | null) {
+	const [held, setHeld] = useState<{ key: string; stats: TrackStats } | null>(
+		null,
+	);
+	if (counted && (held?.key !== pageKey || held.stats !== counted))
+		setHeld({ key: pageKey, stats: counted });
+	return held?.key === pageKey ? held.stats : null;
+}
+
 export function LibraryListView({
 	library,
+	pageKey,
 	view,
 	kind,
 	label,
@@ -57,9 +68,12 @@ export function LibraryListView({
 	scrollRef,
 	isCompactViewport,
 	emptyNotice,
+	wait = NO_WAIT,
+	isAwaitingColumns = false,
 	onOpenPlaylist,
 }: {
 	library: Library;
+	pageKey: string;
 	view: TrackView;
 	kind: ScratchKind;
 	label: string | null;
@@ -68,6 +82,8 @@ export function LibraryListView({
 	scrollRef: RefObject<HTMLElement | null>;
 	isCompactViewport: boolean;
 	emptyNotice?: ReactNode;
+	wait?: Wait;
+	isAwaitingColumns?: boolean;
 	onOpenPlaylist?: (id: string) => void;
 }) {
 	const t = useTranslate();
@@ -76,7 +92,9 @@ export function LibraryListView({
 
 	const isGenre = kind === SCRATCH_KIND.genre;
 
-	const stats = summaryOf(view, !isGenre);
+	const counted = wait.isWaiting ? null : summaryOf(view, !isGenre);
+	const kept = useKeptStats(pageKey, counted);
+	const stats = counted ?? (wait.isOverdue ? null : kept);
 
 	const finder = useFinder({
 		rows: view,
@@ -99,7 +117,16 @@ export function LibraryListView({
 	const isReading = isLibraryReading(status);
 	const readingText = isReading
 		? readingNotice(status, "library.reading", t)
-		: undefined;
+		: byWait(wait, {
+				settled: undefined,
+				quiet: undefined,
+				reading: t("library.reading"),
+			});
+	const loadingNotice = byWait(wait, {
+		settled: readingText,
+		quiet: "",
+		reading: isAwaitingColumns && !isReading ? "" : readingText,
+	});
 
 	return (
 		<TrackPage
@@ -122,10 +149,12 @@ export function LibraryListView({
 			onOpenFinder={finder.open}
 			toolbarLeading={finder.toolbarLeading}
 			emptyNotice={emptyNotice}
-			loadingNotice={readingText}
+			loadingNotice={loadingNotice}
+			hasPendingRows={isAwaitingColumns && wait.isWaiting && !isReading}
 			progressLabel={readingText}
 			heading={heading}
 			stats={stats}
+			wait={wait}
 			allGenresHref={kind === SCRATCH_KIND.all ? href(ROUTE.genres) : undefined}
 			mosaicSeed={`${kind}:${label}`}
 			canPlaySets={canPlaySets}

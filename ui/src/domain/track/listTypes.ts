@@ -38,3 +38,5 @@ export interface TrackBrowserHandle
 	play: (position: number) => void;
 	preview: (position: number) => void;
 }
+
+export const ROW_HEIGHT = 46;

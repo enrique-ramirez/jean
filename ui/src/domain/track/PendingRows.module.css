@@ -1,0 +1,12 @@
+.rows {
+	display: block;
+	width: 100%;
+}
+
+.row {
+	display: flex;
+	align-items: center;
+	box-sizing: border-box;
+	height: var(--row-height);
+	padding-inline: 16px;
+}

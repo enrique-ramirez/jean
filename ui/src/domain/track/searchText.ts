@@ -1,11 +1,9 @@
 import type { Ids, JlibColumn } from "@/shared/api/jlib";
 import { fold } from "@/shared/lib/text";
+import { overColumns } from "./columnCache";
 import { FIELD } from "./fields";
 import type { LibraryColumns } from "./libraryColumns";
 
-// Which field matched has to outweigh how well it matched: the spread must be wide enough that a
-// hit on the album lands below a hit on the title a rung further down the ladder, and narrow enough
-// that an exact album title still beats a passing mention in a song.
 const TITLE = 1;
 const ARTIST = 0.85;
 const ALBUM = 0.6;
@@ -93,8 +91,10 @@ export function foldCache(): FoldCache {
 	};
 }
 
-export const searchIndex = (columns: LibraryColumns): SearchIndex =>
-	foldCache().over(columns);
+export const searchIndex = overColumns(
+	SEARCHED.map(({ field }) => field),
+	(columns) => foldCache().over(columns),
+);
 
 export const rowMatches = (index: SearchIndex, ref: number, tokens: string[]) =>
 	tokens.every((token) =>

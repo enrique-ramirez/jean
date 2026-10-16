@@ -1,4 +1,6 @@
 import { type Album, percentile } from "@/domain/track/albums";
+import { FIELD } from "@/domain/track/fields";
+import { isLoaded, type LibraryColumns } from "@/domain/track/libraryColumns";
 import type { Phrase } from "@/shared/i18n/en";
 import type { Translate } from "@/shared/i18n/useTranslate";
 import { describeWhen, yearOf } from "./when";
@@ -15,11 +17,13 @@ export interface Shelf {
 	pick: (albums: Album[]) => Album[];
 	caption: (album: Album, t: Translate, locale: string) => string | null;
 	minimum: number;
+	needs: readonly number[];
 }
 
 export interface FilledShelf<A extends Album = Album> extends Shelf {
 	albums: A[];
 	total: number;
+	isPending: boolean;
 }
 
 type WithBitrate = Album & { bitrate: number };
@@ -43,7 +47,8 @@ const shelf = (
 	pick: Shelf["pick"],
 	caption: Shelf["caption"],
 	minimum = MINIMUM,
-): Shelf => ({ id, title, blurb, pick, caption, minimum });
+	needs: readonly number[] = [],
+): Shelf => ({ id, title, blurb, pick, caption, minimum, needs });
 
 // foo_playcount's first run stamps every track already in the library with that moment, one after
 // another, so the largest unbroken run of arrivals is when it was installed if the run is a good
@@ -96,6 +101,7 @@ export const SHELVES: Shelf[] = [
 		},
 		(album, t, locale) => describeWhen(album.added, locale, t("when.today")),
 		1,
+		[FIELD.added],
 	),
 
 	shelf(
@@ -200,6 +206,8 @@ export const SHELVES: Shelf[] = [
 				bitrate: Math.round((album as WithBitrate).bitrate),
 				plays: t("shelf.plays", { count: Math.round(album.plays) }),
 			}),
+		MINIMUM,
+		[FIELD.codec, FIELD.bitrate],
 	),
 
 	shelf(
@@ -232,22 +240,34 @@ const STARTER = shelf(
 const fill = <A extends Album>(
 	entry: Shelf,
 	albums: A[],
+	columns: LibraryColumns | null,
 ): FilledShelf<A> | null => {
+	if (columns && !isLoaded(columns, entry.needs))
+		return { ...entry, albums: [], total: 0, isPending: true };
+
 	const picked = entry.pick(albums) as A[];
 	return picked.length < entry.minimum
 		? null
-		: { ...entry, albums: picked.slice(0, LIMIT), total: picked.length };
+		: {
+				...entry,
+				albums: picked.slice(0, LIMIT),
+				total: picked.length,
+				isPending: false,
+			};
 };
 
-export function buildShelves<A extends Album>(albums: A[]): FilledShelf<A>[] {
+export function buildShelves<A extends Album>(
+	albums: A[],
+	columns: LibraryColumns | null,
+): FilledShelf<A>[] {
 	if (albums.length === 0) return [];
 
-	const built = SHELVES.map((entry) => fill(entry, albums)).filter(
+	const built = SHELVES.map((entry) => fill(entry, albums, columns)).filter(
 		(entry) => entry !== null,
 	);
 	if (built.length > 0) return built;
 
-	return [fill(STARTER, albums)].filter((entry) => entry !== null);
+	return [fill(STARTER, albums, columns)].filter((entry) => entry !== null);
 }
 
 // Library order, not the order the shelf is drawn in. Ascending is also the only form `encodeFill`

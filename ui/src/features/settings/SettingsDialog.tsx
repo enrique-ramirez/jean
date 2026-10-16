@@ -1,6 +1,7 @@
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SETTINGS_KEYBOARD } from "@/shared/keyboard/keyboardOwner";
 import { ModalDialog } from "@/shared/ui/ModalDialog";
+import { AdvancedSection } from "./AdvancedSection";
 import { Appearance } from "./Appearance";
 import { ArtistInformation } from "./ArtistInformation";
 import { Keyboard } from "./Keyboard";
@@ -30,6 +31,7 @@ export function SettingsDialog({ onDismiss }: { onDismiss: () => void }) {
 				<ThisDevice />
 				<ArtistInformation />
 				<SharedCredits />
+				<AdvancedSection />
 			</div>
 		</ModalDialog>
 	);

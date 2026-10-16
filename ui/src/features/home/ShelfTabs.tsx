@@ -3,6 +3,7 @@ import type { CoveredAlbum } from "@/domain/track/albums";
 import { href, shelfRoute } from "@/domain/track/routes";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useTranslate } from "@/shared/i18n/useTranslate";
+import { BusyNote, busyProps } from "@/shared/ui/Skeleton";
 import styles from "./ShelfRow.module.css";
 import { ShelfScroller } from "./ShelfScroller";
 import tabs from "./ShelfTabs.module.css";
@@ -26,7 +27,11 @@ export function ShelfTabs({
 	if (!active) return null;
 
 	return (
-		<section className={styles.shelf} aria-labelledby="home-explore">
+		<section
+			className={styles.shelf}
+			aria-labelledby="home-explore"
+			{...busyProps(active.isPending)}
+		>
 			<header className={tabs.header}>
 				<h2 className={tabs.heading} id="home-explore">
 					<a className={styles.open} href={href(shelfRoute(active.id))}>
@@ -54,6 +59,7 @@ export function ShelfTabs({
 						</button>
 					))}
 				</nav>
+				{active.isPending ? <BusyNote /> : null}
 			</header>
 
 			<ShelfScroller shelf={active} onPlayAlbum={onPlayAlbum} />

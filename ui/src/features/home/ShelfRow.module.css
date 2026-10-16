@@ -62,6 +62,13 @@
 	position: relative;
 }
 
+.placeholder {
+	flex: 0 0 auto;
+	width: var(--cover);
+	height: var(--cover-h);
+	border-radius: var(--radius);
+}
+
 .arrow {
 	position: absolute;
 	top: calc(4px + var(--cover-h) / 2);

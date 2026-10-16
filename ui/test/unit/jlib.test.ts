@@ -115,6 +115,49 @@ test("a value with characters outside ASCII comes back whole", () => {
 	assert.deepEqual(readBack(snapshotRoundTrip(values), "%title%"), values);
 });
 
+// A browser's `TextDecoder` drops a byte order mark that opens what it decodes unless told not to,
+// and a tag can begin with one. The player hashes and sorts the value with it, so a value read
+// without it is a different value: the re-key would number it where the player does not.
+const BOM = "﻿";
+
+test("a value that begins with a byte order mark comes back with it", () => {
+	const values = [`${BOM}Ágata`, "plain", BOM, `${BOM}${BOM}twice`, "plain"];
+	assert.deepEqual(readBack(snapshotRoundTrip(values), "%title%"), values);
+});
+
+test("an entry a delta appends that begins with a byte order mark comes back with it", () => {
+	const dict = dictionary();
+	const held = roundTrip({
+		kind: "snapshot",
+		structure: 4,
+		revision: 1,
+		trackCount: 2,
+		columns: [wholeColumn("%title%", dict, ["one", "two"])],
+		spine: spineOf(2),
+	}).columns.get("%title%");
+	assert.ok(held && "at" in held);
+
+	const delta = roundTrip({
+		kind: "delta",
+		structure: 4,
+		revision: 2,
+		since: 1,
+		trackCount: 2,
+		columns: [
+			changedColumn("%title%", dict, 2, [{ ordinal: 1, value: `${BOM}Ágata` }]),
+		],
+		spine: {},
+	});
+	if (delta.kind !== "delta") return assert.fail("not a delta");
+	const patch = delta.columns.get("%title%");
+	assert.ok(patch);
+	assert.deepEqual(patch.appended, [`${BOM}Ágata`]);
+
+	const patched = patchColumn(held, patch);
+	assert.ok(patched);
+	assert.equal(patched.at(1), `${BOM}Ágata`);
+});
+
 test("a dictionary wider than a byte and one wider than two", () => {
 	const wide = Array.from({ length: 300 }, (_, at) => `value ${at}`);
 	const wider = Array.from({ length: 70_000 }, (_, at) => `value ${at}`);

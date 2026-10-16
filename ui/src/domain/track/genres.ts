@@ -1,3 +1,4 @@
+import { SLICE_MASK, type Steps } from "@/shared/lib/idle";
 import { type FuzzyKey, fuzzyKey } from "@/shared/lib/text";
 import { artistGroups, FIELD, genreGroups, tagGroups, tagKey } from "./fields";
 import { growingIndex } from "./growingIndex";
@@ -24,7 +25,11 @@ interface Draft {
 	artists: Set<string>;
 }
 
-function absorb(byKey: Map<string, Draft>, rows: TrackRows, from: number) {
+function* absorb(
+	byKey: Map<string, Draft>,
+	rows: TrackRows,
+	from: number,
+): Steps<void> {
 	const { columns } = rows;
 	const genre = columns.fields[FIELD.genre];
 	const album = columns.fields[FIELD.album];
@@ -55,6 +60,7 @@ function absorb(byKey: Map<string, Draft>, rows: TrackRows, from: number) {
 	};
 
 	for (let position = from; position < rows.length; position += 1) {
+		if ((position & SLICE_MASK) === 0) yield;
 		const ref = rows.ref(position);
 		const groups = genres.of[genre.ids[ref]];
 		if (groups.length === 0) continue;

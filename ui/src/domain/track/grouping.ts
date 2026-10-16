@@ -1,6 +1,13 @@
+import { finished, SLICE_MASK, type Steps } from "@/shared/lib/idle";
+import {
+	columnsOf,
+	overColumns,
+	overColumnsInSlices,
+	slicedOver,
+} from "./columnCache";
 import { artistGroups, FIELD, readValue, tagGroups, tagKey } from "./fields";
 import { byValue, type LibraryColumns } from "./libraryColumns";
-import type { TrackRows } from "./project";
+import type { Refs, TrackRows } from "./project";
 
 interface DiscRun {
 	number: number | null;
@@ -42,22 +49,46 @@ const discsWorthDrawing = (discs: DiscRun[]): DiscRun[] | null =>
 		? discs
 		: null;
 
+const RUN_FIELDS = [
+	FIELD.album,
+	FIELD.year,
+	FIELD.discNumber,
+	FIELD.artist,
+	FIELD.albumArtist,
+];
+
+const WHOLE_LIBRARY: Refs = [];
+
+const runsHeld = slicedOver<AlbumRun[]>();
+
+const runSteps = (rows: TrackRows) =>
+	runsHeld.steps(
+		[...columnsOf(rows.columns, RUN_FIELDS), rows.indices ?? WHOLE_LIBRARY],
+		() => runsOf(rows),
+	);
+
 // Contiguous runs only, never reordering: the player decides what comes next, so reordering here
 // would desync the view from playback.
-export function groupByAlbum(rows: TrackRows): AlbumRun[] {
+export const groupByAlbum = Object.assign(
+	(rows: TrackRows): AlbumRun[] => finished(runSteps(rows)),
+	{ steps: runSteps },
+);
+
+function* runsOf(rows: TrackRows): Steps<AlbumRun[]> {
 	const { columns } = rows;
 	const album = columns.fields[FIELD.album];
 	const year = columns.fields[FIELD.year];
 	const disc = columns.fields[FIELD.discNumber];
 
-	const albums = tagGroups(album);
-	const artists = artistGroups(columns);
+	const albums = yield* tagGroups.steps(album);
+	const artists = yield* artistGroups.steps(columns);
 	const discs = byValue(disc, discNumber);
 
 	const built: OpenRun[] = [];
 	const coverOf = new Map<number, number>();
 
 	for (let index = 0; index < rows.length; index += 1) {
+		if ((index & SLICE_MASK) === 0) yield;
 		const ref = rows.ref(index);
 
 		const albumGroup = albums.of[album.ids[ref]];
@@ -104,6 +135,14 @@ export function groupByAlbum(rows: TrackRows): AlbumRun[] {
 	}));
 }
 
+const CANONICAL_FIELDS = [
+	FIELD.album,
+	FIELD.discNumber,
+	FIELD.trackNumber,
+	FIELD.artist,
+	FIELD.albumArtist,
+];
+
 /**
  * The ref every track of a record shares a cover address through: the whole library's earliest disc,
  * then earliest track, ties broken by ref, which is stable and total whatever a tag omits or repeats.
@@ -112,13 +151,18 @@ export function groupByAlbum(rows: TrackRows): AlbumRun[] {
  * record to share a cover with -- `coverIdentity` falls back to the track's own identity for exactly
  * that case, and this leaves it alone.
  */
-export function canonicalTrackRefs(columns: LibraryColumns): Int32Array {
+export const canonicalTrackRefs = overColumnsInSlices(
+	CANONICAL_FIELDS,
+	canonicalRefsOf,
+);
+
+function* canonicalRefsOf(columns: LibraryColumns): Steps<Int32Array> {
 	const album = columns.fields[FIELD.album];
 	const disc = columns.fields[FIELD.discNumber];
 	const track = columns.fields[FIELD.trackNumber];
 
-	const albums = tagGroups(album);
-	const artists = artistGroups(columns);
+	const albums = yield* tagGroups.steps(album);
+	const artists = yield* artistGroups.steps(columns);
 	const discs = byValue(disc, discNumber);
 	const tracks = byValue(track, trackOrdinal);
 
@@ -129,6 +173,7 @@ export function canonicalTrackRefs(columns: LibraryColumns): Int32Array {
 	>();
 
 	for (let ref = 0; ref < columns.trackCount; ref += 1) {
+		if ((ref & SLICE_MASK) === 0) yield;
 		const albumGroup = albums.of[album.ids[ref]];
 		if (albumGroup < 0) continue;
 
@@ -149,10 +194,13 @@ export function canonicalTrackRefs(columns: LibraryColumns): Int32Array {
 			best.set(record, order);
 	}
 
-	return Int32Array.from({ length: columns.trackCount }, (_, ref) => {
+	const canonical = new Int32Array(columns.trackCount);
+	for (let ref = 0; ref < columns.trackCount; ref += 1) {
+		if ((ref & SLICE_MASK) === 0) yield;
 		const record = recordOf[ref];
-		return record < 0 ? ref : (best.get(record)?.[2] ?? ref);
-	});
+		canonical[ref] = record < 0 ? ref : (best.get(record)?.[2] ?? ref);
+	}
+	return canonical;
 }
 
 export interface AlbumCanonicalIndex {
@@ -165,12 +213,14 @@ export interface AlbumCanonicalIndex {
 /**
  * The same canonicalisation `canonicalTrackRefs` sweeps, looked up by an album's tag text rather
  * than by one of its own rows: what a per-track poll or a title-formatted read names a record by,
- * never a ref into this library. Built once per snapshot and cached the way the caller already
- * caches `canonicalTrackRefs`, so a lookup after the first costs an object property read.
+ * never a ref into this library.
  */
-export function albumCanonicalIndex(
-	columns: LibraryColumns,
-): AlbumCanonicalIndex {
+export const albumCanonicalIndex = overColumns(
+	CANONICAL_FIELDS,
+	canonicalIndexOf,
+);
+
+function canonicalIndexOf(columns: LibraryColumns): AlbumCanonicalIndex {
 	const album = columns.fields[FIELD.album];
 	const disc = columns.fields[FIELD.discNumber];
 	const track = columns.fields[FIELD.trackNumber];

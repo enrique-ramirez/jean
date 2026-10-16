@@ -29,6 +29,7 @@ import {
 	useTranslate,
 } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
+import { BusyNote, busyProps, Skeleton } from "@/shared/ui/Skeleton";
 import styles from "./SearchDropdown.module.css";
 
 export const optionId = (position: number) => `search-result-${position}`;
@@ -51,6 +52,25 @@ function Heading({
 			{t(label)} <span className={styles.count}>({format.number(count)})</span>
 			{/* biome-ignore-end lint/style/noJsxLiterals: whether parentheses round a count are a phrase is the owner's decision */}
 		</p>
+	);
+}
+
+function PendingArtists() {
+	const t = useTranslate();
+
+	return (
+		// biome-ignore lint/a11y/useSemanticElements: a group of options inside a listbox is not a fieldset
+		<div role="group" {...busyProps(true)}>
+			<p className={styles.heading}>{t("search.section.artists")}</p>
+			<div className={styles.pending}>
+				<Skeleton width={ART} height={ART} className={styles.face} />
+				<span className={styles.text}>
+					<Skeleton width="40%" />
+					<Skeleton width="25%" />
+				</span>
+			</div>
+			<BusyNote />
+		</div>
 	);
 }
 
@@ -241,7 +261,7 @@ export function SearchDropdown({
 
 	return (
 		<div className={styles.panel} ref={panel} {...swipe}>
-			{suggestions.length === 0 ? (
+			{suggestions.length === 0 && !search.areArtistsPending ? (
 				<p className={styles.notice}>
 					{library.isLoading
 						? t("search.reading", {
@@ -252,6 +272,7 @@ export function SearchDropdown({
 				</p>
 			) : (
 				<div className={styles.results} id={listId} role="listbox" ref={list}>
+					{search.areArtistsPending ? <PendingArtists /> : null}
 					{sections.map((section) => {
 						const sectionStart = cursor;
 						cursor += section.suggestions.length;

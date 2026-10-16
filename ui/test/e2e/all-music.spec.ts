@@ -1,12 +1,14 @@
+import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import { en } from "../../src/shared/i18n/en.ts";
 import { compareText, pathKey } from "../fake-api/playerOrder.ts";
-import type { Page } from "./fixtures.ts";
+import type { Locator, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectPlayingFrom,
 	expectSettlesAt,
 	openSidebar,
 	playedFrom,
+	requestsTo,
 	scratchFills,
 	scratchOf,
 	searchFor,
@@ -232,14 +234,11 @@ test.describe("a component that is not answering", () => {
 	});
 });
 
-// Written out rather than imported from the implementation, so a change to the cap has to come
-// through here too. Firefox's own limit is the one it leaves room under.
+// Firefox's own limit is the one this leaves room under.
 const MAX_SCROLL_HEIGHT = 15_000_000;
 
 const scroller = (page: Page) => page.locator("main");
 
-// Capped, so a list that never comes to rest fails on the assertion that follows, which says where
-// it was, rather than on the test's timeout.
 const settle = (page: Page) =>
 	page.evaluate(
 		([stillFrames, capMs]: [number, number]) =>
@@ -263,7 +262,6 @@ const settle = (page: Page) =>
 		[10, 5_000] as [number, number],
 	);
 
-// The row the scroller's top edge passes through, or null where the header sits there instead.
 const rowAtTop = (page: Page) =>
 	scroller(page).evaluate((element) => {
 		const top = element.getBoundingClientRect().top + 1;
@@ -295,12 +293,10 @@ const listGeometry = (page: Page) =>
 		};
 	});
 
-// Under the cap, one pixel of scroll is one pixel of list, so a row deep in a library this size
-// sits exactly where it always did.
 test.describe("a library under the scroll cap", () => {
 	test.use({ mediaLibrarySize: 30441 });
 
-	test("scrolls as it always has: the list is as tall as its rows, and a scroll offset lands on the same row", async ({
+	test("scrolls one pixel to one pixel of list: the list is as tall as its rows, and a scroll offset lands on the same row", async ({
 		page,
 	}) => {
 		await page.goto("/#/all");
@@ -313,7 +309,6 @@ test.describe("a library under the scroll cap", () => {
 		const { margin, listHeight, rowHeight } = await listGeometry(page);
 		expect(listHeight).toBe(30441 * rowHeight);
 
-		// Deep enough that a scale a hair off one moves the row by more than its own height.
 		const deep = 30000;
 		await scroller(page).evaluate(
 			(element, to) => {
@@ -327,12 +322,9 @@ test.describe("a library under the scroll cap", () => {
 });
 
 // A million rows at full height is past the tallest element Firefox, Chromium or WebKit will draw.
-// Each case builds the library afresh, since the fixture resets the player per test.
 const MILLION = 1_000_000;
 const LAST = MILLION - 1;
-// Past where an unscaled list stops in every engine.
 const DEEP = 800_000;
-// Generous, since several workers each building and decoding a million tracks share one machine.
 const MILLION_MS = 10 * 60_000;
 const LIBRARY_LANDS_MS = 6 * 60_000;
 const SETTLES_MS = 60_000;
@@ -344,7 +336,6 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 	);
 	test.setTimeout(MILLION_MS);
 
-	// The cardinalities `pnpm fake --tracks` builds, so a profile and these cases see one shape.
 	test.use({
 		libraryShape: {
 			tracks: MILLION,
@@ -367,7 +358,6 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 		await expect(trackRow(page, 0)).toBeAttached();
 	};
 
-	// A sentence rather than a boolean, so a failure says where the list stopped.
 	const whereRowIs = (page: Page, index: number) =>
 		scroller(page).evaluate((element, wanted) => {
 			const view = element.getBoundingClientRect();
@@ -402,9 +392,6 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 			.toBe("on screen");
 	};
 
-	// Asked again until it holds, as a person drags the thumb down again: the header above the list
-	// can still be growing when the first ask lands, and a list that cannot reach its end never
-	// shows the row however often it is asked.
 	const scrollUntilTheLastRowIsShown = async (page: Page) => {
 		await expect
 			.poll(
@@ -418,7 +405,6 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 			.toBe("on screen");
 	};
 
-	// The list's own height: the header above it is drawn at its real height and is not counted.
 	test("the list is never drawn taller than the cap", async ({ page }) => {
 		await openAMillion(page);
 
@@ -438,8 +424,6 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 				settings: { "jean.layout": layout, "jean.followPlayback": false },
 			});
 
-			// Scrolled the way dragging the thumb to the bottom of the track does: the scroll offset set
-			// straight to its end, with no wheel event and no listener in between.
 			test("the last row is reached by scrolling to the bottom, and the first by scrolling back", async ({
 				page,
 			}) => {
@@ -470,8 +454,6 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 				await expect(trackRow(page, 0)).toHaveAttribute("data-cursor", "true");
 			});
 
-			// Deep in the list as well as at its end: the end is where an offset left unmapped and clamped
-			// to the scroller's own bottom lands by accident.
 			test("jumping to the playing track reaches it deep in the list and on the last row", async ({
 				page,
 				player,
@@ -485,7 +467,6 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 					})
 					.toBe(MILLION);
 				const scratch = scratchOf(player)!;
-				// The app's own play of the clicked row lands after the fill, and would replace the ones below.
 				await expect
 					.poll(() => playedFrom(player)?.id, { timeout: LIBRARY_LANDS_MS })
 					.toBe(scratch.guid);
@@ -507,7 +488,6 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 					await expect(trackRow(page, row)).toContainText(title);
 				}
 
-				// Centred, as `n` centres anywhere the list has room on both sides; the last row has none.
 				player.playItem(scratch.id, DEEP);
 				await expect(statusBar(page)).toContainText(
 					scratch.items[DEEP]["%title%"],
@@ -520,7 +500,6 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 					.poll(() => offCentre(page, DEEP), { timeout: SETTLES_MS })
 					.toBeLessThan(2);
 
-				// From another view, `n` opens All music already at the track rather than scrolling to it.
 				await sidebar(page)
 					.getByRole("button", { name: /Rock en Español/ })
 					.click();
@@ -539,9 +518,6 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 		});
 	});
 
-	// Remembered as a place in the list rather than as a scroll offset: over the cap one scroll pixel is
-	// several pixels of list, and how many depends on the scroller's height, so an offset kept across a
-	// resize comes back rows away from where it was left.
 	test("leaving at the last row and coming back to a shorter window lands on the same row", async ({
 		page,
 	}) => {
@@ -568,8 +544,6 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 		await expect.poll(() => rowAtTop(page), { timeout: SETTLES_MS }).toBe(left);
 	});
 
-	// The browser's own scroll, so a wheel moves the scroll offset by what the wheel
-	// said and nothing turns it into a smaller step or swallows it.
 	test("a wheel scrolls by the browser's own amount", async ({ page }) => {
 		await openAMillion(page);
 		const box = (await scroller(page).boundingBox())!;
@@ -579,5 +553,272 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 		await page.mouse.wheel(0, 600);
 		await settle(page);
 		expect((await scrollTop(page)) - before).toBe(600);
+	});
+
+	test.describe("after jumping to the playing track", () => {
+		test.use({
+			settings: { "jean.layout": "compact", "jean.followPlayback": false },
+		});
+
+		const NUDGE_PX = 60;
+		const PAGE_ROWS = 12;
+
+		const playDeepAndScrollToTheTop = async (
+			page: Page,
+			player: Parameters<typeof scratchOf>[0],
+		) => {
+			await openAMillion(page);
+			await trackRow(page, 0).dblclick();
+			await expect
+				.poll(() => scratchOf(player)?.items.length ?? 0, {
+					timeout: LIBRARY_LANDS_MS,
+				})
+				.toBe(MILLION);
+			const scratch = scratchOf(player)!;
+			await expect
+				.poll(() => playedFrom(player)?.id, { timeout: LIBRARY_LANDS_MS })
+				.toBe(scratch.guid);
+			player.playItem(scratch.id, DEEP);
+			await expect(statusBar(page)).toContainText(
+				scratch.items[DEEP]["%title%"],
+			);
+			await scrollTo(page, 0);
+			await settle(page);
+		};
+
+		const untilTheJumpLands = (page: Page) =>
+			scroller(page).evaluate(
+				(element) =>
+					new Promise<void>((resolve) => {
+						const look = () =>
+							element.scrollTop > 0 ? resolve() : requestAnimationFrame(look);
+						requestAnimationFrame(look);
+					}),
+			);
+
+		test("Page Down straight after the jump moves the cursor a page on, and the list stays with it", async ({
+			page,
+			player,
+		}) => {
+			await playDeepAndScrollToTheTop(page, player);
+
+			await page.keyboard.press("n");
+			await untilTheJumpLands(page);
+			await page.keyboard.press("PageDown");
+			await settle(page);
+
+			const cursor = DEEP + PAGE_ROWS;
+			await expect(trackRow(page, cursor)).toHaveAttribute(
+				"data-cursor",
+				"true",
+			);
+			await expectOnScreen(page, cursor);
+		});
+
+		// A press on the scrollbar reaches the page as a pointerdown on the scroller, and the drag that
+		// follows as nothing but a change of scroll offset.
+		test("grabbing the scrollbar straight after the jump leaves the list where the drag put it", async ({
+			page,
+			player,
+		}) => {
+			await playDeepAndScrollToTheTop(page, player);
+
+			await page.keyboard.press("n");
+			const dragged = await scroller(page).evaluate(
+				(element, nudge) =>
+					new Promise<number>((resolve) => {
+						const look = () => {
+							if (element.scrollTop === 0) {
+								requestAnimationFrame(look);
+								return;
+							}
+							element.dispatchEvent(
+								new PointerEvent("pointerdown", {
+									bubbles: true,
+									pointerType: "mouse",
+								}),
+							);
+							element.scrollTop += nudge;
+							resolve(element.scrollTop);
+						};
+						requestAnimationFrame(look);
+					}),
+				NUDGE_PX,
+			);
+			await settle(page);
+
+			// Chromium holds a scroll offset this large only to every second pixel.
+			expect(Math.abs((await scrollTop(page)) - dragged)).toBeLessThanOrEqual(
+				2,
+			);
+		});
+	});
+});
+
+const LATE = [
+	FIELD.codec,
+	FIELD.bitrate,
+	FIELD.added,
+	FIELD.artists,
+	FIELD.artistIds,
+	FIELD.albumArtists,
+	FIELD.albumArtistIds,
+].map((field) => TRACK_EXPRESSIONS[field]);
+const EARLY = TRACK_EXPRESSIONS.filter((column) => !LATE.includes(column));
+
+const sorted = (columns: readonly string[]) => [...columns].sort();
+
+const releaseTheLatePart = (page: Page) =>
+	page.request.post("/__control/holdSubset", { data: {} });
+
+const exportsAsked = (player: Parameters<typeof requestsTo>[0]) =>
+	requestsTo(player, "/api/library/export")
+		.filter((entry) => entry.method === "GET")
+		.map((entry) => new URL(entry.path, "http://fake.invalid").searchParams);
+
+const asksForLateColumns = (query: URLSearchParams) =>
+	query.getAll("only").some((column) => LATE.includes(column));
+
+// The resource entries are read through an observer, which sees every entry however full the
+// browser's timing buffer is by then.
+interface Timeline {
+	firstRowAt: number | null;
+	exports: { url: string; startTime: number }[];
+}
+
+declare global {
+	interface Window {
+		__timeline: Timeline;
+	}
+}
+
+const recordTheTimeline = (page: Page) =>
+	page.addInitScript(() => {
+		const timeline: Timeline = { firstRowAt: null, exports: [] };
+		window.__timeline = timeline;
+		new MutationObserver(() => {
+			if (
+				timeline.firstRowAt === null &&
+				document.querySelector('[role="row"][data-row]')
+			)
+				timeline.firstRowAt = performance.now();
+		}).observe(document, { subtree: true, childList: true });
+		new PerformanceObserver((entries) => {
+			for (const entry of entries.getEntries())
+				if (new URL(entry.name).pathname === "/api/library/export")
+					timeline.exports.push({
+						url: entry.name,
+						startTime: entry.startTime,
+					});
+		}).observe({ type: "resource", buffered: true });
+	});
+
+const lateExportsSeen = (page: Page) =>
+	page.evaluate(
+		(late) =>
+			window.__timeline.exports.filter((entry) =>
+				new URL(entry.url).searchParams
+					.getAll("only")
+					.some((column) => late.includes(column)),
+			),
+		LATE,
+	);
+
+const holdsAPlaceholder = (cell: Locator) =>
+	cell.evaluate((element) =>
+		[
+			...element.querySelectorAll('[aria-hidden="true"]:not(svg, button *)'),
+		].some((bar) => {
+			const box = bar.getBoundingClientRect();
+			return box.width > 0 && box.height > 0;
+		}),
+	);
+
+const extentOf = (element: Locator) =>
+	element.evaluate((box) => ({
+		drawn: box.getBoundingClientRect().height,
+		content: box.scrollHeight,
+	}));
+
+test.describe("a library that arrives in two parts", () => {
+	test.use({ fooJean: { holdSubset: LATE } });
+
+	test("the first part asks for every column but the late set, and the late part for the rest without the spine, after the first rows are drawn", async ({
+		page,
+		player,
+	}) => {
+		await recordTheTimeline(page);
+		await page.goto("/#/all");
+		await expect(trackRow(page, 0)).toBeVisible();
+
+		const firstParts = exportsAsked(player).filter(
+			(query) => !asksForLateColumns(query),
+		);
+		expect(firstParts.length).toBeGreaterThan(0);
+		for (const query of firstParts) {
+			expect(sorted(query.getAll("only"))).toEqual(sorted(EARLY));
+			expect(query.get("spine")).not.toBe("false");
+		}
+
+		await expect
+			.poll(() => exportsAsked(player).filter(asksForLateColumns).length, {
+				message: "Jean never asked for the late part",
+			})
+			.toBeGreaterThan(0);
+		const lateParts = exportsAsked(player).filter(asksForLateColumns);
+		expect(lateParts).toHaveLength(1);
+		expect(sorted(lateParts[0].getAll("only"))).toEqual(sorted(LATE));
+		expect(lateParts[0].get("spine")).toBe("false");
+		for (const query of exportsAsked(player))
+			expect(query.getAll("columns")).toEqual(TRACK_EXPRESSIONS);
+
+		await releaseTheLatePart(page);
+		await expect
+			.poll(() => lateExportsSeen(page).then((seen) => seen.length))
+			.toBe(1);
+		const [late] = await lateExportsSeen(page);
+		const { firstRowAt } = await page.evaluate(() => window.__timeline);
+		expect(firstRowAt).not.toBeNull();
+		expect(late.startTime).toBeGreaterThanOrEqual(firstRowAt as number);
+	});
+
+	test.describe("with the late columns shown", () => {
+		test.skip(
+			({ isMobile }) => isMobile,
+			"a phone shows only time, plays and rating, none of them late",
+		);
+		test.use({ settings: { "jean.columns": ["codec", "bitrate"] } });
+
+		const lateCells = (row: Locator) => {
+			const cells = row.getByRole("gridcell");
+			return [cells.nth(-2), cells.nth(-1)];
+		};
+
+		test("each row draws at once, its late cells holding their place, and is busy until they land at the same height", async ({
+			page,
+		}) => {
+			await page.goto("/#/all");
+			const row = trackRow(page, 0);
+			await expect(row).toBeVisible();
+			const [codec, bitrate] = lateCells(row);
+
+			await expect(row).toHaveAttribute("aria-busy", "true");
+			await expect(row.getByRole("gridcell").nth(1)).not.toHaveText("");
+			for (const cell of [codec, bitrate]) {
+				await expect(cell).toHaveText("");
+				expect(await holdsAPlaceholder(cell)).toBe(true);
+			}
+			const waiting = await Promise.all(
+				[row, codec, bitrate].map((box) => extentOf(box)),
+			);
+
+			await releaseTheLatePart(page);
+			await expect(codec).toHaveText(/^(MP3|FLAC)$/);
+			await expect(bitrate).toHaveText(/^\d+$/);
+			await expect(row).not.toHaveAttribute("aria-busy", "true");
+			expect(
+				await Promise.all([row, codec, bitrate].map((box) => extentOf(box))),
+			).toEqual(waiting);
+		});
 	});
 });

@@ -41,7 +41,8 @@ const album = (over: Partial<Album> = {}): Album => {
 const many = (count: number, over: (at: number) => Partial<Album>) =>
 	Array.from({ length: count }, (_, at) => album(over(at)));
 
-const ids = (albums: Album[]) => buildShelves(albums).map((shelf) => shelf.id);
+const ids = (albums: Album[]) =>
+	buildShelves(albums, null).map((shelf) => shelf.id);
 
 test("a shelf that can only fill three entries is dropped rather than shown thin", () => {
 	const three = many(3, (at) => ({ plays: 10 + at, lastPlayed: Date.now() }));
@@ -52,7 +53,7 @@ test("a shelf that can only fill three entries is dropped rather than shown thin
 });
 
 test("an empty library gets no shelves at all, not an empty one", () => {
-	assert.deepEqual(buildShelves([]), []);
+	assert.deepEqual(buildShelves([], null), []);
 });
 
 test("a library the player knows nothing about still opens on something", () => {
@@ -95,7 +96,7 @@ test("Recently played holds only albums played within the last thirty days", () 
 	}));
 	const outside = many(4, () => ({ plays: 5, lastPlayed: now - 31 * DAY_MS }));
 
-	const recent = buildShelves([...inside, ...outside]).find(
+	const recent = buildShelves([...inside, ...outside], null).find(
 		(shelf) => shelf.id === "recent",
 	);
 
@@ -109,6 +110,7 @@ test("Recently played holds only albums played within the last thirty days", () 
 test("Recently played is left off, not drawn empty, when nothing was played in thirty days", () => {
 	const shelves = buildShelves(
 		many(6, () => ({ plays: 5, lastPlayed: Date.now() - 31 * DAY_MS })),
+		null,
 	);
 
 	assert.ok(shelves.length > 0);
@@ -122,7 +124,7 @@ test("Recently added shows the first album to arrive, newest first", () => {
 	const older = album({ added: now - 3 * DAY_MS });
 	const newer = album({ added: now - DAY_MS });
 
-	const added = buildShelves([...settled, older]).find(
+	const added = buildShelves([...settled, older], null).find(
 		(shelf) => shelf.id === "added",
 	);
 	assert.deepEqual(
@@ -130,7 +132,7 @@ test("Recently added shows the first album to arrive, newest first", () => {
 		[older.key],
 	);
 
-	const both = buildShelves([...settled, older, newer]).find(
+	const both = buildShelves([...settled, older, newer], null).find(
 		(shelf) => shelf.id === "added",
 	);
 	assert.deepEqual(
@@ -155,7 +157,7 @@ test("Recently added ignores the moment the play-statistics component first stam
 	assert.ok(!ids(stamped).includes("added"));
 
 	const arrival = album({ added: now - DAY_MS });
-	const added = buildShelves([...stamped, arrival]).find(
+	const added = buildShelves([...stamped, arrival], null).find(
 		(shelf) => shelf.id === "added",
 	);
 	assert.deepEqual(
@@ -211,6 +213,7 @@ test("every shelf id a user may have saved still opens that shelf", () => {
 test("a shelf holds at most twenty-four albums and still reports the whole count", () => {
 	const [top] = buildShelves(
 		many(40, (at) => ({ plays: 100 - at, lastPlayed: Date.now() })),
+		null,
 	).filter((shelf) => shelf.id === "top");
 
 	assert.equal(top.albums.length, 24);
@@ -218,24 +221,30 @@ test("a shelf holds at most twenty-four albums and still reports the whole count
 });
 
 test("refsOfShelf is ascending across albums, not shelf order", () => {
-	const shelf = buildShelves([
-		album({ refs: Int32Array.from([40, 41]), plays: 90, lastPlayed: 1 }),
-		album({ refs: Int32Array.from([10, 11]), plays: 80, lastPlayed: 1 }),
-		album({ refs: Int32Array.from([70, 71]), plays: 70, lastPlayed: 1 }),
-		album({ refs: Int32Array.from([0, 1]), plays: 60, lastPlayed: 1 }),
-	]).find((entry) => entry.id === "top");
+	const shelf = buildShelves(
+		[
+			album({ refs: Int32Array.from([40, 41]), plays: 90, lastPlayed: 1 }),
+			album({ refs: Int32Array.from([10, 11]), plays: 80, lastPlayed: 1 }),
+			album({ refs: Int32Array.from([70, 71]), plays: 70, lastPlayed: 1 }),
+			album({ refs: Int32Array.from([0, 1]), plays: 60, lastPlayed: 1 }),
+		],
+		null,
+	).find((entry) => entry.id === "top");
 
 	assert.ok(shelf);
 	assert.deepEqual([...refsOfShelf(shelf)], [0, 1, 10, 11, 40, 41, 70, 71]);
 });
 
 test("refsOfShelf sorts numerically, not as text", () => {
-	const shelf = buildShelves([
-		album({ refs: Int32Array.from([9, 100]), plays: 5, lastPlayed: 1 }),
-		album({ refs: Int32Array.from([20, 3]), plays: 4, lastPlayed: 1 }),
-		album({ refs: Int32Array.from([1000, 7]), plays: 3, lastPlayed: 1 }),
-		album({ refs: Int32Array.from([80, 11]), plays: 2, lastPlayed: 1 }),
-	]).find((entry) => entry.id === "top");
+	const shelf = buildShelves(
+		[
+			album({ refs: Int32Array.from([9, 100]), plays: 5, lastPlayed: 1 }),
+			album({ refs: Int32Array.from([20, 3]), plays: 4, lastPlayed: 1 }),
+			album({ refs: Int32Array.from([1000, 7]), plays: 3, lastPlayed: 1 }),
+			album({ refs: Int32Array.from([80, 11]), plays: 2, lastPlayed: 1 }),
+		],
+		null,
+	).find((entry) => entry.id === "top");
 
 	assert.ok(shelf);
 	assert.deepEqual([...refsOfShelf(shelf)], [3, 7, 9, 11, 20, 80, 100, 1000]);

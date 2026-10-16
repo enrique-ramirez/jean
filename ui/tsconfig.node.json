@@ -23,6 +23,7 @@
 	"include": [
 		"vite.config.ts",
 		"demo/build.ts",
+		"scripts/buildId.ts",
 		"scripts/localePlugin.ts",
 		"test/fake-api/**/*.ts",
 		"src/shared/api/multiValue.ts",

@@ -50,6 +50,7 @@ const libraryAt = (player: Player, now: number): StateDocument["library"] => {
 	return {
 		ready,
 		structure: ready ? 1 : 0,
+		snapshotId: "0000000000000000",
 		revision: ready ? 1 : 0,
 		trackCount: ready ? SNAPSHOT_TRACKS : 0,
 		columns: ready ? COLUMNS : [],

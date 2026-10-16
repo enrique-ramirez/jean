@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { build } from "vite";
 
+import { buildId } from "../scripts/buildId.ts";
 import { localePlugin, shippedLocales } from "../scripts/localePlugin.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -12,6 +13,7 @@ const ROOT = resolve(HERE, "..");
 
 const define = {
 	__SHIPPED_LOCALES__: JSON.stringify(shippedLocales(ROOT)),
+	__JEAN_BUILD__: JSON.stringify(buildId()),
 };
 
 export async function buildDemo(out = resolve(ROOT, "dist-demo")) {

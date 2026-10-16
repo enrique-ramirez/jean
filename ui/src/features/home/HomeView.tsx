@@ -1,20 +1,21 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { libraryNoticeFor } from "@/domain/library/LibraryNotice";
 import {
 	isLibraryReading,
 	readingNotice,
 } from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
-import { albumsOf, type CoveredAlbum } from "@/domain/track/albums";
+import type { Album, CoveredAlbum } from "@/domain/track/albums";
 import { trackRows } from "@/domain/track/project";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { GenreBars } from "./GenreBars";
 import { HomeHeader } from "./HomeHeader";
 import styles from "./HomeView.module.css";
-import { libraryStats } from "./libraryStats";
+import { homeData } from "./homeData";
+import { coveredStats, libraryStats } from "./libraryStats";
 import { ShelfRow } from "./ShelfRow";
 import { ShelfTabs } from "./ShelfTabs";
-import { buildShelves, type FilledShelf } from "./shelves";
+import type { FilledShelf } from "./shelves";
 import { TopTracks } from "./TopTracks";
 import { topTracksOf } from "./tracks";
 
@@ -44,20 +45,36 @@ export function HomeView({
 	const t = useTranslate();
 	const rows = useMemo(() => trackRows(library.columns), [library.columns]);
 
-	const albums = useMemo(
+	const home = useMemo(
 		() =>
-			rows.length === 0
-				? []
-				: albumsOf(rows).map((album) => ({
-						...album,
-						artworkUrl: library.source.artworkUrl(album.refs[0]),
-					})),
-		[rows, library.source],
+			library.key === null || rows.length === 0
+				? null
+				: homeData(library.key, library.columns),
+		[rows, library.key, library.columns],
 	);
 
-	const shelves = useMemo(() => buildShelves(albums), [albums]);
+	const cover = useCallback(
+		(album: Album): CoveredAlbum => ({
+			...album,
+			artworkUrl: library.source.artworkUrl(album.refs[0]),
+		}),
+		[library.source],
+	);
 
-	const stats = useMemo(() => libraryStats({ rows, albums }), [rows, albums]);
+	const shelves = useMemo(
+		() =>
+			(home?.shelves ?? []).map((shelf) => ({
+				...shelf,
+				albums: shelf.albums.map(cover),
+			})),
+		[home, cover],
+	);
+
+	const stats = useMemo(
+		() =>
+			coveredStats(home?.stats ?? libraryStats({ rows, albums: [] }), cover),
+		[home, rows, cover],
+	);
 
 	const tracks = useMemo(
 		() => topTracksOf(rows, TOP_TRACKS, library.source.artworkUrl, t),

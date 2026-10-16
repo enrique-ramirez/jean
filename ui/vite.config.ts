@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 
+import { buildId } from "./scripts/buildId.ts";
 import { localePlugin, shippedLocales } from "./scripts/localePlugin.ts";
 
 const FIRST_SCREEN_FONTS = [
@@ -57,6 +58,7 @@ export default defineConfig(({ mode }) => {
 	return {
 		define: {
 			__SHIPPED_LOCALES__: JSON.stringify(shippedLocales(process.cwd())),
+			__JEAN_BUILD__: JSON.stringify(buildId()),
 		},
 
 		plugins: [react(), localePlugin(), preloadFirstScreenFonts()],

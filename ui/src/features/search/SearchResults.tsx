@@ -8,6 +8,7 @@ import {
 } from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
+import { byWait } from "@/domain/library/useOverdue";
 import { useViewPlayback } from "@/domain/library/useViewPlayback";
 import { useInSession } from "@/domain/player/session";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
@@ -75,12 +76,25 @@ export function SearchResults({
 
 	const { status } = library;
 	const isReading = isLibraryReading(status);
-	const readingText = readingNotice(
+	const { wait } = search;
+	const countingText = readingNotice(
 		status,
 		"library.reading",
 		t,
 		"search.reading",
 	);
+	const readingText = byWait(wait, {
+		settled: countingText,
+		quiet: countingText,
+		reading: t("library.reading"),
+	});
+	const summary = isReading
+		? readingText
+		: byWait(wait, {
+				settled: t("search.matchCount", { count: search.matchCount }),
+				quiet: "",
+				reading: readingText,
+			});
 
 	if (!search.hasQuery) {
 		return (
@@ -115,7 +129,11 @@ export function SearchResults({
 			onPlay={playAt}
 			onOpenFinder={search.focus}
 			emptyNotice={t("search.noMatch")}
-			loadingNotice={isReading ? "" : undefined}
+			loadingNotice={byWait(wait, {
+				settled: isReading ? "" : undefined,
+				quiet: "",
+				reading: readingText,
+			})}
 			progressLabel={isReading ? readingText : undefined}
 			heading={{ eyebrow: t("search.resultsEyebrow"), title: search.query }}
 			stats={stats}
@@ -133,13 +151,7 @@ export function SearchResults({
 					onOpenPlaylist={onOpenPlaylist}
 				/>
 			}
-			toolbarLeading={
-				<p className={styles.summary}>
-					{isReading
-						? readingText
-						: t("search.matchCount", { count: search.matchCount })}
-				</p>
-			}
+			toolbarLeading={<p className={styles.summary}>{summary}</p>}
 		/>
 	);
 }

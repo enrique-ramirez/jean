@@ -465,8 +465,7 @@ test.describe("the autoplaylist dialog", () => {
 		});
 	});
 
-	// Over every engine's height limit, as in `all-music.spec.ts`: at a million matches the results
-	// list cannot be drawn at full height in any of them.
+	// A million rows is past the tallest element any engine draws.
 	test.describe("a query matching all of a million tracks", {
 		tag: "@firefox",
 	}, () => {
@@ -480,7 +479,6 @@ test.describe("the autoplaylist dialog", () => {
 		const LIBRARY_LANDS_MS = 6 * 60_000;
 		test.setTimeout(MILLION_MS);
 
-		// The cardinalities `pnpm fake --tracks` builds.
 		test.use({
 			libraryShape: {
 				tracks: MILLION,
@@ -529,7 +527,6 @@ test.describe("the autoplaylist dialog", () => {
 					return seen.top >= view.top - 1 && seen.bottom <= view.bottom + 1;
 				}, last);
 
-			// Measured rows move the list's end as they mount, so the bottom is asked for again until it holds.
 			await expect
 				.poll(
 					async () => {

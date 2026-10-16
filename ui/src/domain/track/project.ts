@@ -1,9 +1,9 @@
 import type { TrackColumns } from "@/shared/api/types";
+import { overColumnsByName } from "./columnCache";
 import { EMPTY_COLUMNS, FIELD, genreGroups, tagKey } from "./fields";
 import { type LibraryColumns, rowAt } from "./libraryColumns";
 import type { PlaylistSnapshot } from "./playlistEntries";
 
-// A ref is an integer: a playlist index on one source, a position in the paths array on the other.
 export type Refs = Int32Array | number[];
 
 const refAt = (indices: Refs | null | undefined, position: number) =>
@@ -55,11 +55,21 @@ export function project(
 	};
 }
 
+let everyRef = new Int32Array(0);
+
+const everyRefOf = (length: number) => {
+	if (everyRef.length !== length) {
+		everyRef = new Int32Array(length);
+		for (let index = 0; index < length; index += 1) everyRef[index] = index;
+	}
+	return everyRef;
+};
+
+export const wholeRows = (columns: LibraryColumns): TrackRows =>
+	trackRows(columns, everyRefOf(columns.trackCount));
+
 export const wholeLibrary = (library: PlaylistSnapshot): TrackView => {
-	const indices = Int32Array.from(
-		{ length: library.columns.trackCount },
-		(_, index) => index,
-	);
+	const indices = everyRefOf(library.columns.trackCount);
 
 	return {
 		...trackRows(library.columns, indices),
@@ -78,10 +88,13 @@ export const EMPTY_VIEW: TrackView = Object.freeze({
 	playedCount: 0,
 });
 
-export function refsOfGenre(
-	columns: LibraryColumns,
-	genre: string,
-): Int32Array {
+export const refsOfGenre = overColumnsByName(
+	[FIELD.genre],
+	(genre: string) => tagKey(genre),
+	genreRefs,
+);
+
+function genreRefs(columns: LibraryColumns, genre: string): Int32Array {
 	const wanted = tagKey(genre);
 	if (!wanted) return new Int32Array(0);
 

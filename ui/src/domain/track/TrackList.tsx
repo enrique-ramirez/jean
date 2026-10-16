@@ -26,17 +26,17 @@ import {
 } from "@/shared/ui/scaledScroll";
 import { ALBUM_COVER, ALBUM_COVER_COMPACT, AlbumGroup } from "./AlbumGroup";
 import { type AlbumRun, albumCoverRows, multiDiscRows } from "./grouping";
-import type {
-	ActiveDirection,
-	ScrollToTrackOptions,
-	TrackListHandle,
-	TrackRenderProps,
+import {
+	type ActiveDirection,
+	ROW_HEIGHT,
+	type ScrollToTrackOptions,
+	type TrackListHandle,
+	type TrackRenderProps,
 } from "./listTypes";
 import styles from "./TrackList.module.css";
 import { TrackRow } from "./TrackRow";
 import { REORDER_DROP_TARGET } from "./trackTargets";
 
-const ROW_HEIGHT = 46;
 const COMPACT_ROW_HEIGHT = 34;
 const GROUP_PADDING = 28;
 const GROUP_CAPTION = 56;
@@ -230,8 +230,6 @@ export function TrackList({
 				cancelScroll.current?.();
 				cancelScroll.current = null;
 
-				// Content pixels per scroll pixel: a row seen `d` px off centre is `d / scale` scroll pixels
-				// from it, and the scale is 1 under the cap.
 				const scale = () =>
 					scrollScale(virtualizer.getTotalSize(), element.clientHeight);
 
@@ -251,8 +249,7 @@ export function TrackList({
 					virtualizer.getOffsetForIndex(target, align)?.[0] ??
 					null;
 
-				// Over the cap a flight crosses millions of scroll pixels in under a second and ends before
-				// the row it aims at is mounted, so it jumps and settles on the row instead.
+				// A smooth scroll over the browser height cap ends before its target row is mounted.
 				if (isScaled(virtualizer)) {
 					const item = virtualizer.measurementsCache[target];
 					if (item) element.scrollTop = scrollTopFor(virtualizer, item, align);

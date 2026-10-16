@@ -1,12 +1,19 @@
-import { albumRoute } from "../../src/domain/track/routes.ts";
-import type { Page } from "./fixtures.ts";
+import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
+import { albumRoute, artistRoute } from "../../src/domain/track/routes.ts";
+import { everyValueOf } from "../../src/shared/api/multiValue.ts";
+import { en } from "../../src/shared/i18n/en.ts";
+import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectPlayingFrom,
 	openLibrary,
 	playedFrom,
 	playRequests,
+	requestsTo,
+	revealSearch,
+	runClockFor,
 	scratchOf,
+	searchField,
 	test,
 	trackPlayed,
 	trackRow,
@@ -373,5 +380,336 @@ test.describe("the pictures on an artist's page", () => {
 			await page.locator("main img").count(),
 			"the page drew no covers at all",
 		).toBeGreaterThan(0);
+	});
+});
+
+// foobar2000 holds a shared credit as written; the per-artist tags that split it arrive in the library's second part.
+test.describe("before the credit columns arrive", () => {
+	const LATE = [
+		FIELD.codec,
+		FIELD.bitrate,
+		FIELD.added,
+		FIELD.artists,
+		FIELD.artistIds,
+		FIELD.albumArtists,
+		FIELD.albumArtistIds,
+	].map((field) => TRACK_EXPRESSIONS[field]);
+
+	const SHARED = "Revelries & Henri Purnell";
+	const MEMBER = "Revelries";
+	const SEPARATOR = String.fromCharCode(31);
+
+	test.use({
+		retagged: {
+			Bloodhail: {
+				"%artist%": SHARED,
+				[everyValueOf("artists")]: ["Revelries", "Henri Purnell"].join(
+					SEPARATOR,
+				),
+			},
+		},
+		fooJean: { holdSubset: LATE },
+	});
+
+	interface Drawn {
+		releasedAt: number | null;
+		firstSeen: Record<string, number>;
+	}
+
+	const recordWhatIsDrawn = (page: Page) =>
+		page.addInitScript(
+			({ member, nothingBy, withOthers }) => {
+				const drawn: Drawn = { releasedAt: null, firstSeen: {} };
+				Reflect.set(window, "__drawn", drawn);
+				const shows: Record<string, () => boolean> = {
+					"an artist result": () =>
+						[...document.querySelectorAll('[role="option"]')].some((option) =>
+							(option.textContent ?? "").startsWith(member),
+						),
+					"nothing by them": () =>
+						document.querySelector("main")?.textContent?.includes(nothingBy) ??
+						false,
+					"the records with others": () =>
+						[...document.querySelectorAll("main h2")].some(
+							(heading) => heading.textContent === withOthers,
+						),
+				};
+				new MutationObserver(() => {
+					for (const [name, isShown] of Object.entries(shows))
+						if (!(name in drawn.firstSeen) && isShown())
+							drawn.firstSeen[name] = performance.now();
+				}).observe(document, {
+					subtree: true,
+					childList: true,
+					characterData: true,
+				});
+			},
+			{
+				member: MEMBER,
+				nothingBy: en["artist.nothingBy"],
+				withOthers: en["artist.withOthers"],
+			},
+		);
+
+	const releaseTheLatePart = async (page: Page) => {
+		await page.evaluate(() => {
+			(Reflect.get(window, "__drawn") as Drawn).releasedAt = performance.now();
+		});
+		await page.request.post("/__control/holdSubset", { data: {} });
+	};
+
+	const expectFirstDrawnOnceReleased = async (page: Page, name: string) => {
+		const { releasedAt, firstSeen } = await page.evaluate(
+			() => Reflect.get(window, "__drawn") as Drawn,
+		);
+		expect(firstSeen[name], `${name} was never drawn`).toBeDefined();
+		expect(
+			firstSeen[name],
+			`${name} was drawn before the credit columns arrived`,
+		).toBeGreaterThanOrEqual(releasedAt as number);
+	};
+
+	const busyWithin = (page: Page, scope: string) =>
+		page.locator(`${scope}[aria-busy="true"], ${scope} [aria-busy="true"]`);
+
+	test("search shows the tracks it found and holds the artist results until the credits are split", async ({
+		page,
+	}) => {
+		await recordWhatIsDrawn(page);
+		await openLibrary(page);
+		await revealSearch(page);
+		await searchField(page).fill("revelries");
+
+		const results = page.getByRole("listbox");
+		const busy = busyWithin(page, '[role="listbox"]');
+		await expect(
+			results.getByRole("option").filter({ hasText: "Bloodhail" }),
+		).toBeVisible();
+		await expect(busy.first()).toBeAttached();
+
+		await releaseTheLatePart(page);
+		await expect(
+			results.getByRole("option").filter({ hasText: /^Revelries(?! &)/ }),
+		).toBeVisible();
+		await expect(busy).toHaveCount(0);
+		await expectFirstDrawnOnceReleased(page, "an artist result");
+	});
+
+	test("a member's page is busy until the credits are split, and never says they have nothing here", async ({
+		page,
+	}) => {
+		await recordWhatIsDrawn(page);
+		await openLibrary(page);
+		await page.goto(`/#/${artistRoute(MEMBER)}`);
+		await expect(
+			page.getByRole("heading", { level: 1, name: MEMBER }),
+		).toBeVisible();
+		const busy = busyWithin(page, "main");
+		await expect(busy.first()).toBeAttached();
+
+		await releaseTheLatePart(page);
+		await expect(
+			page.locator("main").getByRole("link", { name: /Deathconsciousness/ }),
+		).toBeVisible();
+		await expect(busy).toHaveCount(0);
+		await expectFirstDrawnOnceReleased(page, "the records with others");
+		const { firstSeen } = await page.evaluate(
+			() => Reflect.get(window, "__drawn") as Drawn,
+		);
+		expect(firstSeen["nothing by them"]).toBeUndefined();
+	});
+
+	const LOADING = en["skeleton.loading"];
+
+	const loadingsIn = (scope: ReturnType<typeof viewHeader>) =>
+		scope.evaluate(
+			(element, loading) =>
+				(element.textContent ?? "").split(loading).length - 1,
+			LOADING,
+		);
+
+	test("the header's placeholder is busy and says Loading once, until the credits are split", async ({
+		page,
+	}) => {
+		await recordWhatIsDrawn(page);
+		await openLibrary(page);
+		await page.goto(`/#/${artistRoute(MEMBER)}`);
+		await expect(
+			page.getByRole("heading", { level: 1, name: MEMBER }),
+		).toBeVisible();
+		const header = viewHeader(page);
+		const busy = busyWithin(page, "main header");
+		await expect(busy.first()).toBeAttached();
+		expect(await loadingsIn(header)).toBe(1);
+
+		await releaseTheLatePart(page);
+		await expect(
+			page.locator("main").getByRole("link", { name: /Deathconsciousness/ }),
+		).toBeVisible();
+		await expect(busy).toHaveCount(0);
+		expect(await loadingsIn(header)).toBe(0);
+	});
+
+	const busyBelowTheHeader = (page: Page, loading: string) =>
+		page.locator("main").evaluate(
+			(main, said) =>
+				[...main.querySelectorAll('[aria-busy="true"]')]
+					.filter((element) => !element.closest("header"))
+					.map((element) => ({
+						loadings: (element.textContent ?? "").split(said).length - 1,
+						holdsAPlaceholder: [
+							...element.querySelectorAll(
+								'[aria-hidden="true"]:not(svg, button *)',
+							),
+						].some((bar) => {
+							const box = bar.getBoundingClientRect();
+							return box.width > 0 && box.height > 0;
+						}),
+					})),
+			loading,
+		);
+
+	const untilTheLatePartIsAsked = (player: FakePlayer) =>
+		expect
+			.poll(
+				() =>
+					requestsTo(player, "/api/library/export").filter((entry) =>
+						new URL(entry.path, "http://fake.invalid").searchParams
+							.getAll("only")
+							.some((column) => LATE.includes(column)),
+					).length,
+				{ message: "Jean never asked for the late part" },
+			)
+			.toBeGreaterThan(0);
+
+	test("the tracks tab holds placeholder rows, never the reading notice, until the credits are split", async ({
+		page,
+		player,
+	}) => {
+		await page.addInitScript((reading) => {
+			const seen: { reading: boolean } = { reading: false };
+			Reflect.set(window, "__readingSeen", seen);
+			new MutationObserver(() => {
+				if (document.querySelector("main")?.textContent?.includes(reading))
+					seen.reading = true;
+			}).observe(document, {
+				subtree: true,
+				childList: true,
+				characterData: true,
+			});
+		}, en["library.reading"]);
+		await page.clock.install();
+		await openLibrary(page);
+		await untilTheLatePartIsAsked(player);
+		await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 250);
+
+		await page.goto(`/#/${artistRoute(MEMBER, "tracks")}`);
+		await expect(
+			page.getByRole("heading", { level: 1, name: MEMBER }),
+		).toBeVisible();
+		await runClockFor(page, 1000);
+
+		await expect
+			.poll(() => busyBelowTheHeader(page, LOADING), {
+				message: "the tracks tab shows no busy placeholder",
+			})
+			.toContainEqual({ loadings: 1, holdsAPlaceholder: true });
+		for (const busy of await busyBelowTheHeader(page, LOADING))
+			expect(busy.loadings, "a busy element says Loading other than once").toBe(
+				1,
+			);
+		expect(
+			await page.evaluate(
+				() =>
+					(Reflect.get(window, "__readingSeen") as { reading: boolean })
+						.reading,
+			),
+			"the tracks tab said it is reading the library",
+		).toBe(false);
+
+		await page.clock.resume();
+		await page.request.post("/__control/holdSubset", { data: {} });
+		await expect(trackRow(page, 0)).toContainText("Bloodhail");
+		await expect.poll(() => busyBelowTheHeader(page, LOADING)).toEqual([]);
+	});
+
+	const firstPlaceholderRow = (page: Page) =>
+		page.locator("main").evaluate((main) => {
+			const bars = [...main.querySelectorAll('[aria-busy="true"]')]
+				.filter((element) => !element.closest("header"))
+				.flatMap((busy) => [
+					...busy.querySelectorAll('[aria-hidden="true"]:not(svg, button *)'),
+				])
+				.filter((bar) => {
+					const box = bar.getBoundingClientRect();
+					return box.width > 0 && box.height > 0;
+				});
+			const first = bars[0];
+			if (!first) return null;
+			const line = first.getBoundingClientRect();
+			const isOnTheLine = (bar: Element) => {
+				const box = bar.getBoundingClientRect();
+				return box.top < line.bottom && box.bottom > line.top;
+			};
+			const busy = first.closest('[aria-busy="true"]');
+			let row: Element = first;
+			for (
+				let outer = first.parentElement;
+				outer && row !== busy;
+				outer = outer.parentElement
+			) {
+				if (!bars.filter((bar) => outer.contains(bar)).every(isOnTheLine))
+					break;
+				row = outer;
+			}
+			const box = row.getBoundingClientRect();
+			const origin = main.getBoundingClientRect().top - main.scrollTop;
+			return { top: box.top - origin, height: box.height };
+		});
+
+	const firstRealRow = (page: Page) =>
+		trackRow(page, 0).evaluate((row) => {
+			const main = row.closest("main") as HTMLElement;
+			const box = row.getBoundingClientRect();
+			const origin = main.getBoundingClientRect().top - main.scrollTop;
+			return { top: box.top - origin, height: box.height };
+		});
+
+	const PAST_THE_REVEAL_MS = 400;
+
+	test("the tracks tab's first placeholder row sits where the first row lands, at its height", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await page.goto(`/#/${artistRoute(MEMBER, "tracks")}`);
+		await expect(
+			page.getByRole("heading", { level: 1, name: MEMBER }),
+		).toBeVisible();
+		await expect
+			.poll(() => firstPlaceholderRow(page), {
+				message: "the tracks tab drew no placeholder row",
+			})
+			.not.toBeNull();
+		const atFirst = await firstPlaceholderRow(page);
+		await page.waitForTimeout(PAST_THE_REVEAL_MS);
+		const afterAWhile = await firstPlaceholderRow(page);
+
+		await page.request.post("/__control/holdSubset", { data: {} });
+		await expect(trackRow(page, 0)).toContainText("Bloodhail");
+		const landed = await firstRealRow(page);
+
+		for (const [when, placeholder] of [
+			["at first", atFirst],
+			["after a while", afterAWhile],
+		] as const) {
+			expect(
+				Math.abs((placeholder?.top ?? 0) - landed.top),
+				`the first row landed at ${landed.top}px, the placeholder stood at ${placeholder?.top}px ${when}`,
+			).toBeLessThan(0.5);
+			expect(
+				Math.abs((placeholder?.height ?? 0) - landed.height),
+				`the first row is ${landed.height}px tall, the placeholder ${placeholder?.height}px ${when}`,
+			).toBeLessThan(0.5);
+		}
 	});
 });

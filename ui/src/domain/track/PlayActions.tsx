@@ -1,11 +1,12 @@
 import { Shuffle } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
-
+import { NO_WAIT, type Wait } from "@/domain/library/useOverdue";
 import {
 	useCanControlPlayback,
 	whenControllable,
 } from "@/domain/player/usePlaybackControl";
 import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
+import { useDeferredPress } from "@/shared/hooks/useDeferredPress";
 import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
@@ -17,11 +18,13 @@ export function PlayActions({
 	browserRef,
 	trackCount,
 	canPlaySets = true,
+	wait = NO_WAIT,
 	children,
 }: {
 	browserRef: RefObject<TrackBrowserHandle | null>;
 	trackCount: number;
 	canPlaySets?: boolean;
+	wait?: Wait;
 	children?: ReactNode;
 }) {
 	const t = useTranslate();
@@ -36,6 +39,13 @@ export function PlayActions({
 		order.enableShuffle();
 		play(Math.floor(Math.random() * trackCount));
 	};
+
+	const press = useDeferredPress<"play" | "shuffle">(wait.isWaiting, (kind) => {
+		if (isEmpty) return;
+		if (kind === "play") play(0);
+		else shufflePlay();
+	});
+	const isUnanswered = wait.isWaiting;
 
 	const canShuffleHere = canPlaySets && !isEmpty && order.canShuffle;
 
@@ -59,10 +69,12 @@ export function PlayActions({
 				<Button
 					variant="primary"
 					icon={PlayIcon}
-					disabled={canControlPlayback && isEmpty}
+					disabled={
+						canControlPlayback && (wait.isOverdue || (!isUnanswered && isEmpty))
+					}
 					{...whenControllable(
 						canControlPlayback,
-						() => play(0),
+						() => press("play"),
 						say("player.play"),
 						say,
 					)}
@@ -74,10 +86,13 @@ export function PlayActions({
 			{canPlaySets ? (
 				<Button
 					icon={Shuffle}
-					disabled={canControlPlayback && (isEmpty || !order.canShuffle)}
+					disabled={
+						canControlPlayback &&
+						(wait.isOverdue || (!isUnanswered && isEmpty) || !order.canShuffle)
+					}
 					{...whenControllable(
 						canControlPlayback,
-						shufflePlay,
+						() => press("shuffle"),
 						shuffleLabel,
 						t,
 					)}

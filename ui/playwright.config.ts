@@ -75,8 +75,6 @@ export default defineConfig({
 							},
 						]
 					: []),
-				// Opt-in for the same reason. Gecko stops growing an element at a height Chromium and WebKit
-				// go well past, so a list that only fits those two is caught here.
 				...(process.env.FIREFOX
 					? [
 							{

@@ -688,6 +688,10 @@ export const en = {
 	"search.stillReading": "Still reading your library",
 	"search.title": "Search",
 	"search.yourLibrary": "Search your library",
+	"settings.advanced.keepLibrary": "Keep the library on this device",
+	"settings.advanced.keepLibraryDetail":
+		"Jean opens from this copy and asks foobar2000 only for what changed. Off, it downloads the whole library on every load.",
+	"settings.advanced.title": "Advanced",
 	"settings.appearance.choose": "Theme",
 	"settings.appearance.dark": "Dark",
 	"settings.appearance.follow": "Match my system",
@@ -747,6 +751,7 @@ export const en = {
 	"settings.title": "Settings",
 	"shelf.added.blurb": "New in your library these last four weeks",
 	"shelf.added.title": "Recently added",
+	"shelf.empty": "Nothing on this shelf yet.",
 	"shelf.loved.blurb": "Played to death, then put down",
 	"shelf.loved.title": "Remember these?",
 	"shelf.notSince": "Not since {year}",
@@ -869,6 +874,7 @@ export const en = {
 	"sidebar.playingFromHere": "Playing from here",
 	"sidebar.playlists": "Playlists",
 	"sidebar.show": "Show playlists",
+	"skeleton.loading": "Loading",
 	"span.days": {
 		one: "{count} day",
 		other: "{count} days",

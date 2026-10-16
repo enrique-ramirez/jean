@@ -88,6 +88,7 @@
 }
 
 .stats {
+	min-height: 1lh;
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
@@ -123,6 +124,11 @@
 	display: flex;
 	align-items: center;
 	gap: 8px;
+	margin-left: 4px;
+}
+
+.meterPending {
+	width: 104px;
 	margin-left: 4px;
 }
 
@@ -176,6 +182,11 @@
 	}
 
 	.meter {
+		flex-basis: 100%;
+		margin-left: 0;
+	}
+
+	.meterPending {
 		flex-basis: 100%;
 		margin-left: 0;
 	}

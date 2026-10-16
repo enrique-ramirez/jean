@@ -3,7 +3,7 @@ import {
 	albumArtistsOf,
 	mostPlayed,
 } from "@/domain/artist/albumArtists";
-import type { CoveredAlbum } from "@/domain/track/albums";
+import type { Album, CoveredAlbum } from "@/domain/track/albums";
 import type { TrackRows } from "@/domain/track/project";
 import { summarise } from "@/domain/track/stats";
 
@@ -14,9 +14,9 @@ export function libraryStats({
 	albums,
 }: {
 	rows: TrackRows;
-	albums: CoveredAlbum[];
+	albums: Album[];
 }) {
-	const artists: AlbumArtist<CoveredAlbum>[] = albumArtistsOf(albums);
+	const artists: AlbumArtist[] = albumArtistsOf(albums);
 
 	return {
 		...summarise(rows, 0, { genres: GENRE_BARS }),
@@ -28,3 +28,17 @@ export function libraryStats({
 }
 
 export type LibraryStats = ReturnType<typeof libraryStats>;
+
+export const coveredStats = (
+	stats: LibraryStats,
+	cover: (album: Album) => CoveredAlbum,
+) => ({
+	...stats,
+	topAlbum: stats.topAlbum && cover(stats.topAlbum),
+	topArtist: stats.topArtist && {
+		...stats.topArtist,
+		cover: cover(stats.topArtist.cover),
+	},
+});
+
+export type CoveredStats = ReturnType<typeof coveredStats>;

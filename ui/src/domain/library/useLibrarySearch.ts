@@ -1,39 +1,36 @@
 import {
 	useCallback,
 	useDeferredValue,
-	useEffect,
 	useMemo,
 	useRef,
 	useState,
 } from "react";
-import { type Artist, artistIndex } from "@/domain/artist/artists";
+import type { Artist } from "@/domain/artist/artists";
 import { useSplitCredits } from "@/domain/artist/splitCredits";
 import { announcePlaybackRefusal } from "@/domain/player/playerWrite";
 import { useInSession } from "@/domain/player/session";
 import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import { usePlayer } from "@/domain/player/usePlayer";
 import { useResolvedPlaylistId } from "@/domain/player/usePlaylists";
-import { type Album, albumIndex } from "@/domain/track/albums";
-import { type Genre, genreIndex } from "@/domain/track/genres";
+import type { Album } from "@/domain/track/albums";
+import { CREDIT_TAGS } from "@/domain/track/fields";
+import type { Genre } from "@/domain/track/genres";
 import {
 	isScratchPlaylist,
 	queryOfScratchPlaylist,
 } from "@/domain/track/jeanPlaylists";
-import {
-	libraryIndex,
-	searchLibrary,
-	warmLibraryIndex,
-} from "@/domain/track/libraryIndex";
+import { isLoaded } from "@/domain/track/libraryColumns";
 import { EMPTY_VIEW, project } from "@/domain/track/project";
-import { rankEntities } from "@/domain/track/rankEntities";
-import { bestMatches } from "@/domain/track/rankTracks";
+import type { SearchAnswer } from "@/domain/track/searchCore";
+import { useLibraryAnswer } from "@/domain/track/useLibraryAnswer";
 import { switchRefusalOf } from "@/shared/api/client";
 import { emptyOwnPlaylist } from "@/shared/api/playlists";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Phrase } from "@/shared/i18n/en";
-import { fold, fuzzyScore, squash, TIER } from "@/shared/lib/text";
+import { fuzzyScore, squash, TIER } from "@/shared/lib/text";
 import type { Library } from "./useLibrary";
+import { useWait } from "./useOverdue";
 import { titledAsLanded, useLandedScratch } from "./useScratchPlaylist";
 
 export type SearchSectionLabel = Extract<Phrase, `search.section.${string}`>;
@@ -43,17 +40,18 @@ const PREVIEW_ARTISTS = 2;
 const PREVIEW_ALBUMS = 3;
 const PREVIEW_GENRES = 1;
 
-// The floor passed to rankEntities; its comment in domain/track/rankEntities.ts has why a whole-word
-// match is what keeps a section honest.
-const SECTION_BAR = TIER.word;
-
-const EMPTY_PREVIEW: number[] = [];
-
 const NOTHING_NAMED: {
 	artists: Artist[];
 	albums: Album[];
 	genres: Genre[];
 } = { artists: [], albums: [], genres: [] };
+
+const NO_PREVIEW = 0;
+
+interface Answered {
+	query: string;
+	answer: SearchAnswer;
+}
 
 export type Suggestion =
 	| { kind: "artist"; artist: Artist }
@@ -143,68 +141,73 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 
 	const deferredDraft = useDeferredValue(draft);
 
-	const columns = library.columns;
-	const { trackCount } = columns;
+	const { columns } = library;
 
-	const index = useMemo(
+	const draftQuestion = useMemo(
 		() =>
-			library.key && columns.trackCount > 0
-				? libraryIndex(library.key, columns)
+			deferredDraft.trim()
+				? ({
+						kind: "search",
+						query: deferredDraft,
+						limit: PREVIEW_TRACKS,
+						splitsCredits,
+					} as const)
 				: null,
-		[library.key, columns],
+		[deferredDraft, splitsCredits],
 	);
+	const draftSearch = useLibraryAnswer(draftQuestion, library, true);
 
-	useEffect(
+	const committedQuestion = useMemo(
 		() =>
-			library.key && columns.trackCount > 0
-				? warmLibraryIndex(library.key, columns)
-				: undefined,
-		[library.key, columns],
+			query.trim() && query !== deferredDraft
+				? ({
+						kind: "search",
+						query,
+						limit: NO_PREVIEW,
+						splitsCredits,
+					} as const)
+				: null,
+		[query, deferredDraft, splitsCredits],
+	);
+	const committedSearch = useLibraryAnswer(committedQuestion, library, true);
+
+	const { answer: draftAnswer, answered: draftAsked } = draftSearch;
+	const { answer: committedAnswer, answered: committedAsked } = committedSearch;
+
+	const answeredFor = useCallback(
+		(asked: string): Answered | null => {
+			if (draftAnswer && draftAsked?.query === asked)
+				return { query: asked, answer: draftAnswer };
+			if (committedAnswer && committedAsked?.query === asked)
+				return { query: asked, answer: committedAnswer };
+			return null;
+		},
+		[draftAnswer, draftAsked, committedAnswer, committedAsked],
 	);
 
-	// The dropdown never projects: eight rows are read straight off the snapshot, where the page needs
-	// the heat and patina arrays a whole view carries.
-	const draftMatched = useMemo(
-		() => (index ? searchLibrary(index, trackCount, deferredDraft) : null),
-		[index, trackCount, deferredDraft],
-	);
-
-	const preview = useMemo(
-		() =>
-			index && draftMatched
-				? bestMatches(index, draftMatched, deferredDraft, PREVIEW_TRACKS)
-				: EMPTY_PREVIEW,
-		[index, draftMatched, deferredDraft],
-	);
-
-	const wanted = deferredDraft.trim();
-
-	// One memo for the three, since they share a guard, a floor and a dependency array -- and because a
-	// downstream memo keyed on three separately built arrays is keyed on nothing.
-	const named = useMemo(() => {
-		const key = library.key;
-		if (!index || !wanted || !key) return NOTHING_NAMED;
-
-		return {
-			artists: rankEntities(
-				artistIndex(key, columns, splitsCredits),
-				wanted,
-				SECTION_BAR,
-			),
-			albums: rankEntities(albumIndex(key, columns), wanted, SECTION_BAR),
-			genres: rankEntities(genreIndex(key, columns), wanted, SECTION_BAR),
-		};
-	}, [index, wanted, library.key, columns, splitsCredits]);
-
-	const matched = useMemo(
-		() => (index ? searchLibrary(index, trackCount, query) : null),
-		[index, trackCount, query],
+	const [lastAnswered, setLastAnswered] = useState<
+		(Answered & { key: string | null }) | null
+	>(null);
+	const answeredNow = query.trim() ? answeredFor(query) : null;
+	if (answeredNow && answeredNow.answer !== lastAnswered?.answer)
+		setLastAnswered({ ...answeredNow, key: library.key });
+	const shown =
+		answeredNow ?? (lastAnswered?.key === library.key ? lastAnswered : null);
+	const matched = shown?.answer.matched ?? null;
+	const isShownBehind = query.trim() !== "" && shown?.query !== query;
+	const wait = useWait(
+		isShownBehind && shown === null && columns.trackCount > 0,
+		query,
 	);
 
 	const results = useMemo(
 		() => project(library.snapshot, matched),
 		[library.snapshot, matched],
 	);
+
+	const suggested = draftAnswer;
+	const suggestedQuery = draftAsked?.query ?? "";
+	const named = suggested ?? NOTHING_NAMED;
 
 	const sections = useMemo<SearchSection[]>(() => {
 		const built: SearchSection[] = [];
@@ -238,18 +241,18 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 					.map((genre) => ({ kind: "genre", genre })),
 			});
 
-		if (preview.length > 0)
+		if (suggested && suggested.best.length > 0)
 			built.push({
 				label: "search.section.tracks",
-				count: draftMatched?.length ?? preview.length,
-				suggestions: preview.map((position) => ({
+				count: suggested.matched?.length ?? suggested.best.length,
+				suggestions: Array.from(suggested.best, (ref) => ({
 					kind: "track",
-					ref: draftMatched ? draftMatched[position] : position,
+					ref,
 				})),
 			});
 
 		return built;
-	}, [named, preview, draftMatched]);
+	}, [named, suggested]);
 
 	// One list in the order they are drawn, so the arrow keys need to know nothing about sections and
 	// a heading can never take the cursor.
@@ -259,21 +262,19 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	);
 
 	const preselect = useMemo(() => {
-		if (!wanted || !index || !draftMatched) return -1;
+		const wanted = suggestedQuery.trim();
+		if (!wanted || !suggested?.matched) return -1;
 
-		const query = squash(wanted);
+		const squashed = squash(wanted);
 		const exact = [...named.artists, ...named.albums, ...named.genres].filter(
-			(entity) => fuzzyScore(entity.match, query, TIER.exact) >= TIER.exact,
+			(entity) => fuzzyScore(entity.match, squashed, TIER.exact) >= TIER.exact,
 		);
-		if (exact.length !== 1) return -1;
-
-		const folded = fold(wanted);
-		if (draftMatched.some((ref) => index.title.text(ref) === folded)) return -1;
+		if (exact.length !== 1 || suggested.namesATrack) return -1;
 
 		return suggestions.findIndex(
 			(suggestion) => entityOf(suggestion) === exact[0],
 		);
-	}, [named, suggestions, wanted, index, draftMatched]);
+	}, [named, suggestions, suggested, suggestedQuery]);
 
 	const focus = useCallback(() => {
 		setIsOpen(true);
@@ -290,21 +291,13 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		draft,
 		type,
 		revert: useCallback(() => setDraft(query), [query]),
-		// Returns what it promoted, so the caller never has to read state this render hasn't caught up
-		// with yet. Takes an explicit value for callers with no draft to promote, such as a shelf search.
 		commit: useCallback(
 			(next: string = draft) => {
 				setDraft(next);
 				setQuery(next);
-				// The memo is a render behind while a fast typist is still going, and the refs a set is
-				// filled from have to be the ones this query matches.
-				if (next === deferredDraft) return { query: next, refs: draftMatched };
-				return {
-					query: next,
-					refs: index ? searchLibrary(index, trackCount, next) : null,
-				};
+				return { query: next, refs: answeredFor(next)?.answer.matched ?? null };
 			},
-			[draft, deferredDraft, draftMatched, index, trackCount],
+			[draft, answeredFor],
 		),
 		clear,
 		inputRef,
@@ -316,9 +309,14 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		suggestions,
 		preselect,
 		hasDraft: draft.trim().length > 0,
+		areArtistsPending:
+			draft.trim().length > 0 &&
+			columns.trackCount > 0 &&
+			!isLoaded(columns, CREDIT_TAGS),
 		isEdited: draft !== query,
-		draftCount: draftMatched?.length ?? 0,
-		isFiltering: draft !== deferredDraft,
+		draftCount: draftAnswer?.matched?.length ?? 0,
+		isFiltering: draft !== deferredDraft || draftSearch.isWaiting,
+		suggestedQuery,
 		remembered,
 		restore,
 		isFocused,
@@ -327,11 +325,13 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 			setIsOpen(true);
 		}, []),
 		onBlur: useCallback(() => setIsFocused(false), []),
-		query,
+		query: shown?.query ?? query,
+		committedQuery: query,
 		hasQuery: query.trim().length > 0,
 		results: results ?? EMPTY_VIEW,
 		matchCount: matched?.length ?? 0,
-		viewKey: `search:${query.trim().toLowerCase()}`,
+		viewKey: `search:${(shown?.query ?? query).trim().toLowerCase()}`,
+		wait,
 	};
 }
 

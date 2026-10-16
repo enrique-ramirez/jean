@@ -15,7 +15,7 @@ import { Artwork } from "@/shared/ui/Artwork";
 import { Button } from "@/shared/ui/Button";
 import { PlayIcon } from "@/shared/ui/icons";
 import styles from "./HomeHeader.module.css";
-import type { LibraryStats } from "./libraryStats";
+import type { CoveredStats } from "./libraryStats";
 
 type DoorPhrase = Extract<Phrase, `home.door.${string}`>;
 type HintPhrase = Extract<Phrase, `home.hint.${string}`>;
@@ -41,7 +41,7 @@ export function HomeHeader({
 	canPlay,
 	canShuffle,
 }: {
-	stats: LibraryStats;
+	stats: CoveredStats;
 	isLoading: boolean;
 	onPlayEverything: () => void;
 	onShuffleEverything: () => void;

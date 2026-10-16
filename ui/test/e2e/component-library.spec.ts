@@ -26,11 +26,31 @@ import { scrollUntilMounted } from "./scrolling.ts";
 
 const exportsAsked = (player: FakePlayer) =>
 	requestsTo(player, "/api/library/export").filter(
-		(entry) => entry.method === "GET",
+		(entry) =>
+			entry.method === "GET" &&
+			new URLSearchParams(entry.path.split("?")[1]).get("spine") !== "false",
 	);
 
 const deltasAsked = (player: FakePlayer) =>
 	requestsTo(player, "/api/library/changes");
+
+const everyExport = (player: FakePlayer) =>
+	requestsTo(player, "/api/library/export").filter(
+		(entry) => entry.method === "GET",
+	);
+
+const everyPartLoaded = async (player: FakePlayer) => {
+	await expect
+		.poll(() => everyExport(player).length - exportsAsked(player).length)
+		.toBe(1);
+	return everyExport(player).length;
+};
+
+const titleAtOrdinal = (player: FakePlayer, ordinal: number) =>
+	player.ordinalOrder()[ordinal].track["%title%"];
+
+const rowTitled = (page: Page, title: string) =>
+	page.getByRole("row").filter({ has: page.getByText(title, { exact: true }) });
 
 // Ordered against the export that answered a structure move, because a delta asked before it names
 // a revision from the structure `foo_jean` has thrown away, which it answers with a 409. The deltas
@@ -41,6 +61,28 @@ const deltasAskedBefore = (player: FakePlayer, request: RecordedRequest) => {
 		(entry) => player.requests.indexOf(entry) < at,
 	);
 };
+
+const OTHER_DECLARATION = "%title%";
+
+const anotherClientDeclares = async (page: Page) => {
+	const answer = await page.request.get(
+		`/api/library/export?columns=${encodeURIComponent(OTHER_DECLARATION)}`,
+	);
+	expect(answer.status(), "an export of another column set").toBe(200);
+};
+
+const jeansExports = (player: FakePlayer) =>
+	exportsAsked(player).filter(
+		(entry) =>
+			new URLSearchParams(entry.path.split("?")[1]).getAll("columns").join() !==
+			OTHER_DECLARATION,
+	);
+
+const jlibHeaderOf = (body: Buffer) =>
+	JSON.parse(body.subarray(8, 8 + body.readUInt32LE(4)).toString()) as {
+		structure: number;
+		revision: number;
+	};
 
 const playsOf = (page: Page, row: number) =>
 	trackRow(page, row).locator("[data-zero]");
@@ -317,14 +359,13 @@ test.describe("a library that moved while Jean was open", () => {
 		await expect(plays).toHaveText(String(before + 1), { timeout: 20_000 });
 		expect(deltasAsked(player).length).toBeGreaterThan(0);
 		expect(exportsAsked(player)).toHaveLength(1);
-		// Jean asked for neither play, so the count came from the player alone.
 		expect(playRequests(player)).toHaveLength(0);
 	});
 });
 
 test.describe("a library rebuilt under Jean", () => {
 	test.use({
-		fooJean: { libraryRebuilds: 1 },
+		fooJean: {},
 		countsPlays: true,
 	});
 
@@ -332,18 +373,51 @@ test.describe("a library rebuilt under Jean", () => {
 		page,
 		player,
 	}) => {
+		const handed: { url: string; structure: number; revision: number }[] = [];
+		page.on("response", async (response) => {
+			const url = response.url();
+			if (
+				response.status() !== 200 ||
+				!/\/api\/library\/(export|changes)/.test(url)
+			)
+				return;
+			const { structure, revision } = jlibHeaderOf(await response.body());
+			handed.push({ url, structure, revision });
+		});
+
 		await openAllMusic(page);
 
 		await trackRow(page, 0).dblclick();
 		await trackRow(page, 1).dblclick();
+		await anotherClientDeclares(page);
 
 		await expect
-			.poll(() => exportsAsked(player).length, { timeout: 20_000 })
+			.poll(() => jeansExports(player).length, { timeout: 20_000 })
 			.toBe(2);
 
 		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "54");
 		await expect(trackRow(page, 0)).toContainText("Rotten Apple");
-		expect(deltasAskedBefore(player, exportsAsked(player)[1])).toHaveLength(0);
+
+		const loaded = handed.find((entry) =>
+			/\/api\/library\/export/.test(entry.url),
+		)!;
+		const held = new Set(
+			handed
+				.filter((entry) => entry.structure === loaded.structure)
+				.map((entry) => entry.revision),
+		);
+		const asked = deltasAskedBefore(player, jeansExports(player)[1]).map(
+			(entry) => {
+				const query = new URLSearchParams(entry.path.split("?")[1]);
+				return {
+					structure: Number(query.get("structure")),
+					heldRevision: held.has(Number(query.get("since"))),
+				};
+			},
+		);
+		expect(asked).toEqual(
+			asked.map(() => ({ structure: loaded.structure, heldRevision: true })),
+		);
 	});
 });
 
@@ -411,8 +485,6 @@ test.describe("a library rebuilt while Jean was reading the one before it", () =
 		);
 		expect(added).toHaveLength(1);
 		const title = added[0]["%title%"];
-		// Found on screen by its title, so a copy of another track's title would let
-		// the click land on that track and still pass.
 		expect(
 			player.libraryTracks.filter((track) => track["%title%"].includes(title)),
 		).toHaveLength(1);
@@ -434,12 +506,13 @@ test.describe("a library rebuilt while Jean was reading the one before it", () =
 test.describe("tracks added and removed at the player", () => {
 	test.use({ fooJean: {} });
 
-	test("tracks removed leave the list, through a second export", async ({
+	test("tracks removed leave the list as a splice, and the library is not exported again", async ({
 		page,
 		player,
 	}) => {
 		await openAllMusic(page);
 		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "54");
+		const exported = await everyPartLoaded(player);
 
 		await changeLibrary(page, { remove: 3 });
 
@@ -449,7 +522,10 @@ test.describe("tracks added and removed at the player", () => {
 			{ timeout: 20_000 },
 		);
 		expect(player.libraryTracks).toHaveLength(51);
-		expect(exportsAsked(player)).toHaveLength(2);
+		const last = rowTitled(page, titleAtOrdinal(player, 50));
+		await scrollUntilMounted(page, last);
+		await expect(last).toHaveAttribute("data-row", "50");
+		await expectSettlesAt(player, () => everyExport(player).length, exported);
 	});
 
 	test("an add and a remove asked together are one rebuild", async ({
@@ -475,8 +551,6 @@ test.describe("tracks added and removed at the player", () => {
 		);
 	});
 
-	// `foo_jean` builds no snapshot while its library worker is halted and serves the
-	// one it holds, so a change waits for the worker as a rescan's rebuild does.
 	test("waits out a halted library before the structure moves", async ({
 		page,
 	}) => {
@@ -488,8 +562,6 @@ test.describe("tracks added and removed at the player", () => {
 
 		await changeLibrary(page, { add: 1 });
 
-		// Each read is a poll, the moment a rebuild settles, so two of them give a
-		// finished build two chances to show.
 		for (const _ of [1, 2])
 			expect(await libraryState(page)).toMatchObject({
 				halted: true,
@@ -504,6 +576,63 @@ test.describe("tracks added and removed at the player", () => {
 			.poll(async () => (await libraryState(page)).structure)
 			.toBe(before.structure + 1);
 		expect((await libraryState(page)).trackCount).toBe(before.trackCount + 1);
+	});
+});
+
+test.describe("an album added at the player", () => {
+	test.use({
+		fooJean: {},
+		libraryShape: { tracks: 600, albums: 40, artists: 8 },
+	});
+
+	const ALBUM = 10;
+
+	const addAnAlbum = async (page: Page, player: FakePlayer) => {
+		const known = pathsIn(player);
+		await changeLibrary(page, { add: ALBUM });
+		await expect(page.getByRole("grid")).toHaveAttribute(
+			"aria-rowcount",
+			String(600 + ALBUM),
+			{ timeout: 20_000 },
+		);
+		const added = player
+			.ordinalOrder()
+			.flatMap((entry, ordinal) =>
+				known.has(entry.track["%path%"]) ? [] : [ordinal],
+			);
+		expect(added).toHaveLength(ALBUM);
+		return added;
+	};
+
+	test("is listed where the player puts it, and the library is not exported again", async ({
+		page,
+		player,
+	}) => {
+		await openAllMusic(page);
+		const exported = await everyPartLoaded(player);
+
+		const added = await addAnAlbum(page, player);
+
+		for (const ordinal of [added[0], added.at(-1)!, added.at(-1)! + 1]) {
+			const row = rowTitled(page, titleAtOrdinal(player, ordinal));
+			await scrollUntilMounted(page, row);
+			await expect(row).toHaveAttribute("data-row", String(ordinal));
+		}
+		await expectSettlesAt(player, () => everyExport(player).length, exported);
+	});
+
+	test("a row past it plays the track it shows", async ({ page, player }) => {
+		await openAllMusic(page);
+		const added = await addAnAlbum(page, player);
+		const ordinal = added.at(-1)! + 200;
+		const title = titleAtOrdinal(player, ordinal);
+
+		const row = trackRow(page, ordinal);
+		await scrollUntilMounted(page, row);
+		await expect(row).toContainText(title);
+		await row.dblclick();
+
+		await expect.poll(() => trackPlayed(player)).toBe(title);
 	});
 });
 
@@ -620,11 +749,6 @@ test.describe("a view whose fill was refused because the library moved", () => {
 		await expect(trackRow(page, 0)).toBeAttached();
 	};
 
-	const rebuildLibrary = (player: FakePlayer) => {
-		player.libraryFeed.building = [...player.libraryFeed.columns];
-		player.finishLibraryBuild();
-	};
-
 	// Jean re-reads the library when the tab comes back, which is what a 409 asks of
 	// a client: export again, then ask again. Given here so the click that follows has
 	// a current snapshot to fill from.
@@ -649,7 +773,7 @@ test.describe("a view whose fill was refused because the library moved", () => {
 		await trackRow(page, ASKED_ROW).dblclick();
 		await expect.poll(() => scratchFills(player).length).toBe(2);
 
-		rebuildLibrary(player);
+		await anotherClientDeclares(page);
 		await page.request.post("/__control/latency", { data: { ms: 0 } });
 		await refused;
 	};
@@ -660,7 +784,7 @@ test.describe("a view whose fill was refused because the library moved", () => {
 	}) => {
 		await refuseAFill(page, player);
 		await comeBackToTheTab(page);
-		await expect.poll(() => exportsAsked(player).length).toBe(2);
+		await expect.poll(() => jeansExports(player).length).toBe(2);
 
 		await trackRow(page, ASKED_ROW).dblclick();
 

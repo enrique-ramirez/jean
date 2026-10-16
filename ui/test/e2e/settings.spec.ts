@@ -1,3 +1,4 @@
+import { en } from "../../src/shared/i18n/en.ts";
 import { NULL_OUTPUT_DEVICE } from "../fake-api/fooJean/outputs.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
@@ -713,3 +714,141 @@ for (const [key, stored] of Object.entries(NEVER_WRITTEN_BY_JEAN))
 			await expect(trackRow(page, 0)).toBeVisible();
 		});
 	});
+
+const catalogue: Readonly<Record<string, unknown>> = en;
+
+const phrase = (key: string) => {
+	const text = catalogue[key];
+	if (typeof text !== "string")
+		throw new Error(`en.ts holds no phrase under ${key}`);
+	return text;
+};
+
+const ADVANCED = "settings.advanced.title";
+const KEEP_LIBRARY = "settings.advanced.keepLibrary";
+const KEEP_LIBRARY_DETAIL = "settings.advanced.keepLibraryDetail";
+
+const lastHeading = (page: Page) =>
+	settingsDialog(page).getByRole("heading", { level: 2 }).last();
+
+const advancedButton = (page: Page) => lastHeading(page).getByRole("button");
+
+const keepLibrarySwitch = (page: Page) =>
+	settingsDialog(page).getByRole("switch", { name: phrase(KEEP_LIBRARY) });
+
+const expectClosed = async (page: Page) => {
+	await expect(advancedButton(page)).toHaveAttribute("aria-expanded", "false");
+	expect(await keepLibrarySwitch(page).isVisible()).toBe(false);
+};
+
+const expectOpen = async (page: Page) => {
+	await expect(advancedButton(page)).toHaveAttribute("aria-expanded", "true");
+	expect(await keepLibrarySwitch(page).isVisible()).toBe(true);
+};
+
+// Apple's Human Interface Guidelines and WCAG 2.5.5 both set a touch target's least side at 44, in
+// points and in CSS pixels.
+const TOUCH_TARGET = 44;
+
+test.describe("the Advanced disclosure", () => {
+	test("is the last section of Settings, a heading holding a button, and opens closed", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await openSettings(page);
+
+		await expect(advancedButton(page)).toHaveAttribute(
+			"aria-expanded",
+			"false",
+		);
+		await expect(advancedButton(page)).toHaveAccessibleName(phrase(ADVANCED));
+		await expect(lastHeading(page)).toHaveAccessibleName(phrase(ADVANCED));
+		expect(await keepLibrarySwitch(page).isVisible()).toBe(false);
+	});
+
+	test("a click opens it onto the switch for keeping the library, on by default, and a second click closes it", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await openSettings(page);
+		await expectClosed(page);
+
+		await advancedButton(page).click();
+		await expectOpen(page);
+		await expect(keepLibrarySwitch(page)).toBeChecked();
+
+		await advancedButton(page).click();
+		await expectClosed(page);
+	});
+
+	test("Enter and Space each toggle it", async ({ page, isMobile }) => {
+		test.skip(isMobile, "Enter and Space are keyboard routes");
+
+		await openLibrary(page);
+		await openSettings(page);
+		await expectClosed(page);
+		await advancedButton(page).focus();
+
+		await page.keyboard.press("Enter");
+		await expectOpen(page);
+		await page.keyboard.press("Space");
+		await expectClosed(page);
+		await page.keyboard.press("Space");
+		await expectOpen(page);
+		await page.keyboard.press("Enter");
+		await expectClosed(page);
+	});
+
+	test("the switch says what it keeps in catalogue phrases", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await openSettings(page);
+		await expectClosed(page);
+		await advancedButton(page).click();
+
+		await expect(
+			keepLibrarySwitch(page).getByText(phrase(KEEP_LIBRARY), { exact: true }),
+		).toBeVisible();
+		await expect(
+			keepLibrarySwitch(page).getByText(phrase(KEEP_LIBRARY_DETAIL), {
+				exact: true,
+			}),
+		).toBeVisible();
+	});
+
+	test("the switch turned off stays off after a reload, and Settings opens with the disclosure closed again", async ({
+		page,
+	}) => {
+		await openLibrary(page);
+		await openSettings(page);
+		await expectClosed(page);
+		await advancedButton(page).click();
+		await keepLibrarySwitch(page).click();
+		await expect(keepLibrarySwitch(page)).not.toBeChecked();
+
+		await closeSettings(page);
+		await openSettings(page);
+		await expectClosed(page);
+
+		await page.reload();
+		await openSettings(page);
+		await expectClosed(page);
+		await advancedButton(page).click();
+		await expect(keepLibrarySwitch(page)).not.toBeChecked();
+	});
+
+	test("its header row is a 44 px target on a phone", async ({
+		page,
+		isMobile,
+	}) => {
+		test.skip(!isMobile, "the desktop project has a mouse");
+
+		await openLibrary(page);
+		await openSettings(page);
+		await expect(advancedButton(page)).toBeVisible();
+
+		const box = (await advancedButton(page).boundingBox())!;
+		expect(box.height).toBeGreaterThanOrEqual(TOUCH_TARGET);
+	});
+});

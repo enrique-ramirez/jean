@@ -9,6 +9,7 @@ import {
 	readingNotice,
 } from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
+import { byWait, type Wait } from "@/domain/library/useOverdue";
 import {
 	useCanControlPlayback,
 	whenControllable,
@@ -16,12 +17,14 @@ import {
 import { albumsOf } from "@/domain/track/albums";
 import { useAvailableFields } from "@/domain/track/fieldAvailability";
 import {
+	CREDIT_TAGS,
 	FIELD,
 	lastPlayedIn,
 	playCountsIn,
 	titleOf,
 	value,
 } from "@/domain/track/fields";
+import { isLoaded } from "@/domain/track/libraryColumns";
 import { Mosaic } from "@/domain/track/Mosaic";
 import {
 	EMPTY_VIEW,
@@ -32,6 +35,7 @@ import {
 import { type ArtistTab, albumRoute, href } from "@/domain/track/routes";
 import { summarise } from "@/domain/track/stats";
 import { ViewHeader } from "@/domain/track/ViewHeader";
+import { useDeferredPress } from "@/shared/hooks/useDeferredPress";
 import { Trans } from "@/shared/i18n/Trans";
 import {
 	type Translate,
@@ -43,6 +47,7 @@ import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Artwork } from "@/shared/ui/Artwork";
 import { Button } from "@/shared/ui/Button";
+import { BusyNote, busyProps, Skeleton } from "@/shared/ui/Skeleton";
 import styles from "./ArtistView.module.css";
 
 const inLibrarySpace = (refs: Refs, view: TrackView) =>
@@ -56,6 +61,33 @@ const recordsOf = (view: TrackView | null) =>
 		: [];
 
 type AlbumRecord = ReturnType<typeof recordsOf>[number];
+
+const PLACEHOLDER_RECORDS = 6;
+
+function PendingOverview() {
+	return (
+		<div className={styles.overview} {...busyProps(true)}>
+			<section className={styles.section}>
+				<div className={styles.records}>
+					{Array.from({ length: PLACEHOLDER_RECORDS }, (_, at) => (
+						<span
+							// biome-ignore lint/suspicious/noArrayIndexKey: placeholders are interchangeable and never reorder
+							key={at}
+							className={styles.record}
+						>
+							<span className={styles.sleeve}>
+								<Skeleton height="100%" />
+							</span>
+							<Skeleton width="70%" />
+							<Skeleton width="40%" />
+						</span>
+					))}
+				</div>
+			</section>
+			<BusyNote />
+		</div>
+	);
+}
 
 export type SlideDirection = 1 | -1 | 0;
 
@@ -140,6 +172,7 @@ export function ArtistView({
 	name,
 	library,
 	tracks,
+	wait,
 	tab,
 	direction,
 	tabs,
@@ -152,6 +185,7 @@ export function ArtistView({
 	name: string;
 	library: Library;
 	tracks: ArtistTracks;
+	wait: Wait;
 	tab: ArtistTab;
 	direction: SlideDirection;
 	tabs: ReactNode;
@@ -166,6 +200,7 @@ export function ArtistView({
 	const format = useFormats();
 	const canControlPlayback = useCanControlPlayback();
 	const { snapshot } = library;
+	const isSplitting = !isLoaded(snapshot.columns, CREDIT_TAGS);
 
 	const own = useMemo(
 		() => project(snapshot, tracks.own) ?? null,
@@ -180,9 +215,11 @@ export function ArtistView({
 		[snapshot, tracks.guest],
 	);
 
+	const isAwaiting = isSplitting || wait.isWaiting;
 	const stats = useMemo(
-		() => summarise(own ?? EMPTY_VIEW, own?.playedCount ?? 0),
-		[own],
+		() =>
+			isAwaiting ? null : summarise(own ?? EMPTY_VIEW, own?.playedCount ?? 0),
+		[own, isAwaiting],
 	);
 
 	const discography = useMemo(() => recordsOf(own), [own]);
@@ -207,23 +244,35 @@ export function ArtistView({
 		{ enabled: isPlayable && canShuffle },
 	);
 
+	const press = useDeferredPress<"play" | "shuffle">(isAwaiting, (kind) => {
+		if (allRefs.length === 0) return;
+		if (kind === "play") onPlay(allRefs, 0);
+		else onShuffle(allRefs);
+	});
+
 	const notice = libraryNoticeFor(library);
 	if (notice) return notice;
 
 	const { status } = library;
 	const isReading = isLibraryReading(status);
 
-	const overview = (
+	const overview = isSplitting ? (
+		<PendingOverview />
+	) : (
 		<div className={styles.overview}>
 			{held === 0 ? (
 				<p className={styles.notice}>
 					{isReading
 						? readingNotice(status, "library.reading", t)
-						: t("artist.nothingBy")}
+						: byWait(wait, {
+								settled: t("artist.nothingBy"),
+								quiet: null,
+								reading: t("library.reading"),
+							})}
 				</p>
 			) : null}
 
-			{own && history && hasPlayCounts ? (
+			{own && history && hasPlayCounts && !isAwaiting ? (
 				<section className={styles.section}>
 					<h2 className={styles.heading}>{t("artist.yourHistory")}</h2>
 					<dl className={styles.history}>
@@ -329,14 +378,17 @@ export function ArtistView({
 				eyebrow={t("artist.eyebrow")}
 				title={name}
 				stats={stats}
+				isStatsPending={wait.isOverdue}
 				hasPlayCounts={hasPlayCounts}
 				tabs={tabs}
 				leading={
-					<Trans
-						phrase="artist.albumCount"
-						count={discography.length}
-						total={<b>{format.number(discography.length)}</b>}
-					/>
+					isAwaiting ? null : (
+						<Trans
+							phrase="artist.albumCount"
+							count={discography.length}
+							total={<b>{format.number(discography.length)}</b>}
+						/>
+					)
 				}
 				aside={
 					own && discography.length > 0 ? (
@@ -344,15 +396,15 @@ export function ArtistView({
 					) : undefined
 				}
 				actions={
-					held > 0 ? (
+					held > 0 || isAwaiting ? (
 						<>
 							<Button
 								variant="primary"
 								icon={Play}
-								disabled={canControlPlayback && !canPlay}
+								disabled={canControlPlayback && (!canPlay || wait.isOverdue)}
 								{...whenControllable(
 									canControlPlayback,
-									() => onPlay(allRefs, 0),
+									() => press("play"),
 									say("player.play"),
 									say,
 								)}
@@ -362,9 +414,10 @@ export function ArtistView({
 							{canShuffle ? (
 								<Button
 									icon={Shuffle}
+									disabled={canControlPlayback && wait.isOverdue}
 									{...whenControllable(
 										canControlPlayback,
-										() => onShuffle(allRefs),
+										() => press("shuffle"),
 										t("player.shuffle"),
 										t,
 									)}

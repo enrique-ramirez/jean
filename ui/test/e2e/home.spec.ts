@@ -1,4 +1,7 @@
-import type { FakePlayer, Page } from "./fixtures.ts";
+import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
+import { shelfRoute } from "../../src/domain/track/routes.ts";
+import { en } from "../../src/shared/i18n/en.ts";
+import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectPlayingFrom,
@@ -9,6 +12,8 @@ import {
 	playedFrom,
 	playerDeclaring,
 	playRequests,
+	requestsTo,
+	rowByTitle,
 	scratchOf,
 	sidebar,
 	test,
@@ -528,5 +533,178 @@ test.describe("a shelf says it is playing", () => {
 		await expect(
 			sidebar(page).getByRole("button", { name: /Most played/ }),
 		).toBeVisible();
+	});
+});
+
+interface ShelfPageSeen {
+	emptyView: string | null;
+}
+
+const recordTheShelfPage = (page: Page) =>
+	page.addInitScript((empty) => {
+		const seen: ShelfPageSeen = { emptyView: null };
+		Reflect.set(window, "__shelfPage", seen);
+		new MutationObserver(() => {
+			const main = document.querySelector("main")?.textContent ?? "";
+			if (seen.emptyView === null && main.includes(empty))
+				seen.emptyView = main;
+		}).observe(document, {
+			subtree: true,
+			childList: true,
+			characterData: true,
+		});
+	}, en["library.empty"]);
+
+const shelfPageSeen = (page: Page) =>
+	page.evaluate(() => Reflect.get(window, "__shelfPage") as ShelfPageSeen);
+
+const untilTheLatePartIsAsked = (player: FakePlayer, late: string[]) =>
+	expect
+		.poll(
+			() =>
+				requestsTo(player, "/api/library/export").filter((entry) =>
+					new URL(entry.path, "http://fake.invalid").searchParams
+						.getAll("only")
+						.some((column) => late.includes(column)),
+				).length,
+			{ message: "Jean never asked for the late part" },
+		)
+		.toBeGreaterThan(0);
+
+const busyInMain = (page: Page) =>
+	page.locator('main[aria-busy="true"], main [aria-busy="true"]');
+
+const theWait = (page: Page) =>
+	busyInMain(page)
+		.or(page.locator("main").getByText(en["library.reading"]))
+		.first();
+
+const expectTheShelfPageWaits = async (
+	page: Page,
+	player: FakePlayer,
+	late: string[],
+	title: string,
+) => {
+	await expect(
+		page.getByRole("heading", { level: 1, name: title }),
+	).toBeVisible();
+	await untilTheLatePartIsAsked(player, late);
+	await expect(
+		theWait(page),
+		"the shelf page shows no wait while the late part is held",
+	).toBeVisible();
+};
+
+const expectNothingEmptyWasShown = async (page: Page) => {
+	const { emptyView } = await shelfPageSeen(page);
+	expect(emptyView, "the shelf page said the library is empty").toBeNull();
+};
+
+test.describe("Recently added before the late part arrives", () => {
+	const LATE = [
+		FIELD.codec,
+		FIELD.bitrate,
+		FIELD.added,
+		FIELD.artists,
+		FIELD.artistIds,
+		FIELD.albumArtists,
+		FIELD.albumArtistIds,
+	].map((field) => TRACK_EXPRESSIONS[field]);
+
+	const stampDaysAgo = (days: number) => {
+		const at = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+		const pad = (value: number) => String(value).padStart(2, "0");
+		return (
+			`${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ` +
+			`${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`
+		);
+	};
+
+	const ARRIVED = {
+		"Los Calientes": 1,
+		Tautou: 3,
+		"Rotten Apple": 5,
+		"Break Blossom": 7,
+		"A Quick One Before The Eternal Worm Devours Connecticut": 9,
+	};
+	const ALBUMS =
+		/Jessico|Deja Entendu|Jar Of Flies|Lafcadio|Deathconsciousness/;
+
+	test.use({
+		retagged: Object.fromEntries(
+			Object.entries(ARRIVED).map(([title, days]) => [
+				title,
+				{ "%added%": stampDaysAgo(days) },
+			]),
+		),
+		fooJean: { holdSubset: LATE },
+	});
+
+	const recentlyAdded = (page: Page) =>
+		page.getByRole("region", { name: "Recently added" });
+
+	const holdsAPlaceholder = (region: Locator) =>
+		region.evaluate((element) =>
+			[
+				...element.querySelectorAll('[aria-hidden="true"]:not(svg, button *)'),
+			].some((block) => {
+				const box = block.getBoundingClientRect();
+				return box.width > 0 && box.height > 0;
+			}),
+		);
+
+	test("the shelf is busy with placeholder cards, and its records land in the same height", async ({
+		page,
+	}) => {
+		await page.goto("/");
+		const shelf = recentlyAdded(page);
+		await expect(shelf).toHaveAttribute("aria-busy", "true");
+		await expect(
+			shelf.getByRole("heading", { level: 2, name: "Recently added" }),
+		).toBeVisible();
+		expect(await holdsAPlaceholder(shelf)).toBe(true);
+		expect(await shelf.getByRole("button", { name: ALBUMS }).count()).toBe(0);
+		const waiting = (await shelf.boundingBox())?.height ?? Number.NaN;
+
+		await page.request.post("/__control/holdSubset", { data: {} });
+		await expect(shelf.getByRole("button", { name: /Jessico/ })).toBeVisible();
+		await expect(shelf).not.toHaveAttribute("aria-busy", "true");
+		expect((await shelf.boundingBox())?.height).toBeCloseTo(waiting, 1);
+	});
+
+	test("its page opened by address waits for the late part, and is never drawn empty", async ({
+		page,
+		player,
+	}) => {
+		await recordTheShelfPage(page);
+		await page.goto(`/#/${shelfRoute("added")}`);
+		await expectTheShelfPageWaits(page, player, LATE, "Recently added");
+
+		await page.request.post("/__control/holdSubset", { data: {} });
+		await expect(rowByTitle(page, "Los Calientes")).toBeAttached();
+		await expectNothingEmptyWasShown(page);
+	});
+});
+
+test.describe("Time for an upgrade before the late part arrives", () => {
+	const LATE = [FIELD.codec, FIELD.bitrate].map(
+		(field) => TRACK_EXPRESSIONS[field],
+	);
+	test.use({ fooJean: { holdSubset: LATE } });
+
+	test("its page opened by address waits for the late part, and is never drawn empty while it does", async ({
+		page,
+		player,
+	}) => {
+		await recordTheShelfPage(page);
+		await page.goto(`/#/${shelfRoute("upgrade")}`);
+		await expectTheShelfPageWaits(page, player, LATE, "Time for an upgrade");
+		await expectNothingEmptyWasShown(page);
+
+		await page.request.post("/__control/holdSubset", { data: {} });
+		await expect(busyInMain(page)).toHaveCount(0);
+		await expect(
+			page.locator("main").getByText(en["library.reading"]),
+		).toHaveCount(0);
 	});
 });

@@ -14,9 +14,17 @@ export function playingTrack(
 	};
 }
 
+export function libraryPathTails(absolute: string): string[] {
+	const flat = absolute.replaceAll("\\", "/");
+	const tails = [flat];
+	for (let at = flat.indexOf("/"); at >= 0; at = flat.indexOf("/", at + 1))
+		tails.push(flat.slice(at + 1));
+	return tails;
+}
+
 export function libraryPathMatcher(absolute: string | null | undefined) {
 	if (!absolute) return () => false;
-	const flat = absolute.replaceAll("\\", "/");
+	const tails = new Set(libraryPathTails(absolute));
 	return (relative: string | null | undefined) =>
-		Boolean(relative) && (flat === relative || flat.endsWith(`/${relative}`));
+		Boolean(relative) && tails.has(relative as string);
 }

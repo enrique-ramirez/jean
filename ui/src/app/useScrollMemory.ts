@@ -55,8 +55,6 @@ export function useScrollMemory(
 			return undefined;
 		}
 
-		// Remembered as a content offset, and mapped to a scrollTop afresh each frame: over the cap the
-		// mapping depends on the list's height and header, which are not measured until after this runs.
 		const offset = offsets.current.get(viewKey) ?? 0;
 		const targetNow = () => scrollTopOfElement(element, offset);
 		element.scrollTop = targetNow();

@@ -10,7 +10,7 @@ export function useSearchFollowsRoute(
 	const restoredSearch = useRef(false);
 	const {
 		hasQuery,
-		query: committedQuery,
+		committedQuery,
 		commit: commitSearch,
 		remembered: rememberedQuery,
 		restore: restoreSearch,

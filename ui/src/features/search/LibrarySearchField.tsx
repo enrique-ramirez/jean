@@ -1,5 +1,9 @@
 import { Search, X } from "lucide-react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+	type KeyboardEvent as ReactKeyboardEvent,
+	useEffect,
+	useState,
+} from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import type {
 	LibrarySearch,
@@ -79,6 +83,16 @@ export function LibrarySearchField({
 		else onSelect(suggestion);
 	};
 
+	const [enteredOn, setEnteredOn] = useState<string | null>(null);
+	useEffect(() => {
+		if (enteredOn === null) return;
+		if (!isShowing || draft !== enteredOn) return setEnteredOn(null);
+		if (isFiltering) return;
+
+		setEnteredOn(null);
+		commit(hasOptions && preselect >= 0 ? suggestions[preselect] : null);
+	});
+
 	const move = (by: number) => {
 		const { length } = suggestions;
 		if (length === 0) return;
@@ -117,6 +131,8 @@ export function LibrarySearchField({
 
 		if (event.key === "Enter") {
 			event.preventDefault();
+			if (isShowing && isFiltering && active === preselect)
+				return setEnteredOn(draft);
 			commit(hasOptions && active >= 0 ? suggestions[active] : null);
 		}
 	};

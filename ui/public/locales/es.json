@@ -614,6 +614,9 @@
 	"search.stillReading": "Todavía leyendo tu biblioteca",
 	"search.title": "Búsqueda",
 	"search.yourLibrary": "Busca en tu biblioteca",
+	"settings.advanced.keepLibrary": "Guardar la biblioteca en este dispositivo",
+	"settings.advanced.keepLibraryDetail": "Jean abre desde esta copia y pide a foobar2000 solo lo que cambió. Sin esto, descarga la biblioteca entera en cada carga.",
+	"settings.advanced.title": "Avanzado",
 	"settings.appearance.choose": "Tema",
 	"settings.appearance.dark": "Oscuro",
 	"settings.appearance.follow": "El de mi sistema",
@@ -658,6 +661,7 @@
 	"settings.title": "Configuración",
 	"shelf.added.blurb": "Lo nuevo en tu biblioteca estas cuatro semanas",
 	"shelf.added.title": "Agregado hace poco",
+	"shelf.empty": "Todavía no hay nada en este estante.",
 	"shelf.loved.blurb": "Reproducidos hasta gastarlos, y luego olvidados",
 	"shelf.loved.title": "¿Te acuerdas de estos?",
 	"shelf.notSince": "Sin escuchar desde {year}",
@@ -778,6 +782,7 @@
 	"sidebar.playingFromHere": "Sonando desde aquí",
 	"sidebar.playlists": "Playlists",
 	"sidebar.show": "Mostrar las playlists",
+	"skeleton.loading": "Cargando",
 	"span.days": {
 		"one": "{count} día",
 		"other": "{count} días"

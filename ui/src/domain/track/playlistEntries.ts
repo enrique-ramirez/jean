@@ -1,4 +1,5 @@
 import type { LibraryFailure } from "@/shared/api/fooJeanLibrary";
+import type { JlibSpine } from "@/shared/api/jlib";
 import type { StateDocument } from "@/shared/api/state";
 import { type Subscribers, subscribers } from "@/shared/lib/store";
 import { EMPTY_COLUMNS } from "./fields";
@@ -24,6 +25,9 @@ export interface LibraryFeed {
 	kind: "library";
 	structure: number;
 	revision: number;
+	snapshotId: string;
+	apiVersion: number | null;
+	spine: JlibSpine;
 	isChecking: boolean;
 }
 
@@ -37,7 +41,6 @@ export interface PlaylistFeed {
 
 type Feed = LibraryFeed | PlaylistFeed;
 
-// README.md: a `{structure, revision}` pair compares for equality only, never order.
 export type LibraryGeneration = Pick<
 	StateDocument["library"],
 	"structure" | "revision"

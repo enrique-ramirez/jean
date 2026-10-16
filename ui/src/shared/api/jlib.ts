@@ -2,6 +2,7 @@ import type { components } from "./fooJeanSchema";
 
 type Header = components["schemas"]["LibraryHeader"];
 type WireColumn = components["schemas"]["LibraryColumn"];
+type WireDict = NonNullable<WireColumn["dict"]>;
 type WireSection = components["schemas"]["LibrarySection"];
 
 const MAGIC = "JLIB";
@@ -16,6 +17,7 @@ export interface JlibDictionary {
 }
 
 export interface JlibColumn {
+	readonly isLoaded: boolean;
 	readonly ids: Ids;
 	readonly dict: JlibDictionary;
 	readonly distinct: number;
@@ -35,7 +37,7 @@ export interface JlibPatch {
 	readonly allUnresolved: boolean;
 }
 
-interface JlibSpine {
+export interface JlibSpine {
 	readonly directory: JlibColumn;
 	readonly filename: JlibColumn;
 	readonly subsong: JlibColumn;
@@ -45,6 +47,7 @@ export interface JlibSnapshot {
 	readonly kind: "snapshot";
 	readonly structure: number;
 	readonly revision: number;
+	readonly snapshotId: string;
 	readonly trackCount: number;
 	readonly columns: ReadonlyMap<string, JlibColumn>;
 	readonly spine: JlibSpine;
@@ -54,20 +57,43 @@ export interface JlibDelta {
 	readonly kind: "delta";
 	readonly structure: number;
 	readonly revision: number;
+	readonly snapshotId: string;
 	readonly since: number;
 	readonly trackCount: number;
 	readonly columns: ReadonlyMap<string, JlibPatch>;
 	readonly spine: readonly string[];
 }
 
-export type Jlib = JlibSnapshot | JlibDelta;
+export const SPINE_NAMES = ["directory", "filename", "subsong"] as const;
+
+export type SpineName = (typeof SPINE_NAMES)[number];
+
+export interface SpliceRows {
+	readonly removed: Ids;
+	readonly inserted: Ids;
+}
+
+export interface JlibSplice extends SpliceRows {
+	readonly kind: "splice";
+	readonly structure: number;
+	readonly revision: number;
+	readonly snapshotId: string;
+	readonly since: number;
+	readonly sinceStructure: number;
+	readonly trackCount: number;
+	readonly columns: ReadonlyMap<string, JlibPatch>;
+	readonly spine: ReadonlyMap<SpineName, JlibPatch>;
+}
+
+export type Jlib = JlibSnapshot | JlibDelta | JlibSplice;
 
 function refuse(what: string): never {
 	throw new Error(`malformed JLIB: ${what}`);
 }
 
 const ASCII = new TextDecoder("ascii");
-const UTF8 = new TextDecoder();
+// A value that begins with U+FEFF keeps it: a decoder drops a leading byte order mark by default.
+const UTF8 = new TextDecoder("utf-8", { ignoreBOM: true });
 
 const sectionFits = (
 	section: WireSection,
@@ -99,7 +125,7 @@ const sectionOf = (
 const textOf = (
 	buffer: ArrayBuffer,
 	blobAt: number,
-	text: WireColumn["dict"]["text"],
+	text: WireDict["text"],
 	blobBytes: number,
 	what: string,
 ) => {
@@ -127,8 +153,29 @@ export const jlibColumn = (
 	facts: ColumnFacts,
 ): JlibColumn => {
 	const value = columnValue(dict);
-	return { ids, dict, ...facts, value, at: (row) => value(ids[row]) };
+	return {
+		isLoaded: true,
+		ids,
+		dict,
+		...facts,
+		value,
+		at: (row) => value(ids[row]),
+	};
 };
+
+const NO_IDS = new Uint8Array(0);
+
+const NO_ENTRIES: JlibDictionary = { count: 0, of: () => "", appended: [] };
+
+export const unloadedColumn = (facts: ColumnFacts): JlibColumn => ({
+	isLoaded: false,
+	ids: NO_IDS,
+	dict: NO_ENTRIES,
+	...facts,
+	distinct: 0,
+	value: () => "",
+	at: () => "",
+});
 
 const factsOf = (column: WireColumn): ColumnFacts => ({
 	distinct: column.distinct,
@@ -139,7 +186,7 @@ const factsOf = (column: WireColumn): ColumnFacts => ({
 const dictionaryOf = (
 	buffer: ArrayBuffer,
 	blobAt: number,
-	dict: WireColumn["dict"],
+	dict: WireDict,
 	blobBytes: number,
 	what: string,
 ): JlibDictionary => {
@@ -147,9 +194,12 @@ const dictionaryOf = (
 	const text = textOf(buffer, blobAt, dict.text, blobBytes, what);
 	const ends = sectionOf(buffer, blobAt, dict.ends);
 
+	const decoded: (string | undefined)[] = new Array(dict.ends.count);
+
 	return {
 		count: dict.ends.count,
-		of: (id) => UTF8.decode(text.subarray(...spanOf(ends, id))),
+		of: (id) =>
+			(decoded[id] ??= UTF8.decode(text.subarray(...spanOf(ends, id)))),
 		appended: [],
 	};
 };
@@ -161,10 +211,12 @@ const columnOf = (
 	blobBytes: number,
 	what: string,
 ): JlibColumn => {
-	sectionFits(column.ids, blobBytes, `${what} ids`);
+	const { ids, dict } = column;
+	if (!ids || !dict) refuse(`${what} is not carried`);
+	sectionFits(ids, blobBytes, `${what} ids`);
 	return jlibColumn(
-		sectionOf(buffer, blobAt, column.ids),
-		dictionaryOf(buffer, blobAt, column.dict, blobBytes, what),
+		sectionOf(buffer, blobAt, ids),
+		dictionaryOf(buffer, blobAt, dict, blobBytes, what),
 		factsOf(column),
 	);
 };
@@ -172,7 +224,7 @@ const columnOf = (
 const appendedOf = (
 	buffer: ArrayBuffer,
 	blobAt: number,
-	dict: WireColumn["dict"],
+	dict: WireDict,
 	blobBytes: number,
 	what: string,
 ): string[] => {
@@ -192,19 +244,18 @@ const patchOf = (
 	blobBytes: number,
 	what: string,
 ): JlibPatch => {
-	const { ordinals, dict } = column;
+	const { ordinals, ids, dict } = column;
 	if (!ordinals) refuse(`${what} carries no ordinals`);
+	if (!ids || !dict) refuse(`${what} is not carried`);
 	sectionFits(ordinals, blobBytes, `${what} ordinals`);
-	sectionFits(column.ids, blobBytes, `${what} ids`);
-	if (ordinals.count !== column.ids.count)
-		refuse(
-			`${what} has ${ordinals.count} ordinals for ${column.ids.count} ids`,
-		);
+	sectionFits(ids, blobBytes, `${what} ids`);
+	if (ordinals.count !== ids.count)
+		refuse(`${what} has ${ordinals.count} ordinals for ${ids.count} ids`);
 	if (dict.base === undefined) refuse(`${what} carries no dictionary base`);
 
 	return {
 		ordinals: sectionOf(buffer, blobAt, ordinals),
-		ids: sectionOf(buffer, blobAt, column.ids),
+		ids: sectionOf(buffer, blobAt, ids),
 		base: dict.base,
 		appended: appendedOf(buffer, blobAt, dict, blobBytes, what),
 		...factsOf(column),
@@ -226,7 +277,11 @@ const headerOf = (buffer: ArrayBuffer): { header: Header; blobAt: number } => {
 
 	const text = UTF8.decode(new Uint8Array(buffer, BLOB_AT, headerBytes));
 	const header = JSON.parse(text) as Header;
-	if (header.kind !== "snapshot" && header.kind !== "delta")
+	if (
+		header.kind !== "snapshot" &&
+		header.kind !== "delta" &&
+		header.kind !== "splice"
+	)
 		refuse(`kind is ${String(header.kind)}`);
 
 	return { header, blobAt };
@@ -235,12 +290,13 @@ const headerOf = (buffer: ArrayBuffer): { header: Header; blobAt: number } => {
 const spineOf = (
 	buffer: ArrayBuffer,
 	blobAt: number,
-	spine: Header["spine"],
+	header: Header,
 	blobBytes: number,
 ): JlibSpine => {
 	const bone = (name: keyof Header["spine"]) => {
-		const column = spine[name];
+		const column = header.spine[name];
 		if (!column) refuse(`the spine carries no ${name}`);
+		if (header.spineCarried === false) return unloadedColumn(factsOf(column));
 		return columnOf(buffer, blobAt, column, blobBytes, name);
 	};
 
@@ -260,13 +316,53 @@ export function decodeJlib(buffer: ArrayBuffer): Jlib {
 	const { header, blobAt } = headerOf(buffer);
 	const blobBytes = buffer.byteLength - blobAt;
 	const names = namesOf(header);
-	const { kind, structure, revision, trackCount } = header;
+	const { kind, structure, revision, snapshotId, trackCount } = header;
+
+	if (kind === "splice") {
+		const { removed, inserted } = header;
+		if (!removed || !inserted) refuse("a splice with no removed or inserted");
+		sectionFits(removed, blobBytes, "removed");
+		sectionFits(inserted, blobBytes, "inserted");
+
+		return {
+			kind,
+			structure,
+			revision,
+			snapshotId,
+			since: header.since ?? refuse("a splice with no since"),
+			sinceStructure:
+				header.sinceStructure ?? refuse("a splice with no sinceStructure"),
+			trackCount,
+			removed: sectionOf(buffer, blobAt, removed),
+			inserted: sectionOf(buffer, blobAt, inserted),
+			columns: new Map(
+				names.map((name, at) => [
+					name,
+					patchOf(buffer, blobAt, header.columns[at], blobBytes, name),
+				]),
+			),
+			spine: new Map(
+				SPINE_NAMES.flatMap((name) => {
+					const column = header.spine[name];
+					return column
+						? [
+								[
+									name,
+									patchOf(buffer, blobAt, column, blobBytes, name),
+								] as const,
+							]
+						: [];
+				}),
+			),
+		};
+	}
 
 	if (kind === "delta")
 		return {
 			kind,
 			structure,
 			revision,
+			snapshotId,
 			since: header.since ?? refuse("a delta with no since"),
 			trackCount,
 			columns: new Map(
@@ -278,18 +374,23 @@ export function decodeJlib(buffer: ArrayBuffer): Jlib {
 			spine: Object.keys(header.spine),
 		};
 
+	const carried = header.carried ? new Set(header.carried) : null;
+
 	return {
 		kind,
 		structure,
 		revision,
+		snapshotId,
 		trackCount,
 		columns: new Map(
 			names.map((name, at) => [
 				name,
-				columnOf(buffer, blobAt, header.columns[at], blobBytes, name),
+				carried && !carried.has(name)
+					? unloadedColumn(factsOf(header.columns[at]))
+					: columnOf(buffer, blobAt, header.columns[at], blobBytes, name),
 			]),
 		),
-		spine: spineOf(buffer, blobAt, header.spine, blobBytes),
+		spine: spineOf(buffer, blobAt, header, blobBytes),
 	};
 }
 
@@ -313,6 +414,56 @@ const owned = (held: Ids, distinct: number): Ids => {
 	return ids;
 };
 
+function copySpliced(held: Ids, into: Ids, { removed, inserted }: SpliceRows) {
+	let from = 0;
+	let to = 0;
+	let drop = 0;
+	let put = 0;
+	while (to < into.length) {
+		if (put < inserted.length && inserted[put] === to) {
+			put += 1;
+			to += 1;
+		} else if (drop < removed.length && removed[drop] === from) {
+			drop += 1;
+			from += 1;
+		} else {
+			const untilDrop = drop < removed.length ? removed[drop] - from : Infinity;
+			const untilPut = put < inserted.length ? inserted[put] - to : Infinity;
+			const run = Math.min(
+				untilDrop,
+				untilPut,
+				into.length - to,
+				held.length - from,
+			);
+			if (run <= 0) return false;
+			(into as Uint32Array).set(
+				held.subarray(from, from + run) as Uint32Array,
+				to,
+			);
+			from += run;
+			to += run;
+		}
+	}
+	return from + (removed.length - drop) === held.length;
+}
+
+function appendedTo(dict: JlibDictionary, patch: JlibPatch): JlibDictionary {
+	return {
+		count: dict.count,
+		of: dict.of,
+		appended:
+			patch.appended.length === 0
+				? dict.appended
+				: [...dict.appended, ...patch.appended],
+	};
+}
+
+const factsOfPatch = (patch: JlibPatch): ColumnFacts => ({
+	distinct: patch.distinct,
+	hasUnresolved: patch.hasUnresolved,
+	allUnresolved: patch.allUnresolved,
+});
+
 export function patchColumn(
 	held: JlibColumn,
 	patch: JlibPatch,
@@ -326,21 +477,38 @@ export function patchColumn(
 		ids[ordinal] = patch.ids[at];
 	}
 
-	const { dict } = held;
-	return jlibColumn(
-		ids,
-		{
-			count: dict.count,
-			of: dict.of,
-			appended:
-				patch.appended.length === 0
-					? dict.appended
-					: [...dict.appended, ...patch.appended],
-		},
-		{
-			distinct: patch.distinct,
-			hasUnresolved: patch.hasUnresolved,
-			allUnresolved: patch.allUnresolved,
-		},
+	return jlibColumn(ids, appendedTo(held.dict, patch), factsOfPatch(patch));
+}
+
+export function splicedColumn(
+	held: JlibColumn,
+	patch: JlibPatch | undefined,
+	rows: SpliceRows,
+): JlibColumn | null {
+	if (!patch && rows.inserted.length > 0) return null;
+	if (patch && patch.base !== held.distinct) return null;
+
+	const length = held.ids.length - rows.removed.length + rows.inserted.length;
+	const ids = idsOfWidth(
+		Math.max(
+			held.ids.BYTES_PER_ELEMENT,
+			widthFor(Math.max(0, (patch?.distinct ?? held.distinct) - 1)),
+		),
+		length,
 	);
+	if (!copySpliced(held.ids, ids, rows)) return null;
+	if (!patch)
+		return jlibColumn(ids, held.dict, {
+			distinct: held.distinct,
+			hasUnresolved: held.hasUnresolved,
+			allUnresolved: held.allUnresolved,
+		});
+
+	for (let at = 0; at < patch.ordinals.length; at += 1) {
+		const ordinal = patch.ordinals[at];
+		if (ordinal >= length) return null;
+		ids[ordinal] = patch.ids[at];
+	}
+
+	return jlibColumn(ids, appendedTo(held.dict, patch), factsOfPatch(patch));
 }

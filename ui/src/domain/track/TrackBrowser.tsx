@@ -17,7 +17,7 @@ import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { mergeHandlers } from "@/shared/lib/mergeHandlers";
 import { resolveColumns } from "./columns";
 import { useAvailableFields } from "./fieldAvailability";
-import { type AlbumRun, groupByAlbum } from "./grouping";
+import { groupByAlbum } from "./grouping";
 import type { LibrarySource } from "./librarySource";
 import type {
 	ActiveDirection,
@@ -26,6 +26,7 @@ import type {
 	TrackListHandle,
 } from "./listTypes";
 import { NowPlayingPill } from "./NowPlayingPill";
+import { PendingRows } from "./PendingRows";
 import { holdPlayingRow } from "./playingRating";
 import type { TrackRows } from "./project";
 import { setRatingTarget } from "./ratingTarget";
@@ -40,17 +41,6 @@ import { useAlbumDragSource, useTrackDragSource } from "./useTrackDragSource";
 import { useTrackSelection } from "./useTrackSelection";
 
 const PAGE = 12;
-
-const albumRuns = new WeakMap<TrackRows, AlbumRun[]>();
-
-const albumRunsOf = (rows: TrackRows) => {
-	const held = albumRuns.get(rows);
-	if (held) return held;
-
-	const runs = groupByAlbum(rows);
-	albumRuns.set(rows, runs);
-	return runs;
-};
 
 export interface TrackBrowserProps {
 	rows: TrackRows;
@@ -70,6 +60,7 @@ export interface TrackBrowserProps {
 	toolbarLeading?: ReactNode;
 	emptyNotice?: ReactNode;
 	loadingNotice?: ReactNode;
+	hasPendingRows?: boolean;
 	progressLabel?: string;
 	keysEnabled?: boolean;
 	canFollowPlayback?: boolean;
@@ -100,6 +91,7 @@ export function TrackBrowser({
 	toolbarLeading,
 	emptyNotice,
 	loadingNotice,
+	hasPendingRows,
 	progressLabel,
 	keysEnabled = true,
 	canFollowPlayback = false,
@@ -120,7 +112,7 @@ export function TrackBrowser({
 	const selection = useTrackSelection(rows.length, viewKey);
 	const { isAvailable, hasPlayCounts } = useAvailableFields();
 
-	const groups = albumRunsOf(rows);
+	const groups = groupByAlbum(rows);
 	const hasDiscs = useMemo(() => groups.some((group) => group.discs), [groups]);
 
 	const { optional, template, albumTemplate } = useMemo(
@@ -409,7 +401,9 @@ export function TrackBrowser({
 			) : null}
 
 			{rows.length === 0 ? (
-				loadingNotice !== undefined ? (
+				hasPendingRows ? (
+					<PendingRows />
+				) : loadingNotice !== undefined ? (
 					loadingNotice ? (
 						<p className={styles.notice}>{loadingNotice}</p>
 					) : null

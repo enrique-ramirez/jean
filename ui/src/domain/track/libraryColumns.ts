@@ -1,5 +1,6 @@
 import { type JlibColumn, jlibColumn } from "@/shared/api/jlib";
 import type { TrackColumns } from "@/shared/api/types";
+import { finished, SLICE_MASK, type Steps } from "@/shared/lib/idle";
 
 export const UNRESOLVED = "?";
 
@@ -8,6 +9,9 @@ export interface LibraryColumns {
 	readonly trackCount: number;
 	readonly fields: readonly JlibColumn[];
 }
+
+export const isLoaded = (columns: LibraryColumns, fields: readonly number[]) =>
+	fields.every((field) => columns.fields[field].isLoaded);
 
 export function rowAt({ fields }: LibraryColumns, ref: number): TrackColumns {
 	const row: string[] = new Array(fields.length);
@@ -22,8 +26,36 @@ export const someFieldMoved = (
 	after: LibraryColumns,
 ) => fields.some((field) => before.fields[field] !== after.fields[field]);
 
+export function rowsMoved(
+	fields: readonly number[],
+	before: LibraryColumns,
+	after: LibraryColumns,
+): number[] {
+	const moved = new Set<number>();
+	for (const field of fields) {
+		const was = before.fields[field];
+		const now = after.fields[field];
+		if (was === now) continue;
+		for (let ref = 0; ref < now.ids.length; ref += 1)
+			if (was.ids[ref] !== now.ids[ref]) moved.add(ref);
+	}
+	return [...moved].sort((a, b) => a - b);
+}
+
+export function* byValueSteps<T>(
+	column: JlibColumn,
+	of: (raw: string) => T,
+): Steps<T[]> {
+	const values = new Array<T>(column.distinct);
+	for (let id = 0; id < column.distinct; id += 1) {
+		values[id] = of(column.value(id));
+		if ((id & SLICE_MASK) === 0) yield;
+	}
+	return values;
+}
+
 export const byValue = <T>(column: JlibColumn, of: (raw: string) => T): T[] =>
-	Array.from({ length: column.distinct }, (_, id) => of(column.value(id)));
+	finished(byValueSteps(column, of));
 
 const BLOCK = 256;
 

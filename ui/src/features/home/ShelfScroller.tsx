@@ -3,9 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CoveredAlbum } from "@/domain/track/albums";
 import { usePrefersReducedMotion } from "@/shared/hooks/useMediaQuery";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
+import { Skeleton } from "@/shared/ui/Skeleton";
 import { AlbumCard } from "./AlbumCard";
 import styles from "./ShelfRow.module.css";
 import type { FilledShelf } from "./shelves";
+
+const PLACEHOLDER_CARDS = 8;
 
 export function ShelfScroller({
 	shelf,
@@ -70,14 +73,22 @@ export function ShelfScroller({
 				data-more-start={more.start}
 				data-more-end={more.end}
 			>
-				{shelf.albums.map((album) => (
-					<AlbumCard
-						key={album.key}
-						album={album}
-						caption={shelf.caption(album, t, format.locale)}
-						onPlay={() => onPlayAlbum(shelf, album)}
-					/>
-				))}
+				{shelf.isPending
+					? Array.from({ length: PLACEHOLDER_CARDS }, (_, at) => (
+							<Skeleton
+								// biome-ignore lint/suspicious/noArrayIndexKey: placeholders are interchangeable and never reorder
+								key={at}
+								className={styles.placeholder}
+							/>
+						))
+					: shelf.albums.map((album) => (
+							<AlbumCard
+								key={album.key}
+								album={album}
+								caption={shelf.caption(album, t, format.locale)}
+								onPlay={() => onPlayAlbum(shelf, album)}
+							/>
+						))}
 			</div>
 
 			<button

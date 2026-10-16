@@ -12,8 +12,10 @@ import type {
 	TrackColumns,
 } from "@/shared/api/types";
 import type { Translate } from "@/shared/i18n/locale";
+import { finished, SLICE_MASK, type Steps } from "@/shared/lib/idle";
+import { slicedOver } from "./columnCache";
 import {
-	byValue,
+	byValueSteps,
 	type LibraryColumns,
 	libraryColumnsOf,
 	UNRESOLVED,
@@ -45,6 +47,28 @@ const FIELDS = [
 
 export const { expressions: TRACK_EXPRESSIONS, index: FIELD } =
 	fieldTable(FIELDS);
+
+export const CREDIT_TAGS = [
+	FIELD.artists,
+	FIELD.artistIds,
+	FIELD.albumArtists,
+	FIELD.albumArtistIds,
+];
+
+export const LATE_FIELDS = [
+	FIELD.codec,
+	FIELD.bitrate,
+	FIELD.added,
+	...CREDIT_TAGS,
+];
+
+export const LATE_EXPRESSIONS = LATE_FIELDS.map(
+	(field) => TRACK_EXPRESSIONS[field],
+);
+
+export const EARLY_EXPRESSIONS = TRACK_EXPRESSIONS.filter(
+	(expression) => !LATE_EXPRESSIONS.includes(expression),
+);
 
 export const EMPTY_COLUMNS = libraryColumnsOf([], TRACK_EXPRESSIONS.length);
 
@@ -121,24 +145,28 @@ const answerIn = (pair: Pair) => (row: TrackColumns) =>
 export const playCountOf = answerIn(PLAY_COUNT);
 export const lastPlayedOf = answerIn(LAST_PLAYED);
 
-function columnReader(
+function* columnReaderSteps(
 	columns: LibraryColumns,
 	{ scrobbled, local, by }: Pair,
-): (ref: number) => number | null {
+): Steps<(ref: number) => number | null> {
 	const remote = columns.fields[scrobbled];
 	const here = columns.fields[local];
 	const answer = (raw: string) => answerOf(by, raw);
-	const remoteAnswers = byValue(remote, answer);
-	const localAnswers = byValue(here, answer);
+	const remoteAnswers = yield* byValueSteps(remote, answer);
+	const localAnswers = yield* byValueSteps(here, answer);
 	return (ref) =>
 		either(by, remoteAnswers[remote.ids[ref]], localAnswers[here.ids[ref]]);
 }
 
-export const playCountsIn = (columns: LibraryColumns) =>
-	columnReader(columns, PLAY_COUNT);
+const readerIn = (pair: Pair) =>
+	Object.assign(
+		(columns: LibraryColumns) => finished(columnReaderSteps(columns, pair)),
+		{ steps: (columns: LibraryColumns) => columnReaderSteps(columns, pair) },
+	);
 
-export const lastPlayedIn = (columns: LibraryColumns) =>
-	columnReader(columns, LAST_PLAYED);
+export const playCountsIn = readerIn(PLAY_COUNT);
+
+export const lastPlayedIn = readerIn(LAST_PLAYED);
 
 export const withBothSources = (fields: readonly number[]): number[] =>
 	fields.flatMap((field) => {
@@ -208,7 +236,7 @@ interface TagGrouper {
 	readonly keys: string[];
 	readonly names: string[];
 	add: (raw: string) => number;
-	over: (column: JlibColumn) => Int32Array;
+	over: (column: JlibColumn) => Steps<Int32Array>;
 	group: (key: string) => number;
 }
 
@@ -233,28 +261,16 @@ function tagGrouper(): TagGrouper {
 		keys,
 		names,
 		add,
-		over: (column) => {
+		*over(column) {
 			const groups = new Int32Array(column.distinct);
 			for (let id = 0; id < column.distinct; id += 1) {
 				const raw = readValue(column.value(id));
 				groups[id] = raw === null ? -1 : add(raw);
+				if ((id & SLICE_MASK) === 0) yield;
 			}
 			return groups;
 		},
 		group: (key) => byKey.get(key) ?? -1,
-	};
-}
-
-function perColumn<T extends object>(build: (column: JlibColumn) => T) {
-	const built = new WeakMap<JlibColumn, T>();
-
-	return (column: JlibColumn): T => {
-		const held = built.get(column);
-		if (held) return held;
-
-		const fresh = build(column);
-		built.set(column, fresh);
-		return fresh;
 	};
 }
 
@@ -265,15 +281,25 @@ export interface TagGroups {
 	readonly group: (key: string) => number;
 }
 
-export const tagGroups = perColumn((column): TagGroups => {
+const tagGroupsHeld = slicedOver<TagGroups>();
+
+function* tagGroupsSteps(column: JlibColumn): Steps<TagGroups> {
 	const grouper = tagGrouper();
 	return {
 		keys: grouper.keys,
 		names: grouper.names,
-		of: grouper.over(column),
+		of: yield* grouper.over(column),
 		group: grouper.group,
 	};
-});
+}
+
+const tagGroupSteps = (column: JlibColumn) =>
+	tagGroupsHeld.steps([column], () => tagGroupsSteps(column));
+
+export const tagGroups = Object.assign(
+	(column: JlibColumn): TagGroups => finished(tagGroupSteps(column)),
+	{ steps: tagGroupSteps },
+);
 
 export interface GenreGroups {
 	readonly keys: string[];
@@ -302,22 +328,29 @@ export interface ArtistGroups {
 	readonly group: (key: string) => number;
 }
 
-const artistGroupsOver = perColumn((albumArtist) =>
-	perColumn((artist) => groupedArtists(albumArtist, artist)),
+const artistGroupsHeld = slicedOver<ArtistGroups>();
+
+const artistGroupSteps = (columns: LibraryColumns) => {
+	const albumArtist = columns.fields[FIELD.albumArtist];
+	const artist = columns.fields[FIELD.artist];
+	return artistGroupsHeld.steps([albumArtist, artist], () =>
+		groupedArtists(albumArtist, artist),
+	);
+};
+
+export const artistGroups = Object.assign(
+	(columns: LibraryColumns): ArtistGroups =>
+		finished(artistGroupSteps(columns)),
+	{ steps: artistGroupSteps },
 );
 
-export const artistGroups = (columns: LibraryColumns): ArtistGroups =>
-	artistGroupsOver(columns.fields[FIELD.albumArtist])(
-		columns.fields[FIELD.artist],
-	);
-
-function groupedArtists(
+function* groupedArtists(
 	albumArtist: JlibColumn,
 	artist: JlibColumn,
-): ArtistGroups {
+): Steps<ArtistGroups> {
 	const grouper = tagGrouper();
-	const byAlbumArtist = grouper.over(albumArtist);
-	const byArtist = grouper.over(artist);
+	const byAlbumArtist = yield* grouper.over(albumArtist);
+	const byArtist = yield* grouper.over(artist);
 
 	const width = grouper.keys.length + 1;
 

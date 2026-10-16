@@ -46,6 +46,7 @@ const stateDocument = (player: Partial<PlayerSection>): StateDocument => ({
 	library: {
 		ready: true,
 		structure: 1,
+		snapshotId: "0000000000000000",
 		revision: 4,
 		trackCount: 3,
 		columns: ["%title%"],

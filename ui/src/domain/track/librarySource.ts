@@ -3,7 +3,7 @@ import { libraryArtworkUrl, playlistRowArtworkUrl } from "@/shared/api/artwork";
 import { orThrow } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
 import { encodeFill, runsOf } from "@/shared/api/fillEncoding";
-import { libraryPathMatcher } from "@/shared/api/playerState";
+import { libraryPathTails } from "@/shared/api/playerState";
 import {
 	copyPlaylistRows,
 	type Duplicates,
@@ -17,12 +17,8 @@ import type {
 	TrackAddress,
 	TrackIdentity,
 } from "@/shared/api/types";
-import {
-	type AlbumCanonicalIndex,
-	albumCanonicalIndex,
-	canonicalTrackRefs,
-} from "./grouping";
-import type { LibraryColumns } from "./libraryColumns";
+import { overObjects } from "./columnCache";
+import { albumCanonicalIndex, canonicalTrackRefs } from "./grouping";
 import { positionOf } from "./libraryIndex";
 import type { PathTable } from "./pathTable";
 import {
@@ -41,8 +37,6 @@ export interface AddedRows {
 export interface LibrarySourceCommon {
 	playlistId: string | null;
 
-	// A row the media library carries no path for still has a position: `playlistRowArtworkUrl`'s
-	// fallback route.
 	artworkUrl: (ref: number) => string | null;
 
 	addresses: (ref: number) => TrackAddress[];
@@ -63,10 +57,7 @@ export interface LibrarySourceCommon {
 export type LibrarySource =
 	| (LibrarySourceCommon & {
 			kind: "library";
-			// `target` is the title to give the scratch playlist: the component resolves and titles that
-			// playlist itself, in the same call that fills it, so there is no id to pass in ahead of the
-			// call. Answers the GUID the fill landed in and the structure it left the playlist at, or
-			// null where the caller must resolve the id another way.
+			// The component resolves and titles the scratch playlist in the same call that fills it.
 			fill: (target: string, refs: Refs) => Promise<Filled | null>;
 	  })
 	| (LibrarySourceCommon & { kind: "playlist" });
@@ -89,7 +80,6 @@ export interface Filled {
 type PlaylistOptions = PlaylistAddresses & {
 	playlistId: string;
 	origin?: string | null;
-	// ARCHITECTURE.md, *The two seams*: the generation the rows on screen were read at.
 	structure?: string | null;
 };
 
@@ -140,48 +130,28 @@ const queueLibraryTracks =
 		request: encodeFill(refs, { structure, trackCount: paths.length }),
 	});
 
-// One album, one address, everywhere: a cover is asked for at its record's earliest track rather than
-// whichever row a view happened to reach it through. Keyed by `LibraryColumns` identity, which changes
-// only when a chunk lands or the library rebuilds, so a scroll or a re-render costs nothing here.
-const canonicalRefsByColumns = new WeakMap<LibraryColumns, Int32Array>();
-
-const canonicalRefsOf = (columns: LibraryColumns): Int32Array => {
-	let refs = canonicalRefsByColumns.get(columns);
-	if (!refs) {
-		refs = canonicalTrackRefs(columns);
-		canonicalRefsByColumns.set(columns, refs);
-	}
-	return refs;
-};
-
-// The playlist source only ever knows a row's own path, never its tags, so the same canonicalisation
-// is reached through the library snapshot's own paths instead of through refs -- a playlist need not
-// hold the record's earliest track for this to still find it.
-const canonicalPathsByColumns = new WeakMap<
-	LibraryColumns,
-	Map<string, string>
->();
+const canonicalPaths = overObjects<Map<string, string>>();
 
 const canonicalPathOf = (snapshot: PlaylistSnapshot, path: string): string => {
 	const paths = snapshot.paths;
 	if (!paths) return path;
 
-	let byPath = canonicalPathsByColumns.get(snapshot.columns);
+	const refs = canonicalTrackRefs(snapshot.columns);
+	const keys = [refs, paths];
+	let byPath = canonicalPaths.get(keys);
 	if (!byPath) {
 		byPath = new Map<string, string>();
-		const refs = canonicalRefsOf(snapshot.columns);
 		for (let ref = 0; ref < refs.length; ref += 1) {
 			const own = paths.at(ref);
 			const canonical = own ? paths.at(refs[ref]) : "";
 			if (own && canonical) byPath.set(own, canonical);
 		}
-		canonicalPathsByColumns.set(snapshot.columns, byPath);
+		canonicalPaths.set(keys, byPath);
 	}
 
 	return byPath.get(path) ?? path;
 };
 
-// `shared/api/README.md`, *What Jean does about the library*, has why both halves are asked.
 export const libraryAddressesResolve = (
 	origin: string | null,
 	exportHeldWhenLibraryUnbuilt: number | null,
@@ -192,9 +162,6 @@ export const libraryAddressesResolve = (
 	return paths !== null && structure !== exportHeldWhenLibraryUnbuilt;
 };
 
-// The playing surfaces resolve a raw library path to its record's canonical one on the same terms a
-// playlist row does, so the status bar, the now-playing screen and a playlist row never disagree
-// about which address a shared record answers to.
 export function canonicalArtworkUrl(
 	origin: string | null,
 	path: string,
@@ -208,23 +175,6 @@ export function canonicalArtworkUrl(
 	);
 }
 
-// The playing surfaces already have the playing track's album and album artist, from
-// `PlayerState.activeItem` on every poll tick: this resolves that to the record's canonical address
-// against the library index already held, at no request of its own. Keyed by `LibraryColumns`
-// identity, the same as the other per-snapshot caches above.
-const albumIndexByColumns = new WeakMap<LibraryColumns, AlbumCanonicalIndex>();
-
-const albumIndexOf = (columns: LibraryColumns): AlbumCanonicalIndex => {
-	let index = albumIndexByColumns.get(columns);
-	if (!index) {
-		index = albumCanonicalIndex(columns);
-		albumIndexByColumns.set(columns, index);
-	}
-	return index;
-};
-
-// `credited` is the album artist, falling back to the artist, the way the library groups them:
-// the caller resolves that fallback, since only it knows which of the two strings it read.
 export function canonicalPlayingArtworkUrl(
 	origin: string | null,
 	album: string,
@@ -235,11 +185,57 @@ export function canonicalPlayingArtworkUrl(
 	const snapshot = playlistSnapshot(componentLibraryKey(origin));
 	if (!snapshot.paths) return null;
 
-	const ref = albumIndexOf(snapshot.columns).refFor(album, credited);
+	const ref = albumCanonicalIndex(snapshot.columns).refFor(album, credited);
 	if (ref === null) return null;
 
 	const canonical = snapshot.paths.at(ref);
 	return canonical ? libraryArtworkUrl(origin, canonical) : null;
+}
+
+function playingPositionIn(paths: PathTable, subsongs: Int32Array) {
+	let refsByPath: Map<string, number[]> | null = null;
+	const placesByView = new WeakMap<Refs, Int32Array>();
+
+	const refsOfPath = () => {
+		if (refsByPath) return refsByPath;
+		refsByPath = new Map();
+		for (let ref = 0; ref < paths.length; ref += 1) {
+			const path = paths.at(ref);
+			if (!path) continue;
+			const held = refsByPath.get(path);
+			if (held) held.push(ref);
+			else refsByPath.set(path, [ref]);
+		}
+		return refsByPath;
+	};
+
+	const placesIn = (refs: Refs) => {
+		let places = placesByView.get(refs);
+		if (!places) {
+			places = new Int32Array(paths.length).fill(-1);
+			for (let place = 0; place < refs.length; place += 1)
+				if (places[refs[place]] === -1) places[refs[place]] = place;
+			placesByView.set(refs, places);
+		}
+		return places;
+	};
+
+	return (refs: Refs, track: TrackIdentity | null | undefined) => {
+		if (!track?.path || !paths || !subsongs) return -1;
+
+		const subsong = track.subsong ?? 0;
+		const places = placesIn(refs);
+		const candidates = libraryPathTails(track.path);
+
+		let first = -1;
+		for (const candidate of candidates)
+			for (const ref of refsOfPath().get(candidate) ?? []) {
+				const place = places[ref];
+				if (subsongs[ref] !== subsong || place < 0) continue;
+				first = first < 0 ? place : Math.min(first, place);
+			}
+		return first;
+	};
 }
 
 const fromMediaLibrary = ({
@@ -247,17 +243,12 @@ const fromMediaLibrary = ({
 	subsongs,
 	artworkOrigin,
 }: MediaLibraryOptions): Extract<LibrarySource, { kind: "library" }> => {
-	// Read once, alongside `paths`: `structure` and the canonical-ref table both describe the same
-	// snapshot, and reading either again later could see a rebuild `paths` has not, resolving refs
-	// against a generation they do not name.
 	const snapshot = artworkOrigin
 		? playlistSnapshot(componentLibraryKey(artworkOrigin))
 		: null;
 	const structure = snapshot ? snapshot.structure : 0;
-	const canonicalRefs = snapshot ? canonicalRefsOf(snapshot.columns) : null;
+	const canonicalRefs = snapshot ? canonicalTrackRefs(snapshot.columns) : null;
 
-	// The row's own path, never the album's canonical one `artworkUrl` asks for: a write lands on the
-	// track under the cursor.
 	const addresses = (ref: number): TrackAddress[] => {
 		const track = paths.at(ref);
 		return track
@@ -283,16 +274,7 @@ const fromMediaLibrary = ({
 
 		addTo: addToPlaylist(paths, artworkOrigin, structure),
 
-		// Linear, where the playlist source bisects: path order is not ref order.
-		playingPosition: (refs: Refs, track: TrackIdentity | null | undefined) => {
-			if (!track?.path) return -1;
-			const matches = libraryPathMatcher(track.path);
-			const subsong = track.subsong ?? 0;
-			return Array.prototype.findIndex.call(
-				refs,
-				(ref: number) => subsongs[ref] === subsong && matches(paths.at(ref)),
-			);
-		},
+		playingPosition: playingPositionIn(paths, subsongs),
 	};
 };
 
@@ -360,8 +342,6 @@ const fromPlaylist = (
 			);
 		},
 
-		// Index is identity in a playlist, so this can only answer while the player is inside the
-		// playlist being browsed. Refs arrive ascending, so it bisects.
 		playingPosition: (
 			refs: Refs,
 			_track: TrackIdentity | null | undefined,

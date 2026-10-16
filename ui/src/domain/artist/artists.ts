@@ -1,4 +1,6 @@
+import { overColumnsByName } from "@/domain/track/columnCache";
 import {
+	CREDIT_TAGS,
 	collapseRepeatedTag,
 	creditedArtists,
 	FIELD,
@@ -7,8 +9,13 @@ import {
 	tagKey,
 } from "@/domain/track/fields";
 import { growingIndex } from "@/domain/track/growingIndex";
-import { byValue, type LibraryColumns } from "@/domain/track/libraryColumns";
+import {
+	byValue,
+	isLoaded,
+	type LibraryColumns,
+} from "@/domain/track/libraryColumns";
 import type { TrackRows } from "@/domain/track/project";
+import { finished, SLICE_MASK, type Steps } from "@/shared/lib/idle";
 import { type FuzzyKey, fuzzyKey } from "@/shared/lib/text";
 import { CREDIT_FIELDS, creditMembers, type Member } from "./credits";
 
@@ -68,16 +75,15 @@ const albumArtistOf = (raw: string): Credited => {
  */
 const absorbing =
 	(guesses: boolean) =>
-	(byKey: Map<string, Draft>, rows: TrackRows, from: number) => {
+	(byKey: Map<string, Draft>, rows: TrackRows, from: number) =>
 		absorb(byKey, rows, from, guesses);
-	};
 
-function absorb(
+function* absorb(
 	byKey: Map<string, Draft>,
 	rows: TrackRows,
 	from: number,
 	guesses: boolean,
-) {
+): Steps<void> {
 	const { columns } = rows;
 	const members = creditMembers(columns, guesses);
 	const artist = columns.fields[FIELD.artist];
@@ -118,6 +124,7 @@ function absorb(
 	};
 
 	for (let position = from; position < rows.length; position += 1) {
+		if ((position & SLICE_MASK) === 0) yield;
 		const ref = rows.ref(position);
 		const credited = credits[artist.ids[ref]];
 		const act = acts[albumArtist.ids[ref]];
@@ -165,7 +172,7 @@ const derive = (byKey: Map<string, Draft>): Artist[] =>
 
 export function artistsOf(rows: TrackRows, guesses: boolean): Artist[] {
 	const byKey = new Map<string, Draft>();
-	absorb(byKey, rows, 0, guesses);
+	finished(absorb(byKey, rows, 0, guesses));
 	return derive(byKey);
 }
 
@@ -174,11 +181,16 @@ const CREDITED = [...CREDIT_FIELDS, FIELD.album];
 const guessing = growingIndex(CREDITED, absorbing(true), derive);
 const notGuessing = growingIndex(CREDITED, absorbing(false), derive);
 
+const NO_ARTISTS: Artist[] = [];
+
 export const artistIndex = (
 	key: string,
 	columns: LibraryColumns,
 	guesses: boolean,
-) => (guesses ? guessing : notGuessing)(key, columns);
+) =>
+	isLoaded(columns, CREDIT_TAGS)
+		? (guesses ? guessing : notGuessing)(key, columns)
+		: NO_ARTISTS;
 
 export interface ArtistTracks {
 	own: Int32Array;
@@ -189,13 +201,19 @@ export interface ArtistTracks {
 	all: Int32Array;
 }
 
-export function refsOfArtist(
+export const refsOfArtist = overColumnsByName(
+	CREDIT_FIELDS,
+	(artist: string, guesses: boolean) => `${guesses}:${tagKey(artist)}`,
+	artistRefs,
+);
+
+function artistRefs(
 	columns: LibraryColumns,
 	artist: string,
 	guesses: boolean,
 ): ArtistTracks {
 	const wanted = tagKey(artist);
-	if (!wanted)
+	if (!wanted || !isLoaded(columns, CREDIT_TAGS))
 		return {
 			own: new Int32Array(0),
 			shared: new Int32Array(0),

@@ -13,6 +13,7 @@
 #include <ranges>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -142,12 +143,12 @@ json summaryOf(const SummaryInput& input, const int64_t nowMs) {
     return json::parse(summaryText(input, nowMs));
 }
 
-const json& namedCase(const std::string& name) {
+const json& namedCase(const std::string_view name) {
     const json& cases = librarySummaryCases().at("cases");
-    const auto found = std::find_if(cases.begin(), cases.end(), [&name](const json& summaryCase) {
-        return summaryCase.at("name") == name;
+    const auto found = std::find_if(cases.begin(), cases.end(), [name](const json& summaryCase) {
+        return summaryCase.at("name").get_ref<const std::string&>() == name;
     });
-    REQUIRE_MESSAGE(found != cases.end(), "the cases file holds no case named ", name);
+    REQUIRE_MESSAGE(found != cases.end(), "the cases file holds no case named ", std::string(name));
     return *found;
 }
 

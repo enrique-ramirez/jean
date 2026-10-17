@@ -6,6 +6,7 @@
 
 #include "third_party/doctest.h"
 
+#include "core/library.h"
 #include "support/fixtures.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
@@ -27,6 +28,11 @@ namespace {
 constexpr int kPlaylistBurst = 30;
 constexpr int kTagWriteBurst = 200;
 constexpr int kPreviewBurst = 30;
+
+constexpr int kSummaryBurst = 200;
+
+constexpr char kSummary[] = "/api/library/summary?title=%25title%25";
+constexpr char kSummaryOfNoRole[] = "/api/library/summary?colour=%25title%25";
 
 constexpr char kSourcePlaylistId[] = "9b1c2e30-7d4a-4f6e-8a21-3c5d6e7f8091";
 
@@ -177,4 +183,50 @@ TEST_CASE("a query preview the player cannot run spends none of the preview budg
                        }};
 
     CHECK(statusesOf(server, preview, kPreviewBurst + 1) == std::set<int>{503});
+}
+
+TEST_CASE("a summary refused for its roles spends none of the summary budget") {
+    Library library;
+    const TestServer server(servingSettings(), Player{}, &library);
+
+    const Edit noRole{"a summary of a role that is none",
+                      [](const TestServer& serving) { return get(serving, kSummaryOfNoRole); }};
+    CHECK(statusesOf(server, noRole, kSummaryBurst + 1) == std::set<int>{400});
+
+    const auto asked = get(server, kSummary);
+    REQUIRE(asked);
+    CHECK(asked->status == 202);
+}
+
+TEST_CASE("a summary the component cannot serve spends none of the summary budget") {
+    const TestServer server;
+
+    const Edit summary{"a summary with no media library",
+                       [](const TestServer& serving) { return get(serving, kSummary); }};
+    CHECK(statusesOf(server, summary, kSummaryBurst + 1) == std::set<int>{503});
+
+    const auto noRole = get(server, kSummaryOfNoRole);
+    REQUIRE(noRole);
+    CHECK(noRole->status == 400);
+}
+
+TEST_CASE("summaries past their own budget are refused with a 429 that says how long to wait") {
+    Library library;
+    const TestServer server(servingSettings(), Player{}, &library);
+
+    const Edit summary{"a summary before the snapshot is built",
+                       [](const TestServer& serving) { return get(serving, kSummary); }};
+    CHECK(statusesOf(server, summary, kSummaryBurst) == std::set<int>{202});
+
+    const auto refused = get(server, kSummary);
+    REQUIRE(refused);
+    CHECK(refused->status == 429);
+    CHECK(errorOf(*refused) == "too many library summary reads");
+    const auto wait = refused->get_header_value("Retry-After");
+    CHECK_FALSE(wait.empty());
+    CHECK(wait.find_first_not_of("0123456789") == std::string::npos);
+
+    const auto delta = get(server, "/api/library/changes?since=0&structure=0");
+    REQUIRE(delta);
+    CHECK(delta->status != 429);
 }

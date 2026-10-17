@@ -23,6 +23,9 @@ const std::vector<PlatformFile>& platformFiles() {
          {Seam::conditional, Seam::systemHeader},
          "the socket's address option and its error codes, which differ between Windows and POSIX, "
          "and the list of this machine's addresses"},
+        {"plugins/fb2k/src/core/local_time.cpp",
+         {Seam::conditional},
+         "the thread-safe local time, localtime_s on Windows and localtime_r elsewhere"},
         {"plugins/fb2k/src/fb2k/aac_encoder.cpp",
          {Seam::systemHeader},
          "Media Foundation, the AAC encoder"},

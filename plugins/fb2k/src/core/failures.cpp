@@ -153,6 +153,10 @@ std::string describe(LibraryRefusal refusal) {
             return "column not declared";
         case LibraryRefusal::badSpine:
             return "unacceptable spine";
+        case LibraryRefusal::badRole:
+            return "unacceptable role";
+        case LibraryRefusal::duplicateRole:
+            return "duplicate role";
     }
     return "unknown";
 }
@@ -298,6 +302,8 @@ int httpStatusFor(LibraryRefusal refusal) {
         case LibraryRefusal::badSince:
         case LibraryRefusal::columnNotDeclared:
         case LibraryRefusal::badSpine:
+        case LibraryRefusal::badRole:
+        case LibraryRefusal::duplicateRole:
             return 400;
     }
     return 400;
@@ -324,6 +330,10 @@ int httpStatusFor(DeltaOutcome outcome) {
 
 std::string errorDocument(const std::string& message) {
     return json{{"error", message}}.dump();
+}
+
+std::string undeclaredColumnMessage(const std::string& expression) {
+    return "'" + expression + "' is not a declared column";
 }
 
 std::string failureDocument(PlayerOutcome outcome, const std::string& detail) {

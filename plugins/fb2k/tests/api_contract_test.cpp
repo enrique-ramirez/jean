@@ -7,12 +7,14 @@
 #include "third_party/doctest.h"
 
 #include "core/documents.h"
+#include "core/library_summary.h"
 #include "core/outputs.h"
 #include "support/fixtures.h"
 #include "support/keys.h"
 #include "support/repository.h"
 #include "support/spec.h"
 #include "support/streams.h"
+#include "support/summary_library.h"
 #include "support/test_server.h"
 #include "support/wire.h"
 #include "third_party/json.hpp"
@@ -516,6 +518,47 @@ TEST_CASE("the library answers are the shapes contract/openapi.yaml publishes") 
     // No libraryPath: the caller supplied the address, so the answer carries only what it did
     // not already have.
     CHECK(keysOf(libraryTrackDocument({"Imaginary Track", "Fictional Artist"})) == Keys{"columns"});
+}
+
+// LibrarySummary and every schema inside it are `additionalProperties: false`, so each `required`
+// list is the whole of what MUST be present and the whole of what MAY be.
+TEST_CASE("a library summary is the shape contract/openapi.yaml publishes") {
+    INFO(kUpdateSpec);
+
+    const auto published = [](const std::string& schema, const std::string& property = {}) {
+        const auto required = publishedRequired(schema, property);
+        return Keys(required.begin(), required.end());
+    };
+
+    Snapshot snapshot = summarySnapshot();
+    snapshot.structure = 1;
+    snapshot.revision = 1;
+    const auto document =
+        json::parse(summariseLibrary(snapshot, summaryRolesFor(everyRole()),
+                                     localNoon(kSummaryDate), localTimeOn(kSummaryDate)));
+
+    CHECK(keysOf(document) == published("LibrarySummary"));
+
+    REQUIRE_FALSE(document.at("topGenres").empty());
+    CHECK(keysOf(document.at("topGenres").at(0)) == published("LibrarySummary", "topGenres"));
+
+    REQUIRE_FALSE(document.at("topTracks").empty());
+    CHECK(keysOf(document.at("topTracks").at(0)) == published("SummaryTrack"));
+
+    REQUIRE(document.at("topAlbum").is_object());
+    CHECK(keysOf(document.at("topAlbum")) == published("SummaryAlbum"));
+
+    REQUIRE(document.at("topArtist").is_object());
+    CHECK(keysOf(document.at("topArtist")) == published("SummaryArtist"));
+    CHECK(keysOf(document.at("topArtist").at("cover")) == published("SummaryAlbum"));
+
+    REQUIRE_FALSE(document.at("shelves").empty());
+    for (const auto& shelf : document.at("shelves")) {
+        INFO("shelf: ", shelf.value("id", std::string()));
+        CHECK(keysOf(shelf) == published("SummaryShelf"));
+        REQUIRE_FALSE(shelf.at("albums").empty());
+        CHECK(keysOf(shelf.at("albums").at(0)) == published("SummaryAlbum"));
+    }
 }
 
 TEST_CASE("a library being built carries its progress in the shape LibraryBuild publishes") {

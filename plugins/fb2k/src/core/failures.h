@@ -52,6 +52,7 @@ constexpr char kPollingTooFast[] = "too many state polls";
 constexpr char kFetchingArtworkTooFast[] = "too many artwork requests";
 constexpr char kReadingTracksTooFast[] = "too many track reads";
 constexpr char kReadingChangesTooFast[] = "too many library delta reads";
+constexpr char kReadingSummariesTooFast[] = "too many library summary reads";
 
 // The `detail` beside PlaylistRefusal::tooFast where a route names which budget ran out.
 constexpr char kChangingPlaylistsTooFast[] =
@@ -96,6 +97,8 @@ int httpStatusFor(LibraryRefusal refusal);
 int httpStatusFor(DeltaOutcome outcome);
 
 std::string errorDocument(const std::string& message);
+
+std::string undeclaredColumnMessage(const std::string& expression);
 
 // Nothing here describes the player's internals: the detail is empty except for an
 // unreadable query, where it is foobar2000's own message about text the client sent, and a

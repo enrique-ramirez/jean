@@ -12,6 +12,10 @@ enum class Need { required, optional };
 
 std::string toLower(std::string value);
 
+// The key a browser gives a tag: trimmed, lower-cased as String.prototype.toLowerCase does, and
+// with each run of ECMAScript whitespace replaced by one space.
+std::string tagKey(std::string_view tag);
+
 std::string toHex(std::span<const unsigned char> bytes);
 
 // The non-empty elements of a delimited header field, each trimmed of the optional whitespace

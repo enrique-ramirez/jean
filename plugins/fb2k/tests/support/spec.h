@@ -28,6 +28,9 @@ std::string dialable(const std::string& path);
 
 std::vector<std::string> publishedEnum(const std::string& schema, const std::string& property);
 
+std::vector<std::string> publishedRequired(const std::string& schema,
+                                           const std::string& property = {});
+
 // Every `error` a response example shows, with the statuses it is shown under, across every
 // route and every shared response a route refers to.
 std::map<std::string, std::set<int>> publishedErrorExamples();

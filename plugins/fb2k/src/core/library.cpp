@@ -10,6 +10,7 @@
 #include <numeric>
 #include <random>
 #include <set>
+#include <shared_mutex>
 
 using nlohmann::json;
 
@@ -543,6 +544,12 @@ size_t serialisedBytes(const Snapshot& snapshot) {
         .total();
 }
 
+uint64_t splitMixFinalised(uint64_t z) {
+    z = (z ^ (z >> 30U)) * 0xbf58476d1ce4e5b9ULL;
+    z = (z ^ (z >> 27U)) * 0x94d049bb133111ebULL;
+    return z ^ (z >> 31U);
+}
+
 namespace {
 
 size_t serialisedBytes(const Delta& delta) {
@@ -589,28 +596,22 @@ uint64_t fnvDecimal(uint64_t hash, uint64_t number) {
     return fnvText(hash, std::to_string(number));
 }
 
-// FNV-1a's terms are too regular to add: two cells whose last byte changes in the same bit would
-// cancel, so each term goes through SplitMix64's finaliser first.
-uint64_t finalised(uint64_t z) {
-    z = (z ^ (z >> 30U)) * 0xbf58476d1ce4e5b9ULL;
-    z = (z ^ (z >> 27U)) * 0x94d049bb133111ebULL;
-    return z ^ (z >> 31U);
-}
-
 uint64_t columnSeed(size_t field, const std::string& name) {
     const uint64_t prefixed =
         fnvByte(kFnvBasis, field < kSpineFieldCount ? kSpinePrefix : kDeclaredPrefix);
     return fnvByte(fnvText(prefixed, name), 0);
 }
 
+// FNV-1a's terms are too regular to add: two cells whose last byte changes in the same bit would
+// cancel, so each term goes through SplitMix64's finaliser first.
 uint64_t cellTerm(uint64_t seed, size_t ordinal, std::string_view value) {
     const uint64_t placed = fnvByte(fnvDecimal(seed, ordinal), 0);
-    return finalised(value == kUnresolved ? fnvByte(placed, kUnresolvedByte)
-                                          : fnvText(placed, value));
+    return splitMixFinalised(value == kUnresolved ? fnvByte(placed, kUnresolvedByte)
+                                                  : fnvText(placed, value));
 }
 
 uint64_t countTerm(size_t trackCount) {
-    return finalised(fnvDecimal(fnvByte(kFnvBasis, kCountPrefix), trackCount));
+    return splitMixFinalised(fnvDecimal(fnvByte(kFnvBasis, kCountPrefix), trackCount));
 }
 
 uint64_t foldSnapshot(const Snapshot& snapshot) {
@@ -672,7 +673,7 @@ std::vector<RowChange> Library::rowChangesBetween(const Snapshot& current, const
 }
 
 std::shared_ptr<const Snapshot> Library::current() const {
-    const std::lock_guard<std::mutex> lock(mutex_);
+    const std::shared_lock<std::shared_mutex> lock(mutex_);
     return snapshot_;
 }
 
@@ -698,7 +699,7 @@ void Library::replace(Snapshot snapshot) {
     landed->snapshotId = foldSnapshot(*landed);
 
     const std::lock_guard<std::mutex> exporting(exportLock_);
-    const std::lock_guard<std::mutex> lock(mutex_);
+    const std::lock_guard<std::shared_mutex> lock(mutex_);
     lastExport_ = Export{};
     heldParts_.clear();
 
@@ -724,7 +725,7 @@ void Library::replace(Snapshot snapshot) {
 
 uint64_t Library::apply(const std::vector<RowChange>& changes) {
     const std::lock_guard<std::mutex> exporting(exportLock_);
-    const std::lock_guard<std::mutex> lock(mutex_);
+    const std::lock_guard<std::shared_mutex> lock(mutex_);
     if (snapshot_->structure == 0)
         return 0;
 
@@ -781,26 +782,26 @@ uint64_t Library::apply(const std::vector<RowChange>& changes) {
 }
 
 void Library::reportBuild(BuildProgress progress) {
-    const std::lock_guard<std::mutex> lock(mutex_);
+    const std::lock_guard<std::shared_mutex> lock(mutex_);
     building_ = true;
     build_ = progress;
 }
 
 void Library::endBuild() {
-    const std::lock_guard<std::mutex> lock(mutex_);
+    const std::lock_guard<std::shared_mutex> lock(mutex_);
     building_ = false;
     build_ = BuildProgress{};
 }
 
 void Library::reportHalted() {
-    const std::lock_guard<std::mutex> lock(mutex_);
+    const std::lock_guard<std::shared_mutex> lock(mutex_);
     halted_ = true;
     building_ = false;
     build_ = BuildProgress{};
 }
 
 Library::State Library::state() const {
-    const std::lock_guard<std::mutex> lock(mutex_);
+    const std::shared_lock<std::shared_mutex> lock(mutex_);
 
     State state;
     state.ready = snapshot_->structure > 0;
@@ -824,7 +825,7 @@ Library::Export Library::exported(const ExportPart& part) const {
 
     std::shared_ptr<const Snapshot> reading;
     {
-        const std::lock_guard<std::mutex> lock(mutex_);
+        const std::shared_lock<std::shared_mutex> lock(mutex_);
         reading = snapshot_;
     }
 
@@ -925,7 +926,7 @@ std::optional<Library::SpliceInput> Library::spliceInputFrom(uint64_t since) con
 
 Library::Changes Library::changes(uint64_t structure, uint64_t since) const {
     {
-        const std::lock_guard<std::mutex> lock(mutex_);
+        const std::shared_lock<std::shared_mutex> lock(mutex_);
         if (const auto answer = answerWithoutSplice(structure, since))
             return *answer;
     }
@@ -934,7 +935,7 @@ Library::Changes Library::changes(uint64_t structure, uint64_t since) const {
 
     std::optional<SpliceInput> input;
     {
-        const std::lock_guard<std::mutex> lock(mutex_);
+        const std::shared_lock<std::shared_mutex> lock(mutex_);
         if (const auto answer = answerWithoutSplice(structure, since))
             return *answer;
         input = spliceInputFrom(since);

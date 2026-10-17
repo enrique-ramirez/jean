@@ -416,6 +416,57 @@ std::vector<std::string> publishedEnum(const std::string& schema, const std::str
     return values;
 }
 
+std::vector<std::string> publishedRequired(const std::string& schema, const std::string& property) {
+    constexpr size_t kSchemasIndent = 2;
+    constexpr size_t kSchemaIndent = 4;
+    constexpr size_t kSchemaKeyIndent = 6;
+    constexpr size_t kPropertyIndent = 8;
+    const std::string listOpens = "required: [";
+
+    bool inSchemas = false;
+    bool inSchema = false;
+    bool inProperties = false;
+    bool inProperty = false;
+
+    for (const auto& line : specLines()) {
+        const auto indent = indentOf(line);
+        if (indent == std::string::npos)
+            continue;
+
+        if (!inSchemas) {
+            inSchemas = keyAt(line, kSchemasIndent, "schemas:");
+            continue;
+        }
+        if (indent < kSchemaIndent)
+            break;
+
+        if (indent == kSchemaIndent) {
+            inSchema = keyAt(line, kSchemaIndent, schema + ":");
+            inProperties = inProperty = false;
+            continue;
+        }
+        if (!inSchema)
+            continue;
+
+        if (indent == kSchemaKeyIndent) {
+            inProperties = keyAt(line, kSchemaKeyIndent, "properties:");
+            inProperty = false;
+        } else if (inProperties && indent == kPropertyIndent) {
+            inProperty = !property.empty() && keyAt(line, kPropertyIndent, property + ":");
+            continue;
+        }
+
+        const bool wanted = property.empty() ? indent == kSchemaKeyIndent : inProperty;
+        const auto text = line.substr(indent);
+        if (wanted && startsWith(text, listOpens) && text.back() == ']')
+            return flowItems(text.substr(listOpens.size(), text.size() - listOpens.size() - 1));
+    }
+
+    FAIL("contract/openapi.yaml publishes no required list at ", schema,
+         property.empty() ? "" : "." + property);
+    return {};
+}
+
 // Scoped to `/state`'s own block first, the same way `publishedRoutes` scopes to `paths:`
 // before it reads anything, so an example of this name under a different route cannot be
 // mistaken for this one. It does not descend further, into `get`, `responses`, `"200"` and

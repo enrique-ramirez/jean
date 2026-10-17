@@ -1,9 +1,13 @@
 #include "third_party/doctest.h"
 
 #include "core/text.h"
+#include "support/summary_cases.h"
 
 #include <array>
 #include <span>
+#include <string>
+#include <string_view>
+#include <vector>
 
 using namespace jean;
 
@@ -37,4 +41,56 @@ TEST_CASE(
     CHECK(forwardSlashed("loose.mp3", '/') == "loose.mp3");
     CHECK(forwardSlashed("", '\\').empty());
     CHECK(forwardSlashed("", '/').empty());
+}
+
+// Spelled as bytes: MSVC reads a source file without a byte order mark in the system code page, and
+// a universal character name in a narrow literal is converted to that page.
+namespace {
+constexpr char kNoBreakSpace[] = "\xc2\xa0";
+constexpr char kIdeographicSpace[] = "\xe3\x80\x80";
+constexpr char kCombiningDotAbove[] = "\xcc\x87";
+}  // namespace
+
+// Each verdict is a JavaScript engine's, from String.prototype.toLowerCase and ECMAScript's \s, so
+// a browser and foo_jean put the same tags in one album.
+TEST_CASE("two tags share a key exactly when the cases file says they match") {
+    const nlohmann::json& pairs = jean::testing::librarySummaryCases().at("keys");
+    REQUIRE(!pairs.empty());
+
+    for (const nlohmann::json& pair : pairs) {
+        const std::string a = pair.at("a").get<std::string>();
+        const std::string b = pair.at("b").get<std::string>();
+        CAPTURE(a);
+        CAPTURE(b);
+        CAPTURE(tagKey(a));
+        CAPTURE(tagKey(b));
+        CHECK((tagKey(a) == tagKey(b)) == pair.at("match").get<bool>());
+    }
+}
+
+TEST_CASE("a tag's key is trimmed, lower-cased and has one space for each run of whitespace") {
+    CHECK(tagKey("  Été  ") == "été");
+    CHECK(tagKey("A\t\tB") == "a b");
+    CHECK(tagKey(std::string("a") + kNoBreakSpace + kIdeographicSpace + "b") == "a b");
+    CHECK(tagKey(std::string(kNoBreakSpace) + "a" + kIdeographicSpace) == "a");
+    CHECK(tagKey("").empty());
+}
+
+TEST_CASE("a tag lower-cases as ECMAScript's toLowerCase does, past the one-to-one letters") {
+    CHECK(tagKey("ΟΔΥΣΣΕΥΣ") == "οδυσσευς");
+    CHECK(tagKey("İ") == std::string("i") + kCombiningDotAbove);
+    CHECK(tagKey("ẞ") == "ß");
+    CHECK(tagKey("🎵") == "🎵");
+}
+
+// A tag is whatever bytes foobar2000 read from the file, and nothing guarantees they are UTF-8.
+// Each tag sits in a heap block of exactly its own size, the only place AddressSanitizer marks the
+// byte after the last one: a short std::string keeps its bytes inside the object.
+TEST_CASE("a tag that is not UTF-8 still gets a key") {
+    for (const std::string_view tag :
+         {"\xc3", "A\xe2\x82", "\x80\x80", "\xff\xfe", "\xf0\x9f\x8e", "\xf0\x9f"}) {
+        CAPTURE(tag);
+        const std::vector<char> bytes(tag.begin(), tag.end());
+        CHECK_NOTHROW(static_cast<void>(tagKey(std::string_view(bytes.data(), bytes.size()))));
+    }
 }

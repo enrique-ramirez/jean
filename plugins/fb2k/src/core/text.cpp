@@ -1,10 +1,15 @@
 #include "core/text.h"
 
+#include "core/unicode_lower.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <limits>
 #include <numeric>
+#include <optional>
+#include <span>
+#include <utility>
 
 namespace jean {
 
@@ -50,12 +55,178 @@ std::string quotedHex(uint64_t digest) {
     return "\"" + text + "\"";
 }
 
+constexpr char32_t kRawByteBase = 0x110000;
+constexpr char32_t kCapitalSigma = 0x03A3;
+constexpr char32_t kSmallSigma = 0x03C3;
+constexpr char32_t kFinalSigma = 0x03C2;
+constexpr char32_t kSpace = 0x20;
+
+// ECMAScript's WhiteSpace and LineTerminator productions, which is what \s matches.
+bool isEcmaWhitespace(char32_t c) {
+    return (c >= 0x09 && c <= 0x0D) || c == kSpace || c == 0xA0 || c == 0x1680 ||
+           (c >= 0x2000 && c <= 0x200A) || c == 0x2028 || c == 0x2029 || c == 0x202F ||
+           c == 0x205F || c == 0x3000 || c == 0xFEFF;
+}
+
+std::optional<std::pair<char32_t, size_t>> decodeSequence(std::string_view bytes) {
+    const auto at = [&](size_t index) { return static_cast<unsigned char>(bytes[index]); };
+    const auto continues = [&](size_t index) {
+        return index < bytes.size() && (at(index) & 0xC0U) == 0x80U;
+    };
+
+    const unsigned lead = at(0);
+    if (lead < 0x80)
+        return std::pair{static_cast<char32_t>(lead), size_t{1}};
+
+    size_t length = 0;
+    char32_t minimum = 0;
+    if (lead >= 0xC2 && lead <= 0xDF) {
+        length = 2;
+        minimum = 0x80;
+    } else if (lead >= 0xE0 && lead <= 0xEF) {
+        length = 3;
+        minimum = 0x800;
+    } else if (lead >= 0xF0 && lead <= 0xF4) {
+        length = 4;
+        minimum = 0x10000;
+    } else {
+        return std::nullopt;
+    }
+
+    char32_t point = lead & (0xFFU >> (length + 1));
+    for (size_t index = 1; index < length; ++index) {
+        if (!continues(index))
+            return std::nullopt;
+        point = (point << 6U) | (at(index) & 0x3FU);
+    }
+
+    const bool surrogate = point >= 0xD800 && point <= 0xDFFF;
+    if (point < minimum || point > 0x10FFFF || surrogate)
+        return std::nullopt;
+
+    return std::pair{point, length};
+}
+
+std::vector<char32_t> decodeLenient(std::string_view bytes) {
+    std::vector<char32_t> points;
+    points.reserve(bytes.size());
+    for (size_t at = 0; at < bytes.size();) {
+        if (const auto sequence = decodeSequence(bytes.substr(at))) {
+            points.push_back(sequence->first);
+            at += sequence->second;
+        } else {
+            points.push_back(kRawByteBase + static_cast<unsigned char>(bytes[at]));
+            ++at;
+        }
+    }
+    return points;
+}
+
+void appendUtf8(std::string& out, char32_t point) {
+    const auto put = [&](char32_t value) { out.push_back(static_cast<char>(value & 0xFFU)); };
+
+    if (point >= kRawByteBase) {
+        put(point - kRawByteBase);
+    } else if (point < 0x80) {
+        put(point);
+    } else if (point < 0x800) {
+        put(0xC0U | (point >> 6U));
+        put(0x80U | (point & 0x3FU));
+    } else if (point < 0x10000) {
+        put(0xE0U | (point >> 12U));
+        put(0x80U | ((point >> 6U) & 0x3FU));
+        put(0x80U | (point & 0x3FU));
+    } else {
+        put(0xF0U | (point >> 18U));
+        put(0x80U | ((point >> 12U) & 0x3FU));
+        put(0x80U | ((point >> 6U) & 0x3FU));
+        put(0x80U | (point & 0x3FU));
+    }
+}
+
+bool inRanges(std::span<const CodePointRange> ranges, char32_t point) {
+    const auto above = std::lower_bound(
+        ranges.begin(), ranges.end(), point,
+        [](const CodePointRange& range, char32_t value) { return range.last < value; });
+    return above != ranges.end() && above->first <= point;
+}
+
+bool casedBeyondIgnorables(const std::vector<char32_t>& points, size_t from, bool backwards) {
+    for (size_t at = from; at < points.size(); backwards ? --at : ++at) {
+        if (inRanges(caseIgnorableRanges(), points[at])) {
+            if (backwards && at == 0)
+                return false;
+            continue;
+        }
+        return inRanges(casedRanges(), points[at]);
+    }
+    return false;
+}
+
+// The Final_Sigma condition of the Unicode Standard's SpecialCasing, which ECMA-262 defers to.
+bool isFinalSigma(const std::vector<char32_t>& points, size_t at) {
+    return at > 0 && casedBeyondIgnorables(points, at - 1, true) &&
+           !casedBeyondIgnorables(points, at + 1, false);
+}
+
+void appendLowered(std::string& out, const std::vector<char32_t>& points, size_t at) {
+    const char32_t point = points[at];
+    if (point == kCapitalSigma) {
+        appendUtf8(out, isFinalSigma(points, at) ? kFinalSigma : kSmallSigma);
+        return;
+    }
+    if (point >= kRawByteBase) {
+        appendUtf8(out, point);
+        return;
+    }
+
+    const auto mappings = lowerMappings();
+    const auto found = std::lower_bound(
+        mappings.begin(), mappings.end(), point,
+        [](const LowerMapping& mapping, char32_t value) { return mapping.from < value; });
+    if (found == mappings.end() || found->from != point) {
+        appendUtf8(out, point);
+        return;
+    }
+
+    appendUtf8(out, found->first);
+    if (found->second != 0)
+        appendUtf8(out, found->second);
+}
+
 }  // namespace
 
 std::string toLower(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(),
                    [](unsigned char c) { return static_cast<char>(foldAscii(c)); });
     return value;
+}
+
+std::string tagKey(std::string_view tag) {
+    const std::vector<char32_t> points = decodeLenient(tag);
+
+    size_t first = 0;
+    size_t last = points.size();
+    while (first < last && isEcmaWhitespace(points[first]))
+        ++first;
+    while (last > first && isEcmaWhitespace(points[last - 1]))
+        --last;
+
+    std::string key;
+    key.reserve(tag.size());
+    bool inSpace = false;
+    for (size_t at = first; at < last; ++at) {
+        if (isEcmaWhitespace(points[at])) {
+            if (!inSpace)
+                appendUtf8(key, kSpace);
+            inSpace = true;
+            continue;
+        }
+
+        inSpace = false;
+        appendLowered(key, points, at);
+    }
+    return key;
 }
 
 std::string toHex(std::span<const unsigned char> bytes) {

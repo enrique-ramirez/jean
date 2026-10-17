@@ -11,8 +11,10 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 // A snapshot of the player's media library and the wire format a client reads it from. Pure:
@@ -48,6 +50,9 @@ constexpr size_t kRetainedListeningHours = 48;
 constexpr size_t kRetainedRevisions = kRevisionsPerListeningHour * kRetainedListeningHours;
 
 constexpr size_t kHeldParts = 2;
+
+// SplitMix64's finaliser: a bijection that mixes every input bit into every output bit.
+uint64_t splitMixFinalised(uint64_t z);
 
 enum class IdWidth : uint8_t { one = 1, two = 2, four = 4 };
 
@@ -299,6 +304,15 @@ public:
 
     State state() const;
 
+    // Runs `read` over the snapshot as it stands, with no row change or rebuild landing until it
+    // returns. Every const method here shares the lock with it, so a long `read` delays `apply`
+    // and `replace` and no other reader.
+    template <typename Read>
+    decltype(auto) read(Read&& read) const {
+        const std::shared_lock<std::shared_mutex> lock(mutex_);
+        return std::forward<Read>(read)(std::as_const(*snapshot_));
+    }
+
     // The serialised snapshot, and the generations it was serialised at.
     struct Export {
         uint64_t structure = 0;
@@ -349,7 +363,7 @@ private:
     const size_t retainedRevisions_;
     const size_t maxBytes_;
 
-    mutable std::mutex mutex_;
+    mutable std::shared_mutex mutex_;
     std::shared_ptr<Snapshot> snapshot_ = std::make_shared<Snapshot>();
     std::deque<Generation> generations_;
 
@@ -389,6 +403,8 @@ enum class LibraryRefusal {
     badSince,
     columnNotDeclared,
     badSpine,
+    badRole,
+    duplicateRole,
 };
 
 struct LibraryRequest {

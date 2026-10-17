@@ -648,6 +648,57 @@ TEST_CASE("an export racing a row change always reads one whole revision") {
     CHECK(torn == 0);
 }
 
+TEST_CASE("a read racing row changes sees every row and column at one revision") {
+    constexpr uint32_t kTracks = 4;
+    const auto rowAt = [](uint32_t ordinal, uint64_t plays) {
+        return track("a/", std::to_string(ordinal) + ".mp3",
+                     {std::to_string(plays), "Played " + std::to_string(plays)});
+    };
+
+    Library library;
+    std::vector<Row> rows;
+    rows.reserve(kTracks);
+    for (uint32_t ordinal = 0; ordinal < kTracks; ++ordinal)
+        rows.push_back(rowAt(ordinal, 1));
+    library.replace(snapshotOf({"%play_count%", "%title%"}, rows));
+    const uint64_t first = library.state().revision;
+
+    constexpr uint64_t kChanges = 2000;
+    std::atomic<bool> written{false};
+    std::thread writer([&library, &rowAt, &written] {
+        for (uint64_t plays = 2; plays <= kChanges; ++plays) {
+            std::vector<RowChange> changes;
+            changes.reserve(kTracks);
+            for (uint32_t ordinal = 0; ordinal < kTracks; ++ordinal)
+                changes.push_back({ordinal, rowAt(ordinal, plays)});
+            library.apply(changes);
+        }
+        written = true;
+    });
+
+    REQUIRE(eventually([&library, first] { return library.state().revision > first; }));
+    size_t torn = 0;
+    size_t reads = 0;
+    do {
+        ++reads;
+        library.read([&torn, first](const Snapshot& snapshot) {
+            const auto plays = std::to_string(snapshot.revision - first + 1);
+            for (size_t field = kSpineFieldCount; field < snapshot.columns.size(); ++field) {
+                const Column& column = snapshot.columns[field];
+                torn += static_cast<size_t>(std::count_if(
+                    column.ids.begin(), column.ids.end(), [&column, &plays](uint32_t id) {
+                        const auto& value = column.dictionary.values[id];
+                        return value != plays && value != "Played " + plays;
+                    }));
+            }
+        });
+    } while (!written);
+    writer.join();
+
+    INFO("reads: ", reads);
+    CHECK(torn == 0);
+}
+
 TEST_CASE("a row whose values did not move leaves the revision alone") {
     Library library;
     library.replace(snapshotOf({"%play_count%"}, {track("a/", "1.mp3", {"3"})}));

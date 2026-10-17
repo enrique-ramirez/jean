@@ -2965,6 +2965,11 @@ TEST_CASE("no library or track route answers a status contract/openapi.yaml does
     note("GET /library/export", get(server, kExport));
     note("GET /library/changes", get(server, "/api/library/changes?since=0&structure=0"));
 
+    constexpr char kSummary[] = "/api/library/summary?title=%25title%25&playCount=%25play_count%25";
+    note("GET /library/summary", get(server, kSummary));
+    note("GET /library/summary", get(off, kSummary));
+    note("GET /library/summary", get(server, "/api/library/summary?colour=%25title%25"));
+
     fill(library);
     playOne(library, "5");
     const auto played = playOne(library, "6");
@@ -2986,6 +2991,12 @@ TEST_CASE("no library or track route answers a status contract/openapi.yaml does
     note("GET /library/changes", get(server, changesFrom(library, 0)));
     note("GET /library/changes", get(server, changesFrom(library, played + 98)));
     note("GET /library/changes", get(off, "/api/library/changes?since=1&structure=1"));
+
+    const auto summary = get(server, kSummary);
+    note("GET /library/summary", summary);
+    REQUIRE(summary);
+    note("GET /library/summary", getHolding(server, kSummary, summary->get_header_value("ETag")));
+    note("GET /library/summary", get(server, "/api/library/summary?title=%25comment%25"));
 
     note("POST /library/refresh", refresh(server));
     note("POST /library/refresh",
@@ -3023,6 +3034,10 @@ TEST_CASE("no library or track route answers a status contract/openapi.yaml does
         note("GET /library/export",
              get(server, "/api/library/export?columns=%25genre" + std::to_string(attempt) + "%25"));
     }
+
+    constexpr int kSummaryBurst = 200;
+    for (int attempt = 0; attempt <= kSummaryBurst; ++attempt)
+        note("GET /library/summary", get(server, kSummary));
 
     for (const auto& route : publishedRoutes()) {
         if (route.path.rfind("/library", 0) != 0 && route.path != "/state" &&

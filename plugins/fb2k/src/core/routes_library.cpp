@@ -3,12 +3,16 @@
 #include "core/artwork.h"
 #include "core/documents.h"
 #include "core/http_responses.h"
+#include "core/local_time.h"
 #include "core/tag_write.h"
 #include "core/text.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <functional>
 #include <limits>
+#include <map>
 #include <optional>
 #include <utility>
 
@@ -36,6 +40,9 @@ constexpr auto kTrackReadRefill = kTagWriteRefill;
 constexpr int kDeltaReadBurst = kTrackReadBurst;
 constexpr auto kDeltaReadRefill = kTrackReadRefill;
 
+constexpr int kSummaryReadBurst = kDeltaReadBurst;
+constexpr auto kSummaryReadRefill = kDeltaReadRefill;
+
 // The snapshot and the deltas. Opaque bytes with a magic number of their own, so nothing on
 // the way to the client sniffs, transcodes or reformats them; contract/openapi.yaml is the
 // only description of what is inside.
@@ -60,6 +67,139 @@ std::optional<uint32_t> subsongAsked(const httplib::Request& req) {
         return std::nullopt;
 
     return static_cast<uint32_t>(asked);
+}
+
+using RoleField = std::optional<size_t> SummaryRoles::*;
+
+struct RoleName {
+    const char* name;
+    RoleField field;
+};
+
+constexpr std::array kRoleNames{
+    RoleName{"trackNumber", &SummaryRoles::trackNumber},
+    RoleName{"discNumber", &SummaryRoles::discNumber},
+    RoleName{"title", &SummaryRoles::title},
+    RoleName{"artist", &SummaryRoles::artist},
+    RoleName{"album", &SummaryRoles::album},
+    RoleName{"albumArtist", &SummaryRoles::albumArtist},
+    RoleName{"duration", &SummaryRoles::duration},
+    RoleName{"playCount", &SummaryRoles::playCount},
+    RoleName{"lastPlayed", &SummaryRoles::lastPlayed},
+    RoleName{"rating", &SummaryRoles::rating},
+    RoleName{"year", &SummaryRoles::year},
+    RoleName{"genre", &SummaryRoles::genre},
+    RoleName{"codec", &SummaryRoles::codec},
+    RoleName{"bitrate", &SummaryRoles::bitrate},
+    RoleName{"playCountLocal", &SummaryRoles::playCountLocal},
+    RoleName{"lastPlayedLocal", &SummaryRoles::lastPlayedLocal},
+    RoleName{"added", &SummaryRoles::added},
+};
+
+const RoleName* roleNamed(const std::string& name) {
+    for (const RoleName& role : kRoleNames) {
+        if (name == role.name)
+            return &role;
+    }
+    return nullptr;
+}
+
+// Role name to the expression the client says it reads, ordered by name so that the order the
+// client wrote them in does not make two requests different.
+struct RolesAsked {
+    LibraryRefusal refusal = LibraryRefusal::none;
+    std::string detail;
+    std::map<std::string, std::string> expressions;
+
+    bool ok() const { return refusal == LibraryRefusal::none; }
+};
+
+RolesAsked rolesAsked(const httplib::Request& req) {
+    RolesAsked asked;
+    const auto refuse = [&asked](LibraryRefusal refusal, std::string detail) {
+        asked.refusal = refusal;
+        asked.detail = std::move(detail);
+        return asked;
+    };
+
+    for (const auto& [name, expression] : req.params) {
+        if (roleNamed(name) == nullptr)
+            return refuse(LibraryRefusal::badRole, "'" + name + "' is not a role");
+
+        if (expression.empty() || expression.size() > kMaxColumnLength ||
+            !isPrintable(expression)) {
+            return refuse(LibraryRefusal::badRole,
+                          "role '" + name + "' must be printable text of 1 to " +
+                              std::to_string(kMaxColumnLength) + " characters");
+        }
+
+        if (!asked.expressions.emplace(name, expression).second)
+            return refuse(LibraryRefusal::duplicateRole, "role '" + name + "' is named twice");
+    }
+
+    return asked;
+}
+
+std::string rolesKey(const std::map<std::string, std::string>& roles) {
+    std::string key;
+    for (const auto& [name, expression] : roles) {
+        key += name;
+        key += '\0';
+        key += expression;
+        key += '\0';
+    }
+    return key;
+}
+
+std::optional<SummaryRoles> rolesIn(const Snapshot& snapshot,
+                                    const std::map<std::string, std::string>& roles) {
+    SummaryRoles found;
+    for (const auto& [name, expression] : roles) {
+        const auto column =
+            std::find_if(snapshot.columns.begin() + kSpineFieldCount, snapshot.columns.end(),
+                         [&expression](const Column& held) { return held.name == expression; });
+        if (column == snapshot.columns.end())
+            return std::nullopt;
+
+        found.*roleNamed(name)->field = static_cast<size_t>(column - snapshot.columns.begin());
+    }
+    return found;
+}
+
+struct SummaryVerdict {
+    enum Kind { answerable, notYet, undeclared } kind = answerable;
+    std::string expression;
+};
+
+SummaryVerdict summaryVerdict(const Library::State& state, const std::vector<std::string>& declared,
+                              const std::map<std::string, std::string>& expressions) {
+    if (!state.ready)
+        return {SummaryVerdict::notYet, {}};
+
+    const auto& wanted = declared.empty() ? state.columns : declared;
+    const auto holds = [](const std::vector<std::string>& columns, const std::string& expression) {
+        return std::find(columns.begin(), columns.end(), expression) != columns.end();
+    };
+
+    const bool stale = std::any_of(expressions.begin(), expressions.end(), [&](const auto& role) {
+        return !holds(state.columns, role.second) && holds(wanted, role.second);
+    });
+    if (stale)
+        return {SummaryVerdict::notYet, {}};
+
+    const auto missing =
+        std::find_if(expressions.begin(), expressions.end(),
+                     [&](const auto& role) { return !holds(state.columns, role.second); });
+    if (missing != expressions.end())
+        return {SummaryVerdict::undeclared, missing->second};
+
+    return {};
+}
+
+int64_t systemNowMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
 }
 
 struct OrdinalAsked {
@@ -154,7 +294,16 @@ LibraryRoutes::LibraryRoutes(const LibraryCalls& calls, const Library* library,
       deltaReads_(kDeltaReadBurst, kDeltaReadRefill,
                   "refusing library delta reads: they are arriving faster than this component "
                   "will answer them, which usually means a client is looping",
-                  clock) {}
+                  clock),
+      summaryReads_(kSummaryReadBurst, kSummaryReadRefill,
+                    "refusing library summary reads: they are arriving faster than this "
+                    "component will answer them, which usually means a client is looping",
+                    clock),
+      summaryNow_(systemNowMs) {}
+
+void LibraryRoutes::summaryClock(std::function<int64_t()> nowMs) {
+    summaryNow_ = std::move(nowMs);
+}
 
 void LibraryRoutes::declare(std::vector<std::string> columns) {
     const std::lock_guard<std::mutex> lock(declarationLock_);
@@ -188,6 +337,14 @@ bool LibraryRoutes::readingChangesTooFast(httplib::Response& res) {
         return false;
 
     respondTooFast(res, deltaReads_, errorDocument(kReadingChangesTooFast));
+    return true;
+}
+
+bool LibraryRoutes::summarisingTooFast(httplib::Response& res) {
+    if (!summaryReads_.refuses())
+        return false;
+
+    respondTooFast(res, summaryReads_, errorDocument(kReadingSummariesTooFast));
     return true;
 }
 
@@ -281,6 +438,90 @@ void LibraryRoutes::exportSnapshot(const httplib::Request& req, httplib::Respons
     sendIfChanged(req, res, name, kLibraryBytes, produce, *packing);
 }
 
+std::shared_ptr<LibraryRoutes::HeldSummary> LibraryRoutes::heldSummaryFor(const SummaryKey& key) {
+    const std::lock_guard<std::mutex> lock(heldSummariesLock_);
+
+    const auto held = std::find_if(heldSummaries_.begin(), heldSummaries_.end(),
+                                   [&key](const auto& entry) { return entry->key == key; });
+    if (held != heldSummaries_.end())
+        return *held;
+
+    heldSummaries_.push_back(std::make_shared<HeldSummary>(key));
+    while (heldSummaries_.size() > kHeldParts)
+        heldSummaries_.pop_front();
+
+    return heldSummaries_.back();
+}
+
+SharedBytes LibraryRoutes::summaryOf(HeldSummary& held,
+                                     const std::map<std::string, std::string>& roles,
+                                     int64_t nowMs) {
+    std::call_once(held.computed, [this, &held, &roles, nowMs] {
+        held.bytes = library_->read([this, &held, &roles, nowMs](const Snapshot& snapshot) {
+            if (snapshot.structure != held.key.structure || snapshot.revision != held.key.revision)
+                return SharedBytes();
+
+            const auto indices = rolesIn(snapshot, roles);
+            if (!indices)
+                return SharedBytes();
+
+            ++summaryComputations_;
+            return std::make_shared<const std::string>(
+                summariseLibrary(snapshot, *indices, nowMs, systemLocalTime()));
+        });
+    });
+    return held.bytes;
+}
+
+void LibraryRoutes::summarise(const httplib::Request& req, httplib::Response& res) {
+    const auto roles = rolesAsked(req);
+    if (!roles.ok()) {
+        respondRefusal(res, roles.refusal, roles.detail);
+        return;
+    }
+
+    if (!library_) {
+        respondUnavailable(res, kNoLibrary);
+        return;
+    }
+
+    if (summarisingTooFast(res))
+        return;
+
+    const auto state = library_->state();
+    const auto verdict = summaryVerdict(state, declaration(), roles.expressions);
+    if (verdict.kind == SummaryVerdict::notYet) {
+        respond(res, 202, libraryDocument(state));
+        return;
+    }
+
+    if (verdict.kind == SummaryVerdict::undeclared) {
+        respondError(res, 409, undeclaredColumnMessage(verdict.expression));
+        return;
+    }
+
+    const int64_t nowMs = summaryNow_();
+    const uint32_t date = systemLocalTime().date(nowMs);
+    const std::string key = rolesKey(roles.expressions);
+
+    const auto name = snapshotTag(state, runId_) + "-d" + std::to_string(date) + "-h" +
+                      std::to_string(std::hash<std::string>{}(key));
+
+    if (alreadyHoldsCurrent(req, name)) {
+        sendIfChanged(req, res, name, "application/json", [] { return SharedBytes(); });
+        return;
+    }
+
+    const auto held = heldSummaryFor({state.structure, state.revision, date, key});
+    if (!summaryOf(*held, roles.expressions, nowMs)) {
+        respond(res, 202, libraryDocument(library_->state()));
+        return;
+    }
+
+    sendIfChanged(
+        req, res, name, "application/json", [&held] { return held->bytes; }, held->packing);
+}
+
 void LibraryRoutes::readTrack(const httplib::Request& req, httplib::Response& res) {
     // 'subsong' names a track only alongside 'track', but on its own it still announces the
     // library form the way POST /api/tags' kLibraryAddressFields does, so an ordinal sent beside
@@ -355,6 +596,10 @@ void LibraryRoutes::readTrack(const httplib::Request& req, httplib::Response& re
 void LibraryRoutes::addTo(httplib::Server& server) {
     server.Get("/api/library/export", [this](const httplib::Request& req, httplib::Response& res) {
         exportSnapshot(req, res);
+    });
+
+    server.Get("/api/library/summary", [this](const httplib::Request& req, httplib::Response& res) {
+        summarise(req, res);
     });
 
     server.Get("/api/library/changes", [this](const httplib::Request& req, httplib::Response& res) {

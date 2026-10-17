@@ -23,12 +23,18 @@ namespace {
 
 using Row = std::vector<std::string>;
 
-const std::vector<std::string> kDeclaration{"%title%", "%play_count%"};
+const std::vector<std::string>& declaredColumns() {
+    static const std::vector<std::string> value{"%title%", "%play_count%"};
+    return value;
+}
 
-const std::vector<Row> kKnownRows{
-    {"Fjörður/Ljós/", "01 Dögun.flac", "0", "Dögun", "4"},
-    {"Fjörður/Ljós/", "02 Hádegi.flac", "0", "Hádegi", "?"},
-};
+const std::vector<Row>& knownRows() {
+    static const std::vector<Row> value{
+        {"Fjörður/Ljós/", "01 Dögun.flac", "0", "Dögun", "4"},
+        {"Fjörður/Ljós/", "02 Hádegi.flac", "0", "Hádegi", "?"},
+    };
+    return value;
+}
 
 constexpr char kKnownSnapshotId[] = "442acff8cb76faf6";
 
@@ -41,11 +47,14 @@ constexpr char kTitlesAlone[] =
     "/api/library/export?columns=%25title%25&columns=%25play_count%25&only=%25title%25"
     "&spine=false";
 
-const std::vector<Row> kThreeTracks{
-    {"Artist/Album/", "01.flac", "0", "One", "4"},
-    {"Artist/Album/", "02.flac", "0", "Two", "0"},
-    {"Artist/Other/", "03.flac", "0", "Three", "?"},
-};
+const std::vector<Row>& threeTracks() {
+    static const std::vector<Row> value{
+        {"Artist/Album/", "01.flac", "0", "One", "4"},
+        {"Artist/Album/", "02.flac", "0", "Two", "0"},
+        {"Artist/Other/", "03.flac", "0", "Three", "?"},
+    };
+    return value;
+}
 
 std::string validatorIn(const json& header) {
     REQUIRE(header.contains("snapshotId"));
@@ -114,7 +123,7 @@ Row played(Row row, const std::string& count) {
 
 TEST_CASE("a known library folds to the validator contract/openapi.yaml's algorithm gives") {
     Library library;
-    library.replace(snapshotOf(kDeclaration, kKnownRows));
+    library.replace(snapshotOf(declaredColumns(), knownRows()));
     const TestServer server(servingSettings(), Player{}, &library);
 
     CHECK(exportedValidator(library) == kKnownSnapshotId);
@@ -123,7 +132,7 @@ TEST_CASE("a known library folds to the validator contract/openapi.yaml's algori
 
 TEST_CASE("a built library with no tracks is named by its count alone, never by sixteen zeros") {
     Library library;
-    library.replace(snapshotOf(kDeclaration, {}));
+    library.replace(snapshotOf(declaredColumns(), {}));
     const TestServer server(servingSettings(), Player{}, &library);
 
     CHECK(exportedValidator(library) == kEmptyLibrarySnapshotId);
@@ -141,17 +150,17 @@ TEST_CASE("a library not yet built polls as sixteen zeros") {
 
 TEST_CASE("two libraries holding the same tracks name the same snapshot, however each got there") {
     Library first;
-    first.replace(snapshotOf(kDeclaration, kThreeTracks));
+    first.replace(snapshotOf(declaredColumns(), threeTracks()));
 
     Library second;
     second.replace(snapshotOf({"%artist%"}, {{"Artist/Album/", "01.flac", "0", "Someone"}}));
-    LibraryBuilder builder(kDeclaration, kThreeTracks.size());
+    LibraryBuilder builder(declaredColumns(), threeTracks().size());
     auto& sink = builder.sink();
-    for (size_t index = kThreeTracks.size(); index > 0; --index)
-        sink.row(index - 1, kThreeTracks[index - 1]);
+    for (size_t index = threeTracks().size(); index > 0; --index)
+        sink.row(index - 1, threeTracks()[index - 1]);
     second.replace(builder.finish());
-    second.apply({{0, played(kThreeTracks[0], "5")}});
-    second.apply({{0, kThreeTracks[0]}});
+    second.apply({{0, played(threeTracks()[0], "5")}});
+    second.apply({{0, threeTracks()[0]}});
 
     REQUIRE(second.state().structure != first.state().structure);
     REQUIRE(second.state().revision != first.state().revision);
@@ -159,32 +168,32 @@ TEST_CASE("two libraries holding the same tracks name the same snapshot, however
 }
 
 TEST_CASE("a changed cell, column, row order or count names another snapshot") {
-    const std::string unchanged = validatorBuiltFrom(kDeclaration, kThreeTracks);
-    REQUIRE(unchanged == validatorBuiltFrom(kDeclaration, kThreeTracks));
+    const std::string unchanged = validatorBuiltFrom(declaredColumns(), threeTracks());
+    REQUIRE(unchanged == validatorBuiltFrom(declaredColumns(), threeTracks()));
 
-    std::vector<Row> retitled = kThreeTracks;
+    std::vector<Row> retitled = threeTracks();
     retitled[1][3] = "Two (live)";
 
-    std::vector<Row> renamed = kThreeTracks;
+    std::vector<Row> renamed = threeTracks();
     renamed[2][1] = "03 Three.flac";
 
-    std::vector<Row> reordered = kThreeTracks;
+    std::vector<Row> reordered = threeTracks();
     std::swap(reordered[0], reordered[1]);
 
-    std::vector<Row> traded = kThreeTracks;
+    std::vector<Row> traded = threeTracks();
     traded[0] = {"Artist/Album/", "01.flac", "0", "4", "One"};
 
-    std::vector<Row> grown = kThreeTracks;
+    std::vector<Row> grown = threeTracks();
     grown.push_back({"Artist/Other/", "04.flac", "0", "Four", "1"});
 
     for (const auto& [change, declared, rows] :
          std::vector<std::tuple<std::string, std::vector<std::string>, std::vector<Row>>>{
-             {"a declared value", kDeclaration, retitled},
-             {"a spine value", kDeclaration, renamed},
-             {"a declared column", {"%album%", "%play_count%"}, kThreeTracks},
-             {"the order of the rows", kDeclaration, reordered},
-             {"two columns trading values", kDeclaration, traded},
-             {"the count", kDeclaration, grown},
+             {"a declared value", declaredColumns(), retitled},
+             {"a spine value", declaredColumns(), renamed},
+             {"a declared column", {"%album%", "%play_count%"}, threeTracks()},
+             {"the order of the rows", declaredColumns(), reordered},
+             {"two columns trading values", declaredColumns(), traded},
+             {"the count", declaredColumns(), grown},
          }) {
         CAPTURE(change);
         CHECK(validatorBuiltFrom(declared, rows) != unchanged);
@@ -193,20 +202,20 @@ TEST_CASE("a changed cell, column, row order or count names another snapshot") {
 
 TEST_CASE("a play moves the validator to the played library's, and undoing it moves it back") {
     Library library;
-    library.replace(snapshotOf(kDeclaration, kThreeTracks));
+    library.replace(snapshotOf(declaredColumns(), threeTracks()));
     const auto before = library.state();
     const std::string unplayed = exportedValidator(library);
 
-    std::vector<Row> rows = kThreeTracks;
+    std::vector<Row> rows = threeTracks();
     rows[1] = played(rows[1], "1");
     REQUIRE(library.apply({{1, rows[1]}}) == before.revision + 1);
 
-    const std::string afterThePlay = validatorBuiltFrom(kDeclaration, rows);
+    const std::string afterThePlay = validatorBuiltFrom(declaredColumns(), rows);
     CHECK(afterThePlay != unplayed);
     CHECK(exportedValidator(library) == afterThePlay);
     CHECK(validatorIn(changesHeader(library, before.structure, before.revision)) == afterThePlay);
 
-    REQUIRE(library.apply({{1, kThreeTracks[1]}}) == before.revision + 2);
+    REQUIRE(library.apply({{1, threeTracks()[1]}}) == before.revision + 2);
     CHECK(exportedValidator(library) == unplayed);
     CHECK(validatorIn(changesHeader(library, before.structure, before.revision + 1)) == unplayed);
 }
@@ -215,10 +224,10 @@ TEST_CASE("a play moves the validator to the played library's, and undoing it mo
 // their unmixed terms by the prime and minus the prime, and summed unmixed they cancel.
 TEST_CASE("two plays whose last digits move in the same bit name another snapshot than neither") {
     Library library;
-    library.replace(snapshotOf(kDeclaration, kThreeTracks));
+    library.replace(snapshotOf(declaredColumns(), threeTracks()));
     const std::string unplayed = exportedValidator(library);
 
-    std::vector<Row> rows = kThreeTracks;
+    std::vector<Row> rows = threeTracks();
     rows[0] = played(rows[0], "5");
     library.apply({{0, rows[0]}});
     const std::string onePlay = exportedValidator(library);
@@ -229,7 +238,7 @@ TEST_CASE("two plays whose last digits move in the same bit name another snapsho
 
     CHECK(twoPlays != unplayed);
     CHECK(twoPlays != onePlay);
-    CHECK(twoPlays == validatorBuiltFrom(kDeclaration, rows));
+    CHECK(twoPlays == validatorBuiltFrom(declaredColumns(), rows));
 }
 
 TEST_CASE("no pair of single-digit plays among a few hundred leaves the validator where it was") {
@@ -239,7 +248,7 @@ TEST_CASE("no pair of single-digit plays among a few hundred leaves the validato
 
     const std::vector<Row> rows = numberedTracks(kTracks);
     Library library;
-    library.replace(snapshotOf(kDeclaration, rows));
+    library.replace(snapshotOf(declaredColumns(), rows));
     const uint64_t structure = library.state().structure;
     const std::string unplayed = exportedValidator(library);
 
@@ -249,6 +258,8 @@ TEST_CASE("no pair of single-digit plays among a few hundred leaves the validato
                          played(rows[ordinal], std::to_string(std::stoi(rows[ordinal][4]) + 1))};
     };
 
+    // The same pairs on every run.
+    // NOLINTNEXTLINE(bugprone-random-generator-seed,cert-msc32-c,cert-msc51-cpp)
     std::mt19937 engine(kSeed);
     for (size_t pair = 0; pair < kPairs; ++pair) {
         const auto first = static_cast<uint32_t>(engine() % kTracks);
@@ -270,11 +281,11 @@ TEST_CASE("however a rebuild lands, the validator is the one a library built fre
     std::vector<Row> rows = numberedTracks(40);
 
     Library library;
-    library.replace(snapshotOf(kDeclaration, rows));
+    library.replace(snapshotOf(declaredColumns(), rows));
     rows[5] = played(rows[5], "played");
     library.apply({{5, rows[5]}});
 
-    std::vector<std::string> declared = kDeclaration;
+    std::vector<std::string> declared = declaredColumns();
     std::vector<Row> next = rows;
 
     SUBCASE("a value retagged") {
@@ -306,7 +317,7 @@ TEST_CASE("GET /state and every library body name the same snapshot at the same 
     std::vector<Row> rows = numberedTracks(120);
 
     Library library;
-    library.replace(snapshotOf(kDeclaration, rows));
+    library.replace(snapshotOf(declaredColumns(), rows));
     const TestServer server(servingSettings(), Player{}, &library);
 
     const auto built = library.state();
@@ -329,7 +340,7 @@ TEST_CASE("GET /state and every library body name the same snapshot at the same 
 
     const auto beforeTheSplice = library.state();
     rows.push_back({"Artist/Album/", "added.flac", "0", "Added", "0"});
-    library.replace(snapshotOf(kDeclaration, rows));
+    library.replace(snapshotOf(declaredColumns(), rows));
     REQUIRE(library.state().structure != beforeTheSplice.structure);
 
     const json splice =
@@ -339,7 +350,7 @@ TEST_CASE("GET /state and every library body name the same snapshot at the same 
     CHECK(spliced != afterPlays);
     CHECK(validatorIn(splice) == spliced);
     CHECK(validatorIn(headerOf(server, kExport)) == spliced);
-    CHECK(spliced == validatorBuiltFrom(kDeclaration, rows));
+    CHECK(spliced == validatorBuiltFrom(declaredColumns(), rows));
 }
 
 TEST_CASE("a play at a large library moves the validator without folding the library again") {
@@ -350,7 +361,7 @@ TEST_CASE("a play at a large library moves the validator without folding the lib
     std::vector<Row> rows = numberedTracks(kTracks);
 
     Library library;
-    library.replace(snapshotOf(kDeclaration, rows));
+    library.replace(snapshotOf(declaredColumns(), rows));
     const auto built = library.state();
     const std::string unplayed = exportedValidator(library);
 
@@ -368,5 +379,5 @@ TEST_CASE("a play at a large library moves the validator without folding the lib
 
     CHECK(elapsed < kBound);
     CHECK(validators.front() != unplayed);
-    CHECK(validators.back() == validatorBuiltFrom(kDeclaration, rows));
+    CHECK(validators.back() == validatorBuiltFrom(declaredColumns(), rows));
 }

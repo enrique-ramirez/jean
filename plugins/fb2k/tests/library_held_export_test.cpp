@@ -18,7 +18,10 @@ using Held = std::weak_ptr<const std::string>;
 
 constexpr char kTitle[] = "%title%";
 
-const ExportPart kTitlesAlone{.only = {kTitle}, .spine = false};
+const ExportPart& titlesAlone() {
+    static const ExportPart value{.only = {kTitle}, .spine = false};
+    return value;
+}
 
 Held heldBody(const Library& library, const ExportPart& part = {}) {
     const SharedBytes bytes = library.exported(part).bytes;
@@ -37,7 +40,7 @@ TEST_CASE("a play releases every export body of the revision before it") {
     Library library;
     buildLibrary(library);
     const Held whole = heldBody(library);
-    const Held part = heldBody(library, kTitlesAlone);
+    const Held part = heldBody(library, titlesAlone());
 
     const uint64_t revision = library.state().revision;
     REQUIRE(library.apply({{0, playedRow(0)}}) == revision + 1);
@@ -50,7 +53,7 @@ TEST_CASE("a rebuild that moves the structure releases every export body of the 
     Library library;
     buildLibrary(library);
     const Held whole = heldBody(library);
-    const Held part = heldBody(library, kTitlesAlone);
+    const Held part = heldBody(library, titlesAlone());
 
     moveLibraryStructure(library);
 
@@ -87,7 +90,7 @@ TEST_CASE("after a play, the export route holds no body of the revision before i
 
     REQUIRE(library.exported().bytes == library.exported().bytes);
     const Held wholeHeld = heldBody(library);
-    const Held partHeld = heldBody(library, kTitlesAlone);
+    const Held partHeld = heldBody(library, titlesAlone());
 
     library.apply({{0, playedRow(0)}});
 

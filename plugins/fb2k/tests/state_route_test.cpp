@@ -1926,18 +1926,23 @@ std::vector<std::string> inDeclarationOrder(const std::vector<std::string>& part
     return ordered;
 }
 
-void collectSections(const json& placed, std::vector<std::pair<size_t, size_t>>& sections) {
-    if (placed.is_object() && placed.contains("offset")) {
-        const auto offset = placed["offset"].get<size_t>();
-        if (placed.contains("length"))
-            sections.emplace_back(offset, offset + placed["length"].get<size_t>());
-        else
-            sections.emplace_back(
-                offset, offset + (placed["count"].get<size_t>() * placed["width"].get<size_t>()));
+void collectSections(const json& root, std::vector<std::pair<size_t, size_t>>& sections) {
+    std::vector<const json*> pending{&root};
+    while (!pending.empty()) {
+        const json& placed = *pending.back();
+        pending.pop_back();
+        if (placed.is_object() && placed.contains("offset")) {
+            const auto offset = placed["offset"].get<size_t>();
+            if (placed.contains("length"))
+                sections.emplace_back(offset, offset + placed["length"].get<size_t>());
+            else
+                sections.emplace_back(offset, offset + (placed["count"].get<size_t>() *
+                                                        placed["width"].get<size_t>()));
+        }
+        if (placed.is_structured())
+            for (const auto& inner : placed)
+                pending.push_back(&inner);
     }
-    if (placed.is_structured())
-        for (const auto& inner : placed)
-            collectSections(inner, sections);
 }
 
 size_t unplacedBytes(const Wire& wire) {

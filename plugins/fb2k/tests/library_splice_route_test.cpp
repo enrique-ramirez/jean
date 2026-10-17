@@ -238,14 +238,14 @@ TEST_CASE("a rebuild that moved the structure for anything but an addition or a 
     SUBCASE("the same tracks under another column set") {
         columns = {kTitle, kArtist};
         for (Row& row : next)
-            row.push_back("Someone");
+            row.emplace_back("Someone");
     }
 
     SUBCASE("a track added under another column set") {
         columns = {kTitle, kArtist};
-        next.push_back(newTrack("added"));
+        next.emplace_back(newTrack("added"));
         for (Row& row : next)
-            row.push_back("Someone");
+            row.emplace_back("Someone");
     }
 
     library.replace(snapshotOf(columns, next));

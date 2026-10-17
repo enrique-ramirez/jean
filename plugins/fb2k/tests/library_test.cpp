@@ -274,7 +274,7 @@ TEST_CASE("a library's first build lands on the seeded structure, not on 1") {
     CHECK(first != 1);
 
     // A JSON number carries an integer exactly only up to 2^53.
-    constexpr uint64_t kExactInAJsonNumber = uint64_t{1} << 53;
+    constexpr uint64_t kExactInAJsonNumber = uint64_t{1} << 53U;
     CHECK(first < kExactInAJsonNumber);
 }
 
@@ -1444,7 +1444,7 @@ private:
     void addFile() {
         TrackKey key{dice_.below(kFolders), dice_.below(kFilesPerFolder), 0};
         while (holdsFile(key))
-            key.file = dice_.below(kFilesPerFolder) + kFilesPerFolder * (1 + dice_.below(9));
+            key.file = dice_.below(kFilesPerFolder) + (kFilesPerFolder * (1 + dice_.below(9)));
 
         if (!dice_.oneIn(6)) {
             tracks_[key] = valuesFor();

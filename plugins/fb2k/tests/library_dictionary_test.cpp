@@ -19,18 +19,24 @@ namespace {
 
 using Row = std::vector<std::string>;
 
-const std::vector<std::string> kDeclared{"%title%", "%genre%"};
+const std::vector<std::string>& declaredColumns() {
+    static const std::vector<std::string> value{"%title%", "%genre%"};
+    return value;
+}
 
 // Chosen so the naive orders differ from bytewise: a comparison on signed `char` puts the accented
 // letter first, and UTF-16 code units order U+FF5A and U+1F600 the other way round.
-const std::vector<Row> kRows{
-    {"b/", "9.mp3", "2", "a", "Rock"},
-    {"a/", "10.mp3", "10", "Z", ""},
-    {"B/", "\xC3\xA9.mp3", "0", "\xC3\xA9", "?"},
-    {"b/", "z.mp3", "2", "z", "Rock"},
-    {"a/", "\xEF\xBD\x9A.mp3", "0", "\xF0\x9F\x98\x80", "Jazz"},
-    {"\xC3\xA9/", "\xF0\x9F\x98\x80.mp3", "1", "\xEF\xBD\x9A", ""},
-};
+const std::vector<Row>& mixedRows() {
+    static const std::vector<Row> value{
+        {"b/", "9.mp3", "2", "a", "Rock"},
+        {"a/", "10.mp3", "10", "Z", ""},
+        {"B/", "\xC3\xA9.mp3", "0", "\xC3\xA9", "?"},
+        {"b/", "z.mp3", "2", "z", "Rock"},
+        {"a/", "\xEF\xBD\x9A.mp3", "0", "\xF0\x9F\x98\x80", "Jazz"},
+        {"\xC3\xA9/", "\xF0\x9F\x98\x80.mp3", "1", "\xEF\xBD\x9A", ""},
+    };
+    return value;
+}
 
 bool bytewiseBefore(const std::string& left, const std::string& right) {
     return std::lexicographical_compare(
@@ -98,8 +104,9 @@ Wire exportOf(const Library& library) {
 // metadb_v2::queryMultiParallel gives each worker thread a sink of its own, and the threads report
 // rows in whatever order they reach them.
 Snapshot builtThrough(size_t sinks, const std::vector<Row>& rows) {
-    LibraryBuilder builder(kDeclared, rows.size());
+    LibraryBuilder builder(declaredColumns(), rows.size());
     std::vector<LibraryBuilder::Sink*> taking;
+    taking.reserve(sinks);
     for (size_t sink = 0; sink < sinks; ++sink)
         taking.push_back(&builder.sink());
 
@@ -120,23 +127,23 @@ TEST_CASE(
     "a fresh build holds each column's used values once each, in bytewise UTF-8 order, "
     "spine included") {
     Library library;
-    library.replace(snapshotOf(kDeclared, kRows));
+    library.replace(snapshotOf(declaredColumns(), mixedRows()));
 
     const Wire wire = exportOf(library);
 
     checkCompactAndInOrder(wire);
-    checkRows(wire, kRows);
+    checkRows(wire, mixedRows());
 }
 
 TEST_CASE("a fresh build exports the same bytes however its rows arrived") {
     Library inOrder;
-    inOrder.replace(snapshotOf(kDeclared, kRows));
+    inOrder.replace(snapshotOf(declaredColumns(), mixedRows()));
     const Wire expected = exportOf(inOrder);
 
     for (const size_t sinks : {size_t{1}, size_t{2}, size_t{3}}) {
         INFO(sinks, " sink(s), latest row first");
         Library arrivedOtherwise;
-        arrivedOtherwise.replace(builtThrough(sinks, kRows));
+        arrivedOtherwise.replace(builtThrough(sinks, mixedRows()));
         const Wire wire = exportOf(arrivedOtherwise);
 
         CHECK(withoutStructure(wire.header) == withoutStructure(expected.header));
@@ -150,14 +157,14 @@ TEST_CASE(
     constexpr size_t kPlays = 40;
 
     Library library;
-    library.replace(snapshotOf(kDeclared, kRows));
+    library.replace(snapshotOf(declaredColumns(), mixedRows()));
 
-    std::vector<Row> played = kRows;
+    std::vector<Row> played = mixedRows();
     for (size_t play = kPlays; play > 0; --play) {
         played[0][3] = "t" + std::to_string(play);
         library.apply({{0, played[0]}});
     }
-    played[0][3] = kRows[0][3];
+    played[0][3] = mixedRows()[0][3];
     library.apply({{0, played[0]}});
 
     std::vector<Row> rows;
@@ -172,7 +179,7 @@ TEST_CASE(
     }
 
     SUBCASE("a track added once the dead entries outnumber the live ones") {
-        declared = kDeclared;
+        declared = declaredColumns();
         rows = played;
         rows.push_back({"c/", "1.mp3", "0", "M", "Pop"});
         across = DeltaOutcome::dictionariesCompacted;

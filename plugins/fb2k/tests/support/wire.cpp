@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <functional>
 #include <limits>
+#include <ranges>
 
 namespace jean::testing {
 
@@ -143,6 +144,7 @@ struct Patch {
 
 std::vector<HeldColumn*> everyColumn(HeldLibrary& library) {
     std::vector<HeldColumn*> all;
+    all.reserve(library.spine.size() + library.columns.size());
     for (auto& [name, column] : library.spine)
         all.push_back(&column);
     for (auto& [name, column] : library.columns)
@@ -236,8 +238,8 @@ void applyChanges(HeldLibrary& library, const Wire& changes) {
     }
 
     for (HeldColumn* column : everyColumn(library)) {
-        for (auto at = removed.rbegin(); at != removed.rend(); ++at)
-            column->ids.erase(column->ids.begin() + *at);
+        for (const uint32_t at : std::views::reverse(removed))
+            column->ids.erase(column->ids.begin() + at);
         for (const uint32_t ordinal : inserted)
             column->ids.insert(column->ids.begin() + ordinal, kNoIdYet);
     }

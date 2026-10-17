@@ -1,12 +1,12 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CoveredAlbum } from "@/domain/track/albums";
 import { usePrefersReducedMotion } from "@/shared/hooks/useMediaQuery";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { Skeleton } from "@/shared/ui/Skeleton";
 import { AlbumCard } from "./AlbumCard";
+import type { CoveredAlbum } from "./cover";
 import styles from "./ShelfRow.module.css";
-import type { FilledShelf } from "./shelves";
+import type { DrawnShelf } from "./shelves";
 
 const PLACEHOLDER_CARDS = 8;
 
@@ -14,8 +14,8 @@ export function ShelfScroller({
 	shelf,
 	onPlayAlbum,
 }: {
-	shelf: FilledShelf<CoveredAlbum>;
-	onPlayAlbum: (shelf: FilledShelf<CoveredAlbum>, album: CoveredAlbum) => void;
+	shelf: DrawnShelf<CoveredAlbum>;
+	onPlayAlbum: (shelf: DrawnShelf<CoveredAlbum>, album: CoveredAlbum) => void;
 }) {
 	const t = useTranslate();
 	const format = useFormats();
@@ -83,7 +83,7 @@ export function ShelfScroller({
 						))
 					: shelf.albums.map((album) => (
 							<AlbumCard
-								key={album.key}
+								key={album.identity}
 								album={album}
 								caption={shelf.caption(album, t, format.locale)}
 								onPlay={() => onPlayAlbum(shelf, album)}

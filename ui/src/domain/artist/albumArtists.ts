@@ -38,14 +38,3 @@ export function albumArtistsOf<A extends Album>(albums: A[]): AlbumArtist<A>[] {
 
 	return [...byKey.values()];
 }
-
-export const mostPlayed = <T extends { plays: number }>(
-	entries: T[],
-): T | null =>
-	entries.reduce<T | null>(
-		(best, entry) =>
-			entry.plays > 0 && (best === null || entry.plays > best.plays)
-				? entry
-				: best,
-		null,
-	);

@@ -5,7 +5,14 @@ import {
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./TopTracks.module.css";
-import type { TopTrack } from "./tracks";
+
+export interface TopTrack {
+	ref: number;
+	title: string;
+	artist: string | null;
+	plays: number;
+	artworkUrl: string | null;
+}
 
 export function TopTracks({
 	tracks,

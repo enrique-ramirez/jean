@@ -1,3 +1,4 @@
+import { keepSummary, SUMMARY_ROLES } from "@/domain/library/useLibrarySummary";
 import type { PollFollower } from "@/domain/player/playerPoll";
 import {
 	fetchLibrary,
@@ -7,7 +8,8 @@ import {
 	TRANSIENT,
 } from "@/shared/api/fooJeanLibrary";
 import type { JlibDelta, JlibSnapshot, JlibSplice } from "@/shared/api/jlib";
-import { fetchState } from "@/shared/api/state";
+import { fetchLibrarySummary } from "@/shared/api/librarySummary";
+import { fetchState, type StateDocument } from "@/shared/api/state";
 import type { Phrase } from "@/shared/i18n/en";
 import { workWhenIdle } from "@/shared/lib/idle";
 import { sleep } from "@/shared/lib/sleep";
@@ -154,6 +156,7 @@ async function loadSnapshot(entry: Entry, origin: string, mayDraw = true) {
 			: null;
 
 		if (drawn) {
+			summaryAfterExport(entry, origin);
 			if (!isLoaded(entry.snapshot.columns, LATE_FIELDS))
 				void loadLatePart(entry, origin);
 			await recheckComponentLibrary(origin, drawn);
@@ -177,6 +180,7 @@ async function loadSnapshot(entry: Entry, origin: string, mayDraw = true) {
 			apiVersion,
 			controller.signal,
 		);
+		summaryAfterExport(entry, origin);
 
 		if (!isLoaded(snapshot.columns, LATE_FIELDS))
 			void loadLatePart(entry, origin);
@@ -277,7 +281,7 @@ async function bringToOneRevision(
 			part = patched;
 			revision = changes.delta.revision;
 			patches.push(changes.bytes);
-		} else if (!applyDelta(entry, feed, changes.delta, changes.bytes))
+		} else if (!applyDelta(entry, origin, feed, changes.delta, changes.bytes))
 			return exportInstead();
 	}
 	return "failed";
@@ -367,6 +371,161 @@ function retryLatePart(origin: string) {
 		void loadLatePart(entry, origin);
 }
 
+type SummaryHold =
+	| { kind: "none" }
+	| { kind: "libraryReady" }
+	| { kind: "declaration" }
+	| { kind: "refused" }
+	| { kind: "tooFast"; until: number }
+	| { kind: "failing"; failures: number; failedAt: number };
+
+interface SummaryRead {
+	asking: AbortController | null;
+	pair: LibraryGeneration | null;
+	tag: string | null;
+	hold: SummaryHold;
+	announced: StateDocument["library"] | null;
+}
+
+const summaryReads = new Map<string, SummaryRead>();
+
+const summaryReadOf = (origin: string) => {
+	let read = summaryReads.get(origin);
+	if (!read) {
+		read = {
+			asking: null,
+			pair: null,
+			tag: null,
+			hold: { kind: "none" },
+			announced: null,
+		};
+		summaryReads.set(origin, read);
+	}
+	return read;
+};
+
+const isSummaryDue = ({ hold }: SummaryRead) => {
+	switch (hold.kind) {
+		case "none":
+			return true;
+		case "tooFast":
+			return Date.now() >= hold.until;
+		case "failing":
+			return Date.now() - hold.failedAt >= retryWait(hold.failures);
+		default:
+			return false;
+	}
+};
+
+const isWaitingOnTime = ({ hold }: SummaryRead) =>
+	hold.kind === "tooFast" || hold.kind === "failing";
+
+function holdAfter(
+	read: SummaryRead,
+	result: Awaited<ReturnType<typeof fetchLibrarySummary>>,
+): SummaryHold {
+	if (result.ok) return { kind: "none" };
+	switch (result.reason) {
+		case "notReady":
+			return { kind: "libraryReady" };
+		case "undeclared":
+			return { kind: "declaration" };
+		case "refused":
+			return { kind: "refused" };
+		case "tooFast":
+			return {
+				kind: "tooFast",
+				until: Date.now() + (result.retryAfterMs ?? LIBRARY_RETRY_MIN_MS),
+			};
+		default:
+			return {
+				kind: "failing",
+				failures: (read.hold.kind === "failing" ? read.hold.failures : 0) + 1,
+				failedAt: Date.now(),
+			};
+	}
+}
+
+// foo_jean reports a halted library ready with no build, and it never builds, so it is not settled.
+const isSettled = (library: StateDocument["library"] | null) =>
+	!!library && library.ready && !library.halted && !library.build;
+
+async function askSummary(entry: Entry, origin: string) {
+	const feed = entry.feed;
+	if (feed?.kind !== "library") return;
+
+	const read = summaryReadOf(origin);
+	read.asking?.abort();
+	const asking = new AbortController();
+	read.asking = asking;
+	read.pair = { structure: feed.structure, revision: feed.revision };
+	read.announced = null;
+
+	const result = await fetchLibrarySummary(
+		origin,
+		SUMMARY_ROLES,
+		read.tag,
+		asking.signal,
+	).catch(() => null);
+	if (asking.signal.aborted || !result) return;
+
+	read.asking = null;
+	read.hold = holdAfter(read, result);
+	if (!result.ok && result.reason === "notReady" && isSettled(read.announced)) {
+		read.hold = { kind: "none" };
+		return askSummary(entry, origin);
+	}
+	if (result.ok && result.kind === "summary") {
+		read.tag = result.tag;
+		keepSummary(origin, result.summary);
+	}
+}
+
+function summaryAfterMove(entry: Entry, origin: string) {
+	const feed = entry.feed;
+	if (feed?.kind !== "library") return;
+
+	const read = summaryReadOf(origin);
+	if (
+		read.pair?.structure === feed.structure &&
+		read.pair.revision === feed.revision
+	)
+		return;
+	if (!isWaitingOnTime(read)) read.hold = { kind: "none" };
+	if (isSummaryDue(read)) void askSummary(entry, origin);
+}
+
+// foo_jean answers 409 for an expression no export has declared, and an export that lands at the pair
+// already asked declares them again.
+function summaryAfterExport(entry: Entry, origin: string) {
+	const read = summaryReadOf(origin);
+	if (read.hold.kind !== "declaration") return summaryAfterMove(entry, origin);
+	read.hold = { kind: "none" };
+	void askSummary(entry, origin);
+}
+
+function retrySummary(origin: string) {
+	const entry = heldEntry(componentLibraryKey(origin));
+	const read = summaryReads.get(origin);
+	if (!entry || !read || read.asking || !isWaitingOnTime(read)) return;
+	if (isSummaryDue(read)) void askSummary(entry, origin);
+}
+
+// foo_jean keeps reporting `ready` while a rebuild for a changed declaration runs, so a 202 with
+// `ready` true and a build under way is the pair already asked, not a new one.
+function summaryAnnounced(origin: string, library: StateDocument["library"]) {
+	const entry = heldEntry(componentLibraryKey(origin));
+	const read = summaryReadOf(origin);
+	read.announced = library;
+	if (!entry || read.hold.kind !== "libraryReady" || !library.ready) return;
+	const isAskedPair =
+		read.pair?.structure === library.structure &&
+		read.pair.revision === library.revision;
+	if ((library.build || library.halted) && isAskedPair) return;
+	read.hold = { kind: "none" };
+	void askSummary(entry, origin);
+}
+
 function exportAgain(entry: Entry, origin: string) {
 	entry.controller?.abort();
 	entry.controller = new AbortController();
@@ -384,6 +543,7 @@ function exportAgain(entry: Entry, origin: string) {
 
 function applyDelta(
 	entry: Entry,
+	origin: string,
 	feed: LibraryFeed,
 	delta: JlibDelta,
 	bytes: ArrayBuffer,
@@ -402,11 +562,13 @@ function applyDelta(
 			? patchedIntensity(entry.snapshot, held, columns)
 			: null),
 	});
+	summaryAfterMove(entry, origin);
 	return true;
 }
 
 function applySplice(
 	entry: Entry,
+	origin: string,
 	feed: LibraryFeed,
 	splice: JlibSplice,
 	bytes: ArrayBuffer,
@@ -438,6 +600,7 @@ function applySplice(
 		total: columns.trackCount,
 		...deriveIntensity(columns),
 	});
+	summaryAfterMove(entry, origin);
 	return true;
 }
 
@@ -500,12 +663,12 @@ export async function recheckComponentLibrary(
 		if (changes.ok) {
 			if (
 				changes.kind === "delta" &&
-				applyDelta(entry, feed, changes.delta, changes.bytes)
+				applyDelta(entry, origin, feed, changes.delta, changes.bytes)
 			)
 				return;
 			if (
 				changes.kind === "splice" &&
-				applySplice(entry, feed, changes.splice, changes.bytes)
+				applySplice(entry, origin, feed, changes.splice, changes.bytes)
 			)
 				return;
 		}
@@ -555,7 +718,10 @@ export const libraryPollFollower: PollFollower = {
 		void retryFailedLibraryRead(origin);
 		void retryMissedLibraryRead(origin);
 		retryLatePart(origin);
+		retrySummary(origin);
 	},
 	libraryAnnounced: (origin, library) =>
-		void recheckComponentLibrary(origin, library),
+		void recheckComponentLibrary(origin, library).then(() =>
+			summaryAnnounced(origin, library),
+		),
 };

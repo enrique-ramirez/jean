@@ -13,7 +13,6 @@ import {
 import { canonicalTrackRefs, groupByAlbum } from "./grouping";
 import { type Intensity, intensitySteps } from "./intensity";
 import { readKeepLibrary } from "./keepLibrary";
-import { landingWorkSteps } from "./landingWork";
 import { isLoaded, type LibraryColumns } from "./libraryColumns";
 import { librarySearcher } from "./librarySearcher";
 import {
@@ -27,12 +26,7 @@ import {
 	LIBRARY_FORMAT,
 	type LibraryPair,
 } from "./libraryStore";
-import {
-	type Entry,
-	emit,
-	generationKey,
-	type LibraryFeed,
-} from "./playlistEntries";
+import { type Entry, emit, type LibraryFeed } from "./playlistEntries";
 import { wholeRows } from "./project";
 
 const apiVersions = new Map<string, Promise<number | null>>();
@@ -85,17 +79,12 @@ export function showColumns(columns: LibraryColumns) {
 	librarySearcher()?.mirror(columns);
 }
 
-function* firstFrameSteps(
-	columns: LibraryColumns,
-	key: string,
-): Steps<Intensity> {
+function* firstFrameSteps(columns: LibraryColumns): Steps<Intensity> {
 	yield* tagGroups.steps(columns.fields[FIELD.album]);
 	yield* artistGroups.steps(columns);
 	yield* canonicalTrackRefs.steps(columns);
 	yield* groupByAlbum.steps(wholeRows(columns));
-	const intensity = yield* intensitySteps(columns);
-	yield* landingWorkSteps(columns, key);
-	return intensity;
+	return yield* intensitySteps(columns);
 }
 
 export async function landLibrary(
@@ -105,10 +94,7 @@ export async function landLibrary(
 	toWorker: () => void,
 	signal: AbortSignal,
 ) {
-	const intensity = await inSlices(
-		firstFrameSteps(columns, generationKey(entry.key, feed.structure)),
-		signal,
-	);
+	const intensity = await inSlices(firstFrameSteps(columns), signal);
 	entry.feed = feed;
 	entry.libraryRetry = null;
 	toWorker();
@@ -165,13 +151,10 @@ export async function landLatePart(
 	patches: ArrayBuffer[],
 	signal: AbortSignal,
 ): Promise<Joined> {
+	signal.throwIfAborted();
 	const columns = withLatePart(entry.snapshot.columns, part);
 	if (!columns) return "failed";
 
-	await inSlices(
-		landingWorkSteps(columns, generationKey(entry.key, feed.structure)),
-		signal,
-	);
 	librarySearcher()?.part(bytes.slice(0), patches, keepNote(feed, columns));
 	showColumns(columns);
 	emit(entry, { columns });
@@ -183,14 +166,8 @@ export async function landSettledLatePart(
 	failure: LibraryFailure,
 	signal: AbortSignal,
 ) {
+	signal.throwIfAborted();
 	const columns = withSettledLatePart(entry.snapshot.columns);
-	await inSlices(
-		landingWorkSteps(
-			columns,
-			generationKey(entry.key, entry.snapshot.structure),
-		),
-		signal,
-	);
 	librarySearcher()?.settle();
 	showColumns(columns);
 	emit(entry, { columns, failure });

@@ -14,26 +14,51 @@ import {
 import { Artwork } from "@/shared/ui/Artwork";
 import { Button } from "@/shared/ui/Button";
 import { PlayIcon } from "@/shared/ui/icons";
+import { BusyNote, busyProps, Skeleton } from "@/shared/ui/Skeleton";
+import type { CoveredAlbum } from "./cover";
 import styles from "./HomeHeader.module.css";
-import type { CoveredStats } from "./libraryStats";
 
 type DoorPhrase = Extract<Phrase, `home.door.${string}`>;
 type HintPhrase = Extract<Phrase, `home.hint.${string}`>;
 
+export interface HeaderFigures {
+	seconds: number;
+	earliestYear: number | null;
+	latestYear: number | null;
+	trackCount: number;
+	albumCount: number;
+	artistCount: number;
+	genreCount: number;
+	topAlbum: CoveredAlbum | null;
+	topArtist: { name: string | null; cover: CoveredAlbum } | null;
+}
+
+export const NO_FIGURES: HeaderFigures = {
+	seconds: 0,
+	earliestYear: null,
+	latestYear: null,
+	trackCount: 0,
+	albumCount: 0,
+	artistCount: 0,
+	genreCount: 0,
+	topAlbum: null,
+	topArtist: null,
+};
+
 interface Door {
 	id: string;
 	label: DoorPhrase;
-	count: number;
+	count: number | null;
 	href: string | null;
 	onOpen?: () => void;
 	hint: HintPhrase | null;
 	name: string | null;
-	cover: string | null;
+	cover: CoveredAlbum | null;
 	minor?: boolean;
 }
 
 export function HomeHeader({
-	stats,
+	figures,
 	isLoading,
 	onPlayEverything,
 	onShuffleEverything,
@@ -41,7 +66,7 @@ export function HomeHeader({
 	canPlay,
 	canShuffle,
 }: {
-	stats: CoveredStats;
+	figures: HeaderFigures | null;
 	isLoading: boolean;
 	onPlayEverything: () => void;
 	onShuffleEverything: () => void;
@@ -54,18 +79,21 @@ export function HomeHeader({
 	const say = useSpoken();
 	const playLabel = t("player.play");
 	const shuffleLabel = t("player.shuffle");
-	const duration = spellDuration(stats.seconds);
+	const isWaiting = figures === null;
+	const duration = figures ? spellDuration(figures.seconds) : null;
 	const span =
-		stats.earliest && stats.latest && stats.earliest !== stats.latest
-			? `${stats.earliest}–${stats.latest}`
-			: (stats.earliest ?? null);
+		figures?.earliestYear &&
+		figures.latestYear &&
+		figures.earliestYear !== figures.latestYear
+			? `${figures.earliestYear}–${figures.latestYear}`
+			: (figures?.earliestYear ?? null);
 
 	const doors = (
 		[
 			{
 				id: "tracks",
 				label: "home.door.tracks",
-				count: stats.trackCount,
+				count: figures?.trackCount ?? null,
 				href: href(ROUTE.all),
 				hint: "home.hint.browse",
 				name: t("library.allMusic"),
@@ -75,27 +103,28 @@ export function HomeHeader({
 			{
 				id: "albums",
 				label: "home.door.albums",
-				count: stats.albumCount,
+				count: figures?.albumCount ?? null,
 				href: null,
-				onOpen: () => stats.topAlbum && onSearch(stats.topAlbum.album),
-				hint: stats.topAlbum ? "home.hint.mostPlayed" : null,
-				name: stats.topAlbum?.album ?? null,
-				cover: stats.topAlbum?.artworkUrl ?? null,
+				onOpen: () => figures?.topAlbum && onSearch(figures.topAlbum.album),
+				hint: figures?.topAlbum || isWaiting ? "home.hint.mostPlayed" : null,
+				name: figures?.topAlbum?.album ?? null,
+				cover: figures?.topAlbum ?? null,
 			},
 			{
 				id: "artists",
 				label: "home.door.artists",
-				count: stats.artistCount,
+				count: figures?.artistCount ?? null,
 				href: null,
-				onOpen: () => stats.topArtist?.name && onSearch(stats.topArtist.name),
-				hint: stats.topArtist ? "home.hint.mostPlayed" : null,
-				name: stats.topArtist?.name ?? null,
-				cover: stats.topArtist?.cover.artworkUrl ?? null,
+				onOpen: () =>
+					figures?.topArtist?.name && onSearch(figures.topArtist.name),
+				hint: figures?.topArtist || isWaiting ? "home.hint.mostPlayed" : null,
+				name: figures?.topArtist?.name ?? null,
+				cover: figures?.topArtist?.cover ?? null,
 			},
 			{
 				id: "genres",
 				label: "home.door.genres",
-				count: stats.genreCount,
+				count: figures?.genreCount ?? null,
 				href: href(ROUTE.genres),
 				hint: "home.hint.browse",
 				name: t("home.allGenres"),
@@ -103,7 +132,7 @@ export function HomeHeader({
 				minor: true,
 			},
 		] as Door[]
-	).filter((door) => door.count > 0);
+	).filter((door) => door.count === null || door.count > 0);
 
 	return (
 		<header className={styles.header}>
@@ -113,8 +142,13 @@ export function HomeHeader({
 					{span ? <span className={styles.span}>{span}</span> : null}
 				</p>
 
-				<h1 className={styles.title}>
-					{duration ? (
+				<h1 className={styles.title} {...busyProps(isWaiting)}>
+					{isWaiting ? (
+						<>
+							<Skeleton />
+							<BusyNote />
+						</>
+					) : duration ? (
 						<>
 							{duration.lead}
 							{duration.trail ? (
@@ -161,9 +195,9 @@ export function HomeHeader({
 			) : null}
 
 			{doors.length > 0 ? (
-				<div className={styles.doors}>
+				<div className={styles.doors} {...busyProps(isWaiting)}>
 					{doors.map((door) => (
-						<Doorway key={door.id} door={door} />
+						<Doorway key={door.id} door={door} isWaiting={isWaiting} />
 					))}
 				</div>
 			) : null}
@@ -175,23 +209,35 @@ export function HomeHeader({
 	);
 }
 
-function Doorway({ door }: { door: Door }) {
+function Doorway({ door, isWaiting }: { door: Door; isWaiting: boolean }) {
 	const t = useTranslate();
 	const format = useFormats();
+	const isNamed = door.name !== null || (isWaiting && door.hint !== null);
 	const body = (
 		<>
 			<span className={styles.figure}>
-				<span className={styles.count}>{format.number(door.count)}</span>
+				<span className={styles.count}>
+					{door.count === null ? <Skeleton /> : format.number(door.count)}
+				</span>
 				<span className={styles.label}>
-					{t(door.label, { count: door.count })}
+					{t(door.label, { count: door.count ?? 0 })}
 				</span>
 			</span>
 
-			{door.name ? (
+			{isNamed ? (
 				<span className={styles.named}>
-					{door.cover ? (
+					{door.cover || isWaiting ? (
 						<span className={styles.thumb}>
-							<Artwork src={door.cover} size="100%" alt="" />
+							{door.cover ? (
+								<Artwork
+									src={door.cover.artworkUrl}
+									identity={door.cover.identity}
+									size="100%"
+									alt=""
+								/>
+							) : (
+								<Skeleton height="100%" />
+							)}
 						</span>
 					) : null}
 
@@ -200,7 +246,9 @@ function Doorway({ door }: { door: Door }) {
 							<span className={styles.hint}>{t(door.hint)}</span>
 						) : null}
 						<span className={styles.name}>
-							<span className={styles.nameText}>{door.name}</span>
+							<span className={styles.nameText}>
+								{door.name ?? <Skeleton />}
+							</span>
 							<ChevronRight
 								className={styles.nameChevron}
 								size={14}
@@ -214,15 +262,22 @@ function Doorway({ door }: { door: Door }) {
 		</>
 	);
 
-	return door.href ? (
-		<a
-			className={styles.door}
-			href={door.href}
-			data-door={door.id}
-			data-minor={door.minor}
-		>
+	if (door.href)
+		return (
+			<a
+				className={styles.door}
+				href={door.href}
+				data-door={door.id}
+				data-minor={door.minor}
+			>
+				{body}
+			</a>
+		);
+
+	return isWaiting ? (
+		<div className={styles.door} data-door={door.id} data-minor={door.minor}>
 			{body}
-		</a>
+		</div>
 	) : (
 		<button
 			type="button"

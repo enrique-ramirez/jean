@@ -1,20 +1,20 @@
 import { ChevronRight } from "lucide-react";
-import type { CoveredAlbum } from "@/domain/track/albums";
 import { href, shelfRoute } from "@/domain/track/routes";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { BusyNote, busyProps } from "@/shared/ui/Skeleton";
+import type { CoveredAlbum } from "./cover";
 import styles from "./ShelfRow.module.css";
 import { ShelfScroller } from "./ShelfScroller";
 import tabs from "./ShelfTabs.module.css";
-import type { FilledShelf } from "./shelves";
+import type { DrawnShelf } from "./shelves";
 
 export function ShelfTabs({
 	shelves,
 	onPlayAlbum,
 }: {
-	shelves: FilledShelf<CoveredAlbum>[];
-	onPlayAlbum: (shelf: FilledShelf<CoveredAlbum>, album: CoveredAlbum) => void;
+	shelves: DrawnShelf<CoveredAlbum>[];
+	onPlayAlbum: (shelf: DrawnShelf<CoveredAlbum>, album: CoveredAlbum) => void;
 }) {
 	const t = useTranslate();
 	const [chosen, choose] = useStoredState<string | null>(

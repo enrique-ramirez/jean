@@ -23,6 +23,11 @@
 	grid-column: 1 / -1;
 }
 
+.bandPlaceholder {
+	height: 27rem;
+	border-radius: var(--radius);
+}
+
 .notice {
 	margin: 0;
 	padding: 0 24px;

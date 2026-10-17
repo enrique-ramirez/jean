@@ -2,12 +2,12 @@ import { useCallback } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import { usePlaySet } from "@/domain/library/usePlaySet";
 import { usePlaybackOrder } from "@/domain/player/usePlaybackOrder";
-import type { Album } from "@/domain/track/albums";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { Refs } from "@/domain/track/project";
+import type { SummaryAlbum } from "@/shared/api/librarySummary";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useTranslate } from "@/shared/i18n/useTranslate";
-import { type FilledShelf, refsOfShelf } from "./shelves";
+import { type DrawnShelf, refsOfShelf } from "./shelves";
 
 export function useHomePlayback({
 	library,
@@ -23,9 +23,9 @@ export function useHomePlayback({
 	const { enableShuffle, canShuffle } = usePlaybackOrder();
 
 	const playShelf = useCallback(
-		async (shelf: FilledShelf<Album>, album: Album) => {
+		async (shelf: DrawnShelf, album: SummaryAlbum) => {
 			const refs = refsOfShelf(shelf);
-			const position = Math.max(0, refs.indexOf(album.refs[0]));
+			const position = Math.max(0, refs.indexOf(album.ordinals[0]));
 
 			navigate(`/shelf/${shelf.id}`);
 			await play({

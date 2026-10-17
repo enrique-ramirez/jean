@@ -283,13 +283,3 @@ function albumRefs(
 		artist: artistGroup < 0 ? null : artists.names[artistGroup],
 	};
 }
-
-export function percentile(values: number[], fraction: number): number {
-	if (values.length === 0) return 0;
-	const sorted = Float64Array.from(values).sort();
-	const at = Math.min(
-		sorted.length - 1,
-		Math.max(0, Math.round((sorted.length - 1) * fraction)),
-	);
-	return sorted[at];
-}

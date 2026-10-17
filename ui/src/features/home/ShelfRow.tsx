@@ -1,18 +1,18 @@
 import { ChevronRight } from "lucide-react";
-import type { CoveredAlbum } from "@/domain/track/albums";
 import { href, shelfRoute } from "@/domain/track/routes";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { BusyNote, busyProps } from "@/shared/ui/Skeleton";
+import type { CoveredAlbum } from "./cover";
 import styles from "./ShelfRow.module.css";
 import { ShelfScroller } from "./ShelfScroller";
-import type { FilledShelf } from "./shelves";
+import type { DrawnShelf } from "./shelves";
 
 export function ShelfRow({
 	shelf,
 	onPlayAlbum,
 }: {
-	shelf: FilledShelf<CoveredAlbum>;
-	onPlayAlbum: (shelf: FilledShelf<CoveredAlbum>, album: CoveredAlbum) => void;
+	shelf: DrawnShelf<CoveredAlbum>;
+	onPlayAlbum: (shelf: DrawnShelf<CoveredAlbum>, album: CoveredAlbum) => void;
 }) {
 	const t = useTranslate();
 	return (

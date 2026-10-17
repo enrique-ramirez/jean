@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
-import test, { mock, type TestContext } from "node:test";
+import test, { type TestContext } from "node:test";
 
-import {
-	type Album,
-	albumIndex,
-	albumsOf,
-} from "../../src/domain/track/albums.ts";
+import { albumIndex, albumsOf } from "../../src/domain/track/albums.ts";
 import { FIELD } from "../../src/domain/track/fields.ts";
 import { albumCanonicalIndex } from "../../src/domain/track/grouping.ts";
 import { deriveIntensity } from "../../src/domain/track/intensity.ts";
@@ -19,7 +15,6 @@ import {
 } from "../../src/domain/track/pathTable.ts";
 import { generationKey } from "../../src/domain/track/playlistEntries.ts";
 import { trackRows } from "../../src/domain/track/project.ts";
-import { buildShelves } from "../../src/features/home/shelves.ts";
 import { libraryArtworkUrl } from "../../src/shared/api/artwork.ts";
 import {
 	decodedSnapshot,
@@ -81,25 +76,6 @@ test("the album index after any play delta is what a rebuild gives", async (t) =
 		assert.deepEqual(
 			albumIndex(step.key, step.loaded.snapshot().columns),
 			albumsOf(trackRows(step.fresh.columns)),
-			where(step),
-		);
-	});
-});
-
-const shelvesOf = (albums: Album[]) => {
-	const random = mock.method(Math, "random", seeded(5));
-	try {
-		return buildShelves(albums, null);
-	} finally {
-		random.mock.restore();
-	}
-};
-
-test("Home's shelves after any play delta are what a rebuild gives", async (t) => {
-	await everyDelta(t, (step) => {
-		assert.deepEqual(
-			shelvesOf(albumIndex(step.key, step.loaded.snapshot().columns)),
-			shelvesOf(albumsOf(trackRows(step.fresh.columns))),
 			where(step),
 		);
 	});

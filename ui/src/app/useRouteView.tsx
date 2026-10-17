@@ -2,6 +2,10 @@ import { useMemo } from "react";
 import type { ArtistTracks } from "@/domain/artist/artists";
 import { useSplitCredits } from "@/domain/artist/splitCredits";
 import type { Library } from "@/domain/library/useLibrary";
+import {
+	atStructure,
+	useLibrarySummary,
+} from "@/domain/library/useLibrarySummary";
 import { NO_WAIT, useWait, type Wait } from "@/domain/library/useOverdue";
 import { AlbumCrumb } from "@/domain/track/AlbumCrumb";
 import type { AlbumTracks } from "@/domain/track/albums";
@@ -21,7 +25,6 @@ import {
 import { type ArtistTab, href, ROUTE } from "@/domain/track/routes";
 import type { PageHeading } from "@/domain/track/TrackPage";
 import { useLibraryAnswer } from "@/domain/track/useLibraryAnswer";
-import { homeData } from "@/features/home/homeData";
 import { refsOfShelf } from "@/features/home/shelves";
 import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
 import { Crumb } from "@/shared/ui/Crumb";
@@ -153,17 +156,18 @@ export function useRouteView(route: RouteView, library: Library) {
 
 	const allMusic = useMemo(() => wholeLibrary(snapshot), [snapshot]);
 
+	const summary = useLibrarySummary(library);
 	const shelfAnswer = useMemo(() => {
 		if (!shelf || !library.key || snapshot.columns.trackCount === 0)
 			return { view: null, isPending: false };
-		const built = homeData(library.key, snapshot.columns).shelves.find(
-			(entry) => entry.id === shelf.id,
-		);
-		if (!built) return { view: null, isPending: false };
-		return built.isPending
-			? { view: null, isPending: true }
-			: { view: project(snapshot, refsOfShelf(built)), isPending: false };
-	}, [shelf, snapshot, library.key]);
+		const document = atStructure(summary, snapshot.structure);
+		if (!document) return { view: null, isPending: true };
+		const held = document.shelves.find((entry) => entry.id === shelf.id);
+		return {
+			view: held ? project(snapshot, refsOfShelf(held)) : null,
+			isPending: false,
+		};
+	}, [shelf, snapshot, library.key, summary]);
 
 	const genreQuestion = useMemo(
 		() => (genre ? ({ kind: "genre", genre } as const) : null),

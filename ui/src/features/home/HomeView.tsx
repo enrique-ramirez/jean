@@ -1,27 +1,28 @@
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { libraryNoticeFor } from "@/domain/library/LibraryNotice";
 import {
 	isLibraryReading,
 	readingNotice,
 } from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
-import type { Album, CoveredAlbum } from "@/domain/track/albums";
-import { trackRows } from "@/domain/track/project";
+import {
+	atStructure,
+	useLibrarySummary,
+} from "@/domain/library/useLibrarySummary";
+import { libraryArtworkUrl } from "@/shared/api/artwork";
 import { useTranslate } from "@/shared/i18n/useTranslate";
+import { BusyNote, busyProps, Skeleton } from "@/shared/ui/Skeleton";
+import { type CoveredAlbum, covered } from "./cover";
 import { GenreBars } from "./GenreBars";
-import { HomeHeader } from "./HomeHeader";
+import { type HeaderFigures, HomeHeader, NO_FIGURES } from "./HomeHeader";
 import styles from "./HomeView.module.css";
-import { homeData } from "./homeData";
-import { coveredStats, libraryStats } from "./libraryStats";
+import { hasBandOf, useKeptLayout } from "./keptLayout";
 import { ShelfRow } from "./ShelfRow";
 import { ShelfTabs } from "./ShelfTabs";
-import type { FilledShelf } from "./shelves";
-import { TopTracks } from "./TopTracks";
-import { topTracksOf } from "./tracks";
+import { catalogueEntry, type DrawnShelf } from "./shelves";
+import { type TopTrack, TopTracks } from "./TopTracks";
 
 const FREE_SHELVES = ["added", "recent"];
-
-const TOP_TRACKS = 10;
 
 export function HomeView({
 	library,
@@ -34,7 +35,7 @@ export function HomeView({
 	canShuffle,
 }: {
 	library: Library;
-	onPlayAlbum: (shelf: FilledShelf<CoveredAlbum>, album: CoveredAlbum) => void;
+	onPlayAlbum: (shelf: DrawnShelf<CoveredAlbum>, album: CoveredAlbum) => void;
 	onPlayTrack: (ref: number) => void;
 	onPlayEverything: () => void;
 	onShuffleEverything: () => void;
@@ -43,42 +44,61 @@ export function HomeView({
 	canShuffle: boolean;
 }) {
 	const t = useTranslate();
-	const rows = useMemo(() => trackRows(library.columns), [library.columns]);
+	const { origin, structure } = library;
+	const hasTracks = library.columns.trackCount > 0;
 
-	const home = useMemo(
-		() =>
-			library.key === null || rows.length === 0
-				? null
-				: homeData(library.key, library.columns),
-		[rows, library.key, library.columns],
+	const held = useLibrarySummary(library);
+	const summary = atStructure(held, structure);
+	const isWaiting = hasTracks && summary === null;
+
+	const kept = useKeptLayout(summary);
+
+	const laidOut = useMemo(
+		(): DrawnShelf<CoveredAlbum>[] =>
+			isWaiting
+				? kept.shelves.flatMap((id) => {
+						const entry = catalogueEntry(id);
+						return entry ? [{ ...entry, albums: [], isPending: true }] : [];
+					})
+				: (summary?.shelves ?? []).flatMap((shelf) => {
+						const entry = catalogueEntry(shelf.id);
+						return entry
+							? [
+									{
+										...entry,
+										albums: shelf.albums.map((album) => covered(origin, album)),
+										isPending: false,
+									},
+								]
+							: [];
+					}),
+		[isWaiting, kept, summary, origin],
 	);
 
-	const cover = useCallback(
-		(album: Album): CoveredAlbum => ({
-			...album,
-			artworkUrl: library.source.artworkUrl(album.refs[0]),
-		}),
-		[library.source],
-	);
-
-	const shelves = useMemo(
-		() =>
-			(home?.shelves ?? []).map((shelf) => ({
-				...shelf,
-				albums: shelf.albums.map(cover),
-			})),
-		[home, cover],
-	);
-
-	const stats = useMemo(
-		() =>
-			coveredStats(home?.stats ?? libraryStats({ rows, albums: [] }), cover),
-		[home, rows, cover],
-	);
+	const figures = useMemo((): HeaderFigures | null => {
+		if (!summary) return hasTracks ? null : NO_FIGURES;
+		const { topAlbum, topArtist } = summary;
+		return {
+			...summary,
+			topAlbum: topAlbum && covered(origin, topAlbum),
+			topArtist: topArtist && {
+				name: topArtist.name,
+				cover: covered(origin, topArtist.cover),
+			},
+		};
+	}, [summary, hasTracks, origin]);
 
 	const tracks = useMemo(
-		() => topTracksOf(rows, TOP_TRACKS, library.source.artworkUrl, t),
-		[rows, library.source, t],
+		(): TopTrack[] =>
+			(summary?.topTracks ?? []).map((track) => ({
+				ref: track.ordinal,
+				title: track.title ?? t("track.unknownTitle"),
+				artist: track.artist,
+				plays: track.plays,
+				artworkUrl:
+					track.cover === null ? null : libraryArtworkUrl(origin, track.cover),
+			})),
+		[summary, origin, t],
 	);
 
 	const notice = libraryNoticeFor(library);
@@ -87,24 +107,26 @@ export function HomeView({
 	const { status } = library;
 	const isReading = isLibraryReading(status);
 
-	const free = shelves.filter((shelf) => FREE_SHELVES.includes(shelf.id));
-	const tabbed = shelves.filter((shelf) => !free.includes(shelf));
+	const free = laidOut.filter((shelf) => FREE_SHELVES.includes(shelf.id));
+	const tabbed = laidOut.filter((shelf) => !free.includes(shelf));
 
-	const hasBand = tracks.length > 0 || stats.topGenres.length > 0;
+	const hasBand = isWaiting
+		? kept.band
+		: summary !== null && hasBandOf(summary);
 
 	return (
 		<div className={styles.home}>
 			<HomeHeader
-				stats={stats}
+				figures={figures}
 				isLoading={library.isLoading}
 				onPlayEverything={onPlayEverything}
 				onShuffleEverything={onShuffleEverything}
 				onSearch={onSearch}
-				canPlay={canPlay && rows.length > 0}
-				canShuffle={canShuffle && rows.length > 0}
+				canPlay={canPlay && hasTracks}
+				canShuffle={canShuffle && hasTracks}
 			/>
 
-			{shelves.length === 0 ? (
+			{laidOut.length === 0 ? (
 				<p className={styles.notice}>
 					{isReading
 						? readingNotice(status, "home.reading", t)
@@ -122,9 +144,19 @@ export function HomeView({
 			)}
 
 			{hasBand ? (
-				<div className={styles.band}>
-					<TopTracks tracks={tracks} onPlayTrack={onPlayTrack} />
-					<GenreBars genres={stats.topGenres} />
+				<div className={styles.band} {...busyProps(isWaiting)}>
+					{isWaiting ? (
+						<>
+							<Skeleton className={styles.bandPlaceholder} />
+							<Skeleton className={styles.bandPlaceholder} />
+							<BusyNote />
+						</>
+					) : (
+						<>
+							<TopTracks tracks={tracks} onPlayTrack={onPlayTrack} />
+							<GenreBars genres={summary?.topGenres ?? []} />
+						</>
+					)}
 				</div>
 			) : null}
 		</div>

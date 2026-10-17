@@ -2,10 +2,10 @@ import {
 	useCanControlPlayback,
 	whenControllable,
 } from "@/domain/player/usePlaybackControl";
-import type { CoveredAlbum } from "@/domain/track/albums";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./AlbumCard.module.css";
+import type { CoveredAlbum } from "./cover";
 
 export function AlbumCard({
 	album,
@@ -18,7 +18,7 @@ export function AlbumCard({
 }) {
 	const t = useTranslate();
 	const canControlPlayback = useCanControlPlayback();
-	const title = `${album.artistTag ?? t("track.unknownArtist")} — ${album.album}`;
+	const title = `${album.artist ?? t("track.unknownArtist")} — ${album.album}`;
 	return (
 		<button
 			type="button"
@@ -29,7 +29,7 @@ export function AlbumCard({
 			<span className={styles.cover}>
 				<Artwork
 					src={album.artworkUrl}
-					identity={album.key}
+					identity={album.identity}
 					size="100%"
 					alt=""
 					className={styles.art}
@@ -39,7 +39,7 @@ export function AlbumCard({
 			<span className={styles.meta}>
 				<span className={styles.album}>{album.album}</span>
 				<span className={styles.artist}>
-					{album.artistTag ?? t("track.unknownArtist")}
+					{album.artist ?? t("track.unknownArtist")}
 				</span>
 			</span>
 

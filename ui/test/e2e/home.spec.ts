@@ -1,8 +1,8 @@
-import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
-import { shelfRoute } from "../../src/domain/track/routes.ts";
+import { albumRoute, shelfRoute } from "../../src/domain/track/routes.ts";
 import { en } from "../../src/shared/i18n/en.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
+	coversFromTheComponent,
 	expect,
 	expectPlayingFrom,
 	expectSettlesAt,
@@ -17,6 +17,8 @@ import {
 	scratchOf,
 	sidebar,
 	test,
+	trackRow,
+	untilQuiet,
 	untilTheInstallIsKnown,
 	viewHeader,
 } from "./fixtures.ts";
@@ -536,6 +538,32 @@ test.describe("a shelf says it is playing", () => {
 	});
 });
 
+const holdTheSummary = async (page: Page) => {
+	const answer = await page.request.post("/__control/holdSummary", {
+		data: { hold: true },
+	});
+	expect(answer.ok(), "the fake holds the summary on request").toBe(true);
+};
+
+const releaseTheSummary = async (page: Page) => {
+	const answer = await page.request.post("/__control/holdSummary", {
+		data: {},
+	});
+	expect(answer.ok(), "the fake answers every summary it held").toBe(true);
+};
+
+const summaryAsks = (player: FakePlayer) =>
+	requestsTo(player, "/api/library/summary").filter(
+		(entry) => entry.method === "GET",
+	);
+
+const untilTheSummaryIsAsked = (player: FakePlayer) =>
+	expect
+		.poll(() => summaryAsks(player).length, {
+			message: "Jean never asked for the summary",
+		})
+		.toBeGreaterThan(0);
+
 interface ShelfPageSeen {
 	emptyView: string | null;
 }
@@ -558,19 +586,6 @@ const recordTheShelfPage = (page: Page) =>
 const shelfPageSeen = (page: Page) =>
 	page.evaluate(() => Reflect.get(window, "__shelfPage") as ShelfPageSeen);
 
-const untilTheLatePartIsAsked = (player: FakePlayer, late: string[]) =>
-	expect
-		.poll(
-			() =>
-				requestsTo(player, "/api/library/export").filter((entry) =>
-					new URL(entry.path, "http://fake.invalid").searchParams
-						.getAll("only")
-						.some((column) => late.includes(column)),
-				).length,
-			{ message: "Jean never asked for the late part" },
-		)
-		.toBeGreaterThan(0);
-
 const busyInMain = (page: Page) =>
 	page.locator('main[aria-busy="true"], main [aria-busy="true"]');
 
@@ -582,16 +597,15 @@ const theWait = (page: Page) =>
 const expectTheShelfPageWaits = async (
 	page: Page,
 	player: FakePlayer,
-	late: string[],
 	title: string,
 ) => {
 	await expect(
 		page.getByRole("heading", { level: 1, name: title }),
 	).toBeVisible();
-	await untilTheLatePartIsAsked(player, late);
+	await untilTheSummaryIsAsked(player);
 	await expect(
 		theWait(page),
-		"the shelf page shows no wait while the late part is held",
+		"the shelf page shows no wait while the summary is held",
 	).toBeVisible();
 };
 
@@ -600,26 +614,198 @@ const expectNothingEmptyWasShown = async (page: Page) => {
 	expect(emptyView, "the shelf page said the library is empty").toBeNull();
 };
 
-test.describe("Recently added before the late part arrives", () => {
-	const LATE = [
-		FIELD.codec,
-		FIELD.bitrate,
-		FIELD.added,
-		FIELD.artists,
-		FIELD.artistIds,
-		FIELD.albumArtists,
-		FIELD.albumArtistIds,
-	].map((field) => TRACK_EXPRESSIONS[field]);
+interface Box {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
 
-	const stampDaysAgo = (days: number) => {
-		const at = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-		const pad = (value: number) => String(value).padStart(2, "0");
-		return (
-			`${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ` +
-			`${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`
-		);
-	};
+// One pixel either way: a box laid out at a fractional offset rounds differently from one frame to
+// the next, and a move worth seeing is a shelf's height, not a subpixel.
+const PIXEL = 1;
 
+const expectSameBox = (actual: Box | undefined, expected: Box, what: string) =>
+	expect(
+		actual !== undefined &&
+			(["x", "y", "width", "height"] as const).every(
+				(side) => Math.abs(actual[side] - expected[side]) <= PIXEL,
+			),
+		`${what}: ${JSON.stringify(actual)} where ${JSON.stringify(expected)} was`,
+	).toBe(true);
+
+const boxOf = async (locator: Locator): Promise<Box> => {
+	const box = await locator.boundingBox();
+	expect(box, "a box for something on screen").not.toBeNull();
+	return box as Box;
+};
+
+const settled = async <T>(read: () => Promise<T>): Promise<T> => {
+	let last = "";
+	await expect
+		.poll(
+			async () => {
+				const now = JSON.stringify(await read());
+				const same = now === last;
+				last = now;
+				return same;
+			},
+			{ intervals: [250] },
+		)
+		.toBe(true);
+	return JSON.parse(last) as T;
+};
+
+const SHELF_REGIONS = ["Recently added", "Recently played", "Explore"];
+
+const drawnShelves = async (page: Page) => {
+	await expect(busyInMain(page)).toHaveCount(0);
+	const boxes: { name: string; box: Box }[] = [];
+	for (const name of SHELF_REGIONS) {
+		const region = page.getByRole("region", { name, exact: true });
+		if ((await region.count()) > 0)
+			boxes.push({ name, box: await boxOf(region) });
+	}
+	return boxes;
+};
+
+interface Skeleton {
+	box: Box;
+	notes: number;
+	hidden: boolean;
+}
+
+const skeletonsUnderTheHeader = (page: Page) =>
+	page.evaluate((loading) => {
+		const main = document.querySelector("main");
+		if (!main) return [];
+		const header = main.querySelector("header");
+		const isOutermost = (element: Element) => {
+			const above = element.parentElement?.closest('[aria-busy="true"]');
+			return !above || above === main;
+		};
+		return [...main.querySelectorAll('[aria-busy="true"]')]
+			.filter((element) => isOutermost(element) && !header?.contains(element))
+			.map((element) => {
+				const { x, y, width, height } = element.getBoundingClientRect();
+				const notes = [...element.querySelectorAll("*")].filter(
+					(node) =>
+						node.childElementCount === 0 &&
+						node.textContent?.trim() === loading,
+				);
+				return {
+					box: { x, y, width, height },
+					notes: notes.length,
+					hidden: notes.every((note) => {
+						const box = note.getBoundingClientRect();
+						return box.width <= 1 && box.height <= 1;
+					}),
+				};
+			})
+			.sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);
+	}, en["skeleton.loading"]);
+
+const untilSkeletons = async (page: Page, atLeast: number) => {
+	await expect
+		.poll(async () => (await skeletonsUnderTheHeader(page)).length, {
+			message: "Home drew no skeleton for its shelves",
+		})
+		.toBeGreaterThanOrEqual(atLeast);
+	return settled(() => skeletonsUnderTheHeader(page));
+};
+
+const expectOneHiddenNoteEach = (skeletons: Skeleton[]) =>
+	expect(
+		skeletons.map(({ notes, hidden }) => ({ notes, hidden })),
+		"each skeleton is one busy element carrying one hidden Loading",
+	).toEqual(skeletons.map(() => ({ notes: 1, hidden: true })));
+
+const expectOnlyTheBandBelow = (skeletons: Skeleton[], lastShelf: Box) =>
+	expect(
+		skeletons.filter(
+			({ box }) => box.y < lastShelf.y + lastShelf.height - PIXEL,
+		),
+		"a skeleton nobody guessed among the shelves",
+	).toEqual([]);
+
+interface HomeWait {
+	busyAt: number | null;
+	barShownAt: number | null;
+}
+
+const recordTheHomeWait = (page: Page) =>
+	page.addInitScript(() => {
+		const wait: HomeWait = { busyAt: null, barShownAt: null };
+		Reflect.set(window, "__homeWait", wait);
+		const isBar = (element: Element) =>
+			element.getAttribute("aria-hidden") === "true" &&
+			element.childElementCount === 0 &&
+			!(element instanceof SVGElement);
+		const isShown = (element: Element) => {
+			const box = element.getBoundingClientRect();
+			return (
+				box.width > 0 &&
+				box.height > 0 &&
+				element.checkVisibility({
+					opacityProperty: true,
+					visibilityProperty: true,
+				})
+			);
+		};
+		const sample = () => {
+			const busy = [
+				...document.querySelectorAll(
+					'main[aria-busy="true"], main [aria-busy="true"]',
+				),
+			];
+			if (busy.length > 0) {
+				wait.busyAt ??= performance.now();
+				if (
+					wait.barShownAt === null &&
+					busy.some((one) =>
+						[...one.querySelectorAll("*")].some(
+							(element) => isBar(element) && isShown(element),
+						),
+					)
+				)
+					wait.barShownAt = performance.now();
+			}
+			requestAnimationFrame(sample);
+		};
+		requestAnimationFrame(sample);
+	});
+
+const homeWaitSeen = (page: Page) =>
+	page.evaluate(() => Reflect.get(window, "__homeWait") as HomeWait);
+
+const stampDaysAgo = (days: number) => {
+	const at = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+	const pad = (value: number) => String(value).padStart(2, "0");
+	return (
+		`${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ` +
+		`${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`
+	);
+};
+
+const albumOf = (entry: { track: Record<string, unknown> }) =>
+	String(entry.track["%album%"]);
+
+const firstOrdinalOf = (player: FakePlayer, album: string) =>
+	player.ordinalOrder().findIndex((entry) => albumOf(entry) === album);
+
+const countAPlay = async (page: Page, ordinal: number) => {
+	const answer = await page.request.post("/__control/play", {
+		data: { ordinal },
+	});
+	expect(answer.ok(), "the fake counts a play by ordinal").toBe(true);
+};
+
+const albumsOn = async (region: Locator) =>
+	(await region.getByRole("button").allInnerTexts()).filter(
+		(text) => text.trim() !== "",
+	);
+
+test.describe("Recently added before the summary arrives", () => {
 	const ARRIVED = {
 		"Los Calientes": 1,
 		Tautou: 3,
@@ -630,18 +816,16 @@ test.describe("Recently added before the late part arrives", () => {
 	const ALBUMS =
 		/Jessico|Deja Entendu|Jar Of Flies|Lafcadio|Deathconsciousness/;
 
-	test.use({
-		retagged: Object.fromEntries(
-			Object.entries(ARRIVED).map(([title, days]) => [
-				title,
-				{ "%added%": stampDaysAgo(days) },
-			]),
-		),
-		fooJean: { holdSubset: LATE },
-	});
+	const retagged: Record<string, Record<string, string>> = Object.fromEntries(
+		Object.entries(ARRIVED).map(([title, days]) => [
+			title,
+			{ "%added%": stampDaysAgo(days) },
+		]),
+	);
+	for (const [title, tags] of Object.entries(PLAYED_LATELY))
+		retagged[title] = { ...retagged[title], ...tags };
 
-	const recentlyAdded = (page: Page) =>
-		page.getByRole("region", { name: "Recently added" });
+	test.use({ retagged, fooJean: { holdSummary: true } });
 
 	const holdsAPlaceholder = (region: Locator) =>
 		region.evaluate((element) =>
@@ -653,58 +837,402 @@ test.describe("Recently added before the late part arrives", () => {
 			}),
 		);
 
-	test("the shelf is busy with placeholder cards, and its records land in the same height", async ({
-		page,
-	}) => {
+	test("with nothing kept, Home is quiet for 100 ms, then the whole layout waits as skeletons, and every shelf lands in its skeleton's place", {
+		tag: "@iphone",
+	}, async ({ page, player }) => {
+		await recordTheHomeWait(page);
 		await page.goto("/");
-		const shelf = recentlyAdded(page);
-		await expect(shelf).toHaveAttribute("aria-busy", "true");
+		await untilTheSummaryIsAsked(player);
 		await expect(
-			shelf.getByRole("heading", { level: 2, name: "Recently added" }),
+			viewHeader(page).getByRole("button", { name: "Play", exact: true }),
 		).toBeVisible();
-		expect(await holdsAPlaceholder(shelf)).toBe(true);
-		expect(await shelf.getByRole("button", { name: ALBUMS }).count()).toBe(0);
-		const waiting = (await shelf.boundingBox())?.height ?? Number.NaN;
 
-		await page.request.post("/__control/holdSubset", { data: {} });
-		await expect(shelf.getByRole("button", { name: /Jessico/ })).toBeVisible();
-		await expect(shelf).not.toHaveAttribute("aria-busy", "true");
-		expect((await shelf.boundingBox())?.height).toBeCloseTo(waiting, 1);
+		const skeletons = await untilSkeletons(page, 4);
+		expectOneHiddenNoteEach(skeletons);
+		const [added, recent, tabs] = skeletons;
+		expectOnlyTheBandBelow(skeletons.slice(3), tabs.box);
+		expect(
+			await viewHeader(page).locator('[aria-busy="true"]').count(),
+			"the header's numbers are not drawn as skeletons",
+		).toBeGreaterThan(0);
+		expect(await holdsAPlaceholder(page.locator("main"))).toBe(true);
+		expect(
+			await page.locator("main").getByRole("button", { name: ALBUMS }).count(),
+			"a record was drawn before the summary arrived",
+		).toBe(0);
+		const header = await settled(() => boxOf(viewHeader(page)));
+
+		const { busyAt, barShownAt } = await homeWaitSeen(page);
+		expect(busyAt, "Home never drew its wait").not.toBeNull();
+		expect(barShownAt, "no skeleton bar was ever shown").not.toBeNull();
+		expect(
+			(barShownAt as number) - (busyAt as number),
+			"a skeleton bar was shown within 100 ms of Home starting to wait",
+		).toBeGreaterThanOrEqual(100);
+
+		await releaseTheSummary(page);
+		await expect(
+			page
+				.getByRole("region", { name: "Recently added" })
+				.getByRole("button", { name: /Jessico/ }),
+		).toBeVisible();
+		const landed = await settled(() => drawnShelves(page));
+
+		expectSameBox(
+			await boxOf(viewHeader(page)),
+			header,
+			"the header moved when the summary landed",
+		);
+		expect(landed.map(({ name }) => name)).toEqual(SHELF_REGIONS);
+		expectSameBox(landed[0].box, added.box, "Recently added left its place");
+		expectSameBox(landed[1].box, recent.box, "Recently played left its place");
+		expectSameBox(landed[2].box, tabs.box, "Explore left its place");
 	});
 
-	test("its page opened by address waits for the late part, and is never drawn empty", async ({
+	test("its page opened by address waits for the summary, and is never drawn empty", async ({
 		page,
 		player,
 	}) => {
 		await recordTheShelfPage(page);
 		await page.goto(`/#/${shelfRoute("added")}`);
-		await expectTheShelfPageWaits(page, player, LATE, "Recently added");
+		await expectTheShelfPageWaits(page, player, "Recently added");
 
-		await page.request.post("/__control/holdSubset", { data: {} });
+		await releaseTheSummary(page);
 		await expect(rowByTitle(page, "Los Calientes")).toBeAttached();
 		await expectNothingEmptyWasShown(page);
 	});
 });
 
-test.describe("Time for an upgrade before the late part arrives", () => {
-	const LATE = [FIELD.codec, FIELD.bitrate].map(
-		(field) => TRACK_EXPRESSIONS[field],
-	);
-	test.use({ fooJean: { holdSubset: LATE } });
+test.describe("Time for an upgrade before the summary arrives", () => {
+	test.use({ fooJean: { holdSummary: true } });
 
-	test("its page opened by address waits for the late part, and is never drawn empty while it does", async ({
+	test("its page opened by address waits for the summary, and is never drawn empty while it does", async ({
 		page,
 		player,
 	}) => {
 		await recordTheShelfPage(page);
 		await page.goto(`/#/${shelfRoute("upgrade")}`);
-		await expectTheShelfPageWaits(page, player, LATE, "Time for an upgrade");
+		await expectTheShelfPageWaits(page, player, "Time for an upgrade");
 		await expectNothingEmptyWasShown(page);
 
-		await page.request.post("/__control/holdSubset", { data: {} });
+		await releaseTheSummary(page);
 		await expect(busyInMain(page)).toHaveCount(0);
 		await expect(
 			page.locator("main").getByText(en["library.reading"]),
 		).toHaveCount(0);
+	});
+});
+
+test.describe("Home before the summary arrives, on a device that has drawn it", () => {
+	const reloadWaiting = async (page: Page) => {
+		await page.reload();
+		await expect(
+			viewHeader(page).getByRole("button", { name: "Play", exact: true }),
+		).toBeVisible();
+	};
+
+	test.describe("whose shelves have not changed since", () => {
+		test.use({ retagged: PLAYED_LATELY });
+
+		test("waits as the shelves it last drew, and nothing moves when they land", {
+			tag: "@iphone",
+		}, async ({ page, player }) => {
+			await page.goto("/");
+			await expect(shelf(page, "Recently played")).toBeVisible();
+			const drawn = await settled(() => drawnShelves(page));
+			expect(drawn.map(({ name }) => name)).toEqual([
+				"Recently played",
+				"Explore",
+			]);
+
+			await holdTheSummary(page);
+			const asked = summaryAsks(player).length;
+			await reloadWaiting(page);
+			await expect
+				.poll(() => summaryAsks(player).length)
+				.toBeGreaterThan(asked);
+
+			const skeletons = await untilSkeletons(page, drawn.length);
+			expectOneHiddenNoteEach(skeletons);
+			for (const [at, { name, box }] of drawn.entries())
+				expectSameBox(
+					skeletons[at]?.box,
+					box,
+					`the skeleton for ${name} is not where it was drawn`,
+				);
+			expectOnlyTheBandBelow(
+				skeletons.slice(drawn.length),
+				drawn[drawn.length - 1].box,
+			);
+
+			await releaseTheSummary(page);
+			await expect(shelf(page, "Recently played")).toBeVisible();
+			const landed = await settled(() => drawnShelves(page));
+			expect(landed.map(({ name }) => name)).toEqual(
+				drawn.map(({ name }) => name),
+			);
+			for (const [at, { name, box }] of drawn.entries())
+				expectSameBox(landed[at].box, box, `${name} moved when it landed`);
+		});
+	});
+
+	test.describe("that has lost a shelf since", () => {
+		test.use({ retagged: PLAYED_LATELY });
+
+		test("waits with the lost shelf's skeleton, then removes it and moves what was below it up", {
+			tag: "@iphone",
+		}, async ({ page, player }) => {
+			await page.goto("/");
+			await expect(shelf(page, "Recently played")).toBeVisible();
+			const [recent, explore] = await settled(() => drawnShelves(page));
+			expect([recent.name, explore.name]).toEqual([
+				"Recently played",
+				"Explore",
+			]);
+
+			await holdTheSummary(page);
+			const order = player.ordinalOrder();
+			const last = albumOf(order[order.length - 1]);
+			const structure = player.libraryFeed.structure;
+			const removed = await page.request.post("/__control/library", {
+				data: { remove: order.length - firstOrdinalOf(player, last) },
+			});
+			expect(removed.ok()).toBe(true);
+
+			await reloadWaiting(page);
+			const skeletons = await untilSkeletons(page, 2);
+			expectSameBox(
+				skeletons[0].box,
+				recent.box,
+				"Recently played was not guessed where it was drawn",
+			);
+			expectSameBox(
+				skeletons[1].box,
+				explore.box,
+				"Explore was not guessed where it was drawn",
+			);
+
+			await expect
+				.poll(() => player.libraryFeed.structure, {
+					message: "the library never moved past the tracks removed",
+				})
+				.toBeGreaterThan(structure);
+			await releaseTheSummary(page);
+			await expect(
+				page
+					.getByRole("region", { name: "Explore" })
+					.getByRole("button")
+					.first(),
+			).toBeVisible();
+			const landed = await settled(() => drawnShelves(page));
+
+			expect(landed.map(({ name }) => name)).toEqual(["Explore"]);
+			expect(
+				landed[0].box.y,
+				"Explore did not move up into the place Recently played left",
+			).toBeCloseTo(recent.box.y, 0);
+		});
+	});
+
+	test.describe("that has gained a shelf since", () => {
+		test("waits as the shelves it last drew, then draws the new one in its place", {
+			tag: "@iphone",
+		}, async ({ page, player }) => {
+			await page.goto("/");
+			await expect(tab(page, "Most played")).toBeVisible();
+			const drawn = await settled(() => drawnShelves(page));
+			expect(drawn.map(({ name }) => name)).toEqual(["Explore"]);
+			const [explore] = drawn;
+
+			await holdTheSummary(page);
+			for (const album of [
+				"Jar Of Flies",
+				"Jessico",
+				"Deja Entendu",
+				"Deathconsciousness",
+			])
+				await countAPlay(page, firstOrdinalOf(player, album));
+
+			await reloadWaiting(page);
+			const skeletons = await untilSkeletons(page, 1);
+			expectSameBox(
+				skeletons[0].box,
+				explore.box,
+				"Explore was not guessed where it was drawn",
+			);
+			expectOnlyTheBandBelow(skeletons.slice(1), explore.box);
+
+			await releaseTheSummary(page);
+			await expect(shelf(page, "Recently played")).toBeVisible();
+			const landed = await settled(() => drawnShelves(page));
+
+			expect(landed.map(({ name }) => name)).toEqual([
+				"Recently played",
+				"Explore",
+			]);
+			expect(
+				landed[0].box.y,
+				"Recently played was not drawn where the shelves begin",
+			).toBeCloseTo(explore.box.y, 0);
+			expect(landed[1].box.y).toBeGreaterThan(explore.box.y + PIXEL);
+		});
+	});
+});
+
+test.describe("Recently played while Home is open", () => {
+	test.use({ retagged: PLAYED_LATELY });
+
+	test("a play at the player puts its album first, without a reload", async ({
+		page,
+		player,
+	}) => {
+		await page.goto("/");
+		const recent = page.getByRole("region", {
+			name: "Recently played",
+			exact: true,
+		});
+		await expect(
+			recent.getByRole("button", { name: /^Jessico/ }),
+		).toBeVisible();
+		expect(await albumsOn(recent)).not.toContainEqual(
+			expect.stringMatching(/^Lafcadio/),
+		);
+
+		await countAPlay(page, firstOrdinalOf(player, "Lafcadio"));
+
+		await expect
+			.poll(async () => (await albumsOn(recent))[0])
+			.toMatch(/^Lafcadio/);
+	});
+});
+
+test.describe("a cover already drawn on another screen", () => {
+	test("is not asked for again on Home", async ({ page, player }) => {
+		const paths = new Set(
+			player
+				.ordinalOrder()
+				.filter((entry) => albumOf(entry) === "Jessico")
+				.map((entry) => entry.path),
+		);
+		const asks = () =>
+			coversFromTheComponent(player).filter((track) => paths.has(track));
+
+		await page.goto(`/#/${albumRoute("Babasónicos", "Jessico")}`);
+		await expect(
+			page.getByRole("heading", { level: 1, name: "Jessico" }),
+		).toBeVisible();
+		await expect.poll(() => asks().length).toBeGreaterThan(0);
+		await untilQuiet(player);
+		const before = asks();
+
+		await openSidebar(page);
+		await sidebar(page).getByRole("button", { name: "Home" }).click();
+		const card = albumInExplore(page, /^Jessico/);
+		await expect(card).toBeVisible();
+		await expect
+			.poll(() =>
+				card
+					.locator("img")
+					.evaluate(
+						(image: HTMLImageElement) =>
+							image.complete && image.naturalWidth > 0,
+					),
+			)
+			.toBe(true);
+
+		await expectSettlesAt(player, asks, before);
+	});
+});
+
+test.describe("a summary the player fails to answer", () => {
+	test.use({ fooJean: { failSummary: { status: 500, times: 1 } } });
+
+	test("Home goes on waiting, says nothing, and lands on the ask that follows", async ({
+		page,
+		player,
+	}) => {
+		test.setTimeout(60_000);
+		const failures = [
+			en["home.nothingYet"],
+			en["library.readFailed"],
+			en["action.tryAgain"],
+		];
+		await page.addInitScript((phrases) => {
+			const said: string[] = [];
+			Reflect.set(window, "__said", said);
+			new MutationObserver(() => {
+				const text = document.body?.textContent ?? "";
+				for (const phrase of phrases)
+					if (text.includes(phrase) && !said.includes(phrase))
+						said.push(phrase);
+				const toasts = document.querySelector("[data-toasts]")?.textContent;
+				if (toasts && !said.includes(toasts)) said.push(toasts);
+			}).observe(document, {
+				subtree: true,
+				childList: true,
+				characterData: true,
+			});
+		}, failures);
+
+		const answeredAt: number[] = [];
+		const askedAt: number[] = [];
+		page.on("request", (request) => {
+			if (new URL(request.url()).pathname === "/api/library/summary")
+				askedAt.push(Date.now());
+		});
+		page.on("response", (response) => {
+			if (new URL(response.url()).pathname === "/api/library/summary")
+				answeredAt.push(Date.now());
+		});
+
+		await page.goto("/");
+		await expect.poll(() => answeredAt.length).toBeGreaterThan(0);
+		expect(
+			(await skeletonsUnderTheHeader(page)).length,
+			"Home stopped waiting when the summary failed",
+		).toBeGreaterThan(0);
+
+		await expect(albumInExplore(page, /^Jessico/)).toBeVisible({
+			timeout: 30_000,
+		});
+		expect(
+			await page.evaluate(() => Reflect.get(window, "__said") as string[]),
+			"Home said something about a summary it was still waiting for",
+		).toEqual([]);
+		await expectSettlesAt(player, () => summaryAsks(player).length, 2);
+		expect(
+			askedAt[1] - answeredAt[0],
+			"the summary was asked again before five seconds had passed",
+		).toBeGreaterThanOrEqual(4_900);
+	});
+});
+
+test.describe("a shelf's page", () => {
+	test("lists its albums' tracks in the library's order, not the shelf's", async ({
+		page,
+		player,
+	}) => {
+		const albums = new Set([
+			"Deja Entendu",
+			"Jessico",
+			"Deathconsciousness",
+			"Jar Of Flies",
+		]);
+		const titles = player
+			.ordinalOrder()
+			.filter((entry) => albums.has(albumOf(entry)))
+			.map((entry) => String(entry.track["%title%"]));
+
+		await page.goto(`/#/${shelfRoute("top")}`);
+		await expect(
+			page.getByRole("heading", { level: 1, name: "Most played" }),
+		).toBeVisible();
+		await expect(page.getByRole("grid")).toHaveAttribute(
+			"aria-rowcount",
+			String(titles.length),
+		);
+		await inSequence(titles.slice(0, 10), (title: string, at: number) =>
+			expect(trackRow(page, at)).toContainText(title),
+		);
 	});
 });

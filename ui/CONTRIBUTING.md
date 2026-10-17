@@ -55,6 +55,8 @@ pnpm sync-kit       # refresh .claude/ from the ai-engineering kit
 
 **`pnpm test:e2e` is not.** A full Playwright run is desktop and mobile across the whole suite: it loads the machine and floods an agent's context. Run the specs that cover what you changed, such as `pnpm test:e2e test/e2e/queue.spec.ts`, `--grep "toast"` or `--project=desktop`, as often as you like. Keep the full run as a final verification, once, when the change is substantial enough that something outside the specs you already ran could plausibly have broken. Changes to documentation, comments or configuration need no run at all. See `test/README.md`.
 
+A source file containing a NUL byte is binary to `grep`, which matches nothing in it and exits non-zero, so a check built on `grep` (`.claude/hooks/check-style.sh` included) passes every line of it. `file` naming a `.ts` as `data` is the tell, and a separator written as the byte rather than as `\u0000` is how it gets in.
+
 ## 3. Where things live
 
 **Imports run one way: `app → features → domain → shared`, and Biome fails the build on a violation.** [ARCHITECTURE.md](./ARCHITECTURE.md), *Tiers*, is what each tier may know about, the rest of the direction rules, and why the boundaries sit where they do; it also has where state lives and what the two optional-component seams are.

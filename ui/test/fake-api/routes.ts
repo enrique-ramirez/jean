@@ -25,6 +25,31 @@ export type ArtworkServer = (
 	cacheControl: string,
 ) => boolean | Promise<boolean>;
 
+// The routes a spec drives the fake through from outside the fixture, each a change the desktop
+// player or the network makes and a client cannot provoke reliably:
+//   play          with `ordinal` and no `playlistId`, counts one play of that library track, or with
+//                 `count` sets its play count (a string is held verbatim, as a tag edit at the player
+//                 arrives); 404 when the library declares no play count or holds no such ordinal.
+//                 With a `playlistId` and `index`, starts that row.
+//   append        copies rows between playlists while Jean holds a range of indices.
+//   removeItems   removes rows the same way.
+//   latency       holds every write, and `GET /api/playlists`, for `ms`. On localhost every request
+//                 settles before the next pointer event, so without it a control that coalesces
+//                 forty moves into three looks like one that sends forty.
+//   writePlaylists, controlPlayback, changeOutput
+//                 flip `canWritePlaylists`, `canControlPlayback` and `canChangeOutput` mid-test. The
+//                 component reports capabilities once, at discovery, so a refusal in front of a
+//                 control that is still drawn can only be provoked this way. Each moves
+//                 `configGeneration`, but only when the value changes.
+//   library       `{ add, remove }` adds files beside the first track and removes from the end of
+//                 the order; both in one call are one rebuild, which finishes on a state poll.
+//   libraryHalted halts the library worker; `{ halted: false }` takes it back, which the component never does.
+//   holdSubset    sets `holdSubset`; a body without `only` releases every export held.
+//   holdSummary   `{ hold: true }` holds summaries; anything else answers the ones held.
+//   skipDelay     holds a skip for `ms` before the next track starts, as foobar2000 takes to open a
+//                 file, while `GET /api/state` goes on naming the outgoing track.
+//   lockPlaylist  locks a playlist against added, removed, moved and sorted rows, as another
+//                 component locking it would; those routes answer 409 while it holds.
 export function handleControl({
 	state,
 	method,
@@ -182,6 +207,11 @@ export function handleControl({
 		state.fooJean.holdSubset = Array.isArray(input.only)
 			? input.only.filter((one): one is string => typeof one === "string")
 			: null;
+		return empty(response);
+	}
+
+	if (action === "holdSummary") {
+		state.fooJean.holdSummary = input.hold === true;
 		return empty(response);
 	}
 

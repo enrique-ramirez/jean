@@ -189,6 +189,8 @@ export function createServer({
 	Object.defineProperty(fake, "state", { get: () => held.state });
 
 	fake.reset = (next: FakeState = createState()) => {
+		held.state.fooJean.holdSummary = false;
+		held.state.fooJean.holdSubset = null;
 		held.state = next;
 		return next;
 	};

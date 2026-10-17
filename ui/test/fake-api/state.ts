@@ -60,7 +60,7 @@ export interface FakePlaylist {
 	isCurrent: boolean;
 	items: Track[];
 	isAuto?: boolean;
-	// `bigint`: `GENERATION_SEED` below and `ui/test/README.md` have why.
+	// `bigint`: `GENERATION_SEED` below has why.
 	structure: bigint;
 	revision: bigint;
 	changeHistory: { revision: bigint; positions: number[] }[];
@@ -159,6 +159,9 @@ const libraryRoot = (tracks: Track[]) => {
 const libraryPathOf = (track: Track, rootDepth: number) =>
 	(track["%path%"] ?? "").split("\\").slice(rootDepth).join("/");
 
+const localStampOf = (when: Date) =>
+	`${when.getFullYear()}-${String(when.getMonth() + 1).padStart(2, "0")}-${String(when.getDate()).padStart(2, "0")} ${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}:${String(when.getSeconds()).padStart(2, "0")}`;
+
 export function libraryItemsOf(tracks: Track[]): LibraryEntry[] {
 	const rootDepth = libraryRoot(tracks).length;
 	return tracks.map((track) => ({
@@ -174,7 +177,13 @@ export function libraryItemsOf(tracks: Track[]): LibraryEntry[] {
 export const guidOfDefault = (n: number) =>
 	`00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
-// `ui/test/README.md` has why this value and not a smaller one.
+// Every playlist's structure generation and content revision start here and step by one per edit.
+// It is `kThroughADouble` in `plugins/fb2k/tests/playlist_route_test.cpp`, the value every number
+// within five hundred of it rounds to as a double. In [2^62, 2^63) a double's ULP is 1024, so a
+// thousand consecutive generations collapse to one and a client that parses either counter as a
+// number fails on the first edit; a smaller seed would agree with such a client by coincidence,
+// since a double stays exact at that scale. A `bigint`, since a `number` this size cannot step by
+// one without rounding four consecutive values onto the last.
 export const GENERATION_SEED = 9204739866101318656n;
 
 const FIRST_CREATED_GUID = 1000;
@@ -722,6 +731,7 @@ export function createState({
 	const RETAINED_REVISIONS = 1920;
 
 	const PLAY_COUNT = "%lastfm_play_count%";
+	const LAST_PLAYED = "%lastfm_last_played%";
 
 	let numbered: {
 		structure: number;
@@ -997,6 +1007,8 @@ export function createState({
 		const path = row["%path%"];
 		const kept = folded?.key === foldKey() ? folded.fold : null;
 		const count = String(given ?? Number(row[PLAY_COUNT] ?? 0) + 1);
+		const stamped = given === undefined && feed.columns.includes(LAST_PLAYED);
+		const stamp = stamped ? localStampOf(new Date(Date.now())) : "";
 		const run: number[] = [];
 		for (
 			let at = ordinal;
@@ -1022,14 +1034,42 @@ export function createState({
 					String(evaluate(track, PLAY_COUNT)),
 					1,
 				);
+			if (stamped) {
+				if (kept)
+					foldCell(
+						kept,
+						declaredColumn(LAST_PLAYED),
+						at,
+						String(evaluate(track, LAST_PLAYED)),
+						-1,
+					);
+				track[LAST_PLAYED] = stamp;
+				if (kept)
+					foldCell(
+						kept,
+						declaredColumn(LAST_PLAYED),
+						at,
+						String(evaluate(track, LAST_PLAYED)),
+						1,
+					);
+			}
 		}
 		for (const playlist of state.playlists)
 			for (const copy of playlist.items)
-				if (copy["%path%"] === path) copy[PLAY_COUNT] = count;
+				if (copy["%path%"] === path) {
+					copy[PLAY_COUNT] = count;
+					if (stamped) copy[LAST_PLAYED] = stamp;
+				}
 		dictionaryFor(PLAY_COUNT).id(count);
+		if (stamped) dictionaryFor(LAST_PLAYED).id(stamp);
 
 		feed.revision += 1;
-		remember(new Map([[PLAY_COUNT, run]]));
+		remember(
+			new Map([
+				[PLAY_COUNT, run],
+				...(stamped ? [[LAST_PLAYED, run] as [string, number[]]] : []),
+			]),
+		);
 		return true;
 	}
 

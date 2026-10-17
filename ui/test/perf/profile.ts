@@ -1,3 +1,76 @@
+// `pnpm perf` measures seven costs of a large library, B1 to B7, and writes one JSON report,
+// `report-<timestamp>.json`, to the gitignored `OUT_DIR`. It drives the `playwright` browsers
+// directly, so it reads no project from `playwright.config.ts`.
+//
+//   pnpm perf --tracks 37000                        a fake of that size, on a free port, in its own process
+//   pnpm perf --tracks 37000,400000 --runs 5        several sizes, one fake each
+//   pnpm perf --tracks 37000 --projects desktop     desktop, mobile, iphone and firefox are the projects
+//   pnpm perf --url https://player.example          a player already serving Jean
+//   pnpm perf --tracks 37000 --trace                also a Chromium timeline of B2 and B3 from the first run
+//   pnpm perf --tracks 400000 --dist /path/to/page  a page built earlier, in place of one built from the tree
+//
+// The page is built once into `dist` under `OUT_DIR` and served by the fake beside its API. The fake
+// runs without its export ceiling, and each size reports `aboveCeiling` where its export is over the
+// component's, since a number taken there is not one the component could serve. Against a player, B2
+// and B7 are unavailable: they need the fake's `/__control/` routes. The report is rewritten after
+// every cell, so a killed run keeps what it measured. A cell not finished in its bound (two minutes
+// for a load, one for the rest) is recorded as `{ over, reason }`; if the page then stops answering,
+// the cells left in that run are recorded the same way and the next run starts in a fresh browser.
+// Each project runs its cells `--runs` times (three by default) in a fresh context and reports
+// `{ runs, median, spread }`, the spread being the largest run minus the smallest. `mobile` is Pixel 7
+// emulation under Chromium's 4x CPU throttle; `iphone` is Playwright's WebKit with the iPhone 15
+// descriptor and cannot be throttled; `firefox` is the desktop descriptor.
+//
+// What each cell is:
+//   B1  the cold load to the first rows of All Music.
+//   B2  a play-count delta. B2 and B3 report the longest gap between two turns of a zero-delay timer,
+//       the one measure every engine has; Chromium's `longtask` observer sits beside it as
+//       `longestLongTask`, which reports nothing under 50 ms, and Firefox and WebKit have none.
+//   B3  a keystroke in search.
+//   B4  opening an album, an artist or a genre. `B4.task` is the longest timer gap from the click
+//       until its rows have painted and the page has been left to itself, the slowest of the three
+//       in each run; each page's own is beside it.
+//   B5  the JavaScript heap once idle: `Runtime.getHeapUsage` after a forced collection, which is
+//       Chromium's alone and does not count the memory behind typed arrays.
+//   B6  a reload, taken three ways: `B6`; `afterBlank`, after the tab sat on `about:blank` for a
+//       second, which leaves the old document's teardown out of the clock; and `cacheDisabled`
+//       (Chromium's `Network.setCacheDisabled`, a Playwright route in the other engines). The last
+//       two start from a document loaded afresh and left for two seconds, as old as the one the
+//       first reloads, since Firefox holds a navigation back for some seconds after a large page
+//       loads. Each reports the page's clock (`ms`), the clock outside the page from the call to
+//       the same frame (`waited`), and a `timeline` of where the navigation was: `pagehide`,
+//       navigation start, first byte, `DOMContentLoaded`, the first `GET /api/state` asked, the
+//       search worker asked to restore the stored library and its answer reaching the page, the full
+//       export requested and complete (absent where the stored copy was drawn), the first row in the
+//       DOM and painted, and the late part complete and shown. `afterBlank` also reports `leaving`,
+//       how long `goto("about:blank")` took. The worker's two moments are stamped by wrapping
+//       `Worker` in the page and the page's `fetch` is wrapped to read state answers; neither
+//       changes what Jean does.
+//   B7  one album added. `ms` runs from the control request and includes the player's own settle at
+//       the next state poll; `sinceStateMoved` runs from the first state answer whose `structure`
+//       moved to the added rows painted, which is what a person waits once the change is visible to
+//       a client. `changesRequested` and `changesComplete` place the changes request against that
+//       answer, and `pollMs` is the median gap between state answers. Its bytes are every response
+//       finished until the list shows the album, state polls included.
+//   landing  the longest timer gap from the cold load's navigation start until the library has
+//       settled (the late part shown, the page left to itself), so it holds every task of the load
+//       and is held to B2's budget. `B6.landing` is the same window for a reload drawing the stored
+//       copy. `home` is the same window for Home (`#/`): `cold` on a fresh page, `reload` with the
+//       stored copy, each until a shelf is drawn.
+//   store  the stored library's cost as the longest timer gap in two windows: `write`, from the full
+//       export's response until the `meta` record can be read (the page polls the `jean-library`
+//       database every 50 ms, a read that queues behind the worker's writes), taken on B1's cold
+//       load so it holds Jean's landing of that export too, and `read`, from the plain reload's
+//       navigation start to the frame after the first row, the stored copy being drawn.
+//   late  the first rows painted to the late part's response complete (`responseComplete`) and to the
+//       frame after no row is marked `aria-busy` (`shown`), on B1's cold load. `shown` is 0 where no
+//       row was busy at first paint; a negative figure is a part that arrived before the first rows.
+//   export  the plain and gzipped bytes of the export for Jean's declared columns, each column's
+//       bytes and share of the plain total, and `decodeMs`, `decodeJlib` in Node over those bytes.
+//   scroll  the tallest element each browser honours and the last row of a 46 px list that gives,
+//       found by bisection on a plain overflow element's `scrollHeight`, and the track list scrolled
+//       to its end, with the last row it rendered against its `aria-rowcount`.
+
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";

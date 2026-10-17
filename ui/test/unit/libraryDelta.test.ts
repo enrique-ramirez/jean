@@ -56,7 +56,11 @@ const patchedAfterPlay = (
 	return { delta, patched };
 };
 
-test("a play moves the play count and leaves every other column alone", () => {
+const PLAYED_COLUMNS = ["%lastfm_last_played%", "%lastfm_play_count%"];
+
+const LOCAL_TIMESTAMP = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+
+test("a play moves the play count and the last-played stamp, and leaves every other column alone", () => {
 	const state = declared();
 	const { library, held } = exported(state);
 
@@ -67,21 +71,29 @@ test("a play moves the play count and leaves every other column alone", () => {
 		library.revision,
 	);
 
-	assert.deepEqual([...delta.columns.keys()], ["%lastfm_play_count%"]);
+	assert.deepEqual([...delta.columns.keys()].sort(), PLAYED_COLUMNS);
 	assert.equal(patched.load, held.columns.load);
 
 	const moved = TRACK_EXPRESSIONS.filter(
 		(_, field) => patched.fields[field] !== held.columns.fields[field],
 	);
-	assert.deepEqual(moved, ["%lastfm_play_count%"]);
+	assert.deepEqual([...moved].sort(), PLAYED_COLUMNS);
 
 	const patch = delta.columns.get("%lastfm_play_count%");
 	assert.ok(patch);
+	assert.deepEqual(
+		delta.columns.get("%lastfm_last_played%")?.ordinals,
+		patch.ordinals,
+	);
 
 	const ordinal = patch.ordinals[0];
 	assert.equal(
 		Number(patched.fields[FIELD.playCount].at(ordinal)),
 		Number(held.columns.fields[FIELD.playCount].at(ordinal)) + 1,
+	);
+	assert.match(
+		String(patched.fields[FIELD.lastPlayed].at(ordinal)),
+		LOCAL_TIMESTAMP,
 	);
 });
 

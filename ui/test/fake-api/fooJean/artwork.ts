@@ -118,6 +118,13 @@ export async function handleArtwork({
 	// library either, which is why the contract gives this route no 503 where
 	// `GET /api/artwork` has one. The same URL names a different picture once the
 	// track changes, so every outcome here revalidates rather than holding.
+	// Poorer than the component in two ways. This resolves a sleeve by matching the playing path
+	// against the captured albums, so a track it has never seen answers 404, where the component
+	// reads the file through foobar2000's now-playing loader and gives an off-library track with
+	// embedded art a cover. And it resolves a new cover in the same tick, where the component
+	// clears the held picture on a track change and answers 404 until the core pushes the next one.
+	// A spec cannot see that gap, and modelling it would put a timing race into the assertion that
+	// a track change within an album costs no request, since every row addresses the same cover.
 	if (path === "/api/artwork/playing") {
 		response.setHeader("Cache-Control", ASK_EVERY_TIME);
 		if (fake.failPlayingArtwork)

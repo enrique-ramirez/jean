@@ -1,5 +1,6 @@
 import type { components } from "../../../src/shared/api/fooJeanSchema.d.ts";
 import { json, one, type RequestHeaders, type Responder } from "../http.ts";
+import { compareUtf8 } from "../jlib.ts";
 import {
 	type ChangesRefusal,
 	libraryItemsOf,
@@ -14,6 +15,13 @@ import {
 	STRUCTURE_MOVED,
 } from "./answers.ts";
 import { abandoned, STALLED_READ_MS } from "./latency.ts";
+import {
+	fixedOffset,
+	type LocalTime,
+	SUMMARY_ROLES,
+	type SummaryRole,
+	summarise,
+} from "./librarySummary.ts";
 import type { FooJeanFake } from "./options.ts";
 import { refuseTooFast, spend } from "./rateLimits.ts";
 import type { Asked, FakeState } from "./request.ts";
@@ -195,6 +203,11 @@ const LIBRARY_EXPORT_FAILURE: Record<413 | 500 | 503, { error: string }> = {
 	503: { error: "the media library is not available" },
 };
 
+const SUMMARY_FAILURE: Record<500 | 503, { error: string }> = {
+	500: { error: "the library summary failed" },
+	503: LIBRARY_EXPORT_FAILURE[503],
+};
+
 const tagOf = (state: FakeState, coding: string, variant = "") =>
 	`"s${state.libraryFeed.structure}-r${state.libraryFeed.revision}-e${state.libraryFeed.edits}${variant}-${coding}"`;
 
@@ -212,6 +225,7 @@ const sendBlob = async (
 	fake: FooJeanFake,
 	produce: () => Uint8Array<ArrayBuffer>,
 	variant?: string,
+	{ contentType = "application/octet-stream", capped = true } = {},
 ) => {
 	const gzip = offersGzip(headers);
 	const tag = tagOf(state, gzip ? "gzip" : "identity", variant);
@@ -228,13 +242,17 @@ const sendBlob = async (
 	}
 
 	const bytes = produce();
-	if (fake.libraryCeiling !== null && bytes.length > fake.libraryCeiling)
+	if (
+		capped &&
+		fake.libraryCeiling !== null &&
+		bytes.length > fake.libraryCeiling
+	)
 		return json(response, LIBRARY_EXPORT_FAILURE[413], 413);
 
 	const body = gzip ? await gzipped(bytes) : bytes;
 
 	response.writeHead(200, {
-		"Content-Type": "application/octet-stream",
+		"Content-Type": contentType,
 		...revalidating,
 		...(gzip ? { "Content-Encoding": "gzip" } : null),
 	});
@@ -242,16 +260,174 @@ const sendBlob = async (
 	return true;
 };
 
-export async function handleLibrary({
+const MAX_EXPRESSION_BYTES = 1024;
+
+const UNPRINTABLE = /[^\u0020-\u007e\u0080-\u{10ffff}]/u;
+
+const refusedRole = (error: string, detail: string) => ({ error, detail });
+
+const rolesAsked = (url: URL) => {
+	const asked = new Map<SummaryRole, string>();
+	// cpp-httplib holds the pairs in a multimap, so the component reads them in name order.
+	const pairs = [...pairsAsTheComponentReadsThem(url)].sort(([a], [b]) =>
+		compareUtf8(a, b),
+	);
+	for (const [name, expression] of pairs) {
+		if (!SUMMARY_ROLES.includes(name as SummaryRole))
+			return refusedRole("unacceptable role", `'${name}' is not a role`);
+		if (
+			expression === "" ||
+			new TextEncoder().encode(expression).length > MAX_EXPRESSION_BYTES ||
+			UNPRINTABLE.test(expression)
+		)
+			return refusedRole(
+				"unacceptable role",
+				`role '${name}' must be printable text of 1 to ${MAX_EXPRESSION_BYTES} characters`,
+			);
+		if (asked.has(name as SummaryRole))
+			return refusedRole("duplicate role", `role '${name}' is named twice`);
+		asked.set(name as SummaryRole, expression);
+	}
+	return asked;
+};
+
+const hashOf = (text: string) => {
+	let hash = 0x811c9dc5;
+	for (let at = 0; at < text.length; at += 1)
+		hash = Math.imul(hash ^ text.charCodeAt(at), 0x01000193) >>> 0;
+	return hash.toString(16);
+};
+
+interface BuiltSummary {
+	variant: string;
+	bytes: Uint8Array<ArrayBuffer>;
+}
+
+const summariesBuilt = new WeakMap<FakeState, Map<string, BuiltSummary>>();
+
+const summaryReleased = async (fake: FooJeanFake) => {
+	while (fake.holdSummary)
+		await new Promise<void>((release) => fake.summariesHeld.push(release));
+};
+
+const buildSummary = (
+	state: FakeState,
+	roles: Map<SummaryRole, string>,
+	now: number,
+	local: LocalTime,
+): Uint8Array<ArrayBuffer> => {
+	const { structure, revision } = state.libraryFeed;
+	const items = state.ordinalOrder();
+	const directoryEnd = (path: string) => path.lastIndexOf("/") + 1;
+	const columns = Object.fromEntries(
+		[...roles].map(([role, expression]) => [
+			role,
+			items.map((entry) => String(evaluate(entry.track, expression))),
+		]),
+	);
+	const document = summarise(
+		{
+			structure,
+			revision,
+			directory: items.map((entry) =>
+				entry.path.slice(0, directoryEnd(entry.path)),
+			),
+			filename: items.map((entry) =>
+				entry.path.slice(directoryEnd(entry.path)),
+			),
+			columns,
+		},
+		now,
+		local,
+	);
+	return new TextEncoder().encode(
+		JSON.stringify(document),
+	) as Uint8Array<ArrayBuffer>;
+};
+
+const summaryOf = (
+	state: FakeState,
+	roles: Map<SummaryRole, string>,
+	now: number,
+): BuiltSummary => {
+	const local = fixedOffset(-new Date(now).getTimezoneOffset());
+	const roleSet = [...roles].map(([role, from]) => `${role}=${from}`).sort();
+	const date = local.yyyymmddOf(now);
+	const variant = `-d${date}-${hashOf(roleSet.join("\u0000"))}`;
+	const { structure, revision, edits } = state.libraryFeed;
+	const key = [structure, revision, edits, variant].join("\u0000");
+
+	const built = summariesBuilt.get(state) ?? new Map<string, BuiltSummary>();
+	summariesBuilt.set(state, built);
+	const kept = built.get(key);
+	if (kept) return kept;
+
+	const made = { variant, bytes: buildSummary(state, roles, now, local) };
+	built.set(key, made);
+	return made;
+};
+
+async function handleLibrarySummary({
 	state,
 	fake,
-	method,
-	path,
 	url,
 	headers,
 	response,
 	recorded,
 }: Asked) {
+	const roles = rolesAsked(url);
+	if (!(roles instanceof Map)) return json(response, roles, 400);
+
+	if (!fake.canReadLibrary)
+		return json(response, LIBRARY_EXPORT_FAILURE[503], 503);
+
+	if (fake.failSummary && fake.failSummary.times > 0) {
+		const { status } = fake.failSummary;
+		fake.failSummary.times -= 1;
+		return status === 429
+			? refuseTooFast(response, "librarySummaries")
+			: json(response, SUMMARY_FAILURE[status], status);
+	}
+
+	if (
+		fake.rateLimits &&
+		!spend(fake.limiter, fake.rateLimits, "librarySummaries", "")
+	) {
+		recorded.limited = "librarySummaries";
+		return refuseTooFast(response, "librarySummaries");
+	}
+
+	const { columns, building } = state.libraryFeed;
+	const expressions = [...roles.values()];
+	const stillBuilding = (from: string) =>
+		!columns.includes(from) && building?.includes(from);
+	if (!hasLibrarySnapshot(state) || expressions.some(stillBuilding))
+		return json(response, libraryStateOf(state, fake), 202);
+
+	const undeclared = expressions.find(
+		(from) => !columns.includes(from) && !building?.includes(from),
+	);
+	if (undeclared !== undefined)
+		return json(
+			response,
+			{ error: `'${undeclared}' is not a declared column` },
+			409,
+		);
+
+	await summaryReleased(fake);
+
+	const { variant, bytes } = summaryOf(state, roles, Date.now());
+	return sendBlob(response, headers, state, fake, () => bytes, variant, {
+		contentType: "application/json; charset=utf-8",
+		capped: false,
+	});
+}
+
+export async function handleLibrary(asked: Asked) {
+	const { state, fake, method, path, url, headers, response, recorded } = asked;
+	if (method === "GET" && path === "/api/library/summary")
+		return handleLibrarySummary(asked);
+
 	if (!fake.canReadLibrary)
 		return json(response, { error: "the media library is not available" }, 503);
 

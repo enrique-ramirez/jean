@@ -6,7 +6,8 @@ export type Bucket =
 	| "artwork"
 	| "tagWrites"
 	| "previews"
-	| "statePolls";
+	| "statePolls"
+	| "librarySummaries";
 
 export interface BucketSize {
 	burst: number;
@@ -23,6 +24,8 @@ export const COMPONENT_RATE_LIMITS: Record<Bucket, BucketSize> = {
 	tagWrites: { burst: 200, refillMs: 50 },
 	previews: { burst: 30, refillMs: 200 },
 	statePolls: { burst: 30, refillMs: 100 },
+	// The delta reads' `kDeltaReadBurst` and `kDeltaReadRefill` in `core/routes_library.cpp`.
+	librarySummaries: { burst: 200, refillMs: 50 },
 };
 
 // `foo_jean` keeps one bucket per source address for state polls and one for the whole
@@ -122,6 +125,10 @@ const REFUSALS: Record<Bucket, { retryAfter: string; body: unknown }> = {
 		},
 	},
 	statePolls: { retryAfter: "1", body: { error: "too many state polls" } },
+	librarySummaries: {
+		retryAfter: "1",
+		body: { error: "too many library summary reads" },
+	},
 };
 
 const AUTOPLAYLIST_CHANGES_REFUSED = {

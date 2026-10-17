@@ -545,3 +545,35 @@ export function snapshotIdOf(fold: Fold, trackCount: number) {
 	add(total, 1);
 	return total.map((half) => half.toString(16).padStart(8, "0")).join("");
 }
+
+const MASK_64 = (1n << 64n) - 1n;
+const SPLITMIX_GAMMA = 0x9e3779b97f4a7c15n;
+
+// SplitMix64 as `foo_jean` draws it.
+function* splitMixDraws(seed: bigint): Generator<bigint, never, undefined> {
+	let state = seed & MASK_64;
+	for (;;) {
+		state = (state + SPLITMIX_GAMMA) & MASK_64;
+		let z = ((state ^ (state >> 30n)) * 0xbf58476d1ce4e5b9n) & MASK_64;
+		z = ((z ^ (z >> 27n)) * 0x94d049bb133111ebn) & MASK_64;
+		yield z ^ (z >> 31n);
+	}
+}
+
+export function shuffledTail<T>(
+	items: readonly T[],
+	seed: bigint,
+	keep: number,
+): T[] {
+	const shuffled = [...items];
+	const draws = splitMixDraws(seed);
+	for (
+		let i = shuffled.length - 1;
+		i >= Math.max(1, shuffled.length - keep);
+		i -= 1
+	) {
+		const j = Number(draws.next().value % BigInt(i + 1));
+		[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+	}
+	return shuffled.slice(Math.max(0, shuffled.length - keep));
+}

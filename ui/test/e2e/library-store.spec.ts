@@ -622,14 +622,18 @@ test.describe("the switch for keeping the library", () => {
 });
 
 const PLAY_COUNT = "%lastfm_play_count%";
+const LAST_PLAYED = "%lastfm_last_played%";
 
 const PLAYED_BEFORE_THE_RESTART = "Nutshell";
 
 const playsOn = (page: Page, title: string) =>
 	rowByTitle(page, title).locator("[data-zero]");
 
+const tagOf = (player: FakePlayer, title: string, tag: string) =>
+	player.ordinalOrder()[ordinalTitled(player, title)].track[tag];
+
 const countOf = (player: FakePlayer, title: string) =>
-	player.ordinalOrder()[ordinalTitled(player, title)].track[PLAY_COUNT];
+	tagOf(player, title, PLAY_COUNT);
 
 test.describe("a copy adopted across a restart", () => {
 	test("after a play Jean kept, a play on the new run shows the player's count, and no export is downloaded", async ({
@@ -656,8 +660,12 @@ test.describe("a copy adopted across a restart", () => {
 		await untilQuiet(player);
 
 		await leaveJean(page);
+		// foobar2000 keeps its tags across a restart, the stamp a play wrote included.
 		const restarted = restartPlayer(fakeServer, {
-			[PLAYED_BEFORE_THE_RESTART]: { [PLAY_COUNT]: played },
+			[PLAYED_BEFORE_THE_RESTART]: {
+				[PLAY_COUNT]: played,
+				[LAST_PLAYED]: tagOf(player, PLAYED_BEFORE_THE_RESTART, LAST_PLAYED),
+			},
 		});
 		const downloaded = recordExportsDownloaded(page);
 		await loadJean(page);

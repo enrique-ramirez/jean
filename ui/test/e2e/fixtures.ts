@@ -104,7 +104,7 @@ export const test = base.extend<JeanFixtures, JeanWorkerFixtures>({
 
 	countsPlays: [false, { option: true }],
 
-	// Defaults and the states each option can present are in `test/README.md`.
+	// Defaults and what each option presents are in `FooJeanOptions`, `fake-api/fooJean/options.ts`.
 	fooJean: [{}, { option: true }],
 
 	playerState: [null, { option: true }],

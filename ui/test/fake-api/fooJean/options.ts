@@ -27,14 +27,18 @@ export const DEFAULT_OUTPUT_DEVICES: { id: string; name: string }[] = [
 ];
 
 export interface FooJeanOptions {
+	// False destroys every `/api/` connection rather than answering one: no component on the network.
 	reachable?: boolean;
 
+	// The `name`, `version` and `apiVersion` that `GET /api/capabilities` reports.
 	name?: string;
 	version?: string;
 	apiVersion?: number;
 
+	// The tag fields a write may name. An empty list is an install with tag writing switched off.
 	allowedFields?: string[];
 
+	// Refuses `POST /api/tags` with this status before anything is written.
 	failWrites?: number | null;
 
 	// The tag reaches the player and the answer does not reach the client. A 504
@@ -73,6 +77,7 @@ export interface FooJeanOptions {
 	// leaving `path` and `columns` untouched.
 	playingTrackAnswersSubsong?: number | null;
 
+	// Limits the four `*PlayingTrack*` knobs to the first n reads of `GET /api/track/playing`; unset applies them to every read.
 	playingTrackKnobsFor?: number | null;
 
 	// The rating the component reports having stored, whatever it was sent. A
@@ -87,6 +92,7 @@ export interface FooJeanOptions {
 	// mid-test rather than one refused from the start.
 	failState?: Refusal<"failState"> | null;
 
+	// Destroys the connection of `GET /api/state` unanswered, the way a phone leaving wifi loses a poll.
 	dropState?: boolean;
 
 	// Holds GET /api/state open and never answers it, switched like `failState`.
@@ -164,32 +170,55 @@ export interface FooJeanOptions {
 	// playlist created since is one the poll can name and the client cannot.
 	annotatesEveryPlaylist?: boolean;
 
+	// How many changes of a playlist the fake retains for `GET /playlists/{id}/items/changes`.
 	playlistChangeWindow?: number;
 
+	// False is the component loaded without the library feature: the three `/api/library/*` routes answer `503`.
 	canReadLibrary?: boolean;
+	// False means no export ever finishes, so no snapshot is held: a freshly started player before anything has asked for one.
 	libraryReady?: boolean;
+	// Polls of `GET /api/state` answered before a declared set finishes building; the export is a `202` until then.
 	libraryBuilds?: number;
+	// Exports answered `429` before the rate limiter lets one through.
 	libraryBusy?: number;
+	// Structure rebuilds of the same tracks, one at each next state poll. `GET /api/library/changes`
+	// answers the pair held before one with a splice that has no rows, carrying only the dictionary
+	// entries that grew.
 	libraryRebuilds?: number;
 	// `foo_jean` stopping its library worker for good after it kept failing: `GET /api/state`
 	// answers `library.halted`, no build starts or finishes, and the snapshot held is served.
 	// `POST /__control/libraryHalted` sets it mid-test.
 	libraryHalted?: boolean;
 
+	// Tracks per `formatting` step of a build. While `libraryBuilds` counts down, each state poll walks
+	// `build` one step: `listing`, `ordering`, then a `formatted` at every slice boundary but the last.
+	// Unset takes the whole library in one slice, so `formatted` never reports above 0.
 	librarySlice?: number;
 
+	// Holds open any `only=` export naming a listed column, so a spec can tell the part that paints a list from the rest. Assigning `null` answers every export held.
 	holdSubset?: string[] | null;
 
+	// The largest export or delta in plain bytes; one over it is a `413`. `null` lifts it.
 	libraryCeiling?: number | null;
 
+	// Refuses that many `GET /api/library/export` requests with `status`, then answers normally.
 	failLibraryExport?: { status: 413 | 500 | 503; times: number } | null;
 
+	// Holds every `GET /api/library/summary` that has passed its refusals unanswered, so a spec can draw Home while it waits. Assigning `false` answers the ones held.
+	holdSummary?: boolean;
+
+	// Refuses that many `GET /api/library/summary` requests with `status`, then answers normally.
+	failSummary?: { status: 429 | 500 | 503; times: number } | null;
+
+	// How many autoplaylists the component will make.
 	maxAutoPlaylists?: number;
 	// Playlist keys the component reports as already being autoplaylists, whether it
 	// made them or not. An autoplaylist created in foobar2000 itself looks like
 	// this and is not one Jean may update or delete.
 	autoPlaylists?: string[];
+	// False is an install with the library feature off.
 	libraryEnabled?: boolean;
+	// Refuses playlist creation with this status.
 	failCreate?: number | null;
 	// Refuses a move or a sort at the player after every check has passed, leaving the rows where
 	// they were: a 500, a 429 from the rate limiter and a dead connection are one event to a client.
@@ -202,8 +231,11 @@ export interface FooJeanOptions {
 	// like `libraryBusy`. `POST /__control/previewBusy` sets it mid-test.
 	previewBusy?: number;
 
+	// `canWritePlaylists` in `GET /api/capabilities`; `"absent"` leaves the field out.
 	canWritePlaylists?: boolean | "absent";
+	// `canChangeOutput` in `GET /api/capabilities`.
 	canChangeOutput?: boolean;
+	// `canControlPlayback` in `GET /api/capabilities`.
 	canControlPlayback?: boolean;
 
 	// The player's own device list and which one it is set to. `activeOutput` rides straight
@@ -221,21 +253,33 @@ export interface FooJeanOptions {
 	// refusing the write outright.
 	outputSwitchRefusal?: 409 | 500 | null;
 
+	// How many detached sessions the install offers.
 	maxSessions?: number;
+	// Whether the install offers detached sessions; it reads false while `canStream` does.
 	canCreateSessions?: boolean;
+	// A session-scoped route naming no session answers `500` with its path in the body.
 	strictSessions?: boolean;
 
+	// `canStream` in `GET /api/capabilities`.
 	canStream?: boolean;
 	// Best first, as the component reports it. An install whose Windows has no AAC
 	// encoder reports `opus` alone.
 	streamFormats?: string[];
+	// Which of `streamFormats` get bytes of the declared type.
 	playableFormats?: string[];
+	// `short` ends after what it has sent; `quiet` opens, sends the container header, then nothing, the one case with no error to catch.
 	streamBehaviour?: "ok" | "short" | "quiet";
+	// Seconds of audio primed ahead of the live edge; `12 - prime` is the lag a spec about it waits out.
 	streamPrime?: number;
+	// A timeline mark lands this long after the change or seek that laid it.
 	markDelayMs?: number;
+	// Refuses stream tickets with this status; `ticketError` says which kind of refusal.
 	failTickets?: number | null;
+	// The body of a `failTickets` refusal, separating "busy" from "not supported".
 	ticketError?: string;
+	// `GET /stream` answers `401` as if the ticket had expired.
 	expireTickets?: boolean;
+	// Whether the install mutes the player while someone listens.
 	canMuteWhileStreaming?: boolean;
 	// Devices the component reports as listening, beside whatever this browser
 	// opens. Named as a client named itself, and never carrying an address.
@@ -263,6 +307,7 @@ export interface FooJeanFake extends Required<FooJeanOptions> {
 	limiter: Limiter;
 	capabilitiesHeld: (() => void)[];
 	subsetsHeld: (() => void)[];
+	summariesHeld: (() => void)[];
 	// The specification of every autoplaylist `POST /api/autoplaylists` made, by the
 	// fake's own key: the only playlists the two `/api/autoplaylists/{id}` routes touch.
 	managedAutoPlaylists: Map<string, ManagedAutoPlaylist>;
@@ -295,6 +340,7 @@ const DEFAULTS: FooJeanFake = {
 	hangCapabilities: false,
 	capabilitiesHeld: [],
 	subsetsHeld: [],
+	summariesHeld: [],
 	failArtwork: null,
 	failPlayingArtwork: null,
 	failRowArtwork: null,
@@ -332,6 +378,8 @@ const DEFAULTS: FooJeanFake = {
 	holdSubset: null,
 	libraryCeiling: MAX_LIBRARY_BYTES,
 	failLibraryExport: null,
+	holdSummary: false,
+	failSummary: null,
 	maxAutoPlaylists: 0,
 	autoPlaylists: [],
 	libraryEnabled: true,
@@ -429,6 +477,19 @@ const releaseSubsetsWhenHoldChanges = (fake: FooJeanFake): FooJeanFake => {
 	return fake;
 };
 
+const releaseSummariesWhenHoldEnds = (fake: FooJeanFake): FooJeanFake => {
+	let holding = fake.holdSummary;
+	Object.defineProperty(fake, "holdSummary", {
+		enumerable: true,
+		get: () => holding,
+		set: (next: boolean) => {
+			holding = next;
+			if (!next) for (const wake of fake.summariesHeld.splice(0)) wake();
+		},
+	});
+	return fake;
+};
+
 export const fooJeanState = (options: FooJeanOptions): FooJeanFake => {
 	const specs = options.autoPlaylistSpecs ?? {};
 	const fake = guardRefusals({
@@ -446,11 +507,12 @@ export const fooJeanState = (options: FooJeanOptions): FooJeanFake => {
 		limiter: new Map(),
 		capabilitiesHeld: [],
 		subsetsHeld: [],
+		summariesHeld: [],
 		managedAutoPlaylists: new Map(
 			Object.entries(specs).map(([id, spec]) => [id, { ...spec }]),
 		),
 	});
-	return releaseSubsetsWhenHoldChanges(
-		releaseHeldCapabilitiesWhenSwitchedOff(fake),
+	return releaseSummariesWhenHoldEnds(
+		releaseSubsetsWhenHoldChanges(releaseHeldCapabilitiesWhenSwitchedOff(fake)),
 	);
 };

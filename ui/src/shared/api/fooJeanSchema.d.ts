@@ -884,7 +884,7 @@ export interface paths {
          * What the player is doing, and the library's two generations.
          * @description The document a client polls. It is small, it is `ETag`ged, and a poll that finds nothing new is a `304` with no body.
          *
-         *     Read `library.structure` and `library.revision` from here and compare them with the ones in the header of the snapshot already held. A different `structure` means fetch a splice, which is an export again where the component answers `410`, or `409` when the pair names no position this run has held. A higher `revision` with the same `structure` means fetch a delta. Both the same means there is nothing to do. `snapshotId` names the content at that pair.
+         *     Read `library.structure` and `library.revision` from here and compare them with the ones in the header of the snapshot already held. A different `structure` means fetch a splice from `GET /library/changes`; a `410` there means export again, and a `409` means the pair names no position this run has held. A higher `revision` with the same `structure` means fetch a delta. Both the same means there is nothing to do. `snapshotId` names the content at that pair.
          *
          *     `library.ready` is `false` between the component starting and its first snapshot being built, and also on an install with no media library at all: the two are indistinguishable from this document alone. This is also what a client polls after a `202` from `GET /library/export`: wait until `library.ready` is true and `library.columns` has the same members as the set declared, then ask for the export again.
          *
@@ -1041,6 +1041,42 @@ export interface paths {
          *     There is no promise of freshness the player cannot keep. A component storing its data privately and publishing it through a title-formatting hook, which is how several play-count components work, changes a value with no notification to anybody; foobar2000's own playlist columns show the same stale value. The snapshot catches up when that track next plays or when somebody calls `POST /library/refresh`.
          */
         get: operations["getLibraryChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The numbers and shelves Home draws, computed from the held snapshot.
+         * @description One small document about the whole library: its size and span, its top genres, its most played album, artist and tracks, and a few shelves of albums. It is computed from the snapshot the component already holds, so it formats nothing and walks no files, and it is the one aggregate route here: a client that holds the library still asks everything else locally.
+         *
+         *     Each query parameter names one **role**, what a declared column means to the summary, and its value is a title-formatting expression the client declared in `GET /library/export`. The component reads the column it already holds under that expression. A role left out is unresolved on every track: a summary with no play count has no plays, and no shelf that needs one.
+         *
+         *     **Albums.** Two tracks belong to one album exactly when their album tags match and their credited artists match. The credited artist is the album artist, or the artist where there is no album artist. Two tags match when their keys are equal, and a key is the tag with leading and trailing whitespace removed, lower-cased as ECMAScript's `String.prototype.toLowerCase` does, and with every run of whitespace replaced by one space. An album's `album` and `artist` are the spellings carried by the track with the lowest dictionary id for that tag, the album artist's before the artist's. The `cover` of an album is the library-relative path of its first track by disc, then track number, then ordinal, and `null` where it has none. `ordinals` lists every track of the album in ascending order, at the document's `structure`.
+         *
+         *     **Timestamps.** A timestamp tag reads as `YYYY-MM-DD HH:MM:SS`, optionally followed by spaces, in the local time of the machine the component runs on. Anything else in that tag is no timestamp, and reads as `0`. Every timestamp in the document is milliseconds since the epoch.
+         *
+         *     **Windows.** The windows below are measured against the component's clock at the moment the document is computed: recently played is 30 days, recently added 28 days, and not played for a year and a half is 1.5 years of 365.25 days.
+         *
+         *     **Shelves.** `shelves` holds, in this order, `added`, `recent`, `top`, `rated`, `loved`, `upgrade` and `unopened`, only those that reach their minimum, each with at most 24 albums in the order the shelf means. A shelf's membership, order and minimum are the component's own and are not parameters; the conformance cases hold them. `added` and `recent` are measured by the windows above. Where no other shelf appears, `starter` does: up to 24 albums in the order the library first presents them, shuffled by Fisher-Yates over SplitMix64 seeded with the local calendar date as the integer `YYYYMMDD` and nothing else. Two documents on one date over the same albums give the same order, whatever was played or edited between them.
+         *
+         *     **Held per day.** A document is computed at most once per pair, role set and calendar day on the machine the component runs on, and served from what is held after that. Two requests arriving together for a document not yet held compute it once. The `ETag` names the pair, the role set, the date and the coding, so a pair that moves or a date that changes gives a new one and a request repeating it is answered `304`.
+         *
+         *     **Size.** A library over the export's ceiling is still summarised, since the document never carries the snapshot: this route never answers `413`.
+         *
+         *     **Refusals come in this order.** A role that is unknown, empty or named twice in two spellings is a `400`; a byte-identical pair sent twice is collapsed by the server before the component sees it and is accepted. A component that does not serve the media library is a `503`. The route's own budget is a `429`: a burst of 200, refilling one every 50 milliseconds, as the delta reads have, and a request refused for what it asks spends nothing. A component with no snapshot ready, or one that was not built with a declared role's expression, answers `202` and starts no build; the client declares through `GET /library/export` and asks again when `GET /state` reports the library ready. An expression the declaration does not hold is a `409` naming it.
+         */
+        get: operations["getLibrarySummary"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2347,6 +2383,86 @@ export interface components {
             /** @description Whether the implementation has stopped reading the library for good, after failing too often to recover on its own. Once true it stays true until the implementation restarts: `build` is `null`, no further build starts, and the snapshot held when it stopped, if any, goes on being served at the generations above. A client waiting on a build stops waiting and tells its user the player needs restarting. */
             halted: boolean;
         };
+        /** @description A declared title-formatting expression, 1 to 1024 printable characters. */
+        SummaryRole: string;
+        /** @description What `GET /library/summary` answers, computed at the `structure` and `revision` it carries. An ordinal anywhere in it is at that `structure`, and means nothing at another. */
+        LibrarySummary: {
+            /** @description The snapshot's `structure` the document was computed at. */
+            structure: number;
+            /** @description The snapshot's `revision` the document was computed at. */
+            revision: number;
+            /** @description Tracks in the library. */
+            trackCount: number;
+            /** @description Total length of the library in seconds. */
+            seconds: number;
+            /** @description The earliest year any track carries, or `null` where none carries one. */
+            earliestYear: number | null;
+            /** @description The latest year any track carries, or `null` where none carries one. */
+            latestYear: number | null;
+            /** @description Albums, as the grouping rule in `GET /library/summary` forms them. */
+            albumCount: number;
+            /** @description Distinct credited artists. */
+            artistCount: number;
+            /** @description Distinct genres. */
+            genreCount: number;
+            /** @description The most common genres, most common first. */
+            topGenres: {
+                name: string;
+                count: number;
+                /** @description `count` as a percentage of `trackCount`, rounded to a whole number. */
+                share: number;
+            }[];
+            /** @description The most played album, or `null` where no album has a play. */
+            topAlbum: components["schemas"]["SummaryAlbum"] | null;
+            /** @description The most played artist, or `null` where none has a play. */
+            topArtist: components["schemas"]["SummaryArtist"] | null;
+            /** @description The most played tracks, most played first. */
+            topTracks: components["schemas"]["SummaryTrack"][];
+            /** @description The shelves that reach their minimum, in the order `GET /library/summary` lists them. */
+            shelves: components["schemas"]["SummaryShelf"][];
+        };
+        SummaryArtist: {
+            /** @description The credited artist, or `null` for tracks that credit none. */
+            name: string | null;
+            plays: number;
+            albumCount: number;
+            trackCount: number;
+            /** @description The artist's most played album. */
+            cover: components["schemas"]["SummaryAlbum"];
+        };
+        SummaryAlbum: {
+            album: string;
+            artist: string | null;
+            /** @description The library-relative path `GET /artwork?track=` takes, or `null` where the album has none. */
+            cover: string | null;
+            /** @description Every track of the album, ascending, at the document's `structure`. */
+            ordinals: number[];
+            trackCount: number;
+            plays: number;
+            /** @description Milliseconds since the epoch of the latest play, `0` where unknown. */
+            lastPlayed: number;
+            /** @description Milliseconds since the epoch of the latest arrival, `0` where unknown. */
+            added: number;
+            /** @description The mean rating of the rated tracks, or `null` where none is rated. */
+            rating: number | null;
+            /** @description Tracks with a rating. */
+            ratedCount: number;
+            /** @description The mean bitrate, or `null` where none is known. */
+            bitrate: number | null;
+        };
+        SummaryTrack: {
+            ordinal: number;
+            title: string | null;
+            artist: string | null;
+            plays: number;
+            /** @description The library-relative path `GET /artwork?track=` takes, or `null`. */
+            cover: string | null;
+        };
+        SummaryShelf: {
+            /** @enum {string} */
+            id: "added" | "recent" | "top" | "rated" | "loved" | "upgrade" | "unopened" | "starter";
+            albums: components["schemas"]["SummaryAlbum"][];
+        };
         /** @description How far the running build has gotten. */
         LibraryBuild: {
             /**
@@ -2743,7 +2859,7 @@ export interface components {
         /** @description A refusal the client can act on. The request was understood and declined before the snapshot was touched. */
         LibraryRefusal: {
             /** @enum {string} */
-            error: "too many columns" | "unacceptable column" | "duplicate column" | "column not declared" | "unacceptable spine" | "unacceptable revision";
+            error: "too many columns" | "unacceptable column" | "duplicate column" | "column not declared" | "unacceptable spine" | "unacceptable revision" | "unacceptable role" | "duplicate role";
             /** @description What specifically was wrong, naming the position of the offending column where there is one. Safe to show a person: it describes the request the client sent and nothing on the player's disk. */
             detail: string;
         };
@@ -3098,7 +3214,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description The request was understood and declined before the snapshot was touched: no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, a `since` or a `structure` that is missing or not a whole number, or, on `GET /library/export`, an `only` naming a column `columns` does not declare or naming one twice in two spellings, or a `spine` that is neither `true` nor `false`. */
+        /** @description The request was understood and declined before the snapshot was touched: no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, a `since` or a `structure` that is missing or not a whole number, or, on `GET /library/export`, an `only` naming a column `columns` does not declare or naming one twice in two spellings, or a `spine` that is neither `true` nor `false`. On `GET /library/summary` it is a role that is not one of the published names, one with an empty expression, one longer than 1024 characters or one carrying a control character, or one named twice in two spellings (`unacceptable role`, `duplicate role`). */
         LibraryRefused: {
             headers: {
                 [name: string]: unknown;
@@ -3302,6 +3418,17 @@ export interface components {
         };
         /** @description Deltas are being asked for faster than this component will answer them: a burst of 200, refilling one every 50 milliseconds, the budget `GET /track/library` has. A client asks once per `revision` it sees move and never meets it; a client stuck in a loop would otherwise hold the library's lock against every state poll. A request refused for what it asks is refused for that first and spends nothing. `Retry-After` is sent in seconds. */
         LibraryChangesTooFast: {
+            headers: {
+                /** @description Seconds to wait. */
+                "Retry-After"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Summaries are being asked for faster than this component will answer them: a burst of 200, refilling one every 50 milliseconds, a budget of its own. A client asks once per pair it sees move and never meets it. A request refused for what it asks is refused for that first and spends nothing. `Retry-After` is sent in seconds. */
+        LibrarySummaryTooFast: {
             headers: {
                 /** @description Seconds to wait. */
                 "Retry-After"?: string;
@@ -5371,6 +5498,91 @@ export interface operations {
             410: components["responses"]["LibraryRevisionGone"];
             413: components["responses"]["LibraryTooLarge"];
             429: components["responses"]["LibraryChangesTooFast"];
+            503: components["responses"]["LibraryUnavailable"];
+        };
+    };
+    getLibrarySummary: {
+        parameters: {
+            query?: {
+                /** @description The declared expression that reads the track's number on its disc. */
+                trackNumber?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads the disc the track is on. */
+                discNumber?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads the track's title. */
+                title?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads the track's artist. */
+                artist?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads the album the track belongs to. */
+                album?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads the artist the album is credited to. */
+                albumArtist?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads the track's length in seconds. */
+                duration?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads the track's play count from the scrobbling source. */
+                playCount?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads when the scrobbling source last saw the track played, as a timestamp. */
+                lastPlayed?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads the track's rating. */
+                rating?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads the track's year. */
+                year?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several. */
+                genre?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads the track's codec. */
+                codec?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads the track's bitrate in kilobits per second. */
+                bitrate?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads the track's play count from the player's own counter. */
+                playCountLocal?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads when the player's own counter last saw the track played, as a timestamp. */
+                lastPlayedLocal?: components["schemas"]["SummaryRole"];
+                /** @description The declared expression that reads when the track entered the library, as a timestamp. */
+                added?: components["schemas"]["SummaryRole"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The summary. `Cache-Control` is `private, no-cache`, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
+            200: {
+                headers: {
+                    /** @description `private, no-cache`. */
+                    "Cache-Control"?: string;
+                    /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
+                    "Content-Encoding"?: "gzip";
+                    /** @description `Accept-Encoding`. */
+                    Vary?: string;
+                    /** @description The pair, the role set, the date on the player's machine, and the coding, quoted. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySummary"];
+                };
+            };
+            /** @description No snapshot is ready, or the ready one was not built with a declared role's expression. The body is the `Library` object `GET /state` carries under `library`, as it stands now. No build was started: a client polls `GET /state` until the library is ready and asks again. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Library"];
+                };
+            };
+            304: components["responses"]["NotModified"];
+            400: components["responses"]["LibraryRefused"];
+            /** @description A role names an expression the declaration does not hold. The error names the expression, so a client declares again through `GET /library/export`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["LibrarySummaryTooFast"];
             503: components["responses"]["LibraryUnavailable"];
         };
     };

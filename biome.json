@@ -15,6 +15,7 @@
 			"!**/playwright-report",
 			"!ui/test/fake-api/*.json",
 			"!ui/demo/library.json",
+			"!plugins/fb2k/tests/fixtures/*.json",
 			"!ui/src/shared/api/fooJeanSchema.d.ts",
 			"!pnpm-lock.yaml"
 		]

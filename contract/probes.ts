@@ -45,6 +45,27 @@ const kUnissuedPlaylistId = "45837d74-fa4f-415c-bba9-bf2db8f0dc04";
 // edits above.
 const kUnissuedOutputDeviceId = "contract-check:no-such-output-device";
 
+// The unit separator (U+001F) is what a multi-valued tag is joined with in the genre expression.
+const summaryRoles: Record<string, string> = {
+	trackNumber: "%tracknumber%",
+	discNumber: "%discnumber%",
+	title: "%title%",
+	artist: "%artist%",
+	album: "%album%",
+	albumArtist: "%album artist%",
+	duration: "%length_seconds%",
+	playCount: "%lastfm_play_count%",
+	lastPlayed: "%lastfm_last_played%",
+	rating: "$if2($meta(rating),%rating%)",
+	year: "%year%",
+	genre: "$if2($meta_sep(genre,$char(31)),%genre%)",
+	codec: "%codec%",
+	bitrate: "%bitrate%",
+	playCountLocal: "%play_count%",
+	lastPlayedLocal: "%last_played%",
+	added: "%added%",
+};
+
 const example = (operation: Operation, name: string): unknown => {
 	const offered = operation.examples[name];
 	if (offered === undefined)
@@ -165,6 +186,10 @@ export const drives: Drive[] = [
 				: { query: { since: String(context.revision) } },
 	},
 	{ id: "refreshLibrary", probe: () => ({}) },
+	{
+		id: "getLibrarySummary",
+		probe: () => ({ query: summaryRoles }),
+	},
 	{
 		// The suite holds no library-relative path, for the reason `getArtwork` gives, so this
 		// drives the refusal instead. `columns` is a declaration the column gate accepts, so the

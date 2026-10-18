@@ -101,6 +101,7 @@
 		"src/domain/player/playerPoll.ts",
 		"src/domain/artist/artists.ts",
 		"src/domain/artist/credits.ts",
+		"src/domain/track/creditSpans.ts",
 		"src/domain/artist/splitCredits.ts",
 		"src/domain/player/position.ts",
 		"src/domain/player/queue.ts",

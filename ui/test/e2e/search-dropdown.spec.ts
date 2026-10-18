@@ -13,7 +13,7 @@ import {
 	test,
 	trackPlayed,
 } from "./fixtures.ts";
-import { touchDrag } from "./gestures.ts";
+import { pressAndHold, touchDrag } from "./gestures.ts";
 
 // Enough matches that the preview has to leave some out.
 const QUERY = "babasonicos";
@@ -563,5 +563,39 @@ test.describe("on a phone", () => {
 		);
 
 		expect(covered).toBe(true);
+	});
+});
+
+test.describe("a track's menu in the preview", () => {
+	const queuedTitles = (player: FakePlayer) =>
+		player.queuedEntries().map((entry) => String(entry.track["%title%"] ?? ""));
+
+	test("opens on the row, queues the track, and leaves the preview where it was", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await openWithSearch(page);
+		await searchField(page).fill(QUERY);
+		const row = tracks(page).first();
+		await expect(row).toBeVisible();
+		const chosen = await row.locator("span > span").first().innerText();
+
+		if (isMobile) await pressAndHold(page, row);
+		else await row.click({ button: "right" });
+
+		const queue = page.getByRole("menuitem", { name: "Add to queue" });
+		await expect(queue).toBeVisible();
+		await expect(
+			page.getByRole("menuitem", { name: `Go to ${ARTIST}` }),
+		).toBeVisible();
+		if (!isMobile) await expect(row).toHaveAttribute("aria-selected", "true");
+
+		await queue.click();
+		await expect(queue).toBeHidden();
+		await expect.poll(() => queuedTitles(player)).toEqual([chosen]);
+
+		await expect(tracks(page).first()).toBeVisible();
+		await expect(searchField(page)).toHaveValue(QUERY);
 	});
 });

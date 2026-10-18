@@ -14,7 +14,7 @@ import { Tabs } from "@/shared/ui/Tabs";
 import { Details } from "./Details";
 import type { EditorOpening } from "./LyricEditor";
 import { LyricSearch, type SearchMemory } from "./LyricSearch";
-import { LyricActions, Lyrics } from "./Lyrics";
+import { LyricActions, Lyrics, type PanelVariant } from "./Lyrics";
 import { draftFromText } from "./lyricDraft";
 import type { Lyrics as ParsedLyrics } from "./lyricsFormat";
 import styles from "./TrackPanels.module.css";
@@ -43,7 +43,7 @@ export function TrackPanels({
 	onSelectTab,
 	onEdit,
 }: {
-	variant: "gatefold" | "screen";
+	variant: PanelVariant;
 	lyrics: ParsedLyrics;
 	snapshot: PlayerSnapshot | null | undefined;
 	onSeek: (at: number) => void;
@@ -160,6 +160,7 @@ export function TrackPanels({
 					onSeek={onSeek}
 					onSearch={openSearch}
 					onEdit={editPanelLyric}
+					variant={variant}
 				/>
 			)
 		) : tab === "details" ? (

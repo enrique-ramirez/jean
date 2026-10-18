@@ -55,6 +55,7 @@ export function ActionPopover({
 		<div
 			ref={ref}
 			className={styles.popover}
+			data-layer="actionMenu"
 			data-placed={placement ? "true" : undefined}
 			style={
 				placement

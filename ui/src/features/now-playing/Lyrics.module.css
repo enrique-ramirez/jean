@@ -56,6 +56,14 @@
 	background: var(--border-strong);
 }
 
+/* An absolutely placed child scrolls with its scrolling ancestor; a zero-height sticky parent stays
+   at the scrollport's bottom edge and gives it a fixed frame. */
+.resumeDock[data-variant="gatefold"] {
+	position: sticky;
+	bottom: 0;
+	height: 0;
+}
+
 .resume {
 	position: absolute;
 

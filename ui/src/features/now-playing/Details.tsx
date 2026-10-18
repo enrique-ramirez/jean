@@ -13,6 +13,7 @@ import {
 import styles from "./Details.module.css";
 import { NOW_PLAYING_FIELD as F, readNowPlaying } from "./nowPlayingFields";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
+import { usePlayingMembers } from "./usePlayingMembers";
 
 type DetailPhrase = Extract<Phrase, `details.${string}`>;
 
@@ -165,6 +166,7 @@ export function Details() {
 	const t = useTranslate();
 	const format = useFormats();
 	const { details, isPending, nothingPlaying } = useNowPlayingTrack();
+	const members = usePlayingMembers();
 
 	if (nothingPlaying)
 		return <p className={styles.notice}>{t("details.nothingPlaying")}</p>;
@@ -189,7 +191,10 @@ export function Details() {
 								<dt className={styles.label}>{t(row.label)}</dt>
 								<dd className={styles.value}>
 									{row.credit ? (
-										<ArtistLinks credit={row.value} />
+										<ArtistLinks
+											credit={row.value}
+											members={members.albumArtist}
+										/>
 									) : row.genres && row.value ? (
 										<GenreLinks genres={row.value} />
 									) : row.href && row.value ? (

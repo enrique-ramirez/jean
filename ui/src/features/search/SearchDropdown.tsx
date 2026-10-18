@@ -5,6 +5,7 @@ import {
 	type ReactNode,
 	type RefObject,
 	useLayoutEffect,
+	useMemo,
 	useRef,
 } from "react";
 import { QuestionFailure } from "@/domain/library/QuestionFailure";
@@ -23,6 +24,8 @@ import {
 	value,
 } from "@/domain/track/fields";
 import { rowAt } from "@/domain/track/libraryColumns";
+import { trackRows } from "@/domain/track/project";
+import { useTrackContextMenu } from "@/domain/track/useTrackContextMenu";
 import { libraryArtworkUrl } from "@/shared/api/artwork";
 import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
 import { useSwipe } from "@/shared/hooks/useSwipe";
@@ -38,6 +41,8 @@ import styles from "./SearchDropdown.module.css";
 export const optionId = (position: number) => `search-result-${position}`;
 
 const ART = 36;
+
+const NO_SELECTION = new Set<number>();
 
 function Heading({
 	label,
@@ -245,6 +250,26 @@ export function SearchDropdown({
 
 	const swipe = useSwipe({ onUp: onDismiss });
 
+	const trackStart = suggestions.findIndex((entry) => entry.kind === "track");
+	const tracks = useMemo(
+		() =>
+			trackRows(
+				library.columns,
+				Int32Array.from(
+					suggestions.flatMap((entry) =>
+						entry.kind === "track" ? [entry.ref] : [],
+					),
+				),
+			),
+		[library.columns, suggestions],
+	);
+	const menu = useTrackContextMenu({
+		rows: tracks,
+		source: library.source,
+		selection: NO_SELECTION,
+		onSelectOnly: (position) => onActive(trackStart + position),
+	});
+
 	useLayoutEffect(() => {
 		if (active < 0) return;
 		list.current
@@ -281,7 +306,13 @@ export function SearchDropdown({
 				<p className={styles.notice}>{t("search.noMatch")}</p>
 			) : null}
 			{suggestions.length > 0 ? (
-				<div className={styles.results} id={listId} role="listbox" ref={list}>
+				<div
+					className={styles.results}
+					id={listId}
+					role="listbox"
+					ref={list}
+					{...menu.triggerProps}
+				>
 					{sections.map((section) => {
 						const sectionStart = cursor;
 						cursor += section.suggestions.length;
@@ -309,6 +340,11 @@ export function SearchDropdown({
 											className={styles.result}
 											data-active={isActive}
 											data-kind={suggestion.kind}
+											data-row={
+												suggestion.kind === "track"
+													? index - trackStart
+													: undefined
+											}
 											onMouseEnter={(event: MouseEvent) => {
 												if (aimedAt(event)) onActive(index);
 											}}
@@ -327,6 +363,7 @@ export function SearchDropdown({
 					})}
 				</div>
 			) : null}
+			{menu.element}
 		</div>
 	);
 }

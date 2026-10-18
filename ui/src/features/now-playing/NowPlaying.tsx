@@ -52,6 +52,7 @@ import { TrackPanels } from "./TrackPanels";
 import { useCoverWindow } from "./useCoverWindow";
 import { useNowPlayingMenu } from "./useNowPlayingMenu";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
+import { usePlayingMembers } from "./usePlayingMembers";
 import { VolumePopover } from "./Volume";
 
 // Must match the exit animation in NowPlaying.module.css.
@@ -106,6 +107,7 @@ export function NowPlaying({
 	const snapshot = useAudiblePlayer();
 	const { data: live } = usePlayer();
 	const { track, details } = useNowPlayingTrack();
+	const members = usePlayingMembers();
 	const { discovery } = useFooJean();
 	const canControlPlayback = useCanControlPlayback();
 	const refusal = usePlaybackRefusal();
@@ -324,7 +326,7 @@ export function NowPlaying({
 							{wheel.isAwaiting ? (
 								" "
 							) : track?.artist ? (
-								<ArtistLinks credit={track.artist} />
+								<ArtistLinks credit={track.artist} members={members.artist} />
 							) : (
 								"—"
 							)}

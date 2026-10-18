@@ -7,9 +7,11 @@
 
 	display: flex;
 	flex-direction: column;
-	gap: 20px;
 	padding: 20px 28px 32px;
-	--head-offset: 50px;
+	/* A browser measures a sticky offset inward from the scroller's padding, not from its edge, so
+	   the head reaches the edge by the screen's own 20px and everything under it sticks this far
+	   below the head's top. */
+	--head-offset: 70px;
 
 	overflow-y: auto;
 	/* `overflow-y: auto` alone resolves the other axis to `auto`, which is a horizontal
@@ -71,8 +73,9 @@
 	position: sticky;
 	top: -20px;
 	z-index: 1;
+	height: calc(20px + var(--head-offset));
 	margin: -20px -28px 0;
-	padding: 20px 28px 12px;
+	padding: 20px 28px 32px;
 	background: var(--bg);
 }
 
@@ -353,6 +356,11 @@
 	padding: max(10px, env(safe-area-inset-top)) 20px
 		calc(16px + env(safe-area-inset-bottom));
 	overflow: hidden;
+}
+
+.screen[data-compact="true"] .head {
+	height: auto;
+	padding-bottom: 12px;
 }
 
 .screen[data-compact="true"] .spread {

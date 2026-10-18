@@ -20,6 +20,8 @@ import { optionId, SearchDropdown } from "./SearchDropdown";
 
 const LIST_ID = "search-results-preview";
 
+const ACTION_MENU = '[data-layer="actionMenu"]';
+
 export function LibrarySearchField({
 	search,
 	library,
@@ -67,7 +69,7 @@ export function LibrarySearchField({
 			close();
 			revert();
 		},
-		{ onEscape: false },
+		{ ignore: ACTION_MENU, onEscape: false },
 	);
 
 	// Both take the caret with them: a panel left under an open software keyboard leaves the keyboard

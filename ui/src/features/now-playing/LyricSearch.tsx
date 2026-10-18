@@ -32,6 +32,7 @@ import { formatTime } from "@/shared/lib/time";
 import { Button } from "@/shared/ui/Button";
 import { LyricPreview } from "./LyricPreview";
 import styles from "./LyricSearch.module.css";
+import type { PanelVariant } from "./Lyrics";
 import {
 	kindOf,
 	type LrclibKind,
@@ -279,7 +280,7 @@ export function LyricSearch({
 	className,
 }: {
 	target: LyricTarget;
-	variant: "gatefold" | "screen";
+	variant: PanelVariant;
 	snapshot: PlayerSnapshot | null | undefined;
 	onBack: () => void;
 	onOpenEditor: (draft: LyricDraft) => void;

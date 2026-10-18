@@ -24,6 +24,7 @@ import { LyricKeys } from "./LyricKeys";
 import { LyricLineTools } from "./LyricLineTools";
 import { LyricRow, Playhead } from "./LyricRow";
 import { type Scope, Stepper } from "./LyricStepper";
+import type { PanelVariant } from "./Lyrics";
 import {
 	draftFromText,
 	insertLineBelow,
@@ -88,7 +89,7 @@ export function LyricEditor({
 	onClose,
 }: {
 	opening: EditorOpening;
-	variant: "gatefold" | "screen";
+	variant: PanelVariant;
 	snapshot: PlayerSnapshot | null | undefined;
 	onClose: () => void;
 }) {

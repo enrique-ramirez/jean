@@ -12,7 +12,7 @@ import {
 	Stepper,
 	useAmountReadout,
 } from "./LyricStepper";
-import { PlainLines, Synced } from "./Lyrics";
+import { type PanelVariant, PlainLines, Synced } from "./Lyrics";
 import type { LrclibRecord } from "./lrclib";
 import {
 	draftFromText,
@@ -97,7 +97,7 @@ export function LyricPreview({
 	record: LrclibRecord;
 	index: number;
 	total: number;
-	variant: "gatefold" | "screen";
+	variant: PanelVariant;
 	summary: ReactNode;
 	snapshot: PlayerSnapshot | null | undefined;
 	title: string;

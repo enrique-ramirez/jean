@@ -28,13 +28,21 @@ const FOCUS = 0.34;
 
 const SCROLLEND_FALLBACK_MS = 700;
 
-function Following({ onResume }: { onResume: () => void }) {
+function Following({
+	variant,
+	onResume,
+}: {
+	variant: PanelVariant;
+	onResume: () => void;
+}) {
 	const t = useTranslate();
 
 	return (
-		<button type="button" className={styles.resume} onClick={onResume}>
-			{t("lyrics.resumeFollowing")}
-		</button>
+		<div className={styles.resumeDock} data-variant={variant}>
+			<button type="button" className={styles.resume} onClick={onResume}>
+				{t("lyrics.resumeFollowing")}
+			</button>
+		</div>
 	);
 }
 
@@ -44,6 +52,8 @@ export interface LineSelection {
 	trailing: (index: number) => ReactNode;
 }
 
+export type PanelVariant = "gatefold" | "screen";
+
 export function Synced({
 	lines,
 	snapshot,
@@ -51,6 +61,7 @@ export function Synced({
 	selection,
 	lyricKey,
 	isHeard = true,
+	variant = "screen",
 }: {
 	lines: { at: number; text: string }[];
 	snapshot: PlayerSnapshot | null | undefined;
@@ -58,6 +69,7 @@ export function Synced({
 	selection?: LineSelection;
 	lyricKey?: string | number;
 	isHeard?: boolean;
+	variant?: PanelVariant;
 }) {
 	const t = useTranslate();
 	const seek = useCanControlPlayback() ? onSeek : undefined;
@@ -194,7 +206,9 @@ export function Synced({
 				})}
 			</div>
 
-			{isFollowing ? null : <Following onResume={() => setIsFollowing(true)} />}
+			{isFollowing ? null : (
+				<Following variant={variant} onResume={() => setIsFollowing(true)} />
+			)}
 		</>
 	);
 }
@@ -261,12 +275,14 @@ export function Lyrics({
 	onSeek,
 	onSearch,
 	onEdit,
+	variant = "screen",
 }: {
 	lyrics: ParsedLyrics;
 	snapshot: PlayerSnapshot | null | undefined;
 	onSeek: (at: number) => void;
 	onSearch?: () => void;
 	onEdit?: () => void;
+	variant?: PanelVariant;
 }) {
 	const t = useTranslate();
 	const { isPending, track, details } = useNowPlayingTrack();
@@ -310,5 +326,12 @@ export function Lyrics({
 
 	if (lyrics.kind === "plain") return <PlainLines lines={lyrics.lines} />;
 
-	return <Synced lines={lyrics.lines} snapshot={snapshot} onSeek={onSeek} />;
+	return (
+		<Synced
+			lines={lyrics.lines}
+			snapshot={snapshot}
+			onSeek={onSeek}
+			variant={variant}
+		/>
+	);
 }

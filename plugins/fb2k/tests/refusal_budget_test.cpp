@@ -6,14 +6,17 @@
 
 #include "third_party/doctest.h"
 
+#include "core/failures.h"
 #include "core/library.h"
 #include "support/fixtures.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
+#include <cstddef>
 #include <functional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace jean;
@@ -33,6 +36,71 @@ constexpr int kSummaryBurst = 200;
 
 constexpr char kSummary[] = "/api/library/summary?title=%25title%25";
 constexpr char kSummaryOfNoRole[] = "/api/library/summary?colour=%25title%25";
+
+constexpr int kQuestionBurst = 200;
+
+constexpr char kAlbumQuestion[] = "/api/library/album?name=Jessico&by=Someone&title=%25title%25";
+constexpr char kSearch[] =
+    "/api/library/search?query=a&limit=8&entityLimit=3&splitsCredits=true&title=%25title%25";
+
+const std::vector<std::string>& pageQuestions() {
+    static const std::vector<std::string> questions{
+        kAlbumQuestion,
+        "/api/library/artist?name=Alpha&splitsCredits=true&title=%25title%25",
+        "/api/library/genre?name=Rock&title=%25title%25",
+        kSearch,
+    };
+    return questions;
+}
+
+struct RefusedQuestion {
+    std::string path;
+    json body;
+};
+
+// cpp-httplib drops a query pair repeating an earlier one byte for byte, so the name asked twice
+// carries two values.
+const std::vector<RefusedQuestion>& refusedQuestions() {
+    static const std::vector<RefusedQuestion> refused{
+        {"/api/library/genre?name=Rock&colour=%25title%25",
+         {{"error", "unacceptable role"}, {"detail", "'colour' is not a role"}}},
+        {"/api/library/album?title=%25title%25",
+         {{"error", "unacceptable question"}, {"detail", "'name' is required"}}},
+        {"/api/library/artist?name=Alpha&title=%25title%25",
+         {{"error", "unacceptable question"}, {"detail", "'splitsCredits' is required"}}},
+        {"/api/library/artist?name=Alpha&splitsCredits=yes",
+         {{"error", "unacceptable question"}, {"detail", "'splitsCredits' must be true or false"}}},
+        {"/api/library/genre?name=Rock&name=Jazz",
+         {{"error", "duplicate question"}, {"detail", "'name' is named twice"}}},
+        {"/api/library/search?limit=8&entityLimit=3&splitsCredits=true",
+         {{"error", "unacceptable question"}, {"detail", "'query' is required"}}},
+        {"/api/library/search?query=" + std::string(1025, 'a') +
+             "&limit=8&entityLimit=3&splitsCredits=true",
+         {{"error", "unacceptable question"}, {"detail", "'query' must be at most 1024 bytes"}}},
+        {"/api/library/search?query=a&limit=-1&entityLimit=3&splitsCredits=true",
+         {{"error", "unacceptable question"},
+          {"detail", "'limit' must be a whole number of 0 or more"}}},
+    };
+    return refused;
+}
+
+template <typename Expected>
+size_t unexpectedAnswers(const TestServer& server, const std::vector<std::string>& paths, int times,
+                         Expected expected) {
+    size_t unexpected = 0;
+    for (int sent = 0; sent < times; ++sent) {
+        const auto& path = paths[static_cast<size_t>(sent) % paths.size()];
+        const auto response = get(server, path);
+        REQUIRE(response);
+        if (!expected(static_cast<size_t>(sent) % paths.size(), *response)) {
+            if (unexpected == 0)
+                MESSAGE("first unexpected answer: ", path, " ", response->status, " ",
+                        response->body);
+            ++unexpected;
+        }
+    }
+    return unexpected;
+}
 
 constexpr char kSourcePlaylistId[] = "9b1c2e30-7d4a-4f6e-8a21-3c5d6e7f8091";
 
@@ -229,4 +297,121 @@ TEST_CASE("summaries past their own budget are refused with a 429 that says how 
     const auto delta = get(server, "/api/library/changes?since=0&structure=0");
     REQUIRE(delta);
     CHECK(delta->status != 429);
+}
+
+TEST_CASE("a question refused for what it asks spends none of the question budget") {
+    Library library;
+    const TestServer server(servingSettings(), Player{}, &library);
+
+    std::vector<std::string> paths;
+    for (const auto& refused : refusedQuestions())
+        paths.push_back(refused.path);
+    CHECK(unexpectedAnswers(
+              server, paths, kQuestionBurst + 1, [](size_t at, const httplib::Response& response) {
+                  return response.status == 400 &&
+                         json::parse(response.body, nullptr, false) == refusedQuestions()[at].body;
+              }) == 0);
+
+    for (const auto& path : pageQuestions()) {
+        INFO("question: ", path);
+        const auto asked = get(server, path);
+        REQUIRE(asked);
+        CHECK(asked->status == 202);
+    }
+}
+
+TEST_CASE("a question the component cannot serve spends none of the question budget") {
+    const TestServer server;
+
+    CHECK(unexpectedAnswers(server, pageQuestions(), kQuestionBurst + 1,
+                            [](size_t /*at*/, const httplib::Response& response) {
+                                return response.status == 503 && errorOf(response) == kNoLibrary;
+                            }) == 0);
+
+    for (const auto& refused : refusedQuestions()) {
+        INFO("refused: ", refused.path);
+        const auto asked = get(server, refused.path);
+        REQUIRE(asked);
+        CHECK(asked->status == 400);
+        CHECK(json::parse(asked->body, nullptr, false) == refused.body);
+    }
+}
+
+TEST_CASE("questions past the budget they share are refused with a 429 saying how long to wait") {
+    Library library;
+    const TestServer server(servingSettings(), Player{}, &library);
+
+    CHECK(unexpectedAnswers(server, pageQuestions(), kQuestionBurst,
+                            [](size_t /*at*/, const httplib::Response& response) {
+                                return response.status == 202;
+                            }) == 0);
+
+    for (const auto& path : pageQuestions()) {
+        INFO("question: ", path);
+        const auto refused = get(server, path);
+        REQUIRE(refused);
+        CHECK(refused->status == 429);
+        CHECK(json::parse(refused->body, nullptr, false) ==
+              json{{"error", "too many library questions"}});
+        const auto wait = refused->get_header_value("Retry-After");
+        CHECK_FALSE(wait.empty());
+        CHECK(wait.find_first_not_of("0123456789") == std::string::npos);
+    }
+
+    const auto summary = get(server, kSummary);
+    REQUIRE(summary);
+    CHECK(summary->status == 202);
+
+    const auto delta = get(server, "/api/library/changes?since=0&structure=0");
+    REQUIRE(delta);
+    CHECK(delta->status != 429);
+}
+
+TEST_CASE("a question naming a column nobody declared spends the budget before its 409") {
+    Library library;
+    buildLibrary(library);
+    const TestServer server(servingSettings(), Player{}, &library);
+
+    const auto answered = get(server, pageQuestions().front());
+    REQUIRE(answered);
+    REQUIRE(answered->status == 200);
+
+    const std::vector<std::string> undeclared{
+        "/api/library/album?name=Jessico&title=%25comment%25",
+        "/api/library/artist?name=Alpha&splitsCredits=false&title=%25comment%25",
+        "/api/library/genre?name=Rock&title=%25comment%25",
+        "/api/library/search?query=a&limit=8&entityLimit=3&splitsCredits=true&title=%25comment%25",
+    };
+    CHECK(unexpectedAnswers(server, undeclared, kQuestionBurst - 1,
+                            [](size_t /*at*/, const httplib::Response& response) {
+                                return response.status == 409;
+                            }) == 0);
+
+    const auto refused = get(server, pageQuestions().back());
+    REQUIRE(refused);
+    CHECK(refused->status == 429);
+}
+
+TEST_CASE("a search past the budget spent on album questions is refused, and the other way round") {
+    const std::vector<std::pair<std::string, std::string>> spentThenAsked{
+        {kAlbumQuestion, kSearch},
+        {kSearch, kAlbumQuestion},
+    };
+
+    for (const auto& [spent, asked] : spentThenAsked) {
+        INFO("spent on: ", spent);
+        Library library;
+        const TestServer server(servingSettings(), Player{}, &library);
+
+        CHECK(unexpectedAnswers(server, {spent}, kQuestionBurst,
+                                [](size_t /*at*/, const httplib::Response& response) {
+                                    return response.status == 202;
+                                }) == 0);
+
+        const auto refused = get(server, asked);
+        REQUIRE(refused);
+        CHECK(refused->status == 429);
+        CHECK(json::parse(refused->body, nullptr, false) ==
+              json{{"error", "too many library questions"}});
+    }
 }

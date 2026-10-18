@@ -4,6 +4,7 @@
 
 #include "third_party/doctest.h"
 
+#include "core/library.h"
 #include "core/main_thread_queue.h"
 #include "core/main_thread_watch.h"
 #include "core/player.h"
@@ -100,4 +101,32 @@ TEST_CASE("a server with no main thread to check reports one answering") {
     const auto answer = poll(server);
     REQUIRE(answer.status == 200);
     CHECK(answer.mainThread == json{{"answering", true}, {"unansweredSeconds", nullptr}});
+}
+
+TEST_CASE("a question is answered while the main thread is stalled, and posts nothing to it") {
+    MainThreadStandIn mainThread;
+    MainThreadQueue queue(mainThread.calls());
+    MainThreadWatch watch(queue);
+    Library library;
+    buildLibrary(library);
+    const TestServer server(servingSettings(), watching(watch), &library);
+
+    REQUIRE(poll(server).status == 200);
+    server.advanceClock(kMainThreadStalledAfter);
+    const auto stalled = poll(server);
+    REQUIRE(stalled.status == 200);
+    REQUIRE(stalled.mainThread["answering"] == false);
+    const size_t postedBefore = mainThread.postedCount();
+
+    const std::string search =
+        "/api/library/search?query=a&limit=8&entityLimit=3&splitsCredits=true&title=%25title%25";
+    for (const std::string& question :
+         {std::string("/api/library/genre?name=Rock&title=%25title%25"), search}) {
+        INFO("question: ", question);
+        const auto answer = get(server, question);
+        REQUIRE(answer);
+        CHECK(answer->status == 200);
+        CHECK(json::parse(answer->body).at("structure") == library.state().structure);
+    }
+    CHECK(mainThread.postedCount() == postedBefore);
 }

@@ -157,6 +157,10 @@ std::string describe(LibraryRefusal refusal) {
             return "unacceptable role";
         case LibraryRefusal::duplicateRole:
             return "duplicate role";
+        case LibraryRefusal::unacceptableQuestion:
+            return "unacceptable question";
+        case LibraryRefusal::duplicateQuestion:
+            return "duplicate question";
     }
     return "unknown";
 }
@@ -304,6 +308,8 @@ int httpStatusFor(LibraryRefusal refusal) {
         case LibraryRefusal::badSpine:
         case LibraryRefusal::badRole:
         case LibraryRefusal::duplicateRole:
+        case LibraryRefusal::unacceptableQuestion:
+        case LibraryRefusal::duplicateQuestion:
             return 400;
     }
     return 400;

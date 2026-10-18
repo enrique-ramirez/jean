@@ -3,6 +3,7 @@
 #include "core/artwork.h"
 #include "core/documents.h"
 #include "core/http_responses.h"
+#include "core/library_roles.h"
 #include "core/local_time.h"
 #include "core/tag_write.h"
 #include "core/text.h"
@@ -14,6 +15,8 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <span>
+#include <string_view>
 #include <utility>
 
 namespace jean {
@@ -43,6 +46,9 @@ constexpr auto kDeltaReadRefill = kTrackReadRefill;
 constexpr int kSummaryReadBurst = kDeltaReadBurst;
 constexpr auto kSummaryReadRefill = kDeltaReadRefill;
 
+constexpr int kLibraryQuestionBurst = kDeltaReadBurst;
+constexpr auto kLibraryQuestionRefill = kDeltaReadRefill;
+
 // The snapshot and the deltas. Opaque bytes with a magic number of their own, so nothing on
 // the way to the client sniffs, transcodes or reformats them; contract/openapi.yaml is the
 // only description of what is inside.
@@ -67,133 +73,6 @@ std::optional<uint32_t> subsongAsked(const httplib::Request& req) {
         return std::nullopt;
 
     return static_cast<uint32_t>(asked);
-}
-
-using RoleField = std::optional<size_t> SummaryRoles::*;
-
-struct RoleName {
-    const char* name;
-    RoleField field;
-};
-
-constexpr std::array kRoleNames{
-    RoleName{"trackNumber", &SummaryRoles::trackNumber},
-    RoleName{"discNumber", &SummaryRoles::discNumber},
-    RoleName{"title", &SummaryRoles::title},
-    RoleName{"artist", &SummaryRoles::artist},
-    RoleName{"album", &SummaryRoles::album},
-    RoleName{"albumArtist", &SummaryRoles::albumArtist},
-    RoleName{"duration", &SummaryRoles::duration},
-    RoleName{"playCount", &SummaryRoles::playCount},
-    RoleName{"lastPlayed", &SummaryRoles::lastPlayed},
-    RoleName{"rating", &SummaryRoles::rating},
-    RoleName{"year", &SummaryRoles::year},
-    RoleName{"genre", &SummaryRoles::genre},
-    RoleName{"codec", &SummaryRoles::codec},
-    RoleName{"bitrate", &SummaryRoles::bitrate},
-    RoleName{"playCountLocal", &SummaryRoles::playCountLocal},
-    RoleName{"lastPlayedLocal", &SummaryRoles::lastPlayedLocal},
-    RoleName{"added", &SummaryRoles::added},
-};
-
-const RoleName* roleNamed(const std::string& name) {
-    for (const RoleName& role : kRoleNames) {
-        if (name == role.name)
-            return &role;
-    }
-    return nullptr;
-}
-
-// Role name to the expression the client says it reads, ordered by name so that the order the
-// client wrote them in does not make two requests different.
-struct RolesAsked {
-    LibraryRefusal refusal = LibraryRefusal::none;
-    std::string detail;
-    std::map<std::string, std::string> expressions;
-
-    bool ok() const { return refusal == LibraryRefusal::none; }
-};
-
-RolesAsked rolesAsked(const httplib::Request& req) {
-    RolesAsked asked;
-    const auto refuse = [&asked](LibraryRefusal refusal, std::string detail) {
-        asked.refusal = refusal;
-        asked.detail = std::move(detail);
-        return asked;
-    };
-
-    for (const auto& [name, expression] : req.params) {
-        if (roleNamed(name) == nullptr)
-            return refuse(LibraryRefusal::badRole, "'" + name + "' is not a role");
-
-        if (expression.empty() || expression.size() > kMaxColumnLength ||
-            !isPrintable(expression)) {
-            return refuse(LibraryRefusal::badRole,
-                          "role '" + name + "' must be printable text of 1 to " +
-                              std::to_string(kMaxColumnLength) + " characters");
-        }
-
-        if (!asked.expressions.emplace(name, expression).second)
-            return refuse(LibraryRefusal::duplicateRole, "role '" + name + "' is named twice");
-    }
-
-    return asked;
-}
-
-std::string rolesKey(const std::map<std::string, std::string>& roles) {
-    std::string key;
-    for (const auto& [name, expression] : roles) {
-        key += name;
-        key += '\0';
-        key += expression;
-        key += '\0';
-    }
-    return key;
-}
-
-std::optional<SummaryRoles> rolesIn(const Snapshot& snapshot,
-                                    const std::map<std::string, std::string>& roles) {
-    SummaryRoles found;
-    for (const auto& [name, expression] : roles) {
-        const auto column =
-            std::find_if(snapshot.columns.begin() + kSpineFieldCount, snapshot.columns.end(),
-                         [&expression](const Column& held) { return held.name == expression; });
-        if (column == snapshot.columns.end())
-            return std::nullopt;
-
-        found.*roleNamed(name)->field = static_cast<size_t>(column - snapshot.columns.begin());
-    }
-    return found;
-}
-
-struct SummaryVerdict {
-    enum Kind { answerable, notYet, undeclared } kind = answerable;
-    std::string expression;
-};
-
-SummaryVerdict summaryVerdict(const Library::State& state, const std::vector<std::string>& declared,
-                              const std::map<std::string, std::string>& expressions) {
-    if (!state.ready)
-        return {SummaryVerdict::notYet, {}};
-
-    const auto& wanted = declared.empty() ? state.columns : declared;
-    const auto holds = [](const std::vector<std::string>& columns, const std::string& expression) {
-        return std::find(columns.begin(), columns.end(), expression) != columns.end();
-    };
-
-    const bool stale = std::any_of(expressions.begin(), expressions.end(), [&](const auto& role) {
-        return !holds(state.columns, role.second) && holds(wanted, role.second);
-    });
-    if (stale)
-        return {SummaryVerdict::notYet, {}};
-
-    const auto missing =
-        std::find_if(expressions.begin(), expressions.end(),
-                     [&](const auto& role) { return !holds(state.columns, role.second); });
-    if (missing != expressions.end())
-        return {SummaryVerdict::undeclared, missing->second};
-
-    return {};
 }
 
 int64_t systemNowMs() {
@@ -270,6 +149,145 @@ void respondTrackRead(httplib::Response& res, const LibraryTrackRead& read) {
     respond(res, 200, libraryTrackDocument(read.columns));
 }
 
+struct QuestionParameters {
+    std::span<const std::string_view> owned;
+    std::span<const std::string_view> required;
+};
+
+constexpr std::array<std::string_view, 2> kAlbumOwned{"name", "by"};
+constexpr std::array<std::string_view, 1> kAlbumRequired{"name"};
+constexpr std::array<std::string_view, 2> kArtistOwned{"name", "splitsCredits"};
+constexpr std::array<std::string_view, 2> kArtistRequired{"name", "splitsCredits"};
+constexpr std::array<std::string_view, 1> kGenreOwned{"name"};
+constexpr std::array<std::string_view, 1> kGenreRequired{"name"};
+constexpr std::array<std::string_view, 4> kSearchOwned{"query", "limit", "entityLimit",
+                                                       "splitsCredits"};
+
+constexpr size_t kMaxQueryBytes = 1024;
+
+QuestionParameters parametersOf(const LibraryRoutes::Question kind) {
+    switch (kind) {
+        case LibraryRoutes::Question::album:
+            return {kAlbumOwned, kAlbumRequired};
+        case LibraryRoutes::Question::artist:
+            return {kArtistOwned, kArtistRequired};
+        case LibraryRoutes::Question::genre:
+            return {kGenreOwned, kGenreRequired};
+        case LibraryRoutes::Question::search:
+            return {kSearchOwned, kSearchOwned};
+    }
+    return {};
+}
+
+bool listsName(std::span<const std::string_view> names, const std::string_view name) {
+    return std::find(names.begin(), names.end(), name) != names.end();
+}
+
+struct QuestionAsked {
+    LibraryRefusal refusal = LibraryRefusal::none;
+    std::string detail;
+    std::string name;
+    std::optional<std::string> by;
+    bool splitsCredits = false;
+    std::string query;
+    size_t limit = 0;
+    size_t entityLimit = 0;
+
+    bool ok() const { return refusal == LibraryRefusal::none; }
+};
+
+using ParameterReader = std::optional<std::string> (*)(const std::string& value,
+                                                       QuestionAsked& asked);
+
+struct OwnedParameter {
+    std::string_view name;
+    ParameterReader read;
+};
+
+std::optional<std::string> readCount(const std::string_view name, const std::string& value,
+                                     size_t& count) {
+    uint64_t parsed = 0;
+    if (!readDecimal(value, parsed))
+        return "'" + std::string(name) + "' must be a whole number of 0 or more";
+
+    count = static_cast<size_t>(parsed);
+    return std::nullopt;
+}
+
+constexpr std::array kOwnedParameters{
+    OwnedParameter{"name",
+                   [](const std::string& value, QuestionAsked& asked) {
+                       asked.name = value;
+                       return std::optional<std::string>{};
+                   }},
+    OwnedParameter{"by",
+                   [](const std::string& value, QuestionAsked& asked) {
+                       if (!value.empty())
+                           asked.by = value;
+                       return std::optional<std::string>{};
+                   }},
+    OwnedParameter{
+        "query",
+        [](const std::string& value, QuestionAsked& asked) -> std::optional<std::string> {
+            if (value.size() > kMaxQueryBytes)
+                return "'query' must be at most " + std::to_string(kMaxQueryBytes) + " bytes";
+
+            asked.query = value;
+            return std::nullopt;
+        }},
+    OwnedParameter{"limit",
+                   [](const std::string& value, QuestionAsked& asked) {
+                       return readCount("limit", value, asked.limit);
+                   }},
+    OwnedParameter{"entityLimit",
+                   [](const std::string& value, QuestionAsked& asked) {
+                       return readCount("entityLimit", value, asked.entityLimit);
+                   }},
+    OwnedParameter{
+        "splitsCredits",
+        [](const std::string& value, QuestionAsked& asked) -> std::optional<std::string> {
+            if (value != "true" && value != "false")
+                return "'splitsCredits' must be true or false";
+
+            asked.splitsCredits = value == "true";
+            return std::nullopt;
+        }},
+};
+
+const OwnedParameter& ownedParameterNamed(const std::string_view name) {
+    return *std::find_if(kOwnedParameters.begin(), kOwnedParameters.end(),
+                         [name](const OwnedParameter& held) { return held.name == name; });
+}
+
+QuestionAsked questionAsked(const httplib::Request& req, const QuestionParameters& parameters) {
+    QuestionAsked asked;
+    const auto refuse = [&asked](LibraryRefusal refusal, std::string detail) {
+        asked.refusal = refusal;
+        asked.detail = std::move(detail);
+        return asked;
+    };
+
+    for (const auto name : parameters.required) {
+        if (!req.has_param(std::string(name)))
+            return refuse(LibraryRefusal::unacceptableQuestion,
+                          "'" + std::string(name) + "' is required");
+    }
+
+    for (const auto name : parameters.owned) {
+        const auto refusal =
+            ownedParameterNamed(name).read(req.get_param_value(std::string(name)), asked);
+        if (refusal)
+            return refuse(LibraryRefusal::unacceptableQuestion, *refusal);
+    }
+
+    for (const auto& [name, value] : req.params) {
+        if (listsName(parameters.owned, name) && req.get_param_value_count(name) > 1)
+            return refuse(LibraryRefusal::duplicateQuestion, "'" + name + "' is named twice");
+    }
+
+    return asked;
+}
+
 }  // namespace
 
 LibraryRoutes::LibraryRoutes(const LibraryCalls& calls, const Library* library,
@@ -299,6 +317,10 @@ LibraryRoutes::LibraryRoutes(const LibraryCalls& calls, const Library* library,
                     "refusing library summary reads: they are arriving faster than this "
                     "component will answer them, which usually means a client is looping",
                     clock),
+      questionReads_(kLibraryQuestionBurst, kLibraryQuestionRefill,
+                     "refusing library questions: they are arriving faster than this component "
+                     "will answer them, which usually means a client is looping",
+                     clock),
       summaryNow_(systemNowMs) {}
 
 void LibraryRoutes::summaryClock(std::function<int64_t()> nowMs) {
@@ -345,6 +367,14 @@ bool LibraryRoutes::summarisingTooFast(httplib::Response& res) {
         return false;
 
     respondTooFast(res, summaryReads_, errorDocument(kReadingSummariesTooFast));
+    return true;
+}
+
+bool LibraryRoutes::questioningTooFast(httplib::Response& res) {
+    if (!questionReads_.refuses())
+        return false;
+
+    respondTooFast(res, questionReads_, errorDocument(kReadingQuestionsTooFast));
     return true;
 }
 
@@ -473,38 +503,48 @@ SharedBytes LibraryRoutes::summaryOf(HeldSummary& held,
     return held.bytes;
 }
 
+std::optional<Library::State> LibraryRoutes::stateForRoles(
+    httplib::Response& res, const RolesAsked& roles,
+    bool (LibraryRoutes::*tooFast)(httplib::Response&)) {
+    if (!library_) {
+        respondUnavailable(res, kNoLibrary);
+        return std::nullopt;
+    }
+
+    if ((this->*tooFast)(res))
+        return std::nullopt;
+
+    auto state = library_->state();
+    const auto verdict = rolesVerdict(state, declaration(), roles.expressions);
+    if (verdict.kind == RolesVerdict::notYet) {
+        respond(res, 202, libraryDocument(state));
+        return std::nullopt;
+    }
+
+    if (verdict.kind == RolesVerdict::undeclared) {
+        respondError(res, 409, undeclaredColumnMessage(verdict.expression));
+        return std::nullopt;
+    }
+
+    return state;
+}
+
 void LibraryRoutes::summarise(const httplib::Request& req, httplib::Response& res) {
-    const auto roles = rolesAsked(req);
+    const auto roles = rolesAsked(req, kSummaryRoleNames, {});
     if (!roles.ok()) {
         respondRefusal(res, roles.refusal, roles.detail);
         return;
     }
 
-    if (!library_) {
-        respondUnavailable(res, kNoLibrary);
+    const auto state = stateForRoles(res, roles, &LibraryRoutes::summarisingTooFast);
+    if (!state)
         return;
-    }
-
-    if (summarisingTooFast(res))
-        return;
-
-    const auto state = library_->state();
-    const auto verdict = summaryVerdict(state, declaration(), roles.expressions);
-    if (verdict.kind == SummaryVerdict::notYet) {
-        respond(res, 202, libraryDocument(state));
-        return;
-    }
-
-    if (verdict.kind == SummaryVerdict::undeclared) {
-        respondError(res, 409, undeclaredColumnMessage(verdict.expression));
-        return;
-    }
 
     const int64_t nowMs = summaryNow_();
     const uint32_t date = systemLocalTime().date(nowMs);
     const std::string key = rolesKey(roles.expressions);
 
-    const auto name = snapshotTag(state, runId_) + "-d" + std::to_string(date) + "-h" +
+    const auto name = snapshotTag(*state, runId_) + "-d" + std::to_string(date) + "-h" +
                       std::to_string(std::hash<std::string>{}(key));
 
     if (alreadyHoldsCurrent(req, name)) {
@@ -512,7 +552,7 @@ void LibraryRoutes::summarise(const httplib::Request& req, httplib::Response& re
         return;
     }
 
-    const auto held = heldSummaryFor({state.structure, state.revision, date, key});
+    const auto held = heldSummaryFor({state->structure, state->revision, date, key});
     if (!summaryOf(*held, roles.expressions, nowMs)) {
         respond(res, 202, libraryDocument(library_->state()));
         return;
@@ -520,6 +560,57 @@ void LibraryRoutes::summarise(const httplib::Request& req, httplib::Response& re
 
     sendIfChanged(
         req, res, name, "application/json", [&held] { return held->bytes; }, held->packing);
+}
+
+void LibraryRoutes::answerQuestion(const Question kind, const httplib::Request& req,
+                                   httplib::Response& res) {
+    const auto parameters = parametersOf(kind);
+    const auto roles = rolesAsked(req, kAllRoleNames, parameters.owned);
+    if (!roles.ok()) {
+        respondRefusal(res, roles.refusal, roles.detail);
+        return;
+    }
+
+    const auto asked = questionAsked(req, parameters);
+    if (!asked.ok()) {
+        respondRefusal(res, asked.refusal, asked.detail);
+        return;
+    }
+
+    const auto state = stateForRoles(res, roles, &LibraryRoutes::questioningTooFast);
+    if (!state)
+        return;
+    const auto body = library_->read([&](const Snapshot& snapshot) -> std::optional<std::string> {
+        const auto indices = rolesIn(snapshot, roles.expressions);
+        if (!indices)
+            return std::nullopt;
+
+        nlohmann::json answer;
+        switch (kind) {
+            case Question::album:
+                answer = questions_.album(snapshot, *indices, asked.name, asked.by);
+                break;
+            case Question::artist:
+                answer = questions_.artist(snapshot, *indices, asked.name, asked.splitsCredits);
+                break;
+            case Question::genre:
+                answer = LibraryQuestions::genre(snapshot, *indices, asked.name);
+                break;
+            case Question::search:
+                answer = questions_.search(snapshot, *indices, asked.query, asked.limit,
+                                           asked.entityLimit, asked.splitsCredits);
+                break;
+        }
+        return answer.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+    });
+    if (!body) {
+        respond(res, 202, libraryDocument(library_->state()));
+        return;
+    }
+
+    respond(res, 200, *body);
+    res.set_header("Cache-Control", kAskEveryTime);
+    res.set_header("Vary", "Accept-Encoding");
 }
 
 void LibraryRoutes::readTrack(const httplib::Request& req, httplib::Response& res) {
@@ -600,6 +691,22 @@ void LibraryRoutes::addTo(httplib::Server& server) {
 
     server.Get("/api/library/summary", [this](const httplib::Request& req, httplib::Response& res) {
         summarise(req, res);
+    });
+
+    server.Get("/api/library/album", [this](const httplib::Request& req, httplib::Response& res) {
+        answerQuestion(Question::album, req, res);
+    });
+
+    server.Get("/api/library/artist", [this](const httplib::Request& req, httplib::Response& res) {
+        answerQuestion(Question::artist, req, res);
+    });
+
+    server.Get("/api/library/genre", [this](const httplib::Request& req, httplib::Response& res) {
+        answerQuestion(Question::genre, req, res);
+    });
+
+    server.Get("/api/library/search", [this](const httplib::Request& req, httplib::Response& res) {
+        answerQuestion(Question::search, req, res);
     });
 
     server.Get("/api/library/changes", [this](const httplib::Request& req, httplib::Response& res) {

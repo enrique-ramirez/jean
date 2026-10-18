@@ -5,6 +5,8 @@
 #include "core/http_responses.h"
 #include "core/http_server.h"
 #include "core/library.h"
+#include "core/library_questions.h"
+#include "core/library_roles.h"
 #include "core/library_summary.h"
 #include "core/player.h"
 #include "core/rate_limit.h"
@@ -16,6 +18,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,6 +39,8 @@ public:
     uint64_t summaryComputations() const { return summaryComputations_; }
 
     void addTo(httplib::Server& server);
+
+    enum class Question { album, artist, genre, search };
 
 private:
     void exportSnapshot(const httplib::Request& req, httplib::Response& res);
@@ -69,6 +74,12 @@ private:
     SharedBytes summaryOf(HeldSummary& held, const std::map<std::string, std::string>& roles,
                           int64_t nowMs);
 
+    std::optional<Library::State> stateForRoles(httplib::Response& res, const RolesAsked& roles,
+                                                bool (LibraryRoutes::*tooFast)(httplib::Response&));
+
+    void answerQuestion(Question kind, const httplib::Request& req, httplib::Response& res);
+    bool questioningTooFast(httplib::Response& res);
+
     void readTrack(const httplib::Request& req, httplib::Response& res);
     bool readingTooFast(httplib::Response& res);
     bool readingChangesTooFast(httplib::Response& res);
@@ -88,9 +99,12 @@ private:
     Throttle trackReads_;
     Throttle deltaReads_;
     Throttle summaryReads_;
+    Throttle questionReads_;
 
     std::function<int64_t()> summaryNow_;
     std::atomic<uint64_t> summaryComputations_{0};
+
+    LibraryQuestions questions_;
 
     std::mutex heldSummariesLock_;
     std::deque<std::shared_ptr<HeldSummary>> heldSummaries_;

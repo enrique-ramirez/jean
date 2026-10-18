@@ -1,5 +1,6 @@
 #include "core/library_summary.h"
 
+#include "core/library_groups.h"
 #include "core/text.h"
 #include "third_party/json.hpp"
 
@@ -42,8 +43,6 @@ constexpr double kUpperQuartile = 0.75;
 constexpr double kLowerQuartile = 0.25;
 
 constexpr int kFirstRealYear = 1000;
-constexpr size_t kPathFields = 2;
-constexpr char kMultiValueSeparator = '\x1f';
 constexpr uint64_t kSplitMixStep = 0x9e3779b97f4a7c15ULL;
 
 double roundHalfUp(double value) {
@@ -59,18 +58,6 @@ Json numberJson(double value) {
 
 Json optionalNumberJson(const std::optional<double>& value) {
     return value ? numberJson(*value) : Json(nullptr);
-}
-
-bool isPresent(std::string_view raw) {
-    return !raw.empty() && raw != kUnresolved && raw != "N/A";
-}
-
-bool isDigit(char c) {
-    return c >= '0' && c <= '9';
-}
-
-bool isAsciiSpace(char c) {
-    return c == ' ' || (c >= '\t' && c <= '\r');
 }
 
 constexpr int kExactDigits = 15;
@@ -198,25 +185,6 @@ std::optional<double> readNumber(std::string_view raw) {
     return parseDecimal(raw);
 }
 
-// Number.parseInt(text, 10) kept to the positive integers: a disc or track number as free text.
-std::optional<double> readOrdinal(std::string_view raw) {
-    if (!isPresent(raw))
-        return std::nullopt;
-
-    size_t at = 0;
-    while (at < raw.size() && isAsciiSpace(raw[at]))
-        ++at;
-    if (at < raw.size() && raw[at] == '+')
-        ++at;
-
-    double parsed = 0;
-    const size_t from = at;
-    for (; at < raw.size() && isDigit(raw[at]); ++at)
-        parsed = (parsed * 10) + (raw[at] - '0');
-
-    return at > from && parsed > 0 ? std::optional<double>(parsed) : std::nullopt;
-}
-
 bool isLeapYear(int year) {
     return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
 }
@@ -269,65 +237,6 @@ bool isLossy(std::string_view codec) {
     return std::find(kLossless.begin(), kLossless.end(), lower) == kLossless.end();
 }
 
-template <class T>
-struct PerValue {
-    const std::vector<uint32_t>* ids = nullptr;
-    std::vector<T> answers;
-    T none{};
-
-    const T& of(size_t row) const { return ids ? answers[(*ids)[row]] : none; }
-};
-
-template <class T, class Read>
-PerValue<T> resolve(const Snapshot& snapshot, std::optional<size_t> role, Read read) {
-    PerValue<T> resolved;
-    if (!role)
-        return resolved;
-
-    const Column& column = snapshot.columns[*role];
-    resolved.ids = &column.ids;
-    resolved.answers.reserve(column.dictionary.values.size());
-    for (const std::string& value : column.dictionary.values)
-        resolved.answers.push_back(read(value));
-    return resolved;
-}
-
-struct TagGroups {
-    std::unordered_map<std::string, int32_t> byKey;
-    std::vector<std::string> names;
-    std::vector<bool> blank;
-
-    int32_t add(const std::string& key, std::string_view raw) {
-        const auto [at, fresh] = byKey.try_emplace(key, static_cast<int32_t>(names.size()));
-        if (fresh) {
-            names.emplace_back(raw);
-            blank.push_back(key.empty());
-        }
-        return at->second;
-    }
-
-    std::vector<int32_t> over(const Snapshot& snapshot, std::optional<size_t> role) {
-        std::vector<int32_t> groups;
-        if (!role)
-            return groups;
-
-        for (const std::string& value : snapshot.columns[*role].dictionary.values)
-            groups.push_back(isPresent(value) ? add(tagKey(value), value) : -1);
-        return groups;
-    }
-};
-
-PerValue<int32_t> groupsOf(const Snapshot& snapshot, std::optional<size_t> role,
-                           std::vector<int32_t> groups) {
-    PerValue<int32_t> resolved;
-    resolved.none = -1;
-    if (role) {
-        resolved.ids = &snapshot.columns[*role].ids;
-        resolved.answers = std::move(groups);
-    }
-    return resolved;
-}
-
 std::optional<double> either(std::optional<double> a, std::optional<double> b,
                              double (*pick)(double, double)) {
     if (!a)
@@ -346,11 +255,7 @@ std::optional<double> unplayedAsNone(std::optional<double> answer, std::string_v
     return raw == "0" ? std::nullopt : answer;
 }
 
-struct Album {
-    std::string name;
-    std::optional<std::string> artist;
-    int64_t artistKey = -1;
-    std::vector<uint32_t> ordinals;
+struct Album : AlbumRecord {
     double plays = 0;
     double lastPlayed = 0;
     double added = 0;
@@ -359,9 +264,6 @@ struct Album {
     double ratingTotal = 0;
     size_t ratedCount = 0;
     bool lossless = true;
-    double coverDisc = 0;
-    double coverTrack = 0;
-    uint32_t cover = 0;
 
     size_t trackCount() const { return ordinals.size(); }
     double playsPerTrack() const {
@@ -405,23 +307,17 @@ std::optional<double> starsOf(std::optional<double> raw) {
 
 struct Facts {
     const Snapshot& snapshot;
-    size_t rows;
+    size_t rows = 0;
     PerValue<std::optional<double>> playsScrobbled, playsLocal, playedScrobbled, playedLocal;
-    PerValue<std::optional<double>> added, year, bitrate, rating, duration, discs, tracks;
+    PerValue<std::optional<double>> added, year, bitrate, rating, duration;
     PerValue<uint8_t> lossy;
-    PerValue<int32_t> albumGroup, albumArtistGroup, artistGroup;
-    TagGroups albums;
-    TagGroups artists;
+    Credits credits;
 
     std::optional<double> playsOf(size_t row) const {
         return either(playsScrobbled.of(row), playsLocal.of(row), higher);
     }
     std::optional<double> lastPlayedOf(size_t row) const {
         return either(playedScrobbled.of(row), playedLocal.of(row), higher);
-    }
-    int32_t creditedArtist(size_t row) const {
-        const int32_t credited = albumArtistGroup.of(row);
-        return credited >= 0 ? credited : artistGroup.of(row);
     }
 };
 
@@ -439,127 +335,72 @@ PerValue<std::optional<double>> moments(const Snapshot& snapshot, std::optional<
     });
 }
 
-int64_t artistKeyOf(const Facts& facts, size_t row) {
-    const int32_t artist = facts.creditedArtist(row);
-    return artist >= 0 && !facts.artists.blank[static_cast<size_t>(artist)] ? artist : -1;
-}
-
-uint64_t pairOf(int32_t albumGroup, int64_t artistKey) {
-    return (static_cast<uint64_t>(albumGroup) << 32U) | static_cast<uint32_t>(artistKey + 1);
-}
-
 struct Albums {
     std::vector<Album> list;
-    std::unordered_map<uint64_t, uint32_t> byPair;
+    AlbumIndex index;
 
     const Album* of(const Facts& facts, size_t row) const {
-        const int32_t group = facts.albumGroup.of(row);
-        if (group < 0)
-            return nullptr;
-        return &list[byPair.at(pairOf(group, artistKeyOf(facts, row)))];
+        const auto at = index.of(facts.credits, row);
+        return at ? &list[*at] : nullptr;
     }
 };
 
-Albums albumsOf(const Facts& facts) {
+Albums albumsOf(const Facts& facts, const SummaryRoles& roles) {
+    AlbumRecords records = albumRecordsOf(facts.snapshot, roles, facts.credits);
+
     Albums albums;
+    albums.index = std::move(records.index);
+    albums.list.reserve(records.list.size());
+    for (AlbumRecord& record : records.list) {
+        Album album{std::move(record)};
 
-    for (size_t row = 0; row < facts.rows; ++row) {
-        const int32_t group = facts.albumGroup.of(row);
-        if (group < 0)
-            continue;
+        for (const uint32_t row : album.ordinals) {
+            album.plays += facts.playsOf(row).value_or(0);
 
-        const int64_t artistKey = artistKeyOf(facts, row);
-        const auto [at, fresh] = albums.byPair.try_emplace(
-            pairOf(group, artistKey), static_cast<uint32_t>(albums.list.size()));
-        if (fresh) {
-            const int32_t artist = facts.creditedArtist(row);
-            Album album;
-            album.name = facts.albums.names[static_cast<size_t>(group)];
-            album.artistKey = artistKey;
-            album.artist = artist >= 0
-                               ? std::optional(facts.artists.names[static_cast<size_t>(artist)])
-                               : std::nullopt;
-            albums.list.push_back(std::move(album));
+            const auto played = facts.lastPlayedOf(row);
+            if (played && *played > album.lastPlayed)
+                album.lastPlayed = *played;
+
+            const auto arrived = facts.added.of(row);
+            if (arrived && *arrived > album.added)
+                album.added = *arrived;
+
+            const auto rate = facts.bitrate.of(row);
+            if (rate && *rate != 0) {
+                album.bitrateTotal += *rate;
+                ++album.bitrateCount;
+            }
+
+            if (facts.lossy.of(row) != 0)
+                album.lossless = false;
+
+            if (const auto stars = facts.rating.of(row)) {
+                album.ratingTotal += *stars;
+                ++album.ratedCount;
+            }
         }
-
-        Album& album = albums.list[at->second];
-        album.ordinals.push_back(static_cast<uint32_t>(row));
-        album.plays += facts.playsOf(row).value_or(0);
-
-        const auto played = facts.lastPlayedOf(row);
-        if (played && *played > album.lastPlayed)
-            album.lastPlayed = *played;
-
-        const auto arrived = facts.added.of(row);
-        if (arrived && *arrived > album.added)
-            album.added = *arrived;
-
-        const auto rate = facts.bitrate.of(row);
-        if (rate && *rate != 0) {
-            album.bitrateTotal += *rate;
-            ++album.bitrateCount;
-        }
-
-        if (facts.lossy.of(row) != 0)
-            album.lossless = false;
-
-        if (const auto stars = facts.rating.of(row)) {
-            album.ratingTotal += *stars;
-            ++album.ratedCount;
-        }
-
-        const double disc = facts.discs.of(row).value_or(0);
-        const double track = facts.tracks.of(row).value_or(0);
-        if (album.ordinals.size() == 1 || disc < album.coverDisc ||
-            (disc == album.coverDisc && track < album.coverTrack)) {
-            album.coverDisc = disc;
-            album.coverTrack = track;
-            album.cover = static_cast<uint32_t>(row);
-        }
+        albums.list.push_back(std::move(album));
     }
 
     return albums;
 }
 
 Facts factsOf(const Snapshot& snapshot, const SummaryRoles& roles, const LocalTime& local) {
-    Facts facts{snapshot,
-                snapshot.trackCount(),
-                counts(snapshot, roles.playCount),
-                counts(snapshot, roles.playCountLocal),
-                moments(snapshot, roles.lastPlayed, local, true),
-                moments(snapshot, roles.lastPlayedLocal, local, true),
-                moments(snapshot, roles.added, local, false),
-                resolve<std::optional<double>>(snapshot, roles.year, readNumber),
-                resolve<std::optional<double>>(snapshot, roles.bitrate, readNumber),
-                resolve<std::optional<double>>(
-                    snapshot, roles.rating,
-                    [](const std::string& value) { return starsOf(readNumber(value)); }),
-                resolve<std::optional<double>>(snapshot, roles.duration, readNumber),
-                resolve<std::optional<double>>(snapshot, roles.discNumber, readOrdinal),
-                resolve<std::optional<double>>(snapshot, roles.trackNumber, readOrdinal),
-                resolve<uint8_t>(snapshot, roles.codec, isLossy),
-                {},
-                {},
-                {},
-                {},
-                {}};
-
-    std::vector<int32_t> albumNames = facts.albums.over(snapshot, roles.album);
-    std::vector<int32_t> albumArtists = facts.artists.over(snapshot, roles.albumArtist);
-    std::vector<int32_t> trackArtists = facts.artists.over(snapshot, roles.artist);
-    facts.albumGroup = groupsOf(snapshot, roles.album, std::move(albumNames));
-    facts.albumArtistGroup = groupsOf(snapshot, roles.albumArtist, std::move(albumArtists));
-    facts.artistGroup = groupsOf(snapshot, roles.artist, std::move(trackArtists));
-    return facts;
-}
-
-std::string pathOf(const Snapshot& snapshot, size_t row) {
-    std::string path;
-    for (size_t field = 0; field < kPathFields; ++field) {
-        const Column& column = snapshot.columns[field];
-        path += column.dictionary.values[column.ids[row]];
-    }
-    return path;
+    return Facts{snapshot,
+                 snapshot.trackCount(),
+                 counts(snapshot, roles.playCount),
+                 counts(snapshot, roles.playCountLocal),
+                 moments(snapshot, roles.lastPlayed, local, true),
+                 moments(snapshot, roles.lastPlayedLocal, local, true),
+                 moments(snapshot, roles.added, local, false),
+                 resolve<std::optional<double>>(snapshot, roles.year, readNumber),
+                 resolve<std::optional<double>>(snapshot, roles.bitrate, readNumber),
+                 resolve<std::optional<double>>(
+                     snapshot, roles.rating,
+                     [](const std::string& value) { return starsOf(readNumber(value)); }),
+                 resolve<std::optional<double>>(snapshot, roles.duration, readNumber),
+                 resolve<uint8_t>(snapshot, roles.codec, isLossy),
+                 creditsOf(snapshot, roles)};
 }
 
 Json albumJson(const Snapshot& snapshot, const Album& album) {
@@ -980,7 +821,7 @@ std::string summariseLibrary(const Snapshot& snapshot, const SummaryRoles& roles
 
     const GenreBars genres = genreBarsOf(snapshot, roles.genre, rows);
 
-    const Albums held = albumsOf(facts);
+    const Albums held = albumsOf(facts, roles);
     const std::vector<Album>& albums = held.list;
     const std::vector<ArtistTotals> artists = artistsOf(albums);
 

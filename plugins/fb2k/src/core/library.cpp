@@ -765,6 +765,11 @@ uint64_t Library::apply(const std::vector<RowChange>& changes) {
     if (!moved)
         return snapshot.revision;
 
+    for (size_t field = 0; field < entry.ordinals.size(); ++field) {
+        if (!entry.ordinals[field].empty())
+            ++snapshot.columns[field].changeCount;
+    }
+
     for (std::vector<uint32_t>& ordinals : entry.ordinals) {
         std::sort(ordinals.begin(), ordinals.end());
         ordinals.erase(std::unique(ordinals.begin(), ordinals.end()), ordinals.end());

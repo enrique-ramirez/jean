@@ -2975,6 +2975,16 @@ TEST_CASE("no library or track route answers a status contract/openapi.yaml does
     note("GET /library/summary", get(off, kSummary));
     note("GET /library/summary", get(server, "/api/library/summary?colour=%25title%25"));
 
+    for (const std::string question :
+         {"album?name=Jessico", "artist?name=Alpha&splitsCredits=true", "genre?name=Rock",
+          "search?query=a&limit=8&entityLimit=3&splitsCredits=true"}) {
+        const auto route = "GET /library/" + question.substr(0, question.find('?'));
+        const auto path = "/api/library/" + question;
+        note(route, get(server, path + "&title=%25title%25"));
+        note(route, get(off, path + "&title=%25title%25"));
+        note(route, get(server, path + "&colour=%25title%25"));
+    }
+
     fill(library);
     playOne(library, "5");
     const auto played = playOne(library, "6");

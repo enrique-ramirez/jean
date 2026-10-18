@@ -11,6 +11,8 @@
 #include "core/outputs.h"
 #include "support/fixtures.h"
 #include "support/keys.h"
+#include "support/library_routes_server.h"
+#include "support/question_library.h"
 #include "support/repository.h"
 #include "support/spec.h"
 #include "support/streams.h"
@@ -20,6 +22,7 @@
 #include "third_party/json.hpp"
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -558,6 +561,63 @@ TEST_CASE("a library summary is the shape contract/openapi.yaml publishes") {
         CHECK(keysOf(shelf) == published("SummaryShelf"));
         REQUIRE_FALSE(shelf.at("albums").empty());
         CHECK(keysOf(shelf.at("albums").at(0)) == published("SummaryAlbum"));
+    }
+}
+
+TEST_CASE("the question answers are the shapes contract/openapi.yaml publishes") {
+    INFO(kUpdateSpec);
+
+    const auto published = [](const std::string& schema) {
+        const auto required = publishedRequired(schema);
+        return Keys(required.begin(), required.end());
+    };
+    const auto isOrdinalSet = [](const json& set) {
+        return keysOf(set) == Keys{"runs"} || keysOf(set) == Keys{"bitset"};
+    };
+
+    const json& asked = questionCase("basic: album with its artist");
+    const auto questions = questionLibraryOf(asked);
+    Library library;
+    const LibraryRoutesServer server(&library, 0);
+    declareAndBuild(server, library, questions);
+
+    const auto answerTo = [&server, &questions](const std::vector<Owned>& owned,
+                                                const std::string_view kind) {
+        const auto response = server.client().Get(questionPath(kind, owned, questions.roles));
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+        return json::parse(response->body);
+    };
+
+    const auto album = answerTo({{"name", "Jessico"}, {"by", "Babasónicos"}}, "album");
+    CHECK(keysOf(album) == published("AlbumAnswer"));
+    CHECK(isOrdinalSet(album.at("refs")));
+
+    const auto artist = answerTo({{"name", "Brand New"}, {"splitsCredits", "true"}}, "artist");
+    CHECK(keysOf(artist) == published("ArtistAnswer"));
+    for (const char* set : {"own", "shared", "guest"}) {
+        INFO("set: ", set);
+        CHECK(isOrdinalSet(artist.at(set)));
+    }
+
+    const auto genre = answerTo({{"name", "Alternative Rock"}}, "genre");
+    CHECK(keysOf(genre) == published("GenreAnswer"));
+    CHECK(isOrdinalSet(genre.at("refs")));
+
+    const auto search =
+        answerTo({{"query", "a"}, {"limit", "8"}, {"entityLimit", "3"}, {"splitsCredits", "true"}},
+                 "search");
+    CHECK(keysOf(search) == published("SearchAnswer"));
+    CHECK(isOrdinalSet(search.at("matched")));
+    const std::vector<std::array<const char*, 3>> sections{
+        {"artists", "ArtistSection", "NamedArtist"},
+        {"albums", "AlbumSection", "NamedAlbum"},
+        {"genres", "GenreSection", "NamedGenre"}};
+    for (const auto& [section, sectionSchema, entity] : sections) {
+        INFO("section: ", section);
+        CHECK(keysOf(search.at(section)) == published(sectionSchema));
+        REQUIRE_FALSE(search.at(section).at("top").empty());
+        CHECK(keysOf(search.at(section).at("top").at(0)) == published(entity));
     }
 }
 

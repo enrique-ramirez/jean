@@ -28,7 +28,6 @@ struct Base64Bytes {
     bool ok = false;
 };
 
-// The inverse of ui/src/shared/api/fooJean.ts's base64Of: the same alphabet, decoded four
 // characters at a time back to up to three bytes, with '=' only where that encoder ever
 // writes it, at the end of the last group.
 Base64Bytes decodeBase64(const std::string& text) {

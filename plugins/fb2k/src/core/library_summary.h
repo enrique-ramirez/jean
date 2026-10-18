@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/library.h"
+#include "core/library_roles.h"
 
 #include <cstdint>
 #include <functional>
@@ -9,11 +10,7 @@
 
 namespace jean {
 
-struct SummaryRoles {
-    std::optional<size_t> trackNumber, discNumber, title, artist, album, albumArtist, duration,
-        playCount, lastPlayed, rating, year, genre, codec, bitrate, playCountLocal, lastPlayedLocal,
-        added;
-};
+using SummaryRoles = LibraryRoles;
 
 struct LocalTime {
     std::function<int64_t(int year, int month, int day, int hour, int minute, int second)> epochMs;

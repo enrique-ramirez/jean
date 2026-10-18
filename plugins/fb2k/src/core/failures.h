@@ -53,6 +53,7 @@ constexpr char kFetchingArtworkTooFast[] = "too many artwork requests";
 constexpr char kReadingTracksTooFast[] = "too many track reads";
 constexpr char kReadingChangesTooFast[] = "too many library delta reads";
 constexpr char kReadingSummariesTooFast[] = "too many library summary reads";
+constexpr char kReadingQuestionsTooFast[] = "too many library questions";
 
 // The `detail` beside PlaylistRefusal::tooFast where a route names which budget ran out.
 constexpr char kChangingPlaylistsTooFast[] =

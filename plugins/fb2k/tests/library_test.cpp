@@ -1565,3 +1565,76 @@ TEST_CASE("a client applying any splice holds what a fresh export at the new str
         CHECK(splices > 0);
     }
 }
+
+namespace {
+
+const std::vector<std::string>& countedColumns() {
+    static const std::vector<std::string> columns{"%title%", "%play_count%", "%artist%"};
+    return columns;
+}
+
+std::vector<uint64_t> changeCounts(const Library& library) {
+    return library.read([](const Snapshot& snapshot) {
+        std::vector<uint64_t> counts;
+        std::transform(snapshot.columns.begin(), snapshot.columns.end(), std::back_inserter(counts),
+                       [](const Column& column) { return column.changeCount; });
+        return counts;
+    });
+}
+
+size_t fieldOf(const std::string& column) {
+    const auto& columns = countedColumns();
+    return kSpineFieldCount +
+           static_cast<size_t>(std::find(columns.begin(), columns.end(), column) - columns.begin());
+}
+
+std::vector<uint64_t> movedOnce(std::vector<uint64_t> counts, const std::vector<size_t>& fields) {
+    for (const size_t field : fields)
+        ++counts.at(field);
+    return counts;
+}
+
+Row countedTrack(const std::string& filename, const std::string& title, const std::string& plays,
+                 const std::string& artist) {
+    return track("a/", filename, {title, plays, artist});
+}
+
+}  // namespace
+
+TEST_CASE("a play count changing moves that column's change count and no other column's") {
+    Library library;
+    library.replace(snapshotOf(countedColumns(), {countedTrack("1.mp3", "One", "3", "Ana"),
+                                                  countedTrack("2.mp3", "Two", "0", "Bo")}));
+    const auto built = changeCounts(library);
+    REQUIRE(built.size() == kSpineFieldCount + countedColumns().size());
+
+    library.apply({{1, countedTrack("2.mp3", "Two", "1", "Bo")}});
+    const auto played = changeCounts(library);
+    CHECK(played == movedOnce(built, {fieldOf("%play_count%")}));
+
+    library.apply({{0, countedTrack("1.mp3", "One", "3", "Ana")}});
+    CHECK(changeCounts(library) == played);
+}
+
+TEST_CASE("every column a change moved has its count moved, the spine's and a rebuild's included") {
+    Library library;
+    library.replace(snapshotOf(countedColumns(), {countedTrack("1.mp3", "One", "3", "Ana"),
+                                                  countedTrack("2.mp3", "Two", "0", "Bo")}));
+    const auto built = changeCounts(library);
+
+    library.apply({{0, countedTrack("1.mp3", "Uno", "3", "Ana Maria")}});
+    const auto retagged = changeCounts(library);
+    CHECK(retagged == movedOnce(built, {fieldOf("%title%"), fieldOf("%artist%")}));
+
+    library.replace(snapshotOf(countedColumns(), {countedTrack("1.mp3", "Uno", "3", "Ana Maria"),
+                                                  countedTrack("2.mp3", "Two", "7", "Bo")}));
+    const auto rebuilt = changeCounts(library);
+    CHECK(rebuilt == movedOnce(retagged, {fieldOf("%play_count%")}));
+
+    library.apply({{1, countedTrack("2 (remastered).mp3", "Two", "7", "Bo")}});
+    const auto filename = static_cast<size_t>(
+        std::find_if(std::begin(kSpineFields), std::end(kSpineFields),
+                     [](const char* field) { return std::string(field) == "filename"; }) -
+        std::begin(kSpineFields));
+    CHECK(changeCounts(library) == movedOnce(rebuilt, {filename}));
+}

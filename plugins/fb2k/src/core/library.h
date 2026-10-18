@@ -83,6 +83,8 @@ struct Column {
     std::string name;
     Dictionary dictionary;
     std::vector<uint32_t> ids;
+
+    uint64_t changeCount = 0;
 };
 
 struct Snapshot {
@@ -405,6 +407,8 @@ enum class LibraryRefusal {
     badSpine,
     badRole,
     duplicateRole,
+    unacceptableQuestion,
+    duplicateQuestion,
 };
 
 struct LibraryRequest {

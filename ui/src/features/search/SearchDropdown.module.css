@@ -56,13 +56,6 @@
 	background: var(--surface-sunken);
 }
 
-.pending {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	padding: 5px 8px;
-}
-
 .cover,
 .face,
 .glyph {
@@ -93,10 +86,6 @@
 	min-width: 0;
 }
 
-.pending .text {
-	flex: 1;
-}
-
 .title,
 .under {
 	overflow: hidden;
@@ -112,6 +101,17 @@
 .under {
 	font-size: 0.75rem;
 	color: var(--muted);
+}
+
+.panel .failure {
+	flex: none;
+	max-width: none;
+	padding: 12px 14px;
+	gap: 8px;
+}
+
+.waiting {
+	min-height: 52px;
 }
 
 .notice {
@@ -142,8 +142,7 @@
 		padding-bottom: max(5px, env(safe-area-inset-bottom));
 	}
 
-	.result,
-	.pending {
+	.result {
 		padding: 8px;
 	}
 }

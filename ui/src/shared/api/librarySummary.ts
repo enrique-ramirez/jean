@@ -6,6 +6,11 @@ import {
 	retryAfterMs,
 	type Schema,
 } from "./client";
+import {
+	type ReadFailure,
+	type ReadFailureReason,
+	readFailed,
+} from "./readFailure";
 
 export type LibrarySummary = Schema["LibrarySummary"];
 export type SummaryAlbum = Schema["SummaryAlbum"];
@@ -34,26 +39,12 @@ export type SummaryRole =
 
 export type SummaryRoles = Record<SummaryRole, string>;
 
-export type SummaryFailureReason =
-	| "notReady"
-	| "undeclared"
-	| "tooFast"
-	| "refused"
-	| "unavailable"
-	| "unreachable"
-	| "failed";
-
 export type SummaryResult =
 	| { ok: true; kind: "unchanged" }
 	| { ok: true; kind: "summary"; summary: LibrarySummary; tag: string | null }
-	| {
-			ok: false;
-			reason: SummaryFailureReason;
-			detail: string;
-			retryAfterMs: number | null;
-	  };
+	| ReadFailure;
 
-const SUMMARY_REFUSALS: Partial<Record<number, SummaryFailureReason>> = {
+const SUMMARY_REFUSALS: Partial<Record<number, ReadFailureReason>> = {
 	202: "notReady",
 	400: "refused",
 	409: "undeclared",
@@ -61,12 +52,6 @@ const SUMMARY_REFUSALS: Partial<Record<number, SummaryFailureReason>> = {
 	429: "tooFast",
 	503: "unavailable",
 };
-
-const failed = (
-	reason: SummaryFailureReason,
-	detail = "",
-	retryAfter: number | null = null,
-): SummaryResult => ({ ok: false, reason, detail, retryAfterMs: retryAfter });
 
 export async function fetchLibrarySummary(
 	origin: string,
@@ -89,7 +74,7 @@ export async function fetchLibrarySummary(
 		),
 		signal,
 	);
-	if (!answer) return failed("unreachable");
+	if (!answer) return readFailed("unreachable");
 	const { data, error, response } = answer;
 
 	if (response.status === 304) return { ok: true, kind: "unchanged" };
@@ -97,13 +82,13 @@ export async function fetchLibrarySummary(
 	const refusal = SUMMARY_REFUSALS[response.status];
 	if (refusal) {
 		const { error: said, message } = refusalOf(response, error);
-		return failed(
+		return readFailed(
 			refusal,
 			said ? message : "",
 			refusal === "tooFast" ? retryAfterMs(response) : null,
 		);
 	}
-	if (!data) return failed("failed", `HTTP ${response.status}`);
+	if (!data) return readFailed("failed", `HTTP ${response.status}`);
 
 	return {
 		ok: true,

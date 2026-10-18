@@ -8,6 +8,8 @@ import {
 	isLibraryReading,
 	readingNotice,
 } from "@/domain/library/libraryStatus";
+import { QuestionFailure } from "@/domain/library/QuestionFailure";
+import type { QuestionFailed } from "@/domain/library/questionFailed";
 import type { Library } from "@/domain/library/useLibrary";
 import { byWait, type Wait } from "@/domain/library/useOverdue";
 import {
@@ -173,6 +175,7 @@ export function ArtistView({
 	library,
 	tracks,
 	wait,
+	failure,
 	tab,
 	direction,
 	tabs,
@@ -186,6 +189,7 @@ export function ArtistView({
 	library: Library;
 	tracks: ArtistTracks;
 	wait: Wait;
+	failure: QuestionFailed | null;
 	tab: ArtistTab;
 	direction: SlideDirection;
 	tabs: ReactNode;
@@ -262,15 +266,19 @@ export function ArtistView({
 	) : (
 		<div className={styles.overview}>
 			{held === 0 ? (
-				<p className={styles.notice}>
-					{isReading
-						? readingNotice(status, "library.reading", t)
-						: byWait(wait, {
-								settled: t("artist.nothingBy"),
-								quiet: null,
-								reading: t("library.reading"),
-							})}
-				</p>
+				failure ? (
+					<QuestionFailure {...failure} />
+				) : (
+					<p className={styles.notice}>
+						{isReading
+							? readingNotice(status, "library.reading", t)
+							: byWait(wait, {
+									settled: t("artist.nothingBy"),
+									quiet: null,
+									reading: t("library.reading"),
+								})}
+					</p>
+				)
 			) : null}
 
 			{own && history && hasPlayCounts && !isAwaiting ? (

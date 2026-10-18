@@ -66,3 +66,12 @@
 		padding: 40px 16px;
 	}
 }
+
+.counting .failure {
+	flex-direction: row;
+	align-items: center;
+	flex-wrap: wrap;
+	max-width: none;
+	padding: 0 4px;
+	gap: 8px;
+}

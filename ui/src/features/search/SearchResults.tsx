@@ -6,6 +6,7 @@ import {
 	isLibraryReading,
 	readingNotice,
 } from "@/domain/library/libraryStatus";
+import { QuestionFailure } from "@/domain/library/QuestionFailure";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import { byWait } from "@/domain/library/useOverdue";
@@ -151,7 +152,18 @@ export function SearchResults({
 					onOpenPlaylist={onOpenPlaylist}
 				/>
 			}
-			toolbarLeading={<p className={styles.summary}>{summary}</p>}
+			toolbarLeading={
+				search.committedFailure ? (
+					<div className={styles.counting}>
+						<QuestionFailure
+							{...search.committedFailure}
+							className={styles.failure}
+						/>
+					</div>
+				) : (
+					<p className={styles.summary}>{summary}</p>
+				)
+			}
 		/>
 	);
 }

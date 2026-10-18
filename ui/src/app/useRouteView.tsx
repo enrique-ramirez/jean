@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 import type { ArtistTracks } from "@/domain/artist/artists";
 import { useSplitCredits } from "@/domain/artist/splitCredits";
+import {
+	type QuestionFailed,
+	questionFailed,
+} from "@/domain/library/questionFailed";
 import type { Library } from "@/domain/library/useLibrary";
 import {
 	atStructure,
@@ -24,7 +28,7 @@ import {
 } from "@/domain/track/project";
 import { type ArtistTab, href, ROUTE } from "@/domain/track/routes";
 import type { PageHeading } from "@/domain/track/TrackPage";
-import { useLibraryAnswer } from "@/domain/track/useLibraryAnswer";
+import { useLibraryQuestion } from "@/domain/track/useLibraryQuestion";
 import { refsOfShelf } from "@/features/home/shelves";
 import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
 import { Crumb } from "@/shared/ui/Crumb";
@@ -39,6 +43,7 @@ export interface ListPage {
 	emptyNotice: string;
 	wait: Wait;
 	isAwaitingColumns: boolean;
+	failure: QuestionFailed | null;
 }
 
 export interface ArtistPage {
@@ -48,6 +53,7 @@ export interface ArtistPage {
 	view: TrackView;
 	wait: Wait;
 	isAwaitingColumns: boolean;
+	failure: QuestionFailed | null;
 }
 
 const EMPTY_ARTIST_TRACKS: ArtistTracks = {
@@ -57,6 +63,35 @@ const EMPTY_ARTIST_TRACKS: ArtistTracks = {
 	all: new Int32Array(0),
 };
 
+const failureOf = (sweep: {
+	answer: unknown;
+	failure: Pick<QuestionFailed, "reason"> | null;
+	retry: () => void;
+}) =>
+	sweep.answer === null ? questionFailed(sweep.failure, sweep.retry) : null;
+
+function mergedAscending({
+	own,
+	shared,
+	guest,
+}: Pick<ArtistTracks, "own" | "shared" | "guest">) {
+	const sets = [own, shared, guest];
+	const at = [0, 0, 0];
+	const all = new Int32Array(own.length + shared.length + guest.length);
+	for (let filled = 0; filled < all.length; filled += 1) {
+		let from = -1;
+		for (let set = 0; set < sets.length; set += 1)
+			if (
+				at[set] < sets[set].length &&
+				(from < 0 || sets[set][at[set]] < sets[from][at[from]])
+			)
+				from = set;
+		all[filled] = sets[from][at[from]];
+		at[from] += 1;
+	}
+	return all;
+}
+
 interface ListViews {
 	allMusic: TrackView;
 	shelfView: TrackView | null;
@@ -64,6 +99,8 @@ interface ListViews {
 	albumView: TrackView | null;
 	albumTracks: AlbumTracks | null;
 	isAwaitingColumns: boolean;
+	genreFailure: QuestionFailed | null;
+	albumFailure: QuestionFailed | null;
 }
 
 function listPageOf(
@@ -75,6 +112,8 @@ function listPageOf(
 		albumView,
 		albumTracks,
 		isAwaitingColumns,
+		genreFailure,
+		albumFailure,
 	}: ListViews,
 	wait: Wait,
 	t: Translate,
@@ -90,6 +129,7 @@ function listPageOf(
 				emptyNotice: t("shelf.empty"),
 				wait,
 				isAwaitingColumns,
+				failure: null,
 			};
 		case "genre":
 			if (!route.genre) return null;
@@ -107,6 +147,7 @@ function listPageOf(
 				emptyNotice: t("library.noGenre", { genre: route.genre }),
 				wait,
 				isAwaitingColumns: false,
+				failure: genreFailure,
 			};
 		case "album":
 			if (!albumTracks) return null;
@@ -122,6 +163,7 @@ function listPageOf(
 				emptyNotice: t("library.noAlbum"),
 				wait,
 				isAwaitingColumns: false,
+				failure: albumFailure,
 			};
 		case "all":
 			return {
@@ -136,6 +178,7 @@ function listPageOf(
 				emptyNotice: t("library.empty"),
 				wait: NO_WAIT,
 				isAwaitingColumns: false,
+				failure: null,
 			};
 		default:
 			return null;
@@ -173,7 +216,7 @@ export function useRouteView(route: RouteView, library: Library) {
 		() => (genre ? ({ kind: "genre", genre } as const) : null),
 		[genre],
 	);
-	const genreSweep = useLibraryAnswer(genreQuestion, library, false);
+	const genreSweep = useLibraryQuestion(genreQuestion, library);
 	const genreView = useMemo(
 		() => (genreSweep.answer ? project(snapshot, genreSweep.answer) : null),
 		[genreSweep.answer, snapshot],
@@ -184,7 +227,7 @@ export function useRouteView(route: RouteView, library: Library) {
 			album ? ({ kind: "album", artist: albumArtist, album } as const) : null,
 		[album, albumArtist],
 	);
-	const albumSweep = useLibraryAnswer(albumQuestion, library, false);
+	const albumSweep = useLibraryQuestion(albumQuestion, library);
 	const albumTracks = useMemo(
 		() =>
 			album
@@ -207,8 +250,14 @@ export function useRouteView(route: RouteView, library: Library) {
 			artist ? ({ kind: "artist", artist, splitsCredits } as const) : null,
 		[artist, splitsCredits],
 	);
-	const artistSweep = useLibraryAnswer(artistQuestion, library, false);
-	const artistTracks = artistSweep.answer ?? EMPTY_ARTIST_TRACKS;
+	const artistSweep = useLibraryQuestion(artistQuestion, library);
+	const artistTracks = useMemo(
+		() =>
+			artistSweep.answer
+				? { ...artistSweep.answer, all: mergedAscending(artistSweep.answer) }
+				: EMPTY_ARTIST_TRACKS,
+		[artistSweep.answer],
+	);
 
 	const artistView = useMemo(
 		() => (artist ? project(snapshot, artistTracks.all) : null),
@@ -236,6 +285,8 @@ export function useRouteView(route: RouteView, library: Library) {
 			albumView,
 			albumTracks,
 			isAwaitingColumns,
+			genreFailure: failureOf(genreSweep),
+			albumFailure: failureOf(albumSweep),
 		},
 		wait,
 		t,
@@ -249,6 +300,7 @@ export function useRouteView(route: RouteView, library: Library) {
 				view: artistView ?? EMPTY_VIEW,
 				wait,
 				isAwaitingColumns,
+				failure: failureOf(artistSweep),
 			}
 		: null;
 

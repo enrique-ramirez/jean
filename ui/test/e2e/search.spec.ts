@@ -1,3 +1,4 @@
+import { LATE_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import {
 	albumRoute,
 	artistRoute,
@@ -5,7 +6,7 @@ import {
 	searchRoute,
 } from "../../src/domain/track/routes.ts";
 import { en } from "../../src/shared/i18n/en.ts";
-import type { Locator, Page } from "./fixtures.ts";
+import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	expect,
 	expectSettlesAt,
@@ -22,11 +23,9 @@ import {
 	test,
 	trackPlayed,
 	trackRow,
+	untilQuiet,
 	viewHeader,
 } from "./fixtures.ts";
-
-// Jean's worker answers reach the page as `message` events on the `Worker` object it constructed;
-// holding them back relies on that.
 
 const ARTIST = "Babasónicos";
 const ALBUM = "Jessico";
@@ -44,11 +43,7 @@ interface Watch {
 }
 
 interface Harness {
-	hold: () => void;
-	release: () => void;
-	held: () => number;
-	delivered: () => number;
-	workers: () => number;
+	markReleased: () => void;
 	releasedAt: () => number | null;
 	watch: (watch: Watch) => void;
 	firstSeen: (name: string) => number | null;
@@ -57,44 +52,13 @@ interface Harness {
 
 declare global {
 	interface Window {
-		__workerHarness: Harness;
+		__pageHarness: Harness;
 	}
 }
 
-const watchTheWorker = (page: Page) =>
+const watchThePage = (page: Page) =>
 	page.addInitScript(() => {
-		const held: (() => void)[] = [];
-		let holding = false;
-		let delivered = 0;
-		let workers = 0;
 		let releasedAt: number | null = null;
-		const passing = new WeakSet<Event>();
-
-		const Real = window.Worker;
-		window.Worker = class extends Real {
-			constructor(url: string | URL, options?: WorkerOptions) {
-				super(url, options);
-				workers += 1;
-				// Added in the constructor, so it runs ahead of every listener Jean adds and ahead of
-				// `onmessage`, and can stop an event before either sees it.
-				this.addEventListener("message", (event) => {
-					if (passing.has(event) || !holding) {
-						delivered += 1;
-						return;
-					}
-					event.stopImmediatePropagation();
-					held.push(() => {
-						const again = new MessageEvent("message", {
-							data: event.data,
-							ports: [...event.ports],
-						});
-						passing.add(again);
-						this.dispatchEvent(again);
-					});
-				});
-			}
-		};
-
 		const watches: Watch[] = [];
 		const seen = new Map<string, number>();
 		const shows = ({ selector, text, exact }: Watch) =>
@@ -119,18 +83,10 @@ const watchTheWorker = (page: Page) =>
 			characterData: true,
 		});
 
-		window.__workerHarness = {
-			hold: () => {
-				holding = true;
-			},
-			release: () => {
-				holding = false;
+		window.__pageHarness = {
+			markReleased: () => {
 				releasedAt = performance.now();
-				for (const send of held.splice(0)) send();
 			},
-			held: () => held.length,
-			delivered: () => delivered,
-			workers: () => workers,
 			releasedAt: () => releasedAt,
 			watch: (watch) => {
 				watches.push(watch);
@@ -145,33 +101,30 @@ const watchTheWorker = (page: Page) =>
 		};
 	});
 
-const hold = (page: Page) => page.evaluate(() => window.__workerHarness.hold());
-const release = (page: Page) =>
-	page.evaluate(() => window.__workerHarness.release());
 const watch = (page: Page, what: Watch) =>
-	page.evaluate((one) => window.__workerHarness.watch(one), what);
+	page.evaluate((one) => window.__pageHarness.watch(one), what);
 const firstSeen = (page: Page, name: string) =>
-	page.evaluate((one) => window.__workerHarness.firstSeen(one), name);
+	page.evaluate((one) => window.__pageHarness.firstSeen(one), name);
 const releasedAt = (page: Page) =>
-	page.evaluate(() => window.__workerHarness.releasedAt());
-const delivered = (page: Page) =>
-	page.evaluate(() => window.__workerHarness.delivered());
+	page.evaluate(() => window.__pageHarness.releasedAt());
 const open = (page: Page, route: string) =>
-	page.evaluate((hash) => window.__workerHarness.open(hash), `#/${route}`);
+	page.evaluate((hash) => window.__pageHarness.open(hash), `#/${route}`);
 
-const untilAnAnswerIsHeld = (page: Page) =>
+const searchesFor = (player: FakePlayer, query: string) =>
+	player.requests.filter(
+		(entry) =>
+			entry.method === "GET" &&
+			entry.path.split("?")[0] === "/api/library/search" &&
+			new URL(entry.path, "http://fake.invalid").searchParams.get("query") ===
+				query,
+	).length;
+
+const untilSearchedFor = (player: FakePlayer, query: string) =>
 	expect
-		.poll(() => page.evaluate(() => window.__workerHarness.held()), {
-			message: "Jean's search worker answered nothing that could be held",
+		.poll(() => searchesFor(player, query), {
+			message: `Jean never asked foo_jean to search for ${query}`,
 		})
 		.toBeGreaterThan(0);
-
-const untilDeliveredPast = (page: Page, before: number) =>
-	expect
-		.poll(() => delivered(page), {
-			message: "no answer from Jean's search worker reached the page",
-		})
-		.toBeGreaterThan(before);
 
 const expectNotSeenWhileHeld = async (page: Page, name: string) => {
 	const at = await firstSeen(page, name);
@@ -193,14 +146,17 @@ const openWithSearch = async (page: Page) => {
 const WARMED_UP = "Alice in Chains";
 const WARM_UP = artistRoute(WARMED_UP);
 
-const warmUp = async (page: Page) => {
+const warmUp = async (page: Page, player: FakePlayer) => {
+	const whole = page.waitForResponse(isLatePart);
 	await openLibrary(page);
-	const before = await delivered(page);
+	await whole;
+	const before = questionsTo(player, WARM_UP);
 	await open(page, WARM_UP);
 	await expect(
 		page.getByRole("heading", { name: en["artist.discography"] }),
 	).toBeVisible();
-	await untilDeliveredPast(page, before);
+	await untilAskedPast(player, WARM_UP, before);
+	await untilQuiet(player);
 };
 
 const PAGES: {
@@ -228,11 +184,54 @@ const PAGES: {
 
 const loading = (page: Page) => page.locator("main").getByText(LOADING);
 
-test.describe("while the search worker has not answered", () => {
-	test.beforeEach(({ page }) => watchTheWorker(page));
+const questionOf = (route: string) => route.slice(0, route.indexOf("/"));
+
+const questionsTo = (player: FakePlayer, route: string) =>
+	player.requests.filter(
+		(entry) =>
+			entry.method === "GET" &&
+			entry.path.split("?")[0] === `/api/library/${questionOf(route)}`,
+	).length;
+
+const holdQuestions = async (page: Page) => {
+	const held = await page.request.post("/__control/holdQuestions", {
+		data: { hold: true },
+	});
+	expect(held.ok(), "the fake holds questions on request").toBe(true);
+};
+
+const releaseQuestions = async (page: Page) => {
+	await page.evaluate(() => window.__pageHarness.markReleased());
+	const released = await page.request.post("/__control/holdQuestions", {
+		data: {},
+	});
+	expect(released.ok(), "the fake answers every question it held").toBe(true);
+};
+
+const untilAskedPast = (player: FakePlayer, route: string, before: number) =>
+	expect
+		.poll(() => questionsTo(player, route), {
+			message: `Jean never asked foo_jean for the ${questionOf(route)}`,
+		})
+		.toBeGreaterThan(before);
+
+const isLatePart = (response: { url: () => string; ok: () => boolean }) => {
+	const url = new URL(response.url());
+	return (
+		url.pathname === "/api/library/export" &&
+		url.searchParams
+			.getAll("only")
+			.some((column) => LATE_EXPRESSIONS.includes(column)) &&
+		response.ok()
+	);
+};
+
+test.describe("while foo_jean has not answered a search", () => {
+	test.beforeEach(({ page }) => watchThePage(page));
 
 	test("the suggestions already drawn stay until the typed query's own arrive", async ({
 		page,
+		player,
 	}) => {
 		await openWithSearch(page);
 		await searchField(page).fill(NAMES_THE_ARTIST);
@@ -243,13 +242,13 @@ test.describe("while the search worker has not answered", () => {
 			selector: '[role="option"]',
 			text: SONG,
 		});
-		await hold(page);
+		await holdQuestions(page);
 		await searchField(page).fill(NAMES_A_SONG);
-		await untilAnAnswerIsHeld(page);
+		await untilSearchedFor(player, NAMES_A_SONG);
 
 		await expect(options(page).first()).toContainText(ARTIST);
 
-		await release(page);
+		await releaseQuestions(page);
 		await expect(options(page).filter({ hasText: SONG })).toHaveCount(1);
 		await expect(options(page).filter({ hasText: ARTIST })).toHaveCount(0);
 		await expectNotSeenWhileHeld(page, "the song's suggestion");
@@ -257,6 +256,7 @@ test.describe("while the search worker has not answered", () => {
 
 	test("the results page keeps the rows it drew until the new query's arrive", async ({
 		page,
+		player,
 	}) => {
 		await openLibrary(page);
 		await searchFor(page, NAMES_THE_ARTIST);
@@ -268,13 +268,13 @@ test.describe("while the search worker has not answered", () => {
 			text: SONG,
 		});
 		await watch(page, { name: "an empty list", selector: '[role="row"]' });
-		await hold(page);
+		await holdQuestions(page);
 		await open(page, searchRoute(NAMES_A_SONG));
-		await untilAnAnswerIsHeld(page);
+		await untilSearchedFor(player, NAMES_A_SONG);
 
 		await expect(trackRow(page, 0)).toHaveText(drawn);
 
-		await release(page);
+		await releaseQuestions(page);
 		await expect(
 			page.getByRole("heading", { level: 1, name: NAMES_A_SONG }),
 		).toBeVisible();
@@ -283,21 +283,27 @@ test.describe("while the search worker has not answered", () => {
 		await expectNotSeenWhileHeld(page, "the song's row");
 		await expectNotSeenWhileHeld(page, "an empty list");
 	});
+});
+
+test.describe("while foo_jean has not answered a page's question", () => {
+	test.beforeEach(({ page }) => watchThePage(page));
 
 	for (const { kind, route, drawn } of PAGES) {
 		test(`${kind} page opened before its answer shows the loading state, and not within 100 ms`, async ({
 			page,
+			player,
 		}) => {
-			await warmUp(page);
+			await warmUp(page, player);
 			await watch(page, {
 				name: "the loading state",
 				selector: "main",
 				text: LOADING,
 			});
 
-			await hold(page);
+			await holdQuestions(page);
+			const before = questionsTo(player, route);
 			const openedAt = await open(page, route);
-			await untilAnAnswerIsHeld(page);
+			await untilAskedPast(player, route, before);
 
 			await expect(loading(page).first()).toBeVisible();
 			const shownAt = await firstSeen(page, "the loading state");
@@ -306,16 +312,17 @@ test.describe("while the search worker has not answered", () => {
 				"the loading state was drawn within 100 ms of opening the page",
 			).toBeGreaterThanOrEqual(100);
 
-			await release(page);
+			await releaseQuestions(page);
 			await expect(drawn(page)).toBeVisible();
 			await expect(loading(page)).toHaveCount(0);
 		});
 
 		test(`${kind} page answered within 100 ms never shows the loading state`, async ({
 			page,
+			player,
 		}) => {
 			await page.clock.install();
-			await warmUp(page);
+			await warmUp(page, player);
 			await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 250);
 			await watch(page, {
 				name: "the loading state",
@@ -323,9 +330,9 @@ test.describe("while the search worker has not answered", () => {
 				text: LOADING,
 			});
 
-			const before = await delivered(page);
+			const before = questionsTo(player, route);
 			await open(page, route);
-			await untilDeliveredPast(page, before);
+			await untilAskedPast(player, route, before);
 			await expect(drawn(page)).toBeVisible();
 
 			await runClockFor(page, 500);
@@ -336,7 +343,7 @@ test.describe("while the search worker has not answered", () => {
 });
 
 test.describe("Enter pressed before the typed query is answered", () => {
-	test.beforeEach(({ page }) => watchTheWorker(page));
+	test.beforeEach(({ page }) => watchThePage(page));
 
 	test("acts on what the typed query names once its answer arrives", async ({
 		page,
@@ -352,11 +359,11 @@ test.describe("Enter pressed before the typed query is answered", () => {
 			text: NAMES_THE_ARTIST,
 			exact: true,
 		});
-		await hold(page);
+		await holdQuestions(page);
 		await searchField(page).fill(NAMES_THE_ARTIST);
-		await untilAnAnswerIsHeld(page);
+		await untilSearchedFor(player, NAMES_THE_ARTIST);
 		await searchField(page).press("Enter");
-		await release(page);
+		await releaseQuestions(page);
 
 		await expect(
 			page.getByRole("heading", { level: 1, name: ARTIST }),
@@ -382,11 +389,11 @@ test.describe("Enter pressed before the typed query is answered", () => {
 			text: ARTIST,
 			exact: true,
 		});
-		await hold(page);
+		await holdQuestions(page);
 		await searchField(page).fill(NAMES_A_SONG);
-		await untilAnAnswerIsHeld(page);
+		await untilSearchedFor(player, NAMES_A_SONG);
 		await searchField(page).press("Enter");
-		await release(page);
+		await releaseQuestions(page);
 
 		await expect(
 			page.getByRole("heading", { level: 1, name: NAMES_A_SONG }),
@@ -442,22 +449,24 @@ const COUNTED: {
 	},
 ];
 
-test.describe("a page's header before the worker has answered", () => {
-	test.beforeEach(({ page }) => watchTheWorker(page));
+test.describe("a page's header before foo_jean has answered", () => {
+	test.beforeEach(({ page }) => watchThePage(page));
 
 	for (const { kind, route, counts } of COUNTED) {
 		test(`${kind} page counts nothing until its answer arrives, then counts what it holds`, async ({
 			page,
+			player,
 		}) => {
-			await warmUp(page);
+			await warmUp(page, player);
 			await recordZeroCounts(page);
 
-			await hold(page);
+			await holdQuestions(page);
+			const before = questionsTo(player, route);
 			await open(page, route);
-			await untilAnAnswerIsHeld(page);
+			await untilAskedPast(player, route, before);
 			await expect(loading(page).first()).toBeVisible();
 
-			await release(page);
+			await releaseQuestions(page);
 			for (const count of counts)
 				await expect(viewHeader(page)).toContainText(count);
 			expect(
@@ -534,21 +543,6 @@ const headerSeen = (page: Page) =>
 
 const CHANGES = "/api/library/changes";
 
-const untilTheWorkerIsQuiet = async (page: Page) => {
-	let seen = -1;
-	await expect
-		.poll(
-			async () => {
-				const now = await delivered(page);
-				const isQuiet = now === seen;
-				seen = now;
-				return isQuiet;
-			},
-			{ message: "Jean's search worker went on answering", intervals: [250] },
-		)
-		.toBe(true);
-};
-
 const UNDER_THE_PATIENCE_MS = 40;
 
 const runClockUntil = async (
@@ -593,20 +587,21 @@ const expectNothingWaitedFor = (seen: HeaderSeen) => {
 };
 
 test.describe("a page's header answered within 100 ms", () => {
-	test.beforeEach(({ page }) => watchTheWorker(page));
+	test.beforeEach(({ page }) => watchThePage(page));
 
 	for (const { kind, route, counts } of COUNTED) {
 		test(`${kind} page never disables Play or stands its stats down before the patience`, async ({
 			page,
+			player,
 		}) => {
 			await page.clock.install();
-			await warmUp(page);
+			await warmUp(page, player);
 			await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 250);
 			await recordTheHeader(page, { before: WARMED_UP });
 
-			const before = await delivered(page);
+			const before = questionsTo(player, route);
 			await open(page, route);
-			await untilDeliveredPast(page, before);
+			await untilAskedPast(player, route, before);
 			for (const count of counts)
 				await expect(viewHeader(page)).toContainText(count);
 			await expect(playInHeader(page)).toBeEnabled();
@@ -616,12 +611,14 @@ test.describe("a page's header answered within 100 ms", () => {
 
 		test(`${kind} page held past the patience waits in its header until its answer arrives`, async ({
 			page,
+			player,
 		}) => {
-			await warmUp(page);
+			await warmUp(page, player);
 
-			await hold(page);
+			await holdQuestions(page);
+			const before = questionsTo(player, route);
 			await open(page, route);
-			await untilAnAnswerIsHeld(page);
+			await untilAskedPast(player, route, before);
 			await expect(loading(page).first()).toBeVisible();
 
 			await expect(
@@ -639,7 +636,7 @@ test.describe("a page's header answered within 100 ms", () => {
 				0,
 			);
 
-			await release(page);
+			await releaseQuestions(page);
 			for (const count of counts)
 				await expect(viewHeader(page)).toContainText(count);
 			await expect(playInHeader(page)).toBeEnabled();
@@ -654,10 +651,10 @@ test.describe("a page's header answered within 100 ms", () => {
 			player,
 		}) => {
 			await page.clock.install();
-			await warmUp(page);
-			const before = await delivered(page);
+			await warmUp(page, player);
+			const before = questionsTo(player, route);
 			await open(page, route);
-			await untilDeliveredPast(page, before);
+			await untilAskedPast(player, route, before);
 			for (const count of counts)
 				await expect(viewHeader(page)).toContainText(count);
 			await expect(playInHeader(page)).toBeEnabled();
@@ -666,7 +663,7 @@ test.describe("a page's header answered within 100 ms", () => {
 			await recordTheHeader(page, {
 				kept: counts.map((count) => count.replace(/^\d+/, "\\d+")),
 			});
-			const asked = await delivered(page);
+			const asked = questionsTo(player, route);
 			const changesBefore = requestsTo(player, CHANGES).length;
 			const added = await page.request.post("/__control/library", {
 				data: { add: 1 },
@@ -677,8 +674,8 @@ test.describe("a page's header answered within 100 ms", () => {
 				() => requestsTo(player, CHANGES).length > changesBefore,
 				"Jean never asked for the change",
 			);
-			await untilDeliveredPast(page, asked);
-			await untilTheWorkerIsQuiet(page);
+			await untilAskedPast(player, route, asked);
+			await untilQuiet(player);
 
 			await expect(viewHeader(page)).toContainText(/\d+ tracks?\b/);
 			await expect(playInHeader(page)).toBeEnabled();
@@ -718,21 +715,27 @@ const PLAYED: {
 ];
 
 test.describe("the Play and Shuffle shortcuts pressed before a page's answer", () => {
-	test.beforeEach(({ page }) => watchTheWorker(page));
+	test.beforeEach(({ page }) => watchThePage(page));
 	test.skip(({ isMobile }) => isMobile, "p and s are keyboard shortcuts");
 
-	const holdThePage = async (page: Page, route: string, heading: string) => {
-		await hold(page);
+	const holdThePage = async (
+		page: Page,
+		player: FakePlayer,
+		route: string,
+		heading: string,
+	) => {
+		await holdQuestions(page);
+		const before = questionsTo(player, route);
 		await open(page, route);
-		await untilAnAnswerIsHeld(page);
+		await untilAskedPast(player, route, before);
 		await expect(
 			page.getByRole("heading", { level: 1, name: heading }),
 		).toBeVisible();
 	};
 
-	const underThePatience = async (page: Page) => {
+	const underThePatience = async (page: Page, player: FakePlayer) => {
 		await page.clock.install();
-		await warmUp(page);
+		await warmUp(page, player);
 		await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 250);
 	};
 
@@ -741,12 +744,12 @@ test.describe("the Play and Shuffle shortcuts pressed before a page's answer", (
 			page,
 			player,
 		}) => {
-			await underThePatience(page);
-			await holdThePage(page, route, heading);
+			await underThePatience(page, player);
+			await holdThePage(page, player, route, heading);
 			await expect(playInHeader(page)).toBeEnabled();
 			await page.keyboard.press("p");
 
-			await release(page);
+			await releaseQuestions(page);
 			await expect
 				.poll(() => trackPlayed(player), {
 					message: "the shortcut pressed before the answer played nothing",
@@ -764,12 +767,12 @@ test.describe("the Play and Shuffle shortcuts pressed before a page's answer", (
 			page,
 			player,
 		}) => {
-			await underThePatience(page);
-			await holdThePage(page, route, heading);
+			await underThePatience(page, player);
+			await holdThePage(page, player, route, heading);
 			await expect(shuffleInHeader(page)).toBeEnabled();
 			await page.keyboard.press("s");
 
-			await release(page);
+			await releaseQuestions(page);
 			await expect
 				.poll(() => trackPlayed(player), {
 					message: "the shortcut pressed before the answer played nothing",
@@ -793,14 +796,14 @@ test.describe("the Play and Shuffle shortcuts pressed before a page's answer", (
 			page,
 			player,
 		}) => {
-			await warmUp(page);
-			await holdThePage(page, route, heading);
+			await warmUp(page, player);
+			await holdThePage(page, player, route, heading);
 			await expect(loading(page).first()).toBeVisible();
 			await expect(playInHeader(page)).toBeDisabled();
 			await page.keyboard.press("p");
 			await page.keyboard.press("s");
 
-			await release(page);
+			await releaseQuestions(page);
 			await expect(playInHeader(page)).toBeEnabled();
 			await expectSettlesAt(
 				player,
@@ -841,28 +844,29 @@ const SUGGESTED: {
 ];
 
 test.describe("a suggestion chosen from an answer the typing has moved past", () => {
-	test.beforeEach(({ page }) => watchTheWorker(page));
+	test.beforeEach(({ page }) => watchThePage(page));
 
 	for (const { kind, query, suggestion, heading } of SUGGESTED)
 		test(`${kind} opens its page and leaves the query it answered in the field`, async ({
 			page,
+			player,
 		}) => {
 			await openWithSearch(page);
 			await searchField(page).fill(query);
 			const chosen = options(page).filter({ hasText: suggestion });
 			await expect(chosen).toHaveCount(1);
 
-			await hold(page);
+			await holdQuestions(page);
 			await searchField(page).fill(`${query} z`);
-			await untilAnAnswerIsHeld(page);
+			await untilSearchedFor(player, `${query} z`);
 			await chosen.click();
-			await release(page);
+			await releaseQuestions(page);
 
 			await expect(
 				page.getByRole("heading", { level: 1, name: heading }),
 			).toBeVisible();
 			await expect(searchField(page)).toHaveValue(query);
-			await untilTheWorkerIsQuiet(page);
+			await untilQuiet(player);
 			expect(await searchField(page).inputValue()).toBe(query);
 		});
 });

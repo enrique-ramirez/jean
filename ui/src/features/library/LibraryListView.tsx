@@ -5,6 +5,8 @@ import {
 	isLibraryReading,
 	readingNotice,
 } from "@/domain/library/libraryStatus";
+import { QuestionFailure } from "@/domain/library/QuestionFailure";
+import type { QuestionFailed } from "@/domain/library/questionFailed";
 import type { Library } from "@/domain/library/useLibrary";
 import { byWait, NO_WAIT, type Wait } from "@/domain/library/useOverdue";
 import { useViewPlayback } from "@/domain/library/useViewPlayback";
@@ -70,6 +72,7 @@ export function LibraryListView({
 	emptyNotice,
 	wait = NO_WAIT,
 	isAwaitingColumns = false,
+	failure = null,
 	onOpenPlaylist,
 }: {
 	library: Library;
@@ -84,6 +87,7 @@ export function LibraryListView({
 	emptyNotice?: ReactNode;
 	wait?: Wait;
 	isAwaitingColumns?: boolean;
+	failure?: QuestionFailed | null;
 	onOpenPlaylist?: (id: string) => void;
 }) {
 	const t = useTranslate();
@@ -150,6 +154,7 @@ export function LibraryListView({
 			toolbarLeading={finder.toolbarLeading}
 			emptyNotice={emptyNotice}
 			loadingNotice={loadingNotice}
+			failureNotice={failure ? <QuestionFailure {...failure} /> : undefined}
 			hasPendingRows={isAwaitingColumns && wait.isWaiting && !isReading}
 			progressLabel={readingText}
 			heading={heading}

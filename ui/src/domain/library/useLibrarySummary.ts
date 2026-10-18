@@ -1,30 +1,18 @@
 import { useSyncExternalStore } from "react";
-import { FIELD, TRACK_EXPRESSIONS } from "@/domain/track/fields";
+import { LIBRARY_ROLES } from "@/domain/track/libraryAsker";
 import type { LibrarySummary, SummaryRoles } from "@/shared/api/librarySummary";
 import { type Subscribers, subscribers } from "@/shared/lib/store";
 import type { Library } from "./useLibrary";
 
-const expressionOf = (field: number) => TRACK_EXPRESSIONS[field];
+const {
+	artists: _artists,
+	artistIds: _artistIds,
+	albumArtists: _albumArtists,
+	albumArtistIds: _albumArtistIds,
+	...SENT
+} = LIBRARY_ROLES;
 
-export const SUMMARY_ROLES: SummaryRoles = {
-	trackNumber: expressionOf(FIELD.trackNumber),
-	discNumber: expressionOf(FIELD.discNumber),
-	title: expressionOf(FIELD.title),
-	artist: expressionOf(FIELD.artist),
-	album: expressionOf(FIELD.album),
-	albumArtist: expressionOf(FIELD.albumArtist),
-	duration: expressionOf(FIELD.duration),
-	playCount: expressionOf(FIELD.playCount),
-	lastPlayed: expressionOf(FIELD.lastPlayed),
-	rating: expressionOf(FIELD.rating),
-	year: expressionOf(FIELD.year),
-	genre: expressionOf(FIELD.genre),
-	codec: expressionOf(FIELD.codec),
-	bitrate: expressionOf(FIELD.bitrate),
-	playCountLocal: expressionOf(FIELD.playCountLocal),
-	lastPlayedLocal: expressionOf(FIELD.lastPlayedLocal),
-	added: expressionOf(FIELD.added),
-};
+export const SUMMARY_ROLES: SummaryRoles = SENT;
 
 interface Held {
 	summary: LibrarySummary | null;

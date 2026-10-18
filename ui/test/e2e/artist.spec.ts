@@ -11,7 +11,6 @@ import {
 	playRequests,
 	requestsTo,
 	revealSearch,
-	runClockFor,
 	scratchOf,
 	searchField,
 	test,
@@ -472,7 +471,7 @@ test.describe("before the credit columns arrive", () => {
 	const busyWithin = (page: Page, scope: string) =>
 		page.locator(`${scope}[aria-busy="true"], ${scope} [aria-busy="true"]`);
 
-	test("search shows the tracks it found and holds the artist results until the credits are split", async ({
+	test("search shows the artist results at once, before the credits are split, with no busy group", async ({
 		page,
 	}) => {
 		await recordWhatIsDrawn(page);
@@ -481,18 +480,22 @@ test.describe("before the credit columns arrive", () => {
 		await searchField(page).fill("revelries");
 
 		const results = page.getByRole("listbox");
-		const busy = busyWithin(page, '[role="listbox"]');
-		await expect(
-			results.getByRole("option").filter({ hasText: "Bloodhail" }),
-		).toBeVisible();
-		await expect(busy.first()).toBeAttached();
-
-		await releaseTheLatePart(page);
 		await expect(
 			results.getByRole("option").filter({ hasText: /^Revelries(?! &)/ }),
 		).toBeVisible();
-		await expect(busy).toHaveCount(0);
-		await expectFirstDrawnOnceReleased(page, "an artist result");
+		await expect(
+			results.getByRole("option").filter({ hasText: "Bloodhail" }),
+		).toBeVisible();
+		await expect(busyWithin(page, '[role="listbox"]')).toHaveCount(0);
+
+		await releaseTheLatePart(page);
+		const { releasedAt, firstSeen } = await page.evaluate(
+			() => Reflect.get(window, "__drawn") as Drawn,
+		);
+		expect(
+			firstSeen["an artist result"],
+			"the artist result was drawn only once the credit columns arrived",
+		).toBeLessThan(releasedAt as number);
 	});
 
 	interface DropdownStates {
@@ -525,45 +528,42 @@ test.describe("before the credit columns arrive", () => {
 			});
 		}, MEMBER);
 
-	// Each answer from the search worker is drawn as it lands, so the one asked before the credits
-	// arrived is drawn too, between the late part landing and the answer asked after it.
-	test("the open dropdown goes from the busy artist group to the artists, with no moment holding neither", async ({
+	test("the open dropdown never draws a busy artist group, and keeps the artists drawn while the credit columns land", async ({
 		page,
+		player,
 	}) => {
+		const lateAnswers = countLateAnswers(page);
 		await recordTheDropdown(page);
 		await openLibrary(page);
 		await revealSearch(page);
-		await searchField(page).fill("revelries");
-
-		const results = page.getByRole("listbox");
-		await expect(
-			results.getByRole("option").filter({ hasText: "Bloodhail" }),
-		).toBeVisible();
-		await expect(busyWithin(page, '[role="listbox"]').first()).toBeAttached();
-
 		await page.evaluate(() => {
 			(Reflect.get(window, "__dropdown") as DropdownStates).recording = true;
-			(Reflect.get(window, "__lookAtTheDropdown") as () => void)();
 		});
+		await searchField(page).fill("revelries");
+
+		const artist = page
+			.getByRole("listbox")
+			.getByRole("option")
+			.filter({ hasText: /^Revelries(?! &)/ });
+		await expect(artist).toBeVisible();
+
 		await page.request.post("/__control/holdSubset", { data: {} });
-		await expect(
-			results.getByRole("option").filter({ hasText: /^Revelries(?! &)/ }),
-		).toBeVisible();
+		await expect.poll(lateAnswers).toBeGreaterThan(0);
+		await untilQuiet(player);
+		await expect(artist).toBeVisible();
 
 		const { states } = await page.evaluate(
 			() => Reflect.get(window, "__dropdown") as DropdownStates,
 		);
-		const untilTheArtists = states.slice(
-			0,
-			states.findIndex((state) => state.artists) + 1,
-		);
 		expect(
-			untilTheArtists.at(-1)?.artists,
-			"the artists were never drawn",
-		).toBe(true);
+			states.filter((state) => state.busy),
+			"the dropdown drew a busy artist group",
+		).toEqual([]);
 		expect(
-			untilTheArtists.filter((state) => !state.busy && !state.artists),
-			"the dropdown showed neither the busy artist group nor the artists",
+			states
+				.slice(states.findIndex((state) => state.artists))
+				.filter((state) => !state.artists),
+			"the artists went away once drawn",
 		).toEqual([]);
 	});
 
@@ -654,90 +654,40 @@ test.describe("before the credit columns arrive", () => {
 			)
 			.toBeGreaterThan(0);
 
-	test("the tracks tab holds placeholder rows, never the reading notice, until the credits are split", async ({
+	const countLateAnswers = (page: Page) => {
+		let answered = 0;
+		page.on("response", (response) => {
+			const url = new URL(response.url());
+			if (
+				url.pathname === "/api/library/export" &&
+				url.searchParams.getAll("only").some((column) => LATE.includes(column))
+			)
+				answered += 1;
+		});
+		return () => answered;
+	};
+
+	test("the tracks tab lists the artist's tracks before the credits are split, with no placeholder rows below the header", async ({
 		page,
 		player,
 	}) => {
-		await page.addInitScript((reading) => {
-			const seen: { reading: boolean } = { reading: false };
-			Reflect.set(window, "__readingSeen", seen);
-			new MutationObserver(() => {
-				if (document.querySelector("main")?.textContent?.includes(reading))
-					seen.reading = true;
-			}).observe(document, {
-				subtree: true,
-				childList: true,
-				characterData: true,
-			});
-		}, en["library.reading"]);
-		await page.clock.install();
+		const lateAnswers = countLateAnswers(page);
 		await openLibrary(page);
 		await untilTheLatePartIsAsked(player);
-		await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 250);
 
 		await page.goto(`/#/${artistRoute(MEMBER, "tracks")}`);
 		await expect(
 			page.getByRole("heading", { level: 1, name: MEMBER }),
 		).toBeVisible();
-		await runClockFor(page, 1000);
 
-		await expect
-			.poll(() => busyBelowTheHeader(page, LOADING), {
-				message: "the tracks tab shows no busy placeholder",
-			})
-			.toContainEqual({ loadings: 1, holdsAPlaceholder: true });
-		for (const busy of await busyBelowTheHeader(page, LOADING))
-			expect(busy.loadings, "a busy element says Loading other than once").toBe(
-				1,
-			);
-		expect(
-			await page.evaluate(
-				() =>
-					(Reflect.get(window, "__readingSeen") as { reading: boolean })
-						.reading,
-			),
-			"the tracks tab said it is reading the library",
-		).toBe(false);
-
-		await page.clock.resume();
-		await page.request.post("/__control/holdSubset", { data: {} });
 		await expect(trackRow(page, 0)).toContainText("Bloodhail");
-		await expect.poll(() => busyBelowTheHeader(page, LOADING)).toEqual([]);
-	});
+		expect(await busyBelowTheHeader(page, LOADING)).toEqual([]);
+		expect(lateAnswers(), "the credit columns arrived first").toBe(0);
 
-	const firstPlaceholderRow = (page: Page) =>
-		page.locator("main").evaluate((main) => {
-			const bars = [...main.querySelectorAll('[aria-busy="true"]')]
-				.filter((element) => !element.closest("header"))
-				.flatMap((busy) => [
-					...busy.querySelectorAll('[aria-hidden="true"]:not(svg, button *)'),
-				])
-				.filter((bar) => {
-					const box = bar.getBoundingClientRect();
-					return box.width > 0 && box.height > 0;
-				});
-			const first = bars[0];
-			if (!first) return null;
-			const line = first.getBoundingClientRect();
-			const isOnTheLine = (bar: Element) => {
-				const box = bar.getBoundingClientRect();
-				return box.top < line.bottom && box.bottom > line.top;
-			};
-			const busy = first.closest('[aria-busy="true"]');
-			let row: Element = first;
-			for (
-				let outer = first.parentElement;
-				outer && row !== busy;
-				outer = outer.parentElement
-			) {
-				if (!bars.filter((bar) => outer.contains(bar)).every(isOnTheLine))
-					break;
-				row = outer;
-			}
-			const box = row.getBoundingClientRect();
-			const origin = main.getBoundingClientRect().top - main.scrollTop;
-			return { top: box.top - origin, height: box.height };
-		});
+		await page.request.post("/__control/holdSubset", { data: {} });
+		await expect.poll(lateAnswers).toBeGreaterThan(0);
+		await expect(trackRow(page, 0)).toContainText("Bloodhail");
+	});
 
 	const firstRealRow = (page: Page) =>
 		trackRow(page, 0).evaluate((row) => {
@@ -747,41 +697,29 @@ test.describe("before the credit columns arrive", () => {
 			return { top: box.top - origin, height: box.height };
 		});
 
-	const PAST_THE_REVEAL_MS = 400;
-
-	test("the tracks tab's first placeholder row sits where the first row lands, at its height", async ({
+	test("the tracks tab's first row stays where it is, at its height, when the credits arrive", async ({
 		page,
+		player,
 	}) => {
+		const lateAnswers = countLateAnswers(page);
 		await openLibrary(page);
+		await untilTheLatePartIsAsked(player);
 		await page.goto(`/#/${artistRoute(MEMBER, "tracks")}`);
-		await expect(
-			page.getByRole("heading", { level: 1, name: MEMBER }),
-		).toBeVisible();
-		await expect
-			.poll(() => firstPlaceholderRow(page), {
-				message: "the tracks tab drew no placeholder row",
-			})
-			.not.toBeNull();
-		const atFirst = await firstPlaceholderRow(page);
-		await page.waitForTimeout(PAST_THE_REVEAL_MS);
-		const afterAWhile = await firstPlaceholderRow(page);
+		await expect(trackRow(page, 0)).toContainText("Bloodhail");
+		const before = await firstRealRow(page);
 
 		await page.request.post("/__control/holdSubset", { data: {} });
+		await expect.poll(lateAnswers).toBeGreaterThan(0);
 		await expect(trackRow(page, 0)).toContainText("Bloodhail");
-		const landed = await firstRealRow(page);
+		const after = await firstRealRow(page);
 
-		for (const [when, placeholder] of [
-			["at first", atFirst],
-			["after a while", afterAWhile],
-		] as const) {
-			expect(
-				Math.abs((placeholder?.top ?? 0) - landed.top),
-				`the first row landed at ${landed.top}px, the placeholder stood at ${placeholder?.top}px ${when}`,
-			).toBeLessThan(0.5);
-			expect(
-				Math.abs((placeholder?.height ?? 0) - landed.height),
-				`the first row is ${landed.height}px tall, the placeholder ${placeholder?.height}px ${when}`,
-			).toBeLessThan(0.5);
-		}
+		expect(
+			Math.abs(after.top - before.top),
+			`the first row stood at ${before.top}px and moved to ${after.top}px`,
+		).toBeLessThan(0.5);
+		expect(
+			Math.abs(after.height - before.height),
+			`the first row was ${before.height}px tall and became ${after.height}px`,
+		).toBeLessThan(0.5);
 	});
 });

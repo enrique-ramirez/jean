@@ -60,6 +60,7 @@ export interface TrackBrowserProps {
 	toolbarLeading?: ReactNode;
 	emptyNotice?: ReactNode;
 	loadingNotice?: ReactNode;
+	failureNotice?: ReactNode;
 	hasPendingRows?: boolean;
 	progressLabel?: string;
 	keysEnabled?: boolean;
@@ -91,6 +92,7 @@ export function TrackBrowser({
 	toolbarLeading,
 	emptyNotice,
 	loadingNotice,
+	failureNotice,
 	hasPendingRows,
 	progressLabel,
 	keysEnabled = true,
@@ -403,6 +405,8 @@ export function TrackBrowser({
 			{rows.length === 0 ? (
 				hasPendingRows ? (
 					<PendingRows />
+				) : failureNotice ? (
+					failureNotice
 				) : loadingNotice !== undefined ? (
 					loadingNotice ? (
 						<p className={styles.notice}>{loadingNotice}</p>

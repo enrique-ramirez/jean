@@ -35,6 +35,10 @@
 	padding-right: env(safe-area-inset-right);
 }
 
+.main:focus {
+	outline: none;
+}
+
 .main[data-late-refused="true"] :global(.loading)::before {
 	animation: none;
 }

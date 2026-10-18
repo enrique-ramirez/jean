@@ -1,145 +1,72 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-	loadComponentLibrary,
-	recheckComponentLibrary,
-} from "../../src/domain/track/libraryLoader.ts";
-import { librarySearcher } from "../../src/domain/track/librarySearcher.ts";
+import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
+import { loadComponentLibrary } from "../../src/domain/track/libraryLoader.ts";
 import { playlistSnapshot } from "../../src/domain/track/playlistEntries.ts";
-import type { SearchQuestion } from "../../src/domain/track/searchCore.ts";
-import {
-	freshKey,
-	generatedLibrary,
-	mainThreadSearch,
-} from "./searchLibraries.ts";
+import { generatedRows, searchLibraryOf, seeded } from "./searchLibraries.ts";
 import { installStubWorker } from "./stubWorker.ts";
 
 installStubWorker();
 
 const ORIGIN = "http://landing.invalid:8881";
-
-const QUESTION = {
-	kind: "search",
-	query: "a",
-	limit: 8,
-	splitsCredits: false,
-} as const satisfies SearchQuestion;
-
-const ON_SCREEN = generatedLibrary(1, 40);
-const NEXT = generatedLibrary(2, 2_000);
+const KEY = "jean.fieldAvailability";
+const UNRESOLVED = "?";
 
 const turn = () => new Promise((resolve) => setImmediate(resolve));
 
-const task = () =>
-	new Promise<void>((resolve) => {
-		const { port1, port2 } = new MessageChannel();
-		port1.onmessage = () => {
-			port1.close();
-			resolve();
-		};
-		port2.postMessage(null);
-	});
-
-const matchesOver = (columns: ReturnType<typeof playlistSnapshot>["columns"]) =>
-	mainThreadSearch(
-		columns,
-		freshKey(),
-		QUESTION.query,
-		QUESTION.limit,
-		QUESTION.splitsCredits,
-	).matched;
-
-function playerServing(exports: ArrayBuffer[]) {
-	let asked = 0;
+function playerServing(exported: ArrayBuffer) {
 	globalThis.fetch = ((request: Request) => {
 		const { pathname } = new URL(request.url);
-		if (pathname === "/api/library/export") {
-			const body = exports[Math.min(asked, exports.length - 1)];
-			asked += 1;
-			return Promise.resolve(new Response(body.slice(0)));
-		}
-		if (pathname === "/api/library/changes")
-			return Promise.resolve(
-				Response.json(
-					{ error: "changes unavailable", detail: "" },
-					{ status: 410 },
-				),
-			);
+		if (pathname === "/api/library/export")
+			return Promise.resolve(new Response(exported.slice(0)));
 		return Promise.reject(new TypeError("fetch failed"));
 	}) as typeof fetch;
-	return { exportsAsked: () => asked };
 }
 
-test("while a new export lands, every answer handed back is about the library on screen when it arrives", async (t) => {
+function storage() {
+	const items = new Map<string, string>();
+	const held = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+	Object.defineProperty(globalThis, "localStorage", {
+		value: {
+			getItem: (key: string) => items.get(key) ?? null,
+			setItem: (key: string, value: string) => items.set(key, String(value)),
+			removeItem: (key: string) => items.delete(key),
+		},
+		configurable: true,
+		writable: true,
+	});
+	return {
+		items,
+		restore: () => {
+			if (held) Object.defineProperty(globalThis, "localStorage", held);
+			else delete (globalThis as { localStorage?: unknown }).localStorage;
+		},
+	};
+}
+
+test("a landed library stores which fields it resolves: one unresolved on every track is left out, and the rest are named", async (t) => {
 	const realFetch = globalThis.fetch;
+	const stored = storage();
 	t.after(() => {
 		globalThis.fetch = realFetch;
+		stored.restore();
 	});
-	const player = playerServing([ON_SCREEN.exported(), NEXT.exported()]);
+
+	const rows = generatedRows(seeded(1), 40);
+	for (const row of rows) row[FIELD.year] = UNRESOLVED;
+	playerServing(searchLibraryOf(rows).exported());
 
 	const key = loadComponentLibrary(ORIGIN);
-	const shows = (count: number) =>
-		playlistSnapshot(key).columns.trackCount === count &&
+	const isDrawn = () =>
+		playlistSnapshot(key).columns.trackCount === rows.length &&
 		!playlistSnapshot(key).isLoading;
-	for (let at = 0; at < 500 && !shows(ON_SCREEN.rows.length); at += 1)
-		await turn();
-	assert.ok(shows(ON_SCREEN.rows.length), "the first library was never drawn");
+	for (let at = 0; at < 500 && !isDrawn(); at += 1) await turn();
+	assert.ok(isDrawn(), "the library was never drawn");
 
-	const searcher = librarySearcher();
-	assert.ok(searcher);
-	const before = matchesOver(playlistSnapshot(key).columns);
-
-	const checked: {
-		answered: number[] | null;
-		onScreen: number[] | null;
-		trackCount: number;
-	}[] = [];
-	let askedWhileLanding = 0;
-	const ask = () =>
-		searcher.ask(QUESTION).then((answer) => {
-			if (answer === null) return;
-			const { columns } = playlistSnapshot(key);
-			checked.push({
-				answered: answer.matched && Array.from(answer.matched),
-				onScreen: matchesOver(columns),
-				trackCount: columns.trackCount,
-			});
-		});
-
-	let clock = performance.now();
-	t.mock.method(performance, "now", () => {
-		clock += 50;
-		return clock;
-	});
-
-	const asks: Promise<void>[] = [];
-	void recheckComponentLibrary(ORIGIN, {
-		structure: playlistSnapshot(key).structure + 1,
-		revision: 0,
-	});
-	for (let at = 0; at < 5_000 && !shows(NEXT.rows.length); at += 1) {
-		if (player.exportsAsked() === 2) askedWhileLanding += 1;
-		asks.push(ask());
-		await task();
-	}
-	assert.ok(shows(NEXT.rows.length), "the new library was never drawn");
-	for (let at = 0; at < 5; at += 1) {
-		asks.push(ask());
-		await turn();
-	}
-	await Promise.all(asks);
-
-	const after = matchesOver(playlistSnapshot(key).columns);
-	assert.notDeepEqual(before, after, "the two libraries answer alike");
-	assert.ok(
-		askedWhileLanding > 0,
-		"no question was asked between the new export and its drawing",
-	);
-	for (const { answered, onScreen, trackCount } of checked)
-		assert.deepEqual(
-			answered,
-			onScreen,
-			`an answer handed back while ${trackCount} rows were on screen is about other rows`,
-		);
+	const names = JSON.parse(stored.items.get(KEY) ?? "null") as unknown;
+	assert.ok(Array.isArray(names), `nothing stored under ${KEY}`);
+	assert.equal(names.includes(TRACK_EXPRESSIONS[FIELD.year]), false);
+	assert.equal(names.includes(TRACK_EXPRESSIONS[FIELD.title]), true);
+	assert.equal(names.includes(TRACK_EXPRESSIONS[FIELD.genre]), true);
 });

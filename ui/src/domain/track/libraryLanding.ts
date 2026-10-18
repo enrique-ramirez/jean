@@ -76,7 +76,6 @@ export function keepNote(feed: LibraryFeed, columns: LibraryColumns) {
 
 export function showColumns(columns: LibraryColumns) {
 	recordFieldAvailability(columns);
-	librarySearcher()?.mirror(columns);
 }
 
 function* firstFrameSteps(columns: LibraryColumns): Steps<Intensity> {

@@ -164,6 +164,7 @@ export function MainView({
 			emptyNotice={shown.emptyNotice}
 			wait={shown.wait}
 			isAwaitingColumns={shown.isAwaitingColumns}
+			failure={shown.failure}
 		/>
 	);
 
@@ -173,6 +174,7 @@ export function MainView({
 			library={library}
 			tracks={shown.tracks}
 			wait={shown.wait}
+			failure={shown.failure}
 			tab={shown.tab}
 			direction={shownTab.direction}
 			tabs={artistTabs}
@@ -184,6 +186,7 @@ export function MainView({
 				emptyNotice: t("library.noArtist", { artist: shown.name }),
 				wait: shown.wait,
 				isAwaitingColumns: shown.isAwaitingColumns,
+				failure: shown.failure,
 			})}
 			onPlay={playArtist}
 			onShuffle={(refs) => {
@@ -203,6 +206,7 @@ export function MainView({
 			className={styles.main}
 			data-late-refused={failureBesideRows ? "true" : undefined}
 			ref={scrollRef}
+			tabIndex={-1}
 			inert={isBehindDrawer ? true : undefined}
 			{...(artist ? artistSwipe : null)}
 		>

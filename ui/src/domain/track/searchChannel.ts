@@ -1,6 +1,5 @@
 import { rekeyedSnapshotBytes } from "./libraryRekey";
 import { replayedLibrary } from "./libraryReplay";
-import { withSettledLatePart } from "./librarySnapshot";
 import {
 	type KeepNote,
 	MAX_KEPT_CHANGES,
@@ -9,11 +8,9 @@ import {
 } from "./libraryStore";
 import type { LibraryStore } from "./libraryStoreDb";
 import {
-	answerOf,
 	partedSearchCore,
 	patchedSearchCore,
 	type SearchCore,
-	type SearchQuestion,
 	searchCoreOf,
 	splicedSearchCore,
 } from "./searchCore";
@@ -38,7 +35,6 @@ export type ToWorker =
 			keep?: KeepNote;
 	  }
 	| { type: "settle" }
-	| { type: "ask"; id: number; question: SearchQuestion }
 	| { type: "stored"; id: number }
 	| { type: "restore"; id: number; rekey?: KeepNote }
 	| { type: "forget" };
@@ -49,25 +45,9 @@ export interface StoredCopy {
 }
 
 export type FromWorker =
-	| { type: "answer"; id: number; answer: unknown }
 	| { type: "stored"; id: number; copy: StoredCopy }
 	| { type: "restored"; id: number; events: StoredEvent[] | null }
 	| { type: "outgrown" };
-
-const WARM_SLICE_MS = 8;
-
-function warmBetweenMessages(core: SearchCore, isCurrent: () => boolean) {
-	const step = () => {
-		if (!isCurrent()) return;
-		const deadline = performance.now() + WARM_SLICE_MS;
-		const isDone = core.folded.warm(
-			core.columns,
-			() => performance.now() < deadline,
-		);
-		if (!isDone) setTimeout(step, 0);
-	};
-	setTimeout(step, 0);
-}
 
 const copied = ({ kind, bytes }: StoredEvent): StoredEvent => ({
 	kind,
@@ -109,15 +89,8 @@ const isChange = ({ kind }: StoredEvent) =>
 	kind === "delta" || kind === "splice";
 
 export function serveSearch(port: SearchPort, store?: LibraryStore) {
-	let core: SearchCore | null = null;
 	let epoch = 0;
 	let keptChanges = 0;
-
-	const answer = (id: number, answered: unknown) =>
-		port.postMessage(
-			{ type: "answer", id, answer: answered } satisfies FromWorker,
-			[],
-		);
 
 	const announceOutgrowth = () => {
 		if (keptChanges > MAX_KEPT_CHANGES)
@@ -139,7 +112,6 @@ export function serveSearch(port: SearchPort, store?: LibraryStore) {
 
 		const kept = rebuilt && isCurrent ? (events as StoredEvent[]) : null;
 		if (rebuilt && kept) {
-			core = rebuilt;
 			keptChanges = rekey ? 0 : kept.filter(isChange).length;
 			if (rekey) store?.keep(kept.map(copied), rekey);
 		}
@@ -147,14 +119,8 @@ export function serveSearch(port: SearchPort, store?: LibraryStore) {
 			{ type: "restored", id, events: kept } satisfies FromWorker,
 			kept ? kept.map(({ bytes }) => bytes) : [],
 		);
-		if (rebuilt && kept) {
-			warmed(rebuilt);
-			announceOutgrowth();
-		}
+		if (rebuilt && kept) announceOutgrowth();
 	};
-
-	const warmed = (fresh: SearchCore) =>
-		warmBetweenMessages(fresh, () => core?.folded === fresh.folded);
 
 	const keep = (note: KeepNote | undefined, events: StoredEvent[]) => {
 		if (!note) return;
@@ -168,24 +134,18 @@ export function serveSearch(port: SearchPort, store?: LibraryStore) {
 			case "load":
 				epoch += 1;
 				keptChanges = 0;
-				core = searchCoreOf(data.bytes);
-				warmed(core);
 				keep(data.keep, [{ kind: "load", bytes: data.bytes }]);
 				return;
 			case "patch":
 				epoch += 1;
-				core = core && patchedSearchCore(core, data.bytes);
 				keep(data.keep, [{ kind: "delta", bytes: data.bytes }]);
 				return;
 			case "splice":
 				epoch += 1;
-				core = core && splicedSearchCore(core, data.bytes);
-				if (core) warmed(core);
 				keep(data.keep, [{ kind: "splice", bytes: data.bytes }]);
 				return;
 			case "part":
 				epoch += 1;
-				core = core && partedSearchCore(core, data.bytes, data.patches);
 				keep(data.keep, [
 					{ kind: "part", bytes: data.bytes },
 					...data.patches.map((bytes) => ({
@@ -196,10 +156,6 @@ export function serveSearch(port: SearchPort, store?: LibraryStore) {
 				return;
 			case "settle":
 				epoch += 1;
-				core = core && { ...core, columns: withSettledLatePart(core.columns) };
-				return;
-			case "ask":
-				answer(data.id, core ? answerOf(core, data.question) : null);
 				return;
 			case "stored":
 				void (store?.stored() ?? Promise.resolve(null)).then((stored) =>

@@ -27,6 +27,16 @@ import {
 import { readKeepLibrary } from "./keepLibrary";
 import { isLoaded, someFieldMoved } from "./libraryColumns";
 import {
+	declaredAgain,
+	holdAfterResult,
+	isDue,
+	isWaitingOnTime,
+	libraryEvents,
+	reportedReady,
+	retryWait,
+	type Waiting,
+} from "./libraryHolds";
+import {
 	apiVersionOf,
 	type Joined,
 	keepNote,
@@ -55,12 +65,6 @@ import {
 	playlistSnapshot,
 } from "./playlistEntries";
 import { retryFailedPlaylistReads } from "./playlistLoader";
-
-const LIBRARY_RETRY_MIN_MS = 5_000;
-const LIBRARY_RETRY_MAX_MS = 60_000;
-
-const retryWait = (failures: number) =>
-	Math.min(LIBRARY_RETRY_MIN_MS * 2 ** (failures - 1), LIBRARY_RETRY_MAX_MS);
 
 const CHECK_POLL_MS = 50;
 
@@ -371,20 +375,9 @@ function retryLatePart(origin: string) {
 		void loadLatePart(entry, origin);
 }
 
-type SummaryHold =
-	| { kind: "none" }
-	| { kind: "libraryReady" }
-	| { kind: "declaration" }
-	| { kind: "refused" }
-	| { kind: "tooFast"; until: number }
-	| { kind: "failing"; failures: number; failedAt: number };
-
-interface SummaryRead {
+interface SummaryRead extends Waiting {
 	asking: AbortController | null;
-	pair: LibraryGeneration | null;
 	tag: string | null;
-	hold: SummaryHold;
-	announced: StateDocument["library"] | null;
 }
 
 const summaryReads = new Map<string, SummaryRead>();
@@ -403,52 +396,6 @@ const summaryReadOf = (origin: string) => {
 	}
 	return read;
 };
-
-const isSummaryDue = ({ hold }: SummaryRead) => {
-	switch (hold.kind) {
-		case "none":
-			return true;
-		case "tooFast":
-			return Date.now() >= hold.until;
-		case "failing":
-			return Date.now() - hold.failedAt >= retryWait(hold.failures);
-		default:
-			return false;
-	}
-};
-
-const isWaitingOnTime = ({ hold }: SummaryRead) =>
-	hold.kind === "tooFast" || hold.kind === "failing";
-
-function holdAfter(
-	read: SummaryRead,
-	result: Awaited<ReturnType<typeof fetchLibrarySummary>>,
-): SummaryHold {
-	if (result.ok) return { kind: "none" };
-	switch (result.reason) {
-		case "notReady":
-			return { kind: "libraryReady" };
-		case "undeclared":
-			return { kind: "declaration" };
-		case "refused":
-			return { kind: "refused" };
-		case "tooFast":
-			return {
-				kind: "tooFast",
-				until: Date.now() + (result.retryAfterMs ?? LIBRARY_RETRY_MIN_MS),
-			};
-		default:
-			return {
-				kind: "failing",
-				failures: (read.hold.kind === "failing" ? read.hold.failures : 0) + 1,
-				failedAt: Date.now(),
-			};
-	}
-}
-
-// foo_jean reports a halted library ready with no build, and it never builds, so it is not settled.
-const isSettled = (library: StateDocument["library"] | null) =>
-	!!library && library.ready && !library.halted && !library.build;
 
 async function askSummary(entry: Entry, origin: string) {
 	const feed = entry.feed;
@@ -470,11 +417,7 @@ async function askSummary(entry: Entry, origin: string) {
 	if (asking.signal.aborted || !result) return;
 
 	read.asking = null;
-	read.hold = holdAfter(read, result);
-	if (!result.ok && result.reason === "notReady" && isSettled(read.announced)) {
-		read.hold = { kind: "none" };
-		return askSummary(entry, origin);
-	}
+	if (holdAfterResult(read, result)) return askSummary(entry, origin);
 	if (result.ok && result.kind === "summary") {
 		read.tag = result.tag;
 		keepSummary(origin, result.summary);
@@ -492,15 +435,13 @@ function summaryAfterMove(entry: Entry, origin: string) {
 	)
 		return;
 	if (!isWaitingOnTime(read)) read.hold = { kind: "none" };
-	if (isSummaryDue(read)) void askSummary(entry, origin);
+	if (isDue(read)) void askSummary(entry, origin);
 }
 
-// foo_jean answers 409 for an expression no export has declared, and an export that lands at the pair
-// already asked declares them again.
 function summaryAfterExport(entry: Entry, origin: string) {
+	libraryEvents.exported(origin);
 	const read = summaryReadOf(origin);
-	if (read.hold.kind !== "declaration") return summaryAfterMove(entry, origin);
-	read.hold = { kind: "none" };
+	if (!declaredAgain(read)) return summaryAfterMove(entry, origin);
 	void askSummary(entry, origin);
 }
 
@@ -508,22 +449,17 @@ function retrySummary(origin: string) {
 	const entry = heldEntry(componentLibraryKey(origin));
 	const read = summaryReads.get(origin);
 	if (!entry || !read || read.asking || !isWaitingOnTime(read)) return;
-	if (isSummaryDue(read)) void askSummary(entry, origin);
+	if (isDue(read)) void askSummary(entry, origin);
 }
 
-// foo_jean keeps reporting `ready` while a rebuild for a changed declaration runs, so a 202 with
-// `ready` true and a build under way is the pair already asked, not a new one.
 function summaryAnnounced(origin: string, library: StateDocument["library"]) {
 	const entry = heldEntry(componentLibraryKey(origin));
 	const read = summaryReadOf(origin);
-	read.announced = library;
-	if (!entry || read.hold.kind !== "libraryReady" || !library.ready) return;
-	const isAskedPair =
-		read.pair?.structure === library.structure &&
-		read.pair.revision === library.revision;
-	if ((library.build || library.halted) && isAskedPair) return;
-	read.hold = { kind: "none" };
-	void askSummary(entry, origin);
+	if (!entry) {
+		read.announced = library;
+		return;
+	}
+	if (reportedReady(read, library)) void askSummary(entry, origin);
 }
 
 function exportAgain(entry: Entry, origin: string) {
@@ -719,9 +655,11 @@ export const libraryPollFollower: PollFollower = {
 		void retryMissedLibraryRead(origin);
 		retryLatePart(origin);
 		retrySummary(origin);
+		libraryEvents.answered(origin);
 	},
 	libraryAnnounced: (origin, library) =>
-		void recheckComponentLibrary(origin, library).then(() =>
-			summaryAnnounced(origin, library),
-		),
+		void recheckComponentLibrary(origin, library).then(() => {
+			summaryAnnounced(origin, library);
+			libraryEvents.announced(origin, library);
+		}),
 };

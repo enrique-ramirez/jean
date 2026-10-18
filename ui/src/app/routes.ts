@@ -50,7 +50,7 @@ export const routeOfSuggestion = (
 	suggestion.kind === "artist"
 		? artistRoute(suggestion.artist.name)
 		: suggestion.kind === "album"
-			? albumRoute(suggestion.album.artistTag, suggestion.album.album)
+			? albumRoute(suggestion.album.artist, suggestion.album.album)
 			: genreRoute(suggestion.genre.name);
 
 export type RouteView =

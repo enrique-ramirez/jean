@@ -7,6 +7,7 @@ import {
 	useLayoutEffect,
 	useRef,
 } from "react";
+import { QuestionFailure } from "@/domain/library/QuestionFailure";
 import type { Library } from "@/domain/library/useLibrary";
 import type {
 	LibrarySearch,
@@ -16,11 +17,13 @@ import type {
 import {
 	artistOf,
 	coverIdentity,
+	coverKey,
 	FIELD,
 	titleOf,
 	value,
 } from "@/domain/track/fields";
 import { rowAt } from "@/domain/track/libraryColumns";
+import { libraryArtworkUrl } from "@/shared/api/artwork";
 import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import {
@@ -29,7 +32,7 @@ import {
 	useTranslate,
 } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
-import { BusyNote, busyProps, Skeleton } from "@/shared/ui/Skeleton";
+import { BusyNote, busyProps } from "@/shared/ui/Skeleton";
 import styles from "./SearchDropdown.module.css";
 
 export const optionId = (position: number) => `search-result-${position}`;
@@ -55,25 +58,6 @@ function Heading({
 	);
 }
 
-function PendingArtists() {
-	const t = useTranslate();
-
-	return (
-		// biome-ignore lint/a11y/useSemanticElements: a group of options inside a listbox is not a fieldset
-		<div role="group" {...busyProps(true)}>
-			<p className={styles.heading}>{t("search.section.artists")}</p>
-			<div className={styles.pending}>
-				<Skeleton width={ART} height={ART} className={styles.face} />
-				<span className={styles.text}>
-					<Skeleton width="40%" />
-					<Skeleton width="25%" />
-				</span>
-			</div>
-			<BusyNote />
-		</div>
-	);
-}
-
 const joined = (...parts: (string | null | false)[]) =>
 	parts.filter(Boolean).join(" · ");
 
@@ -88,6 +72,8 @@ function faceOf(
 	library: Library,
 	t: Translate,
 ): { key: string; leading: ReactNode; title: string; under: string } {
+	const coverAt = (path: string | null) =>
+		path === null ? null : libraryArtworkUrl(library.origin, path);
 	const cover = (ref: number, className: string) => (
 		<Artwork
 			src={library.source.artworkUrl(ref)}
@@ -101,13 +87,14 @@ function faceOf(
 		case "artist": {
 			const { artist } = suggestion;
 			return {
-				key: `artist:${artist.key}`,
-				leading:
-					artist.coverRefs.length > 0 ? (
-						cover(artist.coverRefs[0], styles.face)
-					) : (
-						<Artwork src={null} size={ART} className={styles.face} />
-					),
+				key: `artist:${artist.name}`,
+				leading: (
+					<Artwork
+						src={coverAt(artist.cover)}
+						size={ART}
+						className={styles.face}
+					/>
+				),
 				title: artist.name,
 				under: joined(
 					artist.albumCount > 0 &&
@@ -125,12 +112,20 @@ function faceOf(
 
 		case "album": {
 			const { album } = suggestion;
+			const identity = coverKey(album.artist, album.album);
 			return {
-				key: `album:${album.key}`,
-				leading: cover(album.refs[0], styles.cover),
+				key: identity,
+				leading: (
+					<Artwork
+						src={coverAt(album.cover)}
+						identity={identity}
+						size={ART}
+						className={styles.cover}
+					/>
+				),
 				title: album.album,
 				under: joined(
-					album.artistTag,
+					album.artist,
 					t("view.trackCount", {
 						count: album.trackCount,
 						total: album.trackCount,
@@ -142,7 +137,7 @@ function faceOf(
 		case "genre": {
 			const { genre } = suggestion;
 			return {
-				key: `genre:${genre.key}`,
+				key: `genre:${genre.name}`,
 				leading: (
 					<span className={styles.glyph} aria-hidden="true">
 						<Shapes size={17} strokeWidth={2} />
@@ -243,7 +238,7 @@ export function SearchDropdown({
 	const t = useTranslate();
 	const panel = useRef<HTMLDivElement | null>(null);
 	const list = useRef<HTMLDivElement | null>(null);
-	const { sections, suggestions } = search;
+	const { sections, suggestions, failure } = search;
 	const aimedAt = useEarnedHover(suggestions);
 
 	useAnchoredBounds(anchor, panel);
@@ -257,22 +252,36 @@ export function SearchDropdown({
 			?.scrollIntoView({ block: "nearest" });
 	}, [active]);
 
+	const isEmpty = suggestions.length === 0 && !failure;
 	let cursor = 0;
 
 	return (
 		<div className={styles.panel} ref={panel} {...swipe}>
-			{suggestions.length === 0 && !search.areArtistsPending ? (
+			{failure ? (
+				<QuestionFailure
+					{...failure}
+					className={styles.failure}
+					focusTo={() => search.inputRef.current}
+				/>
+			) : null}
+			{isEmpty && library.isLoading ? (
 				<p className={styles.notice}>
-					{library.isLoading
-						? t("search.reading", {
-								loaded: library.loaded,
-								total: library.total,
-							})
-						: t("search.noMatch")}
+					{t("search.reading", {
+						loaded: library.loaded,
+						total: library.total,
+					})}
 				</p>
-			) : (
+			) : null}
+			{isEmpty && !library.isLoading && search.isPending ? (
+				<div className={styles.waiting} {...busyProps(true)}>
+					<BusyNote />
+				</div>
+			) : null}
+			{isEmpty && !library.isLoading && !search.isPending ? (
+				<p className={styles.notice}>{t("search.noMatch")}</p>
+			) : null}
+			{suggestions.length > 0 ? (
 				<div className={styles.results} id={listId} role="listbox" ref={list}>
-					{search.areArtistsPending ? <PendingArtists /> : null}
 					{sections.map((section) => {
 						const sectionStart = cursor;
 						cursor += section.suggestions.length;
@@ -317,7 +326,7 @@ export function SearchDropdown({
 						);
 					})}
 				</div>
-			)}
+			) : null}
 		</div>
 	);
 }

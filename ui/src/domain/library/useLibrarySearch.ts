@@ -5,30 +5,35 @@ import {
 	useRef,
 	useState,
 } from "react";
-import type { Artist } from "@/domain/artist/artists";
 import { useSplitCredits } from "@/domain/artist/splitCredits";
 import { announcePlaybackRefusal } from "@/domain/player/playerWrite";
 import { useInSession } from "@/domain/player/session";
 import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import { usePlayer } from "@/domain/player/usePlayer";
 import { useResolvedPlaylistId } from "@/domain/player/usePlaylists";
-import type { Album } from "@/domain/track/albums";
-import { CREDIT_TAGS } from "@/domain/track/fields";
-import type { Genre } from "@/domain/track/genres";
 import {
 	isScratchPlaylist,
 	queryOfScratchPlaylist,
 } from "@/domain/track/jeanPlaylists";
-import { isLoaded } from "@/domain/track/libraryColumns";
 import { EMPTY_VIEW, project } from "@/domain/track/project";
-import type { SearchAnswer } from "@/domain/track/searchCore";
-import { useLibraryAnswer } from "@/domain/track/useLibraryAnswer";
+import { useLibraryQuestion } from "@/domain/track/useLibraryQuestion";
 import { switchRefusalOf } from "@/shared/api/client";
+import {
+	isQueryTooLong,
+	type LibrarySearchAnswer,
+	type NamedAlbum,
+	type NamedArtist,
+	type NamedGenre,
+	PREVIEW_ALBUMS,
+	PREVIEW_ARTISTS,
+	PREVIEW_GENRES,
+} from "@/shared/api/libraryQuestions";
 import { emptyOwnPlaylist } from "@/shared/api/playlists";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Phrase } from "@/shared/i18n/en";
-import { fuzzyScore, squash, TIER } from "@/shared/lib/text";
+import { fuzzyKey, fuzzyScore, squash, TIER } from "@/shared/lib/text";
+import { questionFailed } from "./questionFailed";
 import type { Library } from "./useLibrary";
 import { useWait } from "./useOverdue";
 import { titledAsLanded, useLandedScratch } from "./useScratchPlaylist";
@@ -36,27 +41,30 @@ import { titledAsLanded, useLandedScratch } from "./useScratchPlaylist";
 export type SearchSectionLabel = Extract<Phrase, `search.section.${string}`>;
 
 const PREVIEW_TRACKS = 8;
-const PREVIEW_ARTISTS = 2;
-const PREVIEW_ALBUMS = 3;
-const PREVIEW_GENRES = 1;
-
-const NOTHING_NAMED: {
-	artists: Artist[];
-	albums: Album[];
-	genres: Genre[];
-} = { artists: [], albums: [], genres: [] };
 
 const NO_PREVIEW = 0;
 
+const NOTHING_NAMED = { total: 0, top: [] };
+
+const NO_MATCH: LibrarySearchAnswer = {
+	matched: null,
+	matchCount: 0,
+	best: new Int32Array(0),
+	artists: NOTHING_NAMED,
+	albums: NOTHING_NAMED,
+	genres: NOTHING_NAMED,
+	namesATrack: false,
+};
+
 interface Answered {
 	query: string;
-	answer: SearchAnswer;
+	answer: LibrarySearchAnswer;
 }
 
 export type Suggestion =
-	| { kind: "artist"; artist: Artist }
-	| { kind: "album"; album: Album }
-	| { kind: "genre"; genre: Genre }
+	| { kind: "artist"; artist: NamedArtist }
+	| { kind: "album"; album: NamedAlbum }
+	| { kind: "genre"; genre: NamedGenre }
 	| { kind: "track"; ref: number };
 
 export interface SearchSection {
@@ -77,6 +85,12 @@ function entityOf(suggestion: Suggestion) {
 			return null;
 	}
 }
+
+const nameOf = (entity: NamedArtist | NamedAlbum | NamedGenre) =>
+	"album" in entity ? entity.album : entity.name;
+
+const isTooLong = (query: string) =>
+	query.trim() !== "" && isQueryTooLong(query);
 
 export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const { discovery, recheck } = useFooJean();
@@ -143,9 +157,10 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 
 	const { columns } = library;
 
+	const isDraftTooLong = isTooLong(deferredDraft);
 	const draftQuestion = useMemo(
 		() =>
-			deferredDraft.trim()
+			deferredDraft.trim() && !isDraftTooLong
 				? ({
 						kind: "search",
 						query: deferredDraft,
@@ -153,13 +168,14 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 						splitsCredits,
 					} as const)
 				: null,
-		[deferredDraft, splitsCredits],
+		[deferredDraft, isDraftTooLong, splitsCredits],
 	);
-	const draftSearch = useLibraryAnswer(draftQuestion, library, true);
+	const draftSearch = useLibraryQuestion(draftQuestion, library, true);
 
+	const isQueryLong = isTooLong(query);
 	const committedQuestion = useMemo(
 		() =>
-			query.trim() && query !== deferredDraft
+			query.trim() && query !== deferredDraft && !isQueryLong
 				? ({
 						kind: "search",
 						query,
@@ -167,15 +183,16 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 						splitsCredits,
 					} as const)
 				: null,
-		[query, deferredDraft, splitsCredits],
+		[query, deferredDraft, isQueryLong, splitsCredits],
 	);
-	const committedSearch = useLibraryAnswer(committedQuestion, library, true);
+	const committedSearch = useLibraryQuestion(committedQuestion, library, true);
 
 	const { answer: draftAnswer, answered: draftAsked } = draftSearch;
 	const { answer: committedAnswer, answered: committedAsked } = committedSearch;
 
 	const answeredFor = useCallback(
 		(asked: string): Answered | null => {
+			if (isTooLong(asked)) return { query: asked, answer: NO_MATCH };
 			if (draftAnswer && draftAsked?.query === asked)
 				return { query: asked, answer: draftAnswer };
 			if (committedAnswer && committedAsked?.query === asked)
@@ -205,38 +222,39 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		[library.snapshot, matched],
 	);
 
-	const suggested = draftAnswer;
-	const suggestedQuery = draftAsked?.query ?? "";
-	const named = suggested ?? NOTHING_NAMED;
+	const suggested = isDraftTooLong ? NO_MATCH : draftAnswer;
+	const suggestedQuery = isDraftTooLong
+		? deferredDraft
+		: (draftAsked?.query ?? "");
 
 	const sections = useMemo<SearchSection[]>(() => {
 		const built: SearchSection[] = [];
 
-		const { artists, albums, genres } = named;
+		const { artists, albums, genres } = suggested ?? NO_MATCH;
 
-		if (artists.length > 0)
+		if (artists.total > 0)
 			built.push({
 				label: "search.section.artists",
-				count: artists.length,
-				suggestions: artists
+				count: artists.total,
+				suggestions: artists.top
 					.slice(0, PREVIEW_ARTISTS)
 					.map((artist) => ({ kind: "artist", artist })),
 			});
 
-		if (albums.length > 0)
+		if (albums.total > 0)
 			built.push({
 				label: "search.section.albums",
-				count: albums.length,
-				suggestions: albums
+				count: albums.total,
+				suggestions: albums.top
 					.slice(0, PREVIEW_ALBUMS)
 					.map((album) => ({ kind: "album", album })),
 			});
 
-		if (genres.length > 0)
+		if (genres.total > 0)
 			built.push({
 				label: "search.section.genres",
-				count: genres.length,
-				suggestions: genres
+				count: genres.total,
+				suggestions: genres.top
 					.slice(0, PREVIEW_GENRES)
 					.map((genre) => ({ kind: "genre", genre })),
 			});
@@ -244,7 +262,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		if (suggested && suggested.best.length > 0)
 			built.push({
 				label: "search.section.tracks",
-				count: suggested.matched?.length ?? suggested.best.length,
+				count: suggested.matchCount || suggested.best.length,
 				suggestions: Array.from(suggested.best, (ref) => ({
 					kind: "track",
 					ref,
@@ -252,7 +270,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 			});
 
 		return built;
-	}, [named, suggested]);
+	}, [suggested]);
 
 	// One list in the order they are drawn, so the arrow keys need to know nothing about sections and
 	// a heading can never take the cursor.
@@ -261,20 +279,28 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		[sections],
 	);
 
+	const hasFailed = draftSearch.failure !== null;
+	const isFiltering = draft !== deferredDraft || draftSearch.isWaiting;
 	const preselect = useMemo(() => {
 		const wanted = suggestedQuery.trim();
-		if (!wanted || !suggested?.matched) return -1;
+		if (!wanted || !suggested?.matched || hasFailed) return -1;
 
 		const squashed = squash(wanted);
-		const exact = [...named.artists, ...named.albums, ...named.genres].filter(
-			(entity) => fuzzyScore(entity.match, squashed, TIER.exact) >= TIER.exact,
+		const exact = [
+			...suggested.artists.top,
+			...suggested.albums.top,
+			...suggested.genres.top,
+		].filter(
+			(entity) =>
+				fuzzyScore(fuzzyKey(nameOf(entity)), squashed, TIER.exact) >=
+				TIER.exact,
 		);
 		if (exact.length !== 1 || suggested.namesATrack) return -1;
 
 		return suggestions.findIndex(
 			(suggestion) => entityOf(suggestion) === exact[0],
 		);
-	}, [named, suggestions, suggested, suggestedQuery]);
+	}, [suggestions, suggested, suggestedQuery, hasFailed]);
 
 	const focus = useCallback(() => {
 		setIsOpen(true);
@@ -309,14 +335,15 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		suggestions,
 		preselect,
 		hasDraft: draft.trim().length > 0,
-		areArtistsPending:
-			draft.trim().length > 0 &&
-			columns.trackCount > 0 &&
-			(!isLoaded(columns, CREDIT_TAGS) ||
-				draftSearch.wasAnsweredWithCredits === false),
+		failure: questionFailed(draftSearch.failure, draftSearch.retry),
+		committedFailure:
+			query.trim() && query === deferredDraft
+				? questionFailed(draftSearch.failure, draftSearch.retry)
+				: questionFailed(committedSearch.failure, committedSearch.retry),
 		isEdited: draft !== query,
-		draftCount: draftAnswer?.matched?.length ?? 0,
-		isFiltering: draft !== deferredDraft || draftSearch.isWaiting,
+		draftCount: suggested?.matchCount ?? 0,
+		isFiltering,
+		isPending: suggestions.length === 0 && isFiltering,
 		suggestedQuery,
 		remembered,
 		restore,
@@ -330,7 +357,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		committedQuery: query,
 		hasQuery: query.trim().length > 0,
 		results: results ?? EMPTY_VIEW,
-		matchCount: matched?.length ?? 0,
+		matchCount: shown?.answer.matchCount ?? 0,
 		viewKey: `search:${(shown?.query ?? query).trim().toLowerCase()}`,
 		wait,
 	};

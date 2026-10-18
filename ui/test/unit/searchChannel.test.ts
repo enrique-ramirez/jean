@@ -1,27 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { FIELD } from "../../src/domain/track/fields.ts";
-import type { StoredEvent } from "../../src/domain/track/libraryStore.ts";
+import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
+import {
+	type KeepNote,
+	LIBRARY_FORMAT,
+	type StoredEvent,
+} from "../../src/domain/track/libraryStore.ts";
 import type { LibraryStore } from "../../src/domain/track/libraryStoreDb.ts";
 import {
 	type SearchPort,
 	serveSearch,
 } from "../../src/domain/track/searchChannel.ts";
 import { searchClient } from "../../src/domain/track/searchClient.ts";
-import type { SearchQuestion } from "../../src/domain/track/searchCore.ts";
-import {
-	type Change,
-	columnsOf,
-	freshKey,
-	generatedLibrary,
-	mainThreadAlbum,
-	mainThreadArtist,
-	mainThreadGenre,
-	mainThreadSearch,
-	patched,
-	searchLibraryOf,
-} from "./searchLibraries.ts";
+import { decodeJlib } from "../../src/shared/api/jlib.ts";
+import { generatedLibrary } from "./searchLibraries.ts";
 
 // Clones and transfers as `postMessage` does: a transferred buffer is detached on the sending side.
 
@@ -30,8 +23,6 @@ type Listener = (event: MessageEvent) => void;
 function fakeChannel() {
 	const listeners = { page: new Set<Listener>(), worker: new Set<Listener>() };
 	const sent = { page: [] as unknown[], worker: [] as unknown[] };
-	const held: (() => void)[] = [];
-	let holding = false;
 
 	const deliver = (to: "page" | "worker", data: unknown) =>
 		setImmediate(() => {
@@ -51,8 +42,7 @@ function fakeChannel() {
 					: (options?.transfer ?? []);
 				const data = structuredClone(message, { transfer });
 				sent[self].push(data);
-				if (self === "worker" && holding) held.push(() => deliver(other, data));
-				else deliver(other, data);
+				deliver(other, data);
 			},
 			addEventListener: (type: string, listener: Listener) => {
 				if (type === "message") listeners[self].add(listener);
@@ -63,19 +53,7 @@ function fakeChannel() {
 		} as SearchPort;
 	};
 
-	return {
-		page: end("page"),
-		worker: end("worker"),
-		sent,
-		heldCount: () => held.length,
-		hold: () => {
-			holding = true;
-		},
-		release: () => {
-			holding = false;
-			for (const send of held.splice(0)) send();
-		},
-	};
+	return { page: end("page"), worker: end("worker"), sent };
 }
 
 const turn = () => new Promise((resolve) => setImmediate(resolve));
@@ -112,6 +90,9 @@ const buffers = (value: unknown, into: ArrayBuffer[] = []): ArrayBuffer[] => {
 		for (const item of Object.values(value)) buffers(item, into);
 	return into;
 };
+
+const typesOf = (messages: unknown[]) =>
+	messages.map((message) => (message as { type: string }).type);
 
 test("the export reaches the worker as its own bytes, by transfer, and no value of it as a string", () => {
 	const held = library();
@@ -175,234 +156,156 @@ test("a delta reaches the worker as its own bytes, by transfer", async () => {
 	);
 });
 
-const MOVED_TO = {
-	title: "Zafiro",
-	artist: "Nadie Más",
-	album: "Ópalo Nuevo",
-	genre: "Bossa",
-};
+test("the worker answers no question: a search posted to it after a load gets no reply", async () => {
+	const { channel, client } = connected();
+	client.load(library().exported().slice(0));
 
-function movedRecord(rows: string[][]) {
-	const album = rows[0][FIELD.album];
-	const albumArtist = rows[0][FIELD.albumArtist];
-	const ordinals = rows.flatMap((row, ordinal) =>
-		row[FIELD.album] === album && row[FIELD.albumArtist] === albumArtist
-			? [ordinal]
-			: [],
+	channel.page.postMessage(
+		{
+			type: "ask",
+			id: 1,
+			question: { kind: "search", query: "a", limit: 8, splitsCredits: false },
+		},
+		[],
 	);
-	const changes: Change[] = ordinals.flatMap((ordinal) => [
-		{ ordinal, field: FIELD.title, value: MOVED_TO.title },
-		{ ordinal, field: FIELD.artist, value: MOVED_TO.artist },
-		{ ordinal, field: FIELD.albumArtist, value: MOVED_TO.artist },
-		{ ordinal, field: FIELD.album, value: MOVED_TO.album },
-		{ ordinal, field: FIELD.genre, value: MOVED_TO.genre },
-	]);
-	return { changes, album, albumArtist };
-}
+	await client.stored();
 
-type Answered = ReturnType<typeof normalised>;
-
-const listed = (refs: ArrayLike<number> | null | undefined) =>
-	refs == null ? null : Array.from(refs);
-
-// biome-ignore lint/suspicious/noExplicitAny: an answer of whichever kind was asked
-function normalised(question: SearchQuestion, answer: any) {
-	switch (question.kind) {
-		case "search":
-			return {
-				matched: listed(answer.matched),
-				best: Array.from(answer.best as ArrayLike<number>),
-				artists: answer.artists.map((entity: { key: string }) => entity.key),
-				albums: answer.albums.map((entity: { key: string }) => entity.key),
-				genres: answer.genres.map((entity: { key: string }) => entity.key),
-				namesATrack: answer.namesATrack,
-			};
-		case "album":
-			return {
-				refs: listed(answer.refs),
-				album: answer.album,
-				artist: answer.artist,
-			};
-		case "artist":
-			return {
-				own: listed(answer.own),
-				shared: listed(answer.shared),
-				guest: listed(answer.guest),
-				all: listed(answer.all),
-			};
-		case "genre":
-			return listed(answer);
-	}
-}
-
-function mainThreadAnswer(
-	columns: ReturnType<typeof columnsOf>,
-	question: SearchQuestion,
-): Answered {
-	switch (question.kind) {
-		case "search":
-			return mainThreadSearch(
-				columns,
-				freshKey(),
-				question.query,
-				question.limit,
-				question.splitsCredits,
-			);
-		case "album":
-			return mainThreadAlbum(columns, question.artist, question.album);
-		case "artist":
-			return mainThreadArtist(columns, question.artist, question.splitsCredits);
-		case "genre":
-			return mainThreadGenre(columns, question.genre);
-	}
-}
-
-function questionsAbout(record: { album: string; albumArtist: string }) {
-	const questions: { name: string; question: SearchQuestion }[] = [
-		{
-			name: "a search",
-			question: {
-				kind: "search",
-				query: MOVED_TO.title.toLowerCase(),
-				limit: 8,
-				splitsCredits: true,
-			},
-		},
-		{
-			name: "an album page",
-			question: {
-				kind: "album",
-				artist: record.albumArtist,
-				album: record.album,
-			},
-		},
-		{
-			name: "an artist page",
-			question: {
-				kind: "artist",
-				artist: MOVED_TO.artist,
-				splitsCredits: true,
-			},
-		},
-		{
-			name: "a genre page",
-			question: { kind: "genre", genre: MOVED_TO.genre },
-		},
-	];
-	return questions;
-}
-
-for (const change of ["a delta", "a new export"] as const)
-	test(`after ${change}, an answer asked before it is dropped and the next is the new library's`, async (t) => {
-		for (const { name, question } of questionsAbout(
-			movedRecord(library().rows),
-		))
-			await t.test(name, async () => {
-				const held = library();
-				const record = movedRecord(held.rows);
-				const before = columnsOf(held.exported());
-				const { channel, client } = connected();
-				client.load(held.exported().slice(0));
-				await client.ask(question);
-
-				const delta = held.change(record.changes);
-				const after = patched(before, delta);
-				const old = mainThreadAnswer(before, question);
-				const fresh = mainThreadAnswer(after, question);
-				assert.notDeepEqual(old, fresh, "the change moves no answer");
-
-				channel.hold();
-				const asked = client.ask(question);
-				await until(
-					() => channel.heldCount() > 0,
-					"the worker answered the question asked before the change",
-				);
-
-				if (change === "a delta") client.patch(delta);
-				else
-					client.load(
-						searchLibraryOf(held.rows.map((row) => [...row]))
-							.exported()
-							.slice(0),
-					);
-				const next = client.ask(question);
-				await until(
-					() => channel.heldCount() > 1,
-					"the worker answered the question asked after the change",
-				);
-				channel.release();
-
-				assert.equal(
-					await asked,
-					null,
-					"an answer from the old library was handed back",
-				);
-				assert.deepEqual(normalised(question, await next), fresh);
-			});
-	});
+	assert.deepEqual(typesOf(channel.sent.worker), ["stored"]);
+});
 
 const PAST_ANY_BOUND_MS = 60_000;
 
-function slowStore(events: () => StoredEvent[]) {
-	let finish = () => {};
+const noteFor = (structure: number, revision: number): KeepNote => ({
+	snapshotId: "00000000000000a1",
+	trackCount: 300,
+	structure,
+	revision,
+	declaration: TRACK_EXPRESSIONS,
+	format: LIBRARY_FORMAT,
+	apiVersion: 1,
+	isWhole: true,
+});
+
+function recordingStore(restore: () => Promise<StoredEvent[] | null>) {
+	const keeps: { note: KeepNote; events: StoredEvent[] }[] = [];
 	const store: LibraryStore = {
 		build: "build-a",
-		keep: () => {},
+		keep: (events, note) => {
+			keeps.push({ note, events });
+		},
 		stored: async () => null,
-		restore: () =>
-			new Promise((resolve) => {
-				finish = () => resolve(events());
-			}),
+		restore,
 		forget: async () => {},
 	};
-	return { store, finish: () => finish() };
+	return { store, keeps };
 }
 
-test("a restore answered after the page gave up on it never replaces the library loaded since", async (t) => {
-	t.mock.timers.enable({ apis: ["setTimeout"] });
+const pairOf = (bytes: ArrayBuffer) => {
+	const decoded = decodeJlib(bytes);
+	return { structure: decoded.structure, revision: decoded.revision };
+};
 
-	const stale = generatedLibrary(1, 60);
-	const fresh = generatedLibrary(2, 40);
-	const question: SearchQuestion = {
-		kind: "search",
-		query: "a",
-		limit: 8,
-		splitsCredits: false,
-	};
-	const answerOfFresh = mainThreadAnswer(columnsOf(fresh.exported()), question);
+test("a restore under a new pair hands the page one copy re-keyed to that pair, and stores it under that pair", async () => {
+	const held = library();
+	const exported = held.exported().slice(0);
+	const delta = held.change([
+		{ ordinal: 3, field: FIELD.playCount, value: "61" },
+	]);
+	const note = noteFor(21, 1);
 	assert.notDeepEqual(
-		mainThreadAnswer(columnsOf(stale.exported()), question),
-		answerOfFresh,
-		"the stored library and the player's answer the question alike",
+		pairOf(exported),
+		{ structure: note.structure, revision: note.revision },
+		"the stored copy is already under the new pair",
 	);
 
 	const channel = fakeChannel();
-	const { store, finish } = slowStore(() => [
-		{ kind: "load", bytes: stale.exported().slice(0) },
+	const { store, keeps } = recordingStore(async () => [
+		{ kind: "load", bytes: exported.slice(0) },
+		{ kind: "delta", bytes: delta.slice(0) },
 	]);
 	serveSearch(channel.worker, store);
 	const client = searchClient(channel.page);
 
-	const restoring = client.restore();
+	const events = await client.restore(note);
+	assert.ok(events, "the page was handed nothing");
+	assert.deepEqual(
+		events.map(({ kind }) => kind),
+		["load"],
+	);
+	assert.deepEqual(pairOf(events[0].bytes), {
+		structure: note.structure,
+		revision: note.revision,
+	});
+
+	assert.equal(keeps.length, 1, "stores kept");
+	assert.deepEqual(keeps[0].note, note);
+	assert.deepEqual(
+		keeps[0].events.map(({ kind, bytes }) => ({ kind, ...pairOf(bytes) })),
+		[{ kind: "load", structure: note.structure, revision: note.revision }],
+	);
+});
+
+test("a restore answered after the page gave up on it never replaces the library stored since", async (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout"] });
+
+	const stale = generatedLibrary(1, 60).exported();
+	const fresh = generatedLibrary(2, 40).exported();
+	const freshNote = noteFor(30, 0);
+
+	let finish = () => {};
+	const channel = fakeChannel();
+	const { store, keeps } = recordingStore(
+		() =>
+			new Promise((resolve) => {
+				finish = () => resolve([{ kind: "load", bytes: stale.slice(0) }]);
+			}),
+	);
+	serveSearch(channel.worker, store);
+	const client = searchClient(channel.page);
+
+	const restoring = client.restore(noteFor(21, 1));
 	await turn();
 	t.mock.timers.tick(PAST_ANY_BOUND_MS);
 	assert.equal(await restoring, null, "the page was handed the late copy");
 
-	client.load(fresh.exported().slice(0));
-	assert.deepEqual(
-		normalised(question, await client.ask(question)),
-		answerOfFresh,
-	);
+	client.load(fresh.slice(0), freshNote);
+	await until(() => keeps.length > 0, "the new library was stored");
 
 	finish();
+	await client.stored();
+
 	assert.deepEqual(
-		normalised(question, await client.ask(question)),
-		answerOfFresh,
-		"the late restore replaced the library the page loaded",
+		keeps.map(({ note, events }) => ({
+			note,
+			events: events.map(({ kind, bytes }) => ({
+				kind,
+				byteLength: bytes.byteLength,
+			})),
+		})),
+		[
+			{
+				note: freshNote,
+				events: [{ kind: "load", byteLength: fresh.byteLength }],
+			},
+		],
+		"the late restore stored over the library the page loaded",
 	);
 });
 
-test("a question the worker never answers still settles", async (t) => {
+test("a stored copy that does not replay is restored as nothing, and nothing is stored in its place", async () => {
+	const channel = fakeChannel();
+	const { store, keeps } = recordingStore(async () => [
+		{ kind: "load", bytes: new Uint8Array([1, 2, 3, 4]).buffer },
+	]);
+	serveSearch(channel.worker, store);
+	const client = searchClient(channel.page);
+
+	assert.equal(await client.restore(), null, "restored as it was stored");
+	assert.equal(await client.restore(noteFor(21, 1)), null, "restored re-keyed");
+	assert.deepEqual(keeps, []);
+});
+
+test("a stored copy and a restore the worker never answers still settle, as nothing", async (t) => {
 	t.mock.timers.enable({ apis: ["setTimeout"] });
 
 	const silent: SearchPort = {
@@ -412,13 +315,12 @@ test("a question the worker never answers still settles", async (t) => {
 	const client = searchClient(silent);
 	client.load(library().exported().slice(0));
 
-	let isSettled = false;
-	void client.ask({ kind: "genre", genre: "Bossa" }).finally(() => {
-		isSettled = true;
-	});
+	const settled: unknown[] = [];
+	void client.stored().then((copy) => settled.push(copy));
+	void client.restore().then((events) => settled.push(events));
 
 	await turn();
 	t.mock.timers.tick(PAST_ANY_BOUND_MS);
 	await turn();
-	assert.equal(isSettled, true, "the question is still waiting");
+	assert.deepEqual(settled, [null, null]);
 });

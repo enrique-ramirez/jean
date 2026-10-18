@@ -13,7 +13,6 @@ import { useViewPlayback } from "@/domain/library/useViewPlayback";
 import { SCRATCH_KIND, type ScratchKind } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
 import type { TrackView } from "@/domain/track/project";
-import { href, ROUTE } from "@/domain/track/routes";
 import { summarise, type TrackStats } from "@/domain/track/stats";
 import { type PageHeading, TrackPage } from "@/domain/track/TrackPage";
 import { useFinder } from "@/domain/track/useFinder";
@@ -32,17 +31,14 @@ const FINDER_LABEL: Record<string, FinderPhrase> = {
 	[SCRATCH_KIND.artist]: "finder.inArtist",
 };
 
-const summaries = new WeakMap<
-	TrackView,
-	{ countsGenres: boolean; summary: ReturnType<typeof summarise> }
->();
+const summaries = new WeakMap<TrackView, TrackStats>();
 
-const summaryOf = (view: TrackView, countsGenres: boolean) => {
+const summaryOf = (view: TrackView) => {
 	const held = summaries.get(view);
-	if (held?.countsGenres === countsGenres) return held.summary;
+	if (held) return held;
 
-	const summary = summarise(view, countsGenres ? undefined : { genres: 0 });
-	summaries.set(view, { countsGenres, summary });
+	const summary = summarise(view);
+	summaries.set(view, summary);
 	return summary;
 };
 
@@ -92,7 +88,7 @@ export function LibraryListView({
 
 	const isGenre = kind === SCRATCH_KIND.genre;
 
-	const counted = wait.isWaiting ? null : summaryOf(view, !isGenre);
+	const counted = wait.isWaiting ? null : summaryOf(view);
 	const kept = useKeptStats(pageKey, counted);
 	const stats = counted ?? (wait.isOverdue ? null : kept);
 
@@ -156,8 +152,6 @@ export function LibraryListView({
 			heading={heading}
 			stats={stats}
 			wait={wait}
-			countsGenres={!isGenre}
-			allGenresHref={kind === SCRATCH_KIND.all ? href(ROUTE.genres) : undefined}
 			mosaicSeed={`${kind}:${label}`}
 			canPlaySets={canPlaySets}
 			actions={

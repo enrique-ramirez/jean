@@ -18,8 +18,12 @@ import {
 	holdRequests,
 	OFFERS_NO_SHUFFLE,
 	test,
+	titlesIn,
+	trackRow,
+	untilQuiet,
 	viewHeader,
 } from "./fixtures.ts";
+import { openRowMenu } from "./menus.ts";
 import { scrollTo, scrollTop } from "./scrolling.ts";
 
 type Figure = "albums" | "tracks" | "duration" | "span";
@@ -1356,7 +1360,7 @@ test.describe("on a phone", () => {
 
 test.describe("what the header no longer carries", () => {
 	for (const view of [ALL_MUSIC, THE_ARTIST])
-		test(`${view.name} draws no played meter, no genre and no All genres`, async ({
+		test(`${view.name} draws no played meter and no genre`, async ({
 			page,
 			player,
 		}) => {
@@ -1367,10 +1371,144 @@ test.describe("what the header no longer carries", () => {
 			await expect(viewHeader(page).locator('a[href^="#/genre/"]')).toHaveCount(
 				0,
 			);
-			await expect(
-				viewHeader(page).getByText(en["view.allGenres"]),
-			).toHaveCount(0);
 		});
+});
+
+const SUBPIXEL_SLACK = 1;
+
+const bottomRuleOf = (locator: Locator) =>
+	locator.evaluate((element) => {
+		const style = getComputedStyle(element);
+		return {
+			width: Number.parseFloat(style.borderBottomWidth),
+			style: style.borderBottomStyle,
+			bottom: element.getBoundingClientRect().bottom,
+		};
+	});
+
+const toolbarTop = (page: Page) =>
+	page.getByRole("group", { name: "Track layout" }).evaluate((toggle) => {
+		let bar: HTMLElement | null = toggle.parentElement;
+		while (bar && getComputedStyle(bar).position !== "sticky")
+			bar = bar.parentElement;
+		if (!bar) throw new Error("the layout toggle is in no sticky bar");
+		return bar.getBoundingClientRect().top;
+	});
+
+const THE_TRACKS_TAB: View = {
+	name: "the artist's Tracks tab",
+	path: () => artistRoute("Babasónicos", "tracks"),
+	title: "Babasónicos",
+};
+
+test.describe("the header's bottom edge", () => {
+	for (const view of [ALL_MUSIC, THE_PLAYLIST, THE_TRACKS_TAB])
+		test(`on ${view.name}, the list's toolbar follows the header's rule directly`, async ({
+			page,
+			player,
+		}) => {
+			await openView(page, player, view);
+			await expect(figure(page, "tracks")).toBeVisible();
+
+			const header = await bottomRuleOf(viewHeader(page));
+			const tabs = viewHeader(page).getByRole("navigation");
+			const edge = (await tabs.count()) > 0 ? await bottomRuleOf(tabs) : header;
+			expect(edge.style).toBe("solid");
+			expect(edge.width).toBeGreaterThanOrEqual(1);
+			expect(
+				Math.abs((await toolbarTop(page)) - header.bottom),
+			).toBeLessThanOrEqual(SUBPIXEL_SLACK);
+		});
+
+	test("on the artist page, the tab strip is the header's one rule", async ({
+		page,
+		player,
+	}) => {
+		await openView(page, player, THE_ARTIST);
+		await expect(figure(page, "tracks")).toBeVisible();
+
+		const header = await bottomRuleOf(viewHeader(page));
+		const tabs = await bottomRuleOf(viewHeader(page).getByRole("navigation"));
+		expect(header.width).toBe(0);
+		expect(tabs.style).toBe("solid");
+		expect(tabs.width).toBeGreaterThanOrEqual(1);
+		expect(Math.abs(tabs.bottom - header.bottom)).toBeLessThanOrEqual(
+			SUBPIXEL_SLACK,
+		);
+	});
+});
+
+// A removal shrinks the rows at once, and the playlist's own item count moves only when the
+// playlist list is read again. A figure line that waits for the two to agree goes blank on every
+// removal, for as long as that read takes.
+const recordBlanking = (page: Page) =>
+	page.evaluate(() => {
+		const seen = { figureLost: false };
+		Reflect.set(window, "__blanking", seen);
+		const look = () => {
+			if (
+				!document.querySelector(
+					'main header p[data-figures] span[data-figure="tracks"]',
+				)
+			)
+				seen.figureLost = true;
+		};
+		new MutationObserver(look).observe(document.body, {
+			subtree: true,
+			childList: true,
+			attributes: true,
+			characterData: true,
+		});
+		look();
+	});
+
+const figureLost = (page: Page) =>
+	page.evaluate(
+		() =>
+			(Reflect.get(window, "__blanking") as { figureLost: boolean }).figureLost,
+	);
+
+test.describe("the figure line through a playlist removal", () => {
+	test("keeps its figures through the removal, and counts one track fewer once it lands", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const key = "p5";
+		const before = titlesIn(player, key).map(String);
+		await page.goto(`/#/${guidOfPlaylist(player, key)}`);
+		await expect(trackRow(page, 0)).toBeAttached();
+		await expect(figure(page, "tracks")).toHaveText(`${before.length} tracks`);
+
+		const list = await holdRequests(
+			page,
+			(request) =>
+				request.method() === "GET" &&
+				new URL(request.url()).pathname === "/api/playlists",
+		);
+		await openRowMenu(page, isMobile, 1, "Add to queue");
+		await recordBlanking(page);
+		await page.getByRole("menuitem", { name: "Remove from playlist" }).click();
+
+		await expectSettlesAt(
+			player,
+			() => titlesIn(player, key).map(String),
+			before.filter((_, at) => at !== 1),
+		);
+		const after = before.length - 1;
+		await expect(figure(page, "tracks")).toHaveText(`${after} tracks`);
+		await list.untilHeld();
+		await expect(figure(page, "tracks")).toHaveText(`${after} tracks`);
+		expect(await figureLost(page), "while the playlist list was held").toBe(
+			false,
+		);
+		list.releaseAll();
+		await untilQuiet(player);
+		await expect(figure(page, "tracks")).toHaveText(`${after} tracks`);
+		expect(await figureLost(page), "once the playlist list had answered").toBe(
+			false,
+		);
+	});
 });
 
 test.describe("while the figures are being counted", () => {

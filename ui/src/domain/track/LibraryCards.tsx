@@ -52,23 +52,18 @@ export function LibraryCards({
 	stats,
 	rows,
 	hasPlayCounts,
-	countsGenres,
-	allGenresHref,
 	isOverdue,
 }: {
 	stats: TrackStats | null;
 	rows: TrackRows;
 	hasPlayCounts: boolean;
-	countsGenres: boolean;
-	allGenresHref?: string;
 	isOverdue: boolean;
 }) {
 	const t = useTranslate();
 	const format = useFormats();
 	const headingId = useId();
 
-	const showsGenres =
-		countsGenres && (stats === null || stats.topGenres.length > 0);
+	const showsGenres = stats === null || stats.topGenres.length > 0;
 	const showsMostPlayed =
 		hasPlayCounts && (stats === null || stats.mostPlayed !== null);
 	if (stats !== null && stats.trackCount === 0) return null;
@@ -172,14 +167,6 @@ export function LibraryCards({
 										href={href(genreRoute(genre.name))}
 									/>
 								))}
-								{allGenresHref && stats.genreCount > stats.topGenres.length ? (
-									<Chip
-										label={t("view.allGenres")}
-										value={format.number(stats.genreCount)}
-										href={allGenresHref}
-										title={t("view.everyGenre")}
-									/>
-								) : null}
 							</div>
 						)}
 					</Card>

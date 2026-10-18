@@ -2,7 +2,6 @@ import { GENRE_EXPRESSION } from "../../src/shared/api/multiValue.ts";
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
-	openLibrary,
 	openSidebar,
 	requestsTo,
 	rowByTitle,
@@ -168,27 +167,6 @@ test.describe("the ways in", () => {
 		const genres = labels.findIndex((entry) => entry.startsWith("Genres"));
 
 		expect(genres).toBe(all + 1);
-	});
-
-	test("All music's chips open a genre, and the last one opens the index", async ({
-		page,
-	}) => {
-		await openLibrary(page);
-		await page.goto("/#/all");
-
-		await expect(
-			page
-				.locator("[data-library-cards]")
-				.getByRole("link", { name: /All genres/ }),
-		).toHaveAttribute("href", "#/genres");
-
-		await page
-			.locator("[data-library-cards]")
-			.getByRole("link", { name: /Post Rock/ })
-			.click();
-		await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-			"Post Rock",
-		);
 	});
 
 	test("a genre view carries the way back to the index", async ({ page }) => {

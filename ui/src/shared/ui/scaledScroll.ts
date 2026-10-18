@@ -67,7 +67,9 @@ export function contentOffsetOf<T extends Element>(
 	scrollTop: number,
 ): number {
 	const { margin, total, viewport, isScaled } = shape(instance);
-	const local = scrollTop - margin;
+	// A browser reports a scroller's height, viewport and offset in whole pixels and lays them out in
+	// fractions, so at the bottom the offset can read a pixel past the furthest the list reaches.
+	const local = Math.min(scrollTop - margin, scaledHeight(total) - viewport);
 	if (!isScaled || local <= 0) return scrollTop;
 	return margin + toContentOffset(local, total, viewport);
 }

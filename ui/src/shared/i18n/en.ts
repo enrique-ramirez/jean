@@ -912,9 +912,7 @@ export const en = {
 	"track.unknownAlbum": "Unknown album",
 	"track.unknownArtist": "Unknown artist",
 	"track.unknownTitle": "Unknown title",
-	"view.allGenres": "All genres",
 	"view.backToTop": "Back to the top of {place}",
-	"view.everyGenre": "Every genre in your library",
 	"view.trackCount": {
 		one: "{total} track",
 		other: "{total} tracks",

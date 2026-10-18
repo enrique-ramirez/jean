@@ -246,7 +246,6 @@ export function ArtistView({
 					stats={stats}
 					rows={own}
 					hasPlayCounts={hasPlayCounts}
-					countsGenres
 					isOverdue={wait.isOverdue}
 				/>
 			) : null}

@@ -173,7 +173,6 @@ test("the figures the summary already gave are the same beside the plays", () =>
 		seconds: 700,
 		earliest: 1968,
 		latest: 1975,
-		genreCount: 2,
 		topGenres: [
 			{ name: "Jazz", count: 3, share: 75 },
 			{ name: "Soul", count: 1, share: 25 },

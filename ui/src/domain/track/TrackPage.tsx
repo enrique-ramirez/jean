@@ -2,9 +2,7 @@ import type { ReactNode, RefObject } from "react";
 import { NO_WAIT, type Wait } from "@/domain/library/useOverdue";
 import { useIsPlaying } from "@/domain/player/usePlayer";
 import { useTranslate } from "@/shared/i18n/useTranslate";
-import { useAvailableFields } from "./fieldAvailability";
 import { coverIdentity, FIELD, value } from "./fields";
-import { LibraryCards } from "./LibraryCards";
 import type { TrackBrowserHandle } from "./listTypes";
 import { PlayActions } from "./PlayActions";
 import type { TrackStats } from "./stats";
@@ -28,8 +26,6 @@ type TrackPageProps = Omit<
 	mosaicSeed: string;
 	canPlaySets?: boolean;
 	actions?: ReactNode;
-	countsGenres?: boolean;
-	allGenresHref?: string;
 };
 
 export function TrackPage({
@@ -40,12 +36,9 @@ export function TrackPage({
 	mosaicSeed,
 	canPlaySets,
 	actions,
-	countsGenres = true,
-	allGenresHref,
 	...browser
 }: TrackPageProps) {
 	const isPlaying = useIsPlaying();
-	const { hasPlayCounts } = useAvailableFields();
 	const t = useTranslate();
 	const { source, rows } = browser;
 	const first = heading?.showsCover && rows.length > 0 ? rows.at(0) : null;
@@ -63,40 +56,30 @@ export function TrackPage({
 			ref={browserRef}
 			isPlaying={isPlaying}
 			header={
-				<>
-					{heading ? (
-						<ViewHeader
-							eyebrow={heading.eyebrow}
-							title={heading.title}
-							stats={stats}
-							isStatsPending={wait.isOverdue}
-							cover={cover}
-							covers={{
-								source: browser.source,
-								rows: browser.rows,
-								seed: mosaicSeed,
-							}}
-							actions={
-								<PlayActions
-									browserRef={browserRef}
-									trackCount={browser.rows.length}
-									wait={wait}
-									canPlaySets={canPlaySets}
-								>
-									{actions}
-								</PlayActions>
-							}
-						/>
-					) : null}
-					<LibraryCards
+				heading ? (
+					<ViewHeader
+						eyebrow={heading.eyebrow}
+						title={heading.title}
 						stats={stats}
-						rows={browser.rows}
-						hasPlayCounts={hasPlayCounts}
-						countsGenres={countsGenres}
-						allGenresHref={allGenresHref}
-						isOverdue={wait.isOverdue}
+						isStatsPending={wait.isOverdue}
+						cover={cover}
+						covers={{
+							source: browser.source,
+							rows: browser.rows,
+							seed: mosaicSeed,
+						}}
+						actions={
+							<PlayActions
+								browserRef={browserRef}
+								trackCount={browser.rows.length}
+								wait={wait}
+								canPlaySets={canPlaySets}
+							>
+								{actions}
+							</PlayActions>
+						}
 					/>
-				</>
+				) : null
 			}
 		/>
 	);

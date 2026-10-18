@@ -820,9 +820,7 @@
 	"track.unknownAlbum": "Álbum desconocido",
 	"track.unknownArtist": "Artista desconocido",
 	"track.unknownTitle": "Título desconocido",
-	"view.allGenres": "Todos los géneros",
 	"view.backToTop": "Volver al principio de {place}",
-	"view.everyGenre": "Todos los géneros de tu biblioteca",
 	"view.trackCount": {
 		"one": "{total} canción",
 		"other": "{total} canciones"

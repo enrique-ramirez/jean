@@ -6,11 +6,16 @@
 	min-height: 320px;
 	gap: 13px;
 	padding: 28px 24px 20px;
+	border-bottom: 1px solid var(--border);
 }
 
 .tabs {
 	position: relative;
 	margin: 0 -24px -20px;
+}
+
+.header[data-tabs="true"] {
+	border-bottom: 0;
 }
 
 /* On the strip rather than on this wrapper: padding insets the labels, where a border sits outside it

@@ -14,7 +14,7 @@ const MINUTE = 60;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-export function summarise(rows: TrackRows, { genres = TOP_GENRES } = {}) {
+export function summarise(rows: TrackRows) {
 	const { columns } = rows;
 	const duration = columns.fields[FIELD.duration];
 	const year = columns.fields[FIELD.year];
@@ -30,7 +30,6 @@ export function summarise(rows: TrackRows, { genres = TOP_GENRES } = {}) {
 	let seconds = 0;
 	let earliest: number | null = null;
 	let latest: number | null = null;
-	let tagged = 0;
 	let plays = 0;
 	let unplayed = 0;
 	let lastPlayed: number | null = null;
@@ -57,10 +56,7 @@ export function summarise(rows: TrackRows, { genres = TOP_GENRES } = {}) {
 		if (at !== null && (lastPlayed === null || at > lastPlayed))
 			lastPlayed = at;
 
-		for (const group of tags.of[genre.ids[ref]]) {
-			if (counts[group] === 0) tagged += 1;
-			counts[group] += 1;
-		}
+		for (const group of tags.of[genre.ids[ref]]) counts[group] += 1;
 	}
 
 	const named = tags.keys
@@ -73,8 +69,7 @@ export function summarise(rows: TrackRows, { genres = TOP_GENRES } = {}) {
 		seconds,
 		earliest,
 		latest,
-		genreCount: tagged,
-		topGenres: named.slice(0, genres).map(({ name, count }) => ({
+		topGenres: named.slice(0, TOP_GENRES).map(({ name, count }) => ({
 			name,
 			count,
 			share: Math.round((count / rows.length) * 100),

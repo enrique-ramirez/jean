@@ -4,6 +4,7 @@
 #include "support/summary_cases.h"
 
 #include <array>
+#include <initializer_list>
 #include <span>
 #include <string>
 #include <string_view>
@@ -92,5 +93,174 @@ TEST_CASE("a tag that is not UTF-8 still gets a key") {
         CAPTURE(tag);
         const std::vector<char> bytes(tag.begin(), tag.end());
         CHECK_NOTHROW(static_cast<void>(tagKey(std::string_view(bytes.data(), bytes.size()))));
+    }
+}
+
+// Each entry is what ui/src/shared/lib/text.ts answered for its text in a JavaScript engine, so the
+// component folds a tag to the same string a browser folds it to.
+namespace {
+const nlohmann::json& foldCases() {
+    const nlohmann::json& entries =
+        jean::testing::casesIn("library_questions_cases.json").at("fold");
+    REQUIRE(!entries.empty());
+    return entries;
+}
+}  // namespace
+
+TEST_CASE("every text in the cases file folds to the string a browser folds it to") {
+    for (const nlohmann::json& entry : foldCases()) {
+        const std::string text = entry.at("text").get<std::string>();
+        CAPTURE(text);
+        CHECK(fold(text) == entry.at("fold").get<std::string>());
+    }
+}
+
+TEST_CASE("every text in the cases file squashes to the string a browser squashes it to") {
+    for (const nlohmann::json& entry : foldCases()) {
+        const std::string text = entry.at("text").get<std::string>();
+        CAPTURE(text);
+        CHECK(squash(text) == entry.at("squash").get<std::string>());
+    }
+}
+
+TEST_CASE("every text in the cases file splits into the folded words a browser splits it into") {
+    for (const nlohmann::json& entry : foldCases()) {
+        const std::string text = entry.at("text").get<std::string>();
+        CAPTURE(text);
+        CHECK(foldedWords(text) == entry.at("tokenize").get<std::vector<std::string>>());
+    }
+}
+
+TEST_CASE("every text in the cases file is as long as a browser counts it, in UTF-16 code units") {
+    for (const nlohmann::json& entry : foldCases()) {
+        const std::string text = entry.at("text").get<std::string>();
+        CAPTURE(text);
+        CHECK(utf16Length(text) == entry.at("length").get<size_t>());
+    }
+}
+
+namespace {
+constexpr char kCapitalSigma[] = "\xce\xa3";
+constexpr char kSmallSigma[] = "\xcf\x83";
+constexpr char kFinalSigma[] = "\xcf\x82";
+constexpr char kCapitalAlpha[] = "\xce\x91";
+constexpr char kSmallAlpha[] = "\xce\xb1";
+constexpr char kCombiningAcute[] = "\xcc\x81";
+constexpr char kCapitalOdysseus[] =
+    "\xce\x9f\xce\x94\xce\xa5\xce\xa3\xce\xa3\xce\x95\xce\xa5\xce\xa3";
+constexpr char kSmallOdysseus[] =
+    "\xce\xbf\xce\xb4\xcf\x85\xcf\x83\xcf\x83\xce\xb5\xcf\x85\xcf\x82";
+constexpr char kCapitalIWithDot[] = "\xc4\xb0";
+constexpr char kDotlessI[] = "\xc4\xb1";
+constexpr char kDotAboveRight[] = "\xcd\x98";
+constexpr char kSmallLetterA[] = "\xcd\xa3";
+constexpr char kHan[] = "\xed\x95\x9c";
+constexpr char kHanJamo[] = "\xe1\x84\x92\xe1\x85\xa1\xe1\x86\xab";
+constexpr char kFullWidthUpper[] =
+    "\xef\xbc\xa1\xef\xbc\xa2\xef\xbc\xa3\xef\xbc\x91\xef\xbc\x92\xef\xbc\x93";
+constexpr char kFullWidthLower[] =
+    "\xef\xbd\x81\xef\xbd\x82\xef\xbd\x83\xef\xbc\x91\xef\xbc\x92\xef\xbc\x93";
+constexpr char kZeroWidthSpace[] = "\xe2\x80\x8b";
+constexpr char kNextLine[] = "\xc2\x85";
+constexpr char kGrinningFace[] = "\xf0\x9f\x98\x80";
+
+std::string spelled(std::initializer_list<std::string_view> parts) {
+    std::string text;
+    for (const std::string_view part : parts)
+        text += part;
+    return text;
+}
+}  // namespace
+
+TEST_CASE(
+    "a capital sigma folds to a final sigma at the end of a word, before a space and before a "
+    "mark, and to a small sigma alone or inside a word") {
+    CHECK(fold(kCapitalSigma) == kSmallSigma);
+    CHECK(fold(spelled({kCapitalAlpha, kCapitalSigma})) == spelled({kSmallAlpha, kFinalSigma}));
+    CHECK(fold(spelled({kCapitalAlpha, kCapitalSigma, " ", kCapitalAlpha, kCapitalSigma})) ==
+          spelled({kSmallAlpha, kFinalSigma, " ", kSmallAlpha, kFinalSigma}));
+    CHECK(fold(spelled({kCapitalAlpha, kCapitalSigma, kCombiningAcute})) ==
+          spelled({kSmallAlpha, kFinalSigma}));
+    CHECK(fold(spelled({kCapitalAlpha, kCapitalSigma, kCapitalAlpha})) ==
+          spelled({kSmallAlpha, kSmallSigma, kSmallAlpha}));
+}
+
+TEST_CASE("a sigma ending one word of several folds to a final sigma in the folded words") {
+    CHECK(foldedWords(spelled({kCapitalOdysseus, " ", kCapitalAlpha, kCapitalSigma})) ==
+          std::vector<std::string>{kSmallOdysseus, spelled({kSmallAlpha, kFinalSigma})});
+}
+
+TEST_CASE("a Turkish capital I with a dot folds to a plain i, and a dotless i stays dotless") {
+    CHECK(fold(kCapitalIWithDot) == "i");
+    CHECK(fold(spelled({kCapitalIWithDot, "stanbul"})) == "istanbul");
+    CHECK(fold(kDotlessI) == kDotlessI);
+}
+
+TEST_CASE("two marks the fold keeps fold to one string whichever order they were typed in") {
+    const std::string canonical = spelled({"a", kSmallLetterA, kDotAboveRight});
+    CHECK(fold(spelled({"a", kDotAboveRight, kSmallLetterA})) == canonical);
+    CHECK(fold(spelled({"a", kSmallLetterA, kDotAboveRight})) == canonical);
+    CHECK(fold(spelled({"A", kDotAboveRight, kSmallLetterA, "B"})) == canonical + "b");
+}
+
+TEST_CASE("a starter the fold drops still keeps the marks on either side of it in their order") {
+    CHECK(fold(spelled({"a", kDotAboveRight, "^", kSmallLetterA})) ==
+          spelled({"a", kDotAboveRight, kSmallLetterA}));
+}
+
+TEST_CASE("a Hangul syllable folds to its jamo, the same string its jamo fold to") {
+    CHECK(fold(kHan) == kHanJamo);
+    CHECK(fold(kHanJamo) == kHanJamo);
+    CHECK(squash(kHan) == kHanJamo);
+    CHECK(utf16Length(kHan) == 1);
+}
+
+TEST_CASE("full-width letters fold to full-width small letters and are not narrowed") {
+    CHECK(fold(kFullWidthUpper) == kFullWidthLower);
+    CHECK(squash(kFullWidthUpper) == kFullWidthLower);
+}
+
+TEST_CASE(
+    "a no-break space separates folded words, and a zero-width space and a next-line control do "
+    "not") {
+    CHECK(foldedWords(spelled({"A", kNoBreakSpace, "B"})) == std::vector<std::string>{"a", "b"});
+    CHECK(foldedWords(spelled({kNoBreakSpace, "a", kIdeographicSpace})) ==
+          std::vector<std::string>{"a"});
+    CHECK(foldedWords(spelled({"a", kZeroWidthSpace, "b"})) ==
+          std::vector<std::string>{spelled({"a", kZeroWidthSpace, "b"})});
+    CHECK(foldedWords(spelled({"a", kNextLine, "b"})) ==
+          std::vector<std::string>{spelled({"a", kNextLine, "b"})});
+    CHECK(fold(spelled({"A", kNoBreakSpace, "B"})) == spelled({"a", kNoBreakSpace, "b"}));
+    CHECK(squash(spelled({"A", kNoBreakSpace, "B"})) == "ab");
+}
+
+TEST_CASE(
+    "an emoji folds to itself, counts two UTF-16 code units, is a word of its own and squashes "
+    "away") {
+    CHECK(fold(kGrinningFace) == kGrinningFace);
+    CHECK(utf16Length(kGrinningFace) == 2);
+    CHECK(foldedWords(spelled({"Party ", kGrinningFace, " Time"})) ==
+          std::vector<std::string>{"party", kGrinningFace, "time"});
+    CHECK(squash(spelled({"Party ", kGrinningFace, " Time"})) == "partytime");
+}
+
+TEST_CASE("an empty text folds and squashes to nothing, holds no words and has no length") {
+    CHECK(fold("").empty());
+    CHECK(squash("").empty());
+    CHECK(foldedWords("").empty());
+    CHECK(foldedWords(" \t ").empty());
+    CHECK(utf16Length("") == 0);
+}
+
+TEST_CASE("a text that is not UTF-8 still folds, squashes, splits and has a length") {
+    for (const std::string_view tag :
+         {"\xc3", "A\xe2\x82", "\x80\x80", "\xff\xfe", "\xf0\x9f\x8e", "\xf0\x9f", "a\xcc"}) {
+        CAPTURE(tag);
+        const std::vector<char> bytes(tag.begin(), tag.end());
+        const std::string_view text(bytes.data(), bytes.size());
+        CHECK_NOTHROW(static_cast<void>(fold(text)));
+        CHECK_NOTHROW(static_cast<void>(squash(text)));
+        CHECK_NOTHROW(static_cast<void>(foldedWords(text)));
+        CHECK_NOTHROW(static_cast<void>(utf16Length(text)));
     }
 }

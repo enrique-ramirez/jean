@@ -1,6 +1,6 @@
 #include "core/text.h"
 
-#include "core/unicode_lower.h"
+#include "core/unicode_tables.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -24,8 +24,8 @@ std::string trimmed(const std::string& text) {
 }
 
 // FNV-1a. The basis and the prime are the algorithm's own and not a choice made here.
-constexpr uint64_t kFoldBasis = 14695981039346656037ULL;
-constexpr uint64_t kFoldPrime = 1099511628211ULL;
+constexpr uint64_t kFnvBasis = 14695981039346656037ULL;
+constexpr uint64_t kFnvPrime = 1099511628211ULL;
 
 constexpr size_t kHexDigitsPerByte = 2;
 constexpr char kHexDigits[] = "0123456789abcdef";
@@ -36,11 +36,11 @@ unsigned char foldAscii(unsigned char c) {
     return c >= 'A' && c <= 'Z' ? static_cast<unsigned char>(c + ('a' - 'A')) : c;
 }
 
-uint64_t fold(std::string_view bytes) {
-    uint64_t digest = kFoldBasis;
+uint64_t fnv1a(std::string_view bytes) {
+    uint64_t digest = kFnvBasis;
     for (const char byte : bytes) {
         digest ^= static_cast<unsigned char>(byte);
-        digest *= kFoldPrime;
+        digest *= kFnvPrime;
     }
     return digest;
 }
@@ -60,6 +60,10 @@ constexpr char32_t kCapitalSigma = 0x03A3;
 constexpr char32_t kSmallSigma = 0x03C3;
 constexpr char32_t kFinalSigma = 0x03C2;
 constexpr char32_t kSpace = 0x20;
+constexpr char32_t kFirstSupplementary = 0x10000;
+constexpr char32_t kHighSurrogate = 0xD800;
+constexpr char32_t kLowSurrogate = 0xDC00;
+constexpr char32_t kReplacement = 0xFFFD;
 
 // ECMAScript's WhiteSpace and LineTerminator productions, which is what \s matches.
 bool isEcmaWhitespace(char32_t c) {
@@ -169,14 +173,15 @@ bool isFinalSigma(const std::vector<char32_t>& points, size_t at) {
            !casedBeyondIgnorables(points, at + 1, false);
 }
 
-void appendLowered(std::string& out, const std::vector<char32_t>& points, size_t at) {
+template <typename Emit>
+void lowerPoint(const std::vector<char32_t>& points, size_t at, Emit emit) {
     const char32_t point = points[at];
     if (point == kCapitalSigma) {
-        appendUtf8(out, isFinalSigma(points, at) ? kFinalSigma : kSmallSigma);
+        emit(isFinalSigma(points, at) ? kFinalSigma : kSmallSigma);
         return;
     }
     if (point >= kRawByteBase) {
-        appendUtf8(out, point);
+        emit(point);
         return;
     }
 
@@ -185,13 +190,78 @@ void appendLowered(std::string& out, const std::vector<char32_t>& points, size_t
         mappings.begin(), mappings.end(), point,
         [](const LowerMapping& mapping, char32_t value) { return mapping.from < value; });
     if (found == mappings.end() || found->from != point) {
-        appendUtf8(out, point);
+        emit(point);
         return;
     }
 
-    appendUtf8(out, found->first);
+    emit(found->first);
     if (found->second != 0)
-        appendUtf8(out, found->second);
+        emit(found->second);
+}
+
+void appendDecomposed(std::vector<char32_t>& out, char32_t point) {
+    const auto decompositions = jean::decompositions();
+    const auto found = std::lower_bound(
+        decompositions.begin(), decompositions.end(), point,
+        [](const Decomposition& entry, char32_t value) { return entry.from < value; });
+    if (point >= kRawByteBase || found == decompositions.end() || found->from != point) {
+        out.push_back(point);
+        return;
+    }
+
+    for (const uint32_t part : found->to) {
+        if (part == 0)
+            break;
+        out.push_back(part);
+    }
+}
+
+uint32_t markRank(char32_t point) {
+    const auto ranks = markRanks();
+    const auto above = std::lower_bound(
+        ranks.begin(), ranks.end(), point,
+        [](const MarkRankRange& range, char32_t value) { return range.last < value; });
+    return above != ranks.end() && above->first <= point ? above->rank : 0;
+}
+
+// What a browser makes of text for a search: String.prototype.toLowerCase, then normalize("NFD"),
+// then every Diacritic dropped. The marks are put in canonical order before any is dropped, since
+// a dropped starter between two runs of marks is what stops NFD from reordering across it.
+std::vector<char32_t> foldedPoints(std::string_view text) {
+    const std::vector<char32_t> points = decodeLenient(text);
+
+    std::vector<char32_t> decomposed;
+    decomposed.reserve(points.size());
+    for (size_t at = 0; at < points.size(); ++at)
+        lowerPoint(points, at, [&](char32_t lowered) { appendDecomposed(decomposed, lowered); });
+
+    for (size_t first = 0; first < decomposed.size();) {
+        if (markRank(decomposed[first]) == 0) {
+            ++first;
+            continue;
+        }
+        size_t last = first + 1;
+        while (last < decomposed.size() && markRank(decomposed[last]) != 0)
+            ++last;
+        std::stable_sort(decomposed.begin() + static_cast<std::ptrdiff_t>(first),
+                         decomposed.begin() + static_cast<std::ptrdiff_t>(last),
+                         [](char32_t a, char32_t b) { return markRank(a) < markRank(b); });
+        first = last;
+    }
+
+    std::erase_if(decomposed, [](char32_t point) { return inRanges(diacriticRanges(), point); });
+    return decomposed;
+}
+
+bool isLetterOrNumber(char32_t point) {
+    return inRanges(letterRanges(), point) || inRanges(numberRanges(), point);
+}
+
+std::pair<char32_t, char32_t> utf16Units(char32_t point) {
+    if (point < kFirstSupplementary)
+        return {point, 0};
+    const char32_t offset = point - kFirstSupplementary;
+    return {kHighSurrogate + (offset >> 10U), kLowSurrogate + (offset & 0x3FFU)};
 }
 
 }  // namespace
@@ -224,9 +294,115 @@ std::string tagKey(std::string_view tag) {
         }
 
         inSpace = false;
-        appendLowered(key, points, at);
+        lowerPoint(points, at, [&](char32_t lowered) { appendUtf8(key, lowered); });
     }
     return key;
+}
+
+size_t ecmaWhitespaceWidthAt(std::string_view text, size_t at) {
+    const auto sequence = decodeSequence(text.substr(at));
+    return sequence && isEcmaWhitespace(sequence->first) ? sequence->second : 0;
+}
+
+size_t endOfEcmaWhitespace(std::string_view text, size_t at) {
+    while (at < text.size()) {
+        const size_t width = ecmaWhitespaceWidthAt(text, at);
+        if (width == 0)
+            break;
+        at += width;
+    }
+    return at;
+}
+
+std::string_view ecmaTrimmed(std::string_view text) {
+    const size_t first = endOfEcmaWhitespace(text, 0);
+    size_t last = first;
+    for (size_t at = first; at < text.size();) {
+        const size_t width = ecmaWhitespaceWidthAt(text, at);
+        at += std::max<size_t>(width, 1);
+        if (width == 0)
+            last = at;
+    }
+    return text.substr(first, last - first);
+}
+
+std::string fold(std::string_view text) {
+    std::string folded;
+    folded.reserve(text.size());
+    for (const char32_t point : foldedPoints(text))
+        appendUtf8(folded, point);
+    return folded;
+}
+
+std::string squash(std::string_view text) {
+    std::string squashed;
+    squashed.reserve(text.size());
+    for (const char32_t point : foldedPoints(text)) {
+        if (isLetterOrNumber(point))
+            appendUtf8(squashed, point);
+    }
+    return squashed;
+}
+
+std::vector<std::string> foldedWords(std::string_view text) {
+    std::vector<std::string> words;
+    std::string word;
+    for (const char32_t point : foldedPoints(text)) {
+        if (!isEcmaWhitespace(point))
+            appendUtf8(word, point);
+        else if (!word.empty())
+            words.push_back(std::exchange(word, {}));
+    }
+    if (!word.empty())
+        words.push_back(std::move(word));
+    return words;
+}
+
+std::vector<std::string> squashedWords(std::string_view text) {
+    std::vector<std::string> words;
+    std::string word;
+    for (const char32_t point : foldedPoints(text)) {
+        if (isLetterOrNumber(point))
+            appendUtf8(word, point);
+        else if (!word.empty())
+            words.push_back(std::exchange(word, {}));
+    }
+    if (!word.empty())
+        words.push_back(std::move(word));
+    return words;
+}
+
+bool endsInLetterOrNumber(std::string_view folded, size_t at) {
+    size_t from = at - 1;
+    while (from > 0 && (static_cast<unsigned char>(folded[from]) & 0xC0U) == 0x80U)
+        --from;
+
+    const auto sequence = decodeSequence(folded.substr(from, at - from));
+    return sequence && sequence->second == at - from && sequence->first < kFirstSupplementary &&
+           isLetterOrNumber(sequence->first);
+}
+
+bool utf16Before(std::string_view a, std::string_view b) {
+    size_t left = 0;
+    size_t right = 0;
+    while (left < a.size() && right < b.size()) {
+        const auto first = decodeSequence(a.substr(left));
+        const auto second = decodeSequence(b.substr(right));
+        const char32_t one = first ? first->first : kReplacement;
+        const char32_t other = second ? second->first : kReplacement;
+        if (one != other)
+            return utf16Units(one) < utf16Units(other);
+        left += first ? first->second : 1;
+        right += second ? second->second : 1;
+    }
+    return left >= a.size() && right < b.size();
+}
+
+size_t utf16Length(std::string_view text) {
+    size_t units = 0;
+    for (const char32_t point : decodeLenient(text))
+        units += point >= kFirstSupplementary && point < kRawByteBase ? 2 : 1;
+    return units;
 }
 
 std::string toHex(std::span<const unsigned char> bytes) {
@@ -316,7 +492,7 @@ bool fitsUint32(uint64_t value) {
 }
 
 std::string eTagFor(std::string_view bytes) {
-    return quotedHex(fold(bytes));
+    return quotedHex(fnv1a(bytes));
 }
 
 }  // namespace jean

@@ -15,7 +15,7 @@ import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { rovedIndex } from "@/shared/lib/rove";
-import { completionFor, fuzzyScore, squash } from "@/shared/lib/text";
+import { completionFor, fuzzyScore, nameKey } from "@/shared/lib/text";
 import type { IconComponent } from "@/shared/ui/icons";
 import { Segmented } from "@/shared/ui/Segmented";
 import { GenreFinder } from "./GenreFinder";
@@ -62,7 +62,7 @@ export function GenresView({
 		const largestFirst = (a: Genre, b: Genre) =>
 			b.trackCount - a.trackCount || byName(a, b);
 
-		const wanted = squash(query);
+		const wanted = nameKey(query);
 		if (!wanted)
 			return [...genres].sort(order === "name" ? byName : largestFirst);
 

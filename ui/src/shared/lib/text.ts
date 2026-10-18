@@ -1,7 +1,18 @@
-const COMBINING_MARKS = /\p{Diacritic}/gu;
+import { ASCII_FOLDINGS } from "./asciiFolding";
 
+const COMBINING_MARKS = /\p{Diacritic}/gu;
+const FOLDABLE = new RegExp(`[${[...ASCII_FOLDINGS.keys()].join("")}]`, "gu");
+
+const asciiFolded = (character: string) => ASCII_FOLDINGS.get(character)!;
+
+// The foldings run before the marks go: the middle dot is a Diacritic to Unicode and a dot to a
+// Morse-code name.
 export const fold = (text: string) =>
-	text.toLowerCase().normalize("NFD").replace(COMBINING_MARKS, "");
+	text
+		.toLowerCase()
+		.normalize("NFD")
+		.replace(FOLDABLE, asciiFolded)
+		.replace(COMBINING_MARKS, "");
 
 // The prefix is walked rather than sliced at `query.length`: `fold` normalises to NFD, so one
 // character folds to two or to none and a decomposed tag would be cut in the wrong place.
@@ -27,16 +38,30 @@ export function completionFor(
 	return rest.length > 0 ? rest : null;
 }
 
+const WHITESPACE = /\s+/u;
+
 export const tokenize = (query: string) =>
-	fold(query.trim()).split(/\s+/).filter(Boolean);
+	fold(query.trim()).split(WHITESPACE).filter(Boolean);
 
 export const matchesTokens = (haystack: string, tokens: string[]) =>
 	tokens.every((token) => haystack.includes(token));
 
 const NOT_ALPHANUMERIC = /[^\p{L}\p{N}]+/gu;
+const LETTER_OR_NUMBER = /[\p{L}\p{N}]/u;
 
 export const squash = (text: string) =>
 	fold(text).replace(NOT_ALPHANUMERIC, "");
+
+export const glyphs = (text: string) => tokenize(text).join("");
+
+export const nameKey = (text: string) => squash(text) || glyphs(text);
+
+export const nameWords = (text: string) => {
+	const folded = fold(text);
+	return LETTER_OR_NUMBER.test(folded)
+		? folded.split(NOT_ALPHANUMERIC).filter(Boolean)
+		: tokenize(folded);
+};
 
 export interface FuzzyKey {
 	squashed: string;
@@ -44,9 +69,21 @@ export interface FuzzyKey {
 }
 
 export const fuzzyKey = (text: string): FuzzyKey => ({
-	squashed: squash(text),
-	words: fold(text).split(NOT_ALPHANUMERIC).filter(Boolean),
+	squashed: nameKey(text),
+	words: nameWords(text),
 });
+
+export interface Query {
+	tokens: string[];
+	glyphic: boolean;
+}
+
+export function queryOf(query: string): Query {
+	const tokens = tokenize(query);
+	const glyphic =
+		tokens.length > 0 && !tokens.some((token) => LETTER_OR_NUMBER.test(token));
+	return { tokens: glyphic ? [tokens.join("")] : tokens, glyphic };
+}
 
 const budgetFor = (length: number) => (length < 5 ? 0 : length < 9 ? 1 : 2);
 

@@ -224,9 +224,27 @@ uint32_t markRank(char32_t point) {
     return above != ranks.end() && above->first <= point ? above->rank : 0;
 }
 
-// What a browser makes of text for a search: String.prototype.toLowerCase, then normalize("NFD"),
-// then every Diacritic dropped. The marks are put in canonical order before any is dropped, since
-// a dropped starter between two runs of marks is what stops NFD from reordering across it.
+void appendAsciiFolded(std::vector<char32_t>& out, char32_t point) {
+    const auto foldings = asciiFoldings();
+    const auto found = std::lower_bound(
+        foldings.begin(), foldings.end(), point,
+        [](const AsciiFolding& entry, char32_t value) { return entry.from < value; });
+    if (found == foldings.end() || found->from != point) {
+        out.push_back(point);
+        return;
+    }
+
+    for (const char c : found->to) {
+        if (c == '\0')
+            break;
+        out.push_back(static_cast<char32_t>(c));
+    }
+}
+
+// What a browser makes of text for a search. The marks are put in canonical order before any is
+// dropped, since a dropped starter between two runs of marks is what stops NFD from reordering
+// across it. The foldings run before the marks go because the middle dot is a Diacritic to Unicode
+// and a dot to a Morse-code name.
 std::vector<char32_t> foldedPoints(std::string_view text) {
     const std::vector<char32_t> points = decodeLenient(text);
 
@@ -249,8 +267,13 @@ std::vector<char32_t> foldedPoints(std::string_view text) {
         first = last;
     }
 
-    std::erase_if(decomposed, [](char32_t point) { return inRanges(diacriticRanges(), point); });
-    return decomposed;
+    std::vector<char32_t> folded;
+    folded.reserve(decomposed.size());
+    for (const char32_t point : decomposed)
+        appendAsciiFolded(folded, point);
+
+    std::erase_if(folded, [](char32_t point) { return inRanges(diacriticRanges(), point); });
+    return folded;
 }
 
 bool isLetterOrNumber(char32_t point) {
@@ -344,6 +367,22 @@ std::string squash(std::string_view text) {
     return squashed;
 }
 
+std::string glyphs(std::string_view text) {
+    std::string kept;
+    kept.reserve(text.size());
+    for (const char32_t point : foldedPoints(text)) {
+        if (!isEcmaWhitespace(point))
+            appendUtf8(kept, point);
+    }
+    return kept;
+}
+
+std::string nameKey(std::string_view text) {
+    if (std::string key = squash(text); !key.empty())
+        return key;
+    return glyphs(text);
+}
+
 std::vector<std::string> foldedWords(std::string_view text) {
     std::vector<std::string> words;
     std::string word;
@@ -370,6 +409,12 @@ std::vector<std::string> squashedWords(std::string_view text) {
     if (!word.empty())
         words.push_back(std::move(word));
     return words;
+}
+
+std::vector<std::string> nameWords(std::string_view text) {
+    if (std::vector<std::string> words = squashedWords(text); !words.empty())
+        return words;
+    return foldedWords(text);
 }
 
 bool endsInLetterOrNumber(std::string_view folded, size_t at) {

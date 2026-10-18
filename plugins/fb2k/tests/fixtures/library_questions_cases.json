@@ -50511,25 +50511,9 @@
       "expected": {
         "structure": 1,
         "revision": 1,
-        "matched": [
-          1,
-          3,
-          4,
-          5,
-          6,
-          7,
-          9
-        ],
-        "matchCount": 7,
-        "best": [
-          1,
-          3,
-          4,
-          5,
-          6,
-          7,
-          9
-        ],
+        "matched": [],
+        "matchCount": 0,
+        "best": [],
         "artists": {
           "total": 0,
           "top": []
@@ -62581,16 +62565,27 @@
       "expected": {
         "structure": 1,
         "revision": 1,
-        "matched": [],
-        "matchCount": 0,
-        "best": [],
+        "matched": [
+          7
+        ],
+        "matchCount": 1,
+        "best": [
+          7
+        ],
         "artists": {
           "total": 0,
           "top": []
         },
         "albums": {
-          "total": 0,
-          "top": []
+          "total": 1,
+          "top": [
+            {
+              "album": "Ágætis byrjun",
+              "artist": "Sigur Rós",
+              "trackCount": 1,
+              "cover": "Sigur Rós/Ágætis byrjun/01 Svefn-g-englar.flac"
+            }
+          ]
         },
         "genres": {
           "total": 0,
@@ -63175,12 +63170,24 @@
       "expected": {
         "structure": 1,
         "revision": 1,
-        "matched": [],
-        "matchCount": 0,
-        "best": [],
+        "matched": [
+          10
+        ],
+        "matchCount": 1,
+        "best": [
+          10
+        ],
         "artists": {
-          "total": 0,
-          "top": []
+          "total": 1,
+          "top": [
+            {
+              "name": "Ｆｕｌｌ Ｗｉｄｔｈ",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "Ｆｕｌｌ Ｗｉｄｔｈ/Ｗｉｄｅ/01 Ａｂｃ１２３.flac"
+            }
+          ]
         },
         "albums": {
           "total": 0,
@@ -63555,9 +63562,13 @@
       "expected": {
         "structure": 1,
         "revision": 1,
-        "matched": [],
-        "matchCount": 0,
-        "best": [],
+        "matched": [
+          10
+        ],
+        "matchCount": 1,
+        "best": [
+          10
+        ],
         "artists": {
           "total": 0,
           "top": []
@@ -63570,7 +63581,7 @@
           "total": 0,
           "top": []
         },
-        "namesATrack": false
+        "namesATrack": true
       }
     },
     {
@@ -70758,25 +70769,33 @@
           3,
           4,
           5,
+          6,
           7,
           16,
           17,
           18
         ],
-        "matchCount": 9,
+        "matchCount": 10,
         "best": [
           7,
+          6,
           4,
           5,
           18,
           16,
           17,
-          3,
-          0
+          3
         ],
         "artists": {
-          "total": 3,
+          "total": 4,
           "top": [
+            {
+              "name": "ıspanak",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "ıspanak/Dotless/01 ısıl.flac"
+            },
             {
               "name": "İstanbul Band",
               "trackCount": 1,
@@ -70790,13 +70809,6 @@
               "guestCount": 0,
               "albumCount": 1,
               "cover": "Istanbul Band/Istanbul/02 Iyi Geceler.flac"
-            },
-            {
-              "name": "i̇stanbul dotted",
-              "trackCount": 1,
-              "guestCount": 0,
-              "albumCount": 1,
-              "cover": "i̇stanbul dotted/Combining Dot/01 i̇yi.flac"
             }
           ]
         },
@@ -75041,26 +75053,36 @@
         "structure": 1,
         "revision": 1,
         "matched": [
+          3,
+          6,
           19,
           20
         ],
-        "matchCount": 2,
+        "matchCount": 4,
         "best": [
           19,
-          20
+          20,
+          3,
+          6
         ],
         "artists": {
           "total": 0,
           "top": []
         },
         "albums": {
-          "total": 1,
+          "total": 2,
           "top": [
             {
               "album": "ẞ",
               "artist": "Straße",
               "trackCount": 1,
               "cover": "Straße/ẞ/01 STRASSE.flac"
+            },
+            {
+              "album": "SS",
+              "artist": "Strasse",
+              "trackCount": 1,
+              "cover": "Strasse/SS/02 Straße.flac"
             }
           ]
         },
@@ -75328,26 +75350,36 @@
         "structure": 1,
         "revision": 1,
         "matched": [
+          3,
+          6,
           19,
           20
         ],
-        "matchCount": 2,
+        "matchCount": 4,
         "best": [
           19,
-          20
+          20,
+          3,
+          6
         ],
         "artists": {
           "total": 0,
           "top": []
         },
         "albums": {
-          "total": 1,
+          "total": 2,
           "top": [
             {
               "album": "ẞ",
               "artist": "Straße",
               "trackCount": 1,
               "cover": "Straße/ẞ/01 STRASSE.flac"
+            },
+            {
+              "album": "SS",
+              "artist": "Strasse",
+              "trackCount": 1,
+              "cover": "Strasse/SS/02 Straße.flac"
             }
           ]
         },
@@ -75622,8 +75654,8 @@
         ],
         "matchCount": 4,
         "best": [
-          20,
           19,
+          20,
           3,
           6
         ],
@@ -75632,8 +75664,14 @@
           "top": []
         },
         "albums": {
-          "total": 1,
+          "total": 2,
           "top": [
+            {
+              "album": "ẞ",
+              "artist": "Straße",
+              "trackCount": 1,
+              "cover": "Straße/ẞ/01 STRASSE.flac"
+            },
             {
               "album": "SS",
               "artist": "Strasse",
@@ -75915,8 +75953,15 @@
           20
         ],
         "artists": {
-          "total": 1,
+          "total": 2,
           "top": [
+            {
+              "name": "Straße",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "Straße/ẞ/01 STRASSE.flac"
+            },
             {
               "name": "Strasse",
               "trackCount": 1,
@@ -115165,6 +115210,2638 @@
         "revision": 1,
         "refs": []
       }
+    },
+    {
+      "name": "ascii: search mo for the stroked o",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "MØ/Ø/",
+        "Mœnia/Mœnia/",
+        "Moenia/Adición/",
+        "Branford Marsalis/Mo Better Blues/",
+        "Łódź/Łódź/",
+        "Æon Flux/Æ/"
+      ],
+      "filename": [
+        "01 Walshy Fire.flac",
+        "02 Manto Estelar.flac",
+        "03 Mírame.flac",
+        "04 Mo Better Blues.flac",
+        "05 Łódź Calling.flac",
+        "06 Aeon.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05",
+          "06"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "Walshy Fire",
+          "Manto Estelar",
+          "Mírame",
+          "Mo Better Blues",
+          "Łódź Calling",
+          "Aeon"
+        ],
+        "artist": [
+          "MØ",
+          "Mœnia",
+          "Moenia",
+          "Branford Marsalis",
+          "Łódź",
+          "Æon Flux"
+        ],
+        "album": [
+          "Ø",
+          "Mœnia",
+          "Adición",
+          "Mo Better Blues",
+          "Łódź",
+          "Æ"
+        ],
+        "albumArtist": [
+          "MØ",
+          "Mœnia",
+          "Moenia",
+          "Branford Marsalis",
+          "Łódź",
+          "Æon Flux"
+        ],
+        "genre": [
+          "Pop",
+          "Pop",
+          "Pop",
+          "Jazz",
+          "Rock",
+          "Rock"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "mo",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "matchCount": 4,
+        "best": [
+          0,
+          3,
+          1,
+          2
+        ],
+        "artists": {
+          "total": 3,
+          "top": [
+            {
+              "name": "MØ",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "MØ/Ø/01 Walshy Fire.flac"
+            },
+            {
+              "name": "Mœnia",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "Mœnia/Mœnia/02 Manto Estelar.flac"
+            },
+            {
+              "name": "Moenia",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "Moenia/Adición/03 Mírame.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 2,
+          "top": [
+            {
+              "album": "Mœnia",
+              "artist": "Mœnia",
+              "trackCount": 1,
+              "cover": "Mœnia/Mœnia/02 Manto Estelar.flac"
+            },
+            {
+              "album": "Mo Better Blues",
+              "artist": "Branford Marsalis",
+              "trackCount": 1,
+              "cover": "Branford Marsalis/Mo Better Blues/04 Mo Better Blues.flac"
+            }
+          ]
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": false
+      }
+    },
+    {
+      "name": "ascii: search the stroked o itself",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "MØ/Ø/",
+        "Mœnia/Mœnia/",
+        "Moenia/Adición/",
+        "Branford Marsalis/Mo Better Blues/",
+        "Łódź/Łódź/",
+        "Æon Flux/Æ/"
+      ],
+      "filename": [
+        "01 Walshy Fire.flac",
+        "02 Manto Estelar.flac",
+        "03 Mírame.flac",
+        "04 Mo Better Blues.flac",
+        "05 Łódź Calling.flac",
+        "06 Aeon.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05",
+          "06"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "Walshy Fire",
+          "Manto Estelar",
+          "Mírame",
+          "Mo Better Blues",
+          "Łódź Calling",
+          "Aeon"
+        ],
+        "artist": [
+          "MØ",
+          "Mœnia",
+          "Moenia",
+          "Branford Marsalis",
+          "Łódź",
+          "Æon Flux"
+        ],
+        "album": [
+          "Ø",
+          "Mœnia",
+          "Adición",
+          "Mo Better Blues",
+          "Łódź",
+          "Æ"
+        ],
+        "albumArtist": [
+          "MØ",
+          "Mœnia",
+          "Moenia",
+          "Branford Marsalis",
+          "Łódź",
+          "Æon Flux"
+        ],
+        "genre": [
+          "Pop",
+          "Pop",
+          "Pop",
+          "Jazz",
+          "Rock",
+          "Rock"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "MØ",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "matchCount": 4,
+        "best": [
+          0,
+          3,
+          1,
+          2
+        ],
+        "artists": {
+          "total": 3,
+          "top": [
+            {
+              "name": "MØ",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "MØ/Ø/01 Walshy Fire.flac"
+            },
+            {
+              "name": "Mœnia",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "Mœnia/Mœnia/02 Manto Estelar.flac"
+            },
+            {
+              "name": "Moenia",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "Moenia/Adición/03 Mírame.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 2,
+          "top": [
+            {
+              "album": "Mœnia",
+              "artist": "Mœnia",
+              "trackCount": 1,
+              "cover": "Mœnia/Mœnia/02 Manto Estelar.flac"
+            },
+            {
+              "album": "Mo Better Blues",
+              "artist": "Branford Marsalis",
+              "trackCount": 1,
+              "cover": "Branford Marsalis/Mo Better Blues/04 Mo Better Blues.flac"
+            }
+          ]
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": false
+      }
+    },
+    {
+      "name": "ascii: search moenia for the ligature",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "MØ/Ø/",
+        "Mœnia/Mœnia/",
+        "Moenia/Adición/",
+        "Branford Marsalis/Mo Better Blues/",
+        "Łódź/Łódź/",
+        "Æon Flux/Æ/"
+      ],
+      "filename": [
+        "01 Walshy Fire.flac",
+        "02 Manto Estelar.flac",
+        "03 Mírame.flac",
+        "04 Mo Better Blues.flac",
+        "05 Łódź Calling.flac",
+        "06 Aeon.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05",
+          "06"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "Walshy Fire",
+          "Manto Estelar",
+          "Mírame",
+          "Mo Better Blues",
+          "Łódź Calling",
+          "Aeon"
+        ],
+        "artist": [
+          "MØ",
+          "Mœnia",
+          "Moenia",
+          "Branford Marsalis",
+          "Łódź",
+          "Æon Flux"
+        ],
+        "album": [
+          "Ø",
+          "Mœnia",
+          "Adición",
+          "Mo Better Blues",
+          "Łódź",
+          "Æ"
+        ],
+        "albumArtist": [
+          "MØ",
+          "Mœnia",
+          "Moenia",
+          "Branford Marsalis",
+          "Łódź",
+          "Æon Flux"
+        ],
+        "genre": [
+          "Pop",
+          "Pop",
+          "Pop",
+          "Jazz",
+          "Rock",
+          "Rock"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "moenia",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          1,
+          2
+        ],
+        "matchCount": 2,
+        "best": [
+          1,
+          2
+        ],
+        "artists": {
+          "total": 2,
+          "top": [
+            {
+              "name": "Mœnia",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "Mœnia/Mœnia/02 Manto Estelar.flac"
+            },
+            {
+              "name": "Moenia",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "Moenia/Adición/03 Mírame.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 1,
+          "top": [
+            {
+              "album": "Mœnia",
+              "artist": "Mœnia",
+              "trackCount": 1,
+              "cover": "Mœnia/Mœnia/02 Manto Estelar.flac"
+            }
+          ]
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": false
+      }
+    },
+    {
+      "name": "ascii: search the ligature itself",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "MØ/Ø/",
+        "Mœnia/Mœnia/",
+        "Moenia/Adición/",
+        "Branford Marsalis/Mo Better Blues/",
+        "Łódź/Łódź/",
+        "Æon Flux/Æ/"
+      ],
+      "filename": [
+        "01 Walshy Fire.flac",
+        "02 Manto Estelar.flac",
+        "03 Mírame.flac",
+        "04 Mo Better Blues.flac",
+        "05 Łódź Calling.flac",
+        "06 Aeon.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05",
+          "06"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "Walshy Fire",
+          "Manto Estelar",
+          "Mírame",
+          "Mo Better Blues",
+          "Łódź Calling",
+          "Aeon"
+        ],
+        "artist": [
+          "MØ",
+          "Mœnia",
+          "Moenia",
+          "Branford Marsalis",
+          "Łódź",
+          "Æon Flux"
+        ],
+        "album": [
+          "Ø",
+          "Mœnia",
+          "Adición",
+          "Mo Better Blues",
+          "Łódź",
+          "Æ"
+        ],
+        "albumArtist": [
+          "MØ",
+          "Mœnia",
+          "Moenia",
+          "Branford Marsalis",
+          "Łódź",
+          "Æon Flux"
+        ],
+        "genre": [
+          "Pop",
+          "Pop",
+          "Pop",
+          "Jazz",
+          "Rock",
+          "Rock"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "mœnia",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          1,
+          2
+        ],
+        "matchCount": 2,
+        "best": [
+          1,
+          2
+        ],
+        "artists": {
+          "total": 2,
+          "top": [
+            {
+              "name": "Mœnia",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "Mœnia/Mœnia/02 Manto Estelar.flac"
+            },
+            {
+              "name": "Moenia",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "Moenia/Adición/03 Mírame.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 1,
+          "top": [
+            {
+              "album": "Mœnia",
+              "artist": "Mœnia",
+              "trackCount": 1,
+              "cover": "Mœnia/Mœnia/02 Manto Estelar.flac"
+            }
+          ]
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": false
+      }
+    },
+    {
+      "name": "ascii: search lodz",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "MØ/Ø/",
+        "Mœnia/Mœnia/",
+        "Moenia/Adición/",
+        "Branford Marsalis/Mo Better Blues/",
+        "Łódź/Łódź/",
+        "Æon Flux/Æ/"
+      ],
+      "filename": [
+        "01 Walshy Fire.flac",
+        "02 Manto Estelar.flac",
+        "03 Mírame.flac",
+        "04 Mo Better Blues.flac",
+        "05 Łódź Calling.flac",
+        "06 Aeon.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05",
+          "06"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "Walshy Fire",
+          "Manto Estelar",
+          "Mírame",
+          "Mo Better Blues",
+          "Łódź Calling",
+          "Aeon"
+        ],
+        "artist": [
+          "MØ",
+          "Mœnia",
+          "Moenia",
+          "Branford Marsalis",
+          "Łódź",
+          "Æon Flux"
+        ],
+        "album": [
+          "Ø",
+          "Mœnia",
+          "Adición",
+          "Mo Better Blues",
+          "Łódź",
+          "Æ"
+        ],
+        "albumArtist": [
+          "MØ",
+          "Mœnia",
+          "Moenia",
+          "Branford Marsalis",
+          "Łódź",
+          "Æon Flux"
+        ],
+        "genre": [
+          "Pop",
+          "Pop",
+          "Pop",
+          "Jazz",
+          "Rock",
+          "Rock"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "lodz",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          4
+        ],
+        "matchCount": 1,
+        "best": [
+          4
+        ],
+        "artists": {
+          "total": 1,
+          "top": [
+            {
+              "name": "Łódź",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "Łódź/Łódź/05 Łódź Calling.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 1,
+          "top": [
+            {
+              "album": "Łódź",
+              "artist": "Łódź",
+              "trackCount": 1,
+              "cover": "Łódź/Łódź/05 Łódź Calling.flac"
+            }
+          ]
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": false
+      }
+    },
+    {
+      "name": "ascii: search aeon",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "MØ/Ø/",
+        "Mœnia/Mœnia/",
+        "Moenia/Adición/",
+        "Branford Marsalis/Mo Better Blues/",
+        "Łódź/Łódź/",
+        "Æon Flux/Æ/"
+      ],
+      "filename": [
+        "01 Walshy Fire.flac",
+        "02 Manto Estelar.flac",
+        "03 Mírame.flac",
+        "04 Mo Better Blues.flac",
+        "05 Łódź Calling.flac",
+        "06 Aeon.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05",
+          "06"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "Walshy Fire",
+          "Manto Estelar",
+          "Mírame",
+          "Mo Better Blues",
+          "Łódź Calling",
+          "Aeon"
+        ],
+        "artist": [
+          "MØ",
+          "Mœnia",
+          "Moenia",
+          "Branford Marsalis",
+          "Łódź",
+          "Æon Flux"
+        ],
+        "album": [
+          "Ø",
+          "Mœnia",
+          "Adición",
+          "Mo Better Blues",
+          "Łódź",
+          "Æ"
+        ],
+        "albumArtist": [
+          "MØ",
+          "Mœnia",
+          "Moenia",
+          "Branford Marsalis",
+          "Łódź",
+          "Æon Flux"
+        ],
+        "genre": [
+          "Pop",
+          "Pop",
+          "Pop",
+          "Jazz",
+          "Rock",
+          "Rock"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "aeon",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          5
+        ],
+        "matchCount": 1,
+        "best": [
+          5
+        ],
+        "artists": {
+          "total": 1,
+          "top": [
+            {
+              "name": "Æon Flux",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "Æon Flux/Æ/06 Aeon.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 0,
+          "top": []
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": true
+      }
+    },
+    {
+      "name": "ascii: artist \"Moenia\" names the ligature too",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "MØ/Ø/",
+        "Mœnia/Mœnia/",
+        "Moenia/Adición/",
+        "Branford Marsalis/Mo Better Blues/",
+        "Łódź/Łódź/",
+        "Æon Flux/Æ/"
+      ],
+      "filename": [
+        "01 Walshy Fire.flac",
+        "02 Manto Estelar.flac",
+        "03 Mírame.flac",
+        "04 Mo Better Blues.flac",
+        "05 Łódź Calling.flac",
+        "06 Aeon.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05",
+          "06"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "Walshy Fire",
+          "Manto Estelar",
+          "Mírame",
+          "Mo Better Blues",
+          "Łódź Calling",
+          "Aeon"
+        ],
+        "artist": [
+          "MØ",
+          "Mœnia",
+          "Moenia",
+          "Branford Marsalis",
+          "Łódź",
+          "Æon Flux"
+        ],
+        "album": [
+          "Ø",
+          "Mœnia",
+          "Adición",
+          "Mo Better Blues",
+          "Łódź",
+          "Æ"
+        ],
+        "albumArtist": [
+          "MØ",
+          "Mœnia",
+          "Moenia",
+          "Branford Marsalis",
+          "Łódź",
+          "Æon Flux"
+        ],
+        "genre": [
+          "Pop",
+          "Pop",
+          "Pop",
+          "Jazz",
+          "Rock",
+          "Rock"
+        ]
+      },
+      "question": {
+        "kind": "artist",
+        "name": "Moenia",
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "own": [
+          2
+        ],
+        "shared": [],
+        "guest": []
+      }
+    },
+    {
+      "name": "glyphs: search a morse name with no spaces",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "Star-Lord/Guardians/",
+        "!!!/Louden Up Now/",
+        "Dot Allison/Afterglow/"
+      ],
+      "filename": [
+        "01 ･ ･－･ ･－ ･･･ ･ －･･.flac",
+        "02 ·-· ·- -·· ·· ---.flac",
+        "03 Star-Lord.flac",
+        "04 !!!.flac",
+        "05 Dot.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "·-· ·- -·· ·· ---",
+          "Star-Lord",
+          "!!!",
+          "Dot"
+        ],
+        "artist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "album": [
+          "— · —",
+          "— · —",
+          "Guardians",
+          "Louden Up Now",
+          "Afterglow"
+        ],
+        "albumArtist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "genre": [
+          "Electronic",
+          "Electronic",
+          "Rock",
+          "Dance-Punk",
+          "Pop"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "..-..-....-..",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          0,
+          1
+        ],
+        "matchCount": 2,
+        "best": [
+          0,
+          1
+        ],
+        "artists": {
+          "total": 1,
+          "top": [
+            {
+              "name": "･ ･－･ ･－ ･･･ ･ －･･",
+              "trackCount": 2,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "･ ･－･ ･－ ･･･ ･ －･･/— · —/01 ･ ･－･ ･－ ･･･ ･ －･･.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 0,
+          "top": []
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": true
+      }
+    },
+    {
+      "name": "glyphs: search a morse name spaced as written",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "Star-Lord/Guardians/",
+        "!!!/Louden Up Now/",
+        "Dot Allison/Afterglow/"
+      ],
+      "filename": [
+        "01 ･ ･－･ ･－ ･･･ ･ －･･.flac",
+        "02 ·-· ·- -·· ·· ---.flac",
+        "03 Star-Lord.flac",
+        "04 !!!.flac",
+        "05 Dot.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "·-· ·- -·· ·· ---",
+          "Star-Lord",
+          "!!!",
+          "Dot"
+        ],
+        "artist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "album": [
+          "— · —",
+          "— · —",
+          "Guardians",
+          "Louden Up Now",
+          "Afterglow"
+        ],
+        "albumArtist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "genre": [
+          "Electronic",
+          "Electronic",
+          "Rock",
+          "Dance-Punk",
+          "Pop"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": ". .-. .- ... . -..",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          0,
+          1
+        ],
+        "matchCount": 2,
+        "best": [
+          0,
+          1
+        ],
+        "artists": {
+          "total": 1,
+          "top": [
+            {
+              "name": "･ ･－･ ･－ ･･･ ･ －･･",
+              "trackCount": 2,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "･ ･－･ ･－ ･･･ ･ －･･/— · —/01 ･ ･－･ ･－ ･･･ ･ －･･.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 0,
+          "top": []
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": true
+      }
+    },
+    {
+      "name": "glyphs: search a morse name spaced as misread",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "Star-Lord/Guardians/",
+        "!!!/Louden Up Now/",
+        "Dot Allison/Afterglow/"
+      ],
+      "filename": [
+        "01 ･ ･－･ ･－ ･･･ ･ －･･.flac",
+        "02 ·-· ·- -·· ·· ---.flac",
+        "03 Star-Lord.flac",
+        "04 !!!.flac",
+        "05 Dot.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "·-· ·- -·· ·· ---",
+          "Star-Lord",
+          "!!!",
+          "Dot"
+        ],
+        "artist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "album": [
+          "— · —",
+          "— · —",
+          "Guardians",
+          "Louden Up Now",
+          "Afterglow"
+        ],
+        "albumArtist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "genre": [
+          "Electronic",
+          "Electronic",
+          "Rock",
+          "Dance-Punk",
+          "Pop"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "..-..-... .-..",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          0,
+          1
+        ],
+        "matchCount": 2,
+        "best": [
+          0,
+          1
+        ],
+        "artists": {
+          "total": 1,
+          "top": [
+            {
+              "name": "･ ･－･ ･－ ･･･ ･ －･･",
+              "trackCount": 2,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "･ ･－･ ･－ ･･･ ･ －･･/— · —/01 ･ ･－･ ･－ ･･･ ･ －･･.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 0,
+          "top": []
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": true
+      }
+    },
+    {
+      "name": "glyphs: search one morse letter",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "Star-Lord/Guardians/",
+        "!!!/Louden Up Now/",
+        "Dot Allison/Afterglow/"
+      ],
+      "filename": [
+        "01 ･ ･－･ ･－ ･･･ ･ －･･.flac",
+        "02 ·-· ·- -·· ·· ---.flac",
+        "03 Star-Lord.flac",
+        "04 !!!.flac",
+        "05 Dot.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "·-· ·- -·· ·· ---",
+          "Star-Lord",
+          "!!!",
+          "Dot"
+        ],
+        "artist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "album": [
+          "— · —",
+          "— · —",
+          "Guardians",
+          "Louden Up Now",
+          "Afterglow"
+        ],
+        "albumArtist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "genre": [
+          "Electronic",
+          "Electronic",
+          "Rock",
+          "Dance-Punk",
+          "Pop"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "-..",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          0,
+          1
+        ],
+        "matchCount": 2,
+        "best": [
+          0,
+          1
+        ],
+        "artists": {
+          "total": 1,
+          "top": [
+            {
+              "name": "･ ･－･ ･－ ･･･ ･ －･･",
+              "trackCount": 2,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "･ ･－･ ･－ ･･･ ･ －･･/— · —/01 ･ ･－･ ･－ ･･･ ･ －･･.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 0,
+          "top": []
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": false
+      }
+    },
+    {
+      "name": "glyphs: search a lone dash",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "Star-Lord/Guardians/",
+        "!!!/Louden Up Now/",
+        "Dot Allison/Afterglow/"
+      ],
+      "filename": [
+        "01 ･ ･－･ ･－ ･･･ ･ －･･.flac",
+        "02 ·-· ·- -·· ·· ---.flac",
+        "03 Star-Lord.flac",
+        "04 !!!.flac",
+        "05 Dot.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "·-· ·- -·· ·· ---",
+          "Star-Lord",
+          "!!!",
+          "Dot"
+        ],
+        "artist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "album": [
+          "— · —",
+          "— · —",
+          "Guardians",
+          "Louden Up Now",
+          "Afterglow"
+        ],
+        "albumArtist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "genre": [
+          "Electronic",
+          "Electronic",
+          "Rock",
+          "Dance-Punk",
+          "Pop"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "-",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          0,
+          1,
+          2
+        ],
+        "matchCount": 3,
+        "best": [
+          0,
+          1,
+          2
+        ],
+        "artists": {
+          "total": 1,
+          "top": [
+            {
+              "name": "･ ･－･ ･－ ･･･ ･ －･･",
+              "trackCount": 2,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "･ ･－･ ･－ ･･･ ･ －･･/— · —/01 ･ ･－･ ･－ ･･･ ･ －･･.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 1,
+          "top": [
+            {
+              "album": "— · —",
+              "artist": "･ ･－･ ･－ ･･･ ･ －･･",
+              "trackCount": 2,
+              "cover": "･ ･－･ ･－ ･･･ ･ －･･/— · —/01 ･ ･－･ ･－ ･･･ ･ －･･.flac"
+            }
+          ]
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": false
+      }
+    },
+    {
+      "name": "glyphs: search a lone dot",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "Star-Lord/Guardians/",
+        "!!!/Louden Up Now/",
+        "Dot Allison/Afterglow/"
+      ],
+      "filename": [
+        "01 ･ ･－･ ･－ ･･･ ･ －･･.flac",
+        "02 ·-· ·- -·· ·· ---.flac",
+        "03 Star-Lord.flac",
+        "04 !!!.flac",
+        "05 Dot.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "·-· ·- -·· ·· ---",
+          "Star-Lord",
+          "!!!",
+          "Dot"
+        ],
+        "artist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "album": [
+          "— · —",
+          "— · —",
+          "Guardians",
+          "Louden Up Now",
+          "Afterglow"
+        ],
+        "albumArtist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "genre": [
+          "Electronic",
+          "Electronic",
+          "Rock",
+          "Dance-Punk",
+          "Pop"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": ".",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          0,
+          1
+        ],
+        "matchCount": 2,
+        "best": [
+          0,
+          1
+        ],
+        "artists": {
+          "total": 1,
+          "top": [
+            {
+              "name": "･ ･－･ ･－ ･･･ ･ －･･",
+              "trackCount": 2,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "･ ･－･ ･－ ･･･ ･ －･･/— · —/01 ･ ･－･ ･－ ･･･ ･ －･･.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 1,
+          "top": [
+            {
+              "album": "— · —",
+              "artist": "･ ･－･ ･－ ･･･ ･ －･･",
+              "trackCount": 2,
+              "cover": "･ ･－･ ･－ ･･･ ･ －･･/— · —/01 ･ ･－･ ･－ ･･･ ･ －･･.flac"
+            }
+          ]
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": false
+      }
+    },
+    {
+      "name": "glyphs: search the dashed album",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "Star-Lord/Guardians/",
+        "!!!/Louden Up Now/",
+        "Dot Allison/Afterglow/"
+      ],
+      "filename": [
+        "01 ･ ･－･ ･－ ･･･ ･ －･･.flac",
+        "02 ·-· ·- -·· ·· ---.flac",
+        "03 Star-Lord.flac",
+        "04 !!!.flac",
+        "05 Dot.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "·-· ·- -·· ·· ---",
+          "Star-Lord",
+          "!!!",
+          "Dot"
+        ],
+        "artist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "album": [
+          "— · —",
+          "— · —",
+          "Guardians",
+          "Louden Up Now",
+          "Afterglow"
+        ],
+        "albumArtist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "genre": [
+          "Electronic",
+          "Electronic",
+          "Rock",
+          "Dance-Punk",
+          "Pop"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "-.-",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          0,
+          1
+        ],
+        "matchCount": 2,
+        "best": [
+          0,
+          1
+        ],
+        "artists": {
+          "total": 0,
+          "top": []
+        },
+        "albums": {
+          "total": 1,
+          "top": [
+            {
+              "album": "— · —",
+              "artist": "･ ･－･ ･－ ･･･ ･ －･･",
+              "trackCount": 2,
+              "cover": "･ ･－･ ･－ ･･･ ･ －･･/— · —/01 ･ ･－･ ･－ ･･･ ･ －･･.flac"
+            }
+          ]
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": false
+      }
+    },
+    {
+      "name": "glyphs: search three bangs",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "Star-Lord/Guardians/",
+        "!!!/Louden Up Now/",
+        "Dot Allison/Afterglow/"
+      ],
+      "filename": [
+        "01 ･ ･－･ ･－ ･･･ ･ －･･.flac",
+        "02 ·-· ·- -·· ·· ---.flac",
+        "03 Star-Lord.flac",
+        "04 !!!.flac",
+        "05 Dot.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "·-· ·- -·· ·· ---",
+          "Star-Lord",
+          "!!!",
+          "Dot"
+        ],
+        "artist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "album": [
+          "— · —",
+          "— · —",
+          "Guardians",
+          "Louden Up Now",
+          "Afterglow"
+        ],
+        "albumArtist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "genre": [
+          "Electronic",
+          "Electronic",
+          "Rock",
+          "Dance-Punk",
+          "Pop"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "!!!",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          3
+        ],
+        "matchCount": 1,
+        "best": [
+          3
+        ],
+        "artists": {
+          "total": 1,
+          "top": [
+            {
+              "name": "!!!",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "!!!/Louden Up Now/04 !!!.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 0,
+          "top": []
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": true
+      }
+    },
+    {
+      "name": "glyphs: search one bang",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "Star-Lord/Guardians/",
+        "!!!/Louden Up Now/",
+        "Dot Allison/Afterglow/"
+      ],
+      "filename": [
+        "01 ･ ･－･ ･－ ･･･ ･ －･･.flac",
+        "02 ·-· ·- -·· ·· ---.flac",
+        "03 Star-Lord.flac",
+        "04 !!!.flac",
+        "05 Dot.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "·-· ·- -·· ·· ---",
+          "Star-Lord",
+          "!!!",
+          "Dot"
+        ],
+        "artist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "album": [
+          "— · —",
+          "— · —",
+          "Guardians",
+          "Louden Up Now",
+          "Afterglow"
+        ],
+        "albumArtist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "genre": [
+          "Electronic",
+          "Electronic",
+          "Rock",
+          "Dance-Punk",
+          "Pop"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "!",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          3
+        ],
+        "matchCount": 1,
+        "best": [
+          3
+        ],
+        "artists": {
+          "total": 1,
+          "top": [
+            {
+              "name": "!!!",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "!!!/Louden Up Now/04 !!!.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 0,
+          "top": []
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": false
+      }
+    },
+    {
+      "name": "glyphs: search letters never meet a morse name",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "Star-Lord/Guardians/",
+        "!!!/Louden Up Now/",
+        "Dot Allison/Afterglow/"
+      ],
+      "filename": [
+        "01 ･ ･－･ ･－ ･･･ ･ －･･.flac",
+        "02 ·-· ·- -·· ·· ---.flac",
+        "03 Star-Lord.flac",
+        "04 !!!.flac",
+        "05 Dot.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "·-· ·- -·· ·· ---",
+          "Star-Lord",
+          "!!!",
+          "Dot"
+        ],
+        "artist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "album": [
+          "— · —",
+          "— · —",
+          "Guardians",
+          "Louden Up Now",
+          "Afterglow"
+        ],
+        "albumArtist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "genre": [
+          "Electronic",
+          "Electronic",
+          "Rock",
+          "Dance-Punk",
+          "Pop"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "dot",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          4
+        ],
+        "matchCount": 1,
+        "best": [
+          4
+        ],
+        "artists": {
+          "total": 1,
+          "top": [
+            {
+              "name": "Dot Allison",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "Dot Allison/Afterglow/05 Dot.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 0,
+          "top": []
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": true
+      }
+    },
+    {
+      "name": "glyphs: search a morse title typed with middle dots",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "Star-Lord/Guardians/",
+        "!!!/Louden Up Now/",
+        "Dot Allison/Afterglow/"
+      ],
+      "filename": [
+        "01 ･ ･－･ ･－ ･･･ ･ －･･.flac",
+        "02 ·-· ·- -·· ·· ---.flac",
+        "03 Star-Lord.flac",
+        "04 !!!.flac",
+        "05 Dot.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "·-· ·- -·· ·· ---",
+          "Star-Lord",
+          "!!!",
+          "Dot"
+        ],
+        "artist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "album": [
+          "— · —",
+          "— · —",
+          "Guardians",
+          "Louden Up Now",
+          "Afterglow"
+        ],
+        "albumArtist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "genre": [
+          "Electronic",
+          "Electronic",
+          "Rock",
+          "Dance-Punk",
+          "Pop"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "·-··--····---",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          1
+        ],
+        "matchCount": 1,
+        "best": [
+          1
+        ],
+        "artists": {
+          "total": 0,
+          "top": []
+        },
+        "albums": {
+          "total": 0,
+          "top": []
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": true
+      }
+    },
+    {
+      "name": "sortname: search erased names the morse artist by its sort name",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "Star-Lord/Guardians/",
+        "!!!/Louden Up Now/",
+        "Dot Allison/Afterglow/"
+      ],
+      "filename": [
+        "01 ･ ･－･ ･－ ･･･ ･ －･･.flac",
+        "02 ·-· ·- -·· ·· ---.flac",
+        "03 Star-Lord.flac",
+        "04 !!!.flac",
+        "05 Dot.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "·-· ·- -·· ·· ---",
+          "Star-Lord",
+          "!!!",
+          "Dot"
+        ],
+        "artist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "album": [
+          "— · —",
+          "— · —",
+          "Guardians",
+          "Louden Up Now",
+          "Afterglow"
+        ],
+        "albumArtist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "genre": [
+          "Electronic",
+          "Electronic",
+          "Rock",
+          "Dance-Punk",
+          "Pop"
+        ],
+        "artistSort": [
+          "Erased",
+          "Erased",
+          "Star-Lord",
+          "!!!",
+          "Allison, Dot"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "erased",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          0,
+          1
+        ],
+        "matchCount": 2,
+        "best": [
+          0,
+          1
+        ],
+        "artists": {
+          "total": 1,
+          "top": [
+            {
+              "name": "･ ･－･ ･－ ･･･ ･ －･･",
+              "trackCount": 2,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "･ ･－･ ･－ ･･･ ･ －･･/— · —/01 ･ ･－･ ･－ ･･･ ･ －･･.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 0,
+          "top": []
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": false
+      }
+    },
+    {
+      "name": "sortname: search a sort name that is nobody's display name",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "Star-Lord/Guardians/",
+        "!!!/Louden Up Now/",
+        "Dot Allison/Afterglow/"
+      ],
+      "filename": [
+        "01 ･ ･－･ ･－ ･･･ ･ －･･.flac",
+        "02 ·-· ·- -·· ·· ---.flac",
+        "03 Star-Lord.flac",
+        "04 !!!.flac",
+        "05 Dot.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "·-· ·- -·· ·· ---",
+          "Star-Lord",
+          "!!!",
+          "Dot"
+        ],
+        "artist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "album": [
+          "— · —",
+          "— · —",
+          "Guardians",
+          "Louden Up Now",
+          "Afterglow"
+        ],
+        "albumArtist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "genre": [
+          "Electronic",
+          "Electronic",
+          "Rock",
+          "Dance-Punk",
+          "Pop"
+        ],
+        "artistSort": [
+          "Erased",
+          "Erased",
+          "Star-Lord",
+          "!!!",
+          "Allison, Dot"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "allison",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          4
+        ],
+        "matchCount": 1,
+        "best": [
+          4
+        ],
+        "artists": {
+          "total": 1,
+          "top": [
+            {
+              "name": "Dot Allison",
+              "trackCount": 1,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "Dot Allison/Afterglow/05 Dot.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 0,
+          "top": []
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": false
+      }
+    },
+    {
+      "name": "sortname: search marks still names the morse artist",
+      "structure": 1,
+      "revision": 1,
+      "directory": [
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "･ ･－･ ･－ ･･･ ･ －･･/— · —/",
+        "Star-Lord/Guardians/",
+        "!!!/Louden Up Now/",
+        "Dot Allison/Afterglow/"
+      ],
+      "filename": [
+        "01 ･ ･－･ ･－ ･･･ ･ －･･.flac",
+        "02 ·-· ·- -·· ·· ---.flac",
+        "03 Star-Lord.flac",
+        "04 !!!.flac",
+        "05 Dot.flac"
+      ],
+      "subsong": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "columns": {
+        "trackNumber": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05"
+        ],
+        "discNumber": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ],
+        "title": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "·-· ·- -·· ·· ---",
+          "Star-Lord",
+          "!!!",
+          "Dot"
+        ],
+        "artist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "album": [
+          "— · —",
+          "— · —",
+          "Guardians",
+          "Louden Up Now",
+          "Afterglow"
+        ],
+        "albumArtist": [
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "･ ･－･ ･－ ･･･ ･ －･･",
+          "Star-Lord",
+          "!!!",
+          "Dot Allison"
+        ],
+        "genre": [
+          "Electronic",
+          "Electronic",
+          "Rock",
+          "Dance-Punk",
+          "Pop"
+        ],
+        "artistSort": [
+          "Erased",
+          "Erased",
+          "Star-Lord",
+          "!!!",
+          "Allison, Dot"
+        ]
+      },
+      "question": {
+        "kind": "search",
+        "query": "..-..-....-..",
+        "limit": 8,
+        "entityLimit": 3,
+        "splitsCredits": true
+      },
+      "expected": {
+        "structure": 1,
+        "revision": 1,
+        "matched": [
+          0,
+          1
+        ],
+        "matchCount": 2,
+        "best": [
+          0,
+          1
+        ],
+        "artists": {
+          "total": 1,
+          "top": [
+            {
+              "name": "･ ･－･ ･－ ･･･ ･ －･･",
+              "trackCount": 2,
+              "guestCount": 0,
+              "albumCount": 1,
+              "cover": "･ ･－･ ･－ ･･･ ･ －･･/— · —/01 ･ ･－･ ･－ ･･･ ･ －･･.flac"
+            }
+          ]
+        },
+        "albums": {
+          "total": 0,
+          "top": []
+        },
+        "genres": {
+          "total": 0,
+          "top": []
+        },
+        "namesATrack": true
+      }
     }
   ],
   "fold": [
@@ -115341,10 +118018,10 @@
     },
     {
       "text": "ı",
-      "fold": "ı",
-      "squash": "ı",
+      "fold": "i",
+      "squash": "i",
       "tokenize": [
-        "ı"
+        "i"
       ],
       "length": 1
     },
@@ -115359,19 +118036,19 @@
     },
     {
       "text": "ẞ",
-      "fold": "ß",
-      "squash": "ß",
+      "fold": "ss",
+      "squash": "ss",
       "tokenize": [
-        "ß"
+        "ss"
       ],
       "length": 1
     },
     {
       "text": "ß",
-      "fold": "ß",
-      "squash": "ß",
+      "fold": "ss",
+      "squash": "ss",
       "tokenize": [
-        "ß"
+        "ss"
       ],
       "length": 1
     },
@@ -115386,37 +118063,37 @@
     },
     {
       "text": "Straße",
-      "fold": "straße",
-      "squash": "straße",
+      "fold": "strasse",
+      "squash": "strasse",
       "tokenize": [
-        "straße"
+        "strasse"
       ],
       "length": 6
     },
     {
       "text": "ǅ",
-      "fold": "ǆ",
-      "squash": "ǆ",
+      "fold": "dz",
+      "squash": "dz",
       "tokenize": [
-        "ǆ"
+        "dz"
       ],
       "length": 1
     },
     {
       "text": "Ǆ",
-      "fold": "ǆ",
-      "squash": "ǆ",
+      "fold": "dz",
+      "squash": "dz",
       "tokenize": [
-        "ǆ"
+        "dz"
       ],
       "length": 1
     },
     {
       "text": "ﬃ",
-      "fold": "ﬃ",
-      "squash": "ﬃ",
+      "fold": "ffi",
+      "squash": "ffi",
       "tokenize": [
-        "ﬃ"
+        "ffi"
       ],
       "length": 1
     },
@@ -115731,10 +118408,10 @@
     },
     {
       "text": "`'\"~¨¯´·¸",
-      "fold": "'\"~",
+      "fold": "'\"~.",
       "squash": "",
       "tokenize": [
-        "'\"~"
+        "'\"~."
       ],
       "length": 9
     },
@@ -115795,20 +118472,20 @@
     },
     {
       "text": "ＡＢＣ１２３",
-      "fold": "ａｂｃ１２３",
-      "squash": "ａｂｃ１２３",
+      "fold": "abc123",
+      "squash": "abc123",
       "tokenize": [
-        "ａｂｃ１２３"
+        "abc123"
       ],
       "length": 6
     },
     {
       "text": "ｈａｌｆ ｗｉｄｔｈ",
-      "fold": "ｈａｌｆ ｗｉｄｔｈ",
-      "squash": "ｈａｌｆｗｉｄｔｈ",
+      "fold": "half width",
+      "squash": "halfwidth",
       "tokenize": [
-        "ｈａｌｆ",
-        "ｗｉｄｔｈ"
+        "half",
+        "width"
       ],
       "length": 10
     },
@@ -115841,7 +118518,7 @@
     },
     {
       "text": "a b",
-      "fold": "a b",
+      "fold": "a b",
       "squash": "ab",
       "tokenize": [
         "a",
@@ -115851,7 +118528,7 @@
     },
     {
       "text": " a ",
-      "fold": " a ",
+      "fold": " a ",
       "squash": "a",
       "tokenize": [
         "a"
@@ -115860,7 +118537,7 @@
     },
     {
       "text": "a b",
-      "fold": "a b",
+      "fold": "a b",
       "squash": "ab",
       "tokenize": [
         "a",
@@ -115870,7 +118547,7 @@
     },
     {
       "text": "a　b",
-      "fold": "a　b",
+      "fold": "a b",
       "squash": "ab",
       "tokenize": [
         "a",
@@ -115950,7 +118627,7 @@
     },
     {
       "text": "a b c d e f g h i j k l m",
-      "fold": "a b c d e f g h i j k l m",
+      "fold": "a b c d e f g h i j k l m",
       "squash": "abcdefghijklm",
       "tokenize": [
         "a",
@@ -115971,7 +118648,7 @@
     },
     {
       "text": "a b c d e",
-      "fold": "a b c d e",
+      "fold": "a b c d e",
       "squash": "abcde",
       "tokenize": [
         "a",
@@ -116035,15 +118712,6 @@
       "squash": "𐀀",
       "tokenize": [
         "𐀀"
-      ],
-      "length": 2
-    },
-    {
-      "text": "𐐀",
-      "fold": "𐐨",
-      "squash": "𐐨",
-      "tokenize": [
-        "𐐨"
       ],
       "length": 2
     },
@@ -116133,19 +118801,19 @@
     },
     {
       "text": "½",
-      "fold": "½",
-      "squash": "½",
+      "fold": " 1/2",
+      "squash": "12",
       "tokenize": [
-        "½"
+        "1/2"
       ],
       "length": 1
     },
     {
       "text": "Ⅷ",
-      "fold": "ⅷ",
-      "squash": "ⅷ",
+      "fold": "viii",
+      "squash": "viii",
       "tokenize": [
-        "ⅷ"
+        "viii"
       ],
       "length": 1
     },
@@ -116251,10 +118919,10 @@
     },
     {
       "text": "ŉ",
-      "fold": "ŉ",
-      "squash": "ŉ",
+      "fold": "\\'n",
+      "squash": "n",
       "tokenize": [
-        "ŉ"
+        "\\'n"
       ],
       "length": 1
     },
@@ -116296,10 +118964,10 @@
     },
     {
       "text": "ǈ",
-      "fold": "ǉ",
-      "squash": "ǉ",
+      "fold": "lj",
+      "squash": "lj",
       "tokenize": [
-        "ǉ"
+        "lj"
       ],
       "length": 1
     },
@@ -116365,6 +119033,204 @@
         "𞤢"
       ],
       "length": 2
+    },
+    {
+      "text": "MØ",
+      "fold": "mo",
+      "squash": "mo",
+      "tokenize": [
+        "mo"
+      ],
+      "length": 2
+    },
+    {
+      "text": "Mœnia",
+      "fold": "moenia",
+      "squash": "moenia",
+      "tokenize": [
+        "moenia"
+      ],
+      "length": 5
+    },
+    {
+      "text": "Łódź",
+      "fold": "lodz",
+      "squash": "lodz",
+      "tokenize": [
+        "lodz"
+      ],
+      "length": 4
+    },
+    {
+      "text": "Ǿ",
+      "fold": "o",
+      "squash": "o",
+      "tokenize": [
+        "o"
+      ],
+      "length": 1
+    },
+    {
+      "text": "ǿ",
+      "fold": "o",
+      "squash": "o",
+      "tokenize": [
+        "o"
+      ],
+      "length": 1
+    },
+    {
+      "text": "Æon",
+      "fold": "aeon",
+      "squash": "aeon",
+      "tokenize": [
+        "aeon"
+      ],
+      "length": 3
+    },
+    {
+      "text": "Þórr",
+      "fold": "thorr",
+      "squash": "thorr",
+      "tokenize": [
+        "thorr"
+      ],
+      "length": 4
+    },
+    {
+      "text": "Ðe",
+      "fold": "de",
+      "squash": "de",
+      "tokenize": [
+        "de"
+      ],
+      "length": 2
+    },
+    {
+      "text": "ŋ",
+      "fold": "n",
+      "squash": "n",
+      "tokenize": [
+        "n"
+      ],
+      "length": 1
+    },
+    {
+      "text": "Ⅻ",
+      "fold": "xii",
+      "squash": "xii",
+      "tokenize": [
+        "xii"
+      ],
+      "length": 1
+    },
+    {
+      "text": "㎭",
+      "fold": "rad",
+      "squash": "rad",
+      "tokenize": [
+        "rad"
+      ],
+      "length": 1
+    },
+    {
+      "text": "🄐",
+      "fold": "(a)",
+      "squash": "a",
+      "tokenize": [
+        "(a)"
+      ],
+      "length": 2
+    },
+    {
+      "text": "…",
+      "fold": "...",
+      "squash": "",
+      "tokenize": [
+        "..."
+      ],
+      "length": 1
+    },
+    {
+      "text": "‼",
+      "fold": "!!",
+      "squash": "",
+      "tokenize": [
+        "!!"
+      ],
+      "length": 1
+    },
+    {
+      "text": "— · —",
+      "fold": "- . -",
+      "squash": "",
+      "tokenize": [
+        "-",
+        ".",
+        "-"
+      ],
+      "length": 5
+    },
+    {
+      "text": "･ ･－･ ･－ ･･･ ･ －･･",
+      "fold": ". .-. .- ... . -..",
+      "squash": "",
+      "tokenize": [
+        ".",
+        ".-.",
+        ".-",
+        "...",
+        ".",
+        "-.."
+      ],
+      "length": 18
+    },
+    {
+      "text": "· • ‧ ∙ ⋅ ⸱ ⸳ ・ ･",
+      "fold": ". . . . . . . . .",
+      "squash": "",
+      "tokenize": [
+        ".",
+        ".",
+        ".",
+        ".",
+        ".",
+        ".",
+        ".",
+        ".",
+        "."
+      ],
+      "length": 17
+    },
+    {
+      "text": "Björk · Live",
+      "fold": "bjork . live",
+      "squash": "bjorklive",
+      "tokenize": [
+        "bjork",
+        ".",
+        "live"
+      ],
+      "length": 12
+    },
+    {
+      "text": "«hola»",
+      "fold": "<<hola>>",
+      "squash": "hola",
+      "tokenize": [
+        "<<hola>>"
+      ],
+      "length": 6
+    },
+    {
+      "text": "½ Life",
+      "fold": " 1/2 life",
+      "squash": "12life",
+      "tokenize": [
+        "1/2",
+        "life"
+      ],
+      "length": 6
     }
   ]
 }

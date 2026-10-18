@@ -334,6 +334,14 @@ const settled = () => new Promise((resolve) => setImmediate(resolve));
 
 const MISSING_FIELD = "%no such field%";
 
+const QUESTION_ONLY_ROLES = [
+	"artists",
+	"artistIds",
+	"albumArtists",
+	"albumArtistIds",
+	"artistSort",
+];
+
 const ROLES: [string, string][] = (
 	Object.entries(FIELD) as [string, number][]
 ).map(([role, at]) => [role, TRACK_EXPRESSIONS[at]]);
@@ -870,17 +878,9 @@ test("the summary still refuses each credit role, which only the questions take"
 	frozenAt(t);
 	const state = declared();
 	const summaryRoles = ROLES.filter(
-		([role]) =>
-			!["artists", "artistIds", "albumArtists", "albumArtistIds"].includes(
-				role,
-			),
+		([role]) => !QUESTION_ONLY_ROLES.includes(role),
 	);
-	for (const credit of [
-		"artists",
-		"artistIds",
-		"albumArtists",
-		"albumArtistIds",
-	])
+	for (const credit of QUESTION_ONLY_ROLES)
 		assert.deepEqual(
 			await refusalOf(state, SUMMARY, [
 				...summaryRoles,
@@ -990,10 +990,7 @@ test("the question bucket is the summary's no more than the summary's is its", a
 		},
 	} as FooJeanOptions);
 	const summaryRoles = ROLES.filter(
-		([role]) =>
-			!["artists", "artistIds", "albumArtists", "albumArtistIds"].includes(
-				role,
-			),
+		([role]) => !QUESTION_ONLY_ROLES.includes(role),
 	);
 
 	assert.equal((await ask(state, GENRE, GRUNGE)).status, 200);

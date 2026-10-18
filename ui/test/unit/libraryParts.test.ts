@@ -26,6 +26,7 @@ const LATE_FIELDS = [
 	FIELD.artistIds,
 	FIELD.albumArtists,
 	FIELD.albumArtistIds,
+	FIELD.artistSort,
 ];
 const LATE = LATE_FIELDS.map((field) => TRACK_EXPRESSIONS[field]);
 const EARLY = TRACK_EXPRESSIONS.filter((column) => !LATE.includes(column));

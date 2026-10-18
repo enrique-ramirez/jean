@@ -16,7 +16,7 @@ namespace jean {
 struct LibraryRoles {
     std::optional<size_t> trackNumber, discNumber, title, artist, album, albumArtist, duration,
         playCount, lastPlayed, rating, year, genre, codec, bitrate, playCountLocal, lastPlayedLocal,
-        added, artists, artistIds, albumArtists, albumArtistIds;
+        added, artists, artistIds, albumArtists, albumArtistIds, artistSort;
 };
 
 using RoleField = std::optional<size_t> LibraryRoles::*;
@@ -48,6 +48,7 @@ inline constexpr std::array kRoleNames{
     RoleName{"artistIds", &LibraryRoles::artistIds},
     RoleName{"albumArtists", &LibraryRoles::albumArtists},
     RoleName{"albumArtistIds", &LibraryRoles::albumArtistIds},
+    RoleName{"artistSort", &LibraryRoles::artistSort},
 };
 
 inline constexpr std::array<std::string_view, kRoleNames.size()> kAllRoleNames = [] {

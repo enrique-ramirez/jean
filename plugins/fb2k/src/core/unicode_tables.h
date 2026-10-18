@@ -31,6 +31,13 @@ struct MarkRankRange {
     uint32_t rank;
 };
 
+constexpr size_t kMostCharactersAnAsciiFoldingTakes = 7;
+
+struct AsciiFolding {
+    uint32_t from;
+    char to[kMostCharactersAnAsciiFoldingTakes + 1];
+};
+
 std::span<const LowerMapping> lowerMappings();
 std::span<const Decomposition> decompositions();
 std::span<const MarkRankRange> markRanks();
@@ -39,5 +46,6 @@ std::span<const CodePointRange> caseIgnorableRanges();
 std::span<const CodePointRange> diacriticRanges();
 std::span<const CodePointRange> letterRanges();
 std::span<const CodePointRange> numberRanges();
+std::span<const AsciiFolding> asciiFoldings();
 
 }  // namespace jean

@@ -112,6 +112,8 @@ A playlist held already gets the same treatment once loaded: a `revision` move a
 
 **Search folds once per distinct value, never per keystroke and never per row.** `libraryIndex()` keeps the folded text of each dictionary entry, keyed by whatever makes an id mean one thing: the structure generation on either source. For the media library `foo_jean` folds the text and answers the search, so the page holds none. A search is then one `includes()` per searchable column, against text `fold()` has already been through.
 
+**`fold()` is the same function on both sides of the wire, and the table is generated once for both.** The contract's *Folding* paragraph says what it does. `plugins/fb2k/scripts/unicode-tables.mjs` writes the table into `src/shared/lib/asciiFolding.ts` and into `foo_jean`'s own tables from one copy of the CLDR file, and the fold cases in `plugins/fb2k/tests/fixtures/library_questions_cases.json` hold the two folds to the same bytes. A query with no letter or digit in it is matched on its marks with the whitespace taken out of both sides, so a name written in Morse code is found however the typist spaces it; `queryOf()` in `shared/lib/text.ts` is where a query becomes one or the other, and an unresolved cell carries no search text at all.
+
 ## Capability detection
 
 The player evaluates title-formatting expressions and answers them positionally, which makes the reachable surface far wider than any fixed schema. Jean declares a column set once, as name-and-expression pairs, and `fieldTable()` in `src/shared/api/fieldTable.ts` derives both the list sent to the player and the index each name landed at. Written out separately, the day somebody inserts an expression in the middle is the day a row reports its genre as its artist.

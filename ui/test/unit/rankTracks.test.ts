@@ -5,7 +5,7 @@ import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import { libraryColumnsOf } from "../../src/domain/track/libraryColumns.ts";
 import { bestMatches } from "../../src/domain/track/rankTracks.ts";
 import { rowMatches, searchIndex } from "../../src/domain/track/searchText.ts";
-import { tokenize } from "../../src/shared/lib/text.ts";
+import { queryOf } from "../../src/shared/lib/text.ts";
 
 const LIBRARY: [title: string, artist: string, album: string][] = [
 	["Life Is Bloody", "2 Mello", "Nastlevania"],
@@ -19,6 +19,8 @@ const LIBRARY: [title: string, artist: string, album: string][] = [
 	["Blood Tears", "Blind Guardian", "Nightfall in Middle-Earth"],
 	["It's Only Natural", "Blood Red Shoes", "Get Tragic"],
 	["Sabbath Bloody Sabbath", "Black Sabbath", "Sabbath Bloody Sabbath"],
+	["･ ･－･ ･－ ･･･ ･ －･･", "･ ･－･ ･－ ･･･ ･ －･･", "— · —"],
+	["Star-Lord", "Star-Lord", "Guardians"],
 ];
 
 const indexOf = (library: (typeof LIBRARY)[number][]) =>
@@ -38,12 +40,12 @@ const indexOf = (library: (typeof LIBRARY)[number][]) =>
 const index = indexOf(LIBRARY);
 
 const preview = (query: string, limit = 5) => {
-	const tokens = tokenize(query);
+	const asked = queryOf(query);
 	const matched = LIBRARY.flatMap((_, at) =>
-		rowMatches(index, at, tokens) ? at : [],
+		rowMatches(index, at, asked) ? at : [],
 	);
 
-	return bestMatches(index, matched, query, limit).map(
+	return bestMatches(index, matched, asked, limit).map(
 		(position) => LIBRARY[matched[position]][0],
 	);
 };
@@ -91,7 +93,7 @@ test("no query is no preview, however many rows are in front of it", () => {
 
 test("the limit is a limit, and asking for none returns none", () => {
 	assert.equal(preview("blood", 3).length, 3);
-	assert.deepEqual(bestMatches(index, [0, 1, 2], "blood", 0), []);
+	assert.deepEqual(bestMatches(index, [0, 1, 2], queryOf("blood"), 0), []);
 });
 
 test("ties keep the order the results page is in", () => {
@@ -100,6 +102,17 @@ test("ties keep the order the results page is in", () => {
 		["Blood", "B", "Two"],
 	]);
 
-	assert.deepEqual(bestMatches(twice, [0, 1], "blood", 2), [0, 1]);
-	assert.deepEqual(bestMatches(twice, [1, 0], "blood", 2), [0, 1]);
+	assert.deepEqual(bestMatches(twice, [0, 1], queryOf("blood"), 2), [0, 1]);
+	assert.deepEqual(bestMatches(twice, [1, 0], queryOf("blood"), 2), [0, 1]);
+});
+
+test("a query of marks alone matches the marks with the whitespace taken out of both sides", () => {
+	for (const typed of ["..-..-....-..", ". .-. .- ... . -..", "..-..-... .-.."])
+		assert.deepEqual(preview(typed), ["･ ･－･ ･－ ･･･ ･ －･･"], typed);
+	assert.deepEqual(preview("-"), [
+		"･ ･－･ ･－ ･･･ ･ －･･",
+		"Star-Lord",
+		"Blood Tears",
+	]);
+	assert.deepEqual(preview("-.-"), ["･ ･－･ ･－ ･･･ ･ －･･"]);
 });

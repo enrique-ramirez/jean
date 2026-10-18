@@ -114,6 +114,7 @@ $script:DeclaredColumns = @(
   '$meta_sep(musicbrainz_artistid,$char(31))'
   '$meta_sep(albumartists,$char(31))'
   '$meta_sep(musicbrainz_albumartistid,$char(31))'
+  '$if2(%artistsort%,%artistsortorder%)'
 )
 
 function Test-SameColumns([string[]]$a, [string[]]$b) {

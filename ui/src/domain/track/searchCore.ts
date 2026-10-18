@@ -4,7 +4,7 @@ import {
 	refsOfArtist,
 } from "@/domain/artist/artists";
 import { decodeJlib } from "@/shared/api/jlib";
-import { fold, TIER } from "@/shared/lib/text";
+import { fold, glyphs, queryOf, TIER } from "@/shared/lib/text";
 import { type Album, albumIndex, refsOfAlbum } from "./albums";
 import { TRACK_EXPRESSIONS } from "./fields";
 import { type Genre, genreIndex } from "./genres";
@@ -148,14 +148,16 @@ function searchAnswer(
 	const wanted = query.trim();
 
 	const index = core.folded.over(columns);
-	const matched = searchLibrary(index, columns.trackCount, query);
-	const folded = fold(wanted);
+	const asked = queryOf(query);
+	const matched = searchLibrary(index, columns.trackCount, asked);
+	const named = asked.glyphic ? glyphs(wanted) : fold(wanted);
+	const titleOf = asked.glyphic ? index.title.glyphs : index.title.text;
 
 	return {
 		matched,
 		best: matched
 			? Int32Array.from(
-					bestMatches(index, matched, query, limit),
+					bestMatches(index, matched, asked, limit),
 					(position) => matched[position],
 				)
 			: NOTHING,
@@ -175,7 +177,7 @@ function searchAnswer(
 		namesATrack:
 			wanted !== "" &&
 			matched !== null &&
-			matched.some((ref) => index.title.text(ref) === folded),
+			matched.some((ref) => titleOf(ref) === named),
 	};
 }
 

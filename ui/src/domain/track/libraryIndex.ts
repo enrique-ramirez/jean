@@ -1,4 +1,4 @@
-import { tokenize } from "@/shared/lib/text";
+import type { Query } from "@/shared/lib/text";
 import type { LibraryColumns } from "./libraryColumns";
 import type { Refs } from "./project";
 import {
@@ -31,9 +31,9 @@ const narrows = (tokens: string[], earlier: string[]) =>
 export function searchLibrary(
 	index: SearchIndex,
 	trackCount: number,
-	query: string,
+	query: Query,
 ): Int32Array | null {
-	const tokens = tokenize(query);
+	const { tokens } = query;
 	if (tokens.length === 0) return null;
 
 	const candidates =
@@ -46,10 +46,10 @@ export function searchLibrary(
 	const matched: number[] = [];
 	if (candidates) {
 		for (const ref of candidates)
-			if (rowMatches(index, ref, tokens)) matched.push(ref);
+			if (rowMatches(index, ref, query)) matched.push(ref);
 	} else {
 		for (let ref = 0; ref < trackCount; ref += 1)
-			if (rowMatches(index, ref, tokens)) matched.push(ref);
+			if (rowMatches(index, ref, query)) matched.push(ref);
 	}
 
 	lastSearch = { index, trackCount, tokens, matched: Int32Array.from(matched) };

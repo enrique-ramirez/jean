@@ -38,6 +38,7 @@ struct LibraryQuestions::Held {
     Kept<AlbumGrouping> grouping;
     Kept<CreditLessons> lessons;
     Kept<SearchText> text;
+    Kept<SearchText> glyphs;
     Kept<AlbumEntities> albums;
     std::array<Kept<ArtistEntities>, 2> artists;
     Kept<GenreEntities> genres;
@@ -226,9 +227,9 @@ LibraryQuestions::Held& LibraryQuestions::heldFor(const Snapshot& snapshot,
         structure_ = snapshot.structure;
     }
 
-    const Roles wanted{roles.title,   roles.artist,     roles.albumArtist,  roles.album,
-                       roles.artists, roles.artistIds,  roles.albumArtists, roles.albumArtistIds,
-                       roles.genre,   roles.discNumber, roles.trackNumber};
+    const Roles wanted{roles.title,      roles.artist,    roles.albumArtist,  roles.album,
+                       roles.artists,    roles.artistIds, roles.albumArtists, roles.albumArtistIds,
+                       roles.artistSort, roles.genre,     roles.discNumber,   roles.trackNumber};
     const auto found =
         std::find_if(held_.begin(), held_.end(),
                      [&](const std::shared_ptr<Held>& held) { return held->roles == wanted; });
@@ -284,7 +285,7 @@ SearchParts LibraryQuestions::searchPartsFor(const Snapshot& snapshot, const Lib
                              roles.trackNumber};
     Roles artistColumns = albumColumns;
     artistColumns.insert(artistColumns.end(), {roles.artists, roles.artistIds, roles.albumArtists,
-                                               roles.albumArtistIds});
+                                               roles.albumArtistIds, roles.artistSort});
 
     const auto searched = searchedColumns(roles);
     SearchParts parts;
@@ -302,6 +303,15 @@ SearchParts LibraryQuestions::searchPartsFor(const Snapshot& snapshot, const Lib
     parts.genres = keep(held.genres, snapshot, {roles.genre}, groupingBuilds_,
                         [&] { return genreEntitiesOf(snapshot, roles); });
     return parts;
+}
+
+std::shared_ptr<const SearchText> LibraryQuestions::glyphTextFor(const Snapshot& snapshot,
+                                                                 const LibraryRoles& roles) {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    Held& held = heldFor(snapshot, roles);
+    const auto searched = searchedColumns(roles);
+    return keep(held.glyphs, snapshot, Roles(searched.begin(), searched.end()), groupingBuilds_,
+                [&] { return glyphTextOf(snapshot, roles); });
 }
 
 json LibraryQuestions::album(const Snapshot& snapshot, const LibraryRoles& roles,

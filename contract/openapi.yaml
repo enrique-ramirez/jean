@@ -223,9 +223,9 @@ info:
 
     **`plugins/fb2k/tests/fixtures/library_questions_cases.json` defines their answers.** For every case in that file an implementation MUST answer what the case expects, byte for byte in what the answer says, and where this text and a case differ the case is right. What follows is what a reader needs to ask the questions and read the answers, and it is not a second definition of folding, ranking or credit splitting.
 
-    **Roles.** Each question takes the roles `GET /library/summary` takes, and four more: `artists`, `artistIds`, `albumArtists` and `albumArtistIds`, each an expression the client declared in `GET /library/export`, as the summary reads them. A question reads `title`, `artist`, `album`, `albumArtist`, `genre`, `artists`, `artistIds`, `albumArtists`, `albumArtistIds`, `trackNumber` and `discNumber`, and accepts the others without reading them. A role left out reads as unresolved on every track. The summary takes its own seventeen alone.
+    **Roles.** Each question takes the roles `GET /library/summary` takes, and five more: `artists`, `artistIds`, `albumArtists`, `albumArtistIds` and `artistSort`, each an expression the client declared in `GET /library/export`, as the summary reads them. A question reads `title`, `artist`, `album`, `albumArtist`, `genre`, `artists`, `artistIds`, `albumArtists`, `albumArtistIds`, `artistSort`, `trackNumber` and `discNumber`, and accepts the others without reading them. A role left out reads as unresolved on every track. The summary takes its own seventeen alone.
 
-    **Folding.** A text is folded by lower-casing it as ECMAScript's `String.prototype.toLowerCase` does, decomposing it to NFD, and removing every code point with the Unicode property `Diacritic`. A query is folded whole and then split on ECMAScript whitespace into words, so a sigma before a space is final. A query that leaves no word is a query that folds to nothing, which matches no track and names no entity. A library that holds no tracks answers every query so, whatever the words.
+    **Folding.** A text is folded by lower-casing it as ECMAScript's `String.prototype.toLowerCase` does, decomposing it to NFD, spelling each character CLDR's Latin-ASCII transform has a rule for as that rule does (`ø` is `o`, `œ` is `oe`, `ß` is `ss`) and each dot-like mark as a full stop, and removing every code point with the Unicode property `Diacritic`. A query is folded whole and then split on ECMAScript whitespace into words, so a sigma before a space is final. A query that leaves no word is a query that folds to nothing, which matches no track and names no entity. A library that holds no tracks answers every query so, whatever the words. A query with no letter or digit in it, such as a name written in Morse code, is matched on its folded text with the whitespace taken out of both sides, and a cell that is unresolved carries no search text.
 
     **Sets.** A set of tracks is an ascending list of ordinals at the answer's `structure`, sent as `runs` or as `bitset`, whichever serialises shorter, and `runs` on a tie. `runs` is the maximal runs of consecutive ordinals, `[start, count]` each, and is measured as the compact JSON text of that array, with no whitespace. `bitset` is `ceil(trackCount / 8)` bytes at the answer's `structure`, as `Bitset` describes, in padded base64. The answer carries no `trackCount`, so a client decodes a `bitset` against the library it holds at that `structure` and reads nothing from an answer at another. `runs` is the shorter when its text is no longer than `4 * ceil(ceil(trackCount / 8) / 3)` characters. An empty set is `{ "runs": [] }`. A client reads a set in whichever form arrives, and exactly one of the two is present.
 
@@ -2833,6 +2833,7 @@ paths:
         - $ref: "#/components/parameters/RoleArtistIds"
         - $ref: "#/components/parameters/RoleAlbumArtists"
         - $ref: "#/components/parameters/RoleAlbumArtistIds"
+        - $ref: "#/components/parameters/RoleArtistSort"
       responses:
         "200":
           description: |
@@ -2893,6 +2894,7 @@ paths:
         - $ref: "#/components/parameters/RoleArtistIds"
         - $ref: "#/components/parameters/RoleAlbumArtists"
         - $ref: "#/components/parameters/RoleAlbumArtistIds"
+        - $ref: "#/components/parameters/RoleArtistSort"
       responses:
         "200":
           description: |
@@ -2951,6 +2953,7 @@ paths:
         - $ref: "#/components/parameters/RoleArtistIds"
         - $ref: "#/components/parameters/RoleAlbumArtists"
         - $ref: "#/components/parameters/RoleAlbumArtistIds"
+        - $ref: "#/components/parameters/RoleArtistSort"
       responses:
         "200":
           description: |
@@ -3008,6 +3011,7 @@ paths:
         - $ref: "#/components/parameters/RoleArtistIds"
         - $ref: "#/components/parameters/RoleAlbumArtists"
         - $ref: "#/components/parameters/RoleAlbumArtistIds"
+        - $ref: "#/components/parameters/RoleArtistSort"
       responses:
         "200":
           description: |
@@ -3945,6 +3949,13 @@ components:
       in: query
       required: false
       description: "The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleArtistSort:
+      name: artistSort
+      in: query
+      required: false
+      description: "The declared expression that reads the artist's sort name, the plain spelling a tagger writes beside a stylised one."
       schema: { $ref: "#/components/schemas/LibraryRole" }
 
   responses:

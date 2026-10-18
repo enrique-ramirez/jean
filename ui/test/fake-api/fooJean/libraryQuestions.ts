@@ -44,6 +44,7 @@ const columnsOf = ({ directory, columns }: QuestionLibrary): PageColumns => {
 		artist: of("artist"),
 		artists: of("artists"),
 		artistIds: of("artistIds"),
+		artistSort: of("artistSort"),
 		genre: of("genre"),
 	};
 };

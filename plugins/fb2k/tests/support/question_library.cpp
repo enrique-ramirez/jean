@@ -19,9 +19,9 @@ namespace jean::testing {
 
 namespace {
 
-constexpr std::array<std::string_view, 11> kReadRoles{
-    "title",     "artist",       "album",          "albumArtist", "genre",     "artists",
-    "artistIds", "albumArtists", "albumArtistIds", "trackNumber", "discNumber"};
+constexpr std::array<std::string_view, 12> kReadRoles{
+    "title",     "artist",       "album",          "albumArtist", "genre",       "artists",
+    "artistIds", "albumArtists", "albumArtistIds", "artistSort",  "trackNumber", "discNumber"};
 
 constexpr char kUnreadValue[] = "1";
 

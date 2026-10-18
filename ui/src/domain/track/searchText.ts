@@ -1,8 +1,8 @@
 import type { Ids, JlibColumn } from "@/shared/api/jlib";
-import { fold } from "@/shared/lib/text";
+import { fold, glyphs, type Query } from "@/shared/lib/text";
 import { overColumns } from "./columnCache";
 import { FIELD } from "./fields";
-import type { LibraryColumns } from "./libraryColumns";
+import { type LibraryColumns, UNRESOLVED } from "./libraryColumns";
 
 const TITLE = 1;
 const ARTIST = 0.85;
@@ -13,15 +13,22 @@ const SEARCHED = [
 	{ field: FIELD.artist, weight: ARTIST },
 	{ field: FIELD.albumArtist, weight: ARTIST },
 	{ field: FIELD.album, weight: ALBUM },
+	{ field: FIELD.artistSort, weight: ARTIST },
 ];
 
 const TITLE_AT = SEARCHED.findIndex((field) => field.field === FIELD.title);
 
-interface SearchField {
+const foldedCell = (raw: string) => (raw === UNRESOLVED ? "" : fold(raw));
+
+export interface SearchField {
 	readonly ids: Ids;
 	readonly weight: number;
 	readonly text: (ref: number) => string;
+	readonly glyphs: (ref: number) => string;
 }
+
+export const textOf = (field: SearchField, query: Query) =>
+	query.glyphic ? field.glyphs : field.text;
 
 export interface SearchIndex {
 	readonly fields: readonly SearchField[];
@@ -37,6 +44,7 @@ const WARM_CHECK_EVERY = 256;
 
 export function foldCache(): FoldCache {
 	const held = SEARCHED.map((): string[] => []);
+	const heldGlyphs = SEARCHED.map((): string[] => []);
 	const warmed = SEARCHED.map(() => 0);
 	let last: { of: readonly JlibColumn[]; index: SearchIndex } | null = null;
 
@@ -53,16 +61,26 @@ export function foldCache(): FoldCache {
 			const fields = SEARCHED.map(({ weight }, at): SearchField => {
 				const { ids, value } = searched[at];
 				const folded = held[at];
+				const stripped = heldGlyphs[at];
+				const text = (ref: number) => {
+					const id = ids[ref];
+					const known = folded[id];
+					if (known !== undefined) return known;
+					const next = foldedCell(value(id));
+					folded[id] = next;
+					return next;
+				};
 
 				return {
 					ids,
 					weight,
-					text: (ref) => {
+					text,
+					glyphs: (ref) => {
 						const id = ids[ref];
-						const known = folded[id];
+						const known = stripped[id];
 						if (known !== undefined) return known;
-						const next = fold(value(id));
-						folded[id] = next;
+						const next = glyphs(text(ref));
+						stripped[id] = next;
 						return next;
 					},
 				};
@@ -82,7 +100,7 @@ export function foldCache(): FoldCache {
 						warmed[at] = id;
 						return false;
 					}
-					if (folded[id] === undefined) folded[id] = fold(value(id));
+					if (folded[id] === undefined) folded[id] = foldedCell(value(id));
 				}
 				warmed[at] = distinct;
 			}
@@ -96,7 +114,7 @@ export const searchIndex = overColumns(
 	(columns) => foldCache().over(columns),
 );
 
-export const rowMatches = (index: SearchIndex, ref: number, tokens: string[]) =>
-	tokens.every((token) =>
-		index.fields.some((field) => field.text(ref).includes(token)),
+export const rowMatches = (index: SearchIndex, ref: number, query: Query) =>
+	query.tokens.every((token) =>
+		index.fields.some((field) => textOf(field, query)(ref).includes(token)),
 	);

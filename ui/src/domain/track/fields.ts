@@ -43,6 +43,7 @@ const FIELDS = [
 	["artistIds", everyValueOf("musicbrainz_artistid")],
 	["albumArtists", everyValueOf("albumartists")],
 	["albumArtistIds", everyValueOf("musicbrainz_albumartistid")],
+	["artistSort", "$if2(%artistsort%,%artistsortorder%)"],
 ] as const;
 
 export const { expressions: TRACK_EXPRESSIONS, index: FIELD } =
@@ -60,6 +61,7 @@ export const LATE_FIELDS = [
 	FIELD.bitrate,
 	FIELD.added,
 	...CREDIT_TAGS,
+	FIELD.artistSort,
 ];
 
 export const LATE_EXPRESSIONS = LATE_FIELDS.map(

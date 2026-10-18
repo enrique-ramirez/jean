@@ -8,6 +8,7 @@ import {
 	type SearchIndex,
 	searchIndex,
 } from "../../src/domain/track/searchText.ts";
+import { queryOf } from "../../src/shared/lib/text.ts";
 
 const LIBRARY: [title: string, artist: string][] = [
 	["Árbol", "Babasónicos"],
@@ -52,14 +53,15 @@ const watched = () => {
 	return {
 		search: (query: string, trackCount = LIBRARY.length) => {
 			read.clear();
-			const found = searchLibrary(watching, trackCount, query);
+			const found = searchLibrary(watching, trackCount, queryOf(query));
 			return { found: [...(found ?? [])], read: [...read].sort() };
 		},
 	};
 };
 
 const fromScratch = (query: string) => [
-	...(searchLibrary(searchIndex(columns), LIBRARY.length, query) ?? []),
+	...(searchLibrary(searchIndex(columns), LIBRARY.length, queryOf(query)) ??
+		[]),
 ];
 
 test("the first search reads every row", () => {

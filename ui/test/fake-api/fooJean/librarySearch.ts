@@ -1,3 +1,4 @@
+import { ASCII_FOLDINGS } from "../../../src/shared/lib/asciiFolding.ts";
 import { compareUtf8 } from "../jlib.ts";
 import {
 	collapseRepeatedTag,
@@ -54,18 +55,33 @@ export interface Searched {
 	namesATrack: boolean;
 }
 
+const FOLDABLE = new RegExp(`[${[...ASCII_FOLDINGS.keys()].join("")}]`, "gu");
+
 const fold = (text: string) =>
 	text
 		.toLowerCase()
 		.normalize("NFD")
+		.replace(FOLDABLE, (character) => ASCII_FOLDINGS.get(character)!)
 		.replace(/\p{Diacritic}/gu, "");
 
 const NOT_ALPHANUMERIC = /[^\p{L}\p{N}]+/gu;
+const LETTER_OR_NUMBER = /[\p{L}\p{N}]/u;
 
 const squash = (text: string) => fold(text).replace(NOT_ALPHANUMERIC, "");
 
 const tokenize = (query: string) =>
-	fold(query.trim()).split(/\s+/).filter(Boolean);
+	fold(query.trim()).split(/\s+/u).filter(Boolean);
+
+const glyphs = (text: string) => tokenize(text).join("");
+
+const nameKey = (text: string) => squash(text) || glyphs(text);
+
+const nameWords = (text: string) => {
+	const folded = fold(text);
+	return LETTER_OR_NUMBER.test(folded)
+		? folded.split(NOT_ALPHANUMERIC).filter(Boolean)
+		: tokenize(folded);
+};
 
 const MAX_CLOSENESS = 999;
 
@@ -110,11 +126,11 @@ interface FuzzyKey {
 }
 
 const fuzzyKey = (text: string): FuzzyKey => ({
-	squashed: squash(text),
-	words: fold(text).split(NOT_ALPHANUMERIC).filter(Boolean),
+	squashed: nameKey(text),
+	words: nameWords(text),
 });
 
-const entityScore = ({ squashed, words }: FuzzyKey, query: string) => {
+const keyScore = ({ squashed, words }: FuzzyKey, query: string) => {
 	const closeness = closenessTo(squashed, query);
 	if (squashed === query) return ENTITY_EXACT + closeness;
 	if (squashed.startsWith(query)) return ENTITY_PREFIX + closeness;
@@ -123,19 +139,31 @@ const entityScore = ({ squashed, words }: FuzzyKey, query: string) => {
 	return 0;
 };
 
-const ranked = <Entity extends { match: FuzzyKey; trackCount: number }>(
+interface Matchable {
+	match: FuzzyKey;
+	sortMatch?: FuzzyKey | null;
+	trackCount: number;
+}
+
+const entityScore = (entity: Matchable, query: string) =>
+	Math.max(
+		keyScore(entity.match, query),
+		entity.sortMatch ? keyScore(entity.sortMatch, query) : 0,
+	);
+
+const ranked = <Entity extends Matchable>(
 	entities: Entity[],
 	query: string,
-): Omit<Entity, "match">[] => {
-	const squashed = squash(query);
-	if (squashed.length === 0) return [];
+): Omit<Entity, "match" | "sortMatch">[] => {
+	const key = nameKey(query);
+	if (key.length === 0) return [];
 	return entities
-		.map((entity) => ({ entity, score: entityScore(entity.match, squashed) }))
+		.map((entity) => ({ entity, score: entityScore(entity, key) }))
 		.filter(({ score }) => score >= ENTITY_WORD)
 		.sort(
 			(a, b) => b.score - a.score || b.entity.trackCount - a.entity.trackCount,
 		)
-		.map(({ entity: { match, ...named } }) => named);
+		.map(({ entity: { match, sortMatch, ...named } }) => named);
 };
 
 const NOT_AN_ARTIST = new Set(["various artists", "various", "va"]);
@@ -152,12 +180,17 @@ const positiveInteger = (raw: string) => {
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
-const foldedColumn = (values: readonly string[]) => {
+const UNRESOLVED = "?";
+
+const spelledColumn = (
+	values: readonly string[],
+	spell: (raw: string) => string,
+) => {
 	const known = new Map<string, string>();
 	return values.map((raw) => {
 		let text = known.get(raw);
 		if (text === undefined) {
-			text = fold(raw);
+			text = raw === UNRESOLVED ? "" : spell(raw);
 			known.set(raw, text);
 		}
 		return text;
@@ -263,6 +296,7 @@ const artistsFor = (
 		{
 			name: string;
 			match: FuzzyKey;
+			sortMatch: FuzzyKey | null;
 			trackCount: number;
 			guestCount: number;
 			albums: Map<string, number>;
@@ -281,6 +315,7 @@ const artistsFor = (
 			draft = {
 				name,
 				match: fuzzyKey(name),
+				sortMatch: null,
 				trackCount: 0,
 				guestCount: 0,
 				albums: new Map(),
@@ -329,6 +364,14 @@ const artistsFor = (
 			seen.add(guest.key);
 			credit(guest, ref, albumKey, true);
 		}
+
+		if (leads.size === 1 && seen.size === 1) {
+			const [soleKey] = leads.keys();
+			const sole = drafts.get(soleKey);
+			const sortName = readValue(columns.artistSort[ref]);
+			if (sole && !sole.sortMatch && sortName !== null)
+				sole.sortMatch = fuzzyKey(sortName);
+		}
 	}
 
 	return [...drafts.values()]
@@ -337,6 +380,7 @@ const artistsFor = (
 			return {
 				name: draft.name,
 				match: draft.match,
+				sortMatch: draft.sortMatch,
 				trackCount: draft.trackCount,
 				guestCount: draft.guestCount,
 				albumCount: draft.albums.size,
@@ -411,13 +455,18 @@ export const searchPage = (
 	if (columns.trackCount === 0) return nothing();
 
 	const wanted = query.trim();
-	const tokens = tokenize(query);
-	const titles = foldedColumn(columns.title);
+	const words = tokenize(query);
+	const glyphic =
+		words.length > 0 && !words.some((word) => LETTER_OR_NUMBER.test(word));
+	const spell = glyphic ? glyphs : fold;
+	const tokens = glyphic ? [words.join("")] : words;
+	const titles = spelledColumn(columns.title, spell);
 	const fields = [
 		{ text: titles, weight: TITLE_WEIGHT },
-		{ text: foldedColumn(columns.artist), weight: ARTIST_WEIGHT },
-		{ text: foldedColumn(columns.albumArtist), weight: ARTIST_WEIGHT },
-		{ text: foldedColumn(columns.album), weight: ALBUM_WEIGHT },
+		{ text: spelledColumn(columns.artist, spell), weight: ARTIST_WEIGHT },
+		{ text: spelledColumn(columns.albumArtist, spell), weight: ARTIST_WEIGHT },
+		{ text: spelledColumn(columns.album, spell), weight: ALBUM_WEIGHT },
+		{ text: spelledColumn(columns.artistSort, spell), weight: ARTIST_WEIGHT },
 	];
 
 	let matched: number[] | null = null;
@@ -456,7 +505,7 @@ export const searchPage = (
 
 	const records = recordsOf(columns);
 	const canonical = canonicalOf(columns, records.recordOf);
-	const folded = fold(wanted);
+	const named = spell(wanted);
 
 	return {
 		matched,
@@ -478,6 +527,6 @@ export const searchPage = (
 		namesATrack:
 			wanted !== "" &&
 			matched !== null &&
-			matched.some((ref) => titles[ref] === folded),
+			matched.some((ref) => titles[ref] === named),
 	};
 };

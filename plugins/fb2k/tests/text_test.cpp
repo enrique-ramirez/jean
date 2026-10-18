@@ -190,10 +190,10 @@ TEST_CASE("a sigma ending one word of several folds to a final sigma in the fold
           std::vector<std::string>{kSmallOdysseus, spelled({kSmallAlpha, kFinalSigma})});
 }
 
-TEST_CASE("a Turkish capital I with a dot folds to a plain i, and a dotless i stays dotless") {
+TEST_CASE("a Turkish capital I with a dot and a dotless i both fold to a plain i") {
     CHECK(fold(kCapitalIWithDot) == "i");
     CHECK(fold(spelled({kCapitalIWithDot, "stanbul"})) == "istanbul");
-    CHECK(fold(kDotlessI) == kDotlessI);
+    CHECK(fold(kDotlessI) == "i");
 }
 
 TEST_CASE("two marks the fold keeps fold to one string whichever order they were typed in") {
@@ -215,9 +215,43 @@ TEST_CASE("a Hangul syllable folds to its jamo, the same string its jamo fold to
     CHECK(utf16Length(kHan) == 1);
 }
 
-TEST_CASE("full-width letters fold to full-width small letters and are not narrowed") {
-    CHECK(fold(kFullWidthUpper) == kFullWidthLower);
-    CHECK(squash(kFullWidthUpper) == kFullWidthLower);
+TEST_CASE("full-width letters and digits fold to their ASCII spelling") {
+    CHECK(fold(kFullWidthUpper) == "abc123");
+    CHECK(fold(kFullWidthLower) == "abc123");
+    CHECK(squash(kFullWidthUpper) == "abc123");
+}
+
+TEST_CASE("a letter with no decomposition folds to the ASCII letters CLDR spells it with") {
+    CHECK(fold("M\xc3\x98") == "mo");
+    CHECK(fold("M\xc5\x93nia") == "moenia");
+    CHECK(fold("Stra\xc3\x9f"
+               "e") == "strasse");
+    CHECK(squash("\xc5\x81\xc3\xb3"
+                 "d\xc5\xba") == "lodz");
+}
+
+TEST_CASE(
+    "glyphs are the folded text with its whitespace gone, and a name with no letter is keyed by "
+    "them") {
+    const std::string morse =
+        "\xef\xbd\xa5 \xef\xbd\xa5\xef\xbc\x8d\xef\xbd\xa5 \xef\xbd\xa5\xef\xbc\x8d "
+        "\xef\xbd\xa5\xef\xbd\xa5\xef\xbd\xa5 \xef\xbd\xa5 \xef\xbc\x8d\xef\xbd\xa5\xef\xbd\xa5";
+    CHECK(glyphs(morse) == "..-..-....-..");
+    CHECK(glyphs("  Star-Lord's Jams ") == "star-lord'sjams");
+    CHECK(nameKey(morse) == "..-..-....-..");
+    CHECK(nameKey("Star-Lord") == "starlord");
+    CHECK(nameKey("!!!") == "!!!");
+    CHECK(nameKey("   ").empty());
+    CHECK(nameWords(morse) == std::vector<std::string>{".", ".-.", ".-", "...", ".", "-.."});
+    CHECK(nameWords("Star-Lord") == std::vector<std::string>{"star", "lord"});
+}
+
+TEST_CASE(
+    "every dot-like mark folds to a full stop and every dash to a hyphen, the middle dot "
+    "included") {
+    CHECK(fold("\xc2\xb7 \xe2\x80\xa2 \xe3\x83\xbb \xef\xbd\xa5") == ". . . .");
+    CHECK(fold("\xe2\x80\x94 \xe2\x80\x93 \xef\xbc\x8d") == "- - -");
+    CHECK(fold("\xef\xbd\xa5 \xef\xbd\xa5\xef\xbc\x8d\xef\xbd\xa5") == ". .-.");
 }
 
 TEST_CASE(
@@ -230,7 +264,7 @@ TEST_CASE(
           std::vector<std::string>{spelled({"a", kZeroWidthSpace, "b"})});
     CHECK(foldedWords(spelled({"a", kNextLine, "b"})) ==
           std::vector<std::string>{spelled({"a", kNextLine, "b"})});
-    CHECK(fold(spelled({"A", kNoBreakSpace, "B"})) == spelled({"a", kNoBreakSpace, "b"}));
+    CHECK(fold(spelled({"A", kNoBreakSpace, "B"})) == "a b");
     CHECK(squash(spelled({"A", kNoBreakSpace, "B"})) == "ab");
 }
 

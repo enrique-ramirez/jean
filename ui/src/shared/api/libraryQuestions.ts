@@ -18,7 +18,8 @@ export type LibraryRoleName =
 	| "artists"
 	| "artistIds"
 	| "albumArtists"
-	| "albumArtistIds";
+	| "albumArtistIds"
+	| "artistSort";
 
 export type LibraryRoles = Record<LibraryRoleName, string>;
 

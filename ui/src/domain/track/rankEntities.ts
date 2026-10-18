@@ -1,11 +1,18 @@
-import { type FuzzyKey, fuzzyScore, squash } from "@/shared/lib/text";
+import { type FuzzyKey, fuzzyScore, nameKey } from "@/shared/lib/text";
 
 // An artist, an album or a genre: something a query might *name*, as against a track it might merely
 // match. `trackCount` is how much of it the library holds.
 export interface Entity {
 	match: FuzzyKey;
+	sortMatch?: FuzzyKey | null;
 	trackCount: number;
 }
+
+const scoreOf = (entity: Entity, squashed: string, floor: number) =>
+	Math.max(
+		fuzzyScore(entity.match, squashed, floor),
+		entity.sortMatch ? fuzzyScore(entity.sortMatch, squashed, floor) : 0,
+	);
 
 /**
  * The entities a query plausibly *names*, best first. The floor is what keeps a section honest: a list
@@ -21,14 +28,14 @@ export function rankEntities<T extends Entity>(
 	query: string,
 	floor: number,
 ): T[] {
-	const squashed = squash(query);
+	const squashed = nameKey(query);
 	if (squashed.length === 0) return [];
 
 	return (
 		entities
 			.map((entity) => ({
 				entity,
-				score: fuzzyScore(entity.match, squashed, floor),
+				score: scoreOf(entity, squashed, floor),
 			}))
 			.filter((scored) => scored.score >= floor)
 			// Then by how much of them the library holds: at the same rung, the one you own more of is

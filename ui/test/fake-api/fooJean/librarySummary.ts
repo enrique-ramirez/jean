@@ -33,6 +33,7 @@ export const LIBRARY_ROLE_NAMES = [
 	"artistIds",
 	"albumArtists",
 	"albumArtistIds",
+	"artistSort",
 ] as const;
 
 export type LibraryRoleName = (typeof LIBRARY_ROLE_NAMES)[number];

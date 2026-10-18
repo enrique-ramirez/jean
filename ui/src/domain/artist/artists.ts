@@ -23,6 +23,7 @@ export interface Artist {
 	name: string;
 	key: string;
 	match: FuzzyKey;
+	sortMatch: FuzzyKey | null;
 	trackCount: number;
 	guestCount: number;
 	albumCount: number;
@@ -33,6 +34,7 @@ interface Draft {
 	name: string;
 	key: string;
 	match: FuzzyKey;
+	sortMatch: FuzzyKey | null;
 	trackCount: number;
 	guestCount: number;
 	albums: Map<string, number>;
@@ -89,12 +91,17 @@ function* absorb(
 	const artist = columns.fields[FIELD.artist];
 	const albumArtist = columns.fields[FIELD.albumArtist];
 	const album = columns.fields[FIELD.album];
+	const artistSort = columns.fields[FIELD.artistSort];
 
 	const credits = byValue(artist, creditOf);
 	const acts = byValue(albumArtist, albumArtistOf);
 	const albumKeys = byValue(album, (raw) => {
 		const name = readValue(raw);
 		return name ? tagKey(name) : null;
+	});
+	const sortKeys = byValue(artistSort, (raw) => {
+		const name = readValue(raw);
+		return name ? fuzzyKey(name) : null;
 	});
 
 	const credit = (
@@ -109,6 +116,7 @@ function* absorb(
 				name,
 				key,
 				match: fuzzyKey(name),
+				sortMatch: null,
 				trackCount: 0,
 				guestCount: 0,
 				albums: new Map(),
@@ -154,6 +162,13 @@ function* absorb(
 			seen.add(guest.key);
 			credit(guest, position, albumKey, true);
 		}
+
+		if (leads.size === 1 && seen.size === 1) {
+			const [soleKey] = leads.keys();
+			const sole = byKey.get(soleKey);
+			if (sole && !sole.sortMatch)
+				sole.sortMatch = sortKeys[artistSort.ids[ref]];
+		}
 	}
 }
 
@@ -163,6 +178,7 @@ const derive = (byKey: Map<string, Draft>): Artist[] =>
 			name: draft.name,
 			key: draft.key,
 			match: draft.match,
+			sortMatch: draft.sortMatch,
 			trackCount: draft.trackCount,
 			guestCount: draft.guestCount,
 			albumCount: draft.albums.size,
@@ -176,7 +192,8 @@ export function artistsOf(rows: TrackRows, guesses: boolean): Artist[] {
 	return derive(byKey);
 }
 
-const CREDITED = [...CREDIT_FIELDS, FIELD.album];
+const CREDITED = [...CREDIT_FIELDS, FIELD.album, FIELD.artistSort];
+const AWAITED = [...CREDIT_TAGS, FIELD.artistSort];
 
 const guessing = growingIndex(CREDITED, absorbing(true), derive);
 const notGuessing = growingIndex(CREDITED, absorbing(false), derive);
@@ -188,7 +205,7 @@ export const artistIndex = (
 	columns: LibraryColumns,
 	guesses: boolean,
 ) =>
-	isLoaded(columns, CREDIT_TAGS)
+	isLoaded(columns, AWAITED)
 		? (guesses ? guessing : notGuessing)(key, columns)
 		: NO_ARTISTS;
 

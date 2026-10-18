@@ -19,7 +19,7 @@ import { refsOfGenre } from "../../src/domain/track/project.ts";
 import { rankEntities } from "../../src/domain/track/rankEntities.ts";
 import { bestMatches } from "../../src/domain/track/rankTracks.ts";
 import { decodeJlib } from "../../src/shared/api/jlib.ts";
-import { fold, TIER } from "../../src/shared/lib/text.ts";
+import { fold, queryOf, TIER } from "../../src/shared/lib/text.ts";
 import {
 	changedColumn,
 	type Dictionary,
@@ -318,9 +318,10 @@ export function mainThreadSearch(
 		};
 
 	const index = libraryIndex(key, columns);
-	const matched = searchLibrary(index, columns.trackCount, query);
+	const asked = queryOf(query);
+	const matched = searchLibrary(index, columns.trackCount, asked);
 	const best = matched
-		? bestMatches(index, matched, query, limit).map(
+		? bestMatches(index, matched, asked, limit).map(
 				(position) => matched[position],
 			)
 		: [];

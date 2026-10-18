@@ -18,6 +18,7 @@ namespace jean {
 struct AlbumGrouping;
 struct CreditLessons;
 struct SearchParts;
+struct SearchText;
 
 inline constexpr size_t kHeldRoleSets = kHeldParts;
 
@@ -54,6 +55,9 @@ private:
 
     SearchParts searchPartsFor(const Snapshot& snapshot, const LibraryRoles& roles,
                                bool splitsCredits);
+
+    std::shared_ptr<const SearchText> glyphTextFor(const Snapshot& snapshot,
+                                                   const LibraryRoles& roles);
 
     Held& heldFor(const Snapshot& snapshot, const LibraryRoles& roles);
 

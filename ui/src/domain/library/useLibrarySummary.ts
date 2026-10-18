@@ -9,6 +9,7 @@ const {
 	artistIds: _artistIds,
 	albumArtists: _albumArtists,
 	albumArtistIds: _albumArtistIds,
+	artistSort: _artistSort,
 	...SENT
 } = LIBRARY_ROLES;
 

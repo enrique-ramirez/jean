@@ -30,13 +30,17 @@ struct EntityKey {
     size_t length = 0;
 };
 
-std::array<std::optional<size_t>, 4> searchedColumns(const LibraryRoles& roles);
+constexpr size_t kSearchedColumnCount = 5;
+
+std::array<std::optional<size_t>, kSearchedColumnCount> searchedColumns(const LibraryRoles& roles);
 
 struct SearchText {
-    std::array<std::vector<std::string>, 4> folded;
+    std::array<std::vector<std::string>, kSearchedColumnCount> folded;
 };
 
 std::shared_ptr<const SearchText> searchTextOf(const Snapshot& snapshot, const LibraryRoles& roles);
+
+std::shared_ptr<const SearchText> glyphTextOf(const Snapshot& snapshot, const LibraryRoles& roles);
 
 struct GenreEntities {
     struct Entity {
@@ -78,6 +82,7 @@ struct ArtistEntities {
     struct Entity {
         std::string name;
         EntityKey match;
+        std::optional<EntityKey> sortMatch;
         uint32_t trackCount = 0;
         uint32_t guestCount = 0;
         uint32_t albumCount = 0;

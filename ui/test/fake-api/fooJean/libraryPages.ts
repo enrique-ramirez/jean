@@ -17,6 +17,7 @@ export interface PageColumns {
 	artist: readonly string[];
 	artists: readonly string[];
 	artistIds: readonly string[];
+	artistSort: readonly string[];
 	genre: readonly string[];
 }
 

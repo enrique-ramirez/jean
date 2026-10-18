@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { tokenize } from "@/shared/lib/text";
+import { queryOf } from "@/shared/lib/text";
 import type { TrackRows } from "./project";
 import { rowMatches, type SearchIndex, searchIndex } from "./searchText";
 
@@ -21,12 +21,13 @@ export function search(
 	rows: TrackRows,
 	query: string,
 ): { matches: Set<number> | null; results: number[] } {
-	const tokens = tokenize(query);
-	if (!index || tokens.length === 0) return { matches: null, results: [] };
+	const asked = queryOf(query);
+	if (!index || asked.tokens.length === 0)
+		return { matches: null, results: [] };
 
 	const matches = new Set<number>();
 	for (let position = 0; position < rows.length; position += 1)
-		if (rowMatches(index, rows.ref(position), tokens)) matches.add(position);
+		if (rowMatches(index, rows.ref(position), asked)) matches.add(position);
 
 	return { matches, results: [...matches].slice(0, MAX_RESULTS) };
 }

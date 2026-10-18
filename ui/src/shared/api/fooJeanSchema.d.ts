@@ -3774,6 +3774,8 @@ export interface components {
         RoleAlbumArtists: components["schemas"]["LibraryRole"];
         /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
         RoleAlbumArtistIds: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads the artist's sort name, the plain spelling a tagger writes beside a stylised one. */
+        RoleArtistSort: components["schemas"]["LibraryRole"];
     };
     requestBodies: never;
     headers: never;
@@ -5893,6 +5895,8 @@ export interface operations {
                 albumArtists?: components["parameters"]["RoleAlbumArtists"];
                 /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
                 albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+                /** @description The declared expression that reads the artist's sort name, the plain spelling a tagger writes beside a stylised one. */
+                artistSort?: components["parameters"]["RoleArtistSort"];
             };
             header?: never;
             path?: never;
@@ -5971,6 +5975,8 @@ export interface operations {
                 albumArtists?: components["parameters"]["RoleAlbumArtists"];
                 /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
                 albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+                /** @description The declared expression that reads the artist's sort name, the plain spelling a tagger writes beside a stylised one. */
+                artistSort?: components["parameters"]["RoleArtistSort"];
             };
             header?: never;
             path?: never;
@@ -6049,6 +6055,8 @@ export interface operations {
                 albumArtists?: components["parameters"]["RoleAlbumArtists"];
                 /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
                 albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+                /** @description The declared expression that reads the artist's sort name, the plain spelling a tagger writes beside a stylised one. */
+                artistSort?: components["parameters"]["RoleArtistSort"];
             };
             header?: never;
             path?: never;
@@ -6125,6 +6133,8 @@ export interface operations {
                 albumArtists?: components["parameters"]["RoleAlbumArtists"];
                 /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
                 albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+                /** @description The declared expression that reads the artist's sort name, the plain spelling a tagger writes beside a stylised one. */
+                artistSort?: components["parameters"]["RoleArtistSort"];
             };
             header?: never;
             path?: never;

@@ -1,6 +1,6 @@
-import { closenessTo, tokenize } from "@/shared/lib/text";
+import { closenessTo, type Query } from "@/shared/lib/text";
 import type { Refs } from "./project";
-import type { SearchIndex } from "./searchText";
+import { type SearchIndex, textOf } from "./searchText";
 
 // The same tiers as `fuzzyScore`'s ladder in `shared/lib/text.ts`, minus SUBSEQUENCE and TYPO.
 const EXACT = 4000;
@@ -25,13 +25,16 @@ function fieldScore(text: string, token: string): number {
 	return SUBSTRING + closeness;
 }
 
-const scoreOf = (index: SearchIndex, ref: number, tokens: string[]) =>
-	tokens.reduce(
+const scoreOf = (index: SearchIndex, ref: number, query: Query) =>
+	query.tokens.reduce(
 		(total, token) =>
 			total +
 			index.fields.reduce(
 				(best, field) =>
-					Math.max(best, fieldScore(field.text(ref), token) * field.weight),
+					Math.max(
+						best,
+						fieldScore(textOf(field, query)(ref), token) * field.weight,
+					),
 				0,
 			),
 		0,
@@ -44,11 +47,10 @@ const scoreOf = (index: SearchIndex, ref: number, tokens: string[]) =>
 export function bestMatches(
 	index: SearchIndex,
 	indices: Refs,
-	query: string,
+	query: Query,
 	limit: number,
 ): number[] {
-	const tokens = tokenize(query);
-	if (tokens.length === 0 || limit < 1) return [];
+	if (query.tokens.length === 0 || limit < 1) return [];
 
 	// Held sorted at `limit` rather than sorting the whole match set, which on a one-letter query is
 	// the library.
@@ -56,7 +58,7 @@ export function bestMatches(
 	const scores: number[] = [];
 
 	for (let position = 0; position < indices.length; position += 1) {
-		const score = scoreOf(index, indices[position], tokens);
+		const score = scoreOf(index, indices[position], query);
 		if (best.length === limit && score <= scores[limit - 1]) continue;
 
 		let at = scores.length;

@@ -72,6 +72,7 @@ const questionRoles: Record<string, string> = {
 	artistIds: "$meta_sep(musicbrainz_artistid,$char(31))",
 	albumArtists: "$meta_sep(albumartists,$char(31))",
 	albumArtistIds: "$meta_sep(musicbrainz_albumartistid,$char(31))",
+	artistSort: "$if2(%artistsort%,%artistsortorder%)",
 };
 
 const example = (operation: Operation, name: string): unknown => {

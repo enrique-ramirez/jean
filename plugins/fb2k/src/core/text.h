@@ -25,14 +25,21 @@ size_t endOfEcmaWhitespace(std::string_view text, size_t at);
 std::string_view ecmaTrimmed(std::string_view text);
 
 // Text as a browser folds it for a search: lower-cased whole, so a sigma sees its neighbours,
-// decomposed, its marks put in canonical order, and every Diacritic dropped. Never trimmed.
+// decomposed, its marks put in canonical order, each character spelled as CLDR's Latin-ASCII
+// transform spells it, and every Diacritic dropped. Never trimmed.
 std::string fold(std::string_view text);
 
 std::string squash(std::string_view text);
 
+std::string glyphs(std::string_view text);
+
+std::string nameKey(std::string_view text);
+
 std::vector<std::string> foldedWords(std::string_view text);
 
 std::vector<std::string> squashedWords(std::string_view text);
+
+std::vector<std::string> nameWords(std::string_view text);
 
 // A browser reads one UTF-16 code unit there, so the second half of a surrogate pair is neither.
 bool endsInLetterOrNumber(std::string_view folded, size_t at);

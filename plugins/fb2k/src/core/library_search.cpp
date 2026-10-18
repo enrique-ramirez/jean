@@ -27,7 +27,7 @@ constexpr double kPrefix = 3000;
 constexpr double kWordStart = 2000;
 constexpr double kSubstring = 1000;
 
-constexpr std::array<double, 4> kFieldWeights{1.0, 0.85, 0.85, 0.6};
+constexpr std::array<double, kSearchedColumnCount> kFieldWeights{1.0, 0.85, 0.85, 0.6, 0.85};
 
 constexpr double kExactEntity = 6000;
 constexpr double kPrefixEntity = 5000;
@@ -57,7 +57,7 @@ double fieldScore(std::string_view text, std::string_view token, size_t tokenLen
     return kSubstring + closeness;
 }
 
-double entityScore(const EntityKey& key, const std::string& query, size_t queryLength) {
+double keyScore(const EntityKey& key, const std::string& query, size_t queryLength) {
     const double closeness = closenessOf(key.length, queryLength);
     if (key.squashed == query)
         return kExactEntity + closeness;
@@ -67,6 +67,16 @@ double entityScore(const EntityKey& key, const std::string& query, size_t queryL
         std::any_of(key.words.begin(), key.words.end(),
                     [&](const std::string& word) { return word.starts_with(query); });
     return startsAWord ? kWordEntity + closeness : 0;
+}
+
+template <class Entity>
+double entityScore(const Entity& entity, const std::string& query, size_t queryLength) {
+    const double byName = keyScore(entity.match, query, queryLength);
+    if constexpr (requires { entity.sortMatch; }) {
+        if (entity.sortMatch)
+            return std::max(byName, keyScore(*entity.sortMatch, query, queryLength));
+    }
+    return byName;
 }
 
 struct QueryWords {
@@ -96,10 +106,11 @@ struct Field {
     const std::string& textOf(size_t row) const { return (*texts)[ids ? (*ids)[row] : 0]; }
 };
 
-std::array<Field, 4> fieldsOf(const Snapshot& snapshot, const LibraryRoles& roles,
-                              const SearchText& text) {
+std::array<Field, kSearchedColumnCount> fieldsOf(const Snapshot& snapshot,
+                                                 const LibraryRoles& roles,
+                                                 const SearchText& text) {
     const auto searched = searchedColumns(roles);
-    std::array<Field, 4> fields;
+    std::array<Field, kSearchedColumnCount> fields;
     for (size_t at = 0; at < fields.size(); ++at) {
         fields[at].texts = &text.folded[at];
         if (const std::optional<size_t> role = searched[at])
@@ -125,7 +136,7 @@ std::vector<Answer> perRow(const Field& field, const std::vector<uint32_t>& rows
     return answers;
 }
 
-std::vector<uint32_t> rowsMatchingEveryWord(const std::array<Field, 4>& fields,
+std::vector<uint32_t> rowsMatchingEveryWord(const std::array<Field, kSearchedColumnCount>& fields,
                                             const QueryWords& query, size_t rows) {
     std::vector<uint32_t> left(rows);
     std::iota(left.begin(), left.end(), uint32_t{0});
@@ -154,8 +165,8 @@ std::vector<uint32_t> rowsMatchingEveryWord(const std::array<Field, 4>& fields,
     return left;
 }
 
-std::vector<double> bestScores(const std::array<Field, 4>& fields, const std::string& word,
-                               const std::vector<uint32_t>& rows) {
+std::vector<double> bestScores(const std::array<Field, kSearchedColumnCount>& fields,
+                               const std::string& word, const std::vector<uint32_t>& rows) {
     const size_t length = utf16Length(word);
     std::vector<double> best(rows.size(), 0);
     for (const Field& field : fields) {
@@ -168,8 +179,9 @@ std::vector<double> bestScores(const std::array<Field, 4>& fields, const std::st
     return best;
 }
 
-json bestOf(const std::vector<uint32_t>& matched, const std::array<Field, 4>& fields,
-            const QueryWords& query, size_t limit) {
+json bestOf(const std::vector<uint32_t>& matched,
+            const std::array<Field, kSearchedColumnCount>& fields, const QueryWords& query,
+            size_t limit) {
     std::vector<double> totals(matched.size(), 0);
     std::vector<std::vector<double>> scoresOfWord(query.distinct.size());
     for (const size_t word : query.sequence) {
@@ -221,7 +233,7 @@ Ranked<Entity> rankedEntities(const std::vector<Entity>& entities, const std::st
     const size_t queryLength = utf16Length(query);
     std::vector<Scored> admitted;
     for (size_t place = 0; place < entities.size(); ++place) {
-        const double score = entityScore(entities[place].match, query, queryLength);
+        const double score = entityScore(entities[place], query, queryLength);
         if (score >= kWordEntity)
             admitted.push_back({score, place});
     }
@@ -286,12 +298,11 @@ json genresSection(const GenreEntities& genres, const std::string& query, size_t
 }
 
 bool namesAMatchedTrack(const Snapshot& snapshot, const LibraryRoles& roles, const SearchText& text,
-                        std::string_view query, const std::vector<uint32_t>& matched) {
-    const std::string folded = fold(query);
+                        const std::string& query, const std::vector<uint32_t>& matched) {
     const auto& titles = text.folded[0];
     std::vector<char> namesIt(titles.size());
     std::transform(titles.begin(), titles.end(), namesIt.begin(),
-                   [&](const std::string& title) { return title == folded ? 1 : 0; });
+                   [&](const std::string& title) { return title == query ? 1 : 0; });
     const char none = namesIt.front();
     const auto named = perValue(snapshot, roles.title, std::move(namesIt), none);
     return std::any_of(matched.begin(), matched.end(),
@@ -318,28 +329,34 @@ json LibraryQuestions::search(const Snapshot& snapshot, const LibraryRoles& role
         return answer;
 
     const SearchParts parts = searchPartsFor(snapshot, roles, splitsCredits);
-    const std::vector<std::string> words = foldedWords(query);
+    std::vector<std::string> words = foldedWords(query);
+    const bool glyphic = !words.empty() && squash(query).empty();
+    const std::shared_ptr<const SearchText> text =
+        glyphic ? glyphTextFor(snapshot, roles) : parts.text;
+    if (glyphic)
+        words = {glyphs(query)};
 
     std::vector<uint32_t> matched;
     if (!words.empty()) {
-        const QueryWords query = queryWordsOf(words);
-        const std::array<Field, 4> fields = fieldsOf(snapshot, roles, *parts.text);
-        matched = rowsMatchingEveryWord(fields, query, rows);
+        const QueryWords asked = queryWordsOf(words);
+        const std::array<Field, kSearchedColumnCount> fields = fieldsOf(snapshot, roles, *text);
+        matched = rowsMatchingEveryWord(fields, asked, rows);
         answer["matched"] = ordinalSetDocument(matched, rows);
         answer["matchCount"] = matched.size();
-        answer["best"] = bestOf(matched, fields, query, limit);
+        answer["best"] = bestOf(matched, fields, asked, limit);
     }
 
     const std::string_view wanted = ecmaTrimmed(query);
     if (wanted.empty())
         return answer;
 
-    const std::string squashedQuery = squash(wanted);
-    answer["artists"] = artistsSection(snapshot, *parts.artists, squashedQuery, entityLimit);
-    answer["albums"] = albumsSection(snapshot, *parts.albums, squashedQuery, entityLimit);
-    answer["genres"] = genresSection(*parts.genres, squashedQuery, entityLimit);
+    const std::string key = nameKey(wanted);
+    answer["artists"] = artistsSection(snapshot, *parts.artists, key, entityLimit);
+    answer["albums"] = albumsSection(snapshot, *parts.albums, key, entityLimit);
+    answer["genres"] = genresSection(*parts.genres, key, entityLimit);
     answer["namesATrack"] =
-        !matched.empty() && namesAMatchedTrack(snapshot, roles, *parts.text, wanted, matched);
+        !matched.empty() && namesAMatchedTrack(snapshot, roles, *text,
+                                               glyphic ? glyphs(wanted) : fold(wanted), matched);
     return answer;
 }
 

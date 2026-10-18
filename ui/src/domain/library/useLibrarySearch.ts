@@ -32,7 +32,7 @@ import { emptyOwnPlaylist } from "@/shared/api/playlists";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Phrase } from "@/shared/i18n/en";
-import { fuzzyKey, fuzzyScore, squash, TIER } from "@/shared/lib/text";
+import { fuzzyKey, fuzzyScore, nameKey, TIER } from "@/shared/lib/text";
 import { questionFailed } from "./questionFailed";
 import type { Library } from "./useLibrary";
 import { useWait } from "./useOverdue";
@@ -285,7 +285,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		const wanted = suggestedQuery.trim();
 		if (!wanted || !suggested?.matched || hasFailed) return -1;
 
-		const squashed = squash(wanted);
+		const squashed = nameKey(wanted);
 		const exact = [
 			...suggested.artists.top,
 			...suggested.albums.top,

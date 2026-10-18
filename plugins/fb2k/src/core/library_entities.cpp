@@ -15,35 +15,48 @@ namespace {
 
 EntityKey entityKeyOf(std::string_view name) {
     EntityKey key;
-    key.squashed = squash(name);
+    key.squashed = nameKey(name);
     key.length = utf16Length(key.squashed);
-    key.words = squashedWords(name);
+    key.words = nameWords(name);
     return key;
+}
+
+using Spelling = std::string (*)(std::string_view);
+
+std::shared_ptr<const SearchText> spelledTextOf(const Snapshot& snapshot, const LibraryRoles& roles,
+                                                Spelling spell) {
+    auto text = std::make_shared<SearchText>();
+    const auto searched = searchedColumns(roles);
+    for (size_t at = 0; at < searched.size(); ++at) {
+        std::vector<std::string>& spelled = text->folded[at];
+        const std::optional<size_t> role = searched[at];
+        if (!role) {
+            spelled.emplace_back();
+            continue;
+        }
+        const auto& values = snapshot.columns[*role].dictionary.values;
+        spelled.reserve(values.size());
+        std::transform(values.begin(), values.end(), std::back_inserter(spelled),
+                       [spell](const std::string& value) {
+                           return value == kUnresolved ? std::string() : spell(value);
+                       });
+    }
+    return text;
 }
 
 }  // namespace
 
-std::array<std::optional<size_t>, 4> searchedColumns(const LibraryRoles& roles) {
-    return {roles.title, roles.artist, roles.albumArtist, roles.album};
+std::array<std::optional<size_t>, kSearchedColumnCount> searchedColumns(const LibraryRoles& roles) {
+    return {roles.title, roles.artist, roles.albumArtist, roles.album, roles.artistSort};
 }
 
 std::shared_ptr<const SearchText> searchTextOf(const Snapshot& snapshot,
                                                const LibraryRoles& roles) {
-    auto text = std::make_shared<SearchText>();
-    const auto searched = searchedColumns(roles);
-    for (size_t at = 0; at < searched.size(); ++at) {
-        std::vector<std::string>& folded = text->folded[at];
-        const std::optional<size_t> role = searched[at];
-        if (!role) {
-            folded.push_back(fold(kUnresolved));
-            continue;
-        }
-        const auto& values = snapshot.columns[*role].dictionary.values;
-        folded.reserve(values.size());
-        std::transform(values.begin(), values.end(), std::back_inserter(folded),
-                       [](const std::string& value) { return fold(value); });
-    }
-    return text;
+    return spelledTextOf(snapshot, roles, fold);
+}
+
+std::shared_ptr<const SearchText> glyphTextOf(const Snapshot& snapshot, const LibraryRoles& roles) {
+    return spelledTextOf(snapshot, roles, glyphs);
 }
 
 std::shared_ptr<const AlbumEntities> albumEntitiesOf(const Snapshot& snapshot,
@@ -241,12 +254,23 @@ std::shared_ptr<const ArtistEntities> artistEntitiesOf(
 
         const int32_t album = albumOf.of(row);
         const bool albumed = album >= 0 && !grouping.albums.blank[static_cast<size_t>(album)];
-        for (const ArtistCredit& credit : credits.of(tags)) {
+        const std::vector<ArtistCredit>& credited = credits.of(tags);
+        for (const ArtistCredit& credit : credited) {
             ArtistDraft& draft = credits.drafts()[credit.draft];
             ++(credit.isGuest ? draft.entity.guestCount : draft.entity.trackCount);
             if (albumed && draft.albums.insert(album).second && draft.albums.size() == 1)
                 draft.firstAlbumRow = static_cast<uint32_t>(row);
         }
+
+        if (credited.size() != 1 || credited.front().isGuest)
+            continue;
+        ArtistDraft& sole = credits.drafts()[credited.front().draft];
+        if (sole.entity.sortMatch)
+            continue;
+        const auto sortName =
+            cellOf(snapshot, roles.artistSort, idAt(roles.artistSort, snapshot, row));
+        if (sortName)
+            sole.entity.sortMatch = entityKeyOf(*sortName);
     }
 
     auto artists = std::make_shared<ArtistEntities>();

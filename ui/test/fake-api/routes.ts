@@ -46,6 +46,7 @@ export type ArtworkServer = (
 //   libraryHalted halts the library worker; `{ halted: false }` takes it back, which the component never does.
 //   holdSubset    sets `holdSubset`; a body without `only` releases every export held.
 //   holdSummary   `{ hold: true }` holds summaries; anything else answers the ones held.
+//   holdQuestions `{ hold: true }` holds the album, artist, genre and search questions; anything else answers the ones held.
 //   skipDelay     holds a skip for `ms` before the next track starts, as foobar2000 takes to open a
 //                 file, while `GET /api/state` goes on naming the outgoing track.
 //   lockPlaylist  locks a playlist against added, removed, moved and sorted rows, as another
@@ -212,6 +213,11 @@ export function handleControl({
 
 	if (action === "holdSummary") {
 		state.fooJean.holdSummary = input.hold === true;
+		return empty(response);
+	}
+
+	if (action === "holdQuestions") {
+		state.fooJean.holdQuestions = input.hold === true;
 		return empty(response);
 	}
 

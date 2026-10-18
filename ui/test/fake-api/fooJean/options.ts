@@ -210,6 +210,12 @@ export interface FooJeanOptions {
 	// Refuses that many `GET /api/library/summary` requests with `status`, then answers normally.
 	failSummary?: { status: 429 | 500 | 503; times: number } | null;
 
+	// Holds every `GET /api/library/album`, `artist`, `genre` and `search` that has passed its refusals unanswered. Assigning `false` answers the ones held.
+	holdQuestions?: boolean;
+
+	// Refuses that many of those requests with `status`, or destroys the connection unanswered for `"drop"`, then answers normally.
+	failQuestions?: { status: 429 | 500 | 503 | "drop"; times: number } | null;
+
 	// How many autoplaylists the component will make.
 	maxAutoPlaylists?: number;
 	// Playlist keys the component reports as already being autoplaylists, whether it
@@ -308,6 +314,7 @@ export interface FooJeanFake extends Required<FooJeanOptions> {
 	capabilitiesHeld: (() => void)[];
 	subsetsHeld: (() => void)[];
 	summariesHeld: (() => void)[];
+	questionsHeld: (() => void)[];
 	// The specification of every autoplaylist `POST /api/autoplaylists` made, by the
 	// fake's own key: the only playlists the two `/api/autoplaylists/{id}` routes touch.
 	managedAutoPlaylists: Map<string, ManagedAutoPlaylist>;
@@ -341,6 +348,7 @@ const DEFAULTS: FooJeanFake = {
 	capabilitiesHeld: [],
 	subsetsHeld: [],
 	summariesHeld: [],
+	questionsHeld: [],
 	failArtwork: null,
 	failPlayingArtwork: null,
 	failRowArtwork: null,
@@ -380,6 +388,8 @@ const DEFAULTS: FooJeanFake = {
 	failLibraryExport: null,
 	holdSummary: false,
 	failSummary: null,
+	holdQuestions: false,
+	failQuestions: null,
 	maxAutoPlaylists: 0,
 	autoPlaylists: [],
 	libraryEnabled: true,
@@ -477,18 +487,33 @@ const releaseSubsetsWhenHoldChanges = (fake: FooJeanFake): FooJeanFake => {
 	return fake;
 };
 
-const releaseSummariesWhenHoldEnds = (fake: FooJeanFake): FooJeanFake => {
-	let holding = fake.holdSummary;
-	Object.defineProperty(fake, "holdSummary", {
-		enumerable: true,
-		get: () => holding,
-		set: (next: boolean) => {
-			holding = next;
-			if (!next) for (const wake of fake.summariesHeld.splice(0)) wake();
-		},
-	});
-	return fake;
-};
+const releaseWhenHoldEnds =
+	(
+		hold: "holdSummary" | "holdQuestions",
+		held: "summariesHeld" | "questionsHeld",
+	) =>
+	(fake: FooJeanFake): FooJeanFake => {
+		let holding = fake[hold];
+		Object.defineProperty(fake, hold, {
+			enumerable: true,
+			get: () => holding,
+			set: (next: boolean) => {
+				holding = next;
+				if (!next) for (const wake of fake[held].splice(0)) wake();
+			},
+		});
+		return fake;
+	};
+
+const releaseSummariesWhenHoldEnds = releaseWhenHoldEnds(
+	"holdSummary",
+	"summariesHeld",
+);
+
+const releaseQuestionsWhenHoldEnds = releaseWhenHoldEnds(
+	"holdQuestions",
+	"questionsHeld",
+);
 
 export const fooJeanState = (options: FooJeanOptions): FooJeanFake => {
 	const specs = options.autoPlaylistSpecs ?? {};
@@ -508,11 +533,16 @@ export const fooJeanState = (options: FooJeanOptions): FooJeanFake => {
 		capabilitiesHeld: [],
 		subsetsHeld: [],
 		summariesHeld: [],
+		questionsHeld: [],
 		managedAutoPlaylists: new Map(
 			Object.entries(specs).map(([id, spec]) => [id, { ...spec }]),
 		),
 	});
-	return releaseSummariesWhenHoldEnds(
-		releaseSubsetsWhenHoldChanges(releaseHeldCapabilitiesWhenSwitchedOff(fake)),
+	return releaseQuestionsWhenHoldEnds(
+		releaseSummariesWhenHoldEnds(
+			releaseSubsetsWhenHoldChanges(
+				releaseHeldCapabilitiesWhenSwitchedOff(fake),
+			),
+		),
 	);
 };

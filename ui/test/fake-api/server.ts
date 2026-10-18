@@ -190,6 +190,7 @@ export function createServer({
 
 	fake.reset = (next: FakeState = createState()) => {
 		held.state.fooJean.holdSummary = false;
+		held.state.fooJean.holdQuestions = false;
 		held.state.fooJean.holdSubset = null;
 		held.state = next;
 		return next;

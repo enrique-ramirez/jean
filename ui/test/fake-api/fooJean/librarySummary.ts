@@ -27,6 +27,16 @@ export const SUMMARY_ROLES = [
 
 export type SummaryRole = (typeof SUMMARY_ROLES)[number];
 
+export const LIBRARY_ROLE_NAMES = [
+	...SUMMARY_ROLES,
+	"artists",
+	"artistIds",
+	"albumArtists",
+	"albumArtistIds",
+] as const;
+
+export type LibraryRoleName = (typeof LIBRARY_ROLE_NAMES)[number];
+
 export interface LocalTime {
 	epochMsOf(
 		year: number,
@@ -79,11 +89,11 @@ const FIRST_YEAR = 1000;
 const MAX_STARS = 5;
 const POPM_FLOORS = [224, 160, 96, 32, 1];
 const LOSSLESS = new Set(["FLAC", "ALAC", "WAV", "APE", "WAVPACK", "TAK"]);
-const GENRE_SEPARATOR = "\u001f";
+export const VALUE_SEPARATOR = "\u001f";
 const UNPLAYED = "0";
 const ABSENT = new Set(["?", "", "N/A"]);
 
-const readValue = (raw: string | undefined): string | null =>
+export const readValue = (raw: string | undefined): string | null =>
 	raw === undefined || ABSENT.has(raw) ? null : raw;
 
 const readNumber = (raw: string | undefined): number | null => {
@@ -140,7 +150,7 @@ const leadingPositiveInteger = (raw: string | undefined): number | null => {
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
-const tagGrouper = () => {
+export const tagGrouper = () => {
 	const byKey = new Map<string, number>();
 	const names: string[] = [];
 	const add = (raw: string) => {
@@ -161,7 +171,12 @@ const tagGrouper = () => {
 		for (const raw of distinct) groups.set(raw, add(raw));
 		return groups;
 	};
-	return { names, add, addBytewise };
+	return {
+		names,
+		add,
+		addBytewise,
+		group: (key: string) => byKey.get(key) ?? -1,
+	};
 };
 
 type Columns = SummaryInput["columns"];
@@ -583,7 +598,7 @@ function genreTalliesOf(columns: Columns, count: number) {
 		groupsOf.set(raw, [
 			...new Set(
 				raw
-					.split(GENRE_SEPARATOR)
+					.split(VALUE_SEPARATOR)
 					.filter((genre) => tagKey(genre) !== "")
 					.map(genres.add),
 			),

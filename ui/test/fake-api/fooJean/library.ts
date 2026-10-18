@@ -1,6 +1,5 @@
 import type { components } from "../../../src/shared/api/fooJeanSchema.d.ts";
 import { json, one, type RequestHeaders, type Responder } from "../http.ts";
-import { compareUtf8 } from "../jlib.ts";
 import {
 	type ChangesRefusal,
 	libraryItemsOf,
@@ -15,8 +14,10 @@ import {
 	STRUCTURE_MOVED,
 } from "./answers.ts";
 import { abandoned, STALLED_READ_MS } from "./latency.ts";
+import { answerQuestion, type Question } from "./libraryQuestions.ts";
 import {
 	fixedOffset,
+	LIBRARY_ROLE_NAMES,
 	type LocalTime,
 	SUMMARY_ROLES,
 	type SummaryRole,
@@ -264,29 +265,36 @@ const MAX_EXPRESSION_BYTES = 1024;
 
 const UNPRINTABLE = /[^\u0020-\u007e\u0080-\u{10ffff}]/u;
 
-const refusedRole = (error: string, detail: string) => ({ error, detail });
+const refusedParameter = (error: string, detail: string) => ({ error, detail });
 
-const rolesAsked = (url: URL) => {
-	const asked = new Map<SummaryRole, string>();
-	// cpp-httplib holds the pairs in a multimap, so the component reads them in name order.
-	const pairs = [...pairsAsTheComponentReadsThem(url)].sort(([a], [b]) =>
-		compareUtf8(a, b),
-	);
-	for (const [name, expression] of pairs) {
-		if (!SUMMARY_ROLES.includes(name as SummaryRole))
-			return refusedRole("unacceptable role", `'${name}' is not a role`);
+// cpp-httplib's `Params` keeps the pairs in the order they were sent.
+const pairsInSentOrder = (url: URL) => [...pairsAsTheComponentReadsThem(url)];
+
+const rolesAsked = <Role extends string>(
+	url: URL,
+	accepted: readonly Role[],
+	owned: readonly string[] = [],
+) => {
+	const asked = new Map<Role, string>();
+	for (const [name, expression] of pairsInSentOrder(url)) {
+		if (owned.includes(name)) continue;
+		if (!accepted.includes(name as Role))
+			return refusedParameter("unacceptable role", `'${name}' is not a role`);
 		if (
 			expression === "" ||
 			new TextEncoder().encode(expression).length > MAX_EXPRESSION_BYTES ||
 			UNPRINTABLE.test(expression)
 		)
-			return refusedRole(
+			return refusedParameter(
 				"unacceptable role",
 				`role '${name}' must be printable text of 1 to ${MAX_EXPRESSION_BYTES} characters`,
 			);
-		if (asked.has(name as SummaryRole))
-			return refusedRole("duplicate role", `role '${name}' is named twice`);
-		asked.set(name as SummaryRole, expression);
+		if (asked.has(name as Role))
+			return refusedParameter(
+				"duplicate role",
+				`role '${name}' is named twice`,
+			);
+		asked.set(name as Role, expression);
 	}
 	return asked;
 };
@@ -310,40 +318,36 @@ const summaryReleased = async (fake: FooJeanFake) => {
 		await new Promise<void>((release) => fake.summariesHeld.push(release));
 };
 
+const libraryRead = (state: FakeState, roles: Map<string, string>) => {
+	const { structure, revision } = state.libraryFeed;
+	const items = state.ordinalOrder();
+	const directoryEnd = (path: string) => path.lastIndexOf("/") + 1;
+	return {
+		structure,
+		revision,
+		directory: items.map((entry) =>
+			entry.path.slice(0, directoryEnd(entry.path)),
+		),
+		filename: items.map((entry) => entry.path.slice(directoryEnd(entry.path))),
+		subsong: items.map((entry) => String(entry.subsong)),
+		columns: Object.fromEntries(
+			[...roles].map(([role, expression]) => [
+				role,
+				items.map((entry) => String(evaluate(entry.track, expression))),
+			]),
+		),
+	};
+};
+
 const buildSummary = (
 	state: FakeState,
 	roles: Map<SummaryRole, string>,
 	now: number,
 	local: LocalTime,
-): Uint8Array<ArrayBuffer> => {
-	const { structure, revision } = state.libraryFeed;
-	const items = state.ordinalOrder();
-	const directoryEnd = (path: string) => path.lastIndexOf("/") + 1;
-	const columns = Object.fromEntries(
-		[...roles].map(([role, expression]) => [
-			role,
-			items.map((entry) => String(evaluate(entry.track, expression))),
-		]),
-	);
-	const document = summarise(
-		{
-			structure,
-			revision,
-			directory: items.map((entry) =>
-				entry.path.slice(0, directoryEnd(entry.path)),
-			),
-			filename: items.map((entry) =>
-				entry.path.slice(directoryEnd(entry.path)),
-			),
-			columns,
-		},
-		now,
-		local,
-	);
-	return new TextEncoder().encode(
-		JSON.stringify(document),
+): Uint8Array<ArrayBuffer> =>
+	new TextEncoder().encode(
+		JSON.stringify(summarise(libraryRead(state, roles), now, local)),
 	) as Uint8Array<ArrayBuffer>;
-};
 
 const summaryOf = (
 	state: FakeState,
@@ -367,6 +371,28 @@ const summaryOf = (
 	return made;
 };
 
+const answeredUnlessReady = (
+	state: FakeState,
+	fake: FooJeanFake,
+	response: Responder,
+	expressions: string[],
+) => {
+	const { columns, building } = state.libraryFeed;
+	const stillBuilding = (from: string) =>
+		!columns.includes(from) && building?.includes(from);
+	if (!hasLibrarySnapshot(state) || expressions.some(stillBuilding)) {
+		json(response, libraryStateOf(state, fake), 202);
+		return true;
+	}
+
+	const undeclared = expressions.find(
+		(from) => !columns.includes(from) && !building?.includes(from),
+	);
+	if (undeclared === undefined) return false;
+	json(response, { error: `'${undeclared}' is not a declared column` }, 409);
+	return true;
+};
+
 async function handleLibrarySummary({
 	state,
 	fake,
@@ -375,7 +401,7 @@ async function handleLibrarySummary({
 	response,
 	recorded,
 }: Asked) {
-	const roles = rolesAsked(url);
+	const roles = rolesAsked(url, SUMMARY_ROLES);
 	if (!(roles instanceof Map)) return json(response, roles, 400);
 
 	if (!fake.canReadLibrary)
@@ -397,22 +423,8 @@ async function handleLibrarySummary({
 		return refuseTooFast(response, "librarySummaries");
 	}
 
-	const { columns, building } = state.libraryFeed;
-	const expressions = [...roles.values()];
-	const stillBuilding = (from: string) =>
-		!columns.includes(from) && building?.includes(from);
-	if (!hasLibrarySnapshot(state) || expressions.some(stillBuilding))
-		return json(response, libraryStateOf(state, fake), 202);
-
-	const undeclared = expressions.find(
-		(from) => !columns.includes(from) && !building?.includes(from),
-	);
-	if (undeclared !== undefined)
-		return json(
-			response,
-			{ error: `'${undeclared}' is not a declared column` },
-			409,
-		);
+	if (answeredUnlessReady(state, fake, response, [...roles.values()]))
+		return true;
 
 	await summaryReleased(fake);
 
@@ -423,10 +435,180 @@ async function handleLibrarySummary({
 	});
 }
 
+const questionsReleased = async (fake: FooJeanFake) => {
+	while (fake.holdQuestions)
+		await new Promise<void>((release) => fake.questionsHeld.push(release));
+};
+
+const QUESTION_FAILURE: Record<500 | 503, { error: string }> = {
+	500: { error: "the library question failed" },
+	503: LIBRARY_EXPORT_FAILURE[503],
+};
+
+interface QuestionRoute {
+	required: readonly string[];
+	optional: readonly string[];
+	flags: readonly string[];
+	counts?: readonly string[];
+	asks: (given: Map<string, string>) => Question;
+}
+
+const MAX_QUERY_BYTES = 1024;
+
+const QUESTION_ROUTES: Record<string, QuestionRoute> = {
+	"/api/library/search": {
+		required: ["query", "limit", "entityLimit", "splitsCredits"],
+		optional: [],
+		flags: ["splitsCredits"],
+		counts: ["entityLimit", "limit"],
+		asks: (given) => ({
+			kind: "search",
+			query: given.get("query") ?? "",
+			limit: Number(given.get("limit")),
+			entityLimit: Number(given.get("entityLimit")),
+			splitsCredits: given.get("splitsCredits") === "true",
+		}),
+	},
+	"/api/library/album": {
+		required: ["name"],
+		optional: ["by"],
+		flags: [],
+		asks: (given) => ({
+			kind: "album",
+			name: given.get("name") ?? "",
+			by: given.get("by"),
+		}),
+	},
+	"/api/library/artist": {
+		required: ["name", "splitsCredits"],
+		optional: [],
+		flags: ["splitsCredits"],
+		asks: (given) => ({
+			kind: "artist",
+			name: given.get("name") ?? "",
+			splitsCredits: given.get("splitsCredits") === "true",
+		}),
+	},
+	"/api/library/genre": {
+		required: ["name"],
+		optional: [],
+		flags: [],
+		asks: (given) => ({ kind: "genre", name: given.get("name") ?? "" }),
+	},
+};
+
+const MAX_UNSIGNED_64 = 2n ** 64n - 1n;
+
+const readsAsCount = (value: string) =>
+	/^\d{1,20}$/.test(value) && BigInt(value) <= MAX_UNSIGNED_64;
+
+const rawBytesOf = (url: URL, parameter: string) => {
+	for (const pair of url.search.slice(1).split("&")) {
+		const [name, ...rest] = pair.split("=");
+		if (new URLSearchParams(name).keys().next().value !== parameter) continue;
+		return new TextEncoder().encode(
+			rest.join("=").replace(/%[0-9a-f]{2}/gi, "\0"),
+		).length;
+	}
+	return 0;
+};
+
+const questionAsked = (url: URL, route: QuestionRoute) => {
+	const owned = [...route.required, ...route.optional];
+	const sent = pairsInSentOrder(url);
+	const given = new Map<string, string>();
+	for (const [name, value] of sent)
+		if (owned.includes(name) && !given.has(name)) given.set(name, value);
+
+	for (const name of route.required)
+		if (!given.has(name))
+			return refusedParameter("unacceptable question", `'${name}' is required`);
+
+	for (const name of owned) {
+		const value = given.get(name);
+		if (value === undefined) continue;
+		if (route.flags.includes(name) && value !== "true" && value !== "false")
+			return refusedParameter(
+				"unacceptable question",
+				`'${name}' must be true or false`,
+			);
+		if (route.counts?.includes(name) && !readsAsCount(value))
+			return refusedParameter(
+				"unacceptable question",
+				`'${name}' must be a whole number of 0 or more`,
+			);
+		if (name === "query" && rawBytesOf(url, name) > MAX_QUERY_BYTES)
+			return refusedParameter(
+				"unacceptable question",
+				`'${name}' must be at most ${MAX_QUERY_BYTES} bytes`,
+			);
+	}
+
+	for (const [name] of sent)
+		if (owned.includes(name) && sent.filter(([one]) => one === name).length > 1)
+			return refusedParameter("duplicate question", `'${name}' is named twice`);
+	return given;
+};
+
+async function handleLibraryQuestion(
+	{ state, fake, url, headers, response, recorded }: Asked,
+	route: QuestionRoute,
+) {
+	const owned = [...route.required, ...route.optional];
+	const roles = rolesAsked(url, LIBRARY_ROLE_NAMES, owned);
+	if (!(roles instanceof Map)) return json(response, roles, 400);
+	const given = questionAsked(url, route);
+	if (!(given instanceof Map)) return json(response, given, 400);
+
+	if (!fake.canReadLibrary)
+		return json(response, LIBRARY_EXPORT_FAILURE[503], 503);
+
+	if (fake.failQuestions && fake.failQuestions.times > 0) {
+		const { status } = fake.failQuestions;
+		fake.failQuestions.times -= 1;
+		if (status === "drop") {
+			response.destroy();
+			return true;
+		}
+		return status === 429
+			? refuseTooFast(response, "libraryQuestions")
+			: json(response, QUESTION_FAILURE[status], status);
+	}
+
+	if (
+		fake.rateLimits &&
+		!spend(fake.limiter, fake.rateLimits, "libraryQuestions", "")
+	) {
+		recorded.limited = "libraryQuestions";
+		return refuseTooFast(response, "libraryQuestions");
+	}
+
+	if (answeredUnlessReady(state, fake, response, [...roles.values()]))
+		return true;
+
+	await questionsReleased(fake);
+
+	const document = answerQuestion(libraryRead(state, roles), route.asks(given));
+	const bytes = new TextEncoder().encode(
+		JSON.stringify(document),
+	) as Uint8Array<ArrayBuffer>;
+	const gzip = offersGzip(headers);
+	response.writeHead(200, {
+		"Content-Type": "application/json; charset=utf-8",
+		"Cache-Control": ASK_EVERY_TIME,
+		Vary: "Accept-Encoding",
+		...(gzip ? { "Content-Encoding": "gzip" } : null),
+	});
+	response.end(gzip ? await gzipped(bytes) : bytes);
+	return true;
+}
+
 export async function handleLibrary(asked: Asked) {
 	const { state, fake, method, path, url, headers, response, recorded } = asked;
 	if (method === "GET" && path === "/api/library/summary")
 		return handleLibrarySummary(asked);
+	if (method === "GET" && Object.hasOwn(QUESTION_ROUTES, path))
+		return handleLibraryQuestion(asked, QUESTION_ROUTES[path]);
 
 	if (!fake.canReadLibrary)
 		return json(response, { error: "the media library is not available" }, 503);

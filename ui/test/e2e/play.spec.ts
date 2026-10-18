@@ -244,6 +244,7 @@ test.describe("a tap outside a status bar popover", () => {
 			await openLibrary(page);
 			const row = trackRow(page, THIRD_TRACK.index);
 			await expect(row).toBeVisible();
+			await clearOfTheSheet(row);
 
 			const box = (await row.boundingBox())!;
 			await open(page);
@@ -268,6 +269,7 @@ test.describe("a tap outside a status bar popover", () => {
 		await openLibrary(page);
 		const row = trackRow(page, THIRD_TRACK.index);
 		await expect(row).toBeVisible();
+		await clearOfTheSheet(row);
 		const box = (await row.boundingBox())!;
 		const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 
@@ -298,6 +300,7 @@ test.describe("a tap outside a status bar popover", () => {
 		await expectSettlesAt(player, () => playRequests(player).length, 1);
 
 		const under = trackRow(page, THIRD_TRACK.index);
+		await clearOfTheSheet(under);
 		const point = await centreOf(under);
 		await popovers[0].open(page);
 		const sheet = page.getByRole("dialog", { name: "Playing on" });
@@ -310,6 +313,9 @@ test.describe("a tap outside a status bar popover", () => {
 		await expect(under).toHaveAttribute("data-cursor", "false");
 	});
 });
+
+const clearOfTheSheet = (row: Locator) =>
+	row.evaluate((element) => element.scrollIntoView({ block: "center" }));
 
 const centreOf = async (target: Locator) => {
 	const box = (await target.boundingBox())!;

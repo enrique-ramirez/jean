@@ -1,5 +1,11 @@
 import { translate } from "@/shared/i18n/locale";
-import { FIELD, genreGroups, readNumber } from "./fields";
+import {
+	FIELD,
+	genreGroups,
+	lastPlayedIn,
+	playCountsIn,
+	readNumber,
+} from "./fields";
 import { byValue } from "./libraryColumns";
 import type { TrackRows } from "./project";
 
@@ -8,11 +14,7 @@ const MINUTE = 60;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-export function summarise(
-	rows: TrackRows,
-	playedCount = 0,
-	{ genres = TOP_GENRES } = {},
-) {
+export function summarise(rows: TrackRows, { genres = TOP_GENRES } = {}) {
 	const { columns } = rows;
 	const duration = columns.fields[FIELD.duration];
 	const year = columns.fields[FIELD.year];
@@ -22,11 +24,17 @@ export function summarise(
 	const years = byValue(year, readNumber);
 	const tags = genreGroups(genre);
 	const counts = new Int32Array(tags.keys.length);
+	const playsOf = playCountsIn(columns);
+	const playedAt = lastPlayedIn(columns);
 
 	let seconds = 0;
 	let earliest: number | null = null;
 	let latest: number | null = null;
 	let tagged = 0;
+	let plays = 0;
+	let unplayed = 0;
+	let lastPlayed: number | null = null;
+	let mostPlayed: { position: number; plays: number } | null = null;
 
 	for (let position = 0; position < rows.length; position += 1) {
 		const ref = rows.ref(position);
@@ -38,6 +46,16 @@ export function summarise(
 			earliest = earliest === null ? released : Math.min(earliest, released);
 			latest = latest === null ? released : Math.max(latest, released);
 		}
+
+		const count = playsOf(ref) ?? 0;
+		plays += count;
+		if (count === 0) unplayed += 1;
+		else if (count > 0 && (mostPlayed === null || count > mostPlayed.plays))
+			mostPlayed = { position, plays: count };
+
+		const at = playedAt(ref);
+		if (at !== null && (lastPlayed === null || at > lastPlayed))
+			lastPlayed = at;
 
 		for (const group of tags.of[genre.ids[ref]]) {
 			if (counts[group] === 0) tagged += 1;
@@ -61,7 +79,11 @@ export function summarise(
 			count,
 			share: Math.round((count / rows.length) * 100),
 		})),
-		playedShare: rows.length > 0 ? playedCount / rows.length : 0,
+		playedShare: rows.length > 0 ? (rows.length - unplayed) / rows.length : 0,
+		plays,
+		unplayed,
+		lastPlayed,
+		mostPlayed,
 	};
 }
 

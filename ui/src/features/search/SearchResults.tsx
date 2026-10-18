@@ -51,11 +51,8 @@ export function SearchResults({
 	const canSave = canWritePlaylists && !isInSession;
 
 	const results = search.results;
-	const { indices, heat, patina, playedCount } = results;
-	const stats = useMemo(
-		() => summarise(results, playedCount),
-		[results, playedCount],
-	);
+	const { indices, heat, patina } = results;
+	const stats = useMemo(() => summarise(results), [results]);
 
 	const { playAt, activeIndex, scratch, holdsThisView, canPlaySets } =
 		useViewPlayback({

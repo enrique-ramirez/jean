@@ -115,6 +115,7 @@ const openFinder = async (page: Page) => {
 				await expect(results(page)).toHaveCount(OFF_SCREEN.matches);
 
 				const target = results(page).nth(6);
+				await target.scrollIntoViewIfNeeded();
 				const box = await target.boundingBox();
 
 				// Somewhere else first: the first mouseenter after the finder opens is

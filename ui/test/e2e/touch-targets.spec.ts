@@ -128,10 +128,9 @@ test.describe("under a coarse pointer, a control reaches 44 px", () => {
 			"View options",
 		])
 			await expectTapTarget(button(page, name), name);
-		await expectTapTarget(
-			page.getByRole("link", { name: /%$/ }).first(),
-			"a genre chip",
-		);
+		const chip = page.getByRole("link", { name: /%$/ }).first();
+		await chip.scrollIntoViewIfNeeded();
+		await expectTapTarget(chip, "a genre chip");
 	});
 
 	test("Home's Explore link and shelf tabs", async ({ page }) => {

@@ -1,51 +1,32 @@
 import type { ReactNode } from "react";
 import { Trans } from "@/shared/i18n/Trans";
-import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
-import { Chip } from "@/shared/ui/Chip";
+import { useFormats } from "@/shared/i18n/useTranslate";
+import { Artwork } from "@/shared/ui/Artwork";
 import { BusyNote, busyProps, Skeleton } from "@/shared/ui/Skeleton";
-import { genreRoute, href } from "./routes";
+import { HeaderBackdrop } from "./HeaderBackdrop";
+import type { LibrarySource } from "./librarySource";
+import type { TrackRows } from "./project";
 import { formatDuration, type TrackStats } from "./stats";
+import { useCoverPicks } from "./useCoverPicks";
 import styles from "./ViewHeader.module.css";
 
-function PlayedMeter({ share }: { share: number }) {
-	const t = useTranslate();
-
-	return (
-		<div className={styles.meter}>
-			<div className={styles.meterTrack}>
-				<div
-					className={styles.meterFill}
-					style={{ transform: `scaleX(${share})` }}
-				/>
-			</div>
-			<span>{t("view.playedShare", { share: Math.round(share * 100) })}</span>
-		</div>
-	);
-}
-
-function Stats({
+function Figures({
 	stats,
 	isPending,
-	hasPlayCounts,
-	leading,
-	allGenresHref,
+	albumCount,
 }: {
 	stats: TrackStats | null;
 	isPending: boolean;
-	hasPlayCounts?: boolean;
-	leading?: ReactNode;
-	allGenresHref?: string;
+	albumCount: number | null;
 }) {
-	const t = useTranslate();
 	const format = useFormats();
 
 	if (stats === null)
 		return (
-			<div className={styles.stats} {...busyProps(isPending)}>
+			<p className={styles.figures} data-figures="" {...busyProps(isPending)}>
 				<Skeleton width="16em" />
-				{hasPlayCounts ? <Skeleton className={styles.meterPending} /> : null}
 				{isPending ? <BusyNote /> : null}
-			</div>
+			</p>
 		);
 
 	const duration = formatDuration(stats.seconds);
@@ -56,60 +37,44 @@ function Stats({
 				: `${stats.earliest}-${stats.latest}`
 			: null;
 
+	const figures: { name: string; content: ReactNode }[] = [];
+	if (albumCount !== null && albumCount > 1)
+		figures.push({
+			name: "albums",
+			content: (
+				<Trans
+					phrase="artist.albumCount"
+					count={albumCount}
+					total={<b>{format.number(albumCount)}</b>}
+				/>
+			),
+		});
+	figures.push({
+		name: "tracks",
+		content: (
+			<Trans
+				phrase="view.trackCount"
+				count={stats.trackCount}
+				total={<b>{format.number(stats.trackCount)}</b>}
+			/>
+		),
+	});
+	if (duration) figures.push({ name: "duration", content: duration });
+	if (span) figures.push({ name: "span", content: span });
+
 	return (
-		<>
-			<div className={styles.stats}>
-				{leading ? (
-					<>
-						<span>{leading}</span>
-						<span className={styles.separator}>·</span>
-					</>
-				) : null}
-				<span>
-					<Trans
-						phrase="view.trackCount"
-						count={stats.trackCount}
-						total={<b>{format.number(stats.trackCount)}</b>}
-					/>
-				</span>
-				{duration ? (
-					<>
-						<span className={styles.separator}>·</span>
-						<span>{duration}</span>
-					</>
-				) : null}
-				{span ? (
-					<>
-						<span className={styles.separator}>·</span>
-						<span>{span}</span>
-					</>
-				) : null}
-				{hasPlayCounts ? <PlayedMeter share={stats.playedShare} /> : null}
-			</div>
-
-			{stats.topGenres.length > 0 ? (
-				<div className={styles.chips}>
-					{stats.topGenres.map((genre) => (
-						<Chip
-							key={genre.name}
-							label={genre.name}
-							value={`${genre.share}%`}
-							href={href(genreRoute(genre.name))}
-						/>
-					))}
-
-					{allGenresHref && stats.genreCount > stats.topGenres.length ? (
-						<Chip
-							className={styles.wayOut}
-							label={t("view.allGenres")}
-							value={format.number(stats.genreCount)}
-							href={allGenresHref}
-							title={t("view.everyGenre")}
-						/>
+		<p className={styles.figures} data-figures="">
+			{figures.map(({ name, content }, at) => (
+				<span key={name} className={styles.figure}>
+					{at > 0 ? (
+						<span className={styles.separator} aria-hidden="true">
+							·
+						</span>
 					) : null}
-				</div>
-			) : null}
-		</>
+					<span data-figure={name}>{content}</span>
+				</span>
+			))}
+		</p>
 	);
 }
 
@@ -118,40 +83,48 @@ export function ViewHeader({
 	title,
 	stats,
 	isStatsPending,
-	hasPlayCounts,
-	leading,
+	covers,
+	cover,
 	tabs,
 	actions,
-	aside,
-	allGenresHref,
 }: {
 	eyebrow?: ReactNode;
 	title: ReactNode;
 	stats: TrackStats | null;
 	isStatsPending: boolean;
-	hasPlayCounts?: boolean;
-	leading?: ReactNode;
+	covers: { source: LibrarySource; rows: TrackRows; seed: string | null };
+	cover?: { src: string | null; identity: string | undefined; alt: string };
 	tabs?: ReactNode;
 	actions?: ReactNode;
-	aside?: ReactNode;
-	allGenresHref?: string;
 }) {
+	const picks = useCoverPicks(covers.rows, covers.seed);
+
 	return (
 		<header className={styles.header} data-tabs={tabs ? "true" : undefined}>
-			<div className={styles.naming}>
-				<p className={styles.eyebrow}>{eyebrow}</p>
-				<h1 className={styles.title}>{title}</h1>
+			<HeaderBackdrop source={covers.source} covers={picks} />
+
+			<div className={styles.lead}>
+				{cover ? (
+					<div className={styles.cover} data-header-cover="">
+						<Artwork
+							src={cover.src}
+							identity={cover.identity}
+							size="100%"
+							alt={cover.alt}
+						/>
+					</div>
+				) : null}
+				<div className={styles.naming}>
+					<p className={styles.eyebrow}>{eyebrow}</p>
+					<h1 className={styles.title}>{title}</h1>
+				</div>
 			</div>
 
-			{aside ? <div className={styles.aside}>{aside}</div> : null}
-
 			<div className={styles.meta}>
-				<Stats
+				<Figures
 					stats={stats}
 					isPending={isStatsPending}
-					hasPlayCounts={hasPlayCounts}
-					leading={leading}
-					allGenresHref={allGenresHref}
+					albumCount={picks.albumCount}
 				/>
 
 				<div className={styles.actions}>{actions}</div>

@@ -18,16 +18,9 @@ import {
 } from "@/domain/player/usePlaybackControl";
 import { albumsOf } from "@/domain/track/albums";
 import { useAvailableFields } from "@/domain/track/fieldAvailability";
-import {
-	CREDIT_TAGS,
-	FIELD,
-	lastPlayedIn,
-	playCountsIn,
-	titleOf,
-	value,
-} from "@/domain/track/fields";
+import { CREDIT_TAGS, FIELD, titleOf, value } from "@/domain/track/fields";
+import { LibraryCards } from "@/domain/track/LibraryCards";
 import { isLoaded } from "@/domain/track/libraryColumns";
-import { Mosaic } from "@/domain/track/Mosaic";
 import {
 	EMPTY_VIEW,
 	project,
@@ -38,13 +31,7 @@ import { type ArtistTab, albumRoute, href } from "@/domain/track/routes";
 import { summarise } from "@/domain/track/stats";
 import { ViewHeader } from "@/domain/track/ViewHeader";
 import { useDeferredPress } from "@/shared/hooks/useDeferredPress";
-import { Trans } from "@/shared/i18n/Trans";
-import {
-	type Translate,
-	useFormats,
-	useSpoken,
-	useTranslate,
-} from "@/shared/i18n/useTranslate";
+import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Artwork } from "@/shared/ui/Artwork";
@@ -146,30 +133,6 @@ function Records({
 	);
 }
 
-function historyOf(view: TrackView, t: Translate) {
-	const playsOf = playCountsIn(view.columns);
-	const playedAt = lastPlayedIn(view.columns);
-
-	let plays = 0;
-	let unplayed = 0;
-	let lastPlayed = 0;
-	let best: { title: string; plays: number } | null = null;
-
-	for (let position = 0; position < view.length; position += 1) {
-		const ref = view.ref(position);
-		const count = playsOf(ref) ?? 0;
-		plays += count;
-		if (count === 0) unplayed += 1;
-		else if (best === null || count > best.plays)
-			best = { title: titleOf(view.at(position), t), plays: count };
-
-		const at = playedAt(ref);
-		if (at !== null && at > lastPlayed) lastPlayed = at;
-	}
-
-	return { plays, unplayed, lastPlayed, best };
-}
-
 export function ArtistView({
 	name,
 	library,
@@ -201,7 +164,6 @@ export function ArtistView({
 }) {
 	const t = useTranslate();
 	const say = useSpoken();
-	const format = useFormats();
 	const canControlPlayback = useCanControlPlayback();
 	const { snapshot } = library;
 	const isSplitting = !isLoaded(snapshot.columns, CREDIT_TAGS);
@@ -221,15 +183,13 @@ export function ArtistView({
 
 	const isAwaiting = isSplitting || wait.isWaiting;
 	const stats = useMemo(
-		() =>
-			isAwaiting ? null : summarise(own ?? EMPTY_VIEW, own?.playedCount ?? 0),
+		() => (isAwaiting ? null : summarise(own ?? EMPTY_VIEW)),
 		[own, isAwaiting],
 	);
 
 	const discography = useMemo(() => recordsOf(own), [own]);
 	const withOthers = useMemo(() => recordsOf(shared), [shared]);
 
-	const history = useMemo(() => (own ? historyOf(own, t) : null), [own, t]);
 	const { hasPlayCounts } = useAvailableFields();
 
 	const held =
@@ -281,48 +241,14 @@ export function ArtistView({
 				)
 			) : null}
 
-			{own && history && hasPlayCounts && !isAwaiting ? (
-				<section className={styles.section}>
-					<h2 className={styles.heading}>{t("artist.yourHistory")}</h2>
-					<dl className={styles.history}>
-						<div>
-							<dt>{t("details.plays")}</dt>
-							<dd className="tabular">{format.number(history.plays)}</dd>
-						</div>
-						<div>
-							<dt>{t("artist.neverPlayed")}</dt>
-							<dd className="tabular">
-								{t("artist.someOf", {
-									some: history.unplayed,
-									all: own.length,
-								})}
-							</dd>
-						</div>
-						{history.lastPlayed > 0 ? (
-							<div>
-								<dt>{t("artist.lastListened")}</dt>
-								<dd>
-									{format.date(history.lastPlayed, {
-										year: "numeric",
-										month: "long",
-										day: "numeric",
-									})}
-								</dd>
-							</div>
-						) : null}
-						{history.best ? (
-							<div>
-								<dt>{t("shelf.top.title")}</dt>
-								<dd>
-									{history.best.title}{" "}
-									<span className={styles.faint}>
-										{t("shelf.plays", { count: history.best.plays })}
-									</span>
-								</dd>
-							</div>
-						) : null}
-					</dl>
-				</section>
+			{own ? (
+				<LibraryCards
+					stats={stats}
+					rows={own}
+					hasPlayCounts={hasPlayCounts}
+					countsGenres
+					isOverdue={wait.isOverdue}
+				/>
 			) : null}
 
 			{held > 0 ? (
@@ -388,22 +314,8 @@ export function ArtistView({
 				title={name}
 				stats={stats}
 				isStatsPending={wait.isOverdue}
-				hasPlayCounts={hasPlayCounts}
+				covers={{ source: library.source, rows: own ?? EMPTY_VIEW, seed: name }}
 				tabs={tabs}
-				leading={
-					isAwaiting ? null : (
-						<Trans
-							phrase="artist.albumCount"
-							count={discography.length}
-							total={<b>{format.number(discography.length)}</b>}
-						/>
-					)
-				}
-				aside={
-					own && discography.length > 0 ? (
-						<Mosaic source={library.source} rows={own} seed={name} size={176} />
-					) : undefined
-				}
 				actions={
 					held > 0 || isAwaiting ? (
 						<>

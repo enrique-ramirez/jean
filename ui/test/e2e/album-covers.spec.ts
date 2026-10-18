@@ -87,6 +87,7 @@ test("a cover dropped on a playlist in the sidebar copies its whole album there"
 	const titles = await openFavorites(page, player);
 	const before = titlesIn(player, DEFAULT_PLAYLIST);
 	const target = sidebarRow(page, titleOfPlaylist(player, DEFAULT_PLAYLIST));
+	await cover(page, 1).scrollIntoViewIfNeeded();
 
 	await dragFrom(page, cover(page, 1), target);
 	await expect(target).toHaveAttribute("data-drop-over", "true");
@@ -102,6 +103,7 @@ test("a cover dropped on the queue button queues its whole album, in order", asy
 	player,
 }) => {
 	const titles = await openFavorites(page, player);
+	await cover(page, 1).scrollIntoViewIfNeeded();
 
 	await dragFrom(page, cover(page, 1), queueButton(page));
 	await expect(queueButton(page)).toHaveAttribute("data-drop-over", "true");
@@ -118,6 +120,7 @@ test("a cover dropped above the first album moves its album to the top, marking 
 }) => {
 	const titles = await openFavorites(page, player);
 	const first = album(page, 0);
+	await cover(page, 1).scrollIntoViewIfNeeded();
 
 	await pressOn(page, cover(page, 1));
 	await moveOver(page, first, 0.25);
@@ -138,6 +141,7 @@ test("a cover dropped back on its own album sends nothing", async ({
 	player,
 }) => {
 	await openFavorites(page, player);
+	await cover(page, 1).scrollIntoViewIfNeeded();
 
 	await pressOn(page, cover(page, 1));
 	await moveOver(page, album(page, 1), 0.25);

@@ -41,11 +41,7 @@ const summaryOf = (view: TrackView, countsGenres: boolean) => {
 	const held = summaries.get(view);
 	if (held?.countsGenres === countsGenres) return held.summary;
 
-	const summary = summarise(
-		view,
-		view.playedCount,
-		countsGenres ? undefined : { genres: 0 },
-	);
+	const summary = summarise(view, countsGenres ? undefined : { genres: 0 });
 	summaries.set(view, { countsGenres, summary });
 	return summary;
 };
@@ -160,6 +156,7 @@ export function LibraryListView({
 			heading={heading}
 			stats={stats}
 			wait={wait}
+			countsGenres={!isGenre}
 			allGenresHref={kind === SCRATCH_KIND.all ? href(ROUTE.genres) : undefined}
 			mosaicSeed={`${kind}:${label}`}
 			canPlaySets={canPlaySets}

@@ -1,0 +1,117 @@
+.cards {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	max-width: 1180px;
+	padding: 4px 24px 18px;
+}
+
+.heading {
+	margin: 0;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.09em;
+	text-transform: uppercase;
+	color: var(--faint);
+}
+
+/* The vertical padding leaves room for a chip's touch hit area, which `overflow-x: auto` would clip. */
+.row {
+	display: flex;
+	gap: 10px;
+	padding-block: 4px;
+	overflow-x: auto;
+}
+
+.card {
+	display: flex;
+	flex: 1 0 190px;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+	padding: 12px 14px 14px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface);
+}
+
+.card[data-card="genres"] {
+	flex-grow: 2;
+	flex-basis: 260px;
+}
+
+.label {
+	font-size: 0.6875rem;
+	font-weight: 500;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--faint);
+}
+
+.value {
+	display: flex;
+	align-items: center;
+	font-size: 1.5rem;
+	font-weight: 600;
+	letter-spacing: -0.025em;
+	line-height: 1.25;
+	font-variant-numeric: tabular-nums;
+	color: var(--text);
+}
+
+.title {
+	display: block;
+	overflow: hidden;
+	font-size: 1.0625rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.line {
+	display: flex;
+	align-items: center;
+	font-size: 0.75rem;
+	line-height: 1.5;
+	color: var(--muted);
+}
+
+.meter {
+	height: 5px;
+	margin-top: 6px;
+	overflow: hidden;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-pill);
+	background: var(--surface-sunken);
+}
+
+.meterFill {
+	height: 100%;
+	background: var(--accent);
+	transform-origin: left;
+}
+
+.chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 4px;
+}
+
+@media (max-width: 720px) {
+	.cards {
+		padding-inline: 16px;
+	}
+
+	.card {
+		flex-basis: 170px;
+	}
+
+	.card[data-card="genres"] {
+		flex: 0 0 auto;
+	}
+
+	/* A wrapped second line of chips would sit under the first one's touch hit area. */
+	.chips {
+		flex-wrap: nowrap;
+	}
+}

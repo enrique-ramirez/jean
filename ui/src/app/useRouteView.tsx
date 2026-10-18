@@ -159,6 +159,7 @@ function listPageOf(
 				heading: {
 					eyebrow: <AlbumCrumb artist={albumTracks.artist} />,
 					title: albumTracks.album,
+					showsCover: true,
 				},
 				emptyNotice: t("library.noAlbum"),
 				wait,

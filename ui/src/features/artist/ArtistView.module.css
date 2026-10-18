@@ -164,37 +164,6 @@
 	color: var(--muted);
 }
 
-.history {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-	gap: 18px;
-	margin: 0;
-}
-
-.history div {
-	display: flex;
-	flex-direction: column;
-	gap: 3px;
-}
-
-.history dt {
-	font-size: 0.75rem;
-	color: var(--faint);
-}
-
-.history dd {
-	margin: 0;
-	overflow: hidden;
-	font-size: 0.9375rem;
-	color: var(--text);
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.faint {
-	color: var(--faint);
-}
-
 @media (max-width: 720px) {
 	.overview {
 		gap: 24px;

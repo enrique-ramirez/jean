@@ -1,115 +1,210 @@
 import type { Page } from "./fixtures.ts";
-import { expect, openLibrary, test } from "./fixtures.ts";
+import { expect, openLibrary, test, viewHeader } from "./fixtures.ts";
 
 // `#/all` for anything shaped: `libraryShape` replaces the media library and leaves the captured
 // playlists alone, so `p7` there is still the real five.
 //
-// The covers of a set, drawn as one picture. Everything here is counted in **albums**, never tracks.
+// The covers of a set, drawn behind its header. Everything here is counted in **albums**, never
+// tracks.
 
-const mosaic = (page: Page) => page.locator("main header [data-tiles]");
+const backdrop = (page: Page) => viewHeader(page).locator("[data-backdrop]");
 
-const tiles = (page: Page) => mosaic(page).locator("[data-artwork]");
+const covers = (page: Page) => backdrop(page).locator("[data-artwork]");
+
+const figureLine = (page: Page) => viewHeader(page).locator("p[data-figures]");
+
+const albumCount = (page: Page) =>
+	figureLine(page).locator('span[data-figure="albums"]');
 
 const drawn = async (page: Page) => {
-	await expect(mosaic(page)).toBeVisible();
-	await expect(mosaic(page)).toHaveAttribute("data-ready", "true");
+	await expect(backdrop(page)).toBeAttached();
+	await expect(backdrop(page)).toHaveAttribute("data-ready", "true");
 };
 
-const expectShape = async (page: Page, count: string, badge: string | null) => {
+const standIns = (page: Page) =>
+	viewHeader(page).evaluate((root) =>
+		[...root.querySelectorAll("svg, img")]
+			.filter(
+				(element) =>
+					!element.closest("button, a, [data-backdrop]") &&
+					element.getBoundingClientRect().width > 0,
+			)
+			.map((element) => element.outerHTML.slice(0, 80)),
+	);
+
+// The lowest and highest opacity anything in the backdrop is drawn at, through every ancestor up to
+// the backdrop, among the elements that paint a picture or a fill: an image, an icon, a box with a
+// background colour. Nothing painted reads as [0, 0].
+const paintedIn = (page: Page) =>
+	backdrop(page).evaluate((layer) => {
+		const opacityOf = (element: Element) => {
+			let opacity = 1;
+			for (
+				let at: Element | null = element;
+				at && at !== layer.parentElement;
+				at = at.parentElement
+			) {
+				const style = getComputedStyle(at);
+				if (style.visibility === "hidden" || style.display === "none") return 0;
+				opacity *= Number(style.opacity);
+			}
+			return opacity;
+		};
+		const paints = (element: Element) =>
+			element.matches("img, svg") ||
+			!/rgba\(.*, 0\)$|transparent/.test(
+				getComputedStyle(element).backgroundColor,
+			);
+		const seen = [...layer.querySelectorAll("*")]
+			.filter(
+				(element) =>
+					paints(element) && element.getBoundingClientRect().width > 0,
+			)
+			.map(opacityOf);
+		return seen.length === 0 ? [0, 0] : [Math.min(...seen), Math.max(...seen)];
+	});
+
+const DESKTOP_FLOOR_PX = 320;
+const PHONE_FLOOR_PX = 260;
+
+// A generated track has no sleeve in the fake, and a set none of whose covers answers draws no
+// backdrop at all. Each album gets one of the fake's five sleeves, the same for every track of it;
+// `libraryOfShape` puts track `n` on album `n % albums`.
+const SLEEVES = [
+	"deja-entendu.jpg",
+	"jessico.jpg",
+	"jar-of-flies.jpg",
+	"deathconsciousness.jpg",
+	"lafcadio.jpg",
+];
+
+const withSleeves = (tracks: number, albums: number) => ({
+	libraryShape: { tracks, albums },
+	embeddedArt: Object.fromEntries(
+		Array.from({ length: tracks }, (_, index) => [
+			`Track ${index + 1}`,
+			SLEEVES[(index % albums) % SLEEVES.length],
+		]),
+	),
+});
+
+const expectShape = async (
+	page: Page,
+	count: number,
+	albums: string | null,
+) => {
 	await drawn(page);
-	await expect(mosaic(page)).toHaveAttribute("data-tiles", count);
-	if (badge === null) {
-		await expect(mosaic(page).getByText(/album/)).toHaveCount(0);
-	} else {
-		await expect(mosaic(page).getByText(badge)).toBeVisible();
-	}
+	await expect(covers(page)).toHaveCount(count);
+	await expect(
+		figureLine(page).locator('span[data-figure="tracks"]'),
+	).toBeVisible();
+	if (albums === null) await expect(albumCount(page)).toHaveCount(0);
+	else await expect(albumCount(page)).toHaveText(albums);
 };
 
 test.describe("how many covers", () => {
 	test.describe("one album", () => {
-		test.use({ libraryShape: { tracks: 21, albums: 1 } });
+		test.use(withSleeves(21, 1));
 
-		test("draws it once, and says nothing about a count", async ({ page }) => {
+		test("draws it once, and the figures say nothing about a count", async ({
+			page,
+		}) => {
 			await page.goto("/#/all");
-			await expectShape(page, "1", null);
+			await expectShape(page, 1, null);
 		});
 	});
 
 	test.describe("two albums", () => {
-		test.use({ libraryShape: { tracks: 24, albums: 2 } });
+		test.use(withSleeves(24, 2));
 
-		test("still draws one, and says how many there are", async ({ page }) => {
+		test("still draws one, and the figures say how many there are", async ({
+			page,
+		}) => {
 			await page.goto("/#/all");
 			// One cover cannot stand for two, so the figure is what makes it honest.
-			await expectShape(page, "1", "2 albums");
+			await expectShape(page, 1, "2 albums");
 		});
 	});
 
 	test.describe("four albums", () => {
-		test.use({ libraryShape: { tracks: 40, albums: 4 } });
+		test.use(withSleeves(40, 4));
 
-		test("draws four, and the picture is the whole answer", async ({
-			page,
-		}) => {
+		test("draws four, and the figures count four", async ({ page }) => {
 			await page.goto("/#/all");
-			await expectShape(page, "4", null);
+			await expectShape(page, 4, "4 albums");
 		});
 	});
 
 	test.describe("five albums", () => {
-		test.use({ libraryShape: { tracks: 50, albums: 5 } });
+		test.use(withSleeves(50, 5));
 
-		test("draws four and says five", async ({ page }) => {
+		test("draws four and the figures say five", async ({ page }) => {
 			await page.goto("/#/all");
-			await expectShape(page, "4", "5 albums");
+			await expectShape(page, 4, "5 albums");
 		});
 	});
 
 	test.describe("nine albums", () => {
-		test.use({ libraryShape: { tracks: 90, albums: 9 } });
+		test.use(withSleeves(90, 9));
 
-		test("draws nine, and again says nothing", async ({ page }) => {
+		test("draws nine, and the figures count nine", async ({ page }) => {
 			await page.goto("/#/all");
-			await expectShape(page, "9", null);
+			await expectShape(page, 9, "9 albums");
 		});
 	});
 
 	test.describe("more than nine", () => {
-		test.use({ libraryShape: { tracks: 200, albums: 20 } });
+		test.use(withSleeves(200, 20));
 
-		test("draws nine and says twenty", async ({ page }) => {
+		test("draws nine and the figures say twenty", async ({ page }) => {
 			await page.goto("/#/all");
-			await expectShape(page, "9", "20 albums");
+			await expectShape(page, 9, "20 albums");
 		});
 	});
 
 	test.describe("a library with nothing in it", () => {
 		test.use({ libraryShape: { tracks: 0 } });
 
-		test("draws a hold rather than an empty grid", async ({ page }) => {
-			await page.goto("/#/all");
-			await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+		test("draws no backdrop and nothing in its place, at the height of a header with covers", async ({
+			page,
+			isMobile,
+		}) => {
+			// The captured playlists survive an empty media library, so `Library` is a header with
+			// covers on the same page and the same screen.
+			await openLibrary(page);
+			await drawn(page);
+			const withCovers = (await viewHeader(page).boundingBox())?.height ?? 0;
 
-			// No grid at all, not a grid of one blank: there is no album to stand for
-			// the set, so the header draws the same disc mark a single missing cover
-			// gets, at the size of the whole picture.
-			await expect(mosaic(page)).toHaveCount(0);
-			const hold = page.locator("main header").locator("svg").first();
-			await expect(hold).toBeVisible();
-			const box = (await hold.boundingBox())!;
-			expect(box.width).toBeGreaterThan(16);
+			await page.goto("/#/all");
+			await expect(
+				page.getByRole("heading", { level: 1, name: "All music" }),
+			).toBeVisible();
+			await expect(
+				figureLine(page).locator('span[data-figure="tracks"]'),
+			).toBeVisible();
+
+			// No backdrop at all, not one of a blank: there is no album to stand for the set, and the
+			// disc mark a single missing cover gets would be a picture of nothing.
+			await expect(backdrop(page)).toHaveCount(0);
+			expect(await standIns(page)).toEqual([]);
+
+			const height = (await viewHeader(page).boundingBox())?.height ?? 0;
+			expect(height).toBeCloseTo(withCovers, 0);
+			expect(height).toBeGreaterThanOrEqual(
+				isMobile ? PHONE_FLOOR_PX : DESKTOP_FLOOR_PX,
+			);
 		});
 	});
 });
 
 test.describe("one album, one cover", () => {
-	test("the tiles are different records, not the same one repeated", async ({
+	test("the backdrop's covers are different records, not the same one repeated", async ({
 		page,
 	}) => {
 		await openLibrary(page);
 		await drawn(page);
 
-		const shown = await mosaic(page)
+		const shown = await backdrop(page)
 			.locator("img")
 			.evaluateAll((images) =>
 				(images as HTMLImageElement[]).map((image) => image.src),
@@ -123,7 +218,9 @@ test.describe("one album, one cover", () => {
 });
 
 test.describe("while the covers are arriving", () => {
-	test("it holds as one picture rather than as nine", async ({ page }) => {
+	test("nothing stands in for them and nothing is revealed", async ({
+		page,
+	}) => {
 		// Held open until the test lets go, rather than for a fixed number of
 		// milliseconds the assertions below then race: everything here is about
 		// what is on screen while the covers are still in flight, and a route that
@@ -139,30 +236,19 @@ test.describe("while the covers are arriving", () => {
 
 		try {
 			await openLibrary(page);
-			await expect(mosaic(page)).toBeVisible();
 
-			// `Artwork`'s own placeholder is right for a single cover. Nine identical
-			// disc icons in a grid reads as a fault rather than as covers on their
-			// way, so the tiles stay hidden and one hold at the size of the whole
-			// thing stands in.
-			//
-			// One, not nine. `Artwork` draws its own hold with the same class, which
-			// is what this replaces, so the mosaic's is named rather than found by
-			// class.
-			const hold = mosaic(page).locator("[data-mosaic-hold]");
-			await expect(hold).toHaveCount(1);
-			await expect(mosaic(page)).not.toHaveAttribute("data-ready", "true");
+			// Mounted from the first frame, since that is what makes the covers load, and drawn at
+			// nothing until the last has answered. `Artwork`'s own placeholder and its sunken fill are
+			// right for a single sleeve; behind a header they read as a fault rather than as covers on
+			// their way, so neither may show, and nothing else stands in either.
+			await expect(backdrop(page)).toBeAttached();
+			await expect(covers(page).first()).toBeAttached();
+			await expect(backdrop(page)).not.toHaveAttribute("data-ready", "true");
+			expect(await paintedIn(page)).toEqual([0, 0]);
+			expect(await standIns(page)).toEqual([]);
 
-			// Mounted from the first frame -- that is what makes them load -- and
-			// hidden until the last has answered, so the covers arrive together as
-			// one picture.
-			const shown = await tiles(page)
-				.first()
-				.evaluate((tile) => getComputedStyle(tile).opacity);
-			expect(Number(shown)).toBe(0);
-
-			await expect(hold).toHaveCount(1);
-			await expect(mosaic(page)).not.toHaveAttribute("data-ready", "true");
+			await expect(backdrop(page)).not.toHaveAttribute("data-ready", "true");
+			expect(await paintedIn(page)).toEqual([0, 0]);
 		} finally {
 			release();
 			await page.unroute("**/api/artwork**");

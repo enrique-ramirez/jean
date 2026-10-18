@@ -1,0 +1,95 @@
+.backdrop {
+	position: absolute;
+	inset: 0;
+	overflow: hidden;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity 320ms var(--ease);
+}
+
+.backdrop[data-ready="true"] {
+	opacity: 1;
+}
+
+/* The covers are laid out in a box an eighth of the header's size and the box is scaled up from its
+ top right corner. `Artwork` only asks for a cover near the viewport, so the box has to sit inside the
+ header; the blur is drawn at this size and grows with the scale. */
+.stage {
+	position: absolute;
+	top: 0;
+	right: 0;
+	width: 12.5%;
+	height: 12.5%;
+	display: grid;
+	transform: scale(8);
+	transform-origin: top right;
+	filter: blur(5px) saturate(1.2);
+}
+
+.backdrop[data-tiles="1"] .stage {
+	grid-template: 1fr / 1fr;
+}
+
+.backdrop[data-tiles="4"] .stage {
+	grid-template: repeat(2, 1fr) / repeat(2, 1fr);
+}
+
+.backdrop[data-tiles="9"] .stage {
+	grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+}
+
+.tile {
+	width: 100%;
+	height: 100%;
+	border-radius: 0;
+}
+
+.tile[data-artwork="failed"] {
+	visibility: hidden;
+}
+
+.backdrop::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background:
+		linear-gradient(
+			to top,
+			var(--bg) 0,
+			color-mix(in oklab, var(--bg) 60%, transparent) 45%,
+			transparent 100%
+		),
+		linear-gradient(
+			to right,
+			var(--bg) 0,
+			var(--bg) 28%,
+			color-mix(in oklab, var(--bg) 60%, transparent) 45%,
+			transparent 90%
+		),
+		color-mix(in oklab, var(--bg) 25%, transparent);
+}
+
+@media (max-width: 720px) {
+	.backdrop::after {
+		background:
+			linear-gradient(
+				to top,
+				var(--bg) 0,
+				color-mix(in oklab, var(--bg) 80%, transparent) 55%,
+				color-mix(in oklab, var(--bg) 30%, transparent) 100%
+			),
+			color-mix(in oklab, var(--bg) 35%, transparent);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.backdrop {
+		transition: none;
+	}
+}
+
+@media (prefers-contrast: more) {
+	.backdrop {
+		display: none;
+	}
+}

@@ -326,6 +326,7 @@ test.describe("dragging a row with a mouse", () => {
 		player,
 	}) => {
 		await openPlaylist(page, player, SPANISH);
+		await trackRow(page, 5).scrollIntoViewIfNeeded();
 		const marked = page.locator('main [role="row"][data-drop-line]');
 
 		const start = await pointOver(trackRow(page, 0), 0.5);
@@ -352,6 +353,7 @@ test.describe("dragging a row with a mouse", () => {
 		player,
 	}) => {
 		await openPlaylist(page, player, SPANISH);
+		await trackRow(page, 5).scrollIntoViewIfNeeded();
 		const aboveGap = trackRow(page, 4);
 		const atGap = trackRow(page, 5);
 		const rowHeight = (await aboveGap.boundingBox())!.height;
@@ -445,6 +447,7 @@ test.describe("dragging a row with a mouse", () => {
 	}) => {
 		const titles = await openPlaylist(page, player, SPANISH);
 		const before = [...titles];
+		await trackRow(page, 5).scrollIntoViewIfNeeded();
 
 		const home = await pointOver(trackRow(page, 2), 0.5);
 		const away = await pointOver(trackRow(page, 4), BELOW_CENTRE);

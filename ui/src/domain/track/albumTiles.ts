@@ -5,7 +5,12 @@ import type { TrackRows } from "./project";
 
 const TILE_FIELDS = [FIELD.album, FIELD.title, FIELD.albumArtist, FIELD.artist];
 
-export function* albumTilesSteps(rows: TrackRows): Steps<number[]> {
+export interface AlbumTiles {
+	tiles: number[];
+	albumGroups: number;
+}
+
+export function* albumTilesCountedSteps(rows: TrackRows): Steps<AlbumTiles> {
 	const { columns } = rows;
 	const album = columns.fields[FIELD.album];
 	const title = columns.fields[FIELD.title];
@@ -16,6 +21,7 @@ export function* albumTilesSteps(rows: TrackRows): Steps<number[]> {
 	const seenAlbums = new Set<number>();
 	const seenTracks = new Set<string>();
 	const tiles: number[] = [];
+	let albumTiles = 0;
 
 	for (let at = 0; at < rows.length; at += 1) {
 		if ((at & SLICE_MASK) === 0) yield;
@@ -27,6 +33,7 @@ export function* albumTilesSteps(rows: TrackRows): Steps<number[]> {
 			if (seenAlbums.has(pair)) continue;
 			seenAlbums.add(pair);
 			tiles.push(at);
+			albumTiles += 1;
 			continue;
 		}
 
@@ -39,10 +46,14 @@ export function* albumTilesSteps(rows: TrackRows): Steps<number[]> {
 		tiles.push(at);
 	}
 
-	return tiles;
+	return { tiles, albumGroups: albumTiles };
 }
 
-export const tilesHeld = slicedOver<number[]>();
+export function* albumTilesSteps(rows: TrackRows): Steps<number[]> {
+	return (yield* albumTilesCountedSteps(rows)).tiles;
+}
+
+export const tilesHeld = slicedOver<AlbumTiles>();
 const NO_INDICES: readonly number[] = [];
 
 export const tileKeys = (rows: TrackRows) => [
@@ -51,4 +62,4 @@ export const tileKeys = (rows: TrackRows) => [
 ];
 
 export const tileSteps = (rows: TrackRows) =>
-	tilesHeld.steps(tileKeys(rows), () => albumTilesSteps(rows));
+	tilesHeld.steps(tileKeys(rows), () => albumTilesCountedSteps(rows));

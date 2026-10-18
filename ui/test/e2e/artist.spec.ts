@@ -41,7 +41,11 @@ test.describe("an artist is a place", () => {
 			page.getByRole("heading", { name: "Discography" }),
 		).toBeVisible();
 		await expect(page.getByText("Jessico", { exact: true })).toBeVisible();
-		await expect(page.getByText(/1 album\b/).first()).toBeVisible();
+		// One album, so the figure line counts tracks and leaves the album count out. The tracks
+		// figure first, so the absence is read off a line that has drawn.
+		const figures = viewHeader(page).locator("p[data-figures]");
+		await expect(figures.locator('span[data-figure="tracks"]')).toBeVisible();
+		await expect(figures.locator('span[data-figure="albums"]')).toHaveCount(0);
 	});
 
 	// The name reaches the hash as somebody tagged it, and a comma is the character the artist index
@@ -626,7 +630,11 @@ test.describe("before the credit columns arrive", () => {
 		page.locator("main").evaluate(
 			(main, said) =>
 				[...main.querySelectorAll('[aria-busy="true"]')]
-					.filter((element) => !element.closest("header"))
+					.filter(
+						(element) =>
+							!element.closest("header") &&
+							!element.closest("[data-library-cards]"),
+					)
 					.map((element) => ({
 						loadings: (element.textContent ?? "").split(said).length - 1,
 						holdsAPlaceholder: [
@@ -721,5 +729,67 @@ test.describe("before the credit columns arrive", () => {
 			Math.abs(after.height - before.height),
 			`the first row was ${before.height}px tall and became ${after.height}px`,
 		).toBeLessThan(0.5);
+	});
+});
+
+test.describe("the header's bottom edge", () => {
+	// A line drawn across the header between its buttons and the strip, by a border or by a thin
+	// element of its own. The strip's own top border sits on the strip and is not one.
+	const rulesAbove = (page: Page, from: number, to: number) =>
+		viewHeader(page).evaluate(
+			(root, [top, bottom]) => {
+				const across = root.getBoundingClientRect().width / 2;
+				const lines: string[] = [];
+				for (const element of root.querySelectorAll<HTMLElement>("*")) {
+					if (element.closest("[data-backdrop]")) continue;
+					const box = element.getBoundingClientRect();
+					if (box.width < across) continue;
+					const style = getComputedStyle(element);
+					const drawn = (side: "Top" | "Bottom") =>
+						Number.parseFloat(style[`border${side}Width`]) > 0 &&
+						style[`border${side}Style`] !== "none" &&
+						!/rgba\(.*, 0\)$|transparent/.test(style[`border${side}Color`]);
+					const ys = [
+						...(drawn("Top") ? [box.top] : []),
+						...(drawn("Bottom") ? [box.bottom] : []),
+						...(box.height <= 2 &&
+						!/rgba\(.*, 0\)$|transparent/.test(style.backgroundColor)
+							? [box.top]
+							: []),
+					];
+					for (const y of ys)
+						if (y > top && y < bottom)
+							lines.push(
+								`${element.tagName.toLowerCase()} at ${Math.round(y)}px`,
+							);
+				}
+				return lines;
+			},
+			[from, to],
+		);
+
+	test("the tab strip is the header's bottom edge, over the backdrop, with no rule a gap above it", async ({
+		page,
+	}) => {
+		await openArtist(page, ARTIST);
+		const header = viewHeader(page);
+		const backdrop = header.locator("[data-backdrop]");
+		await expect(backdrop).toHaveAttribute("data-ready", "true");
+
+		const strip = header.getByRole("navigation", { name: "Artist views" });
+		const box = async (locator: typeof header) => {
+			const found = await locator.boundingBox();
+			if (!found) throw new Error("not drawn");
+			return { ...found, bottom: found.y + found.height };
+		};
+		const edge = await box(header);
+		const tabs = await box(strip);
+		const behind = await box(backdrop);
+		const shuffle = await box(header.getByRole("button", { name: "Shuffle" }));
+
+		expect(Math.abs(tabs.bottom - edge.bottom)).toBeLessThanOrEqual(1);
+		expect(behind.y).toBeLessThanOrEqual(tabs.y);
+		expect(behind.bottom).toBeGreaterThanOrEqual(tabs.bottom - 1);
+		expect(await rulesAbove(page, shuffle.bottom, tabs.y - 1)).toEqual([]);
 	});
 });

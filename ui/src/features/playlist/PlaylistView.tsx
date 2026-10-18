@@ -54,7 +54,6 @@ export function PlaylistView({
 		error,
 		heat,
 		patina,
-		playedCount,
 	} = snapshot;
 
 	const rows = useMemo(() => trackRows(columns), [columns]);
@@ -82,12 +81,10 @@ export function PlaylistView({
 		label: t("shortcut.openFinder"),
 	});
 
+	const isArriving = isLoading || loaded < total;
 	const stats = useMemo(
-		() => ({
-			...summarise(rows, playedCount),
-			trackCount: playlist?.itemCount ?? rows.length,
-		}),
-		[rows, playedCount, playlist?.itemCount],
+		() => (isArriving ? null : summarise(rows)),
+		[rows, isArriving],
 	);
 
 	if (!playlist)

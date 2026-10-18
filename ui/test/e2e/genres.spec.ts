@@ -177,10 +177,13 @@ test.describe("the ways in", () => {
 		await page.goto("/#/all");
 
 		await expect(
-			viewHeader(page).getByRole("link", { name: /All genres/ }),
+			page
+				.locator("[data-library-cards]")
+				.getByRole("link", { name: /All genres/ }),
 		).toHaveAttribute("href", "#/genres");
 
-		await viewHeader(page)
+		await page
+			.locator("[data-library-cards]")
 			.getByRole("link", { name: /Post Rock/ })
 			.click();
 		await expect(page.getByRole("heading", { level: 1 })).toHaveText(

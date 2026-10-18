@@ -1,36 +1,15 @@
 .header {
 	position: relative;
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
-	grid-template-areas:
-		"naming aside"
-		"meta   aside"
-		"tabs   tabs";
-	align-content: start;
-	gap: 13px 24px;
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-end;
+	min-height: 320px;
+	gap: 13px;
 	padding: 28px 24px 20px;
-	/* Stays visible: `overflow: hidden` makes this a scroll container, and focusing a field in the
-	 save-playlist popover then scrolls the header inside itself. */
-	overflow: visible;
-	border-bottom: 1px solid var(--border);
 }
 
-.header::before {
-	content: "";
-	position: absolute;
-	inset: 0;
-	background: linear-gradient(
-		180deg,
-		oklch(var(--tint-l) var(--tint-c) var(--tint-h) / 0.06),
-		transparent 72%
-	);
-	pointer-events: none;
-}
-
-/* Pulled out to the header's own edges and down onto its bottom padding, so the strip's baseline is
- the header's border rather than a second line a gap below it. */
 .tabs {
-	grid-area: tabs;
+	position: relative;
 	margin: 0 -24px -20px;
 }
 
@@ -40,13 +19,23 @@
 	padding-inline: 24px;
 }
 
-.header[data-tabs="true"] {
-	border-bottom: 0;
+.lead {
+	position: relative;
+	display: flex;
+	align-items: flex-end;
+	gap: 24px;
+	min-width: 0;
+}
+
+.cover {
+	flex: none;
+	width: 176px;
+	aspect-ratio: 1;
 }
 
 .naming {
 	position: relative;
-	grid-area: naming;
+	flex: 1;
 	display: flex;
 	flex-direction: column;
 	gap: 13px;
@@ -55,17 +44,10 @@
 
 .meta {
 	position: relative;
-	grid-area: meta;
 	display: flex;
 	flex-direction: column;
 	gap: 13px;
 	min-width: 0;
-}
-
-.aside {
-	position: relative;
-	grid-area: aside;
-	align-self: start;
 }
 
 .eyebrow {
@@ -74,7 +56,7 @@
 	font-weight: 600;
 	letter-spacing: 0.1em;
 	text-transform: uppercase;
-	color: var(--faint);
+	color: var(--text);
 }
 
 .title {
@@ -87,7 +69,8 @@
 	overflow-wrap: anywhere;
 }
 
-.stats {
+.figures {
+	margin: 0;
 	min-height: 1lh;
 	display: flex;
 	flex-wrap: wrap;
@@ -97,19 +80,18 @@
 	color: var(--muted);
 }
 
-.stats b {
+.figure {
+	display: inline-flex;
+	gap: 10px;
+}
+
+.figures b {
 	font-weight: 600;
 	color: var(--text);
 }
 
 .separator {
-	color: var(--faint);
-}
-
-.chips {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
+	color: var(--muted);
 }
 
 .actions {
@@ -120,43 +102,10 @@
 	margin-top: 2px;
 }
 
-.meter {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-left: 4px;
-}
-
-.meterPending {
-	width: 104px;
-	margin-left: 4px;
-}
-
-.meterTrack {
-	width: 104px;
-	height: 5px;
-	overflow: hidden;
-	border: 1px solid var(--border);
-	border-radius: var(--radius-pill);
-	background: var(--surface-sunken);
-}
-
-.meterFill {
-	height: 100%;
-	background: var(--accent);
-	transform-origin: left;
-}
-
 @media (max-width: 720px) {
 	.header {
-		grid-template-columns: auto minmax(0, 1fr);
-		/* A named area this template omits still gets an implicit column for the element assigned to
-		 it, which collapses the title beside it to nothing. Keep the tabs row named here. */
-		grid-template-areas:
-			"aside naming"
-			"meta  meta"
-			"tabs  tabs";
-		gap: 16px 14px;
+		min-height: 260px;
+		gap: 10px;
 		padding: 20px 16px 16px;
 	}
 
@@ -168,47 +117,31 @@
 		padding-inline: 16px;
 	}
 
-	.aside,
-	.naming {
-		align-self: center;
+	.lead {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 16px;
+	}
+
+	.cover {
+		width: 92px;
 	}
 
 	.naming {
 		gap: 6px;
 	}
 
-	.chips > *:nth-child(n + 3):not(.wayOut) {
-		display: none;
-	}
-
-	.meter {
-		flex-basis: 100%;
-		margin-left: 0;
-	}
-
-	.meterPending {
-		flex-basis: 100%;
-		margin-left: 0;
-	}
-
-	.meterTrack {
-		flex: 1;
-		width: auto;
-	}
-
 	.actions {
 		justify-content: space-between;
 	}
 
-	/* Anything past the play pair takes the rest of its line, so a wrapped one is a full-width row
-	 rather than a short button under a gap. The second selector reaches into Menu's own anchor div,
-	 which would otherwise grow around a trigger button that stayed its own width. */
-	.actions > :nth-child(n + 3),
+	/* Anything past the play pair takes a line of its own. The second selector reaches into Menu's own
+	 anchor div, which would otherwise grow around a trigger button that stayed its own width. */
+	.actions > :nth-child(n + 3) {
+		flex: 1 0 100%;
+	}
+
 	.actions > :nth-child(n + 3) > button {
 		flex-grow: 1;
 	}
-}
-
-.wayOut {
-	order: 1;
 }

@@ -1,9 +1,11 @@
 import type { ReactNode, RefObject } from "react";
 import { NO_WAIT, type Wait } from "@/domain/library/useOverdue";
 import { useIsPlaying } from "@/domain/player/usePlayer";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { useAvailableFields } from "./fieldAvailability";
+import { coverIdentity, FIELD, value } from "./fields";
+import { LibraryCards } from "./LibraryCards";
 import type { TrackBrowserHandle } from "./listTypes";
-import { Mosaic } from "./Mosaic";
 import { PlayActions } from "./PlayActions";
 import type { TrackStats } from "./stats";
 import { TrackBrowser, type TrackBrowserProps } from "./TrackBrowser";
@@ -12,6 +14,7 @@ import { ViewHeader } from "./ViewHeader";
 export interface PageHeading {
 	eyebrow?: ReactNode;
 	title: ReactNode;
+	showsCover?: boolean;
 }
 
 type TrackPageProps = Omit<
@@ -22,10 +25,11 @@ type TrackPageProps = Omit<
 	heading?: PageHeading;
 	stats: TrackStats | null;
 	wait?: Wait;
-	allGenresHref?: string;
 	mosaicSeed: string;
 	canPlaySets?: boolean;
 	actions?: ReactNode;
+	countsGenres?: boolean;
+	allGenresHref?: string;
 };
 
 export function TrackPage({
@@ -33,14 +37,25 @@ export function TrackPage({
 	heading,
 	stats,
 	wait = NO_WAIT,
-	allGenresHref,
 	mosaicSeed,
 	canPlaySets,
 	actions,
+	countsGenres = true,
+	allGenresHref,
 	...browser
 }: TrackPageProps) {
 	const isPlaying = useIsPlaying();
 	const { hasPlayCounts } = useAvailableFields();
+	const t = useTranslate();
+	const { source, rows } = browser;
+	const first = heading?.showsCover && rows.length > 0 ? rows.at(0) : null;
+	const cover = first
+		? {
+				src: source.artworkUrl(rows.ref(0)),
+				identity: coverIdentity(first),
+				alt: t("album.coverAlt", { album: value(first, FIELD.album) ?? "" }),
+			}
+		: undefined;
 
 	return (
 		<TrackBrowser
@@ -48,33 +63,40 @@ export function TrackPage({
 			ref={browserRef}
 			isPlaying={isPlaying}
 			header={
-				heading ? (
-					<ViewHeader
-						eyebrow={heading.eyebrow}
-						title={heading.title}
+				<>
+					{heading ? (
+						<ViewHeader
+							eyebrow={heading.eyebrow}
+							title={heading.title}
+							stats={stats}
+							isStatsPending={wait.isOverdue}
+							cover={cover}
+							covers={{
+								source: browser.source,
+								rows: browser.rows,
+								seed: mosaicSeed,
+							}}
+							actions={
+								<PlayActions
+									browserRef={browserRef}
+									trackCount={browser.rows.length}
+									wait={wait}
+									canPlaySets={canPlaySets}
+								>
+									{actions}
+								</PlayActions>
+							}
+						/>
+					) : null}
+					<LibraryCards
 						stats={stats}
-						isStatsPending={wait.isOverdue}
+						rows={browser.rows}
 						hasPlayCounts={hasPlayCounts}
+						countsGenres={countsGenres}
 						allGenresHref={allGenresHref}
-						aside={
-							<Mosaic
-								source={browser.source}
-								rows={browser.rows}
-								seed={mosaicSeed}
-							/>
-						}
-						actions={
-							<PlayActions
-								browserRef={browserRef}
-								trackCount={browser.rows.length}
-								wait={wait}
-								canPlaySets={canPlaySets}
-							>
-								{actions}
-							</PlayActions>
-						}
+						isOverdue={wait.isOverdue}
 					/>
-				) : undefined
+				</>
 			}
 		/>
 	);

@@ -22,6 +22,7 @@ import {
 	untilTheInstallIsKnown,
 	viewHeader,
 } from "./fixtures.ts";
+import { scrollUntilMounted } from "./scrolling.ts";
 
 // Recently played has a heading of its own. Every other shelf is inside
 // Explore, whose row is whichever tab is active, so it is addressed by its tab.
@@ -898,6 +899,7 @@ test.describe("Recently added before the summary arrives", () => {
 		await expectTheShelfPageWaits(page, player, "Recently added");
 
 		await releaseTheSummary(page);
+		await scrollUntilMounted(page, rowByTitle(page, "Los Calientes"));
 		await expect(rowByTitle(page, "Los Calientes")).toBeAttached();
 		await expectNothingEmptyWasShown(page);
 	});

@@ -427,10 +427,17 @@ const zeroCountSeen = (page: Page) =>
 		() => (Reflect.get(window, "__zeroCount") as { text: string | null }).text,
 	);
 
+const expectNoAlbumCount = (page: Page) =>
+	expect(
+		viewHeader(page).locator('p[data-figures] span[data-figure="albums"]'),
+	).toHaveCount(0);
+
 const COUNTED: {
 	kind: string;
 	route: string;
 	counts: string[];
+	// One album, so the figure line carries no album count.
+	isOneAlbum?: boolean;
 }[] = [
 	{
 		kind: "an album",
@@ -445,14 +452,15 @@ const COUNTED: {
 	{
 		kind: "an artist",
 		route: artistRoute(ARTIST),
-		counts: ["1 album", "12 tracks"],
+		counts: ["12 tracks"],
+		isOneAlbum: true,
 	},
 ];
 
 test.describe("a page's header before foo_jean has answered", () => {
 	test.beforeEach(({ page }) => watchThePage(page));
 
-	for (const { kind, route, counts } of COUNTED) {
+	for (const { kind, route, counts, isOneAlbum } of COUNTED) {
 		test(`${kind} page counts nothing until its answer arrives, then counts what it holds`, async ({
 			page,
 			player,
@@ -469,6 +477,7 @@ test.describe("a page's header before foo_jean has answered", () => {
 			await releaseQuestions(page);
 			for (const count of counts)
 				await expect(viewHeader(page)).toContainText(count);
+			if (isOneAlbum) await expectNoAlbumCount(page);
 			expect(
 				await zeroCountSeen(page),
 				"the header counted zero while the answer was held",
@@ -589,7 +598,7 @@ const expectNothingWaitedFor = (seen: HeaderSeen) => {
 test.describe("a page's header answered within 100 ms", () => {
 	test.beforeEach(({ page }) => watchThePage(page));
 
-	for (const { kind, route, counts } of COUNTED) {
+	for (const { kind, route, counts, isOneAlbum } of COUNTED) {
 		test(`${kind} page never disables Play or stands its stats down before the patience`, async ({
 			page,
 			player,
@@ -604,6 +613,7 @@ test.describe("a page's header answered within 100 ms", () => {
 			await untilAskedPast(player, route, before);
 			for (const count of counts)
 				await expect(viewHeader(page)).toContainText(count);
+			if (isOneAlbum) await expectNoAlbumCount(page);
 			await expect(playInHeader(page)).toBeEnabled();
 
 			expectNothingWaitedFor(await headerSeen(page));
@@ -639,6 +649,7 @@ test.describe("a page's header answered within 100 ms", () => {
 			await releaseQuestions(page);
 			for (const count of counts)
 				await expect(viewHeader(page)).toContainText(count);
+			if (isOneAlbum) await expectNoAlbumCount(page);
 			await expect(playInHeader(page)).toBeEnabled();
 		});
 	}

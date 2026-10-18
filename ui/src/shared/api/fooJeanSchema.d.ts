@@ -1085,6 +1085,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/library/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a search matches, and the artists, albums and genres it names.
+         * @description The tracks that match `query`, the best of them in rank order, and up to `entityLimit` artists, albums and genres each, ranked, computed from the snapshot the component already holds.
+         *
+         *     The cases file defines this answer.
+         *
+         *     **`query`.** Up to 1024 bytes of UTF-8, and it may be empty. It is folded whole and split into words, and a track matches when every word is found in its title, its artist, its album artist or its album, a word never spanning two of those. A query that folds to nothing answers `matched` `null`. So does any query on a library that holds no tracks, with `matchCount` `0` and every section empty.
+         *
+         *     **`matched` and `matchCount`.** `matched` is every matching track as a set, or `null` where the query folds to nothing or the library holds no tracks. `matchCount` is the size of `matched`, and `0` where it is `null`.
+         *
+         *     **`best`.** The best `limit` of the matching tracks as ordinals in rank order, fewer where fewer match, none where `limit` is `0`. Unlike `matched`, it is not ascending.
+         *
+         *     **`artists`, `albums` and `genres`.** Each is `{ total, top }`: `total` is how many entities the section admits and `top` is the first `entityLimit` of them in rank order, none where `entityLimit` is `0`. A section admits nothing that matches below the rank of a whole word, so a misspelling fills no section, while a name a section catches with its spaces and punctuation set aside, such as `acdc` for *AC/DC*, is admitted. An artist carries `name`, `trackCount`, the tracks credited to it that are not guest credits, `guestCount`, its guest credits, `albumCount` and `cover`. An album carries `album`, `artist`, `trackCount` and `cover`, named as `SummaryAlbum` names them. A genre carries `name` and `trackCount`. `splitsCredits` says whether a credit line holding several names counts each of them as an artist (`true`) or the line as one name (`false`).
+         *
+         *     **`namesATrack`.** `true` where a matching track's title folds to the same text as the query, trimmed, does; `false` where the query folds to nothing.
+         */
+        get: operations["searchLibrary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/album": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The tracks of one album.
+         * @description The tracks of the album spelled `name` and credited to `by`, as one set.
+         *
+         *     The cases file defines this answer.
+         *
+         *     **The album.** The album and its credited artist are matched as *The four questions* says under *Entities*. `by` is the credited artist: the album artist, or the artist where there is no album artist. `by` left out and `by` empty both ask for the album credited to nobody. `name` may be empty, and the cases say what an empty album holds.
+         *
+         *     **The answer.** `refs` is the album's tracks as a set, and `album` and `artist` are the album's spelling as the tracks carry it, the spelling of the track with the lowest dictionary id for that tag, `artist` `null` where none. No match is an empty set, `album` as asked and `artist` `null`.
+         */
+        get: operations["getLibraryAlbum"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/artist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The tracks of one artist, by how the artist is credited on them.
+         * @description The tracks that credit the artist named `name`, in three disjoint sets by how.
+         *
+         *     The cases file defines this answer.
+         *
+         *     **The answer.** `own` holds the tracks where the artist is the lead or the album's act, `shared` those where the artist is named as one of several leads, and `guest` those where it is credited as a guest. No track is in two of them, and a client merges them for every track of the artist. `splitsCredits` says whether a credit line holding several names counts each of them (`true`) or the line as one name (`false`). The cases say how a track falls into each set.
+         */
+        get: operations["getLibraryArtist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/genre": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The tracks of one genre.
+         * @description The tracks that hold the genre named `name`, as one set.
+         *
+         *     The cases file defines this answer.
+         *
+         *     **The answer.** `refs` is the tracks whose genre expression holds `name` as one of its values, as a set. A track with several genres is in each.
+         */
+        get: operations["getLibraryGenre"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/library/refresh": {
         parameters: {
             query?: never;
@@ -2383,8 +2489,8 @@ export interface components {
             /** @description Whether the implementation has stopped reading the library for good, after failing too often to recover on its own. Once true it stays true until the implementation restarts: `build` is `null`, no further build starts, and the snapshot held when it stopped, if any, goes on being served at the generations above. A client waiting on a build stops waiting and tells its user the player needs restarting. */
             halted: boolean;
         };
-        /** @description A declared title-formatting expression, 1 to 1024 printable characters. */
-        SummaryRole: string;
+        /** @description A declared title-formatting expression, 1 to 1024 printable characters. Every role of every library read takes one. */
+        LibraryRole: string;
         /** @description What `GET /library/summary` answers, computed at the `structure` and `revision` it carries. An ordinal anywhere in it is at that `structure`, and means nothing at another. */
         LibrarySummary: {
             /** @description The snapshot's `structure` the document was computed at. */
@@ -2462,6 +2568,99 @@ export interface components {
             /** @enum {string} */
             id: "added" | "recent" | "top" | "rated" | "loved" | "upgrade" | "unopened" | "starter";
             albums: components["schemas"]["SummaryAlbum"][];
+        };
+        /** @description A set of tracks as ascending ordinals at the `structure` of the answer carrying it, in exactly one of two forms: `runs`, or `bitset`. Whichever serialises shorter is sent, and `runs` on a tie. An empty set is `{ "runs": [] }`. See *The four questions*. */
+        OrdinalSet: {
+            runs: components["schemas"]["Runs"];
+        } | {
+            bitset: components["schemas"]["Bitset"];
+        };
+        /** @description What `GET /library/search` answers, computed at the `structure` and `revision` it carries. An ordinal anywhere in it is at that `structure`, and means nothing at another. */
+        SearchAnswer: {
+            /** @description The snapshot's `structure` the document was computed at. */
+            structure: number;
+            /** @description The snapshot's `revision` the document was computed at. */
+            revision: number;
+            /** @description Every matching track, or `null` where the query folds to nothing or the library holds no tracks. */
+            matched: components["schemas"]["OrdinalSet"] | null;
+            /** @description The size of `matched`, and `0` where it is `null`. */
+            matchCount: number;
+            /** @description The best `limit` matching tracks as ordinals, in rank order. */
+            best: number[];
+            artists: components["schemas"]["ArtistSection"];
+            albums: components["schemas"]["AlbumSection"];
+            genres: components["schemas"]["GenreSection"];
+            /** @description Whether a matching track's title folds to the same text as the query. */
+            namesATrack: boolean;
+        };
+        ArtistSection: {
+            /** @description How many artists the query admits. */
+            total: number;
+            /** @description The first `entityLimit` of them in rank order. */
+            top: components["schemas"]["NamedArtist"][];
+        };
+        AlbumSection: {
+            /** @description How many albums the query admits. */
+            total: number;
+            /** @description The first `entityLimit` of them in rank order. */
+            top: components["schemas"]["NamedAlbum"][];
+        };
+        GenreSection: {
+            /** @description How many genres the query admits. */
+            total: number;
+            /** @description The first `entityLimit` of them in rank order. */
+            top: components["schemas"]["NamedGenre"][];
+        };
+        NamedArtist: {
+            name: string;
+            /** @description Tracks credited to the artist that are not guest credits. */
+            trackCount: number;
+            /** @description Guest credits. */
+            guestCount: number;
+            albumCount: number;
+            /** @description The library-relative path `GET /artwork?track=` takes, of the canonical track of the album holding the artist's first credited track that has an album tag, or `null` where none does. */
+            cover: string | null;
+        };
+        NamedAlbum: {
+            album: string;
+            artist: string | null;
+            trackCount: number;
+            /** @description The library-relative path `GET /artwork?track=` takes, of the album's canonical track, or `null` where it has none. */
+            cover: string | null;
+        };
+        NamedGenre: {
+            name: string;
+            trackCount: number;
+        };
+        /** @description What `GET /library/album` answers, computed at the `structure` and `revision` it carries. */
+        AlbumAnswer: {
+            /** @description The snapshot's `structure` the document was computed at. */
+            structure: number;
+            /** @description The snapshot's `revision` the document was computed at. */
+            revision: number;
+            refs: components["schemas"]["OrdinalSet"];
+            /** @description The album as its tracks spell it, or as asked where no track matched. */
+            album: string;
+            /** @description The credited artist as the tracks spell it, `null` where none. */
+            artist: string | null;
+        };
+        /** @description What `GET /library/artist` answers, computed at the `structure` and `revision` it carries. The three sets share no ordinal. */
+        ArtistAnswer: {
+            /** @description The snapshot's `structure` the document was computed at. */
+            structure: number;
+            /** @description The snapshot's `revision` the document was computed at. */
+            revision: number;
+            own: components["schemas"]["OrdinalSet"];
+            shared: components["schemas"]["OrdinalSet"];
+            guest: components["schemas"]["OrdinalSet"];
+        };
+        /** @description What `GET /library/genre` answers, computed at the `structure` and `revision` it carries. */
+        GenreAnswer: {
+            /** @description The snapshot's `structure` the document was computed at. */
+            structure: number;
+            /** @description The snapshot's `revision` the document was computed at. */
+            revision: number;
+            refs: components["schemas"]["OrdinalSet"];
         };
         /** @description How far the running build has gotten. */
         LibraryBuild: {
@@ -2859,7 +3058,7 @@ export interface components {
         /** @description A refusal the client can act on. The request was understood and declined before the snapshot was touched. */
         LibraryRefusal: {
             /** @enum {string} */
-            error: "too many columns" | "unacceptable column" | "duplicate column" | "column not declared" | "unacceptable spine" | "unacceptable revision" | "unacceptable role" | "duplicate role";
+            error: "too many columns" | "unacceptable column" | "duplicate column" | "column not declared" | "unacceptable spine" | "unacceptable revision" | "unacceptable role" | "duplicate role" | "unacceptable question" | "duplicate question";
             /** @description What specifically was wrong, naming the position of the offending column where there is one. Safe to show a person: it describes the request the client sent and nothing on the player's disk. */
             detail: string;
         };
@@ -3214,13 +3413,31 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description The request was understood and declined before the snapshot was touched: no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, a `since` or a `structure` that is missing or not a whole number, or, on `GET /library/export`, an `only` naming a column `columns` does not declare or naming one twice in two spellings, or a `spine` that is neither `true` nor `false`. On `GET /library/summary` it is a role that is not one of the published names, one with an empty expression, one longer than 1024 characters or one carrying a control character, or one named twice in two spellings (`unacceptable role`, `duplicate role`). */
+        /** @description The request was understood and declined before the snapshot was touched: no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, a `since` or a `structure` that is missing or not a whole number, or, on `GET /library/export`, an `only` naming a column `columns` does not declare or naming one twice in two spellings, or a `spine` that is neither `true` nor `false`. On `GET /library/summary` it is a role that is not one of the published names, one with an empty expression, one longer than 1024 characters or one carrying a control character, or one named twice in two spellings (`unacceptable role`, `duplicate role`). The four questions refuse the same roles in the same words, with the credit roles beside the summary's, and refuse a question parameter that is missing, empty where it may not be, not a whole number of 0 or more where it names a count, not `true` or `false` where it is a flag, named twice, or a `query` over 1024 bytes (`unacceptable question`, `duplicate question`). A parameter that is neither a role nor one the route owns is `unacceptable role`. */
         LibraryRefused: {
             headers: {
                 [name: string]: unknown;
             };
             content: {
                 "application/json": components["schemas"]["LibraryRefusal"];
+            };
+        };
+        /** @description No snapshot is ready, or the ready one was not built with a declared role's expression. The body is the `Library` object `GET /state` carries under `library`, as it stands now. No build was started: a client polls `GET /state` until the library is ready and asks again. */
+        LibraryNotReady: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Library"];
+            };
+        };
+        /** @description A role names an expression the declaration does not hold. The error names the expression, so a client declares again through `GET /library/export`. */
+        LibraryUndeclared: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
             };
         };
         /**
@@ -3438,6 +3655,17 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Questions are being asked faster than this component will answer them: a burst of 200, refilling one every 50 milliseconds, one budget shared by search and the album, artist and genre reads and by every client, and apart from the summary's. A client asks once per settled draft or opened page and never meets it. A request refused for what it asks is refused for that first and spends nothing. `Retry-After` is sent in seconds. */
+        LibraryQuestionsTooFast: {
+            headers: {
+                /** @description Seconds to wait. */
+                "Retry-After"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Reads of the playing track are arriving faster than this component will answer them: a burst of 60, refilling one every 250 milliseconds, a budget of its own. A client reading once per track change, and again while it waits for lyrics, never meets it, however many tabs it has open; a client stuck in a loop does. A request refused for what it asks is refused for that first and spends nothing. The player was not asked. `Retry-After` is sent in seconds, and `Cache-Control` is `private, no-cache` here as on every answer from this route. */
         PlayingTrackReadTooFast: {
             headers: {
@@ -3504,6 +3732,48 @@ export interface components {
         Session: string;
         /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
         DeviceId: string;
+        /** @description The declared expression that reads the track's number on its disc. */
+        RoleTrackNumber: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads the disc the track is on. */
+        RoleDiscNumber: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads the track's title. */
+        RoleTitle: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads the track's artist. */
+        RoleArtist: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads the album the track belongs to. */
+        RoleAlbum: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads the artist the album is credited to. */
+        RoleAlbumArtist: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads the track's length in seconds. */
+        RoleDuration: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads the track's play count from the scrobbling source. */
+        RolePlayCount: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads when the scrobbling source last saw the track played, as a timestamp. */
+        RoleLastPlayed: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads the track's rating. */
+        RoleRating: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads the track's year. */
+        RoleYear: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several. */
+        RoleGenre: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads the track's codec. */
+        RoleCodec: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads the track's bitrate in kilobits per second. */
+        RoleBitrate: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads the track's play count from the player's own counter. */
+        RolePlayCountLocal: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads when the player's own counter last saw the track played, as a timestamp. */
+        RoleLastPlayedLocal: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads when the track entered the library, as a timestamp. */
+        RoleAdded: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads every value of the track's `artists` tag, separated by the unit separator (U+001F) where there are several. */
+        RoleArtists: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads every value of the track's MusicBrainz artist id tag, separated by the unit separator (U+001F) where there are several. */
+        RoleArtistIds: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads every value of the track's `albumartists` tag, separated by the unit separator (U+001F) where there are several. */
+        RoleAlbumArtists: components["schemas"]["LibraryRole"];
+        /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
+        RoleAlbumArtistIds: components["schemas"]["LibraryRole"];
     };
     requestBodies: never;
     headers: never;
@@ -5505,39 +5775,39 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description The declared expression that reads the track's number on its disc. */
-                trackNumber?: components["schemas"]["SummaryRole"];
+                trackNumber?: components["parameters"]["RoleTrackNumber"];
                 /** @description The declared expression that reads the disc the track is on. */
-                discNumber?: components["schemas"]["SummaryRole"];
+                discNumber?: components["parameters"]["RoleDiscNumber"];
                 /** @description The declared expression that reads the track's title. */
-                title?: components["schemas"]["SummaryRole"];
+                title?: components["parameters"]["RoleTitle"];
                 /** @description The declared expression that reads the track's artist. */
-                artist?: components["schemas"]["SummaryRole"];
+                artist?: components["parameters"]["RoleArtist"];
                 /** @description The declared expression that reads the album the track belongs to. */
-                album?: components["schemas"]["SummaryRole"];
+                album?: components["parameters"]["RoleAlbum"];
                 /** @description The declared expression that reads the artist the album is credited to. */
-                albumArtist?: components["schemas"]["SummaryRole"];
+                albumArtist?: components["parameters"]["RoleAlbumArtist"];
                 /** @description The declared expression that reads the track's length in seconds. */
-                duration?: components["schemas"]["SummaryRole"];
+                duration?: components["parameters"]["RoleDuration"];
                 /** @description The declared expression that reads the track's play count from the scrobbling source. */
-                playCount?: components["schemas"]["SummaryRole"];
+                playCount?: components["parameters"]["RolePlayCount"];
                 /** @description The declared expression that reads when the scrobbling source last saw the track played, as a timestamp. */
-                lastPlayed?: components["schemas"]["SummaryRole"];
+                lastPlayed?: components["parameters"]["RoleLastPlayed"];
                 /** @description The declared expression that reads the track's rating. */
-                rating?: components["schemas"]["SummaryRole"];
+                rating?: components["parameters"]["RoleRating"];
                 /** @description The declared expression that reads the track's year. */
-                year?: components["schemas"]["SummaryRole"];
+                year?: components["parameters"]["RoleYear"];
                 /** @description The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several. */
-                genre?: components["schemas"]["SummaryRole"];
+                genre?: components["parameters"]["RoleGenre"];
                 /** @description The declared expression that reads the track's codec. */
-                codec?: components["schemas"]["SummaryRole"];
+                codec?: components["parameters"]["RoleCodec"];
                 /** @description The declared expression that reads the track's bitrate in kilobits per second. */
-                bitrate?: components["schemas"]["SummaryRole"];
+                bitrate?: components["parameters"]["RoleBitrate"];
                 /** @description The declared expression that reads the track's play count from the player's own counter. */
-                playCountLocal?: components["schemas"]["SummaryRole"];
+                playCountLocal?: components["parameters"]["RolePlayCountLocal"];
                 /** @description The declared expression that reads when the player's own counter last saw the track played, as a timestamp. */
-                lastPlayedLocal?: components["schemas"]["SummaryRole"];
+                lastPlayedLocal?: components["parameters"]["RoleLastPlayedLocal"];
                 /** @description The declared expression that reads when the track entered the library, as a timestamp. */
-                added?: components["schemas"]["SummaryRole"];
+                added?: components["parameters"]["RoleAdded"];
             };
             header?: never;
             path?: never;
@@ -5562,27 +5832,325 @@ export interface operations {
                     "application/json": components["schemas"]["LibrarySummary"];
                 };
             };
-            /** @description No snapshot is ready, or the ready one was not built with a declared role's expression. The body is the `Library` object `GET /state` carries under `library`, as it stands now. No build was started: a client polls `GET /state` until the library is ready and asks again. */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Library"];
-                };
-            };
+            202: components["responses"]["LibraryNotReady"];
             304: components["responses"]["NotModified"];
             400: components["responses"]["LibraryRefused"];
-            /** @description A role names an expression the declaration does not hold. The error names the expression, so a client declares again through `GET /library/export`. */
-            409: {
+            409: components["responses"]["LibraryUndeclared"];
+            429: components["responses"]["LibrarySummaryTooFast"];
+            503: components["responses"]["LibraryUnavailable"];
+        };
+    };
+    searchLibrary: {
+        parameters: {
+            query: {
+                /** @description What was typed. Up to 1024 bytes as UTF-8, and it may be empty. */
+                query: string;
+                /** @description How many matching tracks `best` lists at most. */
+                limit: number;
+                /** @description How many artists, albums and genres each `top` lists at most. */
+                entityLimit: number;
+                /** @description Whether a credit line holding several names is counted as each of them, as `true` or `false`. */
+                splitsCredits: boolean;
+                /** @description The declared expression that reads the track's number on its disc. */
+                trackNumber?: components["parameters"]["RoleTrackNumber"];
+                /** @description The declared expression that reads the disc the track is on. */
+                discNumber?: components["parameters"]["RoleDiscNumber"];
+                /** @description The declared expression that reads the track's title. */
+                title?: components["parameters"]["RoleTitle"];
+                /** @description The declared expression that reads the track's artist. */
+                artist?: components["parameters"]["RoleArtist"];
+                /** @description The declared expression that reads the album the track belongs to. */
+                album?: components["parameters"]["RoleAlbum"];
+                /** @description The declared expression that reads the artist the album is credited to. */
+                albumArtist?: components["parameters"]["RoleAlbumArtist"];
+                /** @description The declared expression that reads the track's length in seconds. */
+                duration?: components["parameters"]["RoleDuration"];
+                /** @description The declared expression that reads the track's play count from the scrobbling source. */
+                playCount?: components["parameters"]["RolePlayCount"];
+                /** @description The declared expression that reads when the scrobbling source last saw the track played, as a timestamp. */
+                lastPlayed?: components["parameters"]["RoleLastPlayed"];
+                /** @description The declared expression that reads the track's rating. */
+                rating?: components["parameters"]["RoleRating"];
+                /** @description The declared expression that reads the track's year. */
+                year?: components["parameters"]["RoleYear"];
+                /** @description The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several. */
+                genre?: components["parameters"]["RoleGenre"];
+                /** @description The declared expression that reads the track's codec. */
+                codec?: components["parameters"]["RoleCodec"];
+                /** @description The declared expression that reads the track's bitrate in kilobits per second. */
+                bitrate?: components["parameters"]["RoleBitrate"];
+                /** @description The declared expression that reads the track's play count from the player's own counter. */
+                playCountLocal?: components["parameters"]["RolePlayCountLocal"];
+                /** @description The declared expression that reads when the player's own counter last saw the track played, as a timestamp. */
+                lastPlayedLocal?: components["parameters"]["RoleLastPlayedLocal"];
+                /** @description The declared expression that reads when the track entered the library, as a timestamp. */
+                added?: components["parameters"]["RoleAdded"];
+                /** @description The declared expression that reads every value of the track's `artists` tag, separated by the unit separator (U+001F) where there are several. */
+                artists?: components["parameters"]["RoleArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz artist id tag, separated by the unit separator (U+001F) where there are several. */
+                artistIds?: components["parameters"]["RoleArtistIds"];
+                /** @description The declared expression that reads every value of the track's `albumartists` tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtists?: components["parameters"]["RoleAlbumArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tracks the query matches and the entities it names, at the `structure` and `revision` the document carries. `Cache-Control` is `private, no-cache`, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
+            200: {
                 headers: {
+                    /** @description `private, no-cache`. */
+                    "Cache-Control"?: string;
+                    /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
+                    "Content-Encoding"?: "gzip";
+                    /** @description `Accept-Encoding`. */
+                    Vary?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Error"];
+                    "application/json": components["schemas"]["SearchAnswer"];
                 };
             };
-            429: components["responses"]["LibrarySummaryTooFast"];
+            202: components["responses"]["LibraryNotReady"];
+            400: components["responses"]["LibraryRefused"];
+            409: components["responses"]["LibraryUndeclared"];
+            429: components["responses"]["LibraryQuestionsTooFast"];
+            503: components["responses"]["LibraryUnavailable"];
+        };
+    };
+    getLibraryAlbum: {
+        parameters: {
+            query: {
+                /** @description The album, as its tag spells it. It may be empty. */
+                name: string;
+                /** @description The artist the album is credited to. Left out or empty, it asks for the album credited to nobody. */
+                by?: string;
+                /** @description The declared expression that reads the track's number on its disc. */
+                trackNumber?: components["parameters"]["RoleTrackNumber"];
+                /** @description The declared expression that reads the disc the track is on. */
+                discNumber?: components["parameters"]["RoleDiscNumber"];
+                /** @description The declared expression that reads the track's title. */
+                title?: components["parameters"]["RoleTitle"];
+                /** @description The declared expression that reads the track's artist. */
+                artist?: components["parameters"]["RoleArtist"];
+                /** @description The declared expression that reads the album the track belongs to. */
+                album?: components["parameters"]["RoleAlbum"];
+                /** @description The declared expression that reads the artist the album is credited to. */
+                albumArtist?: components["parameters"]["RoleAlbumArtist"];
+                /** @description The declared expression that reads the track's length in seconds. */
+                duration?: components["parameters"]["RoleDuration"];
+                /** @description The declared expression that reads the track's play count from the scrobbling source. */
+                playCount?: components["parameters"]["RolePlayCount"];
+                /** @description The declared expression that reads when the scrobbling source last saw the track played, as a timestamp. */
+                lastPlayed?: components["parameters"]["RoleLastPlayed"];
+                /** @description The declared expression that reads the track's rating. */
+                rating?: components["parameters"]["RoleRating"];
+                /** @description The declared expression that reads the track's year. */
+                year?: components["parameters"]["RoleYear"];
+                /** @description The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several. */
+                genre?: components["parameters"]["RoleGenre"];
+                /** @description The declared expression that reads the track's codec. */
+                codec?: components["parameters"]["RoleCodec"];
+                /** @description The declared expression that reads the track's bitrate in kilobits per second. */
+                bitrate?: components["parameters"]["RoleBitrate"];
+                /** @description The declared expression that reads the track's play count from the player's own counter. */
+                playCountLocal?: components["parameters"]["RolePlayCountLocal"];
+                /** @description The declared expression that reads when the player's own counter last saw the track played, as a timestamp. */
+                lastPlayedLocal?: components["parameters"]["RoleLastPlayedLocal"];
+                /** @description The declared expression that reads when the track entered the library, as a timestamp. */
+                added?: components["parameters"]["RoleAdded"];
+                /** @description The declared expression that reads every value of the track's `artists` tag, separated by the unit separator (U+001F) where there are several. */
+                artists?: components["parameters"]["RoleArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz artist id tag, separated by the unit separator (U+001F) where there are several. */
+                artistIds?: components["parameters"]["RoleArtistIds"];
+                /** @description The declared expression that reads every value of the track's `albumartists` tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtists?: components["parameters"]["RoleAlbumArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The album's tracks at the `structure` and `revision` the document carries. `Cache-Control` is `private, no-cache`, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
+            200: {
+                headers: {
+                    /** @description `private, no-cache`. */
+                    "Cache-Control"?: string;
+                    /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
+                    "Content-Encoding"?: "gzip";
+                    /** @description `Accept-Encoding`. */
+                    Vary?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumAnswer"];
+                };
+            };
+            202: components["responses"]["LibraryNotReady"];
+            400: components["responses"]["LibraryRefused"];
+            409: components["responses"]["LibraryUndeclared"];
+            429: components["responses"]["LibraryQuestionsTooFast"];
+            503: components["responses"]["LibraryUnavailable"];
+        };
+    };
+    getLibraryArtist: {
+        parameters: {
+            query: {
+                /** @description The artist, as a credit spells it. It may be empty. */
+                name: string;
+                /** @description Whether a credit line holding several names is counted as each of them, as `true` or `false`. */
+                splitsCredits: boolean;
+                /** @description The declared expression that reads the track's number on its disc. */
+                trackNumber?: components["parameters"]["RoleTrackNumber"];
+                /** @description The declared expression that reads the disc the track is on. */
+                discNumber?: components["parameters"]["RoleDiscNumber"];
+                /** @description The declared expression that reads the track's title. */
+                title?: components["parameters"]["RoleTitle"];
+                /** @description The declared expression that reads the track's artist. */
+                artist?: components["parameters"]["RoleArtist"];
+                /** @description The declared expression that reads the album the track belongs to. */
+                album?: components["parameters"]["RoleAlbum"];
+                /** @description The declared expression that reads the artist the album is credited to. */
+                albumArtist?: components["parameters"]["RoleAlbumArtist"];
+                /** @description The declared expression that reads the track's length in seconds. */
+                duration?: components["parameters"]["RoleDuration"];
+                /** @description The declared expression that reads the track's play count from the scrobbling source. */
+                playCount?: components["parameters"]["RolePlayCount"];
+                /** @description The declared expression that reads when the scrobbling source last saw the track played, as a timestamp. */
+                lastPlayed?: components["parameters"]["RoleLastPlayed"];
+                /** @description The declared expression that reads the track's rating. */
+                rating?: components["parameters"]["RoleRating"];
+                /** @description The declared expression that reads the track's year. */
+                year?: components["parameters"]["RoleYear"];
+                /** @description The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several. */
+                genre?: components["parameters"]["RoleGenre"];
+                /** @description The declared expression that reads the track's codec. */
+                codec?: components["parameters"]["RoleCodec"];
+                /** @description The declared expression that reads the track's bitrate in kilobits per second. */
+                bitrate?: components["parameters"]["RoleBitrate"];
+                /** @description The declared expression that reads the track's play count from the player's own counter. */
+                playCountLocal?: components["parameters"]["RolePlayCountLocal"];
+                /** @description The declared expression that reads when the player's own counter last saw the track played, as a timestamp. */
+                lastPlayedLocal?: components["parameters"]["RoleLastPlayedLocal"];
+                /** @description The declared expression that reads when the track entered the library, as a timestamp. */
+                added?: components["parameters"]["RoleAdded"];
+                /** @description The declared expression that reads every value of the track's `artists` tag, separated by the unit separator (U+001F) where there are several. */
+                artists?: components["parameters"]["RoleArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz artist id tag, separated by the unit separator (U+001F) where there are several. */
+                artistIds?: components["parameters"]["RoleArtistIds"];
+                /** @description The declared expression that reads every value of the track's `albumartists` tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtists?: components["parameters"]["RoleAlbumArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The artist's tracks at the `structure` and `revision` the document carries. `Cache-Control` is `private, no-cache`, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
+            200: {
+                headers: {
+                    /** @description `private, no-cache`. */
+                    "Cache-Control"?: string;
+                    /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
+                    "Content-Encoding"?: "gzip";
+                    /** @description `Accept-Encoding`. */
+                    Vary?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtistAnswer"];
+                };
+            };
+            202: components["responses"]["LibraryNotReady"];
+            400: components["responses"]["LibraryRefused"];
+            409: components["responses"]["LibraryUndeclared"];
+            429: components["responses"]["LibraryQuestionsTooFast"];
+            503: components["responses"]["LibraryUnavailable"];
+        };
+    };
+    getLibraryGenre: {
+        parameters: {
+            query: {
+                /** @description The genre, as one value of the genre expression. It may be empty. */
+                name: string;
+                /** @description The declared expression that reads the track's number on its disc. */
+                trackNumber?: components["parameters"]["RoleTrackNumber"];
+                /** @description The declared expression that reads the disc the track is on. */
+                discNumber?: components["parameters"]["RoleDiscNumber"];
+                /** @description The declared expression that reads the track's title. */
+                title?: components["parameters"]["RoleTitle"];
+                /** @description The declared expression that reads the track's artist. */
+                artist?: components["parameters"]["RoleArtist"];
+                /** @description The declared expression that reads the album the track belongs to. */
+                album?: components["parameters"]["RoleAlbum"];
+                /** @description The declared expression that reads the artist the album is credited to. */
+                albumArtist?: components["parameters"]["RoleAlbumArtist"];
+                /** @description The declared expression that reads the track's length in seconds. */
+                duration?: components["parameters"]["RoleDuration"];
+                /** @description The declared expression that reads the track's play count from the scrobbling source. */
+                playCount?: components["parameters"]["RolePlayCount"];
+                /** @description The declared expression that reads when the scrobbling source last saw the track played, as a timestamp. */
+                lastPlayed?: components["parameters"]["RoleLastPlayed"];
+                /** @description The declared expression that reads the track's rating. */
+                rating?: components["parameters"]["RoleRating"];
+                /** @description The declared expression that reads the track's year. */
+                year?: components["parameters"]["RoleYear"];
+                /** @description The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several. */
+                genre?: components["parameters"]["RoleGenre"];
+                /** @description The declared expression that reads the track's codec. */
+                codec?: components["parameters"]["RoleCodec"];
+                /** @description The declared expression that reads the track's bitrate in kilobits per second. */
+                bitrate?: components["parameters"]["RoleBitrate"];
+                /** @description The declared expression that reads the track's play count from the player's own counter. */
+                playCountLocal?: components["parameters"]["RolePlayCountLocal"];
+                /** @description The declared expression that reads when the player's own counter last saw the track played, as a timestamp. */
+                lastPlayedLocal?: components["parameters"]["RoleLastPlayedLocal"];
+                /** @description The declared expression that reads when the track entered the library, as a timestamp. */
+                added?: components["parameters"]["RoleAdded"];
+                /** @description The declared expression that reads every value of the track's `artists` tag, separated by the unit separator (U+001F) where there are several. */
+                artists?: components["parameters"]["RoleArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz artist id tag, separated by the unit separator (U+001F) where there are several. */
+                artistIds?: components["parameters"]["RoleArtistIds"];
+                /** @description The declared expression that reads every value of the track's `albumartists` tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtists?: components["parameters"]["RoleAlbumArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The genre's tracks at the `structure` and `revision` the document carries. `Cache-Control` is `private, no-cache`, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
+            200: {
+                headers: {
+                    /** @description `private, no-cache`. */
+                    "Cache-Control"?: string;
+                    /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
+                    "Content-Encoding"?: "gzip";
+                    /** @description `Accept-Encoding`. */
+                    Vary?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenreAnswer"];
+                };
+            };
+            202: components["responses"]["LibraryNotReady"];
+            400: components["responses"]["LibraryRefused"];
+            409: components["responses"]["LibraryUndeclared"];
+            429: components["responses"]["LibraryQuestionsTooFast"];
             503: components["responses"]["LibraryUnavailable"];
         };
     };

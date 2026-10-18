@@ -59,7 +59,7 @@ info:
 
     ## The media library
 
-    `GET /state` is a small JSON document a client polls, carrying the library's two generations under `library`. The library itself is a binary snapshot from `GET /library/export`, patched afterwards by `GET /library/changes`. There is no paged route: a client holds the whole library and asks the questions locally, bar one aggregate, `GET /library/summary`, which answers a handful of numbers and shelves about the whole library from the snapshot the component holds. `GET /track/library` is the one per-entity route, and it reads a single track back after a write rather than standing in for a browse.
+    `GET /state` is a small JSON document a client polls, carrying the library's two generations under `library`. The library itself is a binary snapshot from `GET /library/export`, patched afterwards by `GET /library/changes`. There is no paged route: a client holds the whole library, and asks the component only what it would otherwise sweep the library to find out. `GET /library/summary` answers a handful of numbers and shelves about the whole library, and four questions answer which tracks a search matches, and which an album, an artist or a genre holds (see *The four questions*), all from the snapshot the component holds. `GET /track/library` is the one per-entity route, and it reads a single track back after a write rather than standing in for a browse.
 
     Two generations say what changed. `structure` moves when tracks are added or removed, which shifts every ordinal after the change, so a client either edits its arrays with a splice (see *Reading a splice*) or throws them away and exports again. It also moves when the column set changes, or when a rebuild puts the same tracks in another order, since every ordinal then names a different track; no splice describes those two, and a client exports again. A rebuild that finds the same tracks and columns in the same order keeps `structure` and moves `revision` only for the rows whose values changed, so a refresh costs a client still inside the retained window a delta rather than an export. `revision` moves when rows change in place, which leaves ordinals alone, so a client fetches a delta and patches. Modifications are constant, roughly one per track played; additions and removals are rare and the user just caused them.
 
@@ -216,6 +216,26 @@ info:
     `snapshotId` names the content of the library: its cells, whatever ids or dictionaries hold them, and nothing about the run that serves them. It is 16 lowercase hexadecimal digits, a 64-bit value built from one term per cell, so a changed cell costs a subtraction and an addition and the component never re-reads the library to publish it. A cell is the value of one column at one ordinal. The columns are every declared column, named by its expression exactly as declared, and the three spine columns, named `directory`, `filename` and `subsong`. A cell's term is FNV-1a 64 (offset basis `0xcbf29ce484222325`, prime `0x100000001b3`, arithmetic modulo 2^64) over these bytes, passed through SplitMix64's finaliser, which is `z ^= z >> 30; z *= 0xbf58476d1ce4e5b9; z ^= z >> 27; z *= 0x94d049bb133111eb; z ^= z >> 31` with `z` the FNV-1a result and every multiplication modulo 2^64, because FNV-1a's terms are too regular to add: two cells whose last byte changes in the same bit would cancel. The bytes are: one prefix byte, `0x01` for a declared column and `0x02` for a spine column; the column's name as UTF-8; `0x00`; the ordinal as decimal ASCII digits with no sign or padding; `0x00`; then the cell's value as UTF-8, or the single byte `0xFF` in place of the value when the cell is unresolved, which is when the value is `?`. The count has a term of its own: FNV-1a 64 over the byte `0x03` followed by `trackCount` as decimal ASCII digits, passed through the same finaliser. `snapshotId` is the sum of every term modulo 2^64, written as 16 lowercase hexadecimal digits with leading zeros kept. A sum does not depend on the order the terms are added in, so the ordinals and the names are what make it depend on the order of the rows and on the declaration. It is the same across a restart of the player with an unchanged library, and different after any change to a cell, a column, the count or the order of the rows. It does not depend on `structure`, `revision`, dictionary ids, the coding, or the subset a response carries: it names the whole library either way.
 
     It rides in the `library` object of `GET /state`, beside `structure`, `revision` and `trackCount`, and in the header of a snapshot, a delta and a splice, where it is the value `library.snapshotId` has at the generations the header reaches. A client reloading with a stored copy compares the `structure`, `revision`, `snapshotId` and `trackCount` it stored with those `GET /state` reports. When all four are equal it draws the copy as it is and downloads nothing. At any other pair, including an equal `snapshotId` at another `structure` or `revision`, it asks `GET /library/changes` from the stored pair before it draws anything, and the answer decides. A delta or a splice brings the copy to the player's pair, and the client draws that. A `409`, which says the pair names no position this run held, means the copy is from another run: when its `snapshotId` and `trackCount` equal the player's the client re-keys it and adopts the player's pair, and otherwise it exports. A `410` means it exports. An equal `snapshotId` at another pair never lets the client adopt the player's pair on its own. Within a run, a cell changed and changed back leaves an equal `snapshotId` beside a dictionary that has grown, and tracks removed and added back leave one beside dictionaries that are not in bytewise order, so the next delta's `dict.base` would be wrong. Re-keying is: for each column, spine included, keep the values its rows use, sort them bytewise on their UTF-8 bytes, and renumber its ids to that order. The copy then holds what a fresh export would give, and the next delta applies; without it the stored dictionaries are in the order deltas appended them in, not the order the new run holds, and a delta would write the wrong value. A client compares it by equality and reads nothing else into it, and compares `trackCount` as well, since a collision must not draw a library of another size. Before the first build it is sixteen zeros.
+
+    ### The four questions
+
+    `GET /library/search`, `GET /library/album`, `GET /library/artist` and `GET /library/genre` answer what a client would otherwise find by sweeping its copy of the library: the tracks a search matches and the artists, albums and genres it names, and the tracks an album, an artist or a genre holds. Each reads the snapshot the component holds, answers on the connection that asked, and names tracks by ordinal at the `structure` it carries.
+
+    **`plugins/fb2k/tests/fixtures/library_questions_cases.json` defines their answers.** For every case in that file an implementation MUST answer what the case expects, byte for byte in what the answer says, and where this text and a case differ the case is right. What follows is what a reader needs to ask the questions and read the answers, and it is not a second definition of folding, ranking or credit splitting.
+
+    **Roles.** Each question takes the roles `GET /library/summary` takes, and four more: `artists`, `artistIds`, `albumArtists` and `albumArtistIds`, each an expression the client declared in `GET /library/export`, as the summary reads them. A question reads `title`, `artist`, `album`, `albumArtist`, `genre`, `artists`, `artistIds`, `albumArtists`, `albumArtistIds`, `trackNumber` and `discNumber`, and accepts the others without reading them. A role left out reads as unresolved on every track. The summary takes its own seventeen alone.
+
+    **Folding.** A text is folded by lower-casing it as ECMAScript's `String.prototype.toLowerCase` does, decomposing it to NFD, and removing every code point with the Unicode property `Diacritic`. A query is folded whole and then split on ECMAScript whitespace into words, so a sigma before a space is final. A query that leaves no word is a query that folds to nothing, which matches no track and names no entity. A library that holds no tracks answers every query so, whatever the words.
+
+    **Sets.** A set of tracks is an ascending list of ordinals at the answer's `structure`, sent as `runs` or as `bitset`, whichever serialises shorter, and `runs` on a tie. `runs` is the maximal runs of consecutive ordinals, `[start, count]` each, and is measured as the compact JSON text of that array, with no whitespace. `bitset` is `ceil(trackCount / 8)` bytes at the answer's `structure`, as `Bitset` describes, in padded base64. The answer carries no `trackCount`, so a client decodes a `bitset` against the library it holds at that `structure` and reads nothing from an answer at another. `runs` is the shorter when its text is no longer than `4 * ceil(ceil(trackCount / 8) / 3)` characters. An empty set is `{ "runs": [] }`. A client reads a set in whichever form arrives, and exactly one of the two is present.
+
+    **Entities.** An album is grouped by the summary's key: two tracks belong to one when their album tags match and their credited artists match, a tag matching by that key. One rule is the questions' own: a credited name that is blank is an artist of its own, as the page has always treated it, where the summary reads it as no artist, so an album asked with `by` absent does not include a track whose credit is blank. An artist is a name credited on a track, a genre a value of the genre expression; the cases say how credits split into names, which name is the lead, which a guest and which tags are read. An entity's `cover` is the library-relative path `GET /artwork?track=` takes, `null` where none exists: an album's is the path of its canonical track, the one with the lowest disc number, then the lowest track number, then the lowest ordinal, and an artist's is the canonical track of the album holding the first track, in ordinal order, that credits it and has an album tag, a guest credit included.
+
+    **Ties.** Where two tracks or two entities tie on every rank key, they keep the order the cases leave them in.
+
+    **Refusals come in this order, as the summary's do.** A request the route cannot read is a `400`, which `LibraryRefused` lists. A component that does not serve the media library is a `503`. The budget of the four questions is a `429`, which `LibraryQuestionsTooFast` describes, and a request refused for what it asks spends nothing. A component with no snapshot ready, or one that was not built with a role's expression, answers `202` with the `library` object `GET /state` carries and starts no build. An expression the declaration does not hold is a `409` naming it. A library over the export's ceiling is still answered, since an answer never carries the snapshot. An answer carries the pair it read, whatever pair the request was admitted at.
+
+    **Held answers.** `Cache-Control` is `private, no-cache` and there is no `ETag`: a client keeps what it asked in memory. `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*.
 
     ## Artwork
 
@@ -2724,23 +2744,23 @@ paths:
 
         **Refusals come in this order.** A role that is unknown, empty or named twice in two spellings is a `400`; a byte-identical pair sent twice is collapsed by the server before the component sees it and is accepted. A component that does not serve the media library is a `503`. The route's own budget is a `429`: a burst of 200, refilling one every 50 milliseconds, as the delta reads have, and a request refused for what it asks spends nothing. A component with no snapshot ready, or one that was not built with a declared role's expression, answers `202` and starts no build; the client declares through `GET /library/export` and asks again when `GET /state` reports the library ready. An expression the declaration does not hold is a `409` naming it.
       parameters:
-        - { name: trackNumber, in: query, required: false, description: "The declared expression that reads the track's number on its disc.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: discNumber, in: query, required: false, description: "The declared expression that reads the disc the track is on.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: title, in: query, required: false, description: "The declared expression that reads the track's title.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: artist, in: query, required: false, description: "The declared expression that reads the track's artist.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: album, in: query, required: false, description: "The declared expression that reads the album the track belongs to.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: albumArtist, in: query, required: false, description: "The declared expression that reads the artist the album is credited to.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: duration, in: query, required: false, description: "The declared expression that reads the track's length in seconds.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: playCount, in: query, required: false, description: "The declared expression that reads the track's play count from the scrobbling source.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: lastPlayed, in: query, required: false, description: "The declared expression that reads when the scrobbling source last saw the track played, as a timestamp.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: rating, in: query, required: false, description: "The declared expression that reads the track's rating.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: year, in: query, required: false, description: "The declared expression that reads the track's year.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: genre, in: query, required: false, description: "The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: codec, in: query, required: false, description: "The declared expression that reads the track's codec.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: bitrate, in: query, required: false, description: "The declared expression that reads the track's bitrate in kilobits per second.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: playCountLocal, in: query, required: false, description: "The declared expression that reads the track's play count from the player's own counter.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: lastPlayedLocal, in: query, required: false, description: "The declared expression that reads when the player's own counter last saw the track played, as a timestamp.", schema: { $ref: "#/components/schemas/SummaryRole" } }
-        - { name: added, in: query, required: false, description: "The declared expression that reads when the track entered the library, as a timestamp.", schema: { $ref: "#/components/schemas/SummaryRole" } }
+        - $ref: "#/components/parameters/RoleTrackNumber"
+        - $ref: "#/components/parameters/RoleDiscNumber"
+        - $ref: "#/components/parameters/RoleTitle"
+        - $ref: "#/components/parameters/RoleArtist"
+        - $ref: "#/components/parameters/RoleAlbum"
+        - $ref: "#/components/parameters/RoleAlbumArtist"
+        - $ref: "#/components/parameters/RoleDuration"
+        - $ref: "#/components/parameters/RolePlayCount"
+        - $ref: "#/components/parameters/RoleLastPlayed"
+        - $ref: "#/components/parameters/RoleRating"
+        - $ref: "#/components/parameters/RoleYear"
+        - $ref: "#/components/parameters/RoleGenre"
+        - $ref: "#/components/parameters/RoleCodec"
+        - $ref: "#/components/parameters/RoleBitrate"
+        - $ref: "#/components/parameters/RolePlayCountLocal"
+        - $ref: "#/components/parameters/RoleLastPlayedLocal"
+        - $ref: "#/components/parameters/RoleAdded"
       responses:
         "200":
           description: |
@@ -2761,24 +2781,254 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/LibrarySummary" }
-        "202":
-          description: |
-            No snapshot is ready, or the ready one was not built with a declared role's expression. The body is the `Library` object `GET /state` carries under `library`, as it stands now. No build was started: a client polls `GET /state` until the library is ready and asks again.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Library" }
+        "202": { $ref: "#/components/responses/LibraryNotReady" }
         "304": { $ref: "#/components/responses/NotModified" }
         "400": { $ref: "#/components/responses/LibraryRefused" }
-        "409":
+        "409": { $ref: "#/components/responses/LibraryUndeclared" }
+        "429": { $ref: "#/components/responses/LibrarySummaryTooFast" }
+        "503": { $ref: "#/components/responses/LibraryUnavailable" }
+
+  /library/search:
+    get:
+      tags: [library]
+      operationId: searchLibrary
+      summary: What a search matches, and the artists, albums and genres it names.
+      description: |
+        The tracks that match `query`, the best of them in rank order, and up to `entityLimit` artists, albums and genres each, ranked, computed from the snapshot the component already holds.
+
+        The cases file defines this answer.
+
+        **`query`.** Up to 1024 bytes of UTF-8, and it may be empty. It is folded whole and split into words, and a track matches when every word is found in its title, its artist, its album artist or its album, a word never spanning two of those. A query that folds to nothing answers `matched` `null`. So does any query on a library that holds no tracks, with `matchCount` `0` and every section empty.
+
+        **`matched` and `matchCount`.** `matched` is every matching track as a set, or `null` where the query folds to nothing or the library holds no tracks. `matchCount` is the size of `matched`, and `0` where it is `null`.
+
+        **`best`.** The best `limit` of the matching tracks as ordinals in rank order, fewer where fewer match, none where `limit` is `0`. Unlike `matched`, it is not ascending.
+
+        **`artists`, `albums` and `genres`.** Each is `{ total, top }`: `total` is how many entities the section admits and `top` is the first `entityLimit` of them in rank order, none where `entityLimit` is `0`. A section admits nothing that matches below the rank of a whole word, so a misspelling fills no section, while a name a section catches with its spaces and punctuation set aside, such as `acdc` for *AC/DC*, is admitted. An artist carries `name`, `trackCount`, the tracks credited to it that are not guest credits, `guestCount`, its guest credits, `albumCount` and `cover`. An album carries `album`, `artist`, `trackCount` and `cover`, named as `SummaryAlbum` names them. A genre carries `name` and `trackCount`. `splitsCredits` says whether a credit line holding several names counts each of them as an artist (`true`) or the line as one name (`false`).
+
+        **`namesATrack`.** `true` where a matching track's title folds to the same text as the query, trimmed, does; `false` where the query folds to nothing.
+      parameters:
+        - { name: query, in: query, required: true, description: "What was typed. Up to 1024 bytes as UTF-8, and it may be empty.", schema: { type: string } }
+        - { name: limit, in: query, required: true, description: "How many matching tracks `best` lists at most.", schema: { type: integer, minimum: 0 } }
+        - { name: entityLimit, in: query, required: true, description: "How many artists, albums and genres each `top` lists at most.", schema: { type: integer, minimum: 0 } }
+        - { name: splitsCredits, in: query, required: true, description: "Whether a credit line holding several names is counted as each of them, as `true` or `false`.", schema: { type: boolean } }
+        - $ref: "#/components/parameters/RoleTrackNumber"
+        - $ref: "#/components/parameters/RoleDiscNumber"
+        - $ref: "#/components/parameters/RoleTitle"
+        - $ref: "#/components/parameters/RoleArtist"
+        - $ref: "#/components/parameters/RoleAlbum"
+        - $ref: "#/components/parameters/RoleAlbumArtist"
+        - $ref: "#/components/parameters/RoleDuration"
+        - $ref: "#/components/parameters/RolePlayCount"
+        - $ref: "#/components/parameters/RoleLastPlayed"
+        - $ref: "#/components/parameters/RoleRating"
+        - $ref: "#/components/parameters/RoleYear"
+        - $ref: "#/components/parameters/RoleGenre"
+        - $ref: "#/components/parameters/RoleCodec"
+        - $ref: "#/components/parameters/RoleBitrate"
+        - $ref: "#/components/parameters/RolePlayCountLocal"
+        - $ref: "#/components/parameters/RoleLastPlayedLocal"
+        - $ref: "#/components/parameters/RoleAdded"
+        - $ref: "#/components/parameters/RoleArtists"
+        - $ref: "#/components/parameters/RoleArtistIds"
+        - $ref: "#/components/parameters/RoleAlbumArtists"
+        - $ref: "#/components/parameters/RoleAlbumArtistIds"
+      responses:
+        "200":
           description: |
-            A role names an expression the declaration does not hold. The error names the expression, so a client declares again through `GET /library/export`.
+            The tracks the query matches and the entities it names, at the `structure` and `revision` the document carries. `Cache-Control` is `private, no-cache`, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+              description: "`private, no-cache`."
+            Content-Encoding:
+              schema: { type: string, enum: [gzip] }
+              description: Present only when the request offered gzip. Absent means the bytes as they stand.
+            Vary:
+              schema: { type: string }
+              description: "`Accept-Encoding`."
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-              examples:
-                undeclared:
-                  value: { error: "'%album%' is not a declared column" }
-        "429": { $ref: "#/components/responses/LibrarySummaryTooFast" }
+              schema: { $ref: "#/components/schemas/SearchAnswer" }
+        "202": { $ref: "#/components/responses/LibraryNotReady" }
+        "400": { $ref: "#/components/responses/LibraryRefused" }
+        "409": { $ref: "#/components/responses/LibraryUndeclared" }
+        "429": { $ref: "#/components/responses/LibraryQuestionsTooFast" }
+        "503": { $ref: "#/components/responses/LibraryUnavailable" }
+
+  /library/album:
+    get:
+      tags: [library]
+      operationId: getLibraryAlbum
+      summary: The tracks of one album.
+      description: |
+        The tracks of the album spelled `name` and credited to `by`, as one set.
+
+        The cases file defines this answer.
+
+        **The album.** The album and its credited artist are matched as *The four questions* says under *Entities*. `by` is the credited artist: the album artist, or the artist where there is no album artist. `by` left out and `by` empty both ask for the album credited to nobody. `name` may be empty, and the cases say what an empty album holds.
+
+        **The answer.** `refs` is the album's tracks as a set, and `album` and `artist` are the album's spelling as the tracks carry it, the spelling of the track with the lowest dictionary id for that tag, `artist` `null` where none. No match is an empty set, `album` as asked and `artist` `null`.
+      parameters:
+        - { name: name, in: query, required: true, description: "The album, as its tag spells it. It may be empty.", schema: { type: string } }
+        - { name: by, in: query, required: false, description: "The artist the album is credited to. Left out or empty, it asks for the album credited to nobody.", schema: { type: string } }
+        - $ref: "#/components/parameters/RoleTrackNumber"
+        - $ref: "#/components/parameters/RoleDiscNumber"
+        - $ref: "#/components/parameters/RoleTitle"
+        - $ref: "#/components/parameters/RoleArtist"
+        - $ref: "#/components/parameters/RoleAlbum"
+        - $ref: "#/components/parameters/RoleAlbumArtist"
+        - $ref: "#/components/parameters/RoleDuration"
+        - $ref: "#/components/parameters/RolePlayCount"
+        - $ref: "#/components/parameters/RoleLastPlayed"
+        - $ref: "#/components/parameters/RoleRating"
+        - $ref: "#/components/parameters/RoleYear"
+        - $ref: "#/components/parameters/RoleGenre"
+        - $ref: "#/components/parameters/RoleCodec"
+        - $ref: "#/components/parameters/RoleBitrate"
+        - $ref: "#/components/parameters/RolePlayCountLocal"
+        - $ref: "#/components/parameters/RoleLastPlayedLocal"
+        - $ref: "#/components/parameters/RoleAdded"
+        - $ref: "#/components/parameters/RoleArtists"
+        - $ref: "#/components/parameters/RoleArtistIds"
+        - $ref: "#/components/parameters/RoleAlbumArtists"
+        - $ref: "#/components/parameters/RoleAlbumArtistIds"
+      responses:
+        "200":
+          description: |
+            The album's tracks at the `structure` and `revision` the document carries. `Cache-Control` is `private, no-cache`, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+              description: "`private, no-cache`."
+            Content-Encoding:
+              schema: { type: string, enum: [gzip] }
+              description: Present only when the request offered gzip. Absent means the bytes as they stand.
+            Vary:
+              schema: { type: string }
+              description: "`Accept-Encoding`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AlbumAnswer" }
+        "202": { $ref: "#/components/responses/LibraryNotReady" }
+        "400": { $ref: "#/components/responses/LibraryRefused" }
+        "409": { $ref: "#/components/responses/LibraryUndeclared" }
+        "429": { $ref: "#/components/responses/LibraryQuestionsTooFast" }
+        "503": { $ref: "#/components/responses/LibraryUnavailable" }
+
+  /library/artist:
+    get:
+      tags: [library]
+      operationId: getLibraryArtist
+      summary: The tracks of one artist, by how the artist is credited on them.
+      description: |
+        The tracks that credit the artist named `name`, in three disjoint sets by how.
+
+        The cases file defines this answer.
+
+        **The answer.** `own` holds the tracks where the artist is the lead or the album's act, `shared` those where the artist is named as one of several leads, and `guest` those where it is credited as a guest. No track is in two of them, and a client merges them for every track of the artist. `splitsCredits` says whether a credit line holding several names counts each of them (`true`) or the line as one name (`false`). The cases say how a track falls into each set.
+      parameters:
+        - { name: name, in: query, required: true, description: "The artist, as a credit spells it. It may be empty.", schema: { type: string } }
+        - { name: splitsCredits, in: query, required: true, description: "Whether a credit line holding several names is counted as each of them, as `true` or `false`.", schema: { type: boolean } }
+        - $ref: "#/components/parameters/RoleTrackNumber"
+        - $ref: "#/components/parameters/RoleDiscNumber"
+        - $ref: "#/components/parameters/RoleTitle"
+        - $ref: "#/components/parameters/RoleArtist"
+        - $ref: "#/components/parameters/RoleAlbum"
+        - $ref: "#/components/parameters/RoleAlbumArtist"
+        - $ref: "#/components/parameters/RoleDuration"
+        - $ref: "#/components/parameters/RolePlayCount"
+        - $ref: "#/components/parameters/RoleLastPlayed"
+        - $ref: "#/components/parameters/RoleRating"
+        - $ref: "#/components/parameters/RoleYear"
+        - $ref: "#/components/parameters/RoleGenre"
+        - $ref: "#/components/parameters/RoleCodec"
+        - $ref: "#/components/parameters/RoleBitrate"
+        - $ref: "#/components/parameters/RolePlayCountLocal"
+        - $ref: "#/components/parameters/RoleLastPlayedLocal"
+        - $ref: "#/components/parameters/RoleAdded"
+        - $ref: "#/components/parameters/RoleArtists"
+        - $ref: "#/components/parameters/RoleArtistIds"
+        - $ref: "#/components/parameters/RoleAlbumArtists"
+        - $ref: "#/components/parameters/RoleAlbumArtistIds"
+      responses:
+        "200":
+          description: |
+            The artist's tracks at the `structure` and `revision` the document carries. `Cache-Control` is `private, no-cache`, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+              description: "`private, no-cache`."
+            Content-Encoding:
+              schema: { type: string, enum: [gzip] }
+              description: Present only when the request offered gzip. Absent means the bytes as they stand.
+            Vary:
+              schema: { type: string }
+              description: "`Accept-Encoding`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArtistAnswer" }
+        "202": { $ref: "#/components/responses/LibraryNotReady" }
+        "400": { $ref: "#/components/responses/LibraryRefused" }
+        "409": { $ref: "#/components/responses/LibraryUndeclared" }
+        "429": { $ref: "#/components/responses/LibraryQuestionsTooFast" }
+        "503": { $ref: "#/components/responses/LibraryUnavailable" }
+
+  /library/genre:
+    get:
+      tags: [library]
+      operationId: getLibraryGenre
+      summary: The tracks of one genre.
+      description: |
+        The tracks that hold the genre named `name`, as one set.
+
+        The cases file defines this answer.
+
+        **The answer.** `refs` is the tracks whose genre expression holds `name` as one of its values, as a set. A track with several genres is in each.
+      parameters:
+        - { name: name, in: query, required: true, description: "The genre, as one value of the genre expression. It may be empty.", schema: { type: string } }
+        - $ref: "#/components/parameters/RoleTrackNumber"
+        - $ref: "#/components/parameters/RoleDiscNumber"
+        - $ref: "#/components/parameters/RoleTitle"
+        - $ref: "#/components/parameters/RoleArtist"
+        - $ref: "#/components/parameters/RoleAlbum"
+        - $ref: "#/components/parameters/RoleAlbumArtist"
+        - $ref: "#/components/parameters/RoleDuration"
+        - $ref: "#/components/parameters/RolePlayCount"
+        - $ref: "#/components/parameters/RoleLastPlayed"
+        - $ref: "#/components/parameters/RoleRating"
+        - $ref: "#/components/parameters/RoleYear"
+        - $ref: "#/components/parameters/RoleGenre"
+        - $ref: "#/components/parameters/RoleCodec"
+        - $ref: "#/components/parameters/RoleBitrate"
+        - $ref: "#/components/parameters/RolePlayCountLocal"
+        - $ref: "#/components/parameters/RoleLastPlayedLocal"
+        - $ref: "#/components/parameters/RoleAdded"
+        - $ref: "#/components/parameters/RoleArtists"
+        - $ref: "#/components/parameters/RoleArtistIds"
+        - $ref: "#/components/parameters/RoleAlbumArtists"
+        - $ref: "#/components/parameters/RoleAlbumArtistIds"
+      responses:
+        "200":
+          description: |
+            The genre's tracks at the `structure` and `revision` the document carries. `Cache-Control` is `private, no-cache`, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+              description: "`private, no-cache`."
+            Content-Encoding:
+              schema: { type: string, enum: [gzip] }
+              description: Present only when the request offered gzip. Absent means the bytes as they stand.
+            Vary:
+              schema: { type: string }
+              description: "`Accept-Encoding`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GenreAnswer" }
+        "202": { $ref: "#/components/responses/LibraryNotReady" }
+        "400": { $ref: "#/components/responses/LibraryRefused" }
+        "409": { $ref: "#/components/responses/LibraryUndeclared" }
+        "429": { $ref: "#/components/responses/LibraryQuestionsTooFast" }
         "503": { $ref: "#/components/responses/LibraryUnavailable" }
 
   /library/refresh:
@@ -3550,6 +3800,153 @@ components:
         The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device.
       schema: { type: string, maxLength: 64 }
 
+    RoleTrackNumber:
+      name: trackNumber
+      in: query
+      required: false
+      description: "The declared expression that reads the track's number on its disc."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleDiscNumber:
+      name: discNumber
+      in: query
+      required: false
+      description: "The declared expression that reads the disc the track is on."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleTitle:
+      name: title
+      in: query
+      required: false
+      description: "The declared expression that reads the track's title."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleArtist:
+      name: artist
+      in: query
+      required: false
+      description: "The declared expression that reads the track's artist."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleAlbum:
+      name: album
+      in: query
+      required: false
+      description: "The declared expression that reads the album the track belongs to."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleAlbumArtist:
+      name: albumArtist
+      in: query
+      required: false
+      description: "The declared expression that reads the artist the album is credited to."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleDuration:
+      name: duration
+      in: query
+      required: false
+      description: "The declared expression that reads the track's length in seconds."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RolePlayCount:
+      name: playCount
+      in: query
+      required: false
+      description: "The declared expression that reads the track's play count from the scrobbling source."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleLastPlayed:
+      name: lastPlayed
+      in: query
+      required: false
+      description: "The declared expression that reads when the scrobbling source last saw the track played, as a timestamp."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleRating:
+      name: rating
+      in: query
+      required: false
+      description: "The declared expression that reads the track's rating."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleYear:
+      name: year
+      in: query
+      required: false
+      description: "The declared expression that reads the track's year."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleGenre:
+      name: genre
+      in: query
+      required: false
+      description: "The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleCodec:
+      name: codec
+      in: query
+      required: false
+      description: "The declared expression that reads the track's codec."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleBitrate:
+      name: bitrate
+      in: query
+      required: false
+      description: "The declared expression that reads the track's bitrate in kilobits per second."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RolePlayCountLocal:
+      name: playCountLocal
+      in: query
+      required: false
+      description: "The declared expression that reads the track's play count from the player's own counter."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleLastPlayedLocal:
+      name: lastPlayedLocal
+      in: query
+      required: false
+      description: "The declared expression that reads when the player's own counter last saw the track played, as a timestamp."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleAdded:
+      name: added
+      in: query
+      required: false
+      description: "The declared expression that reads when the track entered the library, as a timestamp."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleArtists:
+      name: artists
+      in: query
+      required: false
+      description: "The declared expression that reads every value of the track's `artists` tag, separated by the unit separator (U+001F) where there are several."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleArtistIds:
+      name: artistIds
+      in: query
+      required: false
+      description: "The declared expression that reads every value of the track's MusicBrainz artist id tag, separated by the unit separator (U+001F) where there are several."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleAlbumArtists:
+      name: albumArtists
+      in: query
+      required: false
+      description: "The declared expression that reads every value of the track's `albumartists` tag, separated by the unit separator (U+001F) where there are several."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
+    RoleAlbumArtistIds:
+      name: albumArtistIds
+      in: query
+      required: false
+      description: "The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several."
+      schema: { $ref: "#/components/schemas/LibraryRole" }
+
   responses:
     PlaylistRefused:
       description: |
@@ -3933,7 +4330,7 @@ components:
 
     LibraryRefused:
       description: |
-        The request was understood and declined before the snapshot was touched: no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, a `since` or a `structure` that is missing or not a whole number, or, on `GET /library/export`, an `only` naming a column `columns` does not declare or naming one twice in two spellings, or a `spine` that is neither `true` nor `false`. On `GET /library/summary` it is a role that is not one of the published names, one with an empty expression, one longer than 1024 characters or one carrying a control character, or one named twice in two spellings (`unacceptable role`, `duplicate role`).
+        The request was understood and declined before the snapshot was touched: no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, a `since` or a `structure` that is missing or not a whole number, or, on `GET /library/export`, an `only` naming a column `columns` does not declare or naming one twice in two spellings, or a `spine` that is neither `true` nor `false`. On `GET /library/summary` it is a role that is not one of the published names, one with an empty expression, one longer than 1024 characters or one carrying a control character, or one named twice in two spellings (`unacceptable role`, `duplicate role`). The four questions refuse the same roles in the same words, with the credit roles beside the summary's, and refuse a question parameter that is missing, empty where it may not be, not a whole number of 0 or more where it names a count, not `true` or `false` where it is a flag, named twice, or a `query` over 1024 bytes (`unacceptable question`, `duplicate question`). A parameter that is neither a role nor one the route owns is `unacceptable role`.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/LibraryRefusal" }
@@ -3946,6 +4343,33 @@ components:
               value: { error: duplicate column, detail: "column 3 repeats an earlier one" }
             notDeclared:
               value: { error: column not declared, detail: "'only' column 1 is not one of 'columns'" }
+            noQuery:
+              value: { error: unacceptable question, detail: "'query' is required" }
+            longQuery:
+              value: { error: unacceptable question, detail: "'query' must be at most 1024 bytes" }
+            notACount:
+              value: { error: unacceptable question, detail: "'limit' must be a whole number of 0 or more" }
+            notAFlag:
+              value: { error: unacceptable question, detail: "'splitsCredits' must be true or false" }
+            repeatedName:
+              value: { error: duplicate question, detail: "'name' is named twice" }
+
+    LibraryNotReady:
+      description: |
+        No snapshot is ready, or the ready one was not built with a declared role's expression. The body is the `Library` object `GET /state` carries under `library`, as it stands now. No build was started: a client polls `GET /state` until the library is ready and asks again.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Library" }
+
+    LibraryUndeclared:
+      description: |
+        A role names an expression the declaration does not hold. The error names the expression, so a client declares again through `GET /library/export`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            undeclared:
+              value: { error: "'%album%' is not a declared column" }
 
     LibraryConflict:
       description: |
@@ -4178,6 +4602,20 @@ components:
           examples:
             default:
               value: { error: too many library summary reads }
+
+    LibraryQuestionsTooFast:
+      description: |
+        Questions are being asked faster than this component will answer them: a burst of 200, refilling one every 50 milliseconds, one budget shared by search and the album, artist and genre reads and by every client, and apart from the summary's. A client asks once per settled draft or opened page and never meets it. A request refused for what it asks is refused for that first and spends nothing. `Retry-After` is sent in seconds.
+      headers:
+        Retry-After:
+          schema: { type: string }
+          description: Seconds to wait.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            default:
+              value: { error: too many library questions }
 
     PlayingTrackReadTooFast:
       description: |
@@ -5534,8 +5972,8 @@ components:
           description: |
             Whether the implementation has stopped reading the library for good, after failing too often to recover on its own. Once true it stays true until the implementation restarts: `build` is `null`, no further build starts, and the snapshot held when it stopped, if any, goes on being served at the generations above. A client waiting on a build stops waiting and tells its user the player needs restarting.
 
-    SummaryRole:
-      description: A declared title-formatting expression, 1 to 1024 printable characters.
+    LibraryRole:
+      description: A declared title-formatting expression, 1 to 1024 printable characters. Every role of every library read takes one.
       type: string
       minLength: 1
       maxLength: 1024
@@ -5652,6 +6090,148 @@ components:
           type: array
           maxItems: 24
           items: { $ref: "#/components/schemas/SummaryAlbum" }
+
+    OrdinalSet:
+      description: |
+        A set of tracks as ascending ordinals at the `structure` of the answer carrying it, in exactly one of two forms: `runs`, or `bitset`. Whichever serialises shorter is sent, and `runs` on a tie. An empty set is `{ "runs": [] }`. See *The four questions*.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [runs]
+          properties:
+            runs: { $ref: "#/components/schemas/Runs" }
+        - type: object
+          additionalProperties: false
+          required: [bitset]
+          properties:
+            bitset: { $ref: "#/components/schemas/Bitset" }
+
+    SearchAnswer:
+      description: |
+        What `GET /library/search` answers, computed at the `structure` and `revision` it carries. An ordinal anywhere in it is at that `structure`, and means nothing at another.
+      type: object
+      additionalProperties: false
+      required: [structure, revision, matched, matchCount, best, artists, albums, genres, namesATrack]
+      properties:
+        structure: { type: integer, description: "The snapshot's `structure` the document was computed at." }
+        revision: { type: integer, description: "The snapshot's `revision` the document was computed at." }
+        matched:
+          description: Every matching track, or `null` where the query folds to nothing or the library holds no tracks.
+          oneOf:
+            - { $ref: "#/components/schemas/OrdinalSet" }
+            - type: "null"
+        matchCount: { type: integer, description: "The size of `matched`, and `0` where it is `null`." }
+        best:
+          type: array
+          items: { type: integer }
+          description: The best `limit` matching tracks as ordinals, in rank order.
+        artists: { $ref: "#/components/schemas/ArtistSection" }
+        albums: { $ref: "#/components/schemas/AlbumSection" }
+        genres: { $ref: "#/components/schemas/GenreSection" }
+        namesATrack: { type: boolean, description: "Whether a matching track's title folds to the same text as the query." }
+
+    ArtistSection:
+      type: object
+      additionalProperties: false
+      required: [total, top]
+      properties:
+        total: { type: integer, description: "How many artists the query admits." }
+        top:
+          type: array
+          items: { $ref: "#/components/schemas/NamedArtist" }
+          description: "The first `entityLimit` of them in rank order."
+
+    AlbumSection:
+      type: object
+      additionalProperties: false
+      required: [total, top]
+      properties:
+        total: { type: integer, description: "How many albums the query admits." }
+        top:
+          type: array
+          items: { $ref: "#/components/schemas/NamedAlbum" }
+          description: "The first `entityLimit` of them in rank order."
+
+    GenreSection:
+      type: object
+      additionalProperties: false
+      required: [total, top]
+      properties:
+        total: { type: integer, description: "How many genres the query admits." }
+        top:
+          type: array
+          items: { $ref: "#/components/schemas/NamedGenre" }
+          description: "The first `entityLimit` of them in rank order."
+
+    NamedArtist:
+      type: object
+      additionalProperties: false
+      required: [name, trackCount, guestCount, albumCount, cover]
+      properties:
+        name: { type: string }
+        trackCount: { type: integer, description: "Tracks credited to the artist that are not guest credits." }
+        guestCount: { type: integer, description: "Guest credits." }
+        albumCount: { type: integer }
+        cover:
+          type: [string, "null"]
+          description: The library-relative path `GET /artwork?track=` takes, of the canonical track of the album holding the artist's first credited track that has an album tag, or `null` where none does.
+
+    NamedAlbum:
+      type: object
+      additionalProperties: false
+      required: [album, artist, trackCount, cover]
+      properties:
+        album: { type: string }
+        artist: { type: [string, "null"] }
+        trackCount: { type: integer }
+        cover:
+          type: [string, "null"]
+          description: The library-relative path `GET /artwork?track=` takes, of the album's canonical track, or `null` where it has none.
+
+    NamedGenre:
+      type: object
+      additionalProperties: false
+      required: [name, trackCount]
+      properties:
+        name: { type: string }
+        trackCount: { type: integer }
+
+    AlbumAnswer:
+      description: |
+        What `GET /library/album` answers, computed at the `structure` and `revision` it carries.
+      type: object
+      additionalProperties: false
+      required: [structure, revision, refs, album, artist]
+      properties:
+        structure: { type: integer, description: "The snapshot's `structure` the document was computed at." }
+        revision: { type: integer, description: "The snapshot's `revision` the document was computed at." }
+        refs: { $ref: "#/components/schemas/OrdinalSet" }
+        album: { type: string, description: "The album as its tracks spell it, or as asked where no track matched." }
+        artist: { type: [string, "null"], description: "The credited artist as the tracks spell it, `null` where none." }
+
+    ArtistAnswer:
+      description: |
+        What `GET /library/artist` answers, computed at the `structure` and `revision` it carries. The three sets share no ordinal.
+      type: object
+      additionalProperties: false
+      required: [structure, revision, own, shared, guest]
+      properties:
+        structure: { type: integer, description: "The snapshot's `structure` the document was computed at." }
+        revision: { type: integer, description: "The snapshot's `revision` the document was computed at." }
+        own: { $ref: "#/components/schemas/OrdinalSet" }
+        shared: { $ref: "#/components/schemas/OrdinalSet" }
+        guest: { $ref: "#/components/schemas/OrdinalSet" }
+
+    GenreAnswer:
+      description: |
+        What `GET /library/genre` answers, computed at the `structure` and `revision` it carries.
+      type: object
+      additionalProperties: false
+      required: [structure, revision, refs]
+      properties:
+        structure: { type: integer, description: "The snapshot's `structure` the document was computed at." }
+        revision: { type: integer, description: "The snapshot's `revision` the document was computed at." }
+        refs: { $ref: "#/components/schemas/OrdinalSet" }
 
     LibraryBuild:
       description: |
@@ -6266,6 +6846,8 @@ components:
             - unacceptable revision
             - unacceptable role
             - duplicate role
+            - unacceptable question
+            - duplicate question
         detail:
           type: string
           description: |

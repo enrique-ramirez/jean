@@ -66,6 +66,14 @@ const summaryRoles: Record<string, string> = {
 	added: "%added%",
 };
 
+const questionRoles: Record<string, string> = {
+	...summaryRoles,
+	artists: "$meta_sep(artists,$char(31))",
+	artistIds: "$meta_sep(musicbrainz_artistid,$char(31))",
+	albumArtists: "$meta_sep(albumartists,$char(31))",
+	albumArtistIds: "$meta_sep(musicbrainz_albumartistid,$char(31))",
+};
+
 const example = (operation: Operation, name: string): unknown => {
 	const offered = operation.examples[name];
 	if (offered === undefined)
@@ -189,6 +197,38 @@ export const drives: Drive[] = [
 	{
 		id: "getLibrarySummary",
 		probe: () => ({ query: summaryRoles }),
+	},
+	{
+		id: "searchLibrary",
+		probe: () => ({
+			query: {
+				query: "contract check",
+				limit: "8",
+				entityLimit: "3",
+				splitsCredits: "true",
+				...questionRoles,
+			},
+		}),
+	},
+	{
+		id: "getLibraryAlbum",
+		probe: () => ({
+			query: { name: "contract check", by: "contract check", ...questionRoles },
+		}),
+	},
+	{
+		id: "getLibraryArtist",
+		probe: () => ({
+			query: {
+				name: "contract check",
+				splitsCredits: "true",
+				...questionRoles,
+			},
+		}),
+	},
+	{
+		id: "getLibraryGenre",
+		probe: () => ({ query: { name: "contract check", ...questionRoles } }),
 	},
 	{
 		// The suite holds no library-relative path, for the reason `getArtwork` gives, so this

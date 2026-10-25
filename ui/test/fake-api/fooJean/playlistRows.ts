@@ -10,14 +10,17 @@ import {
 	WRITES_DISABLED,
 } from "./answers.ts";
 import { delay } from "./latency.ts";
-import { subsongOf } from "./library.ts";
+import { rolesAsked, subsongOf } from "./library.ts";
+import { LIBRARY_ROLE_NAMES } from "./librarySummary.ts";
 import type { FooJeanFake, OwnPlaylistRole } from "./options.ts";
+import { coversFor, settleCovers } from "./playlistCovers.ts";
 import {
 	insertTracks,
 	locksAgainstAdds,
 	ownRoleOf,
 	requirePlaylist,
 } from "./playlists.ts";
+import { refuseTooFast, spend } from "./rateLimits.ts";
 import type { Asked, FakeState } from "./request.ts";
 import {
 	declaresOnly,
@@ -40,7 +43,7 @@ const PLAYLIST_LOCKED = {
 	detail: "",
 };
 
-const ROWS_MOVED = {
+export const ROWS_MOVED = {
 	error: TAG_ROWS_MOVED.error,
 	detail: "",
 };
@@ -50,6 +53,9 @@ const REVISION_GONE = {
 		"that revision is not one this playlist can catch up from; read its rows again",
 	detail: "",
 };
+
+const PAGE_PARAMETERS = ["offset", "count", "columns"];
+const CHANGES_PARAMETERS = ["structure", "since", "columns"];
 
 const MOVE_ROWS_FIELDS = ["structure", "runs", "ordinals", "to"];
 const SORT_ROWS_FIELDS = ["structure", "pattern"];
@@ -157,16 +163,21 @@ const changedColumnDictionaries = (columns: string[], rows: Track[]) =>
 		return { text, ids };
 	});
 
-export async function handlePlaylistRows({
-	state,
-	fake,
-	method,
-	path,
-	url,
-	body,
-	response,
-	session,
-}: Asked) {
+// A page and a delta of a playlist's rows spend from one bucket for each client, after the
+// request's own 400s and before the player is asked.
+const refusedAsTooFast = ({ fake, recorded, client, response }: Asked) => {
+	if (
+		!fake.rateLimits ||
+		spend(fake.limiter, fake.rateLimits, "playlistRows", client)
+	)
+		return false;
+	recorded.limited = "playlistRows";
+	refuseTooFast(response, "playlistRows");
+	return true;
+};
+
+export async function handlePlaylistRows(asked: Asked) {
+	const { state, fake, method, path, url, body, response, session } = asked;
 	const playMatch = /^\/api\/playlists\/([^/]+)\/items\/(\d+)\/play$/.exec(
 		path,
 	);
@@ -192,10 +203,6 @@ export async function handlePlaylistRows({
 	const rowsMatch = /^\/api\/playlists\/([^/]+)\/items$/.exec(path);
 	if (method === "GET" && rowsMatch) {
 		const guid = rowsMatch[1];
-		const playlist = state.playlistByGuid(guid);
-		if (!playlist)
-			return json(response, { error: "no such playlist", detail: "" }, 404);
-
 		const offset = Number(url.searchParams.get("offset"));
 		const count = Number(url.searchParams.get("count"));
 		const columns = url.searchParams.getAll("columns");
@@ -205,7 +212,17 @@ export async function handlePlaylistRows({
 				{ error: "unacceptable column", detail: "'columns' is required" },
 				400,
 			);
+		const roles = rolesAsked(url, LIBRARY_ROLE_NAMES, PAGE_PARAMETERS);
+		if (!(roles instanceof Map)) return json(response, roles, 400);
 
+		if (refusedAsTooFast(asked)) return true;
+
+		const playlist = state.playlistByGuid(guid);
+		if (!playlist)
+			return json(response, { error: "no such playlist", detail: "" }, 404);
+
+		await settleCovers(state, roles);
+		const coverOf = coversFor(state, roles);
 		const page = playlist.items.slice(offset, offset + count);
 		return json(response, {
 			structure: generationText(playlist.structure),
@@ -217,6 +234,7 @@ export async function handlePlaylistRows({
 				// Off the handle the row was drawn from, so a row the media library
 				// does not hold carries one too.
 				subsong: subsongOf(track),
+				...(coverOf ? { cover: coverOf(track) } : null),
 			})),
 		});
 	}
@@ -224,10 +242,6 @@ export async function handlePlaylistRows({
 	const changesMatch = /^\/api\/playlists\/([^/]+)\/items\/changes$/.exec(path);
 	if (method === "GET" && changesMatch) {
 		const guid = changesMatch[1];
-		const playlist = state.playlistByGuid(guid);
-		if (!playlist)
-			return json(response, { error: "no such playlist", detail: "" }, 404);
-
 		const columns = url.searchParams.getAll("columns");
 		if (columns.length === 0)
 			return json(
@@ -235,6 +249,8 @@ export async function handlePlaylistRows({
 				{ error: "unacceptable column", detail: "'columns' is required" },
 				400,
 			);
+		const roles = rolesAsked(url, LIBRARY_ROLE_NAMES, CHANGES_PARAMETERS);
+		if (!(roles instanceof Map)) return json(response, roles, 400);
 
 		const structure = parseGeneration(url.searchParams.get("structure"));
 		const since = parseGeneration(url.searchParams.get("since"));
@@ -247,6 +263,12 @@ export async function handlePlaylistRows({
 				},
 				400,
 			);
+
+		if (refusedAsTooFast(asked)) return true;
+
+		const playlist = state.playlistByGuid(guid);
+		if (!playlist)
+			return json(response, { error: "no such playlist", detail: "" }, 404);
 
 		if (structure !== playlist.structure)
 			return json(response, ROWS_MOVED, 409);
@@ -269,6 +291,8 @@ export async function handlePlaylistRows({
 
 		const ordered = [...positions].sort((a, b) => a - b);
 		const rows = ordered.map((position) => playlist.items[position]);
+		await settleCovers(state, roles);
+		const coverOf = coversFor(state, roles);
 
 		return json(response, {
 			revision: generationText(playlist.revision),
@@ -277,6 +301,7 @@ export async function handlePlaylistRows({
 				position,
 				libraryPath: state.libraryPathFor(playlist.items[position]),
 				subsong: subsongOf(playlist.items[position]),
+				...(coverOf ? { cover: coverOf(playlist.items[position]) } : null),
 			})),
 		});
 	}

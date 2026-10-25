@@ -15,6 +15,8 @@ export interface Asked {
 	headers: RequestHeaders;
 	body: unknown;
 	bodyBytes: number;
+	// The source address, which `foo_jean` keys the rows budget by.
+	client: string;
 	response: Responder;
 	recorded: RecordedRequest;
 	named: string;

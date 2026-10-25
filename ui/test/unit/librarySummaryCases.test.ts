@@ -58,6 +58,11 @@ const UTC_PLUS_0530 = 330;
 // undefined one are the same absence.
 const asSent = (document: unknown) => JSON.parse(JSON.stringify(document));
 
+const asFrozen = (document: LibrarySummary) => ({
+	...document,
+	shelves: document.shelves.map(({ figures: _, ...shelf }) => shelf),
+});
+
 for (const summaryCase of CONFORMANCE.cases)
 	test(`the fake summarises conformance case ${summaryCase.name} as foo_jean must`, async () => {
 		const { summarise, fixedOffset } = await fakeSummary();
@@ -68,7 +73,7 @@ for (const summaryCase of CONFORMANCE.cases)
 			now,
 			fixedOffset(UTC_PLUS_0530),
 		);
-		assert.deepEqual(asSent(document), summaryCase.expected);
+		assert.deepEqual(asFrozen(asSent(document)), summaryCase.expected);
 	});
 
 test("the fake's tag key matches every conformance key pair as recorded", async () => {
@@ -140,13 +145,13 @@ const componentConstant = (name: string): string => {
 	return /^k\w+$/.test(value) ? componentConstant(value) : value;
 };
 
-const DELTA_READS = (() => {
-	const burst = Number(componentConstant("kDeltaReadBurst"));
+const LIBRARY_READS = (() => {
+	const burst = Number(componentConstant("kLibraryReadBurst"));
 	const refill = /^std::chrono::milliseconds\((\d+)\)$/.exec(
-		componentConstant("kDeltaReadRefill"),
+		componentConstant("kLibraryReadRefill"),
 	);
 	assert.ok(Number.isSafeInteger(burst) && burst > 0);
-	assert.ok(refill, "kDeltaReadRefill is not a count of milliseconds");
+	assert.ok(refill, "kLibraryReadRefill is not a count of milliseconds");
 	return { burst, refillMs: Number(refill[1]) };
 })();
 
@@ -311,19 +316,14 @@ const frozenAt = (t: TestContext, now = NOON) =>
 
 test("the harness answers an existing library route, so a red summary case is the summary's own", async (t) => {
 	frozenAt(t);
-	const state = declared();
-	const exported = await ask(
-		state,
-		"/api/library/export",
-		DECLARED.map((column) => ["columns", column]),
-	);
-	assert.equal(exported.status, 200);
-	assert.ok(exported.headers.etag);
+	const runs = await ask(declared(), "/api/library/runs", ROLES);
+	assert.equal(runs.status, 200);
+	assert.ok(runs.headers.etag);
 });
 
-test("the fake's summary bucket is sized as foo_jean's delta reads", () => {
+test("the fake's summary bucket is sized as foo_jean's library reads", () => {
 	const buckets: Record<string, unknown> = COMPONENT_RATE_LIMITS;
-	assert.deepEqual(buckets.librarySummaries, DELTA_READS);
+	assert.deepEqual(buckets.librarySummaries, LIBRARY_READS);
 });
 
 test("a summary answers 200 JSON at the held pair with every key the contract requires, private and revalidated", async (t) => {
@@ -472,26 +472,11 @@ test("a summary from a component serving no media library is 503 in foo_jean's w
 	assert.equal(bodyOf(answer).error, NO_LIBRARY);
 });
 
-test("a library whose export is over the ceiling is still summarised", async (t) => {
-	frozenAt(t);
-	const state = declared({ libraryCeiling: 1 });
-	const exported = await ask(
-		state,
-		"/api/library/export",
-		DECLARED.map((column) => ["columns", column]),
-	);
-	assert.equal(exported.status, 413);
-
-	const answer = await ask(state, SUMMARY, ROLES);
-	assert.equal(answer.status, 200);
-	assert.equal(bodyOf(answer).trackCount, TRACKS);
-});
-
 test("the summary bucket answers a burst of foo_jean's depth and refuses the next 429 with Retry-After", async (t) => {
 	frozenAt(t);
 	const state = declared({ rateLimits: COMPONENT_RATE_LIMITS });
 
-	for (let request = 1; request <= DELTA_READS.burst; request += 1)
+	for (let request = 1; request <= LIBRARY_READS.burst; request += 1)
 		assert.equal(
 			(await ask(state, SUMMARY, ROLES)).status,
 			200,

@@ -50,6 +50,9 @@ export const addressOf = (
 		track && fake.canReadLibrary ? state.libraryPathFor(track) : null,
 });
 
+const ordinalOf = (state: FakeState, fake: FooJeanFake, track: Track | null) =>
+	fake.canReadLibrary ? state.libraryOrdinalFor(track) : null;
+
 const positionOf = ({
 	seconds,
 	takenAtMs,
@@ -87,6 +90,7 @@ export const playerSectionOf = (state: FakeState, fake: FooJeanFake) => {
 	return {
 		playback: state.player.playbackState,
 		...addressOf(state, fake, track),
+		libraryOrdinal: ordinalOf(state, fake, track),
 		position: positionOf(state.positionMark),
 		duration: Math.max(item?.duration ?? 0, 0),
 		playbackMode: jeanModeFor(
@@ -115,6 +119,7 @@ const sessionPlayerSectionOf = (
 	return {
 		playback: session.playback(),
 		...addressOf(state, fake, track),
+		libraryOrdinal: ordinalOf(state, fake, track),
 		position: positionOf(session.position),
 		duration: session.duration(),
 		playbackMode: session.mode,

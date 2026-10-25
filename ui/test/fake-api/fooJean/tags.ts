@@ -28,7 +28,7 @@ const NO_SUCH_TRACK = {
 
 const LIBRARY_REBUILT = {
 	written: false,
-	error: "the media library was rebuilt; export it again",
+	error: "the media library was rebuilt; read the state and ask again",
 };
 
 const FAILURES: Record<number, unknown> = {
@@ -80,7 +80,7 @@ const applyTags = (
 	for (const playlist of state.playlists)
 		for (const track of playlist.items) patch(track);
 	for (const track of state.libraryTracks) patch(track);
-	state.libraryEdited();
+	state.libraryEdited(Object.keys(fields));
 };
 
 export async function handleTags({

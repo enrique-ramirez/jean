@@ -5,16 +5,18 @@ import { createServer as createNetServer } from "node:net";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-
 import { TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
-import { decodeJlib, type JlibSnapshot } from "../../src/shared/api/jlib.ts";
-import { handleFooJean } from "../fake-api/fooJean.ts";
-import type { Responder } from "../fake-api/http.ts";
 import { libraryOfShape } from "../fake-api/libraryShapes.ts";
 import { createState, type Track } from "../fake-api/state.ts";
 import { evaluate } from "../fake-api/titleFormat.ts";
-
-type FakeState = ReturnType<typeof createState>;
+import {
+	ask,
+	type FakeState,
+	libraryOf,
+	type RowsBody,
+	rawOf,
+	readRows,
+} from "./fakeLibraryHarness.ts";
 
 const MAIN = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -24,172 +26,56 @@ const MAIN = join(
 const MILLION = 1_000_000;
 const SERVED_AGAIN_MS = 50;
 const BUILT_ONCE_TIMEOUT_MS = 10 * 60_000;
+const WINDOW_ROWS = 100;
 
 const PLAY_COUNT = "%lastfm_play_count%";
-const GZIP = { "accept-encoding": "gzip" };
-const IDENTITY = {};
+const COUNTED = ["%title%", PLAY_COUNT];
 
-interface Answer {
-	status: number;
-	headers: Record<string, string>;
-	body: Uint8Array<ArrayBuffer>;
-	ms: number;
-}
-
-const ask = async (
-	state: FakeState,
-	path: string,
-	{
-		query = [],
-		headers = {},
-	}: { query?: [string, string][]; headers?: Record<string, string> } = {},
-): Promise<Answer> => {
-	const url = new URL(path, "http://fake");
-	for (const [name, value] of query) url.searchParams.append(name, value);
-
-	let status = 0;
-	let ended = false;
-	const answered: Record<string, string> = {};
-	const chunks: Uint8Array[] = [];
-	const write = (chunk: string | Uint8Array) => {
-		chunks.push(
-			typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk,
-		);
-	};
-	const response: Responder = {
-		writeHead(code, more = {}) {
-			status = code;
-			for (const [name, value] of Object.entries(more))
-				answered[name.toLowerCase()] = value;
-		},
-		setHeader(name, value) {
-			answered[name.toLowerCase()] = value;
-		},
-		write,
-		end(chunk) {
-			if (chunk !== undefined) write(chunk);
-			ended = true;
-		},
-		on() {},
-		destroy() {},
-	};
-
-	const started = performance.now();
-	await handleFooJean({
-		state,
-		method: "GET",
-		url,
-		headers,
-		body: null,
-		response,
-		artwork: () => false,
-	});
-	const ms = performance.now() - started;
-
-	assert.ok(ended, `${path} never finished its answer`);
-	const body = new Uint8Array(
-		chunks.reduce((total, chunk) => total + chunk.length, 0),
-	);
-	let at = 0;
-	for (const chunk of chunks) {
-		body.set(chunk, at);
-		at += chunk.length;
-	}
-	return { status, headers: answered, body, ms };
-};
-
-const exportOf = (
+const rowsAsked = (
 	state: FakeState,
 	columns: readonly string[],
-	headers: Record<string, string>,
+	ordinals: number[],
+	structure: string,
 ) =>
-	ask(state, "/api/library/export", {
-		query: columns.map((column) => ["columns", column]),
-		headers,
+	ask(state, "/api/library/rows", {
+		method: "POST",
+		body: { columns, structure, ordinals },
 	});
 
-const changesOf = (
+const declaredThroughRows = async (
 	state: FakeState,
-	held: JlibSnapshot,
-	headers: Record<string, string>,
-) =>
-	ask(state, "/api/library/changes", {
-		query: [
-			["since", String(held.revision)],
-			["structure", String(held.structure)],
-		],
-		headers,
-	});
-
-// Compared without assert.deepEqual, whose diff of two arrays this size outgrows the heap.
-const sameBytes = (one: Uint8Array, other: Uint8Array) =>
-	Buffer.compare(one, other) === 0;
-
-const plainOf = async (answer: Answer) => {
-	if (answer.headers["content-encoding"] !== "gzip") return answer.body;
-	const unzipped = new Response(answer.body).body?.pipeThrough(
-		new DecompressionStream("gzip"),
-	);
-	return new Uint8Array(await new Response(unzipped).arrayBuffer());
+	columns: readonly string[],
+) => {
+	assert.equal((await rowsAsked(state, columns, [0], "0")).status, 202);
+	const library = await libraryOf(state);
+	assert.equal(library.ready, true, "the declaration was not built");
+	return String(library.structure);
 };
 
-const decoded = async (answer: Answer) => {
-	const plain = await plainOf(answer);
-	return decodeJlib(
-		plain.buffer.slice(
-			plain.byteOffset,
-			plain.byteOffset + plain.byteLength,
-		) as ArrayBuffer,
-	);
-};
-
-const snapshotOf = async (answer: Answer): Promise<JlibSnapshot> => {
-	const library = await decoded(answer);
-	assert.equal(library.kind, "snapshot");
-	if (library.kind !== "snapshot") throw new Error("not a snapshot");
-	return library;
-};
-
-const trackCountOf = async (state: FakeState) => {
-	const answer = await ask(state, "/api/state");
+const windowOf = async (
+	state: FakeState,
+	columns: readonly string[],
+	ordinals: number[],
+	structure: string,
+) => {
+	const started = performance.now();
+	const answer = await rowsAsked(state, columns, ordinals, structure);
+	const ms = performance.now() - started;
 	assert.equal(answer.status, 200);
-	return JSON.parse(new TextDecoder().decode(answer.body)).library
-		.trackCount as number;
+	return { rows: readRows(rawOf(answer)), ms };
 };
-
-const libraryPathAt = (library: JlibSnapshot, ordinal: number) =>
-	`${library.spine.directory.at(ordinal)}${library.spine.filename.at(ordinal)}`;
 
 const relativePathOf = (track: Track) =>
 	String(evaluate(track, "%path%")).replaceAll("\\", "/");
 
-const ordinalOf = (library: JlibSnapshot, track: Track) => {
+const ordinalIn = (rows: RowsBody, track: Track) => {
 	const whole = relativePathOf(track);
-	for (let ordinal = 0; ordinal < library.trackCount; ordinal += 1)
-		if (whole.endsWith(`/${libraryPathAt(library, ordinal)}`)) return ordinal;
-	assert.fail(`the export holds no ${whole}`);
-};
-
-const playCountAfter = async (
-	delta: Answer,
-	held: JlibSnapshot,
-): Promise<Map<number, string>> => {
-	const library = await decoded(delta);
-	assert.equal(library.kind, "delta");
-	if (library.kind !== "delta") throw new Error("not a delta");
-	const patch = library.columns.get(PLAY_COUNT);
-	assert.ok(patch, "the delta carries no play count");
-	const dict = held.columns.get(PLAY_COUNT)?.dict;
-	assert.ok(dict);
-	return new Map(
-		[...patch.ordinals].map((ordinal, at) => {
-			const id = patch.ids[at];
-			return [
-				ordinal,
-				id < patch.base ? dict.of(id) : patch.appended[id - patch.base],
-			];
-		}),
+	const { directory, filename } = rows.spine;
+	const at = directory.cells.findIndex((held, row) =>
+		whole.endsWith(`/${held}${filename.cells[row]}`),
 	);
+	assert.notEqual(at, -1, `the library holds no ${whole}`);
+	return at;
 };
 
 const pickFreePort = async () => {
@@ -222,11 +108,17 @@ test("`pnpm fake --tracks <n>` serves a library of that many tracks", async () =
 		});
 
 		const origin = `http://127.0.0.1:${port}`;
-		const exported = await fetch(
-			`${origin}/api/library/export?columns=${encodeURIComponent("%title%")}`,
-		);
-		assert.equal(exported.status, 200);
-		await exported.arrayBuffer();
+		const declared = await fetch(`${origin}/api/library/rows`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				columns: ["%title%"],
+				structure: "0",
+				ordinals: [0],
+			}),
+		});
+		assert.equal(declared.status, 202);
+		await declared.arrayBuffer();
 
 		const polled = await fetch(`${origin}/api/state`);
 		assert.equal((await polled.json()).library.trackCount, TRACKS);
@@ -235,11 +127,10 @@ test("`pnpm fake --tracks <n>` serves a library of that many tracks", async () =
 	}
 });
 
-test("a library of a million tracks is sorted and encoded once, and answered again at no cost", {
+test("a library of a million tracks is sorted once, a second window answers in under 50 ms, and a play reaches the next window", {
 	timeout: BUILT_ONCE_TIMEOUT_MS,
 }, async (t) => {
 	const state = createState({
-		fooJean: { libraryCeiling: null },
 		countsPlays: true,
 		mediaLibrary: libraryOfShape({
 			tracks: MILLION,
@@ -249,128 +140,82 @@ test("a library of a million tracks is sorted and encoded once, and answered aga
 			years: [1960, 2024],
 		}),
 	});
+	const declared = [...TRACK_EXPRESSIONS];
+	assert.ok(
+		declared.includes(PLAY_COUNT),
+		"Jean no longer declares the play count",
+	);
+	const structure = await declaredThroughRows(state, declared);
+	assert.equal((await libraryOf(state)).trackCount, MILLION);
 
-	const plain = await exportOf(state, TRACK_EXPRESSIONS, IDENTITY);
-	assert.equal(plain.status, 200);
-	const zipped = await exportOf(state, TRACK_EXPRESSIONS, GZIP);
-	assert.equal(zipped.status, 200);
-	assert.equal(zipped.headers["content-encoding"], "gzip");
-	assert.equal(await trackCountOf(state), MILLION);
+	const last = Array.from(
+		{ length: WINDOW_ROWS },
+		(_, at) => MILLION - WINDOW_ROWS + at,
+	);
+	const first = await windowOf(state, declared, last, structure);
 
 	await t.test(
-		"a second plain export answers the same bytes in under 50 ms",
+		"a second window answers the same rows in under 50 ms",
 		async () => {
-			const again = await exportOf(state, TRACK_EXPRESSIONS, IDENTITY);
-			assert.equal(again.status, 200);
+			const again = await windowOf(state, declared, last, structure);
 			assert.ok(again.ms < SERVED_AGAIN_MS, `took ${again.ms.toFixed(0)} ms`);
-			assert.ok(
-				sameBytes(again.body, plain.body),
-				"the bytes differ from the first export",
+			assert.deepEqual(
+				again.rows.columns.get("%title%")?.cells,
+				first.rows.columns.get("%title%")?.cells,
 			);
 		},
 	);
 
 	await t.test(
-		"a second gzipped export answers the same bytes in under 50 ms",
+		"the first window after a play carries the new count",
 		async () => {
-			const again = await exportOf(state, TRACK_EXPRESSIONS, GZIP);
-			assert.equal(again.status, 200);
-			assert.equal(again.headers["content-encoding"], "gzip");
-			assert.ok(again.ms < SERVED_AGAIN_MS, `took ${again.ms.toFixed(0)} ms`);
-			assert.ok(
-				sameBytes(again.body, zipped.body),
-				"the bytes differ from the first export",
-			);
-		},
-	);
-
-	await t.test(
-		"an export conditional on the held ETag answers 304 in under 50 ms",
-		async () => {
-			const etag = zipped.headers.etag;
-			assert.ok(etag, "the export carried no ETag");
-			const again = await exportOf(state, TRACK_EXPRESSIONS, {
-				...GZIP,
-				"if-none-match": etag,
-			});
-			assert.equal(again.status, 304);
-			assert.equal(again.body.length, 0);
-			assert.ok(again.ms < SERVED_AGAIN_MS, `took ${again.ms.toFixed(0)} ms`);
-		},
-	);
-
-	await t.test(
-		"a play is counted, and its delta answered, each in under 50 ms",
-		async () => {
-			const held = await snapshotOf(plain);
 			const played = state.libraryTracks[MILLION - 1];
+			const at = ordinalIn(first.rows, played);
+			const before = Number(first.rows.columns.get(PLAY_COUNT)?.cells[at]);
 
-			const started = performance.now();
 			state.countPlay(played);
-			const counting = performance.now() - started;
-			assert.ok(
-				counting < SERVED_AGAIN_MS,
-				`counting took ${counting.toFixed(0)} ms`,
+			// Unbounded in time: the fake sweeps the whole library once per revision.
+			const after = await windowOf(state, declared, last, structure);
+			assert.equal(
+				after.rows.columns.get(PLAY_COUNT)?.cells[at],
+				String(before + 1),
 			);
-
-			const delta = await changesOf(state, held, IDENTITY);
-			assert.equal(delta.status, 200);
-			assert.ok(
-				delta.ms < SERVED_AGAIN_MS,
-				`the delta took ${delta.ms.toFixed(0)} ms`,
-			);
-			assert.equal((await playCountAfter(delta, held)).size, 1);
 		},
 	);
 });
 
 const SMALL = () =>
 	createState({
-		fooJean: {},
 		countsPlays: true,
 		mediaLibrary: libraryOfShape({ tracks: 60, albums: 7, artists: 3 }),
 	});
 
-const COUNTED = ["%title%", PLAY_COUNT];
-
-test("a play is counted against the track that was played, at its export ordinal", async () => {
+test("a play is counted against the track that was played, at its ordinal, and the next window carries it at the next revision", async () => {
 	const state = SMALL();
-	const held = await snapshotOf(await exportOf(state, COUNTED, IDENTITY));
+	const structure = await declaredThroughRows(state, COUNTED);
+	const every = Array.from({ length: 60 }, (_, at) => at);
+	const held = (await windowOf(state, COUNTED, every, structure)).rows;
 	const played = state.libraryTracks[8];
-	const ordinal = ordinalOf(held, played);
+	const ordinal = ordinalIn(held, played);
 	assert.notEqual(
 		ordinal,
 		8,
 		"the fixture no longer tells the two orders apart",
 	);
-	const before = Number(held.columns.get(PLAY_COUNT)?.at(ordinal));
+	const before = Number(held.columns.get(PLAY_COUNT)?.cells[ordinal]);
 
 	state.countPlay(played);
-	const delta = await changesOf(state, held, IDENTITY);
-	assert.equal(delta.status, 200);
+	const after = (await windowOf(state, COUNTED, [ordinal], structure)).rows;
 
-	assert.deepEqual(
-		await playCountAfter(delta, held),
-		new Map([[ordinal, String(before + 1)]]),
+	assert.equal(
+		BigInt(after.header.revision),
+		BigInt(held.header.revision) + 1n,
 	);
-});
-
-test("an export after a play carries the new count, and the ETag held before it no longer answers 304", async () => {
-	const state = SMALL();
-	const first = await exportOf(state, COUNTED, GZIP);
-	const held = await snapshotOf(first);
-	const played = state.libraryTracks[8];
-	const ordinal = ordinalOf(held, played);
-	const before = Number(held.columns.get(PLAY_COUNT)?.at(ordinal));
-
-	state.countPlay(played);
-	const after = await exportOf(state, COUNTED, {
-		...GZIP,
-		"if-none-match": first.headers.etag,
-	});
-
-	assert.equal(after.status, 200);
-	const fresh = await snapshotOf(after);
-	assert.equal(fresh.revision, held.revision + 1);
-	assert.equal(fresh.columns.get(PLAY_COUNT)?.at(ordinal), String(before + 1));
+	assert.deepEqual(after.columns.get(PLAY_COUNT)?.cells, [String(before + 1)]);
+	assert.deepEqual(
+		held.columns.get(PLAY_COUNT)?.cells.filter((_, at) => at !== ordinal),
+		(await windowOf(state, COUNTED, every, structure)).rows.columns
+			.get(PLAY_COUNT)
+			?.cells.filter((_, at) => at !== ordinal),
+	);
 });

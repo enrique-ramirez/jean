@@ -8,36 +8,24 @@ import { allTracks, LIBRARY, type Track, tracksOf } from "./capturedLibrary.ts";
 import { type FooJeanOptions, fooJeanState } from "./fooJean/options.ts";
 import { JEAN_MODE_BY_ORDER } from "./fooJean/playbackModes.ts";
 import type { Bucket } from "./fooJean/rateLimits.ts";
-import {
-	changedColumn,
-	type Dictionary,
-	declaredColumn,
-	emptyFold,
-	encodeJlib,
-	type Fold,
-	foldCell,
-	foldColumn,
-	NO_SNAPSHOT,
-	snapshotIdOf,
-	sortedDictionary,
-	spineColumn,
-	wholeColumn,
-} from "./jlib.ts";
+import { type Column, encodeJlib, UNRESOLVED, windowOfValues } from "./jlib.ts";
 import { generateTracks } from "./libraryShapes.ts";
 import capturedPlayer from "./player.json" with { type: "json" };
 import { compareKeys, pathKey, textKey } from "./playerOrder.ts";
 import { createSessions, type SessionDevice } from "./sessions.ts";
 import { evaluate, sortedOrder } from "./titleFormat.ts";
+import {
+	CHUNK,
+	mapped,
+	runToEnd,
+	runYielding,
+	type Sweep,
+	sorted,
+} from "./yielding.ts";
 
 export type { Track };
 
-export type ChangesRefusal =
-	| "pairNotHeld"
-	| "revisionTooOld"
-	| "revisionUnknown"
-	| "spliceTooLarge"
-	| "dictionariesCompacted"
-	| "rearranged";
+const SYNC_SWEEP_LIMIT = 100_000;
 
 // Where the stream last changed what a given stream time means, in wall-clock
 // milliseconds.
@@ -143,18 +131,26 @@ const IDLE_ITEM: FakeActiveItem = {
 	position: -1,
 };
 
-const libraryRoot = (tracks: Track[]) => {
-	const paths = tracks.map((track) =>
-		(track["%path%"] ?? "").split("\\").slice(0, -1),
-	);
-	if (paths.length === 0) return [];
-	return paths.reduce((common, parts) => {
-		let at = 0;
-		while (at < common.length && at < parts.length && common[at] === parts[at])
-			at += 1;
-		return common.slice(0, at);
-	});
-};
+const directoryOf = (track: Track) =>
+	(track["%path%"] ?? "").split("\\").slice(0, -1);
+
+function* libraryRootSweep(tracks: Track[]): Sweep<string[]> {
+	if (tracks.length === 0) return [];
+	let common = directoryOf(tracks[0]);
+	for (let at = 1; at < tracks.length; at += 1) {
+		const parts = directoryOf(tracks[at]);
+		let shared = 0;
+		while (
+			shared < common.length &&
+			shared < parts.length &&
+			common[shared] === parts[shared]
+		)
+			shared += 1;
+		if (shared < common.length) common = common.slice(0, shared);
+		if (at % CHUNK === 0) yield;
+	}
+	return common;
+}
 
 const libraryPathOf = (track: Track, rootDepth: number) =>
 	(track["%path%"] ?? "").split("\\").slice(rootDepth).join("/");
@@ -162,9 +158,12 @@ const libraryPathOf = (track: Track, rootDepth: number) =>
 const localStampOf = (when: Date) =>
 	`${when.getFullYear()}-${String(when.getMonth() + 1).padStart(2, "0")}-${String(when.getDate()).padStart(2, "0")} ${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}:${String(when.getSeconds()).padStart(2, "0")}`;
 
-export function libraryItemsOf(tracks: Track[]): LibraryEntry[] {
-	const rootDepth = libraryRoot(tracks).length;
-	return tracks.map((track) => ({
+function* libraryItemsSweep(
+	tracks: Track[],
+	known?: number,
+): Sweep<LibraryEntry[]> {
+	const rootDepth = known ?? (yield* libraryRootSweep(tracks)).length;
+	return yield* mapped(tracks, (track) => ({
 		track,
 		path: libraryPathOf(track, rootDepth),
 		subsong: Number(track["%subsong%"]) || 0,
@@ -262,16 +261,27 @@ export const sameMembers = (held: string[], asked: string[]) =>
 export const trackKey = (track: Track) =>
 	`${track["%path%"]}\u0000${Number(track["%subsong%"]) || 0}`;
 
-const sortedByLibraryPath = (entries: LibraryEntry[]): LibraryEntry[] => {
-	const keyed = entries.map((entry) => ({
+export const readsField = (expression: string, field: string) => {
+	const name = field.toLowerCase();
+	const text = expression.toLowerCase();
+	return (
+		text.includes(`%${name}%`) ||
+		text.includes(`$meta(${name})`) ||
+		text.includes(`$meta(${name},`)
+	);
+};
+
+function* sortedByLibraryPath(entries: LibraryEntry[]): Sweep<LibraryEntry[]> {
+	const keyed = yield* mapped(entries, (entry) => ({
 		entry,
 		key: textKey(pathKey(entry.path)),
 	}));
-	keyed.sort(
+	const ordered = yield* sorted(
+		keyed,
 		(a, b) => compareKeys(a.key, b.key) || a.entry.subsong - b.entry.subsong,
 	);
-	return keyed.map(({ entry }) => entry);
-};
+	return yield* mapped(ordered, ({ entry }) => entry);
+}
 
 const QUERY_FIELDS: Record<string, string> = {
 	genre: GENRE_EXPRESSION,
@@ -400,15 +410,6 @@ export function createState({
 						: allTracks()
 	).map(retag);
 
-	const pathsByTrackKey = () =>
-		new Map(
-			libraryItemsOf(libraryTracks).map((entry) => [
-				trackKey(entry.track),
-				entry.path,
-			]),
-		);
-	let libraryPathByTrackKey = pathsByTrackKey();
-
 	if (generatedForLibrarySize) {
 		const library = playlists.find((entry) => entry.title === "Library");
 		if (library) library.items = generatedForLibrarySize;
@@ -437,19 +438,8 @@ export function createState({
 			columns: [] as string[],
 			building: null as string[] | null,
 			buildTicks: 0,
-			structureFrom: 0,
-			// Mirrors `historyEndedBy_` in `library.cpp`.
-			historyEndedAt: 0,
-			historyEndedBy: "rearranged" as ChangesRefusal,
-			dictionaries: new Map<string, Dictionary>(),
-			// Tag writes change what the library holds without moving `revision`.
 			edits: 0,
-			history: [] as {
-				structure: number;
-				revision: number;
-				changed: Map<string, number[]>;
-				sizes: Map<string, number>;
-			}[],
+			changes: new Map<string, number>(),
 		},
 	};
 
@@ -727,29 +717,83 @@ export function createState({
 	const firstStructure =
 		STRUCTURE_BASE_OF_THIRTEEN_DIGITS + fakesCreated * STRUCTURES_PER_FAKE;
 
-	// `kRetainedRevisions` in `plugins/fb2k/src/core/library.h`.
-	const RETAINED_REVISIONS = 1920;
-
 	const PLAY_COUNT = "%lastfm_play_count%";
 	const LAST_PLAYED = "%lastfm_last_played%";
 
-	let numbered: {
-		structure: number;
+	let tracksVersion = 0;
+
+	interface Numbered {
+		version: number;
 		entries: LibraryEntry[];
 		firstOrdinalOf: Map<string, number>;
-	} | null = null;
+		ordinalOfKey: Map<string, number>;
+		rootDepth: number;
+		// The first library entry at each relative path, and every entry at a path a cue sheet or a
+		// second root repeats.
+		entryAtPath: Map<string, LibraryEntry>;
+		entriesAtRepeatedPath: Map<string, LibraryEntry[]>;
+	}
+	let numbered: Numbered | null = null;
 
-	const numberedLibrary = () => {
-		if (numbered?.structure === feed.structure) return numbered;
-		const entries = sortedByLibraryPath(libraryItemsOf(libraryTracks));
+	function* numberingSweep(): Sweep<Numbered | null> {
+		const version = tracksVersion;
+		// The list as it stands now: tracks added or removed while the sweep yields change
+		// `libraryTracks` in place, and a sweep reading it across a yield would read a moved array.
+		const tracks = libraryTracks.slice();
+		const rootDepth = (yield* libraryRootSweep(tracks)).length;
+		if (version !== tracksVersion) return null;
+		const items = yield* libraryItemsSweep(tracks, rootDepth);
+		if (version !== tracksVersion) return null;
+		const entries = yield* sortedByLibraryPath(items);
+		if (version !== tracksVersion) return null;
 		const firstOrdinalOf = new Map<string, number>();
-		entries.forEach((entry, ordinal) => {
+		const ordinalOfKey = new Map<string, number>();
+		const entryAtPath = new Map<string, LibraryEntry>();
+		const entriesAtRepeatedPath = new Map<string, LibraryEntry[]>();
+		for (let at = 0; at < items.length; at += 1) {
+			const item = items[at];
+			const first = entryAtPath.get(item.path);
+			if (!first) entryAtPath.set(item.path, item);
+			else {
+				const repeated = entriesAtRepeatedPath.get(item.path);
+				if (repeated) repeated.push(item);
+				else entriesAtRepeatedPath.set(item.path, [first, item]);
+			}
+			if (at % CHUNK === CHUNK - 1) yield;
+		}
+		for (let ordinal = 0; ordinal < entries.length; ordinal += 1) {
+			const entry = entries[ordinal];
+			const key = trackKey(entry.track);
+			if (!ordinalOfKey.has(key)) ordinalOfKey.set(key, ordinal);
 			const path = entry.track["%path%"];
 			if (path !== undefined && !firstOrdinalOf.has(path))
 				firstOrdinalOf.set(path, ordinal);
-		});
-		numbered = { structure: feed.structure, entries, firstOrdinalOf };
-		return numbered;
+			if (ordinal % CHUNK === CHUNK - 1) yield;
+		}
+		return version === tracksVersion
+			? {
+					version,
+					entries,
+					firstOrdinalOf,
+					ordinalOfKey,
+					rootDepth,
+					entryAtPath,
+					entriesAtRepeatedPath,
+				}
+			: null;
+	}
+
+	const numberingIsCurrent = () => numbered?.version === tracksVersion;
+
+	const numberedLibrary = (): Numbered => {
+		if (numbered && numberingIsCurrent()) return numbered;
+		for (;;) {
+			const made = runToEnd(numberingSweep());
+			if (made) {
+				numbered = made;
+				return made;
+			}
+		}
 	};
 
 	const ordinalOrder = (): readonly LibraryEntry[] => numberedLibrary().entries;
@@ -762,134 +806,192 @@ export function createState({
 		);
 	};
 
-	// A dictionary built afresh holds the values its column uses in bytewise order, the order a
-	// component's own build gives; one kept within a run only appends.
-	const dictionaryFor = (name: string, values: readonly string[] = []) => {
-		const held = feed.dictionaries.get(name);
-		if (held) return held;
-		const made = sortedDictionary(values);
-		feed.dictionaries.set(name, made);
-		return made;
-	};
-
-	const remember = (changed: Map<string, number[]>) => {
-		feed.history.push({
-			structure: feed.structure,
-			revision: feed.revision,
-			changed,
-			sizes: new Map(
-				[...feed.dictionaries].map(([name, dict]) => [
-					name,
-					dict.values.length,
-				]),
-			),
-		});
-		if (feed.history.length > RETAINED_REVISIONS + 1) feed.history.shift();
-	};
-
-	// `generations_` in `library.cpp` keeps one more than the revisions it retains, the current
-	// structure counted.
-	const MAX_GENERATIONS = RETAINED_REVISIONS + 1;
-	const generations = new Map<number, readonly LibraryEntry[]>();
-
-	type BuiltLibrary = ReturnType<typeof buildLibrary>;
-
-	let held: {
+	interface Held<T> {
 		key: string;
-		built: BuiltLibrary;
-		encoded: Map<string, Uint8Array<ArrayBuffer>>;
-	} | null = null;
+		value: T;
+	}
 
-	const heldKey = () =>
-		[feed.structure, feed.revision, feed.edits, ...feed.columns].join("\u0000");
+	const columnKey = (expression: string) =>
+		[tracksVersion, feed.edits, feed.changes.get(expression) ?? 0].join(
+			"\u0000",
+		);
 
-	const builtLibrary = () => {
-		const key = heldKey();
-		if (held?.key !== key)
-			held = {
-				key,
-				built: buildLibrary(),
-				encoded: new Map(),
-			};
-		return held;
-	};
+	type Facts = Pick<Column, "distinct" | "hasUnresolved" | "allUnresolved">;
 
-	const snapshotBody = (
-		{ built }: NonNullable<typeof held>,
-		part: { carried?: string[]; spineCarried?: boolean },
-	) => ({
-		kind: "snapshot" as const,
-		structure: feed.structure,
-		revision: feed.revision,
-		snapshotId: librarySnapshotId(),
-		trackCount: built.items.length,
-		columns: built.columns,
-		spine: built.spine,
-		...part,
+	const factsOf = (seen: ReadonlySet<string>): Facts => ({
+		distinct: seen.size,
+		hasUnresolved: seen.has(UNRESOLVED),
+		allUnresolved: seen.size === 1 && seen.has(UNRESOLVED),
 	});
 
-	let folded: { key: string; fold: Fold } | null = null;
+	const SPINE = ["directory", "filename", "subsong"] as const;
+	type Spine = Record<(typeof SPINE)[number], string>;
 
-	const foldKey = () =>
-		[feed.structure, feed.edits, ...feed.columns].join("\u0000");
+	const cutAt = (path: string) => path.lastIndexOf("/") + 1;
+	const spineOf = (entry: LibraryEntry): Spine => ({
+		directory: entry.path.slice(0, cutAt(entry.path)),
+		filename: entry.path.slice(cutAt(entry.path)),
+		subsong: String(entry.subsong),
+	});
 
-	const contentFold = () => {
-		const key = foldKey();
-		if (folded?.key === key) return folded.fold;
-		const { built } = builtLibrary();
-		const fold = emptyFold();
-		for (const column of built.columns)
-			foldColumn(
-				fold,
-				declaredColumn(column.name as string),
-				column.appended,
-				column.ids,
+	const factsHeld = new Map<string, Held<Facts>>();
+	let spineFactsHeld: Held<Record<(typeof SPINE)[number], Facts>> | null = null;
+
+	function* numberedSweep(): Sweep<Numbered> {
+		while (!numberingIsCurrent()) {
+			const made = yield* numberingSweep();
+			if (made) numbered = made;
+		}
+		return numbered as Numbered;
+	}
+
+	function* factsSweep(expression: string): Sweep<Facts> {
+		for (;;) {
+			const key = columnKey(expression);
+			const kept = factsHeld.get(expression);
+			if (kept?.key === key) return kept.value;
+			const values = yield* valuesSweep(expression);
+			const seen = new Set<string>();
+			for (let at = 0; at < values.length; at += 1) {
+				seen.add(values[at]);
+				if (at % CHUNK === CHUNK - 1) yield;
+			}
+			const value = factsOf(seen);
+			if (key === columnKey(expression)) {
+				factsHeld.set(expression, { key, value });
+				return value;
+			}
+		}
+	}
+
+	function* spineFactsSweep(): Sweep<Record<(typeof SPINE)[number], Facts>> {
+		for (;;) {
+			const key = String(tracksVersion);
+			if (spineFactsHeld?.key === key) return spineFactsHeld.value;
+			const { entries } = yield* numberedSweep();
+			const seen = {
+				directory: new Set<string>(),
+				filename: new Set<string>(),
+				subsong: new Set<string>(),
+			};
+			for (let at = 0; at < entries.length; at += 1) {
+				const parts = spineOf(entries[at]);
+				for (const name of SPINE) seen[name].add(parts[name]);
+				if (at % CHUNK === CHUNK - 1) yield;
+			}
+			const value = {
+				directory: factsOf(seen.directory),
+				filename: factsOf(seen.filename),
+				subsong: factsOf(seen.subsong),
+			};
+			if (key === String(tracksVersion)) {
+				spineFactsHeld = { key, value };
+				return value;
+			}
+		}
+	}
+
+	// A column's value at every ordinal, and the parts of every path, held until the tracks or a tag
+	// the column reads moves: an answer that reads them again finds the same arrays, which is what
+	// lets what is derived from them be held beside them.
+	const valuesHeld = new Map<string, Held<string[]>>();
+	let partsHeld: Held<{
+		directory: string[];
+		filename: string[];
+		subsong: string[];
+		paths: string[];
+	}> | null = null;
+
+	function* valuesSweep(expression: string): Sweep<string[]> {
+		for (;;) {
+			const key = columnKey(expression);
+			const kept = valuesHeld.get(expression);
+			if (kept?.key === key) return kept.value;
+			const { entries } = yield* numberedSweep();
+			const values = yield* mapped(entries, (entry) =>
+				String(evaluate(entry.track, expression)),
 			);
-		for (const [name, column] of Object.entries(built.spine))
-			foldColumn(fold, spineColumn(name), column.appended, column.ids);
-		folded = { key, fold };
-		return fold;
+			if (key === columnKey(expression)) {
+				valuesHeld.set(expression, { key, value: values });
+				return values;
+			}
+		}
+	}
+
+	function* partsSweep() {
+		for (;;) {
+			const key = String(tracksVersion);
+			if (partsHeld?.key === key) return partsHeld.value;
+			const { entries } = yield* numberedSweep();
+			const value = {
+				directory: yield* mapped(entries, (entry) => spineOf(entry).directory),
+				filename: yield* mapped(entries, (entry) => spineOf(entry).filename),
+				subsong: yield* mapped(entries, (entry) => spineOf(entry).subsong),
+				paths: yield* mapped(entries, (entry) => entry.path),
+			};
+			if (key === String(tracksVersion)) {
+				partsHeld = { key, value };
+				return value;
+			}
+		}
+	}
+
+	// The columns a read of these roles holds, the same object until one of them moves.
+	const readsHeld = new Map<string, Held<Record<string, string[]>>>();
+	function* columnsReadSweep(
+		roles: ReadonlyMap<string, string>,
+	): Sweep<Record<string, string[]>> {
+		const rolesKey = [...roles]
+			.map(([role, expression]) => `${role}=${expression}`)
+			.sort()
+			.join("\u0000");
+		const keyNow = () => [...roles.values()].map(columnKey).join("\u0001");
+		for (;;) {
+			const key = keyNow();
+			const kept = readsHeld.get(rolesKey);
+			if (kept?.key === key) return kept.value;
+			const columns: Record<string, string[]> = {};
+			for (const [role, expression] of roles)
+				columns[role] = yield* valuesSweep(expression);
+			if (key === keyNow()) {
+				readsHeld.set(rolesKey, { key, value: columns });
+				return columns;
+			}
+		}
+	}
+
+	function* builtSweep(): Sweep<void> {
+		yield* numberedSweep();
+		for (const expression of feed.columns) yield* factsSweep(expression);
+		yield* spineFactsSweep();
+	}
+
+	let discarded = false;
+	// What an answer wants held before it is asked again, run once a large library has been read anew.
+	let whenBuilt: (() => void) | null = null;
+
+	let numbering: Promise<void> | null = null;
+	let preparing: Promise<void> | null = null;
+
+	const preparedNumbering = (): Promise<void> => {
+		if (numberingIsCurrent()) return Promise.resolve();
+		numbering ??= runYielding(numberedSweep(), () => discarded)
+			.then(() => undefined)
+			.finally(() => {
+				numbering = null;
+			});
+		return numbering;
 	};
 
-	const librarySnapshotId = () =>
-		feed.columns.length === 0
-			? NO_SNAPSHOT
-			: snapshotIdOf(contentFold(), ordinalOrder().length);
-
-	function buildLibrary() {
-		const items = ordinalOrder();
-		const cut = (path: string) => path.lastIndexOf("/") + 1;
-		const bone = (name: string, values: string[]) =>
-			wholeColumn(null, dictionaryFor(name, values), values);
-
-		return {
-			items,
-			columns: feed.columns.map((expression) => {
-				const values = items.map((entry) =>
-					String(evaluate(entry.track, expression)),
-				);
-				return wholeColumn(
-					expression,
-					dictionaryFor(expression, values),
-					values,
-				);
-			}),
-			spine: {
-				directory: bone(
-					"directory",
-					items.map((entry) => entry.path.slice(0, cut(entry.path))),
-				),
-				filename: bone(
-					"filename",
-					items.map((entry) => entry.path.slice(cut(entry.path))),
-				),
-				subsong: bone(
-					"subsong",
-					items.map((entry) => String(entry.subsong)),
-				),
-			},
-		};
-	}
+	const prepared = (builtToo: boolean): Promise<void> => {
+		if (!builtToo) return preparedNumbering();
+		preparing ??= preparedNumbering()
+			.then(() => runYielding(builtSweep(), () => discarded))
+			.finally(() => {
+				preparing = null;
+			});
+		return preparing;
+	};
 
 	function startLibraryBuild(columns: string[]) {
 		feed.building = [...columns];
@@ -940,50 +1042,29 @@ export function createState({
 			if (!dropped.has(track)) libraryTracks[kept++] = track;
 		libraryTracks.length = kept;
 		for (const track of additions) libraryTracks.push(track);
-		libraryPathByTrackKey = pathsByTrackKey();
-		numbered = null;
-	}
-
-	// `worthKeeping` in `library_splice.cpp`: entries no row uses, over every declared column and
-	// the spine, outnumber those some row does.
-	function dictionariesOutgrown() {
-		const { built } = builtLibrary();
-		let live = 0;
-		let dead = 0;
-		for (const column of [...built.columns, ...Object.values(built.spine)]) {
-			const used = new Set(column.ids).size;
-			live += used;
-			dead += column.distinct - used;
-		}
-		return dead > live;
+		tracksVersion += 1;
+		// What was read off the old list is let go before the new one is read, not after.
+		valuesHeld.clear();
+		factsHeld.clear();
+		readsHeld.clear();
+		partsHeld = null;
+		spineFactsHeld = null;
 	}
 
 	function finishLibraryBuild() {
 		if (!feed.building) return;
-		const tracksMoved = pendingChange.add > 0 || pendingChange.remove > 0;
 		applyPendingChange();
-		const isRedeclared = !sameMembers(feed.columns, feed.building);
 		feed.columns = feed.building;
 		feed.building = null;
 		feed.structure = feed.structure === 0 ? firstStructure : feed.structure + 1;
 		feed.revision += 1;
-		feed.structureFrom = feed.revision;
-		const startAgain = (endedBy: ChangesRefusal) => {
-			feed.historyEndedAt = feed.structure;
-			feed.historyEndedBy = endedBy;
-			feed.dictionaries.clear();
-			feed.history.length = 0;
-			generations.clear();
-			held = null;
-		};
-		if (isRedeclared) startAgain("rearranged");
-		else if (tracksMoved && dictionariesOutgrown())
-			startAgain("dictionariesCompacted");
-		builtLibrary();
-		remember(new Map());
-		generations.set(feed.structure, ordinalOrder());
-		if (generations.size > MAX_GENERATIONS)
-			generations.delete(generations.keys().next().value as number);
+		// A component reads the library when it builds it, not when it is first asked.
+		if (libraryTracks.length > SYNC_SWEEP_LIMIT)
+			void prepared(true).then(() => whenBuilt?.());
+	}
+
+	function countChange(column: string) {
+		feed.changes.set(column, (feed.changes.get(column) ?? 0) + 1);
 	}
 
 	function countPlay(track: Track) {
@@ -1005,54 +1086,17 @@ export function createState({
 
 		const row = entries[ordinal].track;
 		const path = row["%path%"];
-		const kept = folded?.key === foldKey() ? folded.fold : null;
 		const count = String(given ?? Number(row[PLAY_COUNT] ?? 0) + 1);
 		const stamped = given === undefined && feed.columns.includes(LAST_PLAYED);
 		const stamp = stamped ? localStampOf(new Date(Date.now())) : "";
-		const run: number[] = [];
 		for (
 			let at = ordinal;
 			at < entries.length && entries[at].track["%path%"] === path;
 			at += 1
 		) {
-			run.push(at);
 			const { track } = entries[at];
-			if (kept)
-				foldCell(
-					kept,
-					declaredColumn(PLAY_COUNT),
-					at,
-					String(evaluate(track, PLAY_COUNT)),
-					-1,
-				);
 			track[PLAY_COUNT] = count;
-			if (kept)
-				foldCell(
-					kept,
-					declaredColumn(PLAY_COUNT),
-					at,
-					String(evaluate(track, PLAY_COUNT)),
-					1,
-				);
-			if (stamped) {
-				if (kept)
-					foldCell(
-						kept,
-						declaredColumn(LAST_PLAYED),
-						at,
-						String(evaluate(track, LAST_PLAYED)),
-						-1,
-					);
-				track[LAST_PLAYED] = stamp;
-				if (kept)
-					foldCell(
-						kept,
-						declaredColumn(LAST_PLAYED),
-						at,
-						String(evaluate(track, LAST_PLAYED)),
-						1,
-					);
-			}
+			if (stamped) track[LAST_PLAYED] = stamp;
 		}
 		for (const playlist of state.playlists)
 			for (const copy of playlist.items)
@@ -1060,295 +1104,41 @@ export function createState({
 					copy[PLAY_COUNT] = count;
 					if (stamped) copy[LAST_PLAYED] = stamp;
 				}
-		dictionaryFor(PLAY_COUNT).id(count);
-		if (stamped) dictionaryFor(LAST_PLAYED).id(stamp);
-
 		feed.revision += 1;
-		remember(
-			new Map([
-				[PLAY_COUNT, run],
-				...(stamped ? [[LAST_PLAYED, run] as [string, number[]]] : []),
-			]),
-		);
+		countChange(PLAY_COUNT);
+		if (stamped) countChange(LAST_PLAYED);
 		return true;
 	}
 
-	function libraryExport({
-		only,
-		spine = true,
-	}: {
-		only?: readonly string[];
-		spine?: boolean;
-	} = {}): Uint8Array<ArrayBuffer> {
-		const library = builtLibrary();
-		const carried = only && feed.columns.filter((name) => only.includes(name));
-		const key = `${carried?.join("\u0000") ?? "*"}|${spine}`;
-		let bytes = library.encoded.get(key);
-		if (!bytes) {
-			bytes = encodeJlib(
-				snapshotBody(library, { carried, spineCarried: spine }),
+	function libraryRows(ordinals: readonly number[]): Uint8Array<ArrayBuffer> {
+		const { entries } = numberedLibrary();
+		const named = ordinals.map((ordinal) => entries[ordinal]);
+		const spine = runToEnd(spineFactsSweep());
+		const spineWindow = (name: (typeof SPINE)[number]) =>
+			windowOfValues(
+				null,
+				named.map((entry) => spineOf(entry)[name]),
+				spine[name],
 			);
-			library.encoded.set(key, bytes);
-		}
-		return bytes;
-	}
-
-	const NO_ROW = -1;
-
-	// How the rows of one numbering relate to the one before when tracks were added and removed and
-	// nothing else moved, as `diffOrders` in `library_splice.cpp` pairs them: the k-th track the two
-	// share is the k-th of each. Null where the shared tracks changed their order.
-	function diffOrders(
-		was: readonly LibraryEntry[],
-		is: readonly LibraryEntry[],
-	) {
-		const wasKeys = was.map((entry) => trackKey(entry.track));
-		const isKeys = is.map((entry) => trackKey(entry.track));
-		const tallies = new Map<
-			string,
-			{ was: number; is: number; seen: number }
-		>();
-		const tallyOf = (key: string) => {
-			let tally = tallies.get(key);
-			if (!tally) {
-				tally = { was: 0, is: 0, seen: 0 };
-				tallies.set(key, tally);
-			}
-			return tally;
-		};
-		for (const key of wasKeys) tallyOf(key).was += 1;
-		for (const key of isKeys) tallyOf(key).is += 1;
-
-		const removed: number[] = [];
-		const sharedWas: number[] = [];
-		wasKeys.forEach((key, row) => {
-			const tally = tallyOf(key);
-			tally.seen += 1;
-			if (tally.seen <= Math.min(tally.was, tally.is)) sharedWas.push(row);
-			else removed.push(row);
-		});
-		for (const tally of tallies.values()) tally.seen = 0;
-
-		const sourceOf = new Array<number>(isKeys.length).fill(NO_ROW);
-		let paired = 0;
-		for (let row = 0; row < isKeys.length; row += 1) {
-			const tally = tallyOf(isKeys[row]);
-			tally.seen += 1;
-			if (tally.seen > Math.min(tally.was, tally.is)) continue;
-			const source = sharedWas[paired++];
-			if (wasKeys[source] !== isKeys[row]) return null;
-			sourceOf[row] = source;
-		}
-		return { sourceOf, removed };
-	}
-
-	// `originAfter` in `library_splice.cpp`: each row's ordinal in the numbering the client holds,
-	// carried across one more step of rows removed and inserted.
-	const originAfter = (
-		origin: readonly number[],
-		removed: readonly number[],
-		inserted: ReadonlySet<number>,
-	) => {
-		const removedSet = new Set(removed);
-		const kept = origin.filter((_, row) => !removedSet.has(row));
-		const after: number[] = [];
-		let next = 0;
-		for (let row = 0; row < kept.length + inserted.size; row += 1)
-			after.push(inserted.has(row) ? NO_ROW : kept[next++]);
-		return after;
-	};
-
-	function rowsSpliced(held: readonly LibraryEntry[], structure: number) {
-		const now = ordinalOrder();
-		let origin = held.map((_, ordinal) => ordinal);
-		let before = held;
-		for (let step = structure + 1; step <= feed.structure; step += 1) {
-			const next = step === feed.structure ? now : generations.get(step);
-			if (!next) return { gone: true as const };
-			const diff = diffOrders(before, next);
-			if (!diff) return null;
-			const inserted = new Set(
-				diff.sourceOf.flatMap((source, row) =>
-					source === NO_ROW ? [row] : [],
-				),
-			);
-			origin = originAfter(origin, diff.removed, inserted);
-			before = next;
-		}
-
-		const survives = new Set(origin);
-		const removed = held.flatMap((_, ordinal) =>
-			survives.has(ordinal) ? [] : [ordinal],
-		);
-		const inserted = origin.flatMap((from, row) =>
-			from === NO_ROW ? [row] : [],
-		);
-		const ordinalNow = new Map(
-			now.map((entry, ordinal) => [trackKey(entry.track), ordinal]),
-		);
-		return { removed, inserted, now, ordinalNow, origin };
-	}
-
-	// The outcomes `DeltaOutcome` in `plugins/fb2k/src/core/failures.cpp` names that this fake can reach.
-	const refused = (status: 409 | 410, outcome: ChangesRefusal) =>
-		({ status, outcome }) as const;
-
-	function libraryChanges(since: number, structure = feed.structure) {
-		if (structure > feed.structure || structure < firstStructure)
-			return refused(409, "pairNotHeld");
-		if (structure < feed.historyEndedAt)
-			return refused(410, feed.historyEndedBy);
-		if (structure === feed.structure && since < feed.structureFrom)
-			return refused(409, "pairNotHeld");
-		if (structure === feed.structure && since > feed.revision)
-			return refused(410, "revisionUnknown");
-
-		const at = feed.history.findIndex((entry) => entry.revision === since);
-		if (at < 0)
-			return refused(
-				410,
-				since < (feed.history[0]?.revision ?? 0)
-					? "revisionTooOld"
-					: "revisionUnknown",
-			);
-		if (feed.history[at].structure !== structure)
-			return refused(409, "pairNotHeld");
-
-		if (structure !== feed.structure) return libraryRespliced(at, structure);
-
-		const moved = new Map<string, Set<number>>();
-		for (const entry of feed.history.slice(at + 1))
-			for (const [name, ordinals] of entry.changed) {
-				const held = moved.get(name) ?? new Set<number>();
-				moved.set(name, held);
-				for (const ordinal of ordinals) held.add(ordinal);
-			}
-
-		const items = ordinalOrder();
-		const sizes = feed.history[at].sizes;
-
-		return {
-			status: 200 as const,
-			bytes: encodeJlib({
-				kind: "delta",
-				structure: feed.structure,
-				revision: feed.revision,
-				since,
-				snapshotId: librarySnapshotId(),
-				trackCount: items.length,
-				columns: [...moved].map(([name, ordinals]) =>
-					changedColumn(
-						name,
-						dictionaryFor(name),
-						sizes.get(name) ?? 0,
-						[...ordinals]
-							.sort((a, b) => a - b)
-							.map((ordinal) => ({
-								ordinal,
-								value: String(evaluate(items[ordinal].track, name)),
-							})),
-					),
-				),
-				spine: {},
-			}),
-		};
-	}
-
-	// The contract answers `410` for a splice of half the export's bytes or more.
-	function libraryRespliced(at: number, structure: number) {
-		const held = generations.get(structure);
-		if (!held) return refused(410, "revisionTooOld");
-		const rows = rowsSpliced(held, structure);
-		if (!rows) return refused(410, "rearranged");
-		if ("gone" in rows) return refused(410, "revisionTooOld");
-		const { removed, inserted, now, ordinalNow, origin } = rows;
-
-		const moved = new Map<string, Set<number>>();
-		for (const entry of feed.history.slice(at + 1)) {
-			const numbering =
-				entry.structure === feed.structure
-					? now
-					: generations.get(entry.structure);
-			if (!numbering) return refused(410, "revisionTooOld");
-			for (const [name, ordinals] of entry.changed)
-				for (const ordinal of ordinals) {
-					const key = trackKey(numbering[ordinal].track);
-					const survivor = ordinalNow.get(key);
-					if (survivor === undefined || origin[survivor] === NO_ROW) continue;
-					const movedHere = moved.get(name) ?? new Set<number>();
-					moved.set(name, movedHere);
-					movedHere.add(survivor);
-				}
-		}
-
-		const sizes = feed.history[at].sizes;
-		const carriedColumn = (
-			name: string,
-			valueAt: (ordinal: number) => string,
-			ordinals: Iterable<number>,
-		) =>
-			changedColumn(
-				name,
-				dictionaryFor(name),
-				sizes.get(name) ?? 0,
-				[...new Set(ordinals)]
-					.sort((a, b) => a - b)
-					.map((ordinal) => ({ ordinal, value: valueAt(ordinal) })),
-			);
-
-		const grown = (name: string) =>
-			dictionaryFor(name).values.length > (sizes.get(name) ?? 0);
-		const names =
-			inserted.length > 0
-				? feed.columns
-				: feed.columns.filter((name) => moved.has(name) || grown(name));
-		const cut = (path: string) => path.lastIndexOf("/") + 1;
-		const bone = (name: string, valueAt: (ordinal: number) => string) =>
-			carriedColumn(name, valueAt, inserted);
-		const carriesBone = (name: string) => inserted.length > 0 || grown(name);
-
-		const bytes = encodeJlib({
-			kind: "splice",
+		return encodeJlib({
+			kind: "rows",
 			structure: feed.structure,
 			revision: feed.revision,
-			since: feed.history[at].revision,
-			sinceStructure: structure,
-			snapshotId: librarySnapshotId(),
-			trackCount: now.length,
-			removed,
-			inserted,
-			columns: names.map((name) =>
-				carriedColumn(
-					name,
-					(ordinal) => String(evaluate(now[ordinal].track, name)),
-					[...inserted, ...(moved.get(name) ?? [])],
+			trackCount: entries.length,
+			rows: ordinals.length,
+			columns: feed.columns.map((expression) =>
+				windowOfValues(
+					expression,
+					named.map((entry) => String(evaluate(entry.track, expression))),
+					runToEnd(factsSweep(expression)),
 				),
 			),
-			spine: Object.fromEntries(
-				[
-					[
-						"directory",
-						(ordinal: number) =>
-							now[ordinal].path.slice(0, cut(now[ordinal].path)),
-					],
-					[
-						"filename",
-						(ordinal: number) =>
-							now[ordinal].path.slice(cut(now[ordinal].path)),
-					],
-					["subsong", (ordinal: number) => String(now[ordinal].subsong)],
-				]
-					.filter(([name]) => carriesBone(name as string))
-					.map(([name, valueAt]) => [
-						name,
-						bone(name as string, valueAt as (ordinal: number) => string),
-					]),
-			),
+			spine: {
+				directory: spineWindow("directory"),
+				filename: spineWindow("filename"),
+				subsong: spineWindow("subsong"),
+			},
 		});
-
-		return bytes.length * 2 >= libraryExport().length
-			? refused(410, "spliceTooLarge")
-			: { status: 200 as const, bytes };
 	}
 
 	const queuePayload = () =>
@@ -1711,12 +1501,45 @@ export function createState({
 			notify({ playlists: true });
 		},
 
-		libraryExport,
+		libraryRows,
 
-		librarySnapshotId,
-
-		libraryEdited() {
+		libraryEdited(fields: string[]) {
 			state.libraryFeed.edits += 1;
+			state.libraryFeed.revision += 1;
+			for (const column of state.libraryFeed.columns)
+				if (fields.some((field) => readsField(column, field)))
+					countChange(column);
+		},
+
+		libraryOrdinalFor(track: Track | null) {
+			if (!track) return null;
+			if (!numberingIsCurrent() && libraryTracks.length > SYNC_SWEEP_LIMIT) {
+				void prepared(false);
+				return null;
+			}
+			return numberedLibrary().ordinalOfKey.get(trackKey(track)) ?? null;
+		},
+
+		valuesSweep,
+		partsSweep,
+		columnsReadSweep,
+		isDiscarded: () => discarded,
+		afterLargeBuild(callback: () => void) {
+			whenBuilt = callback;
+		},
+		discard() {
+			discarded = true;
+		},
+		settledNumbering: () => prepared(false),
+		settledLargeNumbering() {
+			if (libraryTracks.length > SYNC_SWEEP_LIMIT) void prepared(false);
+		},
+		settledLibrary: () => prepared(true),
+
+		libraryChangeCounts() {
+			return state.libraryFeed.columns.map(
+				(column) => state.libraryFeed.changes.get(column) ?? 0,
+			);
 		},
 
 		startLibraryBuild,
@@ -1725,8 +1548,6 @@ export function createState({
 
 		countPlay,
 		countPlayAt,
-
-		libraryChanges,
 
 		sortItems(
 			playlistId: string,
@@ -1751,14 +1572,29 @@ export function createState({
 		},
 
 		libraryArtworkFor(path: string) {
-			const entry = libraryItemsOf(libraryTracks).find(
-				(item) => item.path === path,
-			);
+			const entry = numberedLibrary().entryAtPath.get(path);
 			return entry ? coverOfTrack(entry.track) : null;
 		},
 
+		libraryEntriesAt(path: string): readonly LibraryEntry[] {
+			const held = numberedLibrary();
+			const repeated = held.entriesAtRepeatedPath.get(path);
+			if (repeated) return repeated;
+			const entry = held.entryAtPath.get(path);
+			return entry ? [entry] : [];
+		},
+
 		libraryPathFor(track: Track) {
-			return libraryPathByTrackKey.get(trackKey(track)) ?? null;
+			// A state poll names the playing track's path against the numbering it finds, and does
+			// not wait for a library too large to number in one turn to be numbered again.
+			const held =
+				numberingIsCurrent() || libraryTracks.length <= SYNC_SWEEP_LIMIT
+					? numberedLibrary()
+					: numbered;
+			if (!held) return null;
+			return held.ordinalOfKey.has(trackKey(track))
+				? libraryPathOf(track, held.rootDepth)
+				: null;
 		},
 
 		queueInsert(entries: QueuedEntry[], at?: number) {

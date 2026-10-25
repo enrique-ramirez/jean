@@ -1,6 +1,9 @@
 import { empty, json } from "../http.ts";
 import { NOT_BUILT, notFound, STRUCTURE_MOVED } from "./answers.ts";
 import { delay } from "./latency.ts";
+import { rolesAsked } from "./library.ts";
+import { LIBRARY_ROLE_NAMES } from "./librarySummary.ts";
+import { coversFor, settleCovers } from "./playlistCovers.ts";
 import type { Asked, FakeState } from "./request.ts";
 import {
 	declaresOnly,
@@ -13,6 +16,8 @@ import {
 } from "./requestBodies.ts";
 
 type QueuedRead = ReturnType<FakeState["queuedEntries"]>[number];
+
+const QUEUE_PARAMETERS = ["session", "deviceId"];
 
 const SESSION_QUEUE_LIMIT = 10_000;
 
@@ -291,7 +296,11 @@ function queueSourceOf(body: unknown): QueueSource {
 
 // One row of `GET /api/queue`, read through the entry's handle. A missing tag is
 // an empty string, and a position the player has lost is no position at all.
-const queuedTrackOf = (state: FakeState, entry: QueuedRead) => {
+const queuedTrackOf = (
+	state: FakeState,
+	entry: QueuedRead,
+	coverOf: ReturnType<typeof coversFor>,
+) => {
 	const playlist = entry.playlistId
 		? state.playlistById(entry.playlistId)
 		: null;
@@ -307,6 +316,7 @@ const queuedTrackOf = (state: FakeState, entry: QueuedRead) => {
 			playlist && entry.index >= 0
 				? { playlistId: playlist.guid, index: entry.index }
 				: null,
+		...(coverOf ? { cover: coverOf(entry.track) } : null),
 	};
 };
 
@@ -349,12 +359,17 @@ export async function handleQueue({
 
 	if (path === "/api/queue") {
 		if (method === "GET") {
+			const roles = rolesAsked(url, LIBRARY_ROLE_NAMES, QUEUE_PARAMETERS);
+			if (!(roles instanceof Map)) return json(response, roles, 400);
+
 			if (state.latency > 0) await delay(state.latency);
+			await settleCovers(state, roles);
+			const coverOf = coversFor(state, roles);
 			return json(response, {
 				revision: addressed.queueRevision,
 				entries: addressed
 					.queuedEntries()
-					.map((entry) => queuedTrackOf(state, entry)),
+					.map((entry) => queuedTrackOf(state, entry, coverOf)),
 			});
 		}
 

@@ -12,6 +12,10 @@ import { deliveredAfter, latencyOf } from "./fooJean/latency.ts";
 import { handleLibrary, handlePlayingTrack } from "./fooJean/library.ts";
 import { handleOutputs } from "./fooJean/outputs.ts";
 import { handlePlayback } from "./fooJean/playback.ts";
+import {
+	handlePlaylistReads,
+	isPlaylistRead,
+} from "./fooJean/playlistReads.ts";
 import { handlePlaylistRows } from "./fooJean/playlistRows.ts";
 import { handlePlaylists } from "./fooJean/playlists.ts";
 import { handleQueue } from "./fooJean/queue.ts";
@@ -190,6 +194,7 @@ export async function handleFooJean({
 		headers,
 		body,
 		bodyBytes,
+		client,
 		response,
 		recorded,
 		named,
@@ -213,6 +218,8 @@ export async function handleFooJean({
 	if (path === "/api/status" || path === "/api/capabilities")
 		return handleConnection(asked);
 	if (path === "/api/state") return handleState(asked);
+
+	await state.settledNumbering();
 	if (path.startsWith("/api/playback/") || path === "/api/volume")
 		return handlePlayback(asked);
 	if (path.startsWith("/api/outputs")) return handleOutputs(asked);
@@ -234,6 +241,7 @@ export async function handleFooJean({
 	if (path === "/api/track/playing") return handlePlayingTrack(asked);
 	if (path.startsWith("/api/artwork")) return handleArtwork(asked);
 	if (PLAYLIST_ROWS_PATH.test(path)) return handlePlaylistRows(asked);
+	if (isPlaylistRead(method, path)) return handlePlaylistReads(asked);
 	if (path.startsWith("/api/playlists")) return handlePlaylists(asked);
 	if (path.startsWith("/api/autoplaylists")) return handleAutoPlaylists(asked);
 	if (path.startsWith("/api/stream")) return handleStream(asked);

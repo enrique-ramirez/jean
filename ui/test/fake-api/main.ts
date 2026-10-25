@@ -1,3 +1,5 @@
+import { COMPONENT_RATE_LIMITS } from "./fooJean/rateLimits.ts";
+import { WHOLE_LIBRARY } from "./fooJean/wholeLibrary.ts";
 import { libraryOfShape } from "./libraryShapes.ts";
 import { createServer } from "./server.ts";
 import { createState } from "./state.ts";
@@ -11,7 +13,7 @@ const flag = (name: string, fallback: string | null) => {
 const port = Number(flag("--port", "8881"));
 const serveDir = flag("--serve", null);
 const tracks = flag("--tracks", null);
-const noCeiling = args.includes("--no-ceiling");
+const limited = args.includes("--rate-limits");
 
 const TRACKS_PER_ALBUM = 10;
 const ALBUMS_PER_ARTIST = 10;
@@ -30,17 +32,28 @@ const largeLibrary = (count: number) =>
 		years: YEARS,
 	});
 
+const withWholeLibraryPlaylist = (state: ReturnType<typeof createState>) => {
+	const made = state.addPlaylist(WHOLE_LIBRARY);
+	const playlist = state.playlistById(made.id);
+	if (!playlist) return state;
+	playlist.isAuto = true;
+	playlist.items = [...state.libraryTracks];
+	return state;
+};
+
 // `createState()`'s own default holds no component, since that is what the suite's worker
 // fixture resets away before any spec sees it. Standalone, nothing resets it, so this is the
 // one caller that has to ask for a component that is there.
+const fake = createState({
+	fooJean: limited ? { rateLimits: COMPONENT_RATE_LIMITS } : {},
+	...(tracks === null ? null : { mediaLibrary: largeLibrary(Number(tracks)) }),
+});
+
+await fake.settledNumbering();
+
 const server = createServer({
 	serveDir,
-	state: createState({
-		fooJean: noCeiling ? { libraryCeiling: null } : {},
-		...(tracks === null
-			? null
-			: { mediaLibrary: largeLibrary(Number(tracks)) }),
-	}),
+	state: tracks === null ? fake : withWholeLibraryPlaylist(fake),
 });
 
 server.listen(port, () => {

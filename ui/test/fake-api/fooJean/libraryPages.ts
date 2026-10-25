@@ -1,3 +1,4 @@
+import { CHUNK, runToEnd, type Sweep } from "../yielding.ts";
 import {
 	readValue,
 	tagGrouper,
@@ -58,7 +59,7 @@ export const creditedArtists = (artist: string | null) => {
 	return { lead: lead ?? null, guests };
 };
 
-interface Member {
+export interface Member {
 	name: string;
 	key: string;
 	isGuest: boolean;
@@ -110,13 +111,18 @@ const soleNameOf = (credit: string | null) => {
 	return lead ? collapseRepeatedTag(lead) : null;
 };
 
-const learn = (columns: PageColumns): Learned => {
+function* learnSweep(columns: PageColumns): Sweep<Learned> {
 	const idNames = new Map<string, string>();
 	const standalone = new Set<string>();
 	for (const { credit, ids } of tagsOf(columns)) {
-		const soleNames = credit.map((raw) => soleNameOf(readValue(raw)));
+		const soleNames: (string | null)[] = [];
+		for (let ref = 0; ref < credit.length; ref += 1) {
+			soleNames.push(soleNameOf(readValue(credit[ref])));
+			if (ref % CHUNK === CHUNK - 1) yield;
+		}
 		for (const name of soleNames) if (name) standalone.add(tagKey(name));
 		for (let ref = 0; ref < columns.trackCount; ref += 1) {
+			if (ref % CHUNK === CHUNK - 1) yield;
 			const raw = readValue(ids[ref]);
 			if (raw === null || countOf(raw) !== 1 || idNames.has(raw)) continue;
 			const name = soleNames[ref];
@@ -124,7 +130,7 @@ const learn = (columns: PageColumns): Learned => {
 		}
 	}
 	return { idNames, standalone };
-};
+}
 
 const membersOf = (
 	credit: string | null,
@@ -168,8 +174,8 @@ const membersOf = (
 	return parts.filter((part) => learned.standalone.has(part.key));
 };
 
-export const creditMembers = (columns: PageColumns, guesses: boolean) => {
-	const learned = learn(columns);
+export function* creditMembersSweep(columns: PageColumns, guesses: boolean) {
+	const learned = yield* learnSweep(columns);
 	const [artist, albumArtist] = tagsOf(columns);
 	const mayGuess = (ref: number) =>
 		guesses &&
@@ -186,21 +192,30 @@ export const creditMembers = (columns: PageColumns, guesses: boolean) => {
 				mayGuess(ref),
 			);
 	return { artist: reader(artist), albumArtist: reader(albumArtist) };
-};
+}
+
+export const creditMembers = (columns: PageColumns, guesses: boolean) =>
+	runToEnd(creditMembersSweep(columns, guesses));
 
 const groupOf =
 	(values: readonly string[], groups: Map<string, number>) => (ref: number) =>
 		groups.get(values[ref]) ?? -1;
 
-export const recordsOf = (columns: PageColumns) => {
+export function* recordsSweep(columns: PageColumns) {
 	const albums = tagGrouper();
-	const albumOf = groupOf(columns.album, albums.addBytewise(columns.album));
+	const albumOf = groupOf(
+		columns.album,
+		yield* albums.addBytewiseSweep(columns.album),
+	);
 	const artists = tagGrouper();
 	const byAlbumArtist = groupOf(
 		columns.albumArtist,
-		artists.addBytewise(columns.albumArtist),
+		yield* artists.addBytewiseSweep(columns.albumArtist),
 	);
-	const byArtist = groupOf(columns.artist, artists.addBytewise(columns.artist));
+	const byArtist = groupOf(
+		columns.artist,
+		yield* artists.addBytewiseSweep(columns.artist),
+	);
 	const artistOf = (ref: number) => {
 		const credited = byAlbumArtist(ref);
 		return credited >= 0 ? credited : byArtist(ref);
@@ -217,28 +232,33 @@ export const recordsOf = (columns: PageColumns) => {
 			return album < 0 ? null : `${album},${artistOf(ref)}`;
 		},
 	};
-};
+}
 
-export const albumPage = (
+export const recordsOf = (columns: PageColumns) =>
+	runToEnd(recordsSweep(columns));
+
+export function* albumPageSweep(
 	columns: PageColumns,
 	artist: string | null,
 	album: string,
-): Page => {
+): Sweep<Page> {
 	const nothing = { refs: [], album, artist: null };
 	if (!tagKey(album)) return nothing;
 
-	const records = recordsOf(columns);
+	const records = yield* recordsSweep(columns);
 	const albumGroup = records.albumGroup(tagKey(album));
 	if (albumGroup < 0) return nothing;
 	const artistGroup = artist ? records.artistGroup(tagKey(artist)) : -1;
 
 	const refs: number[] = [];
-	for (let ref = 0; ref < columns.trackCount; ref += 1)
+	for (let ref = 0; ref < columns.trackCount; ref += 1) {
+		if (ref % CHUNK === CHUNK - 1) yield;
 		if (
 			records.albumOf(ref) === albumGroup &&
 			records.artistOf(ref) === artistGroup
 		)
 			refs.push(ref);
+	}
 	if (refs.length === 0) return nothing;
 
 	return {
@@ -246,20 +266,20 @@ export const albumPage = (
 		album: records.albumNames[albumGroup],
 		artist: artistGroup < 0 ? null : records.artistNames[artistGroup],
 	};
-};
+}
 
-export const artistPage = (
+export function* artistPageSweep(
 	columns: PageColumns,
 	artist: string,
 	guesses: boolean,
-): Credited => {
+): Sweep<Credited> {
 	const own: number[] = [];
 	const shared: number[] = [];
 	const guest: number[] = [];
 	const wanted = tagKey(artist);
 	if (!wanted) return { own, shared, guest };
 
-	const members = creditMembers(columns, guesses);
+	const members = yield* creditMembersSweep(columns, guesses);
 	const names = (named: readonly Member[], isGuest: boolean) =>
 		named.some((member) => member.key === wanted && member.isGuest === isGuest);
 	const namedAt = (ref: number, isGuest: boolean) =>
@@ -267,6 +287,7 @@ export const artistPage = (
 		names(members.albumArtist(ref), isGuest);
 
 	for (let ref = 0; ref < columns.trackCount; ref += 1) {
+		if (ref % CHUNK === CHUNK - 1) yield;
 		const credit = creditedArtists(readValue(columns.artist[ref]));
 		const act = readValue(columns.albumArtist[ref]);
 		if (
@@ -282,17 +303,21 @@ export const artistPage = (
 			guest.push(ref);
 	}
 	return { own, shared, guest };
-};
+}
 
-export const genrePage = (columns: PageColumns, genre: string): number[] => {
+export function* genrePageSweep(
+	columns: PageColumns,
+	genre: string,
+): Sweep<number[]> {
 	const wanted = tagKey(genre);
 	if (!wanted) return [];
 
 	const refs: number[] = [];
 	for (let ref = 0; ref < columns.trackCount; ref += 1) {
+		if (ref % CHUNK === CHUNK - 1) yield;
 		const raw = readValue(columns.genre[ref]);
 		if (raw !== null && valuesIn(raw).some((one) => tagKey(one) === wanted))
 			refs.push(ref);
 	}
 	return refs;
-};
+}

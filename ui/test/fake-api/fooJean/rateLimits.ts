@@ -8,7 +8,12 @@ export type Bucket =
 	| "previews"
 	| "statePolls"
 	| "librarySummaries"
-	| "libraryQuestions";
+	| "libraryQuestions"
+	| "libraryRuns"
+	| "libraryRows"
+	| "playlistRuns"
+	| "playlistSearches"
+	| "playlistRows";
 
 export interface BucketSize {
 	burst: number;
@@ -25,14 +30,24 @@ export const COMPONENT_RATE_LIMITS: Record<Bucket, BucketSize> = {
 	tagWrites: { burst: 200, refillMs: 50 },
 	previews: { burst: 30, refillMs: 200 },
 	statePolls: { burst: 30, refillMs: 100 },
-	// The delta reads' `kDeltaReadBurst` and `kDeltaReadRefill` in `core/routes_library.cpp`.
+	// `kLibraryReadBurst` and `kLibraryReadRefill` in `core/routes_library.cpp`, which the summary, runs, question, playlist runs and playlist search buckets each name.
 	librarySummaries: { burst: 200, refillMs: 50 },
 	libraryQuestions: { burst: 200, refillMs: 50 },
+	libraryRuns: { burst: 200, refillMs: 50 },
+	// `kRowsBurst` and `kRowsRefill` in `core/routes_library.h` are the rows route's own.
+	libraryRows: { burst: 30, refillMs: 100 },
+	playlistRuns: { burst: 200, refillMs: 50 },
+	playlistSearches: { burst: 200, refillMs: 50 },
+	playlistRows: { burst: 30, refillMs: 100 },
 };
 
-// `foo_jean` keeps one bucket per source address for state polls and one for the whole
-// server for everything else.
-const PER_CLIENT = new Set<Bucket>(["statePolls"]);
+// `foo_jean` keeps one bucket per source address for state polls and rows reads and one for the
+// whole server for everything else.
+const PER_CLIENT = new Set<Bucket>([
+	"statePolls",
+	"libraryRows",
+	"playlistRows",
+]);
 
 const PLAYLIST_CHANGES: [string, RegExp][] = [
 	["POST", /^\/api\/playlists$/],
@@ -50,8 +65,6 @@ const PLAYLIST_CHANGES: [string, RegExp][] = [
 	["DELETE", /^\/api\/queue(\/[^/]+)?$/],
 ];
 
-// The export spends from `libraryRebuilds` only when it starts a build, which is
-// `handleLibrary`'s to decide, so it is not named here.
 export const bucketOf = (method: string, path: string): Bucket | null => {
 	if (method === "GET" && path === "/api/state") return "statePolls";
 	if (method === "GET" && path.startsWith("/api/artwork")) return "artwork";
@@ -134,6 +147,26 @@ const REFUSALS: Record<Bucket, { retryAfter: string; body: unknown }> = {
 	libraryQuestions: {
 		retryAfter: "1",
 		body: { error: "too many library questions" },
+	},
+	libraryRuns: {
+		retryAfter: "1",
+		body: { error: "too many library run reads" },
+	},
+	libraryRows: {
+		retryAfter: "1",
+		body: { error: "too many library row reads" },
+	},
+	playlistRuns: {
+		retryAfter: "1",
+		body: { error: "too many playlist run reads" },
+	},
+	playlistSearches: {
+		retryAfter: "1",
+		body: { error: "too many playlist searches" },
+	},
+	playlistRows: {
+		retryAfter: "1",
+		body: { error: "too many playlist row reads" },
 	},
 };
 

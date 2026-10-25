@@ -8,10 +8,20 @@ import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import type { components } from "../../src/shared/api/fooJeanSchema.d.ts";
 import type { FooJeanOptions } from "../fake-api/fooJean/options.ts";
 import { COMPONENT_RATE_LIMITS } from "../fake-api/fooJean/rateLimits.ts";
-import { handleFooJean } from "../fake-api/fooJean.ts";
-import type { Responder } from "../fake-api/http.ts";
-import { handleControl } from "../fake-api/routes.ts";
 import { createState } from "../fake-api/state.ts";
+import {
+	ask,
+	bodyOf,
+	componentBucket,
+	control,
+	failureText,
+	MISSING_FIELD,
+	ROLES,
+	rawOf,
+	send,
+	settled,
+	withRole,
+} from "./fakeLibraryHarness.ts";
 
 type FakeState = ReturnType<typeof createState>;
 type OrdinalSet = components["schemas"]["OrdinalSet"];
@@ -123,6 +133,8 @@ const shorterFormOf = (
 	return { bitset: Buffer.from(bytes).toString("base64") };
 };
 
+const SET_SUMMARY_KEYS = ["figures", "cards", "records"];
+
 const assertAnswers = (
 	document: unknown,
 	kind: Kind,
@@ -131,6 +143,8 @@ const assertAnswers = (
 ) => {
 	const sent = asSent(document);
 	const decoded = { ...sent };
+	for (const key of SET_SUMMARY_KEYS)
+		if (!(key in expected)) delete decoded[key];
 	for (const key of SETS[kind])
 		if (expected[key] !== null)
 			decoded[key] = ordinalsOf(sent[key], trackCount, key);
@@ -194,145 +208,15 @@ test("a set whose runs are exactly as long as its bitset is sent as runs", async
 	assert.deepEqual(asSent(document).refs, { runs: [[10, 1]] });
 });
 
-const routesLibrary = readFileSync(
-	join(REPOSITORY, "plugins/fb2k/src/core/routes_library.cpp"),
-	"utf8",
-);
-
-const componentConstant = (name: string): string => {
-	const declared = new Map(
-		[
-			...routesLibrary.matchAll(
-				/constexpr\s+(?:int|auto)\s+(\w+)\s*=\s*([^;]+);/g,
-			),
-		].map(([, constant, value]) => [constant, value.trim()]),
-	);
-	const value = declared.get(name);
-	assert.ok(value !== undefined, `routes_library.cpp declares no ${name}`);
-	return /^k\w+$/.test(value) ? componentConstant(value) : value;
-};
-
-const questionReads = () => {
-	const burst = Number(componentConstant("kLibraryQuestionBurst"));
-	const refill = /^std::chrono::milliseconds\((\d+)\)$/.exec(
-		componentConstant("kLibraryQuestionRefill"),
-	);
-	assert.ok(Number.isSafeInteger(burst) && burst > 0);
-	assert.ok(refill, "kLibraryQuestionRefill is not a count of milliseconds");
-	return { burst, refillMs: Number(refill[1]) };
-};
-
-const NO_LIBRARY = (() => {
-	const said = /constexpr\s+char\s+kNoLibrary\[\]\s*=\s*"([^"]*)";/.exec(
-		readFileSync(join(REPOSITORY, "plugins/fb2k/src/core/failures.h"), "utf8"),
-	);
-	assert.ok(said, "failures.h declares no kNoLibrary");
-	return said[1];
-})();
-
 test("the fake's question bucket is sized as foo_jean's", () => {
 	const buckets: Record<string, unknown> = COMPONENT_RATE_LIMITS;
-	assert.deepEqual(buckets.libraryQuestions, questionReads());
+	assert.deepEqual(
+		buckets.libraryQuestions,
+		componentBucket("kLibraryReadBurst", "kLibraryReadRefill"),
+	);
 });
 
-interface Answer {
-	status: number;
-	headers: Record<string, string>;
-	bytes: Uint8Array[];
-	answered: boolean;
-	dropped: boolean;
-}
-
-const responderFor = (answer: Answer): Responder => {
-	const take = (headers: Record<string, string> = {}) => {
-		for (const [name, value] of Object.entries(headers))
-			answer.headers[name.toLowerCase()] = String(value);
-	};
-	const keep = (chunk: string | Uint8Array) =>
-		answer.bytes.push(
-			typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk,
-		);
-	return {
-		writeHead(code, headers) {
-			answer.status = code;
-			take(headers);
-		},
-		setHeader(name, value) {
-			take({ [name]: value });
-		},
-		write(chunk) {
-			keep(chunk);
-		},
-		end(chunk) {
-			if (chunk !== undefined) keep(chunk);
-			answer.answered = true;
-		},
-		on() {},
-		destroy() {
-			answer.dropped = true;
-		},
-	};
-};
-
-const send = (
-	state: FakeState,
-	path: string,
-	query: [string, string][] = [],
-	headers: Record<string, string> = {},
-) => {
-	const url = new URL(path, "http://fake");
-	for (const [name, value] of query) url.searchParams.append(name, value);
-	const answer: Answer = {
-		status: 0,
-		headers: {},
-		bytes: [],
-		answered: false,
-		dropped: false,
-	};
-	const done = handleFooJean({
-		state,
-		method: "GET",
-		url,
-		headers,
-		body: null,
-		response: responderFor(answer),
-		artwork: () => false,
-	}).then(() => answer);
-	return { answer, done };
-};
-
-const ask = (
-	state: FakeState,
-	path: string,
-	query: [string, string][] = [],
-	headers: Record<string, string> = {},
-) => send(state, path, query, headers).done;
-
-const rawOf = (answer: Answer) => Buffer.concat(answer.bytes);
-
-const bodyOf = (answer: Answer) => JSON.parse(rawOf(answer).toString("utf8"));
-
-const control = (state: FakeState, action: string, body: object) => {
-	const answer: Answer = {
-		status: 0,
-		headers: {},
-		bytes: [],
-		answered: false,
-		dropped: false,
-	};
-	handleControl({
-		state,
-		method: "POST",
-		path: `/__control/${action}`,
-		body: body as never,
-		response: responderFor(answer),
-	});
-	return answer;
-};
-
-const settled = () => new Promise((resolve) => setImmediate(resolve));
-
-const MISSING_FIELD = "%no such field%";
+const NO_LIBRARY = failureText("kNoLibrary");
 
 const QUESTION_ONLY_ROLES = [
 	"artists",
@@ -340,15 +224,6 @@ const QUESTION_ONLY_ROLES = [
 	"albumArtists",
 	"albumArtistIds",
 	"artistSort",
-];
-
-const ROLES: [string, string][] = (
-	Object.entries(FIELD) as [string, number][]
-).map(([role, at]) => [role, TRACK_EXPRESSIONS[at]]);
-
-const withRole = (role: string, expression: string): [string, string][] => [
-	...ROLES.filter(([name]) => name !== role),
-	[role, expression],
 ];
 
 const withoutRole = (role: string) => ROLES.filter(([name]) => name !== role);
@@ -492,10 +367,9 @@ for (const questionCase of CONFORMANCE.cases)
 		const held = await libraryOf(state);
 		const { question } = questionCase;
 
-		const answer = await ask(state, ROUTE_OF[question.kind], [
-			...questionQuery(question),
-			...ROLES,
-		]);
+		const answer = await ask(state, ROUTE_OF[question.kind], {
+			query: [...questionQuery(question), ...ROLES],
+		});
 
 		assert.equal(answer.status, 200);
 		assertAnswers(
@@ -571,10 +445,9 @@ for (const [title, question, expected] of UNCREDITED_ALBUMS) {
 		state.startLibraryBuild([...TRACK_EXPRESSIONS]);
 		state.finishLibraryBuild();
 
-		const response = await ask(state, ALBUM, [
-			...questionQuery(question),
-			...ROLES,
-		]);
+		const response = await ask(state, ALBUM, {
+			query: [...questionQuery(question), ...ROLES],
+		});
 
 		assert.equal(response.status, 200);
 		const answer = albumAnswerOf(bodyOf(response), UNCREDITED.directory.length);
@@ -593,7 +466,7 @@ test("a question carries the pair the fake holds once a play has moved its revis
 	assert.equal(held.revision, before.revision + 1);
 
 	for (const [route, query] of QUESTIONS) {
-		const document = bodyOf(await ask(state, route, query));
+		const document = bodyOf(await ask(state, route, { query: query }));
 		assert.equal(document.structure, held.structure, route);
 		assert.equal(document.revision, held.revision, route);
 	}
@@ -603,7 +476,7 @@ test("each question answers 200 JSON, private, no-cache and with no ETag", async
 	frozenAt(t);
 	const state = declared();
 	for (const [route, query] of QUESTIONS) {
-		const answer = await ask(state, route, query);
+		const answer = await ask(state, route, { query: query });
 		assert.equal(answer.status, 200, route);
 		assert.match(answer.headers["content-type"] ?? "", /^application\/json/);
 		assert.equal(answer.headers["cache-control"], "private, no-cache", route);
@@ -614,9 +487,12 @@ test("each question answers 200 JSON, private, no-cache and with no ETag", async
 test("a question offering gzip is answered gzipped, holding the same document", async (t) => {
 	frozenAt(t);
 	const state = declared();
-	const plain = await ask(state, ALBUM, JESSICO);
-	const zipped = await ask(state, ALBUM, JESSICO, {
-		"accept-encoding": "gzip",
+	const plain = await ask(state, ALBUM, { query: JESSICO });
+	const zipped = await ask(state, ALBUM, {
+		query: JESSICO,
+		headers: {
+			"accept-encoding": "gzip",
+		},
 	});
 
 	assert.equal(zipped.status, 200);
@@ -630,15 +506,16 @@ test("a question offering gzip is answered gzipped, holding the same document", 
 test("a role left out reads as unresolved on every track, as one naming an expression that resolves to nothing does", async (t) => {
 	frozenAt(t);
 	const state = declared();
-	const named = bodyOf(await ask(state, GENRE, GRUNGE));
+	const named = bodyOf(await ask(state, GENRE, { query: GRUNGE }));
 	const unresolved = bodyOf(
-		await ask(state, GENRE, [
-			["name", "Grunge"],
-			...withRole("genre", MISSING_FIELD),
-		]),
+		await ask(state, GENRE, {
+			query: [["name", "Grunge"], ...withRole("genre", MISSING_FIELD)],
+		}),
 	);
 	const leftOut = bodyOf(
-		await ask(state, GENRE, [["name", "Grunge"], ...withoutRole("genre")]),
+		await ask(state, GENRE, {
+			query: [["name", "Grunge"], ...withoutRole("genre")],
+		}),
 	);
 
 	assert.notDeepEqual(unresolved, named);
@@ -650,7 +527,7 @@ const refusalOf = async (
 	route: string,
 	query: [string, string][],
 ) => {
-	const answer = await ask(state, route, query);
+	const answer = await ask(state, route, { query: query });
 	return { status: answer.status, body: bodyOf(answer) };
 };
 
@@ -805,8 +682,11 @@ test("a search's query is answered up to 1024 bytes of UTF-8 and refused 400 pas
 	assert.equal(new TextEncoder().encode(KILOBYTE_OF_ACCENTS).length, 1024);
 
 	assert.equal(
-		(await ask(state, SEARCH, withQuestion("query", KILOBYTE_OF_ACCENTS)))
-			.status,
+		(
+			await ask(state, SEARCH, {
+				query: withQuestion("query", KILOBYTE_OF_ACCENTS),
+			})
+		).status,
 		200,
 	);
 	assert.deepEqual(
@@ -830,7 +710,7 @@ test("a search's limit or entityLimit that is not a whole number of 0 or more is
 	const state = declared();
 	for (const name of ["limit", "entityLimit"]) {
 		assert.equal(
-			(await ask(state, SEARCH, withQuestion(name, "0"))).status,
+			(await ask(state, SEARCH, { query: withQuestion(name, "0") })).status,
 			200,
 			`${name} 0`,
 		);
@@ -895,14 +775,12 @@ test("a question naming an expression the declaration does not hold is 409 namin
 	frozenAt(t);
 	const state = declared();
 	for (const [route, query] of QUESTIONS) {
-		const answer = await ask(
-			state,
-			route,
-			query.map(([name, value]) => [
+		const answer = await ask(state, route, {
+			query: query.map(([name, value]) => [
 				name,
 				name === "album" ? "%nothing%" : value,
 			]),
-		);
+		});
 		assert.equal(answer.status, 409, route);
 		assert.deepEqual(
 			bodyOf(answer),
@@ -918,7 +796,7 @@ test("a question before any snapshot is built is 202 carrying the library GET /a
 	const before = await libraryOf(state);
 
 	for (const [route, query] of QUESTIONS) {
-		const answer = await ask(state, route, query);
+		const answer = await ask(state, route, { query: query });
 		assert.equal(answer.status, 202, route);
 		assert.deepEqual(bodyOf(answer), before, route);
 	}
@@ -929,24 +807,10 @@ test("a question from a component serving no media library is 503 in foo_jean's 
 	frozenAt(t);
 	const state = declared({ canReadLibrary: false });
 	for (const [route, query] of QUESTIONS) {
-		const answer = await ask(state, route, query);
+		const answer = await ask(state, route, { query: query });
 		assert.equal(answer.status, 503, route);
 		assert.equal(bodyOf(answer).error, NO_LIBRARY, route);
 	}
-});
-
-test("a library whose export is over the ceiling is still answered", async (t) => {
-	frozenAt(t);
-	const state = declared({ libraryCeiling: 1 });
-	const exported = await ask(
-		state,
-		"/api/library/export",
-		TRACK_EXPRESSIONS.map((column) => ["columns", column]),
-	);
-	assert.equal(exported.status, 413);
-
-	for (const [route, query] of QUESTIONS)
-		assert.equal((await ask(state, route, query)).status, 200, route);
 });
 
 test("the question bucket answers a burst of its depth across the four routes and refuses the next 429 with Retry-After", async (t) => {
@@ -963,14 +827,14 @@ test("the question bucket answers a burst of its depth across the four routes an
 	for (let request = 0; request < depth; request += 1) {
 		const [route, query] = QUESTIONS[request % QUESTIONS.length];
 		assert.equal(
-			(await ask(state, route, query)).status,
+			(await ask(state, route, { query: query })).status,
 			200,
 			`request ${request + 1}, ${route}`,
 		);
 	}
 
 	for (const [route, query] of QUESTIONS) {
-		const refused = await ask(state, route, query);
+		const refused = await ask(state, route, { query: query });
 		assert.equal(refused.status, 429, route);
 		assert.deepEqual(bodyOf(refused), { error: "too many library questions" });
 		assert.match(refused.headers["retry-after"] ?? "", /^[1-9]\d*$/);
@@ -993,9 +857,12 @@ test("the question bucket is the summary's no more than the summary's is its", a
 		([role]) => !QUESTION_ONLY_ROLES.includes(role),
 	);
 
-	assert.equal((await ask(state, GENRE, GRUNGE)).status, 200);
-	assert.equal((await ask(state, SUMMARY, summaryRoles)).status, 200);
-	assert.equal((await ask(state, GENRE, GRUNGE)).status, 429);
+	assert.equal((await ask(state, GENRE, { query: GRUNGE })).status, 200);
+	assert.equal(
+		(await ask(state, SUMMARY, { query: summaryRoles })).status,
+		200,
+	);
+	assert.equal((await ask(state, GENRE, { query: GRUNGE })).status, 429);
 });
 
 test("a question refused for what it asks is 400 whether or not the bucket is spent, and spends nothing", async (t) => {
@@ -1003,35 +870,38 @@ test("a question refused for what it asks is 400 whether or not the bucket is sp
 	const state = declared(ONE_QUESTION);
 	const unknownRole: [string, string][] = [...GRUNGE, ["colour", "%genre%"]];
 
-	assert.equal((await ask(state, GENRE, unknownRole)).status, 400);
-	assert.equal((await ask(state, ALBUM, JESSICO)).status, 200);
-	assert.equal((await ask(state, GENRE, unknownRole)).status, 400);
-	assert.equal((await ask(state, ARTIST, BABASONICOS)).status, 429);
+	assert.equal((await ask(state, GENRE, { query: unknownRole })).status, 400);
+	assert.equal((await ask(state, ALBUM, { query: JESSICO })).status, 200);
+	assert.equal((await ask(state, GENRE, { query: unknownRole })).status, 400);
+	assert.equal((await ask(state, ARTIST, { query: BABASONICOS })).status, 429);
 });
 
 test("a question is refused 400 before 503, 503 before 429, and 429 before 202", async (t) => {
 	frozenAt(t);
 	const state = declared({ ...ONE_QUESTION, canReadLibrary: false });
 	assert.equal(
-		(await ask(state, GENRE, [...GRUNGE, ["colour", "%genre%"]])).status,
+		(await ask(state, GENRE, { query: [...GRUNGE, ["colour", "%genre%"]] }))
+			.status,
 		400,
 	);
 
 	state.fooJean.canReadLibrary = true;
-	assert.equal((await ask(state, GENRE, GRUNGE)).status, 200);
+	assert.equal((await ask(state, GENRE, { query: GRUNGE })).status, 200);
 	state.fooJean.canReadLibrary = false;
-	assert.equal((await ask(state, GENRE, GRUNGE)).status, 503);
+	assert.equal((await ask(state, GENRE, { query: GRUNGE })).status, 503);
 
 	const unbuilt = fresh(ONE_QUESTION);
-	assert.equal((await ask(unbuilt, GENRE, GRUNGE)).status, 202);
-	assert.equal((await ask(unbuilt, GENRE, GRUNGE)).status, 429);
+	assert.equal((await ask(unbuilt, GENRE, { query: GRUNGE })).status, 202);
+	assert.equal((await ask(unbuilt, GENRE, { query: GRUNGE })).status, 429);
 });
 
 test("holdQuestions keeps every question unanswered until POST /__control/holdQuestions releases them", async (t) => {
 	frozenAt(t);
 	const state = declared({ holdQuestions: true } as FooJeanOptions);
 
-	const held = QUESTIONS.map(([route, query]) => send(state, route, query));
+	const held = QUESTIONS.map(([route, query]) =>
+		send(state, route, { query: query }),
+	);
 	await settled();
 	await settled();
 	for (const { answer } of held) {
@@ -1043,7 +913,7 @@ test("holdQuestions keeps every question unanswered until POST /__control/holdQu
 	await settled();
 	for (const { answer } of held) assert.equal(answer.status, 200);
 
-	const next = send(state, GENRE, GRUNGE);
+	const next = send(state, GENRE, { query: GRUNGE });
 	await settled();
 	assert.equal(next.answer.status, 200);
 });
@@ -1053,7 +923,7 @@ test("POST /__control/holdQuestions with hold true holds the questions that foll
 	const state = declared();
 	assert.equal(control(state, "holdQuestions", { hold: true }).status, 204);
 
-	const held = send(state, ALBUM, JESSICO);
+	const held = send(state, ALBUM, { query: JESSICO });
 	await settled();
 	await settled();
 	assert.equal(held.answer.answered, false);
@@ -1068,9 +938,9 @@ test("failQuestions refuses as many questions as it says with its status, then a
 	const state = declared({
 		failQuestions: { status: 503, times: 2 },
 	} as FooJeanOptions);
-	assert.equal((await ask(state, ALBUM, JESSICO)).status, 503);
-	assert.equal((await ask(state, ALBUM, JESSICO)).status, 503);
-	assert.equal((await ask(state, ALBUM, JESSICO)).status, 200);
+	assert.equal((await ask(state, ALBUM, { query: JESSICO })).status, 503);
+	assert.equal((await ask(state, ALBUM, { query: JESSICO })).status, 503);
+	assert.equal((await ask(state, ALBUM, { query: JESSICO })).status, 200);
 });
 
 test("failQuestions refuses a search as it refuses a page", async (t) => {
@@ -1078,8 +948,8 @@ test("failQuestions refuses a search as it refuses a page", async (t) => {
 	const state = declared({
 		failQuestions: { status: 500, times: 1 },
 	} as FooJeanOptions);
-	assert.equal((await ask(state, SEARCH, BABAS)).status, 500);
-	assert.equal((await ask(state, SEARCH, BABAS)).status, 200);
+	assert.equal((await ask(state, SEARCH, { query: BABAS })).status, 500);
+	assert.equal((await ask(state, SEARCH, { query: BABAS })).status, 200);
 });
 
 test("failQuestions with a dropped connection destroys as many questions unanswered, then answers", async (t) => {
@@ -1088,12 +958,12 @@ test("failQuestions with a dropped connection destroys as many questions unanswe
 		failQuestions: { status: "drop", times: 1 },
 	} as FooJeanOptions);
 
-	const dropped = send(state, ARTIST, BABASONICOS);
+	const dropped = send(state, ARTIST, { query: BABASONICOS });
 	await settled();
 	assert.equal(dropped.answer.dropped, true);
 	assert.equal(dropped.answer.answered, false);
 
-	assert.equal((await ask(state, ARTIST, BABASONICOS)).status, 200);
+	assert.equal((await ask(state, ARTIST, { query: BABASONICOS })).status, 200);
 });
 
 test("a question waits out the latency its route is given before it is answered", async (t) => {
@@ -1102,7 +972,7 @@ test("a question waits out the latency its route is given before it is answered"
 		routeLatency: { [`GET ${GENRE}`]: { ms: 500 } },
 	});
 
-	const late = send(state, GENRE, GRUNGE);
+	const late = send(state, GENRE, { query: GRUNGE });
 	await settled();
 	t.mock.timers.tick(499);
 	await settled();
@@ -1113,4 +983,241 @@ test("a question waits out the latency its route is given before it is answered"
 	await settled();
 	assert.equal(late.answer.status, 200);
 	assert.equal(late.answer.answered, true);
+});
+
+const CREDITS = "/api/library/credits";
+
+type Members = components["schemas"]["CreditMember"][];
+
+interface CreditRow {
+	ordinal: number;
+	split: { artist: Members; albumArtist: Members };
+	unsplit: { artist: Members; albumArtist: Members };
+}
+
+const CREDIT_CASES: {
+	cases: { name: string; source: string; rows: CreditRow[] }[];
+} = JSON.parse(
+	readFileSync(
+		join(REPOSITORY, "plugins/fb2k/tests/fixtures/library_credits_cases.json"),
+		"utf8",
+	),
+);
+
+const questionCaseNamed = (name: string) => {
+	const found = CONFORMANCE.cases.find((one) => one.name === name);
+	assert.ok(found, `library_questions_cases.json holds no case ${name}`);
+	return found;
+};
+
+const creditsQuery = (
+	structure: string,
+	ordinal: string,
+	splitsCredits = true,
+): [string, string][] => [
+	["splitsCredits", String(splitsCredits)],
+	["structure", structure],
+	["ordinal", ordinal],
+	...ROLES,
+];
+
+for (const creditsCase of CREDIT_CASES.cases)
+	test(`the fake's credits route names every track's members of credits case ${creditsCase.name} as creditMembers did, split and not`, async (t) => {
+		frozenAt(t);
+		const state = createState({
+			mediaLibrary: tracksOfCase(questionCaseNamed(creditsCase.name)),
+		});
+		state.startLibraryBuild([...TRACK_EXPRESSIONS]);
+		state.finishLibraryBuild();
+		const held = await libraryOf(state);
+		assert.equal(creditsCase.rows.length, held.trackCount);
+
+		// An empty library has rows to hold to nothing, so every case also asks past its end.
+		const pastTheEnd = await ask(state, CREDITS, {
+			query: creditsQuery(String(held.structure), String(held.trackCount)),
+		});
+		assert.equal(pastTheEnd.status, 400);
+
+		for (const row of creditsCase.rows)
+			for (const [splitsCredits, members] of [
+				[true, row.split],
+				[false, row.unsplit],
+			] as const) {
+				const answer = await ask(state, CREDITS, {
+					query: creditsQuery(
+						String(held.structure),
+						String(row.ordinal),
+						splitsCredits,
+					),
+				});
+				assert.equal(answer.status, 200, `ordinal ${row.ordinal}`);
+				assert.deepEqual(
+					bodyOf(answer),
+					{
+						structure: held.structure,
+						revision: held.revision,
+						...members,
+					},
+					`ordinal ${row.ordinal}, splitsCredits ${splitsCredits}`,
+				);
+			}
+	});
+
+const CREDITS_STRUCTURE_MOVED = {
+	error: "tracks were added or removed; read the state and ask again",
+	detail: "",
+};
+
+test("credits at a structure that is not the current one are 409, before an ordinal past the end is 400", async (t) => {
+	frozenAt(t);
+	const state = declared();
+	const held = await libraryOf(state);
+
+	assert.deepEqual(
+		await refusalOf(
+			state,
+			CREDITS,
+			creditsQuery(String(held.structure + 1), String(held.trackCount)),
+		),
+		{ status: 409, body: CREDITS_STRUCTURE_MOVED },
+	);
+	assert.deepEqual(
+		await refusalOf(
+			state,
+			CREDITS,
+			creditsQuery(String(held.structure), String(held.trackCount)),
+		),
+		{
+			status: 400,
+			body: {
+				error: "unacceptable question",
+				detail: "'ordinal' is past the last track",
+			},
+		},
+	);
+	assert.equal(
+		(
+			await ask(state, CREDITS, {
+				query: creditsQuery(
+					String(held.structure),
+					String(held.trackCount - 1),
+				),
+			})
+		).status,
+		200,
+	);
+});
+
+test("credits asked at the structure a track was added under are 409 once it has moved", async (t) => {
+	frozenAt(t);
+	const state = declared();
+	const before = await libraryOf(state);
+	state.changeLibrary({ add: 1, remove: 0 });
+	state.finishLibraryBuild();
+
+	assert.deepEqual(
+		await refusalOf(
+			state,
+			CREDITS,
+			creditsQuery(String(before.structure), "0"),
+		),
+		{ status: 409, body: CREDITS_STRUCTURE_MOVED },
+	);
+});
+
+test("a credits question missing a parameter, or with one it cannot read, is 400 naming it", async (t) => {
+	frozenAt(t);
+	const state = declared();
+	const structure = String((await libraryOf(state)).structure);
+	const asked = creditsQuery(structure, "0");
+	const unacceptable = (detail: string) => ({
+		status: 400,
+		body: { error: "unacceptable question", detail },
+	});
+	const replaced = (name: string, value: string): [string, string][] =>
+		asked.map(([held, was]) => [held, held === name ? value : was]);
+
+	for (const missing of ["splitsCredits", "structure", "ordinal"])
+		assert.deepEqual(
+			await refusalOf(
+				state,
+				CREDITS,
+				asked.filter(([name]) => name !== missing),
+			),
+			unacceptable(`'${missing}' is required`),
+			missing,
+		);
+	for (const structureSent of ["", "12a", "-1"])
+		assert.deepEqual(
+			await refusalOf(state, CREDITS, replaced("structure", structureSent)),
+			unacceptable("'structure' must be a string of decimal digits"),
+			JSON.stringify(structureSent),
+		);
+	for (const ordinal of ["-1", "1.5", "x"])
+		assert.deepEqual(
+			await refusalOf(state, CREDITS, replaced("ordinal", ordinal)),
+			unacceptable("'ordinal' must be a whole number of 0 or more"),
+			ordinal,
+		);
+	assert.deepEqual(
+		await refusalOf(state, CREDITS, replaced("splitsCredits", "yes")),
+		unacceptable("'splitsCredits' must be true or false"),
+	);
+	assert.deepEqual(
+		await refusalOf(state, CREDITS, [...asked, ["name", "Babasónicos"]]),
+		notARole("name"),
+	);
+});
+
+test("credits answer 200 JSON, private, no-cache and with no ETag, gzipped where offered", async (t) => {
+	frozenAt(t);
+	const state = declared();
+	const query = creditsQuery(String((await libraryOf(state)).structure), "18");
+
+	const plain = await ask(state, CREDITS, { query: query });
+	const zipped = await ask(state, CREDITS, {
+		query: query,
+		headers: {
+			"accept-encoding": "gzip",
+		},
+	});
+
+	assert.equal(plain.status, 200);
+	assert.match(plain.headers["content-type"] ?? "", /^application\/json/);
+	assert.equal(plain.headers["cache-control"], "private, no-cache");
+	assert.equal(plain.headers.etag, undefined);
+	assert.equal(zipped.headers["content-encoding"], "gzip");
+	assert.deepEqual(
+		JSON.parse(gunzipSync(rawOf(zipped)).toString("utf8")),
+		bodyOf(plain),
+	);
+});
+
+test("credits from a component serving no media library are 503, and before any build 202 starting none", async (t) => {
+	frozenAt(t);
+	const off = declared({ canReadLibrary: false });
+	const offAt = String((await libraryOf(off)).structure);
+	const unavailable = await ask(off, CREDITS, {
+		query: creditsQuery(offAt, "0"),
+	});
+	assert.equal(unavailable.status, 503);
+	assert.equal(bodyOf(unavailable).error, NO_LIBRARY);
+
+	const unbuilt = fresh();
+	const before = await libraryOf(unbuilt);
+	const answer = await ask(unbuilt, CREDITS, { query: creditsQuery("0", "0") });
+	assert.equal(answer.status, 202);
+	assert.deepEqual(bodyOf(answer), before);
+	assert.deepEqual(await libraryOf(unbuilt), before);
+});
+
+test("credits spend from the questions' bucket, refused as a question is", async (t) => {
+	frozenAt(t);
+	const state = declared(ONE_QUESTION);
+	const query = creditsQuery(String((await libraryOf(state)).structure), "0");
+
+	assert.equal((await ask(state, GENRE, { query: GRUNGE })).status, 200);
+	const refused = await ask(state, CREDITS, { query: query });
+	assert.equal(refused.status, 429);
+	assert.deepEqual(bodyOf(refused), { error: "too many library questions" });
 });

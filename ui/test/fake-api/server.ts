@@ -40,6 +40,21 @@ const readBody = (request: IncomingMessage): Promise<ReadBody> =>
 
 const NO_BODY: ReadBody = { body: null, bytes: 0 };
 
+function stampServerTiming(response: ServerResponse) {
+	const arrived = performance.now();
+	const writeHead = response.writeHead;
+	response.writeHead = function stamped(
+		this: ServerResponse,
+		...args: Parameters<ServerResponse["writeHead"]>
+	) {
+		this.setHeader(
+			"Server-Timing",
+			`fake;dur=${(performance.now() - arrived).toFixed(2)}`,
+		);
+		return writeHead.apply(this, args);
+	} as ServerResponse["writeHead"];
+}
+
 const etags = new Map<string, string>();
 
 const serveArtwork: ArtworkServer = (
@@ -145,6 +160,7 @@ export function createServer({
 	serveDir?: string | null;
 } = {}): FakeServer {
 	const held = { state };
+	state.settledLargeNumbering();
 
 	const server = createHttpServer(async (request, response) => {
 		const { state } = held;
@@ -153,6 +169,7 @@ export function createServer({
 		const method = request.method ?? "GET";
 
 		if (path.startsWith("/api/")) {
+			stampServerTiming(response);
 			// Not installed reads the same as installed-but-unreachable to a client:
 			// neither ever answers, and there is no page without the component that
 			// would be serving it. `reachable: false` models both.
@@ -191,8 +208,10 @@ export function createServer({
 	fake.reset = (next: FakeState = createState()) => {
 		held.state.fooJean.holdSummary = false;
 		held.state.fooJean.holdQuestions = false;
-		held.state.fooJean.holdSubset = null;
+		held.state.fooJean.holdRows = false;
+		held.state.discard();
 		held.state = next;
+		next.settledLargeNumbering();
 		return next;
 	};
 

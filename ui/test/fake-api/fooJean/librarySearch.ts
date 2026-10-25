@@ -1,11 +1,12 @@
 import { ASCII_FOLDINGS } from "../../../src/shared/lib/asciiFolding.ts";
 import { compareUtf8 } from "../jlib.ts";
+import { CHUNK, mapped, runToEnd, type Sweep, sorted } from "../yielding.ts";
 import {
 	collapseRepeatedTag,
 	creditedArtists,
-	creditMembers,
+	creditMembersSweep,
 	type PageColumns,
-	recordsOf,
+	recordsSweep,
 	valuesIn,
 } from "./libraryPages.ts";
 import { readValue, tagGrouper, tagKey } from "./librarySummary.ts";
@@ -57,12 +58,18 @@ export interface Searched {
 
 const FOLDABLE = new RegExp(`[${[...ASCII_FOLDINGS.keys()].join("")}]`, "gu");
 
-const fold = (text: string) =>
-	text
-		.toLowerCase()
-		.normalize("NFD")
-		.replace(FOLDABLE, (character) => ASCII_FOLDINGS.get(character)!)
-		.replace(/\p{Diacritic}/gu, "");
+// Plain ASCII has no decomposition and no folding, and the only two characters in it with the
+// Diacritic property are `^` and the backtick, so lower-casing it is the whole fold.
+const PLAIN_ASCII = /^[^\u005e\u0060\u0080-\uffff]*$/;
+
+export const fold = (text: string) =>
+	PLAIN_ASCII.test(text)
+		? text.toLowerCase()
+		: text
+				.toLowerCase()
+				.normalize("NFD")
+				.replace(FOLDABLE, (character) => ASCII_FOLDINGS.get(character)!)
+				.replace(/\p{Diacritic}/gu, "");
 
 const NOT_ALPHANUMERIC = /[^\p{L}\p{N}]+/gu;
 const LETTER_OR_NUMBER = /[\p{L}\p{N}]/u;
@@ -182,12 +189,12 @@ const positiveInteger = (raw: string) => {
 
 const UNRESOLVED = "?";
 
-const spelledColumn = (
+function* spelledColumn(
 	values: readonly string[],
 	spell: (raw: string) => string,
-) => {
+): Sweep<string[]> {
 	const known = new Map<string, string>();
-	return values.map((raw) => {
+	return yield* mapped(values, (raw) => {
 		let text = known.get(raw);
 		if (text === undefined) {
 			text = raw === UNRESOLVED ? "" : spell(raw);
@@ -195,30 +202,34 @@ const spelledColumn = (
 		}
 		return text;
 	});
-};
+}
 
-const bestOf = (
+function* bestOf(
 	matched: readonly number[],
 	score: (ref: number) => number,
 	limit: number,
-) => {
+): Sweep<number[]> {
 	if (limit < 1) return [];
-	const scored = matched.map((ref, position) => ({
+	const scored = yield* mapped(matched, (ref, position) => ({
 		ref,
 		position,
 		score: score(ref),
 	}));
-	scored.sort((a, b) => b.score - a.score || a.position - b.position);
-	return scored.slice(0, limit).map(({ ref }) => ref);
-};
+	const ordered = yield* sorted(
+		scored,
+		(a, b) => b.score - a.score || a.position - b.position,
+	);
+	return ordered.slice(0, limit).map(({ ref }) => ref);
+}
 
-const canonicalOf = (
+function* canonicalOf(
 	columns: SearchedLibrary,
 	recordOf: (ref: number) => string | null,
-) => {
+) {
 	const lowest = new Map<string, readonly [number, number, number]>();
 	const records: (string | null)[] = [];
 	for (let ref = 0; ref < columns.trackCount; ref += 1) {
+		if (ref % CHUNK === CHUNK - 1) yield;
 		const record = recordOf(ref);
 		records.push(record);
 		if (record === null) continue;
@@ -239,13 +250,13 @@ const canonicalOf = (
 		const record = records[ref];
 		return record === null ? ref : (lowest.get(record)?.[2] ?? ref);
 	};
-};
+}
 
-const albumsFor = (
+function* albumsFor(
 	columns: SearchedLibrary,
 	canonical: (ref: number) => number,
-	records: ReturnType<typeof recordsOf>,
-) => {
+	records: ReturnType<typeof recordsSweep> extends Sweep<infer R> ? R : never,
+) {
 	const drafts = new Map<
 		string,
 		{
@@ -257,6 +268,7 @@ const albumsFor = (
 		}
 	>();
 	for (let ref = 0; ref < columns.trackCount; ref += 1) {
+		if (ref % CHUNK === CHUNK - 1) yield;
 		const record = records.recordOf(ref);
 		if (record === null) continue;
 		const held = drafts.get(record);
@@ -283,14 +295,14 @@ const albumsFor = (
 			cover: columns.paths[canonical(first)],
 		}),
 	);
-};
+}
 
-const artistsFor = (
+function* artistsFor(
 	columns: SearchedLibrary,
 	guesses: boolean,
 	canonical: (ref: number) => number,
-) => {
-	const members = creditMembers(columns, guesses);
+) {
+	const members = yield* creditMembersSweep(columns, guesses);
 	const drafts = new Map<
 		string,
 		{
@@ -329,6 +341,7 @@ const artistsFor = (
 	};
 
 	for (let ref = 0; ref < columns.trackCount; ref += 1) {
+		if (ref % CHUNK === CHUNK - 1) yield;
 		const credited = creditedArtists(readValue(columns.artist[ref]));
 		const creditedLeads =
 			credited.lead && namesAnArtist(credited.lead)
@@ -391,14 +404,17 @@ const artistsFor = (
 			};
 		})
 		.sort((a, b) => b.trackCount - a.trackCount);
-};
+}
 
-const genresFor = (columns: SearchedLibrary) => {
+function* genresFor(columns: SearchedLibrary) {
 	const groups = tagGrouper();
 	const groupsOf = new Map<string, number[]>();
-	for (const raw of [
-		...new Set(columns.genre.filter((one) => readValue(one) !== null)),
-	].sort(compareUtf8))
+	const seen = new Set<string>();
+	for (let ref = 0; ref < columns.genre.length; ref += 1) {
+		if (readValue(columns.genre[ref]) !== null) seen.add(columns.genre[ref]);
+		if (ref % CHUNK === CHUNK - 1) yield;
+	}
+	for (const raw of yield* sorted([...seen], compareUtf8))
 		groupsOf.set(raw, [
 			...new Set(
 				valuesIn(raw)
@@ -411,6 +427,7 @@ const genresFor = (columns: SearchedLibrary) => {
 		{ name: string; match: FuzzyKey; trackCount: number }
 	>();
 	for (let ref = 0; ref < columns.trackCount; ref += 1) {
+		if (ref % CHUNK === CHUNK - 1) yield;
 		for (const group of groupsOf.get(columns.genre[ref]) ?? []) {
 			const name = groups.names[group];
 			const key = tagKey(name);
@@ -429,7 +446,7 @@ const genresFor = (columns: SearchedLibrary) => {
 				other.trackCount - one.trackCount || (a < b ? -1 : a > b ? 1 : 0),
 		)
 		.map(([, draft]) => draft);
-};
+}
 
 const nothing = (): Searched => ({
 	matched: null,
@@ -448,43 +465,109 @@ const sectionOf = <Entity>(
 	top: entities.slice(0, entityLimit),
 });
 
-export const searchPage = (
-	columns: SearchedLibrary,
-	{ query, limit, entityLimit, splitsCredits }: SearchAsked,
-): Searched => {
-	if (columns.trackCount === 0) return nothing();
+type SearchedFields = Pick<
+	PageColumns,
+	"title" | "artist" | "albumArtist" | "album" | "artistSort"
+>;
 
-	const wanted = query.trim();
+// What a library of millions folds, ranks and groups once, held beside the columns it came from and
+// handed to every query that asks of them.
+export type SearchHeld = Map<string, unknown>;
+
+function* held<T>(
+	cache: SearchHeld | undefined,
+	key: string,
+	make: () => Sweep<T>,
+): Sweep<T> {
+	if (cache?.has(key)) return cache.get(key) as T;
+	const made = yield* make();
+	cache?.set(key, made);
+	return made;
+}
+
+function* searchOver(
+	columns: SearchedFields,
+	query: string,
+	cache?: SearchHeld,
+) {
 	const words = tokenize(query);
 	const glyphic =
 		words.length > 0 && !words.some((word) => LETTER_OR_NUMBER.test(word));
 	const spell = glyphic ? glyphs : fold;
 	const tokens = glyphic ? [words.join("")] : words;
-	const titles = spelledColumn(columns.title, spell);
+	const spelledRole = (role: keyof SearchedFields) =>
+		glyphic
+			? spelledColumn(columns[role], spell)
+			: held(cache, `fold:${role}`, () => spelledColumn(columns[role], spell));
+	const titles = yield* spelledRole("title");
 	const fields = [
 		{ text: titles, weight: TITLE_WEIGHT },
-		{ text: spelledColumn(columns.artist, spell), weight: ARTIST_WEIGHT },
-		{ text: spelledColumn(columns.albumArtist, spell), weight: ARTIST_WEIGHT },
-		{ text: spelledColumn(columns.album, spell), weight: ALBUM_WEIGHT },
-		{ text: spelledColumn(columns.artistSort, spell), weight: ARTIST_WEIGHT },
+		{ text: yield* spelledRole("artist"), weight: ARTIST_WEIGHT },
+		{ text: yield* spelledRole("albumArtist"), weight: ARTIST_WEIGHT },
+		{ text: yield* spelledRole("album"), weight: ALBUM_WEIGHT },
+		{ text: yield* spelledRole("artistSort"), weight: ARTIST_WEIGHT },
 	];
+	return { spell, tokens, titles, fields };
+}
 
-	let matched: number[] | null = null;
-	if (tokens.length > 0) {
-		matched = [];
-		for (let ref = 0; ref < columns.trackCount; ref += 1)
-			if (
-				tokens.every((token) =>
-					fields.some((field) => field.text[ref].includes(token)),
-				)
+type Searching = typeof searchOver extends (...a: never[]) => Sweep<infer R>
+	? R
+	: never;
+
+function* rowsHolding(
+	{ tokens, fields }: Searching,
+	rowCount: number,
+): Sweep<number[] | null> {
+	if (tokens.length === 0) return null;
+	const matched: number[] = [];
+	for (let ref = 0; ref < rowCount; ref += 1) {
+		if (ref % CHUNK === CHUNK - 1) yield;
+		if (
+			tokens.every((token) =>
+				fields.some((field) => field.text[ref].includes(token)),
 			)
-				matched.push(ref);
+		)
+			matched.push(ref);
 	}
+	return matched;
+}
+
+export function* matchingRowsSweep(
+	columns: SearchedFields,
+	rowCount: number,
+	query: string,
+): Sweep<number[]> {
+	return (
+		(yield* rowsHolding(yield* searchOver(columns, query), rowCount)) ??
+		(yield* mapped(
+			{ length: rowCount } as unknown as readonly number[],
+			(_, at) => at,
+		))
+	);
+}
+
+export const matchingRows = (
+	columns: SearchedFields,
+	rowCount: number,
+	query: string,
+): number[] => runToEnd(matchingRowsSweep(columns, rowCount, query));
+
+export function* searchPageSweep(
+	columns: SearchedLibrary,
+	{ query, limit, entityLimit, splitsCredits }: SearchAsked,
+	cache?: SearchHeld,
+): Sweep<Searched> {
+	if (columns.trackCount === 0) return nothing();
+
+	const wanted = query.trim();
+	const searching = yield* searchOver(columns, query, cache);
+	const { spell, tokens, titles, fields } = searching;
+	const matched = yield* rowsHolding(searching, columns.trackCount);
 
 	const best =
 		matched === null
 			? []
-			: bestOf(
+			: yield* bestOf(
 					matched,
 					(ref) =>
 						tokens.reduce(
@@ -503,30 +586,41 @@ export const searchPage = (
 					limit,
 				);
 
-	const records = recordsOf(columns);
-	const canonical = canonicalOf(columns, records.recordOf);
+	const records = yield* held(cache, "records", () => recordsSweep(columns));
+	const canonical = yield* held(cache, "canonical", () =>
+		canonicalOf(columns, records.recordOf),
+	);
 	const named = spell(wanted);
+
+	const artists = wanted
+		? ranked(
+				yield* held(cache, `artists:${splitsCredits}`, () =>
+					artistsFor(columns, splitsCredits, canonical),
+				),
+				wanted,
+			)
+		: [];
+	const albums = wanted
+		? ranked(
+				yield* held(cache, "albums", () =>
+					albumsFor(columns, canonical, records),
+				),
+				wanted,
+			)
+		: [];
+	const genres = wanted
+		? ranked(yield* held(cache, "genres", () => genresFor(columns)), wanted)
+		: [];
 
 	return {
 		matched,
 		best,
-		artists: sectionOf(
-			wanted
-				? ranked(artistsFor(columns, splitsCredits, canonical), wanted)
-				: [],
-			entityLimit,
-		),
-		albums: sectionOf(
-			wanted ? ranked(albumsFor(columns, canonical, records), wanted) : [],
-			entityLimit,
-		),
-		genres: sectionOf(
-			wanted ? ranked(genresFor(columns), wanted) : [],
-			entityLimit,
-		),
+		artists: sectionOf(artists, entityLimit),
+		albums: sectionOf(albums, entityLimit),
+		genres: sectionOf(genres, entityLimit),
 		namesATrack:
 			wanted !== "" &&
 			matched !== null &&
 			matched.some((ref) => titles[ref] === named),
 	};
-};
+}

@@ -1,9 +1,19 @@
 import type { components } from "../../../src/shared/api/fooJeanSchema.d.ts";
 import { compareUtf8, shuffledTail } from "../jlib.ts";
+import {
+	CHUNK,
+	mapped,
+	runToEnd,
+	type Sweep,
+	type SweepResult,
+	sorted,
+} from "../yielding.ts";
 
 type LibrarySummary = components["schemas"]["LibrarySummary"];
 type SummaryAlbum = components["schemas"]["SummaryAlbum"];
 type SummaryShelf = components["schemas"]["SummaryShelf"];
+type SummaryGenre = components["schemas"]["SummaryGenre"];
+type SetFigures = components["schemas"]["SetFigures"];
 
 export const SUMMARY_ROLES = [
 	"trackNumber",
@@ -79,6 +89,7 @@ const RANKING_POOL = 8;
 const MIN_RANKED_TRACKS = 4;
 const TOP_TRACKS = 10;
 const TOP_GENRES = 14;
+const COVERS_PER_GENRE = 2;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const YEAR_MS = 365.25 * DAY_MS;
 const RECENT_WINDOW_MS = 30 * DAY_MS;
@@ -164,18 +175,25 @@ export const tagGrouper = () => {
 		}
 		return group;
 	};
-	const addBytewise = (values: readonly string[]) => {
+	function* addBytewiseSweep(
+		values: readonly string[],
+	): Sweep<Map<string, number>> {
 		const groups = new Map<string, number>();
-		const distinct = [
-			...new Set(values.filter((raw) => readValue(raw) !== null)),
-		].sort(compareUtf8);
+		const seen = new Set<string>();
+		for (let at = 0; at < values.length; at += 1) {
+			if (readValue(values[at]) !== null) seen.add(values[at]);
+			if (at % CHUNK === CHUNK - 1) yield;
+		}
+		const distinct = yield* sorted([...seen], compareUtf8);
 		for (const raw of distinct) groups.set(raw, add(raw));
 		return groups;
-	};
+	}
 	return {
 		names,
 		add,
-		addBytewise,
+		addBytewiseSweep,
+		addBytewise: (values: readonly string[]) =>
+			runToEnd(addBytewiseSweep(values)),
 		group: (key: string) => byKey.get(key) ?? -1,
 	};
 };
@@ -193,13 +211,17 @@ const unlessUnplayed = <T>(
 	parse: (raw: string | undefined) => T | null,
 ) => (raw === UNPLAYED ? null : parse(raw));
 
-const playsOf = (columns: Columns, at: number) =>
+export const playsOf = (columns: Columns, at: number) =>
 	larger(
 		unlessUnplayed(cell(columns, "playCount", at), readNumber),
 		unlessUnplayed(cell(columns, "playCountLocal", at), readNumber),
 	);
 
-const lastPlayedOf = (columns: Columns, at: number, local: LocalTime) => {
+export const lastPlayedOf = (
+	columns: Columns,
+	at: number,
+	local: LocalTime,
+) => {
 	const parse = (raw: string | undefined) => readTimestamp(raw, local);
 	return larger(
 		unlessUnplayed(cell(columns, "lastPlayed", at), parse),
@@ -451,52 +473,76 @@ function addTrack(
 	if (stars !== null) draft.stars.push(stars);
 }
 
-function draftAlbums(columns: Columns, count: number, local: LocalTime) {
+export function* draftAlbumsSweep(
+	columns: Columns,
+	count: number,
+	local: LocalTime,
+	aggregates = true,
+) {
 	const albumNames = tagGrouper();
-	const albumGroupOf = albumNames.addBytewise(columns.album ?? []);
+	const albumGroupOf = yield* albumNames.addBytewiseSweep(columns.album ?? []);
 	const artistNames = tagGrouper();
-	const byAlbumArtist = artistNames.addBytewise(columns.albumArtist ?? []);
-	const byArtist = artistNames.addBytewise(columns.artist ?? []);
+	const byAlbumArtist = yield* artistNames.addBytewiseSweep(
+		columns.albumArtist ?? [],
+	);
+	const byArtist = yield* artistNames.addBytewiseSweep(columns.artist ?? []);
 	const creditedGroup = (at: number) =>
 		byAlbumArtist.get(cell(columns, "albumArtist", at) ?? "") ??
 		byArtist.get(cell(columns, "artist", at) ?? "");
 
-	const drafts = new Map<string, Draft>();
+	const drafts: Draft[] = [];
+	const draftIndexOf = new Map<string, number>();
+	const draftAt = new Array<number>(count).fill(-1);
 	const tracksOfRecord = new Map<string, number[]>();
-	const recordOf = new Array<string | null>(count).fill(null);
+	const recordOf = new Array<string | null>(aggregates ? count : 0).fill(null);
+	const draftOfPair = new Map<number, number>();
+	const artistSpan = artistNames.names.length + 1;
 
 	for (let at = 0; at < count; at += 1) {
+		if (at % CHUNK === CHUNK - 1) yield;
 		const albumGroup = albumGroupOf.get(cell(columns, "album", at) ?? "");
 		if (albumGroup === undefined) continue;
 
 		const artistGroup = creditedGroup(at);
-		const record = `${albumGroup}\u0000${artistGroup ?? -1}`;
-		recordOf[at] = record;
-		const tracks = tracksOfRecord.get(record);
-		if (tracks) tracks.push(at);
-		else tracksOfRecord.set(record, [at]);
-
-		const name = albumNames.names[albumGroup];
-		const artist =
-			artistGroup === undefined ? null : artistNames.names[artistGroup];
-		const mergeKey = `${tagKey(name)}\u0000${tagKey(artist)}`;
-		let draft = drafts.get(mergeKey);
-		if (!draft) {
-			draft = emptyDraft(name, artist);
-			drafts.set(mergeKey, draft);
+		if (aggregates) {
+			const record = `${albumGroup}\u0000${artistGroup ?? -1}`;
+			recordOf[at] = record;
+			const tracks = tracksOfRecord.get(record);
+			if (tracks) tracks.push(at);
+			else tracksOfRecord.set(record, [at]);
 		}
-		addTrack(draft, columns, at, local);
+
+		const pair = albumGroup * artistSpan + (artistGroup ?? -1) + 1;
+		let index = draftOfPair.get(pair);
+		if (index === undefined) {
+			const name = albumNames.names[albumGroup];
+			const artist =
+				artistGroup === undefined ? null : artistNames.names[artistGroup];
+			const mergeKey = `${tagKey(name)}\u0000${tagKey(artist)}`;
+			index = draftIndexOf.get(mergeKey);
+			if (index === undefined) {
+				index = drafts.length;
+				drafts.push(emptyDraft(name, artist));
+				draftIndexOf.set(mergeKey, index);
+			}
+			draftOfPair.set(pair, index);
+		}
+		draftAt[at] = index;
+		if (aggregates) addTrack(drafts[index], columns, at, local);
+		else drafts[index].ordinals.push(at);
 	}
 
-	return { drafts: [...drafts.values()], tracksOfRecord, recordOf };
+	return { drafts, draftAt, tracksOfRecord, recordOf };
 }
+
+export type GroupedAlbums = SweepResult<ReturnType<typeof draftAlbumsSweep>>;
 
 const discAndTrackOf = (columns: Columns, at: number) => [
 	leadingPositiveInteger(cell(columns, "discNumber", at)) ?? 0,
 	leadingPositiveInteger(cell(columns, "trackNumber", at)) ?? 0,
 ];
 
-const firstTrackOf = (columns: Columns, tracks: number[]) =>
+export const firstTrackOf = (columns: Columns, tracks: number[]) =>
 	tracks.reduce((best, at) => {
 		const [bestDisc, bestTrack] = discAndTrackOf(columns, best);
 		const [disc, track] = discAndTrackOf(columns, at);
@@ -519,21 +565,29 @@ const finishedAlbum = (draft: Draft, cover: string): Album => ({
 	cover,
 });
 
-function shelvesOf(albums: Album[], now: number, local: LocalTime) {
+function shelvesOf(
+	albums: Album[],
+	now: number,
+	local: LocalTime,
+	figuresOver: (shown: Album[]) => SetFigures,
+) {
 	if (albums.length === 0) return [];
 	const shelves: SummaryShelf[] = [];
+	const shelf = (id: SummaryShelf["id"], shown: Album[]) =>
+		shelves.push({
+			id,
+			albums: shown.map(documentOf),
+			figures: figuresOver(shown),
+		});
 	for (const { id, minimum, pick } of SHELVES) {
 		const picked = pick(albums, now);
-		if (picked.length >= minimum)
-			shelves.push({ id, albums: picked.slice(0, LIMIT).map(documentOf) });
+		if (picked.length >= minimum) shelf(id, picked.slice(0, LIMIT));
 	}
 	if (shelves.length === 0 && albums.length >= MINIMUM)
-		shelves.push({
-			id: "starter",
-			albums: shuffledTail(albums, BigInt(local.yyyymmddOf(now)), LIMIT).map(
-				documentOf,
-			),
-		});
+		shelf(
+			"starter",
+			shuffledTail(albums, BigInt(local.yyyymmddOf(now)), LIMIT),
+		);
 	return shelves;
 }
 
@@ -574,27 +628,58 @@ const mostPlayed = <T extends { plays: number }>(entries: T[]) =>
 		null,
 	);
 
-function totalsOf(columns: Columns, count: number) {
+const compareUnits = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+export const releaseYearOf = (raw: string | undefined): number | null => {
+	const released = readNumber(raw);
+	return released !== null && released > FIRST_YEAR ? released : null;
+};
+
+export function* figuresSweep(
+	columns: Columns,
+	ordinals: readonly number[],
+	draftAt: readonly number[],
+): Sweep<SetFigures> {
 	let seconds = 0;
 	let earliest: number | null = null;
 	let latest: number | null = null;
-	for (let at = 0; at < count; at += 1) {
+	const albums = new Set<number>();
+	let counted = 0;
+	for (const at of ordinals) {
+		if (counted++ % CHUNK === CHUNK - 1) yield;
+		if (draftAt[at] >= 0) albums.add(draftAt[at]);
 		seconds += readNumber(cell(columns, "duration", at)) ?? 0;
-		const released = readNumber(cell(columns, "year", at));
-		if (released !== null && released > FIRST_YEAR) {
+		const released = releaseYearOf(cell(columns, "year", at));
+		if (released !== null) {
 			earliest = earliest === null ? released : Math.min(earliest, released);
 			latest = latest === null ? released : Math.max(latest, released);
 		}
 	}
-	return { seconds, earliest, latest };
+	return {
+		albumCount: albums.size,
+		trackCount: ordinals.length,
+		seconds,
+		earliestYear: earliest,
+		latestYear: latest,
+	};
 }
 
-function genreTalliesOf(columns: Columns, count: number) {
+export const figuresOver = (
+	columns: Columns,
+	ordinals: readonly number[],
+	draftAt: readonly number[],
+): SetFigures => runToEnd(figuresSweep(columns, ordinals, draftAt));
+
+export function* genreGroupsSweep(columns: Columns) {
 	const genres = tagGrouper();
 	const groupsOf = new Map<string, number[]>();
-	const distinct = [
-		...new Set((columns.genre ?? []).filter((one) => readValue(one) !== null)),
-	].sort(compareUtf8);
+	const seen = new Set<string>();
+	const column = columns.genre ?? [];
+	for (let at = 0; at < column.length; at += 1) {
+		if (readValue(column[at]) !== null) seen.add(column[at]);
+		if (at % CHUNK === CHUNK - 1) yield;
+	}
+	const distinct = yield* sorted([...seen], compareUtf8);
 	for (const raw of distinct)
 		groupsOf.set(raw, [
 			...new Set(
@@ -604,11 +689,23 @@ function genreTalliesOf(columns: Columns, count: number) {
 					.map(genres.add),
 			),
 		]);
+	return {
+		names: genres.names,
+		keys: genres.names.map(tagKey),
+		at: (at: number) => groupsOf.get(cell(columns, "genre", at) ?? "") ?? [],
+	};
+}
 
+export const genreGroupsOf = (columns: Columns) =>
+	runToEnd(genreGroupsSweep(columns));
+
+function* genreTalliesSweep(columns: Columns, count: number) {
+	const genres = yield* genreGroupsSweep(columns);
 	const counts = new Array<number>(genres.names.length).fill(0);
-	for (let at = 0; at < count; at += 1)
-		for (const group of groupsOf.get(cell(columns, "genre", at) ?? "") ?? [])
-			counts[group] += 1;
+	for (let at = 0; at < count; at += 1) {
+		for (const group of genres.at(at)) counts[group] += 1;
+		if (at % CHUNK === CHUNK - 1) yield;
+	}
 
 	return genres.names
 		.map((name, group) => ({ name, count: counts[group] }))
@@ -616,39 +713,100 @@ function genreTalliesOf(columns: Columns, count: number) {
 		.sort((a, b) => b.count - a.count);
 }
 
-export function summarise(
-	input: SummaryInput,
-	now: number,
-	local: LocalTime,
-): LibrarySummary {
-	const { directory, filename, columns } = input;
-	const trackCount = directory.length;
-
-	const { drafts, tracksOfRecord, recordOf } = draftAlbums(
-		columns,
-		trackCount,
-		local,
+function* genreTilesSweep(
+	columns: Columns,
+	count: number,
+	draftAt: readonly number[],
+	pathOf: (at: number) => string,
+): Sweep<SummaryGenre[]> {
+	const genres = yield* genreGroupsSweep(columns);
+	const albumsOf = genres.names.map(
+		() => new Map<number, { at: number; trackCount: number }>(),
 	);
-	const coverOf = (at: number) => {
+	const counts = new Array<number>(genres.names.length).fill(0);
+	const artistsOf = genres.names.map(() => new Set<string>());
+	const recordsOf = genres.names.map(() => new Set<string>());
+	for (let at = 0; at < count; at += 1) {
+		if (at % CHUNK === CHUNK - 1) yield;
+		const credited =
+			readValue(cell(columns, "albumArtist", at)) ??
+			readValue(cell(columns, "artist", at));
+		const album = readValue(cell(columns, "album", at));
+		for (const group of genres.at(at)) {
+			if (credited !== null) artistsOf[group].add(tagKey(credited));
+			// foo_jean's genre tile keys a record by the credited name and the album joined with a space, and an
+			// untitled credit stands as `Unknown`.
+			if (album !== null)
+				recordsOf[group].add(tagKey(`${credited ?? "Unknown"} ${album}`));
+			counts[group] += 1;
+			if (draftAt[at] < 0) continue;
+			const seen = albumsOf[group].get(draftAt[at]);
+			if (seen) seen.trackCount += 1;
+			else albumsOf[group].set(draftAt[at], { at, trackCount: 1 });
+		}
+	}
+
+	return genres.names
+		.map((name, group) => ({ name, group }))
+		.filter(({ group }) => counts[group] > 0)
+		.sort(
+			(a, b) =>
+				counts[b.group] - counts[a.group] ||
+				// UTF-16 code unit order, as foo_jean sorts the keys, which is not the bytewise order.
+				compareUnits(genres.keys[a.group], genres.keys[b.group]),
+		)
+		.map(({ name, group }) => ({
+			name,
+			count: counts[group],
+			albumCount: recordsOf[group].size,
+			artistCount: artistsOf[group].size,
+			covers: [...albumsOf[group].values()]
+				.sort((a, b) => b.trackCount - a.trackCount)
+				.slice(0, COVERS_PER_GENRE)
+				.map((album) => pathOf(album.at)),
+		}));
+}
+
+export const coverFinder =
+	(
+		{ directory, filename, columns }: SummaryInput,
+		{ tracksOfRecord, recordOf }: GroupedAlbums,
+	) =>
+	(at: number) => {
 		const record = recordOf[at];
 		const tracks = record === null ? undefined : tracksOfRecord.get(record);
 		const cover = tracks ? firstTrackOf(columns, tracks) : at;
 		return `${directory[cover]}${filename[cover]}`;
 	};
-	const albums = drafts.map((draft) =>
+
+export function* summariseSweep(
+	input: SummaryInput,
+	now: number,
+	local: LocalTime,
+	withGenres = false,
+): Sweep<LibrarySummary> {
+	const { directory, filename, columns } = input;
+	const trackCount = directory.length;
+
+	const grouped = yield* draftAlbumsSweep(columns, trackCount, local);
+	const { drafts, draftAt } = grouped;
+	const coverOf = coverFinder(input, grouped);
+	const albums = yield* mapped(drafts, (draft) =>
 		finishedAlbum(draft, coverOf(draft.ordinals[0])),
 	);
 
 	const artists = artistsOf(albums);
 	const topArtist = mostPlayed(artists);
 	const topAlbum = mostPlayed(albums);
-	const { seconds, earliest, latest } = totalsOf(columns, trackCount);
-	const genres = genreTalliesOf(columns, trackCount);
+	const everyTrack = yield* mapped(directory, (_, at) => at);
+	const whole = yield* figuresSweep(columns, everyTrack, draftAt);
+	const genres = yield* genreTalliesSweep(columns, trackCount);
 
-	const topTracks = Array.from({ length: trackCount }, (_, at) => ({
+	const played = yield* mapped(everyTrack, (at) => ({
 		at,
 		plays: playsOf(columns, at) ?? 0,
-	}))
+	}));
+	const topTracks = played
 		.filter(({ plays }) => plays > 0)
 		.sort((a, b) => b.plays - a.plays)
 		.slice(0, TOP_TRACKS)
@@ -666,9 +824,9 @@ export function summarise(
 		structure: input.structure,
 		revision: input.revision,
 		trackCount,
-		seconds,
-		earliestYear: earliest,
-		latestYear: latest,
+		seconds: whole.seconds,
+		earliestYear: whole.earliestYear,
+		latestYear: whole.latestYear,
 		albumCount: albums.length,
 		artistCount: artists.length,
 		genreCount: genres.length,
@@ -686,6 +844,29 @@ export function summarise(
 			cover: documentOf(topArtist.cover),
 		},
 		topTracks,
-		shelves: shelvesOf(albums, now, local),
+		shelves: shelvesOf(albums, now, local, (shown) =>
+			figuresOver(
+				columns,
+				shown.flatMap((album) => album.ordinals),
+				draftAt,
+			),
+		),
+		...(withGenres
+			? {
+					genres: yield* genreTilesSweep(
+						columns,
+						trackCount,
+						draftAt,
+						(at) => `${directory[at]}${filename[at]}`,
+					),
+				}
+			: null),
 	};
 }
+
+export const summarise = (
+	input: SummaryInput,
+	now: number,
+	local: LocalTime,
+	withGenres = false,
+): LibrarySummary => runToEnd(summariseSweep(input, now, local, withGenres));

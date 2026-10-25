@@ -16,7 +16,7 @@ export const NOT_BUILT = {
 };
 
 export const STRUCTURE_MOVED = {
-	error: "tracks were added or removed; export the library again",
+	error: "tracks were added or removed; read the state and ask again",
 	detail: "",
 };
 

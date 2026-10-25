@@ -3,9 +3,6 @@ import type { Bucket, Limiter, RateLimits } from "./rateLimits.ts";
 
 export type OwnPlaylistRole = "scratch";
 
-// `kMaxLibraryBytes` in `plugins/fb2k/src/core/http_server.h`.
-export const MAX_LIBRARY_BYTES = 256 * 1024 * 1024;
-
 // Spelled the way foobar2000 prints a device pair: one module GUID shared by every device it
 // offers, joined by a colon to each device's own, both upper case and without braces. The default
 // endpoint's device GUID is all zeros, which is why the first entry carries one. Three, so the
@@ -173,17 +170,13 @@ export interface FooJeanOptions {
 	// How many changes of a playlist the fake retains for `GET /playlists/{id}/items/changes`.
 	playlistChangeWindow?: number;
 
-	// False is the component loaded without the library feature: the three `/api/library/*` routes answer `503`.
+	// False is the component loaded without the library feature: every library route answers `503`.
 	canReadLibrary?: boolean;
-	// False means no export ever finishes, so no snapshot is held: a freshly started player before anything has asked for one.
+	// False means no build ever finishes, so no snapshot is held: a freshly started player before anything has asked for one.
 	libraryReady?: boolean;
-	// Polls of `GET /api/state` answered before a declared set finishes building; the export is a `202` until then.
+	// Polls of `GET /api/state` answered before a declared set finishes building; the rows route is a `202` until then.
 	libraryBuilds?: number;
-	// Exports answered `429` before the rate limiter lets one through.
-	libraryBusy?: number;
-	// Structure rebuilds of the same tracks, one at each next state poll. `GET /api/library/changes`
-	// answers the pair held before one with a splice that has no rows, carrying only the dictionary
-	// entries that grew.
+	// Structure rebuilds of the same tracks, one at each next state poll.
 	libraryRebuilds?: number;
 	// `foo_jean` stopping its library worker for good after it kept failing: `GET /api/state`
 	// answers `library.halted`, no build starts or finishes, and the snapshot held is served.
@@ -195,26 +188,23 @@ export interface FooJeanOptions {
 	// Unset takes the whole library in one slice, so `formatted` never reports above 0.
 	librarySlice?: number;
 
-	// Holds open any `only=` export naming a listed column, so a spec can tell the part that paints a list from the rest. Assigning `null` answers every export held.
-	holdSubset?: string[] | null;
-
-	// The largest export or delta in plain bytes; one over it is a `413`. `null` lifts it.
-	libraryCeiling?: number | null;
-
-	// Refuses that many `GET /api/library/export` requests with `status`, then answers normally.
-	failLibraryExport?: { status: 413 | 500 | 503; times: number } | null;
-
 	// Holds every `GET /api/library/summary` that has passed its refusals unanswered, so a spec can draw Home while it waits. Assigning `false` answers the ones held.
 	holdSummary?: boolean;
 
 	// Refuses that many `GET /api/library/summary` requests with `status`, then answers normally.
 	failSummary?: { status: 429 | 500 | 503; times: number } | null;
 
-	// Holds every `GET /api/library/album`, `artist`, `genre` and `search` that has passed its refusals unanswered. Assigning `false` answers the ones held.
+	// Holds every `GET /api/library/album`, `artist`, `genre`, `search`, `credits` and `values` that has passed its refusals unanswered. Assigning `false` answers the ones held.
 	holdQuestions?: boolean;
 
 	// Refuses that many of those requests with `status`, or destroys the connection unanswered for `"drop"`, then answers normally.
 	failQuestions?: { status: 429 | 500 | 503 | "drop"; times: number } | null;
+
+	// Holds every `POST /api/library/rows` that has passed its refusals unanswered, and nothing else. Assigning `false` answers the ones held.
+	holdRows?: boolean;
+
+	// Refuses that many rows answers with `status`, a `429` carrying the rows bucket's body and `Retry-After`, or destroys the connection unanswered for `"drop"`, then answers normally. No question is touched.
+	failRows?: { status: 429 | 500 | 503 | "drop"; times: number } | null;
 
 	// How many autoplaylists the component will make.
 	maxAutoPlaylists?: number;
@@ -234,7 +224,7 @@ export interface FooJeanOptions {
 	// one named only there is one foobar2000 or another component made, and carries `managed: null`.
 	autoPlaylistSpecs?: Record<string, ManagedAutoPlaylist>;
 	// Query previews answered `429` before the limiter lets one through, shaped
-	// like `libraryBusy`. `POST /__control/previewBusy` sets it mid-test.
+	// like the other `...Busy` knobs. `POST /__control/previewBusy` sets it mid-test.
 	previewBusy?: number;
 
 	// `canWritePlaylists` in `GET /api/capabilities`; `"absent"` leaves the field out.
@@ -312,9 +302,9 @@ export interface FooJeanFake extends Required<FooJeanOptions> {
 	mainThreadStalledAt: number | null;
 	limiter: Limiter;
 	capabilitiesHeld: (() => void)[];
-	subsetsHeld: (() => void)[];
 	summariesHeld: (() => void)[];
 	questionsHeld: (() => void)[];
+	rowsHeld: (() => void)[];
 	// The specification of every autoplaylist `POST /api/autoplaylists` made, by the
 	// fake's own key: the only playlists the two `/api/autoplaylists/{id}` routes touch.
 	managedAutoPlaylists: Map<string, ManagedAutoPlaylist>;
@@ -346,9 +336,9 @@ const DEFAULTS: FooJeanFake = {
 	mainThreadStalled: false,
 	hangCapabilities: false,
 	capabilitiesHeld: [],
-	subsetsHeld: [],
 	summariesHeld: [],
 	questionsHeld: [],
+	rowsHeld: [],
 	failArtwork: null,
 	failPlayingArtwork: null,
 	failRowArtwork: null,
@@ -379,17 +369,15 @@ const DEFAULTS: FooJeanFake = {
 	canReadLibrary: true,
 	libraryReady: true,
 	libraryBuilds: 0,
-	libraryBusy: 0,
 	libraryRebuilds: 0,
 	libraryHalted: false,
 	librarySlice: Infinity,
-	holdSubset: null,
-	libraryCeiling: MAX_LIBRARY_BYTES,
-	failLibraryExport: null,
 	holdSummary: false,
 	failSummary: null,
 	holdQuestions: false,
 	failQuestions: null,
+	holdRows: false,
+	failRows: null,
 	maxAutoPlaylists: 0,
 	autoPlaylists: [],
 	libraryEnabled: true,
@@ -474,23 +462,10 @@ const releaseHeldCapabilitiesWhenSwitchedOff = (
 	return fake;
 };
 
-const releaseSubsetsWhenHoldChanges = (fake: FooJeanFake): FooJeanFake => {
-	let holding = fake.holdSubset;
-	Object.defineProperty(fake, "holdSubset", {
-		enumerable: true,
-		get: () => holding,
-		set: (next: string[] | null) => {
-			holding = next;
-			for (const wake of fake.subsetsHeld.splice(0)) wake();
-		},
-	});
-	return fake;
-};
-
 const releaseWhenHoldEnds =
 	(
-		hold: "holdSummary" | "holdQuestions",
-		held: "summariesHeld" | "questionsHeld",
+		hold: "holdSummary" | "holdQuestions" | "holdRows",
+		held: "summariesHeld" | "questionsHeld" | "rowsHeld",
 	) =>
 	(fake: FooJeanFake): FooJeanFake => {
 		let holding = fake[hold];
@@ -515,6 +490,8 @@ const releaseQuestionsWhenHoldEnds = releaseWhenHoldEnds(
 	"questionsHeld",
 );
 
+const releaseRowsWhenHoldEnds = releaseWhenHoldEnds("holdRows", "rowsHeld");
+
 export const fooJeanState = (options: FooJeanOptions): FooJeanFake => {
 	const specs = options.autoPlaylistSpecs ?? {};
 	const fake = guardRefusals({
@@ -531,16 +508,16 @@ export const fooJeanState = (options: FooJeanOptions): FooJeanFake => {
 		lockedPlaylists: new Set(),
 		limiter: new Map(),
 		capabilitiesHeld: [],
-		subsetsHeld: [],
 		summariesHeld: [],
 		questionsHeld: [],
+		rowsHeld: [],
 		managedAutoPlaylists: new Map(
 			Object.entries(specs).map(([id, spec]) => [id, { ...spec }]),
 		),
 	});
-	return releaseQuestionsWhenHoldEnds(
-		releaseSummariesWhenHoldEnds(
-			releaseSubsetsWhenHoldChanges(
+	return releaseRowsWhenHoldEnds(
+		releaseQuestionsWhenHoldEnds(
+			releaseSummariesWhenHoldEnds(
 				releaseHeldCapabilitiesWhenSwitchedOff(fake),
 			),
 		),

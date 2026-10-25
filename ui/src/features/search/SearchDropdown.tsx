@@ -9,7 +9,11 @@ import {
 	useRef,
 } from "react";
 import { QuestionFailure } from "@/domain/library/QuestionFailure";
-import type { Library } from "@/domain/library/useLibrary";
+import {
+	type Library,
+	useSetRows,
+	useWatchedWhole,
+} from "@/domain/library/useLibrary";
 import type {
 	LibrarySearch,
 	SearchSectionLabel,
@@ -23,8 +27,7 @@ import {
 	titleOf,
 	value,
 } from "@/domain/track/fields";
-import { rowAt } from "@/domain/track/libraryColumns";
-import { trackRows } from "@/domain/track/project";
+import type { TrackRows } from "@/domain/track/project";
 import { useTrackContextMenu } from "@/domain/track/useTrackContextMenu";
 import { libraryArtworkUrl } from "@/shared/api/artwork";
 import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
@@ -35,7 +38,7 @@ import {
 	useTranslate,
 } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
-import { BusyNote, busyProps } from "@/shared/ui/Skeleton";
+import { BusyNote, busyProps, Skeleton } from "@/shared/ui/Skeleton";
 import styles from "./SearchDropdown.module.css";
 
 export const optionId = (position: number) => `search-result-${position}`;
@@ -76,17 +79,17 @@ function faceOf(
 	suggestion: Suggestion,
 	library: Library,
 	t: Translate,
-): { key: string; leading: ReactNode; title: string; under: string } {
+	tracks: TrackRows,
+	position: number,
+): {
+	key: string;
+	leading: ReactNode;
+	title: string;
+	under: string;
+	isPending: boolean;
+} {
 	const coverAt = (path: string | null) =>
 		path === null ? null : libraryArtworkUrl(library.origin, path);
-	const cover = (ref: number, className: string) => (
-		<Artwork
-			src={library.source.artworkUrl(ref)}
-			identity={coverIdentity(rowAt(library.columns, ref))}
-			size={ART}
-			className={className}
-		/>
-	);
 
 	switch (suggestion.kind) {
 		case "artist": {
@@ -112,6 +115,7 @@ function faceOf(
 						total: artist.trackCount + artist.guestCount,
 					}),
 				),
+				isPending: false,
 			};
 		}
 
@@ -136,6 +140,7 @@ function faceOf(
 						total: album.trackCount,
 					}),
 				),
+				isPending: false,
 			};
 		}
 
@@ -153,16 +158,28 @@ function faceOf(
 					count: genre.trackCount,
 					total: genre.trackCount,
 				}),
+				isPending: false,
 			};
 		}
 
 		default: {
-			const row = rowAt(library.columns, suggestion.ref);
+			const isPending = tracks.isPending(position);
+			const row = tracks.at(position);
 			return {
 				key: `track:${suggestion.ref}`,
-				leading: cover(suggestion.ref, styles.cover),
-				title: titleOf(row, t),
-				under: joined(artistOf(row, t), value(row, FIELD.album)),
+				leading: (
+					<Artwork
+						src={library.source.artworkUrl(suggestion.ref)}
+						identity={isPending ? undefined : coverIdentity(row)}
+						size={ART}
+						className={styles.cover}
+					/>
+				),
+				title: isPending ? "" : titleOf(row, t),
+				under: isPending
+					? ""
+					: joined(artistOf(row, t), value(row, FIELD.album)),
+				isPending,
 			};
 		}
 	}
@@ -251,18 +268,14 @@ export function SearchDropdown({
 	const swipe = useSwipe({ onUp: onDismiss });
 
 	const trackStart = suggestions.findIndex((entry) => entry.kind === "track");
-	const tracks = useMemo(
-		() =>
-			trackRows(
-				library.columns,
-				Int32Array.from(
-					suggestions.flatMap((entry) =>
-						entry.kind === "track" ? [entry.ref] : [],
-					),
-				),
-			),
-		[library.columns, suggestions],
-	);
+	const trackRefs = useMemo(() => {
+		const refs = suggestions.flatMap((entry) =>
+			entry.kind === "track" ? [entry.ref] : [],
+		);
+		return refs.length > 0 ? Int32Array.from(refs) : null;
+	}, [suggestions]);
+	const tracks = useSetRows(library, "dropdown", trackRefs, { isBeside: true });
+	useWatchedWhole(tracks);
 	const menu = useTrackContextMenu({
 		rows: tracks,
 		source: library.source,
@@ -324,10 +337,12 @@ export function SearchDropdown({
 								{section.suggestions.map((suggestion, offset) => {
 									const index = sectionStart + offset;
 									const isActive = index === active;
-									const { key, leading, title, under } = faceOf(
+									const { key, leading, title, under, isPending } = faceOf(
 										suggestion,
 										library,
 										t,
+										tracks,
+										index - trackStart,
 									);
 
 									return (
@@ -340,6 +355,7 @@ export function SearchDropdown({
 											className={styles.result}
 											data-active={isActive}
 											data-kind={suggestion.kind}
+											{...busyProps(isPending)}
 											data-row={
 												suggestion.kind === "track"
 													? index - trackStart
@@ -352,8 +368,18 @@ export function SearchDropdown({
 										>
 											{leading}
 											<span className={styles.text}>
-												<span className={styles.title}>{title}</span>
-												<span className={styles.under}>{under}</span>
+												{isPending ? (
+													<>
+														<Skeleton width="60%" />
+														<Skeleton width="40%" />
+														<BusyNote />
+													</>
+												) : (
+													<>
+														<span className={styles.title}>{title}</span>
+														<span className={styles.under}>{under}</span>
+													</>
+												)}
 											</span>
 										</button>
 									);

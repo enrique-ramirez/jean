@@ -17,7 +17,7 @@ import type { TrackRows } from "./project";
 import { isWritableScale, rawRatingWith, starsOf } from "./rating";
 import { useWrittenRating } from "./ratingStore";
 import { ratingItems, trackActions } from "./trackActions";
-import { positionsOf, targetsFrom } from "./trackTargets";
+import { positionsOf, rowTitleAt, targetsFrom } from "./trackTargets";
 import { useAddTracks } from "./useAddTracks";
 import { useQueueTracks } from "./useQueueTracks";
 import { RATING_FIELD, useTagWriting } from "./useTagWriter";
@@ -51,7 +51,9 @@ export function useTrackContextMenu({
 
 	const [positions, setPositions] = useState<number[]>([]);
 
-	const rated = positions.length === 1 ? rows.ref(positions[0]) : undefined;
+	const isPending = positions.length === 1 && rows.isPending(positions[0]);
+	const rated =
+		positions.length === 1 && !isPending ? rows.ref(positions[0]) : undefined;
 	const written = useWrittenRating(rows.columns, rated);
 	const rawRating =
 		rated === undefined ? null : rawRatingWith(rows.at(positions[0]), written);
@@ -113,10 +115,13 @@ export function useTrackContextMenu({
 				addTracks({
 					...options,
 					titleOf: (ref) =>
-						titleOf(rows.at(positions[itemIndices.indexOf(ref)]), t),
+						rowTitleAt(rows, positions[itemIndices.indexOf(ref)], t),
 				}),
 			removeTracks: onRemove && (() => onRemove(positions)),
-			credit: count === 1 ? value(rows.at(positions[0]), FIELD.artist) : null,
+			credit:
+				count === 1 && !isPending
+					? value(rows.at(positions[0]), FIELD.artist)
+					: null,
 			t,
 			rating: rateable
 				? {
@@ -151,6 +156,7 @@ export function useTrackContextMenu({
 		hasWritableAddress,
 		rated,
 		rawRating,
+		isPending,
 		t,
 	]);
 
@@ -163,6 +169,9 @@ export function useTrackContextMenu({
 				subtitle: t("track.selected"),
 			};
 		}
+
+		if (rows.isPending(positions[0]))
+			return { icon: Music, title: t("menu.actions"), isBusy: true };
 
 		const row = rows.at(positions[0]);
 		return {

@@ -15,7 +15,7 @@ import {
 	isScratchPlaylist,
 	queryOfScratchPlaylist,
 } from "@/domain/track/jeanPlaylists";
-import { EMPTY_VIEW, project } from "@/domain/track/project";
+import { NO_FIGURES } from "@/domain/track/stats";
 import { useLibraryQuestion } from "@/domain/track/useLibraryQuestion";
 import { switchRefusalOf } from "@/shared/api/client";
 import {
@@ -34,7 +34,7 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Phrase } from "@/shared/i18n/en";
 import { fuzzyKey, fuzzyScore, nameKey, TIER } from "@/shared/lib/text";
 import { questionFailed } from "./questionFailed";
-import type { Library } from "./useLibrary";
+import { type Library, useSetRows } from "./useLibrary";
 import { useWait } from "./useOverdue";
 import { titledAsLanded, useLandedScratch } from "./useScratchPlaylist";
 
@@ -49,6 +49,7 @@ const NOTHING_NAMED = { total: 0, top: [] };
 const NO_MATCH: LibrarySearchAnswer = {
 	matched: null,
 	matchCount: 0,
+	figures: NO_FIGURES,
 	best: new Int32Array(0),
 	artists: NOTHING_NAMED,
 	albums: NOTHING_NAMED,
@@ -217,10 +218,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		query,
 	);
 
-	const results = useMemo(
-		() => project(library.snapshot, matched),
-		[library.snapshot, matched],
-	);
+	const results = useSetRows(library, "search", matched);
 
 	const suggested = isDraftTooLong ? NO_MATCH : draftAnswer;
 	const suggestedQuery = isDraftTooLong
@@ -356,8 +354,9 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 		query: shown?.query ?? query,
 		committedQuery: query,
 		hasQuery: query.trim().length > 0,
-		results: results ?? EMPTY_VIEW,
+		results,
 		matchCount: shown?.answer.matchCount ?? 0,
+		figures: shown?.answer.figures ?? null,
 		viewKey: `search:${(shown?.query ?? query).trim().toLowerCase()}`,
 		wait,
 	};

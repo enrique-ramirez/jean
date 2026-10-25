@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from "react";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { libraryNoticeFor } from "@/domain/library/LibraryNotice";
 import {
 	isLibraryReading,
@@ -12,10 +12,11 @@ import { byWait, NO_WAIT, type Wait } from "@/domain/library/useOverdue";
 import { useViewPlayback } from "@/domain/library/useViewPlayback";
 import { SCRATCH_KIND, type ScratchKind } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
-import type { TrackView } from "@/domain/track/project";
-import { summarise, type TrackStats } from "@/domain/track/stats";
+import type { ListedRows } from "@/domain/track/project";
+import { type HeaderStats, statsOfFigures } from "@/domain/track/stats";
 import { type PageHeading, TrackPage } from "@/domain/track/TrackPage";
 import { useFinder } from "@/domain/track/useFinder";
+import type { SetFigures } from "@/shared/api/libraryQuestions";
 import type { PlaylistInfo } from "@/shared/api/types";
 import type { Phrase } from "@/shared/i18n/en";
 import { useTranslate } from "@/shared/i18n/useTranslate";
@@ -31,19 +32,8 @@ const FINDER_LABEL: Record<string, FinderPhrase> = {
 	[SCRATCH_KIND.artist]: "finder.inArtist",
 };
 
-const summaries = new WeakMap<TrackView, TrackStats>();
-
-const summaryOf = (view: TrackView) => {
-	const held = summaries.get(view);
-	if (held) return held;
-
-	const summary = summarise(view);
-	summaries.set(view, summary);
-	return summary;
-};
-
-function useKeptStats(pageKey: string, counted: TrackStats | null) {
-	const [held, setHeld] = useState<{ key: string; stats: TrackStats } | null>(
+function useKeptStats(pageKey: string, counted: HeaderStats | null) {
+	const [held, setHeld] = useState<{ key: string; stats: HeaderStats } | null>(
 		null,
 	);
 	if (counted && (held?.key !== pageKey || held.stats !== counted))
@@ -63,13 +53,14 @@ export function LibraryListView({
 	isCompactViewport,
 	emptyNotice,
 	wait = NO_WAIT,
+	figures = null,
 	isAwaitingColumns = false,
 	failure = null,
 	onOpenPlaylist,
 }: {
 	library: Library;
 	pageKey: string;
-	view: TrackView;
+	view: ListedRows;
 	kind: ScratchKind;
 	label: string | null;
 	heading?: PageHeading;
@@ -78,32 +69,41 @@ export function LibraryListView({
 	isCompactViewport: boolean;
 	emptyNotice?: ReactNode;
 	wait?: Wait;
+	figures?: SetFigures | null;
 	isAwaitingColumns?: boolean;
 	failure?: QuestionFailed | null;
 	onOpenPlaylist?: (id: string) => void;
 }) {
 	const t = useTranslate();
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
-	const { indices, heat, patina } = view;
+	const { heat, patina } = view;
+	const { source } = library;
 
 	const isGenre = kind === SCRATCH_KIND.genre;
 
-	const counted = wait.isWaiting ? null : summaryOf(view);
+	const answered = useMemo(
+		() => (figures ? statsOfFigures(figures) : null),
+		[figures],
+	);
+	const counted = wait.isWaiting ? null : answered;
 	const kept = useKeptStats(pageKey, counted);
 	const stats = counted ?? (wait.isOverdue ? null : kept);
 
 	const finder = useFinder({
 		rows: view,
+		over: { kind: "library", ...library },
 		browserRef,
 		label: t(FINDER_LABEL[kind] ?? "finder.inList"),
 	});
 
 	const { playAt, activeIndex, canPlaySets } = useViewPlayback({
 		library,
+		source,
 		playlists,
 		kind,
 		label,
-		indices,
+		indices: view.indices,
+		length: view.length,
 	});
 
 	const notice = libraryNoticeFor(library);
@@ -128,7 +128,7 @@ export function LibraryListView({
 		<TrackPage
 			browserRef={browserRef}
 			rows={view}
-			source={library.source}
+			source={source}
 			viewKey={`${kind}:${label}`}
 			heat={heat}
 			patina={patina}

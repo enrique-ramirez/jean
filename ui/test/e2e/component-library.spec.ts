@@ -1,50 +1,41 @@
+import { TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import type { RecordedRequest } from "../fake-api/state.ts";
 import {
+	askOf,
 	expect,
 	expectPlayingFrom,
 	expectSettlesAt,
 	type FakePlayer,
+	HEADER_TILES_AT_MOST,
+	holdRequests,
 	openSidebar,
 	type Page,
 	playedFrom,
 	playRequests,
-	requestsTo,
 	rowByTitle,
 	scratchFills,
 	scratchOf,
 	sidebar,
+	tagWrites,
 	test,
 	toastRegion,
 	trackPlayed,
 	trackRow,
+	untilQuiet,
 } from "./fixtures.ts";
 import { dragFrom } from "./gestures.ts";
+import {
+	type Answered,
+	holdRows,
+	libraryState,
+	positionsNamed,
+	ROWS,
+	recordLibraryTraffic,
+	STATE,
+	untilThePollHasDrawn,
+} from "./libraryLists.ts";
 import { openRowMenu } from "./menus.ts";
-import { scrollUntilMounted } from "./scrolling.ts";
-
-// `foo_jean` answers the whole library as one binary snapshot, and it is the only source there is.
-
-const exportsAsked = (player: FakePlayer) =>
-	requestsTo(player, "/api/library/export").filter(
-		(entry) =>
-			entry.method === "GET" &&
-			new URLSearchParams(entry.path.split("?")[1]).get("spine") !== "false",
-	);
-
-const deltasAsked = (player: FakePlayer) =>
-	requestsTo(player, "/api/library/changes");
-
-const everyExport = (player: FakePlayer) =>
-	requestsTo(player, "/api/library/export").filter(
-		(entry) => entry.method === "GET",
-	);
-
-const everyPartLoaded = async (player: FakePlayer) => {
-	await expect
-		.poll(() => everyExport(player).length - exportsAsked(player).length)
-		.toBe(1);
-	return everyExport(player).length;
-};
+import { scrollTo, scrollTop, scrollUntilMounted } from "./scrolling.ts";
 
 const titleAtOrdinal = (player: FakePlayer, ordinal: number) =>
 	player.ordinalOrder()[ordinal].track["%title%"];
@@ -52,37 +43,19 @@ const titleAtOrdinal = (player: FakePlayer, ordinal: number) =>
 const rowTitled = (page: Page, title: string) =>
 	page.getByRole("row").filter({ has: page.getByText(title, { exact: true }) });
 
-// Ordered against the export that answered a structure move, because a delta asked before it names
-// a revision from the structure `foo_jean` has thrown away, which it answers with a 409. The deltas
-// after it are ordinary movement in the library Jean now holds.
-const deltasAskedBefore = (player: FakePlayer, request: RecordedRequest) => {
-	const at = player.requests.indexOf(request);
-	return deltasAsked(player).filter(
-		(entry) => player.requests.indexOf(entry) < at,
-	);
-};
-
 const OTHER_DECLARATION = "%title%";
 
 const anotherClientDeclares = async (page: Page) => {
-	const answer = await page.request.get(
-		`/api/library/export?columns=${encodeURIComponent(OTHER_DECLARATION)}`,
-	);
-	expect(answer.status(), "an export of another column set").toBe(200);
+	const answer = await page.request.post("/api/library/rows", {
+		data: { columns: [OTHER_DECLARATION], structure: "0", ordinals: [0] },
+	});
+	expect(answer.status(), "a declaration of another column set").toBe(202);
 };
 
-const jeansExports = (player: FakePlayer) =>
-	exportsAsked(player).filter(
-		(entry) =>
-			new URLSearchParams(entry.path.split("?")[1]).getAll("columns").join() !==
-			OTHER_DECLARATION,
-	);
-
-const jlibHeaderOf = (body: Buffer) =>
-	JSON.parse(body.subarray(8, 8 + body.readUInt32LE(4)).toString()) as {
-		structure: number;
-		revision: number;
-	};
+const holdsJeansDeclaration = (player: FakePlayer) =>
+	player.libraryFeed.building === null &&
+	[...player.libraryFeed.columns].sort().join() ===
+		[...TRACK_EXPRESSIONS].sort().join();
 
 const playsOf = (page: Page, row: number) =>
 	trackRow(page, row).locator("[data-zero]");
@@ -140,13 +113,6 @@ const changeLibrary = async (
 	).toBeLessThan(300);
 };
 
-const libraryState = async (page: Page) =>
-	(
-		(await (await page.request.get("/api/state")).json()) as {
-			library: { structure: number; trackCount: number; halted: boolean };
-		}
-	).library;
-
 const pathsIn = (player: FakePlayer) =>
 	new Set(player.libraryTracks.map((track) => track["%path%"]));
 
@@ -173,14 +139,7 @@ const fileInto = async (
 test.describe("the library as one snapshot", () => {
 	test.use({ fooJean: {} });
 
-	test("every track arrives in one export", async ({ page, player }) => {
-		await openAllMusic(page);
-
-		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "54");
-		await expectSettlesAt(player, () => exportsAsked(player).length, 1);
-	});
-
-	test("the export declares the columns the app reads", async ({
+	test("opening All Music declares the columns the app reads", async ({
 		page,
 		player,
 	}) => {
@@ -208,24 +167,6 @@ test.describe("the library as one snapshot", () => {
 			.poll(() => page.locator('[role="row"]').count())
 			.toBeGreaterThan(0);
 		await expect(trackRow(page, 0)).toContainText("Babasónicos");
-	});
-});
-
-test.describe("a snapshot that has to be built first", () => {
-	test.use({
-		fooJean: { libraryBuilds: 2 },
-	});
-
-	test("the 202 is waited out rather than reported as a failure", async ({
-		page,
-		player,
-	}) => {
-		await openAllMusic(page);
-
-		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "54");
-		// One 202, the polls that watched the build, then the export that answered.
-		expect(exportsAsked(player)).toHaveLength(2);
-		expect(player.libraryFeed.columns.length).toBeGreaterThan(0);
 	});
 });
 
@@ -315,7 +256,7 @@ test.describe("a library that moved while Jean was open", () => {
 		countsPlays: true,
 	});
 
-	test("a play count that advanced arrives as a patch, not a second export", async ({
+	test("a play count that advanced shows on its row", async ({
 		page,
 		player,
 	}) => {
@@ -330,105 +271,17 @@ test.describe("a library that moved while Jean was open", () => {
 		await trackRow(page, 1).dblclick();
 
 		await expect(plays).toHaveText(String(before + 1), { timeout: 20_000 });
-		expect(deltasAsked(player).length).toBeGreaterThan(0);
-		expect(exportsAsked(player)).toHaveLength(1);
-	});
-
-	test("a play started at the player is counted the same way", async ({
-		page,
-		player,
-	}) => {
-		await openAllMusic(page);
-
-		const plays = playsOf(page, 0);
-		const before = Number(await plays.innerText());
-		const playlist = player.playlists.find((entry) =>
-			entry.items.some((track) => track["%title%"] === "Rotten Apple"),
-		)!;
-		const index = playlist.items.findIndex(
-			(track) => track["%title%"] === "Rotten Apple",
-		);
-
-		for (const row of [index, index === 0 ? 1 : 0]) {
-			const answer = await page.request.post("/__control/play", {
-				data: { playlistId: playlist.id, index: row },
-			});
-			expect(answer.ok()).toBe(true);
-		}
-
-		await expect(plays).toHaveText(String(before + 1), { timeout: 20_000 });
-		expect(deltasAsked(player).length).toBeGreaterThan(0);
-		expect(exportsAsked(player)).toHaveLength(1);
-		expect(playRequests(player)).toHaveLength(0);
-	});
-});
-
-test.describe("a library rebuilt under Jean", () => {
-	test.use({
-		fooJean: {},
-		countsPlays: true,
-	});
-
-	test("the structure moving is another export rather than an error", async ({
-		page,
-		player,
-	}) => {
-		const handed: { url: string; structure: number; revision: number }[] = [];
-		page.on("response", async (response) => {
-			const url = response.url();
-			if (
-				response.status() !== 200 ||
-				!/\/api\/library\/(export|changes)/.test(url)
-			)
-				return;
-			const { structure, revision } = jlibHeaderOf(await response.body());
-			handed.push({ url, structure, revision });
-		});
-
-		await openAllMusic(page);
-
-		await trackRow(page, 0).dblclick();
-		await trackRow(page, 1).dblclick();
-		await anotherClientDeclares(page);
-
-		await expect
-			.poll(() => jeansExports(player).length, { timeout: 20_000 })
-			.toBe(2);
-
-		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "54");
-		await expect(trackRow(page, 0)).toContainText("Rotten Apple");
-
-		const loaded = handed.find((entry) =>
-			/\/api\/library\/export/.test(entry.url),
-		)!;
-		const held = new Set(
-			handed
-				.filter((entry) => entry.structure === loaded.structure)
-				.map((entry) => entry.revision),
-		);
-		const asked = deltasAskedBefore(player, jeansExports(player)[1]).map(
-			(entry) => {
-				const query = new URLSearchParams(entry.path.split("?")[1]);
-				return {
-					structure: Number(query.get("structure")),
-					heldRevision: held.has(Number(query.get("since"))),
-				};
-			},
-		);
-		expect(asked).toEqual(
-			asked.map(() => ({ structure: loaded.structure, heldRevision: true })),
-		);
 	});
 });
 
 test.describe("a library rebuilt while Jean was reading the one before it", () => {
 	test.use({ fooJean: {} });
 
-	// The component reads the snapshot off the library it holds at that moment, so a
+	// The component reads a window off the library it holds at that moment, so a
 	// rescan that starts afterwards leaves what is on the wire a generation old.
 	// Fetched as soon as it is asked for and handed to the page only once the test
 	// says so, which is what puts the rebuild inside the read rather than before it.
-	const holdTheExport = async (page: Page) => {
+	const holdTheFirstWindow = async (page: Page) => {
 		let answered = () => {};
 		let release = () => {};
 		const onTheWire = new Promise<void>((resolve) => {
@@ -439,7 +292,7 @@ test.describe("a library rebuilt while Jean was reading the one before it", () =
 		});
 
 		await page.route(
-			"**/api/library/export**",
+			"**/api/library/rows",
 			async (route) => {
 				const response = await route.fetch();
 				const body = await response.body();
@@ -469,7 +322,7 @@ test.describe("a library rebuilt while Jean was reading the one before it", () =
 		page,
 		player,
 	}) => {
-		const { onTheWire, release } = await holdTheExport(page);
+		const { onTheWire, release } = await holdTheFirstWindow(page);
 
 		await page.goto("/#/all");
 		await onTheWire;
@@ -506,13 +359,9 @@ test.describe("a library rebuilt while Jean was reading the one before it", () =
 test.describe("tracks added and removed at the player", () => {
 	test.use({ fooJean: {} });
 
-	test("tracks removed leave the list as a splice, and the library is not exported again", async ({
-		page,
-		player,
-	}) => {
+	test("tracks removed leave the list", async ({ page, player }) => {
 		await openAllMusic(page);
 		await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "54");
-		const exported = await everyPartLoaded(player);
 
 		await changeLibrary(page, { remove: 3 });
 
@@ -525,7 +374,6 @@ test.describe("tracks added and removed at the player", () => {
 		const last = rowTitled(page, titleAtOrdinal(player, 50));
 		await scrollUntilMounted(page, last);
 		await expect(last).toHaveAttribute("data-row", "50");
-		await expectSettlesAt(player, () => everyExport(player).length, exported);
 	});
 
 	test("an add and a remove asked together are one rebuild", async ({
@@ -604,12 +452,8 @@ test.describe("an album added at the player", () => {
 		return added;
 	};
 
-	test("is listed where the player puts it, and the library is not exported again", async ({
-		page,
-		player,
-	}) => {
+	test("is listed where the player puts it", async ({ page, player }) => {
 		await openAllMusic(page);
-		const exported = await everyPartLoaded(player);
 
 		const added = await addAnAlbum(page, player);
 
@@ -618,7 +462,6 @@ test.describe("an album added at the player", () => {
 			await scrollUntilMounted(page, row);
 			await expect(row).toHaveAttribute("data-row", String(ordinal));
 		}
-		await expectSettlesAt(player, () => everyExport(player).length, exported);
 	});
 
 	test("a row past it plays the track it shows", async ({ page, player }) => {
@@ -750,7 +593,7 @@ test.describe("a view whose fill was refused because the library moved", () => {
 	};
 
 	// Jean re-reads the library when the tab comes back, which is what a 409 asks of
-	// a client: export again, then ask again. Given here so the click that follows has
+	// a client: read the state, then ask again. Given here so the click that follows has
 	// a current snapshot to fill from.
 	const comeBackToTheTab = (page: Page) =>
 		page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
@@ -784,7 +627,7 @@ test.describe("a view whose fill was refused because the library moved", () => {
 	}) => {
 		await refuseAFill(page, player);
 		await comeBackToTheTab(page);
-		await expect.poll(() => jeansExports(player).length).toBe(2);
+		await expect.poll(() => holdsJeansDeclaration(player)).toBe(true);
 
 		await trackRow(page, ASKED_ROW).dblclick();
 
@@ -1040,5 +883,452 @@ test.describe("filing a library row into a playlist of your own", () => {
 			await addToPlaylist(page).click();
 			await expect(menuItem(page, FAVORITES)).toBeVisible();
 		});
+	});
+});
+
+// A window: the rows of one block of this many consecutive positions, fetched in one request.
+const WINDOW_ROWS = 2048;
+
+const THREE_WINDOWS = { tracks: 3 * WINDOW_ROWS, albums: 300, artists: 20 };
+
+// Far enough into the second window that neither of its edges is within prefetching distance.
+const IN_THE_SECOND_WINDOW = WINDOW_ROWS + 1000;
+
+const RUNS = "GET /api/library/runs";
+
+const QUESTIONS = [
+	"album",
+	"artist",
+	"genre",
+	"search",
+	"credits",
+	"values",
+].map((route) => `GET /api/library/${route}`);
+
+type Body = RecordedRequest["body"];
+
+const windowsNamed = (body: Body) => [
+	...new Set(
+		positionsNamed(body).map((position) => Math.floor(position / WINDOW_ROWS)),
+	),
+];
+
+const isTileAsk = (body: Body) =>
+	Array.isArray(body?.ordinals) &&
+	body.ordinals.length > 0 &&
+	body.ordinals.length <= HEADER_TILES_AT_MOST;
+
+const isWindowAsk = (body: Body) =>
+	!isTileAsk(body) && positionsNamed(body).length > 0;
+
+const asksSince = (player: FakePlayer, from: number) =>
+	player.requests.slice(from);
+
+const windowsAsked = (player: FakePlayer, from: number) =>
+	asksSince(player, from)
+		.filter((entry) => askOf(entry) === ROWS && isWindowAsk(entry.body))
+		.map((entry) => windowsNamed(entry.body));
+
+const questionsAsked = (player: FakePlayer, from: number) =>
+	asksSince(player, from)
+		.map(askOf)
+		.filter((ask) => QUESTIONS.includes(ask));
+
+const stateThatMoved = (answers: Answered[], past: number) =>
+	answers.findIndex(
+		(answer) =>
+			answer.ask === STATE &&
+			answer.revision !== null &&
+			answer.revision > past,
+	);
+
+const windowsAnsweredAfter = (answers: Answered[], at: number) =>
+	answers
+		.slice(at + 1)
+		.filter(
+			(answer) =>
+				answer.ask === ROWS &&
+				answer.status === 200 &&
+				isWindowAsk(answer.sent),
+		);
+
+const runsAnsweredAfter = (answers: Answered[], at: number) =>
+	answers.slice(at + 1).filter((answer) => answer.ask === RUNS);
+
+const lastRunsTag = (answers: Answered[]) =>
+	answers.findLast((answer) => answer.ask === RUNS && answer.status === 200)
+		?.etag ?? null;
+
+// Opening the list declares the columns, and the fake builds them on a state poll, which moves the
+// structure under a runs answer already asked for. Opened again once the player holds the declaration.
+const openAllMusicSettled = async (page: Page, player: FakePlayer) => {
+	await openAllMusic(page);
+	await expectLanded(page, player, 0);
+	await libraryState(page);
+	await untilQuiet(player);
+	const answers = recordLibraryTraffic(page);
+	await page.reload();
+	await expectLanded(page, player, 0);
+	await untilThePollHasDrawn(page, answers);
+	await expectLanded(page, player, 0);
+	await untilQuiet(player);
+	return answers;
+};
+
+const expectLanded = async (page: Page, player: FakePlayer, index: number) => {
+	await expect(trackRow(page, index)).not.toHaveAttribute("aria-busy", "true");
+	await expect(trackRow(page, index)).toContainText(
+		titleAtOrdinal(player, index),
+	);
+};
+
+const countAPlay = async (page: Page, ordinal: number) => {
+	const answer = await page.request.post("/__control/play", {
+		data: { ordinal },
+	});
+	expect(answer.ok(), `the fake counts a play at ordinal ${ordinal}`).toBe(
+		true,
+	);
+};
+
+const scrollToRow = async (page: Page, index: number) => {
+	const box = await page
+		.locator("main [role=row][data-row]")
+		.first()
+		.boundingBox();
+	expect(box, "no row is mounted to measure a row by").not.toBeNull();
+	await scrollTo(page, index * (box?.height ?? 0));
+	await expect(trackRow(page, index)).toBeAttached();
+};
+
+const playsShown = async (page: Page, row: number) =>
+	Number(await playsOf(page, row).innerText()) || 0;
+
+test.describe("All Music while a value moves in place", () => {
+	test.use({ fooJean: {}, libraryShape: THREE_WINDOWS });
+
+	test("a play counted at the player shows on the visible row within one rows answer of the state that moved, asking again for the window on screen alone and no question", async ({
+		page,
+		player,
+	}) => {
+		const answers = await openAllMusicSettled(page, player);
+		const { revision } = await libraryState(page);
+		const plays = playsOf(page, 0);
+		const before = await playsShown(page, 0);
+		const from = player.requests.length;
+
+		await countAPlay(page, 0);
+
+		await expect(plays).toHaveText(String(before + 1));
+		await expect
+			.poll(() => stateThatMoved(answers, revision), {
+				message: "no state answer carried the new revision",
+			})
+			.toBeGreaterThan(-1);
+		expect(
+			windowsAnsweredAfter(answers, stateThatMoved(answers, revision)).length,
+		).toBeLessThanOrEqual(1);
+		await expectSettlesAt(
+			player,
+			() => ({
+				windows: windowsAsked(player, from),
+				questions: questionsAsked(player, from),
+			}),
+			{ windows: [[0]], questions: [] },
+		);
+	});
+
+	test("revalidates the runs with their ETag, and a play that moved no run is answered 304", async ({
+		page,
+		player,
+	}) => {
+		const answers = await openAllMusicSettled(page, player);
+		const { revision } = await libraryState(page);
+		const held = lastRunsTag(answers);
+		expect(held, "the runs answered no ETag").not.toBeNull();
+
+		await countAPlay(page, 0);
+
+		await expect
+			.poll(() => stateThatMoved(answers, revision), {
+				message: "no state answer carried the new revision",
+			})
+			.toBeGreaterThan(-1);
+		const moved = stateThatMoved(answers, revision);
+		await expect.poll(() => runsAnsweredAfter(answers, moved)).not.toEqual([]);
+		await untilQuiet(player);
+		expect(
+			runsAnsweredAfter(answers, moved).map(({ status, ifNoneMatch }) => ({
+				status,
+				ifNoneMatch,
+			})),
+		).toEqual([{ status: 304, ifNoneMatch: held }]);
+	});
+
+	test("keeps drawing the row it holds while the window on screen is asked again", async ({
+		page,
+		player,
+	}) => {
+		await openAllMusicSettled(page, player);
+		const plays = playsOf(page, 0);
+		const before = await playsShown(page, 0);
+		await holdRows(page, true);
+
+		await countAPlay(page, 0);
+
+		await expect
+			.poll(() => player.fooJean.rowsHeld.length, {
+				message: "the window on screen was never asked again",
+			})
+			.toBeGreaterThan(0);
+		await expectLanded(page, player, 0);
+		await expect(plays).toHaveText(String(before));
+
+		await holdRows(page, false);
+		await expect(plays).toHaveText(String(before + 1));
+	});
+
+	test("a window held off screen is asked again once it is scrolled to and not before, and draws the play counted in it", async ({
+		page,
+		player,
+	}) => {
+		const far = IN_THE_SECOND_WINDOW;
+		await openAllMusicSettled(page, player);
+		await scrollToRow(page, far);
+		await expectLanded(page, player, far);
+		const farBefore = await playsShown(page, far);
+		await scrollTo(page, 0);
+		await expectLanded(page, player, 0);
+		await untilQuiet(player);
+		const nearBefore = await playsShown(page, 0);
+		const from = player.requests.length;
+
+		await countAPlay(page, 0);
+		await countAPlay(page, far);
+
+		await expect(playsOf(page, 0)).toHaveText(String(nearBefore + 1));
+		await expectSettlesAt(
+			player,
+			() => [...new Set(windowsAsked(player, from).flat())],
+			[0],
+		);
+
+		const scrolled = player.requests.length;
+		await scrollToRow(page, far);
+
+		await expect(playsOf(page, far)).toHaveText(String(farBefore + 1));
+		await expectSettlesAt(player, () => windowsAsked(player, scrolled), [[1]]);
+	});
+});
+
+test.describe("All Music while tracks are added and removed", () => {
+	test.use({ fooJean: {}, libraryShape: THREE_WINDOWS });
+
+	const ALBUM = 10;
+
+	const scrolledIntoTheLibrary = async (page: Page, player: FakePlayer) => {
+		const answers = await openAllMusicSettled(page, player);
+		await scrollToRow(page, IN_THE_SECOND_WINDOW);
+		await expectLanded(page, player, IN_THE_SECOND_WINDOW);
+		await untilQuiet(player);
+		return { answers, top: await scrollTop(page) };
+	};
+
+	for (const change of [{ add: ALBUM }, { remove: ALBUM }]) {
+		const moved = change.add ? "added" : "removed";
+
+		test(`an album ${moved} while scrolled into the library keeps scrollTop, asks the runs anew and the window on screen again`, async ({
+			page,
+			player,
+		}) => {
+			const { answers, top } = await scrolledIntoTheLibrary(page, player);
+			const heldTag = lastRunsTag(answers);
+			const before = await libraryState(page);
+			const from = player.requests.length;
+			const answeredFrom = answers.length;
+
+			await changeLibrary(page, change);
+
+			await expect(page.getByRole("grid")).toHaveAttribute(
+				"aria-rowcount",
+				String(before.trackCount + (change.add ?? 0) - (change.remove ?? 0)),
+				{ timeout: 20_000 },
+			);
+			await expectLanded(page, player, IN_THE_SECOND_WINDOW);
+			await expectSettlesAt(player, () => windowsAsked(player, from), [[1]]);
+			const runs = answers
+				.slice(answeredFrom)
+				.filter((answer) => answer.ask === RUNS);
+			expect(runs.map((answer) => answer.status)).toEqual([200]);
+			expect(runs[0].etag).not.toBe(heldTag);
+			expect(Math.abs((await scrollTop(page)) - top)).toBeLessThanOrEqual(1);
+		});
+	}
+
+	// The tracks added sit near the top of the library, so every row of the first window below them
+	// names another track than it did. A window kept rather than dropped draws the old one there.
+	test("an album added draws no row the first window held before it, and asks that window again when scrolled back to", async ({
+		page,
+		player,
+	}) => {
+		await scrolledIntoTheLibrary(page, player);
+		const known = pathsIn(player);
+
+		await changeLibrary(page, { add: ALBUM });
+		await expect(page.getByRole("grid")).toHaveAttribute(
+			"aria-rowcount",
+			String(THREE_WINDOWS.tracks + ALBUM),
+			{ timeout: 20_000 },
+		);
+		await expectLanded(page, player, IN_THE_SECOND_WINDOW);
+		await untilQuiet(player);
+		const first = player
+			.ordinalOrder()
+			.findIndex((entry) => !known.has(entry.track["%path%"]));
+		expect(first).toBeGreaterThan(-1);
+		const shifted = first + ALBUM;
+		const from = player.requests.length;
+		await holdRows(page, true);
+
+		await scrollToRow(page, shifted);
+
+		await expect
+			.poll(() => player.fooJean.rowsHeld.length, {
+				message: "the first window was never asked again",
+			})
+			.toBeGreaterThan(0);
+		await expect(trackRow(page, shifted)).toHaveAttribute("aria-busy", "true");
+		await holdRows(page, false);
+		await expectLanded(page, player, shifted);
+		await expectSettlesAt(player, () => windowsAsked(player, from), [[0]]);
+	});
+});
+
+test.describe("All Music played at a structure the player has moved past", () => {
+	test.use({ fooJean: {} });
+
+	const ROW = 10;
+
+	test("the play is refused 409 and caught, nothing plays, and the row plays its own track once the list has caught up", async ({
+		page,
+		player,
+	}) => {
+		const uncaught: string[] = [];
+		page.on("pageerror", (error) => uncaught.push(error.message));
+		await openAllMusicSettled(page, player);
+		await expectLanded(page, player, ROW);
+		const title = titleAtOrdinal(player, ROW);
+		const before = await libraryState(page);
+
+		// Polls stopped in the browser, so the page goes on holding the old structure while the
+		// player, asked directly, finishes the rebuild.
+		const polls = await holdRequests(
+			page,
+			(request) =>
+				request.method() === "GET" &&
+				new URL(request.url()).pathname === "/api/state",
+		);
+		await polls.untilHeld();
+		await changeLibrary(page, { add: 1 });
+		expect((await libraryState(page)).structure).toBe(before.structure + 1);
+
+		const refused = page.waitForResponse(
+			(response) =>
+				new URL(response.url()).pathname ===
+					"/api/playlists/own/scratch/items" && response.status() === 409,
+		);
+		await trackRow(page, ROW).dblclick();
+		await refused;
+		await expectSettlesAt(player, () => playRequests(player).length, 0);
+
+		polls.releaseAll();
+		await expect(page.getByRole("grid")).toHaveAttribute(
+			"aria-rowcount",
+			String(before.trackCount + 1),
+			{ timeout: 20_000 },
+		);
+		const row = rowByTitle(page, title);
+		await scrollUntilMounted(page, row);
+		await row.dblclick();
+
+		await expect.poll(() => trackPlayed(player)).toBe(title);
+		expect(uncaught).toEqual([]);
+	});
+});
+
+test.describe("a rating written in All Music", () => {
+	// The compact layout draws two optional columns, so the set is pinned to the two these read.
+	test.use({
+		fooJean: {},
+		settings: { "jean.columns": ["rating", "playCount"] },
+	});
+
+	test.skip(
+		({ isMobile }) => Boolean(isMobile),
+		"the row's stars are a pointer control; touch uses the track menu",
+	);
+
+	const ROW = 10;
+	const WRITTEN = 2;
+
+	const ratingOf = (page: Page, row: number) =>
+		trackRow(page, row).getByRole("group", { name: /stars|Unrated/ });
+
+	const star = (page: Page, row: number, value: number) =>
+		trackRow(page, row).getByRole("button", { name: `Rate ${value} of 5` });
+
+	const rated = (value: number) => `${value} of 5 stars`;
+
+	test("is still drawn while its write is out, after the row's window is asked again and lands", async ({
+		page,
+		player,
+	}) => {
+		await openAllMusicSettled(page, player);
+		await expectLanded(page, player, ROW);
+		await expect(ratingOf(page, ROW)).not.toHaveAccessibleName(rated(WRITTEN));
+		const plays = await playsShown(page, ROW);
+		const writes = await holdRequests(
+			page,
+			(request) => new URL(request.url()).pathname === "/api/tags",
+		);
+
+		await star(page, ROW, WRITTEN).click();
+		await writes.untilHeld();
+		await expect(ratingOf(page, ROW)).toHaveAccessibleName(rated(WRITTEN));
+		await countAPlay(page, ROW);
+
+		await expect(playsOf(page, ROW)).toHaveText(String(plays + 1));
+		expect(
+			await ratingOf(page, ROW).getAttribute("aria-label"),
+			"the written rating went with the window it was drawn over",
+		).toBe(rated(WRITTEN));
+		writes.releaseAll();
+	});
+
+	test("stays with its track when an album added above moves the track to another row", async ({
+		page,
+		player,
+	}) => {
+		await openAllMusicSettled(page, player);
+		await expectLanded(page, player, ROW);
+		await expectLanded(page, player, ROW - 1);
+		const above = await ratingOf(page, ROW - 1).getAttribute("aria-label");
+		expect(above).not.toBe(rated(WRITTEN));
+		const title = titleAtOrdinal(player, ROW);
+		const known = pathsIn(player);
+
+		await star(page, ROW, WRITTEN).click();
+		await expectSettlesAt(player, () => tagWrites(player).length, 1);
+		await changeLibrary(page, { add: 1 });
+		await expect(page.getByRole("grid")).toHaveAttribute(
+			"aria-rowcount",
+			String(known.size + 1),
+			{ timeout: 20_000 },
+		);
+
+		await expect(trackRow(page, ROW + 1)).toContainText(title);
+		await expectLanded(page, player, ROW);
+		await expect(ratingOf(page, ROW)).toHaveAccessibleName(above as string);
+		await expect(ratingOf(page, ROW + 1)).toHaveAccessibleName(rated(WRITTEN));
 	});
 });

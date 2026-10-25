@@ -17,7 +17,14 @@ import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { mergeHandlers } from "@/shared/lib/mergeHandlers";
 import { resolveColumns } from "./columns";
 import { useAvailableFields } from "./fieldAvailability";
-import { groupByAlbum } from "./grouping";
+import {
+	type AlbumSpan,
+	discsOf,
+	groupByAlbum,
+	groupsFromRuns,
+	isAlbumRun,
+	NO_GROUPS,
+} from "./grouping";
 import type { LibrarySource } from "./librarySource";
 import type {
 	ActiveDirection,
@@ -30,10 +37,12 @@ import { PendingRows } from "./PendingRows";
 import { holdPlayingRow } from "./playingRating";
 import type { TrackRows } from "./project";
 import { setRatingTarget } from "./ratingTarget";
+import { WINDOW_ROWS } from "./rowWindows";
 import styles from "./TrackBrowser.module.css";
 import { TrackList } from "./TrackList";
 import { TrackToolbar } from "./TrackToolbar";
 import { useFollowPlayback } from "./useFollowPlayback";
+import { useLibraryWindows } from "./useLibraryWindows";
 import { useListPreferences } from "./useListPreferences";
 import { useRowPointer } from "./useRowPointer";
 import { useTrackContextMenu } from "./useTrackContextMenu";
@@ -42,15 +51,18 @@ import { useTrackSelection } from "./useTrackSelection";
 
 const PAGE = 12;
 
+const SET_DISCS_SCANNED_ROWS = 2 * WINDOW_ROWS;
+
 export interface TrackBrowserProps {
 	rows: TrackRows;
 	source: LibrarySource;
+	runGroups?: { groups: AlbumSpan[]; hasDiscs: boolean };
 	viewKey: string;
-	heat: Float32Array;
-	patina: Float32Array;
+	heat: ArrayLike<number>;
+	patina: ArrayLike<number>;
 	activeIndex?: number;
 	isPlaying: boolean;
-	matches?: Set<number> | null;
+	matches?: Int32Array | null;
 	isLoading: boolean;
 	loaded: number;
 	total: number;
@@ -77,6 +89,7 @@ export function TrackBrowser({
 	ref,
 	rows,
 	source,
+	runGroups: ownRuns,
 	viewKey,
 	heat,
 	patina,
@@ -109,13 +122,39 @@ export function TrackBrowser({
 
 	const preferences = useListPreferences();
 	const { layout, showHeat, showArtwork, enabledIds } = preferences;
+	const isWindowed = rows.viewport !== undefined;
 	const [activeDirection, setActiveDirection] = useState<ActiveDirection>(null);
 
 	const selection = useTrackSelection(rows.length, viewKey);
 	const { isAvailable, hasPlayCounts } = useAvailableFields();
 
-	const groups = groupByAlbum(rows);
-	const hasDiscs = useMemo(() => groups.some((group) => group.discs), [groups]);
+	const { state: windows } = useLibraryWindows(isWindowed && !ownRuns);
+	const libraryGroups = useMemo(
+		() =>
+			windows.runs
+				? groupsFromRuns(windows.runs.runs, rows.indices)
+				: NO_GROUPS,
+		[windows.runs, rows.indices],
+	);
+	const groups: AlbumSpan[] = ownRuns
+		? ownRuns.groups
+		: isWindowed
+			? libraryGroups
+			: groupByAlbum(rows);
+	const isSet = isWindowed && rows.indices !== null;
+	const hasDiscs = useMemo(() => {
+		if (ownRuns) return ownRuns.hasDiscs;
+		if (isSet) {
+			for (const group of groups) {
+				if (group.start >= SET_DISCS_SCANNED_ROWS) break;
+				if (discsOf(group, rows) !== null) return true;
+			}
+			return false;
+		}
+		return isWindowed
+			? windows.hasDiscs
+			: groups.some((group) => isAlbumRun(group) && group.discs !== null);
+	}, [ownRuns, isSet, isWindowed, windows.hasDiscs, groups, rows]);
 
 	const { optional, template, albumTemplate } = useMemo(
 		() =>

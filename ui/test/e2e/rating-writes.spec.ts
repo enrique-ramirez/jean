@@ -28,9 +28,11 @@ import {
 	toastRegion,
 	trackRow,
 	watchWhatIsSaid,
+	withNoListOnScreen,
 } from "./fixtures.ts";
 import { pressAndHold } from "./gestures.ts";
 import { openPanels, panelTab, writeLyric } from "./nowPlaying.ts";
+import { scrollUntilMounted } from "./scrolling.ts";
 
 // The fake serves `foo_jean` on a second port, so everything here crosses a
 // real origin boundary.
@@ -83,6 +85,14 @@ const asksSince = (player: FakePlayer, from: number) =>
 		.slice(from)
 		.filter((entry) => routeOf(entry.path) !== "/api/state")
 		.map((entry) => `${entry.method} ${routeOf(entry.path)}`);
+
+// The same, less one re-read of the window the now-playing screen holds: foo_jean cannot say which
+// revision Jean's own write produced, so the revision it moves re-reads that window once.
+const asksOfAnOwnRating = (player: FakePlayer, from: number) => {
+	const asked = asksSince(player, from);
+	const reread = asked.indexOf("POST /api/library/rows");
+	return reread === -1 ? asked : asked.toSpliced(reread, 1);
+};
 
 // A view asks for a cover per record on the way in, and those are nobody's
 // click. Letting the request log stop moving before anything is counted is what
@@ -164,6 +174,23 @@ const libraryRatingOf = (player: FakePlayer, track: string) =>
 	player.ordinalOrder().find((entry) => entry.path === track)?.track[
 		"%rating%"
 	];
+
+// A rating changed in foobar2000 itself: every copy the fake holds of the file, under both spellings
+// foobar2000 answers the one tag by, and the library's revision and change count with it.
+const rateAtThePlayer = (player: FakePlayer, track: string, rating: string) => {
+	const path = player.ordinalOrder().find((entry) => entry.path === track)
+		?.track["%path%"];
+	if (!path) throw new Error(`the media library holds no ${track}`);
+	for (const held of [
+		...player.libraryTracks,
+		...player.playlists.flatMap((playlist) => playlist.items),
+	])
+		if (held["%path%"] === path) {
+			held["%rating%"] = rating;
+			held["$meta(rating)"] = rating;
+		}
+	player.libraryEdited(["rating"]);
+};
 
 const ratingsWritten = (player: FakePlayer) =>
 	tagWrites(player).map((entry) => [
@@ -416,6 +443,55 @@ test.describe("rating from All music", () => {
 		expect(write.body).toMatchObject({ fields: { rating: "4" } });
 
 		await expect(ratingOf(page, 2)).toHaveAccessibleName("4 of 5 stars");
+	});
+
+	// Jean paints a rating it wrote over the row until the player answers for it. A value the player
+	// reports later, written by somebody else, is newer than that paint.
+	test("a rating changed at the player after Jean wrote one shows the player's", async ({
+		page,
+		player,
+	}) => {
+		await openAllMusic(page);
+		await expect(trackRow(page, 2)).toContainText("I Stay Away");
+		await trackRow(page, 2).dblclick();
+		await expect(page.locator("footer")).toContainText("I Stay Away");
+		await nothingWrittenYet(player);
+
+		const before = player.requests.length;
+		await star(page, 2, 4).click();
+		await expectSettlesAt(player, () => asksOfAnOwnRating(player, before), [
+			"POST /api/tags",
+		]);
+		await expect(ratingOf(page, 2)).toHaveAccessibleName("4 of 5 stars");
+
+		rateAtThePlayer(player, I_STAY_AWAY, "2");
+
+		await expect(ratingOf(page, 2)).toHaveAccessibleName("2 of 5 stars");
+		await openNowPlaying(page);
+		await expect(starsOnScreen(page)).toHaveAccessibleName("2 of 5 stars");
+	});
+
+	// The playing track's window stays held after its list has gone, and a held window nobody draws is
+	// read again by nothing, so the now-playing screen has to hear of the change on its own.
+	test("a rating changed at the player reaches the now-playing screen while no list draws its row", async ({
+		page,
+		player,
+	}) => {
+		await openAllMusic(page);
+		await expect(trackRow(page, 2)).toContainText("I Stay Away");
+		await trackRow(page, 2).dblclick();
+		await expect(page.locator("footer")).toContainText("I Stay Away");
+		await withNoListOnScreen(page);
+		await openNowPlaying(page);
+		await expect(starsOnScreen(page)).toHaveAccessibleName("Unrated");
+
+		rateAtThePlayer(player, I_STAY_AWAY, "2");
+
+		await expect(starsOnScreen(page)).toHaveAccessibleName("2 of 5 stars");
+		await expect(page.locator('main [role="row"]')).toHaveCount(0);
+		await closeNowPlaying(page);
+		await openAllMusic(page);
+		await expect(ratingOf(page, 2)).toHaveAccessibleName("2 of 5 stars");
 	});
 
 	// A cue sheet or a disc image: several tracks in one file, sharing a path and
@@ -884,7 +960,7 @@ test.describe("when a library address names more than one track", () => {
 				.getByRole("button", { name: "Rate 4 of 5" })
 				.click();
 
-			await expectSettlesAt(player, () => asksSince(player, before), [
+			await expectSettlesAt(player, () => asksOfAnOwnRating(player, before), [
 				"POST /api/tags",
 				"POST /api/tags",
 			]);
@@ -1461,6 +1537,41 @@ test.describe("rating the track the now-playing screen is showing", () => {
 		await openNowPlaying(page);
 	};
 
+	// Rated where no All Music window holds the row, so the first window to hold it lands after the
+	// player has changed the rating again.
+	test("a rating changed at the player shows in All Music and here, though no library list held the row when Jean wrote", async ({
+		page,
+		player,
+	}) => {
+		await openLibrary(page);
+		await trackRow(page, 2).dblclick();
+		await expect(page.locator("footer")).toContainText("Deléctrico");
+		await openNowPlaying(page);
+		await nothingWrittenYet(player);
+
+		const before = player.requests.length;
+		await starsOnScreen(page)
+			.getByRole("button", { name: "Rate 4 of 5" })
+			.click();
+		await expectSettlesAt(player, () => ratingsWritten(player), [
+			[DELECTRICO, "4"],
+		]);
+		await expectSettlesAt(player, () => asksOfAnOwnRating(player, before), [
+			"POST /api/tags",
+		]);
+		await expect(starsOnScreen(page)).toHaveAccessibleName("4 of 5 stars");
+
+		rateAtThePlayer(player, DELECTRICO, "2");
+		await closeNowPlaying(page);
+		await openAllMusic(page);
+		const row = ordinalOf(player, DELECTRICO);
+		await scrollUntilMounted(page, trackRow(page, row));
+
+		await expect(ratingOf(page, row)).toHaveAccessibleName("2 of 5 stars");
+		await openNowPlaying(page);
+		await expect(starsOnScreen(page)).toHaveAccessibleName("2 of 5 stars");
+	});
+
 	test("names the playlist row where the media library does not hold the track", async ({
 		page,
 		player,
@@ -1511,7 +1622,7 @@ test.describe("rating the track the now-playing screen is showing", () => {
 			await expect(starsOnScreen(page)).toHaveAccessibleName("2 of 5 stars");
 			// Off the write's own answer: reading the track again would land on the
 			// same two stars and cost a request to hear what the write already said.
-			await expectSettlesAt(player, () => asksSince(player, before), [
+			await expectSettlesAt(player, () => asksOfAnOwnRating(player, before), [
 				"POST /api/tags",
 			]);
 		});
@@ -1769,7 +1880,7 @@ test.describe("when a rating from the now-playing screen is refused", () => {
 			// The write, then the one read that follows it. Pressing again before
 			// that read has answered would make where the stars end a question about
 			// ordering rather than about what the player agreed to.
-			await expectSettlesAt(player, () => asksSince(player, before), [
+			await expectSettlesAt(player, () => asksOfAnOwnRating(player, before), [
 				"POST /api/tags",
 				"GET /api/track/library",
 			]);

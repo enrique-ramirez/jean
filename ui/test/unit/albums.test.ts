@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-	albumIndex,
-	albumsOf,
-	refsOfAlbum,
-} from "../../src/domain/track/albums.ts";
+import { albumsOf, refsOfAlbum } from "../../src/domain/track/albums.ts";
 import {
 	artistGroups,
 	FIELD,
@@ -119,22 +115,6 @@ test("a title carrying a slash is not read as two segments", () => {
 		artist: "godspeed you! black emperor",
 		album: "yanqui u.x.o./live",
 	});
-});
-
-test("the index takes in rows that arrive after it was first asked for", () => {
-	const key = "library:6";
-
-	const collector = columnCollector(TRACK_EXPRESSIONS.length);
-	collector.add(rows.slice(0, 1));
-	assert.equal(albumIndex(key, collector.table()).length, 1);
-
-	collector.add(rows.slice(1));
-	const grown = albumIndex(key, collector.table());
-	assert.equal(grown.length, albums.length);
-	assert.equal(
-		grown.find((entry) => entry.album === "Discovery")?.trackCount,
-		2,
-	);
 });
 
 const named = (query: string, floor = TIER.word) =>

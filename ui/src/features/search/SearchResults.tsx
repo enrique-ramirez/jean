@@ -14,7 +14,7 @@ import { useViewPlayback } from "@/domain/library/useViewPlayback";
 import { useInSession } from "@/domain/player/session";
 import { SCRATCH_KIND } from "@/domain/track/jeanPlaylists";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
-import { summarise } from "@/domain/track/stats";
+import { statsOfFigures } from "@/domain/track/stats";
 import { TrackPage } from "@/domain/track/TrackPage";
 import { permitsPlaylistWrites } from "@/shared/api/discovery";
 import type { PlaylistInfo } from "@/shared/api/types";
@@ -52,7 +52,11 @@ export function SearchResults({
 
 	const results = search.results;
 	const { indices, heat, patina } = results;
-	const stats = useMemo(() => summarise(results), [results]);
+	const { figures } = search;
+	const stats = useMemo(
+		() => (figures ? statsOfFigures(figures) : null),
+		[figures],
+	);
 
 	const { playAt, activeIndex, scratch, holdsThisView, canPlaySets } =
 		useViewPlayback({

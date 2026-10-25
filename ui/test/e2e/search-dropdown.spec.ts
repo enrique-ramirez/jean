@@ -1,6 +1,7 @@
-import type { FakePlayer } from "./fixtures.ts";
+import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
+	expectSettlesAt,
 	openLibrary,
 	openSidebar,
 	playedFrom,
@@ -12,8 +13,21 @@ import {
 	statusBar,
 	test,
 	trackPlayed,
+	untilQuiet,
 } from "./fixtures.ts";
 import { pressAndHold, touchDrag } from "./gestures.ts";
+import {
+	type Answered,
+	holdRows,
+	latestAnswer,
+	mark,
+	openHomeSettled,
+	positionsNamed,
+	recordLibraryTraffic,
+	rowsAnswered,
+	titleAtOrdinal,
+	untilRowsAreHeld,
+} from "./libraryLists.ts";
 
 // Enough matches that the preview has to leave some out.
 const QUERY = "babasonicos";
@@ -597,5 +611,102 @@ test.describe("a track's menu in the preview", () => {
 
 		await expect(tracks(page).first()).toBeVisible();
 		await expect(searchField(page)).toHaveValue(QUERY);
+	});
+});
+
+const RANKED_APART = "the";
+
+const askTheSearch = async (page: Page, answered: Answered[]) => {
+	await searchField(page).fill(RANKED_APART);
+	const { best } = await latestAnswer<{ best: number[] }>(
+		answered,
+		"GET /api/library/search",
+		(answer) => answer.params.get("query") === RANKED_APART,
+	);
+	expect(
+		best,
+		"the search ranked its best in the library's order, which proves nothing about rank",
+	).not.toEqual([...best].sort((a, b) => a - b));
+	return best;
+};
+
+test.describe("the preview's tracks", () => {
+	test("are asked by ordinal, the ones the search ranked best, and drawn in its rank order", async ({
+		page,
+		player,
+	}) => {
+		const answered = recordLibraryTraffic(page);
+		await openWithSearch(page);
+		await untilQuiet(player);
+		const from = mark(answered, player);
+
+		const best = await askTheSearch(page, answered);
+		await expect(tracks(page)).toHaveCount(best.length);
+		for (const [at, ordinal] of best.entries())
+			await expect(tracks(page).nth(at)).toContainText(
+				titleAtOrdinal(player, ordinal),
+			);
+
+		const naming = () =>
+			rowsAnswered(answered, from).filter(
+				(body) =>
+					JSON.stringify([...positionsNamed(body)].sort((a, b) => a - b)) ===
+					JSON.stringify([...best].sort((a, b) => a - b)),
+			);
+		await expectSettlesAt(player, () => naming().length, 1);
+		expect(
+			Array.isArray(naming()[0]?.ordinals),
+			"a set in rank order cannot be sent as runs",
+		).toBe(true);
+	});
+
+	test.describe("with the rows held", () => {
+		test.use({ fooJean: { holdRows: true } });
+
+		test("draw as skeletons, and the first one chosen plays the track the search ranked first", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			const answered = recordLibraryTraffic(page);
+			await openHomeSettled(page, player);
+			await revealSearch(page);
+			const best = await askTheSearch(page, answered);
+			await untilRowsAreHeld(player, best);
+
+			const first = tracks(page).first();
+			await expect(first).toHaveAttribute("aria-busy", "true");
+			await expect(first).not.toContainText(titleAtOrdinal(player, best[0]));
+
+			if (isMobile) await first.tap();
+			else {
+				await expect
+					.poll(async () => {
+						if ((await first.getAttribute("aria-selected")) === "true")
+							return true;
+						await searchField(page).press("ArrowDown");
+						return false;
+					})
+					.toBe(true);
+				await searchField(page).press("Enter");
+			}
+
+			await expect
+				.poll(() => playedFrom(player)?.id)
+				.toBe(scratchOf(player)?.guid);
+			expect(trackPlayed(player)).toBe(titleAtOrdinal(player, best[0]));
+			expect(
+				player.fooJean.rowsHeld.length,
+				"the rows landed before the play went out",
+			).toBeGreaterThan(0);
+
+			await holdRows(page, false);
+			await revealSearch(page);
+			await searchField(page).fill("");
+			await searchField(page).fill(RANKED_APART);
+			await expect(tracks(page).first()).toContainText(
+				titleAtOrdinal(player, best[0]),
+			);
+		});
 	});
 });

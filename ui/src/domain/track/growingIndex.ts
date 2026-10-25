@@ -10,14 +10,6 @@ export function growingIndex<Key, Draft, T>(
 		from: number,
 	) => Steps<void>,
 	derive: (byKey: Map<Key, Draft>) => T[],
-	patching?: {
-		patchable: readonly number[];
-		patch: (
-			byKey: Map<Key, Draft>,
-			before: LibraryColumns,
-			after: LibraryColumns,
-		) => void;
-	},
 ) {
 	interface Held {
 		key: string;
@@ -44,15 +36,6 @@ export function growingIndex<Key, Draft, T>(
 	const isUsable = (held: Held | null | undefined, key: string): held is Held =>
 		!!held && held.key === key && held.failure === null;
 
-	const canPatch = (before: LibraryColumns, after: LibraryColumns) =>
-		patching !== undefined &&
-		before.trackCount === after.trackCount &&
-		fields.every(
-			(field) =>
-				before.fields[field] === after.fields[field] ||
-				patching.patchable.includes(field),
-		);
-
 	const heldFor = (key: string, columns: LibraryColumns): Held => {
 		const known = byColumns.get(columns);
 		if (isUsable(known, key)) return known;
@@ -66,16 +49,7 @@ export function growingIndex<Key, Draft, T>(
 			!someFieldMoved(fields, base.columns, columns)
 		)
 			next = base;
-		else if (
-			patching &&
-			!base.absorbing &&
-			base.counted === columns.trackCount &&
-			canPatch(base.columns, columns)
-		) {
-			patching.patch(base.drafts, base.columns, columns);
-			byColumns.delete(base.columns);
-			next = { ...base, columns, entries: derive(base.drafts) };
-		} else next = fresh(key, columns);
+		else next = fresh(key, columns);
 
 		byColumns.set(columns, next);
 		return next;

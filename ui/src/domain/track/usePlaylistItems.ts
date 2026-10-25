@@ -1,78 +1,171 @@
-import { useCallback, useEffect, useSyncExternalStore } from "react";
-import { loadComponentLibrary } from "./libraryLoader";
-import {
-	componentLibraryKey,
-	EMPTY_PLAYLIST,
-	type PlaylistSnapshot,
-	playlistKey,
-	playlistSnapshot,
-	subscribePlaylist,
-} from "./playlistEntries";
-import { loadPlaylist, recheckPlaylist } from "./playlistLoader";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { libraryOrigin } from "@/shared/api/discovery";
+import type { PlaylistInfo } from "@/shared/api/types";
+import { useFooJean } from "@/shared/hooks/useFooJean";
+import { useFieldFactsKnown } from "./fieldAvailability";
+import { type AlbumSpan, groupsFromRuns, NO_GROUPS } from "./grouping";
+import { announcedLibraryOf } from "./libraryHolds";
+import { windowedLibraryOf } from "./libraryWindows";
+import type { PlaylistState, WindowedPlaylist } from "./playlistLoader";
+import { windowedPlaylistRows } from "./playlistRows";
+import { EMPTY_VIEW, type ListedRows } from "./project";
+import type { PlaylistList } from "./rowWindows";
+import { type HeaderStats, statsOfFigures } from "./stats";
 
-const stayUnsubscribed = () => () => {};
+const NOTHING = () => () => {};
 
-function useLoadedRows(
-	key: string | null,
-	start: () => void,
-): PlaylistSnapshot {
-	useEffect(() => {
-		if (key) start();
-	}, [key, start]);
+const EMPTY_STATE: PlaylistState = {
+	version: 0,
+	runs: null,
+	hasDiscs: false,
+	total: null,
+	isOpened: false,
+	failure: null,
+};
 
+export function usePlaylistState(windowed: WindowedPlaylist | null) {
 	return useSyncExternalStore(
-		useCallback(
-			(listener) =>
-				key ? subscribePlaylist(key, listener) : stayUnsubscribed(),
-			[key],
-		),
-		useCallback(() => (key ? playlistSnapshot(key) : EMPTY_PLAYLIST), [key]),
+		windowed ? windowed.subscribe : NOTHING,
+		windowed ? windowed.state : () => EMPTY_STATE,
 	);
+}
+
+export function usePlaylistWindows(
+	playlistId: string | null | undefined,
+): WindowedPlaylist | null {
+	const { discovery } = useFooJean();
+	const { origin } = discovery;
+
+	return useMemo(
+		() =>
+			origin && playlistId
+				? windowedLibraryOf(origin).playlistOf(playlistId)
+				: null,
+		[origin, playlistId],
+	);
+}
+
+export interface DrawnList {
+	structure: string;
+	length: number;
+}
+
+function fittedTo(lengths: number[], length: number): number[] {
+	let sum = 0;
+	for (const run of lengths) sum += run;
+	if (sum === length) return lengths;
+
+	const fitted: number[] = [];
+	let left = length;
+	for (const run of lengths) {
+		if (left <= 0) break;
+		fitted.push(Math.min(run, left));
+		left -= run;
+	}
+	if (left > 0) fitted.push(left);
+	return fitted;
+}
+
+export interface PlaylistItems {
+	list: PlaylistList | null;
+	isOpening: boolean;
+	failure: string | null;
+	rows: ListedRows;
+	groups: AlbumSpan[];
+	hasDiscs: boolean;
+	stats: HeaderStats | null;
 }
 
 export function usePlaylistItems(
-	origin: string | null,
-	playlistId: string | null | undefined,
-	structure: string | null | undefined,
-	revision: string | null | undefined,
-	itemCount: number | null | undefined,
-) {
-	const isReady =
-		Boolean(origin) &&
-		Boolean(playlistId) &&
-		structure != null &&
-		itemCount != null;
+	windowed: WindowedPlaylist | null,
+	playlist: PlaylistInfo | null,
+	drawn: DrawnList | null,
+): PlaylistItems {
+	const state = usePlaylistState(windowed);
 
-	const snapshot = useLoadedRows(
-		isReady ? playlistKey(playlistId as string, structure as string) : null,
-		useCallback(
-			() =>
-				loadPlaylist(
-					origin as string,
-					playlistId as string,
-					structure as string,
-					itemCount as number,
-				),
-			[origin, playlistId, structure, itemCount],
-		),
+	const { discovery } = useFooJean();
+	const readsLibrary = libraryOrigin(discovery) !== null;
+
+	const id = playlist?.id;
+	const structure = drawn?.structure ?? playlist?.structure;
+	const counted =
+		state.total && state.total.structure === structure
+			? state.total.rows
+			: undefined;
+	const length = drawn?.length ?? counted ?? playlist?.itemCount;
+	const areFactsKnown = useFieldFactsKnown();
+	const library = discovery.origin
+		? announcedLibraryOf(discovery.origin)
+		: null;
+	const isAwaitingFacts =
+		readsLibrary &&
+		!areFactsKnown &&
+		(library === null || (library.ready && !library.halted));
+	const isOpening = (!state.isOpened || isAwaitingFacts) && (length ?? 0) > 0;
+	const announcedStructure = playlist?.structure;
+	const revision = playlist?.revision;
+
+	const list = useMemo<PlaylistList | null>(
+		() =>
+			id !== undefined && structure !== undefined && length !== undefined
+				? { kind: "playlist", id, structure, length }
+				: null,
+		[id, structure, length],
 	);
 
 	useEffect(() => {
-		if (!isReady || revision == null) return;
-		void recheckPlaylist(origin as string, playlistId as string, {
-			structure: structure as string,
-			revision,
-		});
-	}, [isReady, origin, playlistId, structure, revision]);
+		windowed?.show(list, readsLibrary);
+	}, [windowed, list, readsLibrary]);
 
-	return snapshot;
-}
+	useEffect(() => () => windowed?.show(null, false), [windowed]);
 
-export function useComponentLibraryItems(origin: string | null) {
-	const isReady = Boolean(origin);
+	useEffect(() => {
+		if (announcedStructure !== undefined && revision !== undefined)
+			windowed?.announce(announcedStructure, revision);
+	}, [windowed, announcedStructure, revision]);
 
-	return useLoadedRows(
-		isReady ? componentLibraryKey(origin as string) : null,
-		useCallback(() => loadComponentLibrary(origin as string), [origin]),
+	const held = state.runs;
+	const mostPlays = held?.runs.mostPlays ?? 0;
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a moved version fires this rather than being read in it.
+	const rows = useMemo(
+		() =>
+			windowed && list && !isOpening
+				? windowedPlaylistRows(
+						windowed.windows,
+						list,
+						windowed.viewportOf(list),
+						mostPlays,
+					)
+				: EMPTY_VIEW,
+		[windowed, list, isOpening, state.version, mostPlays],
 	);
+
+	const groups = useMemo(() => {
+		if (!held || length === undefined) return NO_GROUPS;
+		const { lengths } = held.runs;
+		const fitted = fittedTo(lengths, length);
+		return groupsFromRuns(
+			fitted === lengths ? held.runs : { lengths: fitted },
+			null,
+		);
+	}, [held, length]);
+
+	const stats = useMemo(
+		() =>
+			held && length !== undefined
+				? { ...statsOfFigures(held.runs), trackCount: length }
+				: null,
+		[held, length],
+	);
+
+	return {
+		list,
+		isOpening,
+		failure: isOpening ? state.failure : null,
+		rows,
+		groups,
+		hasDiscs: state.hasDiscs,
+		stats,
+	};
 }

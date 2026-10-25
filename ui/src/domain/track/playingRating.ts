@@ -41,8 +41,14 @@ const isPlayingAt = (address: TrackAddress, item: ActiveItem) => {
 const isPlaying = ({ source, ref }: RateTarget, item: ActiveItem) =>
 	source.addresses(ref).some((address) => isPlayingAt(address, item));
 
+let ownWrites = 0;
+
+// Each rating Jean sends moves the rating column's change count once.
+export const ratingsWrittenByJean = () => ownWrites;
+
 const allOf = (paints: OptimisticValue[]): OptimisticValue => ({
 	adopt: (raw) => {
+		ownWrites += 1;
 		for (const paint of paints) paint.adopt(raw);
 	},
 	confirm: (raw) => {
@@ -54,10 +60,9 @@ const allOf = (paints: OptimisticValue[]): OptimisticValue => ({
 });
 
 const rowPaint = ({ columns, ref }: RateTarget): OptimisticValue => {
-	const overlay = (raw: string) => setWrittenRating(columns, ref, raw);
 	return {
-		adopt: overlay,
-		confirm: overlay,
+		adopt: (raw) => setWrittenRating(columns, ref, raw, false),
+		confirm: (raw) => setWrittenRating(columns, ref, raw, true),
 		restore: () => clearWrittenRating(columns, ref),
 	};
 };
@@ -97,5 +102,5 @@ export function rowRatingPaint(
 		queryClient.getQueryData<PlayerSnapshot>(PLAYER_KEY)?.player?.activeItem;
 	return item && isPlaying(target, item)
 		? allOf([rowPaint(target), playingTrackPaint(queryClient, item)])
-		: rowPaint(target);
+		: allOf([rowPaint(target)]);
 }

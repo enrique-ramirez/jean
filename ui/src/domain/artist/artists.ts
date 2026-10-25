@@ -8,7 +8,6 @@ import {
 	readValue,
 	tagKey,
 } from "@/domain/track/fields";
-import { growingIndex } from "@/domain/track/growingIndex";
 import {
 	byValue,
 	isLoaded,
@@ -66,19 +65,6 @@ const albumArtistOf = (raw: string): Credited => {
 	const name = collapseRepeatedTag(tag);
 	return { leads: namesAnArtist(name) ? [named(name)] : [], guests: [] };
 };
-
-/**
- * Every name credited anywhere, from both tags. Neither one alone is the artist: `%album artist%` is
- * the closest thing to an act but is written by whoever tagged the files, so it carries doubled and
- * misspelt values; `%artist%` is a credit line rather than a name, and holds the guests.
- *
- * A name is counted once per track however many ways it was credited there, so the counts add up to
- * the track list the page draws.
- */
-const absorbing =
-	(guesses: boolean) =>
-	(byKey: Map<string, Draft>, rows: TrackRows, from: number) =>
-		absorb(byKey, rows, from, guesses);
 
 function* absorb(
 	byKey: Map<string, Draft>,
@@ -191,23 +177,6 @@ export function artistsOf(rows: TrackRows, guesses: boolean): Artist[] {
 	finished(absorb(byKey, rows, 0, guesses));
 	return derive(byKey);
 }
-
-const CREDITED = [...CREDIT_FIELDS, FIELD.album, FIELD.artistSort];
-const AWAITED = [...CREDIT_TAGS, FIELD.artistSort];
-
-const guessing = growingIndex(CREDITED, absorbing(true), derive);
-const notGuessing = growingIndex(CREDITED, absorbing(false), derive);
-
-const NO_ARTISTS: Artist[] = [];
-
-export const artistIndex = (
-	key: string,
-	columns: LibraryColumns,
-	guesses: boolean,
-) =>
-	isLoaded(columns, AWAITED)
-		? (guesses ? guessing : notGuessing)(key, columns)
-		: NO_ARTISTS;
 
 export interface ArtistTracks {
 	own: Int32Array;

@@ -17,6 +17,18 @@ import {
 	viewHeader,
 } from "./fixtures.ts";
 import { pressAndHold, touchDrag } from "./gestures.ts";
+import {
+	everyPage,
+	expectRowLanded,
+	expectRowPending,
+	fromTheSecondWindow,
+	holdPlaylistPages,
+	LONG_PLAYLIST,
+	LONG_PLAYLIST_ROWS,
+	pageAsks,
+	scrollToRow,
+	WINDOW_ROWS,
+} from "./playlistPages.ts";
 import { scrollTop } from "./scrolling.ts";
 
 // Twelve rows of one album in track order, so a sort by title reorders every one of them.
@@ -925,4 +937,94 @@ test.describe("a reorder the player refuses", () => {
 			}
 		});
 	}
+});
+
+test.describe("a playlist longer than a window, with a pending window on screen", () => {
+	test.use({ librarySize: LONG_PLAYLIST_ROWS });
+
+	const HELD = WINDOW_ROWS - 1;
+	const PENDING = WINDOW_ROWS;
+
+	const expectStillAt = async (page: Page, top: number) =>
+		expect(Math.abs((await scrollTop(page)) - top)).toBeLessThanOrEqual(1);
+
+	test("Alt with an arrow moves a pending row by its position, it stays pending at its new place while the held row it passed draws at its own, and the list holds still", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		test.skip(isMobile, "no keyboard on the phone");
+		const pages = await holdPlaylistPages(
+			page,
+			player,
+			LONG_PLAYLIST,
+			fromTheSecondWindow,
+		);
+		const before = await openPlaylist(page, player, LONG_PLAYLIST);
+		await scrollToRow(page, HELD - 10);
+		await expectRowLanded(page, HELD, before[HELD]);
+		await expectRowPending(page, PENDING);
+		await expect(sortButton(page)).toBeVisible();
+		const top = await scrollTop(page);
+		const from = player.requests.length;
+		pages.holdAlso(everyPage);
+
+		await trackRow(page, PENDING).click();
+		await expect(trackRow(page, PENDING)).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+		await page.keyboard.press("Alt+ArrowUp");
+
+		const moved = [
+			...before.slice(0, HELD),
+			before[PENDING],
+			before[HELD],
+			...before.slice(PENDING + 1),
+		];
+		await expect.poll(() => titlesIn(player, LONG_PLAYLIST)).toEqual(moved);
+		expect(postsTo(player, LONG_PLAYLIST, "move")).toHaveLength(1);
+		await expectRowLanded(page, PENDING, before[HELD]);
+		await expectRowPending(page, HELD);
+		await expectRowLanded(page, HELD - 1, before[HELD - 1]);
+		await expectStillAt(page, top);
+
+		await pages.release();
+		await expectRowLanded(page, HELD, before[PENDING]);
+		await expectRowLanded(page, PENDING, before[HELD]);
+		await untilQuiet(player);
+		await expectStillAt(page, top);
+		for (const ask of pageAsks(player, LONG_PLAYLIST, from))
+			expect([0, WINDOW_ROWS], JSON.stringify(ask)).toContain(ask.offset);
+	});
+
+	// The player sorting the playlist itself is a structure move Jean did not make, so it has no
+	// order to carry the rows through.
+	test("a reorder made at the player drops the rows held, asks again for the windows on screen alone, and holds the list where it was", async ({
+		page,
+		player,
+	}) => {
+		const before = await openPlaylist(page, player, LONG_PLAYLIST);
+		await scrollToRow(page, HELD - 10);
+		await expectRowLanded(page, HELD, before[HELD]);
+		await expectRowLanded(page, PENDING, before[PENDING]);
+		await untilQuiet(player);
+		const top = await scrollTop(page);
+		const from = player.requests.length;
+
+		expect(player.sortItems(LONG_PLAYLIST, { by: "%title%", desc: true })).toBe(
+			true,
+		);
+		const after = titlesIn(player, LONG_PLAYLIST).map(String);
+		expect(after[HELD]).not.toBe(before[HELD]);
+
+		await expectRowLanded(page, HELD, after[HELD]);
+		await expectRowLanded(page, PENDING, after[PENDING]);
+		await untilQuiet(player);
+		await expectStillAt(page, top);
+		const asked = pageAsks(player, LONG_PLAYLIST, from);
+		expect(asked.length).toBeGreaterThan(0);
+		for (const ask of asked)
+			expect([0, WINDOW_ROWS], JSON.stringify(ask)).toContain(ask.offset);
+	});
 });

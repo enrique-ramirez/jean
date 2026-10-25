@@ -1,5 +1,6 @@
 import type { APIRequestContext } from "@playwright/test";
 import { en } from "../../src/shared/i18n/en.ts";
+import { WRITES_DISABLED } from "../fake-api/fooJean/answers.ts";
 import type { RecordedRequest } from "../fake-api/state.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
@@ -9,7 +10,6 @@ import {
 	guidOfPlaylist,
 	openAllMusic,
 	openLibrary,
-	refusePlaylistWrites,
 	requestsTo,
 	rowByTitle,
 	runClockFor,
@@ -101,6 +101,14 @@ const addTo = async (
 
 // How a copy was answered, which the request log cannot say: it holds what was asked of the
 // player and not what came back.
+// The component refusing a copy for its `writePlaylists` switch, without the capability moving: a
+// page that has not yet polled since the owner turned it off still offers the add.
+const refuseCopiesUnannounced = (page: Page) =>
+	page.route(
+		(url) => /^\/api\/playlists\/[^/]+\/items\/copy$/.test(url.pathname),
+		(route) => route.fulfill({ status: 403, json: WRITES_DISABLED }),
+	);
+
 const copyStatuses = (page: Page) => {
 	const answered: number[] = [];
 	page.on("response", (response) => {
@@ -795,7 +803,7 @@ test.describe("an add the component refuses outright", () => {
 		page,
 		isMobile,
 	}) => {
-		await refusePlaylistWrites(page);
+		await refuseCopiesUnannounced(page);
 
 		await addToTarget(page, 0, isMobile);
 
@@ -868,10 +876,10 @@ test.describe("what the player answers an edit it holds the lock on", () => {
 		player,
 	}) => {
 		const origin = await componentOrigin(request);
-		const built = await request.get(
-			`${origin}/api/library/export?columns=${encodeURIComponent("%title%")}`,
-		);
-		expect(built.status()).toBe(200);
+		const declared = await request.post(`${origin}/api/library/rows`, {
+			data: { columns: ["%title%"], structure: "0", ordinals: [0] },
+		});
+		expect(declared.status()).toBe(202);
 		const { library } = await (await request.get(`${origin}/api/state`)).json();
 
 		const refused = await request.post(

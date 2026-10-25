@@ -3,11 +3,14 @@ import type { Track } from "../fake-api/state.ts";
 import {
 	drawing,
 	expect,
+	expectSettlesAt,
 	type FakePlayer,
+	holdingJeansDeclaration,
 	type Locator,
 	type Page,
 	pickerOpener,
 	playingOn,
+	requestsTo,
 	test,
 	titleOf,
 	tokenColourIn,
@@ -432,6 +435,45 @@ test.describe("the without-effects line, once the page is back on the player", (
 		await untilQuiet(player);
 
 		expect(await playingOn(page).getByText(WITHOUT_EFFECTS).count()).toBe(0);
+		expect(refused).toEqual([]);
+	});
+});
+
+// The title a notice names comes from `GET /api/track/library` for the reported track
+// alone, rather than from a sweep of the whole library's paths. The library is held, so a title
+// read any other way is the file's name.
+test.describe("a track the session could not play", () => {
+	test.use({
+		...OFFERING_SESSIONS,
+		fooJean: OFFERING_SESSIONS.fooJean,
+	});
+	test.beforeEach(({ player }) => holdingJeansDeclaration(player));
+
+	test("is named by the title the library holds, read for that track alone", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		await recordEveryToast(page);
+		const { strict, refused, started } = await inStartedSession(page, player);
+		await closePicker(page, isMobile);
+		await untilQuiet(player);
+
+		const reported = libraryTrackTitled(player, REPORTED_SECOND);
+		player.addSessionReport(started.id, reported);
+
+		await expect(toastSaying(page, skipped(REPORTED_SECOND))).toBeVisible();
+		await expectSettlesAt(
+			player,
+			() =>
+				requestsTo(player, "/api/track/library").map((entry) => {
+					const asked = new URL(entry.path, "http://fake").searchParams;
+					return { track: asked.get("track"), subsong: asked.get("subsong") };
+				}),
+			[{ track: player.libraryPathFor(reported), subsong: "0" }],
+		);
+		expect(await skippedToastsRaised(page)).toEqual([skipped(REPORTED_SECOND)]);
+		strict.release();
 		expect(refused).toEqual([]);
 	});
 });

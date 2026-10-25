@@ -32,18 +32,6 @@ export function overObjects<T extends object>() {
 export const columnsOf = (columns: LibraryColumns, fields: readonly number[]) =>
 	fields.map((field) => columns.fields[field]);
 
-export function overColumns<T extends object>(
-	fields: readonly number[],
-	build: (columns: LibraryColumns) => T,
-) {
-	const held = overObjects<T>();
-
-	return (columns: LibraryColumns): T => {
-		const keys = columnsOf(columns, fields);
-		return held.get(keys) ?? held.set(keys, build(columns));
-	};
-}
-
 const ANSWERS_PER_COLUMNS = 64;
 
 export function overColumnsByName<Args extends unknown[], T extends object>(

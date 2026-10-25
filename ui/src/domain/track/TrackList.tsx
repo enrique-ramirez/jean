@@ -15,6 +15,7 @@ import {
 } from "react";
 import { animateScrollTo } from "@/shared/ui/animateScroll";
 import {
+	contentOffsetOfElement,
 	isScaled,
 	registerScaledScroller,
 	scaledHeight,
@@ -25,7 +26,8 @@ import {
 	settleOnRow,
 } from "@/shared/ui/scaledScroll";
 import { ALBUM_COVER, ALBUM_COVER_COMPACT, AlbumGroup } from "./AlbumGroup";
-import { type AlbumRun, albumCoverRows, multiDiscRows } from "./grouping";
+import { isMatch } from "./finderSets";
+import { type AlbumSpan, coverRefOf, discsOf, groupIndexAt } from "./grouping";
 import {
 	type ActiveDirection,
 	ROW_HEIGHT,
@@ -33,6 +35,7 @@ import {
 	type TrackListHandle,
 	type TrackRenderProps,
 } from "./listTypes";
+import type { TrackRows } from "./project";
 import styles from "./TrackList.module.css";
 import { TrackRow } from "./TrackRow";
 import { REORDER_DROP_TARGET } from "./trackTargets";
@@ -42,6 +45,38 @@ const GROUP_PADDING = 28;
 const GROUP_CAPTION = 56;
 const DISC_HEADING = 40;
 const COMPACT_HEADER = ALBUM_COVER_COMPACT + 34;
+
+// Read from the scroller itself rather than the virtualiser, whose offset follows the scroller one
+// event late: a list mounted into a restored scroll position would otherwise report the old one first.
+const visibleRows = (
+	scroller: HTMLElement,
+	list: HTMLElement,
+	length: number,
+) => {
+	const margin =
+		list.getBoundingClientRect().top -
+		scroller.getBoundingClientRect().top +
+		scroller.scrollTop;
+	const top = contentOffsetOfElement(scroller, scroller.scrollTop) - margin;
+	const first = Math.min(Math.max(0, Math.floor(top / ROW_HEIGHT)), length - 1);
+	const end = Math.min(
+		Math.max(first + 1, Math.ceil((top + scroller.clientHeight) / ROW_HEIGHT)),
+		length,
+	);
+	return { first, end };
+};
+
+type ScrollStep = -1 | 0 | 1;
+
+const scrollDirection = () => {
+	let last = -1;
+	let direction: ScrollStep = 0;
+	return (first: number): ScrollStep => {
+		if (last >= 0 && first !== last) direction = first > last ? 1 : -1;
+		last = first;
+		return direction;
+	};
+};
 
 const isWhollyVisible = (row: DOMRect, view: DOMRect) =>
 	row.top >= view.top && row.bottom <= view.bottom;
@@ -54,10 +89,13 @@ const ancestorsUpTo = (
 		? [element.parentElement, ...ancestorsUpTo(element.parentElement, stop)]
 		: [];
 
-const estimateGroupHeight = (group: AlbumRun, isCompactViewport: boolean) => {
-	const tracks =
-		group.count * COMPACT_ROW_HEIGHT +
-		(group.discs?.length ?? 0) * DISC_HEADING;
+const estimateGroupHeight = (
+	group: AlbumSpan,
+	rows: TrackRows,
+	isCompactViewport: boolean,
+) => {
+	const discs = discsOf(group, rows)?.length ?? 0;
+	const tracks = group.count * COMPACT_ROW_HEIGHT + discs * DISC_HEADING;
 	if (isCompactViewport) return COMPACT_HEADER + tracks + GROUP_PADDING;
 	return Math.max(
 		ALBUM_COVER + GROUP_CAPTION + GROUP_PADDING,
@@ -90,7 +128,7 @@ export function TrackList({
 	reorderRows,
 	isCompactViewport,
 }: TrackRenderProps & {
-	groups: AlbumRun[];
+	groups: AlbumSpan[];
 	scrollRef: RefObject<HTMLElement | null>;
 	layout: string;
 	albumTemplate: string;
@@ -102,24 +140,30 @@ export function TrackList({
 	ref?: Ref<TrackListHandle>;
 }) {
 	const isAlbumLayout = layout === "album";
+	const { viewport } = rows;
 
-	const discPrefixed = useMemo(
-		() => (isAlbumLayout ? null : multiDiscRows(groups, rows.length)),
-		[isAlbumLayout, groups, rows.length],
-	);
-
-	const coverRows = useMemo(
-		() =>
-			isAlbumLayout || !showArtwork
-				? null
-				: albumCoverRows(groups, rows.length),
-		[isAlbumLayout, showArtwork, groups, rows.length],
-	);
+	const showsDisc = useMemo(() => {
+		const answers = new Map<number, boolean>();
+		return (position: number) => {
+			if (isAlbumLayout) return false;
+			const at = groupIndexAt(groups, position);
+			if (at < 0) return false;
+			let answer = answers.get(at);
+			if (answer === undefined) {
+				answer = discsOf(groups[at], rows) !== null;
+				answers.set(at, answer);
+			}
+			return answer;
+		};
+	}, [isAlbumLayout, groups, rows]);
 
 	// To the album run's opening row first, then through the refs: the other order looks up a
 	// playlist index in a table of row positions.
-	const coverIndexOf = (position: number) =>
-		rows.ref(coverRows ? coverRows[position] : position);
+	const coverIndexOf = (position: number) => {
+		const at =
+			showArtwork && !isAlbumLayout ? groupIndexAt(groups, position) : -1;
+		return at < 0 ? rows.ref(position) : coverRefOf(groups[at], rows);
+	};
 
 	// Row 0 is not at scroll offset 0: the view header and toolbar sit above it, and without telling
 	// the virtualiser every scrollToIndex lands short by exactly this much. Rendering looks right
@@ -153,11 +197,44 @@ export function TrackList({
 		[scroller, ...ancestorsUpTo(list, scroller)].forEach((node) => {
 			observer.observe(node);
 		});
+		// A sibling of the view that is added or removed above it moves the list without resizing
+		// the scroller or anything the list sits in.
+		const siblings = new MutationObserver(measure);
+		siblings.observe(scroller, { childList: true });
 		return () => {
 			observer.disconnect();
+			siblings.disconnect();
 			scroller.removeAttribute("data-drop-scroller");
 		};
 	}, [scrollRef]);
+
+	const { length } = rows;
+
+	useEffect(() => {
+		const scroller = scrollRef.current;
+		const list = listElement.current;
+		if (!viewport || isAlbumLayout || !scroller || !list || length === 0)
+			return undefined;
+
+		let frame = 0;
+		const directionAt = scrollDirection();
+		const report = () => {
+			frame = 0;
+			const { first, end } = visibleRows(scroller, list, length);
+			viewport.watch(first, end, directionAt(first));
+		};
+		const schedule = () => {
+			if (frame === 0) frame = requestAnimationFrame(report);
+		};
+
+		report();
+		scroller.addEventListener("scroll", schedule, { passive: true });
+		return () => {
+			cancelAnimationFrame(frame);
+			scroller.removeEventListener("scroll", schedule);
+			viewport.leave();
+		};
+	}, [viewport, isAlbumLayout, scrollRef, length]);
 
 	const virtualizer = useVirtualizer({
 		scrollMargin,
@@ -165,7 +242,7 @@ export function TrackList({
 		getScrollElement: () => scrollRef.current,
 		estimateSize: (index) =>
 			isAlbumLayout
-				? estimateGroupHeight(groups[index], isCompactViewport)
+				? estimateGroupHeight(groups[index], rows, isCompactViewport)
 				: ROW_HEIGHT,
 		overscan: isAlbumLayout ? 3 : 12,
 		// Measurements are cached by item key and the default key is the index, so group 0 of one search
@@ -287,10 +364,12 @@ export function TrackList({
 		[],
 	);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: a change of rows fires the clear rather than being read in it
+	const listIdentity = viewport ?? rows;
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a change of list fires the clear rather than being read in it
 	useEffect(() => {
 		rowAsk.current = null;
-	}, [rows]);
+	}, [listIdentity]);
 
 	useEffect(() => {
 		const ask = rowAsk.current;
@@ -309,6 +388,55 @@ export function TrackList({
 	}, [isAlbumLayout, isCompactViewport]);
 
 	const virtualItems = virtualizer.getVirtualItems();
+	const firstGroup = virtualItems[0]?.index;
+
+	const [albumDirection] = useState(scrollDirection);
+
+	useEffect(() => {
+		const scroller = scrollRef.current;
+		if (!viewport || !isAlbumLayout || !scroller) return undefined;
+		if (firstGroup === undefined) return undefined;
+
+		let frame = 0;
+		const report = () => {
+			frame = 0;
+			const sight = scroller.getBoundingClientRect();
+			let first = Number.POSITIVE_INFINITY;
+			let last = -1;
+			for (const row of scroller.querySelectorAll<HTMLElement>("[data-row]")) {
+				const box = row.getBoundingClientRect();
+				if (box.bottom < sight.top || box.top > sight.bottom) continue;
+				const index = Number(row.dataset.row);
+				first = Math.min(first, index);
+				last = Math.max(last, index);
+			}
+			if (last < 0) {
+				first = groups[firstGroup].start;
+				last = first;
+			}
+			viewport.watch(first, last + 1, albumDirection(first));
+		};
+		const schedule = () => {
+			if (frame === 0) frame = requestAnimationFrame(report);
+		};
+
+		report();
+		scroller.addEventListener("scroll", schedule, { passive: true });
+		const drawn = new MutationObserver(schedule);
+		const list = listElement.current;
+		if (list) drawn.observe(list, { childList: true, subtree: true });
+		return () => {
+			cancelAnimationFrame(frame);
+			scroller.removeEventListener("scroll", schedule);
+			drawn.disconnect();
+		};
+	}, [viewport, isAlbumLayout, scrollRef, groups, firstGroup, albumDirection]);
+
+	useEffect(
+		() => (isAlbumLayout ? viewport?.leave : undefined),
+		[viewport, isAlbumLayout],
+	);
+
 	const shift = scrollShift(virtualizer);
 
 	const listId = useId();
@@ -425,8 +553,8 @@ export function TrackList({
 							isPlaying={isPlaying}
 							isSelected={selection.has(virtualRow.index)}
 							isCursor={virtualRow.index === cursor}
-							isMatch={matches?.has(virtualRow.index) ?? false}
-							showDisc={discPrefixed?.[virtualRow.index] === 1}
+							isMatch={isMatch(matches, virtualRow.index)}
+							showDisc={showsDisc(virtualRow.index)}
 							onSelect={onSelect}
 							onGripPointerDown={gripProps?.onPointerDown}
 						/>

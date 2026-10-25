@@ -6,6 +6,7 @@ import type {
 	Route,
 } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
+import { TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import type { FooJeanOptions } from "../fake-api/fooJean/options.ts";
 import { JEAN_MODE_BY_ORDER } from "../fake-api/fooJean/playbackModes.ts";
 import { COMPONENT_RATE_LIMITS } from "../fake-api/fooJean/rateLimits.ts";
@@ -921,6 +922,24 @@ export const holdRequests = async (
 	};
 };
 
+export const HEADER_TILES_AT_MOST = 9;
+
+// The rows a view header asked for its covers: each `POST /api/library/rows` naming
+// `HEADER_TILES_AT_MOST` ordinals or fewer and answered 200, read in the browser
+// because a first ask may be answered 202 while the declaration builds and asked again.
+export const recordTileRowsAsked = (page: Page) => {
+	const asked: number[][] = [];
+	page.on("response", (response) => {
+		const request = response.request();
+		if (request.method() !== "POST" || response.status() !== 200) return;
+		if (new URL(response.url()).pathname !== "/api/library/rows") return;
+		const ordinals = request.postDataJSON()?.ordinals;
+		if (Array.isArray(ordinals) && ordinals.length <= HEADER_TILES_AT_MOST)
+			asked.push(ordinals);
+	});
+	return asked;
+};
+
 // The component addresses a cover by the track's library path, so this is the
 // track each of its cover requests named. An empty string is a request that
 // named no track at all, which the component answers 400.
@@ -1033,3 +1052,11 @@ export const countCoverHandles = (page: Page) =>
 		};
 		Object.defineProperty(window, "__mintedArtwork", { get: () => minted });
 	}, TAB_ICON_TYPE);
+
+// A player already holding Jean's declaration, as one does once any client has opened a list. A
+// question or a read naming roles answers `202` or a null `cover` until something declares, and a
+// page that opens on no list declares nothing.
+export const holdingJeansDeclaration = (player: FakePlayer) => {
+	player.startLibraryBuild([...TRACK_EXPRESSIONS]);
+	player.finishLibraryBuild();
+};

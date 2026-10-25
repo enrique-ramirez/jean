@@ -9,13 +9,13 @@ import { inSession } from "@/domain/player/session";
 import { useCanControlPlayback } from "@/domain/player/usePlaybackControl";
 import { usePlayItem } from "@/domain/player/useTransport";
 import type { ScratchKind } from "@/domain/track/jeanPlaylists";
+import type { LibrarySource } from "@/domain/track/librarySource";
 import type { Refs } from "@/domain/track/project";
 import { orThrow, type Schema } from "@/shared/api/client";
 import { isFooJeanReady, requireFooJean } from "@/shared/api/discovery";
 import { playLibrarySet } from "@/shared/api/playback";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
-import type { Library } from "./useLibrary";
 import { useScratchPlaylist } from "./useScratchPlaylist";
 
 const usePlayInSession = () => {
@@ -33,10 +33,10 @@ const usePlayInSession = () => {
 };
 
 export function usePlaySet({
-	library,
+	source,
 	playlists,
 }: {
-	library: Library;
+	source: Extract<LibrarySource, { kind: "library" }>;
 	playlists: PlaylistInfo[];
 }) {
 	const { discovery, recheck } = useFooJean();
@@ -64,7 +64,7 @@ export function usePlaySet({
 			if (!canControlPlayback) return null;
 			if (inSession()) {
 				if (!canPlaySets || refs.length === 0) return null;
-				const set = await library.source.queueTargets(refs);
+				const set = await source.queueTargets(refs);
 				if (set.kind !== "tracks") return null;
 				return playInSession
 					.mutateAsync({ ...set.request, index: position })
@@ -76,7 +76,7 @@ export function usePlaySet({
 					kind,
 					label,
 					refs,
-					source: library.source,
+					source: source,
 				});
 			} catch (error) {
 				reportPlaybackRefusal(error, recheck);
@@ -96,7 +96,7 @@ export function usePlaySet({
 		},
 		[
 			scratch,
-			library.source,
+			source,
 			playItem.mutateAsync,
 			playInSession.mutateAsync,
 			recheck,

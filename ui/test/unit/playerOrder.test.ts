@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compareText } from "../fake-api/playerOrder.ts";
 
-// The order a foobar2000 2.25.10 player on Windows gave these library paths, captured from
-// `GET /api/library/export` on 2026-09-29: one small file under each name, in one watched folder.
+// The order a foobar2000 2.25.10 player on Windows gave these library paths: one small file under
+// each name, in one watched folder.
 const PLAYER_ORDER = [
 	"#u.flac",
 	"(u).flac",

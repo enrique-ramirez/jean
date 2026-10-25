@@ -7,18 +7,22 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import type { Translate } from "@/shared/i18n/locale";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { type DragPayload, useDragSource } from "@/shared/ui/dnd";
-import { titleOf } from "./fields";
-import type { AlbumRun } from "./grouping";
+import { type AlbumSpan, headingOf } from "./grouping";
 import { type LibrarySource, librarySourceOf } from "./librarySource";
 import type { TrackRows } from "./project";
-import { albumFrom, REORDER_DROP_TARGET, targetsFrom } from "./trackTargets";
+import {
+	albumFrom,
+	REORDER_DROP_TARGET,
+	rowTitleAt,
+	targetsFrom,
+} from "./trackTargets";
 import { useAddTracks } from "./useAddTracks";
 import { useQueueTracks } from "./useQueueTracks";
 
 type Reorder = (positions: number[], gap: number) => void;
 
 const titlesOf = (rows: TrackRows, t: Translate) => (position: number) =>
-	titleOf(rows.at(position), t);
+	rowTitleAt(rows, position, t);
 
 function useTrackDrop(
 	source: LibrarySource | null,
@@ -98,12 +102,16 @@ export function useTrackDragSource({
 			const { index } = aimed;
 			const positions = fromGrip ? [index] : aimed.positions;
 
-			const grabbed = titleOf(rows.at(index), t);
+			const grabbed = rowTitleAt(rows, index, t);
 
 			return {
 				count: positions.length,
-				label:
-					positions.length === 1
+				label: rows.isPending(index)
+					? t("view.trackCount", {
+							count: positions.length,
+							total: positions.length,
+						})
+					: positions.length === 1
 						? grabbed
 						: t("track.andMore", {
 								track: grabbed,
@@ -126,7 +134,7 @@ export function useAlbumDragSource({
 	onReorder,
 }: {
 	rows: TrackRows;
-	groups: AlbumRun[];
+	groups: AlbumSpan[];
 	source: LibrarySource;
 	onReorder?: Reorder;
 }) {
@@ -144,7 +152,7 @@ export function useAlbumDragSource({
 
 			return {
 				count: album.count,
-				label: album.album ?? t("track.unknownAlbum"),
+				label: headingOf(album, rows)?.album ?? t("track.unknownAlbum"),
 				held: positions,
 				items: positions.map((position) => rows.ref(position)),
 			};

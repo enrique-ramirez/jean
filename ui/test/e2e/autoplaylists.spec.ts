@@ -3,12 +3,24 @@ import type { FakePlayer, Page } from "./fixtures.ts";
 
 import {
 	expect,
+	guidOfPlaylist,
 	openSidebar,
 	requestsTo,
 	sidebar,
 	test,
+	untilQuiet,
 	viewHeader,
 } from "./fixtures.ts";
+import {
+	expectRowLanded,
+	expectTileAsksAtMost,
+	LONG_PLAYLIST,
+	LONG_PLAYLIST_ROWS,
+	playlistAsksOf,
+	recordRunsAnswers,
+	titleIn,
+	WINDOW_ROWS,
+} from "./playlistPages.ts";
 
 // `foo_jean` answers which playlists the player fills itself. This file is about the one use of
 // that answer before any write is attempted: the sidebar removes the drop affordance rather than
@@ -290,5 +302,28 @@ test.describe("a player with no media library", () => {
 		await createButton(page).click();
 
 		await expect(page.getByText(/no Media Library configured/)).toBeVisible();
+	});
+});
+
+test.describe("an autoplaylist's view", () => {
+	test.use({
+		librarySize: LONG_PLAYLIST_ROWS,
+		fooJean: { autoPlaylists: [LONG_PLAYLIST] },
+	});
+
+	test("draws from its runs and the one window under the viewport, and reads nothing else of it", async ({
+		page,
+		player,
+	}) => {
+		const runs = recordRunsAnswers(page, player, LONG_PLAYLIST);
+		await page.goto(`/#/${guidOfPlaylist(player, LONG_PLAYLIST)}`);
+		await expectRowLanded(page, 0, titleIn(player, LONG_PLAYLIST, 0));
+		await untilQuiet(player);
+
+		const opened = playlistAsksOf(player, LONG_PLAYLIST);
+		expect(runs.filter((answer) => answer.status === 200)).toHaveLength(1);
+		expect(opened.windows).toEqual([{ offset: 0, count: WINDOW_ROWS }]);
+		expect(opened.others).toEqual([]);
+		expectTileAsksAtMost(opened.tiles);
 	});
 });

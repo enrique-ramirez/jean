@@ -73,23 +73,11 @@ export const fuzzyKey = (text: string): FuzzyKey => ({
 	words: nameWords(text),
 });
 
-export interface Query {
-	tokens: string[];
-	glyphic: boolean;
-}
-
-export function queryOf(query: string): Query {
-	const tokens = tokenize(query);
-	const glyphic =
-		tokens.length > 0 && !tokens.some((token) => LETTER_OR_NUMBER.test(token));
-	return { tokens: glyphic ? [tokens.join("")] : tokens, glyphic };
-}
-
 const budgetFor = (length: number) => (length < 5 ? 0 : length < 9 ? 1 : 2);
 
 const MAX_CLOSENESS = 999;
 
-export const closenessTo = (text: string, query: string) =>
+const closenessTo = (text: string, query: string) =>
 	Math.max(0, MAX_CLOSENESS - Math.abs(text.length - query.length));
 
 function within(query: string, candidate: string, budget: number): boolean {

@@ -29,7 +29,13 @@ import {
 	trackRow,
 	viewHeader,
 } from "./fixtures.ts";
-import { dragFrom, dragTo, pressAndHold, touchDrag } from "./gestures.ts";
+import {
+	dragFrom,
+	dragTo,
+	pressAndHold,
+	restingBox,
+	touchDrag,
+} from "./gestures.ts";
 import { openPanels, panelTab, TAGGED } from "./nowPlaying.ts";
 import { openQueue, queueButton, queuePanel } from "./queue.ts";
 
@@ -516,6 +522,8 @@ test.describe("with playback control off at the player", () => {
 
 		await expectDisabledWithReason(fader);
 
+		// `force` skips the stability wait, and on a phone the sheet is still rising into view.
+		await restingBox(fader);
 		await fader.click({ force: true });
 		if (!isMobile) await dragTo(page, fader, 0.6);
 		await expectSettlesAt(player, () => countPostsTo(player, "/api/volume"), 0);

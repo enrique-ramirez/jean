@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import {
+	playingArtwork,
+	usePlayingLibrary,
+} from "@/domain/library/usePlayingLibrary";
 import { audibleAt } from "@/domain/player/position";
 import { inSession } from "@/domain/player/session";
 import { useListener } from "@/domain/player/useListener";
@@ -15,7 +19,6 @@ import {
 	useTransport,
 } from "@/domain/player/useTransport";
 import { coverKey } from "@/domain/track/fields";
-import { canonicalPlayingArtworkUrl } from "@/domain/track/librarySource";
 import { playingArtworkUrl } from "@/shared/api/artwork";
 import { isFooJeanReady } from "@/shared/api/discovery";
 import type { NowPlayingTrack, PlayerSnapshot } from "@/shared/api/types";
@@ -139,16 +142,16 @@ export function useMediaSession(
 	const canControlPlayback = useCanControlPlayback();
 	const reachesPlayer = usePlaybackRefusal() === null;
 
-	const canonical = album
-		? canonicalPlayingArtworkUrl(origin, album, credited || "")
-		: null;
+	const playingLibrary = usePlayingLibrary();
 
 	const playingCover = !track
 		? null
 		: album
 			? coverKey(credited, album)
 			: coverKey(track.artist, track.title, "track");
-	const artworkUrl = !live ? null : (canonical ?? playingArtworkUrl(origin));
+	const artworkUrl = !live
+		? null
+		: playingArtwork(playingLibrary, playingArtworkUrl(origin));
 
 	const [cover, setCover] = useState<MediaImage | null>(null);
 

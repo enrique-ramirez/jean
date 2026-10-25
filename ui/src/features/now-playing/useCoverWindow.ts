@@ -1,19 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { coverKey, readValue } from "@/domain/track/fields";
-import { canonicalArtworkUrl } from "@/domain/track/librarySource";
-import { playlistRowArtworkUrl } from "@/shared/api/artwork";
+import { LIBRARY_ROLES } from "@/domain/track/libraryAsker";
+import {
+	coverPathOf,
+	libraryArtworkUrl,
+	playlistRowArtworkUrl,
+} from "@/shared/api/artwork";
 import { orThrow } from "@/shared/api/client";
 import { fetchPlaylistRows } from "@/shared/api/playlists";
 import type { NeighbourArtwork } from "./CoverWheel";
 
-// The empty string stands for a row the media library confirms carries no path, kept apart from a
-// position this window has not read at all: only the former falls back to `playlistRowArtworkUrl`.
-// `identity` is computed the same way `coverIdentity()` reads a list row's own columns, so a
-// neighbour showing a record already on screen elsewhere shares that record's handle rather than
-// minting a second one under its address.
 interface RowWindowEntry {
-	path: string;
+	coverPath: string;
 	identity: string | undefined;
 }
 
@@ -23,9 +22,6 @@ type RowWindow = ReadonlyArray<
 
 const NEIGHBOURS_KEY = "nowPlayingNeighbours";
 
-// A neighbour's sleeve, and the centre's, are both read off the rows this fetches: one album is
-// one address, so the record a row belongs to needs that row's own path, canonicalised, rather
-// than its position.
 async function fetchRowWindow(
 	origin: string,
 	playlistId: string,
@@ -33,23 +29,27 @@ async function fetchRowWindow(
 ): Promise<RowWindow> {
 	const offset = Math.max(0, index - 1);
 	const { items } = orThrow(
-		await fetchPlaylistRows(origin, playlistId, offset, 3, [
-			"%path%",
-			"%album%",
-			"%album artist%",
-			"%artist%",
-			"%title%",
-		]),
+		await fetchPlaylistRows(
+			origin,
+			playlistId,
+			offset,
+			3,
+			["%album%", "%album artist%", "%artist%", "%title%"],
+			{ roles: LIBRARY_ROLES },
+		),
 	);
 	return items.map((row, at) => {
-		const [, album, albumArtist, artist, title] = row.columns.map(readValue);
+		const [album, albumArtist, artist, title] = row.columns.map(readValue);
 		const credited = albumArtist || artist;
 		const identity = album
 			? coverKey(credited, album)
 			: title
 				? coverKey(credited, title, "track")
 				: undefined;
-		return [offset + at, { path: row.libraryPath ?? "", identity }] as const;
+		return [
+			offset + at,
+			{ coverPath: coverPathOf(row) ?? "", identity },
+		] as const;
 	});
 }
 
@@ -59,8 +59,8 @@ const artworkAt = (
 	position: number,
 	row: RowWindowEntry,
 ): NeighbourArtwork | null => {
-	if (row.path) {
-		const src = canonicalArtworkUrl(origin, row.path);
+	if (row.coverPath) {
+		const src = libraryArtworkUrl(origin, row.coverPath);
 		return src ? { src, identity: row.identity ?? src } : null;
 	}
 
@@ -120,7 +120,11 @@ export function useCoverWindow({
 			let changed = false;
 			for (const [position, row] of windowQuery) {
 				const held = merged.get(position);
-				if (!held || held.path !== row.path || held.identity !== row.identity) {
+				if (
+					!held ||
+					held.coverPath !== row.coverPath ||
+					held.identity !== row.identity
+				) {
 					merged.set(position, row);
 					changed = true;
 				}

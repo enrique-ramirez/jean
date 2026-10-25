@@ -218,13 +218,14 @@ function TrackRowComponent({
 }) {
 	const t = useTranslate();
 	const say = useSpoken();
+	const isPending = rows.isPending(index);
 	const row = rows.at(index);
 	const title = titleOf(row, t);
 	const artist = artistOf(row, t);
 	const trackNumber = value(row, FIELD.trackNumber);
-	const isBusy = columns.some(
-		(column) => !isLoaded(rows.columns, [column.field]),
-	);
+	const isBusy =
+		isPending ||
+		columns.some((column) => !isLoaded(rows.columns, [column.field]));
 
 	const disc =
 		showDisc && trackNumber !== null ? discNumber(row[FIELD.discNumber]) : null;
@@ -259,41 +260,52 @@ function TrackRowComponent({
 				if (event.button === 0) onSelect(index, event);
 			}}
 		>
-			<GridCell className={`${styles.index} tabular`}>
-				{isActive && isPlaying ? (
-					<Equalizer label={say("player.nowPlaying")} />
-				) : disc !== null ? (
-					`${disc}.${trackNumber}`
-				) : (
-					(trackNumber ?? index + 1)
-				)}
-				{isBusy ? <BusyNote /> : null}
-			</GridCell>
+			{isPending ? (
+				<GridCell className={styles.pending}>
+					<Skeleton />
+					<BusyNote />
+				</GridCell>
+			) : (
+				<>
+					<GridCell className={`${styles.index} tabular`}>
+						{isActive && isPlaying ? (
+							<Equalizer label={say("player.nowPlaying")} />
+						) : disc !== null ? (
+							`${disc}.${trackNumber}`
+						) : (
+							(trackNumber ?? index + 1)
+						)}
+						{isBusy ? <BusyNote /> : null}
+					</GridCell>
 
-			{showArtwork ? (
-				<Artwork
-					src={source.artworkUrl(coverIndex)}
-					identity={coverIdentity(row)}
-					size={34}
-				/>
-			) : null}
+					{showArtwork ? (
+						<Artwork
+							src={source.artworkUrl(coverIndex)}
+							identity={coverIdentity(row)}
+							size={34}
+						/>
+					) : null}
 
-			<GridCell className={styles.names} data-inline={note !== null}>
-				<span className={styles.title}>{title}</span>
-				{note === null ? null : <span className={styles.note}>{note}</span>}
-				{showArtist ? <span className={styles.artist}>{artist}</span> : null}
-			</GridCell>
+					<GridCell className={styles.names} data-inline={note !== null}>
+						<span className={styles.title}>{title}</span>
+						{note === null ? null : <span className={styles.note}>{note}</span>}
+						{showArtist ? (
+							<span className={styles.artist}>{artist}</span>
+						) : null}
+					</GridCell>
 
-			{columns.map((column) => (
-				<Cell
-					key={column.id}
-					column={column}
-					columns={rows.columns}
-					row={row}
-					source={source}
-					itemIndex={itemIndex}
-				/>
-			))}
+					{columns.map((column) => (
+						<Cell
+							key={column.id}
+							column={column}
+							columns={rows.columns}
+							row={row}
+							source={source}
+							itemIndex={itemIndex}
+						/>
+					))}
+				</>
+			)}
 
 			{onGripPointerDown ? (
 				<button

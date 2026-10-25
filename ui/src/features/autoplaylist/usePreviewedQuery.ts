@@ -1,11 +1,8 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import { albumArtistsOf } from "@/domain/artist/albumArtists";
-import { albumsOf } from "@/domain/track/albums";
-import type { PlaylistSnapshot } from "@/domain/track/playlistEntries";
-import { project, type TrackView } from "@/domain/track/project";
-import { summarise } from "@/domain/track/stats";
+import { type Library, useSetRows } from "@/domain/library/useLibrary";
+import type { ListedRows } from "@/domain/track/project";
 import { orThrow, retryWhenTooFast } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
 import { previewQuery, type QueryPreview } from "@/shared/api/playlists";
@@ -17,10 +14,7 @@ const PREVIEW_PAUSE_MS = 300;
 const PREVIEW_KEPT_MS = 60_000;
 
 interface MatchStats {
-	albumArtists: number;
-	albums: number;
 	tracks: number;
-	seconds: number;
 }
 
 export type Previewed =
@@ -30,17 +24,7 @@ export type Previewed =
 	| { kind: "unreadable"; error: string }
 	| { kind: "noLibrary" }
 	| { kind: "empty" }
-	| { kind: "matches"; view: TrackView; stats: MatchStats };
-
-const statsOf = (view: TrackView): MatchStats => {
-	const albums = albumsOf(view);
-	return {
-		albumArtists: albumArtistsOf(albums).length,
-		albums: albums.length,
-		tracks: view.length,
-		seconds: summarise(view).seconds,
-	};
-};
+	| { kind: "matches"; view: ListedRows; stats: MatchStats };
 
 const rowsOf = (answer: QueryPreview, structure: number) =>
 	answer.valid &&
@@ -51,19 +35,16 @@ const rowsOf = (answer: QueryPreview, structure: number) =>
 		: null;
 
 export function usePreviewedQuery({
-	origin,
-	snapshot,
-	isLibraryReady,
+	library,
 	query,
 }: {
-	origin: string | null;
-	snapshot: PlaylistSnapshot;
-	isLibraryReady: boolean;
+	library: Library;
 	query: string;
 }): { state: Previewed; isStale: boolean } {
 	const wanted = query.trim();
 	const asked = useDebounced(wanted, PREVIEW_PAUSE_MS);
-	const { structure } = snapshot;
+	const { origin, structure } = library;
+	const isLibraryReady = library.status.kind === "ready";
 
 	const {
 		data: answer,
@@ -87,18 +68,19 @@ export function usePreviewedQuery({
 
 	const rows = answer ? rowsOf(answer, structure) : null;
 
-	const view = useMemo(
-		() => (rows ? project(snapshot, Int32Array.from(rows)) : null),
-		[rows, snapshot],
+	const ordinals = useMemo(() => (rows ? Int32Array.from(rows) : null), [rows]);
+	const view = useSetRows(library, "preview", ordinals, { isBeside: true });
+	const stats = useMemo<MatchStats | null>(
+		() => (ordinals ? { tracks: ordinals.length } : null),
+		[ordinals],
 	);
-	const stats = useMemo(() => (view ? statsOf(view) : null), [view]);
 
 	const isCurrent =
 		answer !== undefined && !isPlaceholderData && asked === wanted;
 
 	if (wanted === "") return { state: { kind: "idle" }, isStale: false };
 
-	if (answer && view && stats && view.length > 0)
+	if (answer && ordinals && stats && view.length > 0)
 		return {
 			state: { kind: "matches", view, stats },
 			isStale: !isCurrent,

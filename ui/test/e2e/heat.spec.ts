@@ -1,5 +1,25 @@
-import type { Page } from "./fixtures.ts";
-import { expect, inSequence, openLibrary, test } from "./fixtures.ts";
+import type { FakePlayer, Page } from "./fixtures.ts";
+import {
+	expect,
+	fieldOf,
+	inSequence,
+	openAllMusic,
+	openLibrary,
+	test,
+	untilQuiet,
+} from "./fixtures.ts";
+import {
+	latestAnswer,
+	positionsNamed,
+	recordLibraryTraffic,
+	rowsAnswered,
+} from "./libraryLists.ts";
+import {
+	LONG_PLAYLIST,
+	LONG_PLAYLIST_ROWS,
+	pageAsks,
+	playsOf,
+} from "./playlistPages.ts";
 
 const HOTTEST = 14; // 163 plays
 const WARM = 12; // 107 plays, played this year
@@ -301,5 +321,136 @@ test.describe("the wash and the row gutter", () => {
 			Math.abs(albums - list),
 			`the content sat ${Math.round(list)}px inside the wash as a list and ${Math.round(albums)}px as albums`,
 		).toBeLessThan(1);
+	});
+});
+
+// All Music draws a window of the library at a time, so the ceiling cannot be
+// the most played row it holds: it is the summary's most played track. The generated library is
+// longer than a window, and the track raised to the top of it sits past the first one.
+test.describe("All Music's shading", () => {
+	const TOP = "I Don't Love (1565)";
+
+	test.use({
+		mediaLibrarySize: 2100,
+		retagged: { [TOP]: { "%lastfm_play_count%": "999" } },
+	});
+
+	const ROWS_READ = [0, 1, 2, 3, 4, 5, 6, 7];
+
+	const playsOf = (player: FakePlayer, ordinal: number) => {
+		const { track } = player.ordinalOrder()[ordinal];
+		const counts = ["%lastfm_play_count%", "%play_count%"]
+			.map((expression) => Number(fieldOf(track, expression)))
+			.filter(Number.isFinite);
+		return Math.max(0, ...counts);
+	};
+
+	const patinaOf = (page: Page, player: FakePlayer, ordinal: number) =>
+		page.evaluate(
+			(raw) => {
+				const at = Date.parse(raw.replace(" ", "T"));
+				if (Number.isNaN(at)) return 0;
+				const years = (Date.now() - at) / (365.25 * 24 * 60 * 60 * 1000);
+				return Math.min(1, Math.max(0, years / 6));
+			},
+			fieldOf(player.ordinalOrder()[ordinal].track, "%lastfm_last_played%"),
+		);
+
+	test("shades each row by its own plays against the summary's most played track, and fades it by its own last play", async ({
+		page,
+		player,
+	}) => {
+		const answered = recordLibraryTraffic(page);
+		await openAllMusic(page);
+		const summary = await latestAnswer<{ topTracks: { plays: number }[] }>(
+			answered,
+			"GET /api/library/summary",
+		);
+		const ceiling = summary.topTracks[0]?.plays ?? 0;
+		expect(ceiling, "the raised track is not the library's most played").toBe(
+			999,
+		);
+		expect(
+			ROWS_READ.some((ordinal) => playsOf(player, ordinal) > 0),
+			"no row read was ever played",
+		).toBe(true);
+
+		await inSequence(ROWS_READ, async (ordinal: number) => {
+			const plays = playsOf(player, ordinal);
+			const { heat, patina } = await shading(page, ordinal);
+			const expected = plays > 0 ? Math.log1p(plays) / Math.log1p(ceiling) : 0;
+			expect(
+				Math.abs(heat - expected),
+				`row ${ordinal} heat ${heat}`,
+			).toBeLessThan(0.001);
+			const faded = plays > 0 ? await patinaOf(page, player, ordinal) : 0;
+			expect(
+				Math.abs(patina - faded),
+				`row ${ordinal} patina ${patina}`,
+			).toBeLessThan(0.001);
+		});
+
+		await untilQuiet(player);
+		const top = player
+			.ordinalOrder()
+			.findIndex((entry) => entry.track["%title%"] === TOP);
+		expect(
+			rowsAnswered(answered).filter((body) =>
+				positionsNamed(body).includes(top),
+			),
+			"the most played track's rows were read, so the ceiling could be theirs",
+		).toEqual([]);
+	});
+});
+
+// For a playlist. It is read a window at a time, so its ceiling cannot be the
+// most played row it holds: it is its runs answer's most plays. The row raised to the top sits in
+// the playlist's last window, which opening it never reads.
+test.describe("a playlist's shading", () => {
+	test.use({ librarySize: LONG_PLAYLIST_ROWS });
+
+	const RAISED = 4000;
+	const MOST_PLAYS = 999;
+	const ROWS_READ = [0, 1, 2, 3, 4, 5, 6, 7];
+
+	const playsIn = (player: FakePlayer, position: number) =>
+		playsOf(
+			player.playlists.find((entry) => entry.id === LONG_PLAYLIST)!.items[
+				position
+			],
+		);
+
+	test("shades each row against the playlist's most plays, held in a window it never read", async ({
+		page,
+		player,
+	}) => {
+		const raised = player.playlists.find((entry) => entry.id === LONG_PLAYLIST)!
+			.items[RAISED];
+		raised["%lastfm_play_count%"] = String(MOST_PLAYS);
+		raised["%play_count%"] = String(MOST_PLAYS);
+		expect(
+			ROWS_READ.some((position) => playsIn(player, position) > 0),
+			"no row read was ever played",
+		).toBe(true);
+
+		await openLibrary(page);
+		await inSequence(ROWS_READ, async (position: number) => {
+			const plays = playsIn(player, position);
+			const expected =
+				plays > 0 ? Math.log1p(plays) / Math.log1p(MOST_PLAYS) : 0;
+			await expect
+				.poll(async () => (await shading(page, position)).heat, {
+					message: `row ${position}`,
+				})
+				.toBeCloseTo(expected, 3);
+		});
+
+		await untilQuiet(player);
+		expect(
+			pageAsks(player, LONG_PLAYLIST).filter(
+				({ offset, count }) => offset <= RAISED && RAISED < offset + count,
+			),
+			"the raised row's window was read, so the ceiling could be its own",
+		).toEqual([]);
 	});
 });

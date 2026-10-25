@@ -66,7 +66,7 @@ export function SavePlaylistButton({
 					title: name,
 					...encodeFill(indices, {
 						structure: library.structure,
-						trackCount: library.paths?.length ?? 0,
+						trackCount: library.columns.trackCount,
 					}),
 				}),
 			);

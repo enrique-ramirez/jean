@@ -1,3 +1,4 @@
+import type { SetFigures } from "@/shared/api/libraryQuestions";
 import { translate } from "@/shared/i18n/locale";
 import {
 	FIELD,
@@ -13,6 +14,30 @@ const TOP_GENRES = 4;
 const MINUTE = 60;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
+
+export interface HeaderStats {
+	trackCount: number;
+	seconds: number;
+	earliest: number | null;
+	latest: number | null;
+	albumCount?: number;
+}
+
+export const NO_FIGURES: SetFigures = {
+	albumCount: 0,
+	trackCount: 0,
+	seconds: 0,
+	earliestYear: null,
+	latestYear: null,
+};
+
+export const statsOfFigures = (figures: SetFigures): HeaderStats => ({
+	trackCount: figures.trackCount,
+	seconds: figures.seconds,
+	earliest: figures.earliestYear,
+	latest: figures.latestYear,
+	albumCount: figures.albumCount,
+});
 
 export function summarise(rows: TrackRows) {
 	const { columns } = rows;
@@ -81,8 +106,6 @@ export function summarise(rows: TrackRows) {
 		mostPlayed,
 	};
 }
-
-export type TrackStats = ReturnType<typeof summarise>;
 
 const breakDown = (seconds: number) =>
 	Number.isFinite(seconds) && seconds > 0

@@ -9,8 +9,22 @@ import {
 	titlesIn,
 	toastRegion,
 	trackRow,
+	untilQuiet,
 } from "./fixtures.ts";
 import { openRowMenu } from "./menus.ts";
+import {
+	everyPage,
+	expectRowLanded,
+	expectRowPending,
+	fromTheSecondWindow,
+	holdPlaylistPages,
+	LONG_PLAYLIST,
+	LONG_PLAYLIST_ROWS,
+	pageAsks,
+	scrollToRow,
+	WINDOW_ROWS,
+} from "./playlistPages.ts";
+import { scrollTop } from "./scrolling.ts";
 
 const SPANISH = "p5";
 const AUTOPLAYLIST = "p9";
@@ -176,5 +190,56 @@ test.describe("where a row cannot be removed", () => {
 		await openRowMenu(page, isMobile, 0, "Add to queue");
 
 		await expect(removeItem(page)).toHaveCount(0);
+	});
+});
+
+test.describe("removing a row with a pending window on screen", () => {
+	test.use({ librarySize: LONG_PLAYLIST_ROWS });
+
+	const REMOVED = WINDOW_ROWS - 8;
+	const LAST_HELD = WINDOW_ROWS - 1;
+
+	test("closes the gap over the rows held, leaves the row it pulls up from a pending position pending, and holds the list still", async ({
+		page,
+		player,
+		isMobile,
+	}) => {
+		const pages = await holdPlaylistPages(
+			page,
+			player,
+			LONG_PLAYLIST,
+			fromTheSecondWindow,
+		);
+		const before = await openPlaylist(page, player, LONG_PLAYLIST);
+		const structure = structureOf(player, LONG_PLAYLIST);
+		await scrollToRow(page, REMOVED - 10);
+		await expectRowLanded(page, REMOVED, before[REMOVED]);
+		await expectRowPending(page, WINDOW_ROWS);
+		const top = await scrollTop(page);
+		const from = player.requests.length;
+		pages.holdAlso(everyPage);
+
+		await openRowMenu(page, isMobile, REMOVED, "Add to queue");
+		await removeItem(page).click();
+
+		const after = before.filter((_, at) => at !== REMOVED);
+		await expectSettlesAt(player, () => titlesIn(player, LONG_PLAYLIST), after);
+		expect(removals(player, LONG_PLAYLIST).map((entry) => entry.body)).toEqual([
+			{ structure, ordinals: [REMOVED] },
+		]);
+		await expect(toastRegion(page)).toContainText(
+			`Removed 1 track from ${titleOfPlaylist(player, LONG_PLAYLIST)}`,
+		);
+		await expectRowLanded(page, REMOVED, before[REMOVED + 1]);
+		await expectRowLanded(page, LAST_HELD - 1, before[LAST_HELD]);
+		await expectRowPending(page, LAST_HELD);
+		expect(Math.abs((await scrollTop(page)) - top)).toBeLessThanOrEqual(1);
+
+		await pages.release();
+		await expectRowLanded(page, LAST_HELD, before[WINDOW_ROWS]);
+		await untilQuiet(player);
+		expect(Math.abs((await scrollTop(page)) - top)).toBeLessThanOrEqual(1);
+		for (const ask of pageAsks(player, LONG_PLAYLIST, from))
+			expect([0, WINDOW_ROWS], JSON.stringify(ask)).toContain(ask.offset);
 	});
 });

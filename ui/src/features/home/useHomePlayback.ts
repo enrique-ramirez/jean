@@ -19,7 +19,10 @@ export function useHomePlayback({
 	navigate: (to: string) => void;
 }) {
 	const t = useTranslate();
-	const { play, canPlaySets } = usePlaySet({ library, playlists });
+	const { play, canPlaySets } = usePlaySet({
+		source: library.source,
+		playlists,
+	});
 	const { enableShuffle, canShuffle } = usePlaybackOrder();
 
 	const playShelf = useCallback(

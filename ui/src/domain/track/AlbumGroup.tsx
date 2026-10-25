@@ -2,10 +2,18 @@ import { Fragment } from "react";
 
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Artwork } from "@/shared/ui/Artwork";
+import { Skeleton } from "@/shared/ui/Skeleton";
 import styles from "./AlbumGroup.module.css";
 import { ArtistLinks } from "./ArtistLinks";
 import { coverIdentity, FIELD, featuring, sameTagValue, value } from "./fields";
-import type { AlbumRun } from "./grouping";
+import { isMatch } from "./finderSets";
+import {
+	type AlbumSpan,
+	coverRefOf,
+	coverRowOf,
+	discsOf,
+	headingOf,
+} from "./grouping";
 import type { TrackRenderProps } from "./listTypes";
 import { albumRoute, href } from "./routes";
 import { TrackRow } from "./TrackRow";
@@ -29,18 +37,19 @@ export function AlbumGroup({
 	onSelect,
 	isCompactViewport,
 	rowId,
-}: TrackRenderProps & { group: AlbumRun; rowId: (index: number) => string }) {
+}: TrackRenderProps & { group: AlbumSpan; rowId: (index: number) => string }) {
 	const t = useTranslate();
 	const coverSize = isCompactViewport ? ALBUM_COVER_COMPACT : ALBUM_COVER;
-	const title = group.album ?? t("track.unknownAlbum");
+	const heading = headingOf(group, rows);
+	const title = heading ? (heading.album ?? t("track.unknownAlbum")) : "";
 
-	const runs = group.discs ?? [
+	const discs = discsOf(group, rows) ?? [
 		{ number: null, start: group.start, count: group.count },
 	];
 
 	const track = (index: number) => {
 		const artist = value(rows.at(index), FIELD.artist);
-		const guest = featuring(artist, group.albumArtist);
+		const guest = featuring(artist, heading?.albumArtist);
 
 		return (
 			<TrackRow
@@ -59,8 +68,12 @@ export function AlbumGroup({
 				isPlaying={isPlaying}
 				isSelected={selection.has(index)}
 				isCursor={index === cursor}
-				isMatch={matches?.has(index) ?? false}
-				showArtist={guest === null && !sameTagValue(artist, group.albumArtist)}
+				isMatch={isMatch(matches, index)}
+				showArtist={
+					heading !== null &&
+					guest === null &&
+					!sameTagValue(artist, heading.albumArtist)
+				}
 				note={guest}
 				onSelect={onSelect}
 			/>
@@ -77,39 +90,52 @@ export function AlbumGroup({
 			<div className={styles.aside}>
 				<div className={styles.cover} data-album-cover="">
 					<Artwork
-						src={source.artworkUrl(rows.ref(group.cover))}
-						identity={coverIdentity(rows.at(group.cover))}
+						src={source.artworkUrl(coverRefOf(group, rows))}
+						identity={coverIdentity(coverRowOf(group, rows))}
 						size={coverSize}
 						className={styles.art}
 						alt={t("album.coverAlt", { album: title })}
 					/>
 				</div>
 				<div className={styles.caption}>
-					<div className={styles.title}>
-						{group.album ? (
-							<a
-								className="tag-link"
-								href={href(albumRoute(group.albumArtist, group.album))}
-							>
-								{title}
-							</a>
-						) : (
-							title
-						)}
-					</div>
-					<div className={styles.meta}>
-						{group.albumArtist ? (
-							<ArtistLinks credit={group.albumArtist} />
-						) : (
-							t("track.unknownArtist")
-						)}
-						{group.year ? ` · ${group.year}` : ""}
-					</div>
+					{heading ? (
+						<>
+							<div className={styles.title}>
+								{heading.album ? (
+									<a
+										className="tag-link"
+										href={href(albumRoute(heading.albumArtist, heading.album))}
+									>
+										{title}
+									</a>
+								) : (
+									title
+								)}
+							</div>
+							<div className={styles.meta}>
+								{heading.albumArtist ? (
+									<ArtistLinks credit={heading.albumArtist} />
+								) : (
+									t("track.unknownArtist")
+								)}
+								{heading.year ? ` · ${heading.year}` : ""}
+							</div>
+						</>
+					) : (
+						<>
+							<div className={styles.title}>
+								<Skeleton width="70%" />
+							</div>
+							<div className={styles.meta}>
+								<Skeleton width="45%" />
+							</div>
+						</>
+					)}
 				</div>
 			</div>
 
 			<div className={styles.tracks}>
-				{runs.map((run) => (
+				{discs.map((run) => (
 					<Fragment key={run.start}>
 						{run.number === null ? null : (
 							<h3 className={styles.disc}>

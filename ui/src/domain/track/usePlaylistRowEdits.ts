@@ -6,30 +6,31 @@ import { useCoalescedWrite } from "@/shared/hooks/useCoalescedWrite";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { translate } from "@/shared/i18n/locale";
 import { pushToast } from "@/shared/ui/toastStore";
-import type { PlaylistSnapshot } from "./playlistEntries";
-import { carryPlaylist, holdPlaylistLoads } from "./playlistLoader";
-import { keptOrder, moveOrder, reorderedSnapshot } from "./playlistPatch";
+import type { WindowedPlaylist } from "./playlistLoader";
+import { keptOrder, moveOrder } from "./playlistPatch";
 import {
 	REFUSAL_PHRASES,
 	type Refusal,
 	type RowEdit,
 	sendRowEdit,
 } from "./rowEdit";
+import { provisionalStructure } from "./rowWindows";
+import type { DrawnList } from "./usePlaylistItems";
 
 interface Session {
 	playlistId: string;
 	chain: string[];
+	drawn: DrawnList;
 	queue: RowEdit[];
 	sorts: number;
 	sending: RowEdit["kind"] | null;
-	release: (() => void) | null;
 }
 
 type Rearrangement = Exclude<RowEdit, { kind: "sort" }>;
 
 interface Overlay {
 	playlistId: string;
-	snapshot: PlaylistSnapshot;
+	drawn: DrawnList;
 	chain: string[];
 	isSettled: boolean;
 }
@@ -37,12 +38,14 @@ interface Overlay {
 const isIdentity = (order: Int32Array) =>
 	order.every((old, position) => old === position);
 
+let serial = 0;
+
 export function usePlaylistRowEdits({
 	playlist,
-	snapshot,
+	windowed,
 }: {
 	playlist: PlaylistInfo | null;
-	snapshot: PlaylistSnapshot;
+	windowed: WindowedPlaylist | null;
 }) {
 	const { discovery, recheck } = useFooJean();
 	const { origin } = discovery;
@@ -51,11 +54,10 @@ export function usePlaylistRowEdits({
 	const [overlay, setOverlay] = useState<Overlay | null>(null);
 	const session = useRef<Session | null>(null);
 
-	const latest = useRef({ playlist, snapshot, overlay, origin });
-	latest.current = { playlist, snapshot, overlay, origin };
+	const latest = useRef({ playlist, windowed, origin });
+	latest.current = { playlist, windowed, origin };
 
 	const abandon = useCallback(() => {
-		session.current?.release?.();
 		session.current = null;
 		setOverlay(null);
 	}, []);
@@ -87,8 +89,8 @@ export function usePlaylistRowEdits({
 
 	const drain = useCallback(async () => {
 		const held = session.current;
-		const { origin: player } = latest.current;
-		if (!held || !player) return;
+		const { origin: player, windowed: rows } = latest.current;
+		if (!held || !player || !rows) return;
 
 		for (let edit = held.queue.shift(); edit; edit = held.queue.shift()) {
 			const structure = held.chain[held.chain.length - 1];
@@ -108,15 +110,12 @@ export function usePlaylistRowEdits({
 			}
 
 			const { order } = answered.value;
-			carryPlaylist(
-				held.playlistId,
-				structure,
-				answered.value.structure,
-				order,
-			);
-			held.chain.push(answered.value.structure);
+			const landed = answered.value.structure;
+			held.chain.push(landed);
 
 			if (edit.kind === "sort") {
+				rows.carried(held.drawn.structure, landed, order);
+				held.drawn = { structure: landed, length: order.length };
 				held.sorts -= 1;
 				pushToast({
 					message: translate("playlist.sorted", {
@@ -124,6 +123,9 @@ export function usePlaylistRowEdits({
 						ordering: edit.ordering,
 					}),
 				});
+			} else if (held.queue.length === 0) {
+				rows.carried(held.drawn.structure, landed, null);
+				held.drawn = { ...held.drawn, structure: landed };
 			}
 			if (edit.kind === "remove")
 				pushToast({
@@ -137,20 +139,11 @@ export function usePlaylistRowEdits({
 					current && {
 						...current,
 						chain: [...held.chain],
-						snapshot:
-							edit.kind === "sort"
-								? reorderedSnapshot(
-										current.snapshot,
-										order,
-										current.snapshot.structure,
-									)
-								: current.snapshot,
+						drawn: held.drawn,
 					},
 			);
 		}
 
-		held.release?.();
-		held.release = null;
 		settle();
 	}, [recheck, refuse, settle]);
 
@@ -159,46 +152,42 @@ export function usePlaylistRowEdits({
 		if (held) refuse(held, "other", held.sending ?? "move");
 	});
 
-	const drawnBase = useCallback(() => {
-		const {
-			playlist: current,
-			snapshot: loaded,
-			overlay: drawn,
-		} = latest.current;
-		return drawn && drawn.playlistId === current?.id ? drawn.snapshot : loaded;
-	}, []);
-
 	const canEdit =
 		canWritePlaylists &&
 		playlist !== null &&
 		!playlist.isAutoPlaylist &&
 		playlist.role === null &&
-		!snapshot.isLoading &&
-		snapshot.error === null;
+		windowed !== null;
 
 	const sessionFor = useCallback((current: PlaylistInfo) => {
 		if (session.current?.playlistId !== current.id)
 			session.current = {
 				playlistId: current.id,
 				chain: [current.structure],
+				drawn: { structure: current.structure, length: current.itemCount },
 				queue: [],
 				sorts: 0,
 				sending: null,
-				release: null,
 			};
-		const held = session.current;
-		held.release ??= holdPlaylistLoads(current.id);
-		return held;
+		return session.current;
 	}, []);
 
+	const drawnNow = useCallback(
+		(current: PlaylistInfo): DrawnList =>
+			session.current?.playlistId === current.id
+				? session.current.drawn
+				: { structure: current.structure, length: current.itemCount },
+		[],
+	);
+
 	const enqueue = useCallback(
-		(current: PlaylistInfo, edit: RowEdit, drawn: PlaylistSnapshot) => {
+		(current: PlaylistInfo, edit: RowEdit) => {
 			const held = sessionFor(current);
 			if (edit.kind === "sort") held.sorts += 1;
 			held.queue.push(edit);
 			setOverlay({
 				playlistId: current.id,
-				snapshot: drawn,
+				drawn: held.drawn,
 				chain: [...held.chain],
 				isSettled: false,
 			});
@@ -212,24 +201,25 @@ export function usePlaylistRowEdits({
 			positions: number[],
 			editFor: (named: number[], count: number) => Edit | null,
 		): Edit | null => {
-			const { playlist: current } = latest.current;
-			if (!canEdit || !current) return null;
+			const { playlist: current, windowed: rows } = latest.current;
+			if (!canEdit || !current || !rows) return null;
 			if (session.current?.playlistId === current.id && session.current.sorts)
 				return null;
 
-			const base = drawnBase();
+			const base = drawnNow(current);
 			const named = [...new Set(positions)].sort((a, b) => a - b);
-			const edit = editFor(named, base.columns.trackCount);
+			const edit = editFor(named, base.length);
 			if (!edit) return null;
 
-			enqueue(
-				current,
-				edit,
-				reorderedSnapshot(base, edit.order, base.structure),
-			);
+			const held = sessionFor(current);
+			serial += 1;
+			const provisional = provisionalStructure(serial);
+			rows.carried(base.structure, provisional, edit.order);
+			held.drawn = { structure: provisional, length: edit.order.length };
+			enqueue(current, edit);
 			return edit;
 		},
-		[canEdit, drawnBase, enqueue],
+		[canEdit, drawnNow, sessionFor, enqueue],
 	);
 
 	const send = useCallback(
@@ -274,9 +264,9 @@ export function usePlaylistRowEdits({
 		(pattern: string, ordering: string) => {
 			const { playlist: current } = latest.current;
 			if (!canEdit || !current) return;
-			enqueue(current, { kind: "sort", pattern, ordering }, drawnBase());
+			enqueue(current, { kind: "sort", pattern, ordering });
 		},
-		[canEdit, drawnBase, enqueue],
+		[canEdit, enqueue],
 	);
 
 	const structure = playlist?.structure;
@@ -289,10 +279,7 @@ export function usePlaylistRowEdits({
 	}, [overlay, structure]);
 
 	return {
-		snapshot:
-			overlay && overlay.playlistId === playlistId
-				? overlay.snapshot
-				: snapshot,
+		drawn: overlay && overlay.playlistId === playlistId ? overlay.drawn : null,
 		onReorder: canEdit ? move : undefined,
 		onNudge: canEdit ? nudge : undefined,
 		onRemove: canEdit ? remove : undefined,

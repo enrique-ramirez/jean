@@ -1,14 +1,22 @@
 import {
 	type Answer,
+	ask,
 	askResult,
 	BODYLESS_POST,
 	type Call,
 	type Failure,
 	PATIENT_TIMEOUT_MS,
 	PROBE_TIMEOUT_MS,
+	READ_TIMEOUT_MS,
 	type Result,
+	reach,
+	refusalOf,
+	retryAfterMs,
 	type Schema,
+	unreachable,
 } from "./client";
+import { decodeSet, type LibraryRoles } from "./libraryQuestions";
+import { type ReadFailure, readFailed } from "./readFailure";
 
 export type PlaylistAnnotation = Schema["PlaylistAnnotation"];
 export type AutoPlaylistRequest = Schema["AutoPlaylistRequest"];
@@ -18,6 +26,7 @@ export type FillOwnPlaylistRequest = Schema["FillOwnPlaylistRequest"];
 export type Duplicates = Schema["Duplicates"];
 export type PlaylistPage = Schema["PlaylistPage"];
 export type PlaylistChanges = Schema["PlaylistChanges"];
+export type PlaylistRuns = Schema["PlaylistRuns"];
 export type CreatePlaylistRequest = Schema["CreatePlaylistRequest"];
 export type CopyPlaylistRowsRequest = Schema["CopyPlaylistRowsRequest"];
 export type RemovePlaylistRowsRequest = Schema["RemovePlaylistRowsRequest"];
@@ -91,7 +100,7 @@ export const fetchPlaylistRows = (
 	offset: number,
 	count: number,
 	columns: readonly string[],
-	{ signal }: { signal?: AbortSignal } = {},
+	{ signal, roles }: { signal?: AbortSignal; roles?: LibraryRoles } = {},
 ) =>
 	patient(
 		origin,
@@ -100,11 +109,134 @@ export const fetchPlaylistRows = (
 				...init,
 				params: {
 					path: { id },
-					query: { offset, count, columns: [...columns] },
+					query: { ...roles, offset, count, columns: [...columns] },
 				},
 			}),
 		signal,
 	);
+
+export type PlaylistRunsResult =
+	| { ok: true; unchanged: true }
+	| { ok: true; unchanged: false; runs: PlaylistRuns; etag: string | null }
+	| (ReadFailure & { structureMoved: boolean });
+
+const RUNS_REFUSALS: Partial<Record<number, ReadFailure["reason"]>> = {
+	202: "notReady",
+	400: "refused",
+	409: "undeclared",
+	429: "tooFast",
+	503: "unavailable",
+};
+
+const runsFailed = (
+	failure: ReadFailure,
+	structureMoved = false,
+): PlaylistRunsResult => ({ ...failure, structureMoved });
+
+export async function readPlaylistRuns(
+	origin: string,
+	id: string,
+	structure: string,
+	roles: LibraryRoles,
+	etag?: string,
+	signal?: AbortSignal,
+): Promise<PlaylistRunsResult> {
+	const answer = await reach(
+		// foo_jean copies the playlist's handles on foobar2000's main thread, as a page read does.
+		ask(
+			origin,
+			PATIENT_TIMEOUT_MS,
+			(api, init) =>
+				api.GET("/playlists/{id}/runs", {
+					...init,
+					params: { path: { id }, query: { ...roles, structure } },
+					headers: etag ? { "If-None-Match": etag } : undefined,
+					cache: "no-store",
+				}),
+			signal,
+		),
+		signal,
+	);
+	if (!answer) return runsFailed(readFailed("unreachable"));
+	const { data, error, response } = answer;
+
+	if (response.status === 304) return { ok: true, unchanged: true };
+
+	const refusal = RUNS_REFUSALS[response.status];
+	if (refusal) {
+		const { error: said, message } = refusalOf(response, error);
+		const isMoved = response.status === 409 && said === ROWS_MOVED_ERROR;
+		return runsFailed(
+			readFailed(
+				isMoved ? "refused" : refusal,
+				said ? message : "",
+				refusal === "tooFast" ? retryAfterMs(response) : null,
+			),
+			isMoved,
+		);
+	}
+	if (!data) return runsFailed(readFailed("failed", `HTTP ${response.status}`));
+
+	return {
+		ok: true,
+		unchanged: false,
+		runs: data as PlaylistRuns,
+		etag: response.headers.get("ETag"),
+	};
+}
+
+export type PlaylistFind = Omit<Schema["PlaylistFind"], "matched"> & {
+	matched: Int32Array;
+};
+
+export type FindRoles = Pick<
+	LibraryRoles,
+	"title" | "artist" | "albumArtist" | "album" | "artistSort"
+>;
+
+export async function fetchPlaylistFind(
+	origin: string,
+	id: string,
+	ask: {
+		query: string;
+		structure: string;
+		roles: FindRoles;
+		length: number;
+	},
+	signal?: AbortSignal,
+): Promise<Result<PlaylistFind> | { ok: false; reason: "notReady" }> {
+	const read = await askResult<Schema["PlaylistFind"] | Schema["Library"]>(
+		origin,
+		READ_TIMEOUT_MS,
+		(api, init) =>
+			api.GET("/playlists/{id}/find", {
+				...init,
+				cache: "no-store",
+				params: {
+					path: { id },
+					query: {
+						query: ask.query,
+						structure: ask.structure,
+						title: ask.roles.title,
+						artist: ask.roles.artist,
+						albumArtist: ask.roles.albumArtist,
+						album: ask.roles.album,
+						artistSort: ask.roles.artistSort,
+					},
+				},
+			}),
+		signal,
+	);
+	if (!read.ok) return read;
+
+	const { value } = read;
+	if (!("matched" in value)) return { ok: false, reason: "notReady" };
+
+	const matched = decodeSet(value.matched, ask.length);
+	return matched
+		? { ok: true, value: { ...value, matched } }
+		: { ok: false, reason: "unreachable", message: unreachable() };
+}
 
 export type PlaylistChangesResult =
 	| Result<PlaylistChanges>
@@ -122,7 +254,7 @@ export async function fetchPlaylistItemChanges(
 	structure: string,
 	since: string,
 	columns: readonly string[],
-	{ signal }: { signal?: AbortSignal } = {},
+	{ signal, roles }: { signal?: AbortSignal; roles?: LibraryRoles } = {},
 ): Promise<PlaylistChangesResult> {
 	const read = await patient(
 		origin,
@@ -131,7 +263,7 @@ export async function fetchPlaylistItemChanges(
 				...init,
 				params: {
 					path: { id },
-					query: { structure, since, columns: [...columns] },
+					query: { ...roles, structure, since, columns: [...columns] },
 				},
 			}),
 		signal,

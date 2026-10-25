@@ -14,6 +14,7 @@ import styles from "./ActionMenu.module.css";
 import { Input } from "./Input";
 import type { IconComponent } from "./icons";
 import { handleMenuKeys, itemsIn } from "./menuKeys";
+import { BusyNote, busyProps, Skeleton } from "./Skeleton";
 
 export interface ActionEntry {
 	type?: undefined;
@@ -49,6 +50,7 @@ export interface MenuHeader {
 	title: string;
 	subtitle?: string | null;
 	icon?: IconComponent;
+	isBusy?: boolean;
 }
 
 export interface Page {
@@ -363,11 +365,23 @@ export function Header({
 					<Icon size={17} strokeWidth={1.9} />
 				</span>
 			) : null}
-			<span className={styles.headerText}>
-				<span className={styles.headerTitle}>{header.title}</span>
-				{header.subtitle ? (
-					<span className={styles.headerMeta}>{header.subtitle}</span>
-				) : null}
+			<span
+				className={styles.headerText}
+				{...busyProps(header.isBusy === true)}
+			>
+				{header.isBusy ? (
+					<>
+						<Skeleton width="9rem" />
+						<BusyNote />
+					</>
+				) : (
+					<>
+						<span className={styles.headerTitle}>{header.title}</span>
+						{header.subtitle ? (
+							<span className={styles.headerMeta}>{header.subtitle}</span>
+						) : null}
+					</>
+				)}
 			</span>
 		</div>
 	);

@@ -12,11 +12,8 @@ import {
 	readValue,
 	tagGroups,
 	tagKey,
-	withBothSources,
 } from "./fields";
-import { growingIndex } from "./growingIndex";
-import { INTENSITY_FIELDS, rowPlays } from "./intensity";
-import { byValueSteps, type LibraryColumns, rowsMoved } from "./libraryColumns";
+import { byValueSteps, type LibraryColumns } from "./libraryColumns";
 import type { TrackRows } from "./project";
 import { starsOf } from "./rating";
 
@@ -178,60 +175,6 @@ export function albumsOf(rows: TrackRows): Album[] {
 	finished(collect(byKey, rows, 0));
 	return derive(byKey);
 }
-
-const COLLECTED = withBothSources([
-	FIELD.album,
-	FIELD.albumArtist,
-	FIELD.artist,
-	FIELD.playCount,
-	FIELD.lastPlayed,
-	FIELD.year,
-	FIELD.bitrate,
-	FIELD.codec,
-	FIELD.rating,
-	FIELD.added,
-]);
-
-function replay(
-	byKey: Map<string, AlbumDraft>,
-	before: LibraryColumns,
-	after: LibraryColumns,
-) {
-	const moved = rowsMoved(INTENSITY_FIELDS, before, after);
-	if (moved.length === 0) return;
-
-	const album = after.fields[FIELD.album];
-	const albums = tagGroups(album);
-	const artists = artistGroups(after);
-	const touched = new Set<AlbumDraft>();
-
-	for (const ref of moved) {
-		const albumGroup = albums.of[album.ids[ref]];
-		if (albumGroup < 0) continue;
-
-		const artistGroup = artists.at(ref);
-		const artist = artistGroup < 0 ? null : artists.names[artistGroup];
-		const draft = byKey.get(keyOf(artist, albums.names[albumGroup]));
-		if (draft) touched.add(draft);
-	}
-
-	for (const draft of touched) {
-		draft.plays = 0;
-		draft.lastPlayed = 0;
-		for (const position of draft.refs) {
-			const { plays, lastPlayed } = rowPlays(after, position);
-			draft.plays += plays;
-			if (lastPlayed !== null && lastPlayed > draft.lastPlayed)
-				draft.lastPlayed = lastPlayed;
-		}
-		summaries.delete(draft);
-	}
-}
-
-export const albumIndex = growingIndex(COLLECTED, collect, derive, {
-	patchable: INTENSITY_FIELDS,
-	patch: replay,
-});
 
 export interface AlbumTracks {
 	refs: Int32Array;

@@ -1,12 +1,10 @@
 import { type ReactNode, useId } from "react";
+import type { ArtistCards } from "@/shared/api/libraryQuestions";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { Chip } from "@/shared/ui/Chip";
 import { BusyNote, busyProps, Skeleton } from "@/shared/ui/Skeleton";
-import { titleOf } from "./fields";
 import styles from "./LibraryCards.module.css";
-import type { TrackRows } from "./project";
 import { genreRoute, href } from "./routes";
-import type { TrackStats } from "./stats";
 
 const DATE_PARTS = { year: "numeric", month: "long", day: "numeric" } as const;
 
@@ -49,13 +47,13 @@ function Pending({ hasMeter = false }: { hasMeter?: boolean }) {
 }
 
 export function LibraryCards({
-	stats,
-	rows,
+	cards,
+	trackCount,
 	hasPlayCounts,
 	isOverdue,
 }: {
-	stats: TrackStats | null;
-	rows: TrackRows;
+	cards: ArtistCards | null;
+	trackCount: number;
 	hasPlayCounts: boolean;
 	isOverdue: boolean;
 }) {
@@ -63,10 +61,10 @@ export function LibraryCards({
 	const format = useFormats();
 	const headingId = useId();
 
-	const showsGenres = stats === null || stats.topGenres.length > 0;
+	const showsGenres = cards === null || cards.topGenres.length > 0;
 	const showsMostPlayed =
-		hasPlayCounts && (stats === null || stats.mostPlayed !== null);
-	if (stats !== null && stats.trackCount === 0) return null;
+		hasPlayCounts && (cards === null || cards.mostPlayed !== null);
+	if (cards !== null && trackCount === 0) return null;
 	if (!hasPlayCounts && !showsGenres) return null;
 
 	return (
@@ -74,38 +72,38 @@ export function LibraryCards({
 			className={styles.cards}
 			data-library-cards=""
 			aria-labelledby={headingId}
-			{...busyProps(stats === null)}
+			{...busyProps(cards === null)}
 		>
 			<h2 className={styles.heading} id={headingId}>
 				{t("cards.title")}
 			</h2>
-			{stats === null && isOverdue ? <BusyNote /> : null}
+			{cards === null && isOverdue ? <BusyNote /> : null}
 
 			<div className={styles.row}>
 				{hasPlayCounts ? (
 					<Card name="played" label={t("cards.played")}>
-						{stats === null ? (
+						{cards === null ? (
 							<Pending hasMeter />
 						) : (
 							<>
 								<span className={styles.value}>
-									{format.number(Math.round(stats.playedShare * 100) / 100, {
+									{format.number(Math.round(cards.playedShare * 100) / 100, {
 										style: "percent",
 									})}
 								</span>
 								<span className={styles.line}>
 									{t("artist.someOf", {
-										some: stats.trackCount - stats.unplayed,
-										all: stats.trackCount,
+										some: trackCount - cards.neverPlayed,
+										all: trackCount,
 									})}
 								</span>
 								<span className={styles.line}>
-									{t("cards.neverPlayed", { count: stats.unplayed })}
+									{t("cards.neverPlayed", { count: cards.neverPlayed })}
 								</span>
 								<div className={styles.meter}>
 									<div
 										className={styles.meterFill}
-										style={{ transform: `scaleX(${stats.playedShare})` }}
+										style={{ transform: `scaleX(${cards.playedShare})` }}
 									/>
 								</div>
 							</>
@@ -115,17 +113,17 @@ export function LibraryCards({
 
 				{hasPlayCounts ? (
 					<Card name="plays" label={t("details.plays")}>
-						{stats === null ? (
+						{cards === null ? (
 							<Pending />
 						) : (
 							<>
 								<span className={styles.value}>
-									{format.number(stats.plays)}
+									{format.number(cards.plays)}
 								</span>
-								{stats.lastPlayed !== null ? (
+								{cards.lastPlayed !== null ? (
 									<span className={styles.line}>
 										{t("cards.lastListened", {
-											date: format.date(stats.lastPlayed, DATE_PARTS),
+											date: format.date(cards.lastPlayed, DATE_PARTS),
 										})}
 									</span>
 								) : null}
@@ -136,15 +134,15 @@ export function LibraryCards({
 
 				{showsMostPlayed ? (
 					<Card name="most-played" label={t("cards.mostPlayed")}>
-						{stats === null || stats.mostPlayed === null ? (
+						{cards === null || cards.mostPlayed === null ? (
 							<Pending />
 						) : (
 							<>
 								<span className={`${styles.value} ${styles.title}`}>
-									{titleOf(rows.at(stats.mostPlayed.position), t)}
+									{cards.mostPlayed.title || t("track.unknownTitle")}
 								</span>
 								<span className={styles.line}>
-									{t("shelf.plays", { count: stats.mostPlayed.plays })}
+									{t("shelf.plays", { count: cards.mostPlayed.plays })}
 								</span>
 							</>
 						)}
@@ -153,11 +151,11 @@ export function LibraryCards({
 
 				{showsGenres ? (
 					<Card name="genres" label={t("cards.genres")}>
-						{stats === null ? (
+						{cards === null ? (
 							<Pending />
 						) : (
 							<div className={styles.chips}>
-								{stats.topGenres.map((genre) => (
+								{cards.topGenres.map((genre) => (
 									<Chip
 										key={genre.name}
 										label={genre.name}

@@ -1,14 +1,12 @@
-import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import { en } from "../../src/shared/i18n/en.ts";
 import { compareText, pathKey } from "../fake-api/playerOrder.ts";
-import type { Locator, Page } from "./fixtures.ts";
+import type { Page } from "./fixtures.ts";
 import {
 	expect,
 	expectPlayingFrom,
 	expectSettlesAt,
 	openSidebar,
 	playedFrom,
-	requestsTo,
 	scratchFills,
 	scratchOf,
 	searchFor,
@@ -321,38 +319,39 @@ test.describe("a library under the scroll cap", () => {
 	});
 });
 
-// A million rows at full height is past the tallest element Firefox, Chromium or WebKit will draw.
-const MILLION = 1_000_000;
-const LAST = MILLION - 1;
-const DEEP = 800_000;
-const MILLION_MS = 10 * 60_000;
+// Two million rows at full height is past the tallest element Firefox, Chromium or WebKit will draw.
+const TWO_MILLION = 2_000_000;
+const LAST = TWO_MILLION - 1;
+const DEEP = 1_600_000;
+const TWO_MILLION_MS = 10 * 60_000;
 const LIBRARY_LANDS_MS = 6 * 60_000;
 const SETTLES_MS = 60_000;
+// Chromium holds a scroll offset this large only to every second pixel.
+const SCROLL_GRID_PX = 2;
 
-test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
+test.describe("a library of two million tracks", { tag: "@firefox" }, () => {
 	test.skip(
 		({ isMobile }) => isMobile,
 		"the height limit is the engine's, which this project shares with desktop; a fling over the cap is checked by hand on a phone",
 	);
-	test.setTimeout(MILLION_MS);
+	test.setTimeout(TWO_MILLION_MS);
 
 	test.use({
 		libraryShape: {
-			tracks: MILLION,
-			albums: MILLION / 10,
-			artists: MILLION / 100,
+			tracks: TWO_MILLION,
+			albums: TWO_MILLION / 10,
+			artists: TWO_MILLION / 100,
 			genres: 40,
 			years: [1960, 2024],
 		},
-		fooJean: { libraryCeiling: null },
 		settings: { "jean.followPlayback": false },
 	});
 
-	const openAMillion = async (page: Page) => {
+	const openTwoMillion = async (page: Page) => {
 		await page.goto("/#/all");
 		await expect(page.getByRole("grid")).toHaveAttribute(
 			"aria-rowcount",
-			String(MILLION),
+			String(TWO_MILLION),
 			{ timeout: LIBRARY_LANDS_MS },
 		);
 		await expect(trackRow(page, 0)).toBeAttached();
@@ -392,6 +391,58 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 			.toBe("on screen");
 	};
 
+	// Whether the row was ever drawn busy from here on, kept by an observer: by the time an assertion
+	// could look, its window has landed and the skeleton is gone.
+	const watchForBusy = (page: Page, index: number) =>
+		page.evaluate((wanted) => {
+			const seen = { busy: false };
+			(window as unknown as { __seenBusy: typeof seen }).__seenBusy = seen;
+			const selector = `[role="row"][data-row="${wanted}"][aria-busy="true"]`;
+			new MutationObserver((_, observer) => {
+				if (!document.querySelector(selector)) return;
+				seen.busy = true;
+				observer.disconnect();
+			}).observe(document, {
+				subtree: true,
+				childList: true,
+				attributes: true,
+				attributeFilter: ["aria-busy"],
+			});
+		}, index);
+
+	const wasDrawnBusy = (page: Page) =>
+		page.evaluate(
+			() =>
+				(window as unknown as { __seenBusy: { busy: boolean } }).__seenBusy
+					.busy,
+		);
+
+	// How far a scaled scroll can land from where it was aimed, in pixels of list: one pixel of scroll
+	// at this list's scale, plus the grid Chromium holds a large scroll offset to. The list's full height
+	// is estimated from the entries on screen, so an album's headings count in it.
+	const landingTolerance = (page: Page) =>
+		scroller(page).evaluate((element, grid) => {
+			const list = element.querySelector('[role="grid"]') as HTMLElement;
+			let rows = 0;
+			let drawn = 0;
+			for (const entry of list.children) {
+				const held = entry.matches("[data-row]")
+					? 1
+					: entry.querySelectorAll('[role="row"][data-row]').length;
+				if (held === 0) continue;
+				rows += held;
+				drawn += entry.getBoundingClientRect().height;
+			}
+			const content =
+				Number(list.getAttribute("aria-rowcount")) * (drawn / rows);
+			const viewport = element.clientHeight;
+			const scale = Math.max(
+				1,
+				(content - viewport) / (list.getBoundingClientRect().height - viewport),
+			);
+			return scale + grid;
+		}, SCROLL_GRID_PX);
+
 	const scrollUntilTheLastRowIsShown = async (page: Page) => {
 		await expect
 			.poll(
@@ -406,7 +457,7 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 	};
 
 	test("the list is never drawn taller than the cap", async ({ page }) => {
-		await openAMillion(page);
+		await openTwoMillion(page);
 
 		const { listHeight } = await listGeometry(page);
 		expect(listHeight).toBeLessThanOrEqual(MAX_SCROLL_HEIGHT);
@@ -427,7 +478,7 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 			test("the last row is reached by scrolling to the bottom, and the first by scrolling back", async ({
 				page,
 			}) => {
-				await openAMillion(page);
+				await openTwoMillion(page);
 
 				await scrollUntilTheLastRowIsShown(page);
 
@@ -442,7 +493,7 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 			test("at the bottom the last row ends where the list ends, with no empty list under it", async ({
 				page,
 			}) => {
-				await openAMillion(page);
+				await openTwoMillion(page);
 				await scrollUntilTheLastRowIsShown(page);
 
 				const { lastEnds, listEnds } = await scroller(page).evaluate(
@@ -459,16 +510,16 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 					},
 					LAST,
 				);
-				// Two pixels rather than one: the header's height is fractional and the scroller reports
-				// whole pixels, and each pixel of scroll is three of list at a million rows.
+				// The header's height is fractional and the scroller reports whole pixels, so the margin above
+				// the list rounds, and at a scale each pixel of it is several of list.
 				expect(
 					Math.abs(listEnds - lastEnds),
 					`the entry holding the last row ends at ${lastEnds}px and the list at ${listEnds}px`,
-				).toBeLessThan(2);
+				).toBeLessThan(await landingTolerance(page));
 			});
 
 			test("End reaches the last row, and Home the first", async ({ page }) => {
-				await openAMillion(page);
+				await openTwoMillion(page);
 				await expect(trackRow(page, 0)).toBeVisible();
 
 				await page.keyboard.press("End");
@@ -489,14 +540,14 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 				page,
 				player,
 			}) => {
-				await openAMillion(page);
+				await openTwoMillion(page);
 
 				await trackRow(page, 0).dblclick();
 				await expect
 					.poll(() => scratchOf(player)?.items.length ?? 0, {
 						timeout: LIBRARY_LANDS_MS,
 					})
-					.toBe(MILLION);
+					.toBe(TWO_MILLION);
 				const scratch = scratchOf(player)!;
 				await expect
 					.poll(() => playedFrom(player)?.id, { timeout: LIBRARY_LANDS_MS })
@@ -509,6 +560,7 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 					await scrollTo(page, 0);
 					await settle(page);
 
+					await watchForBusy(page, row);
 					await page.keyboard.press("n");
 					await settle(page);
 					await expectOnScreen(page, row);
@@ -517,6 +569,10 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 						"true",
 					);
 					await expect(trackRow(page, row)).toContainText(title);
+					expect(
+						await wasDrawnBusy(page),
+						`row ${row} drew its title without first drawing as a skeleton`,
+					).toBe(true);
 				}
 
 				player.playItem(scratch.id, DEEP);
@@ -529,7 +585,7 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 				await settle(page);
 				await expect
 					.poll(() => offCentre(page, DEEP), { timeout: SETTLES_MS })
-					.toBeLessThan(2);
+					.toBeLessThan(await landingTolerance(page));
 
 				await sidebar(page)
 					.getByRole("button", { name: /Rock en Español/ })
@@ -544,7 +600,7 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 				await settle(page);
 				await expect
 					.poll(() => offCentre(page, DEEP), { timeout: SETTLES_MS })
-					.toBeLessThan(2);
+					.toBeLessThan(await landingTolerance(page));
 			});
 		});
 	});
@@ -552,7 +608,7 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 	test("leaving at the last row and coming back to a shorter window lands on the same row", async ({
 		page,
 	}) => {
-		await openAMillion(page);
+		await openTwoMillion(page);
 		await scrollUntilTheLastRowIsShown(page);
 		const left = await rowAtTop(page);
 		expect(left).not.toBeNull();
@@ -576,7 +632,7 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 	});
 
 	test("a wheel scrolls by the browser's own amount", async ({ page }) => {
-		await openAMillion(page);
+		await openTwoMillion(page);
 		const box = (await scroller(page).boundingBox())!;
 		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 
@@ -598,13 +654,13 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 			page: Page,
 			player: Parameters<typeof scratchOf>[0],
 		) => {
-			await openAMillion(page);
+			await openTwoMillion(page);
 			await trackRow(page, 0).dblclick();
 			await expect
 				.poll(() => scratchOf(player)?.items.length ?? 0, {
 					timeout: LIBRARY_LANDS_MS,
 				})
-				.toBe(MILLION);
+				.toBe(TWO_MILLION);
 			const scratch = scratchOf(player)!;
 			await expect
 				.poll(() => playedFrom(player)?.id, { timeout: LIBRARY_LANDS_MS })
@@ -686,170 +742,63 @@ test.describe("a library of a million tracks", { tag: "@firefox" }, () => {
 	});
 });
 
-const LATE = [
-	FIELD.codec,
-	FIELD.bitrate,
-	FIELD.added,
-	FIELD.artists,
-	FIELD.artistIds,
-	FIELD.albumArtists,
-	FIELD.albumArtistIds,
-].map((field) => TRACK_EXPRESSIONS[field]);
-const EARLY = TRACK_EXPRESSIONS.filter((column) => !LATE.includes(column));
-
-const sorted = (columns: readonly string[]) => [...columns].sort();
-
-const releaseTheLatePart = (page: Page) =>
-	page.request.post("/__control/holdSubset", { data: {} });
-
-const exportsAsked = (player: Parameters<typeof requestsTo>[0]) =>
-	requestsTo(player, "/api/library/export")
-		.filter((entry) => entry.method === "GET")
-		.map((entry) => new URL(entry.path, "http://fake.invalid").searchParams);
-
-const asksForLateColumns = (query: URLSearchParams) =>
-	query.getAll("only").some((column) => LATE.includes(column));
-
-// The resource entries are read through an observer, which sees every entry however full the
-// browser's timing buffer is by then.
-interface Timeline {
-	firstRowAt: number | null;
-	exports: { url: string; startTime: number }[];
-}
-
 declare global {
 	interface Window {
-		__timeline: Timeline;
+		__cellsWhenLanded: string[] | null;
 	}
 }
 
-const recordTheTimeline = (page: Page) =>
+// What row 0's last two cells held at the moment it stopped being pending, read off the mutation
+// itself, so a cell that fills a moment after its row is caught however quickly it fills.
+const recordCellsWhenLanded = (page: Page) =>
 	page.addInitScript(() => {
-		const timeline: Timeline = { firstRowAt: null, exports: [] };
-		window.__timeline = timeline;
+		window.__cellsWhenLanded = null;
+		let wasBusy = false;
 		new MutationObserver(() => {
-			if (
-				timeline.firstRowAt === null &&
-				document.querySelector('[role="row"][data-row]')
-			)
-				timeline.firstRowAt = performance.now();
-		}).observe(document, { subtree: true, childList: true });
-		new PerformanceObserver((entries) => {
-			for (const entry of entries.getEntries())
-				if (new URL(entry.name).pathname === "/api/library/export")
-					timeline.exports.push({
-						url: entry.name,
-						startTime: entry.startTime,
-					});
-		}).observe({ type: "resource", buffered: true });
+			const row = document.querySelector('[role="row"][data-row="0"]');
+			if (!row || window.__cellsWhenLanded) return;
+			if (row.getAttribute("aria-busy") === "true") wasBusy = true;
+			else if (wasBusy)
+				window.__cellsWhenLanded = [
+					...row.querySelectorAll('[role="gridcell"]'),
+				]
+					.slice(-2)
+					.map((cell) => cell.textContent ?? "");
+		}).observe(document, {
+			subtree: true,
+			childList: true,
+			characterData: true,
+			attributes: true,
+			attributeFilter: ["aria-busy"],
+		});
 	});
 
-const lateExportsSeen = (page: Page) =>
-	page.evaluate(
-		(late) =>
-			window.__timeline.exports.filter((entry) =>
-				new URL(entry.url).searchParams
-					.getAll("only")
-					.some((column) => late.includes(column)),
-			),
-		LATE,
+test.describe("a row with the codec and bitrate shown", () => {
+	test.skip(
+		({ isMobile }) => isMobile,
+		"a phone shows only time, plays and rating",
 	);
+	test.use({
+		fooJean: { holdRows: true },
+		settings: { "jean.columns": ["codec", "bitrate"] },
+	});
 
-const holdsAPlaceholder = (cell: Locator) =>
-	cell.evaluate((element) =>
-		[
-			...element.querySelectorAll('[aria-hidden="true"]:not(svg, button *)'),
-		].some((bar) => {
-			const box = bar.getBoundingClientRect();
-			return box.width > 0 && box.height > 0;
-		}),
-	);
-
-const extentOf = (element: Locator) =>
-	element.evaluate((box) => ({
-		drawn: box.getBoundingClientRect().height,
-		content: box.scrollHeight,
-	}));
-
-test.describe("a library that arrives in two parts", () => {
-	test.use({ fooJean: { holdSubset: LATE } });
-
-	test("the first part asks for every column but the late set, and the late part for the rest without the spine, after the first rows are drawn", async ({
+	test("lands with both, never drawing them pending after the rest of it", async ({
 		page,
 		player,
 	}) => {
-		await recordTheTimeline(page);
+		await recordCellsWhenLanded(page);
 		await page.goto("/#/all");
-		await expect(trackRow(page, 0)).toBeVisible();
+		await expect(trackRow(page, 0)).toHaveAttribute("aria-busy", "true");
+		await expect.poll(() => player.fooJean.rowsHeld.length).toBeGreaterThan(0);
 
-		const firstParts = exportsAsked(player).filter(
-			(query) => !asksForLateColumns(query),
-		);
-		expect(firstParts.length).toBeGreaterThan(0);
-		for (const query of firstParts) {
-			expect(sorted(query.getAll("only"))).toEqual(sorted(EARLY));
-			expect(query.get("spine")).not.toBe("false");
-		}
+		await page.request.post("/__control/holdRows", { data: { hold: false } });
+		await expect(trackRow(page, 0)).not.toHaveAttribute("aria-busy", "true");
 
-		await expect
-			.poll(() => exportsAsked(player).filter(asksForLateColumns).length, {
-				message: "Jean never asked for the late part",
-			})
-			.toBeGreaterThan(0);
-		const lateParts = exportsAsked(player).filter(asksForLateColumns);
-		expect(lateParts).toHaveLength(1);
-		expect(sorted(lateParts[0].getAll("only"))).toEqual(sorted(LATE));
-		expect(lateParts[0].get("spine")).toBe("false");
-		for (const query of exportsAsked(player))
-			expect(query.getAll("columns")).toEqual(TRACK_EXPRESSIONS);
-
-		await releaseTheLatePart(page);
-		await expect
-			.poll(() => lateExportsSeen(page).then((seen) => seen.length))
-			.toBe(1);
-		const [late] = await lateExportsSeen(page);
-		const { firstRowAt } = await page.evaluate(() => window.__timeline);
-		expect(firstRowAt).not.toBeNull();
-		expect(late.startTime).toBeGreaterThanOrEqual(firstRowAt as number);
-	});
-
-	test.describe("with the late columns shown", () => {
-		test.skip(
-			({ isMobile }) => isMobile,
-			"a phone shows only time, plays and rating, none of them late",
-		);
-		test.use({ settings: { "jean.columns": ["codec", "bitrate"] } });
-
-		const lateCells = (row: Locator) => {
-			const cells = row.getByRole("gridcell");
-			return [cells.nth(-2), cells.nth(-1)];
-		};
-
-		test("each row draws at once, its late cells holding their place, and is busy until they land at the same height", async ({
-			page,
-		}) => {
-			await page.goto("/#/all");
-			const row = trackRow(page, 0);
-			await expect(row).toBeVisible();
-			const [codec, bitrate] = lateCells(row);
-
-			await expect(row).toHaveAttribute("aria-busy", "true");
-			await expect(row.getByRole("gridcell").nth(1)).not.toHaveText("");
-			for (const cell of [codec, bitrate]) {
-				await expect(cell).toHaveText("");
-				expect(await holdsAPlaceholder(cell)).toBe(true);
-			}
-			const waiting = await Promise.all(
-				[row, codec, bitrate].map((box) => extentOf(box)),
-			);
-
-			await releaseTheLatePart(page);
-			await expect(codec).toHaveText(/^(MP3|FLAC)$/);
-			await expect(bitrate).toHaveText(/^\d+$/);
-			await expect(row).not.toHaveAttribute("aria-busy", "true");
-			expect(
-				await Promise.all([row, codec, bitrate].map((box) => extentOf(box))),
-			).toEqual(waiting);
-		});
+		const [codec, bitrate] = (await page.evaluate(
+			() => window.__cellsWhenLanded,
+		)) as string[];
+		expect(codec).toMatch(/^(MP3|FLAC)$/);
+		expect(bitrate).toMatch(/^\d+$/);
 	});
 });

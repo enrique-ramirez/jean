@@ -1,12 +1,8 @@
+import type { Schema } from "@/shared/api/client";
 import { finished, SLICE_MASK, type Steps } from "@/shared/lib/idle";
-import {
-	columnsOf,
-	overColumns,
-	overColumnsInSlices,
-	slicedOver,
-} from "./columnCache";
-import { artistGroups, FIELD, readValue, tagGroups, tagKey } from "./fields";
-import { byValue, type LibraryColumns } from "./libraryColumns";
+import { columnsOf, slicedOver } from "./columnCache";
+import { artistGroups, FIELD, readValue, tagGroups } from "./fields";
+import { byValue, rowAt } from "./libraryColumns";
 import type { Refs, TrackRows } from "./project";
 
 interface DiscRun {
@@ -15,15 +11,26 @@ interface DiscRun {
 	count: number;
 }
 
-export interface AlbumRun {
+export interface AlbumSpan {
+	kind: "span" | "run";
 	key: string;
-	album: string | null;
-	albumArtist: string | null;
-	year: string | null;
 	start: number;
 	count: number;
 	cover: number;
+}
+
+export interface AlbumRun extends AlbumSpan {
+	kind: "run";
+	album: string | null;
+	albumArtist: string | null;
+	year: string | null;
 	discs: DiscRun[] | null;
+}
+
+export interface AlbumHeading {
+	album: string | null;
+	albumArtist: string | null;
+	year: string | null;
 }
 
 type OpenRun = Omit<AlbumRun, "discs"> & {
@@ -40,9 +47,6 @@ export function discNumber(raw: string | undefined): number | null {
 	const parsed = Number.parseInt(text, 10);
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
-
-// Track numbers are free text on the same terms discs are, so the same parser reads them.
-const trackOrdinal = discNumber;
 
 const discsWorthDrawing = (discs: DiscRun[]): DiscRun[] | null =>
 	discs.length >= 2 && discs.every((disc) => disc.number !== null)
@@ -116,6 +120,7 @@ function* runsOf(rows: TrackRows): Steps<AlbumRun[]> {
 		if (albumGroup >= 0) coverOf.set(record, cover);
 
 		built.push({
+			kind: "run",
 			key: `${credit ?? ""} ${name ?? ""} ${index}`,
 			album: name,
 			albumArtist: credit,
@@ -135,150 +140,223 @@ function* runsOf(rows: TrackRows): Steps<AlbumRun[]> {
 	}));
 }
 
-const CANONICAL_FIELDS = [
-	FIELD.album,
-	FIELD.discNumber,
-	FIELD.trackNumber,
-	FIELD.artist,
-	FIELD.albumArtist,
-];
+type RunBounds = Pick<Schema["LibraryRuns"], "lengths"> &
+	Partial<Pick<Schema["LibraryRuns"], "covers" | "untagged">>;
 
-/**
- * The ref every track of a record shares a cover address through: the whole library's earliest disc,
- * then earliest track, ties broken by ref, which is stable and total whatever a tag omits or repeats.
- * Unlike `groupByAlbum`, this sweeps every row rather than contiguous runs, so it answers the same ref
- * for an album wherever it is reached from. A track with no album tag maps to itself, since it has no
- * record to share a cover with -- `coverIdentity` falls back to the track's own identity for exactly
- * that case, and this leaves it alone.
- */
-export const canonicalTrackRefs = overColumnsInSlices(
-	CANONICAL_FIELDS,
-	canonicalRefsOf,
-);
+const startsHeld = new WeakMap<RunBounds, Int32Array>();
 
-function* canonicalRefsOf(columns: LibraryColumns): Steps<Int32Array> {
-	const album = columns.fields[FIELD.album];
-	const disc = columns.fields[FIELD.discNumber];
-	const track = columns.fields[FIELD.trackNumber];
+const runStarts = (runs: RunBounds) => {
+	const held = startsHeld.get(runs);
+	if (held) return held;
 
-	const albums = yield* tagGroups.steps(album);
-	const artists = yield* artistGroups.steps(columns);
-	const discs = byValue(disc, discNumber);
-	const tracks = byValue(track, trackOrdinal);
-
-	const recordOf = new Int32Array(columns.trackCount).fill(-1);
-	const best = new Map<
-		number,
-		readonly [disc: number, track: number, ref: number]
-	>();
-
-	for (let ref = 0; ref < columns.trackCount; ref += 1) {
-		if ((ref & SLICE_MASK) === 0) yield;
-		const albumGroup = albums.of[album.ids[ref]];
-		if (albumGroup < 0) continue;
-
-		const record = artists.pairedWith(ref, albumGroup);
-		recordOf[ref] = record;
-
-		const order = [
-			discs[disc.ids[ref]] ?? 0,
-			tracks[track.ids[ref]] ?? 0,
-			ref,
-		] as const;
-		const held = best.get(record);
-		if (
-			!held ||
-			order[0] < held[0] ||
-			(order[0] === held[0] && order[1] < held[1])
-		)
-			best.set(record, order);
+	const starts = new Int32Array(runs.lengths.length);
+	let next = 0;
+	for (let run = 0; run < runs.lengths.length; run += 1) {
+		starts[run] = next;
+		next += runs.lengths[run];
 	}
+	startsHeld.set(runs, starts);
+	return starts;
+};
 
-	const canonical = new Int32Array(columns.trackCount);
-	for (let ref = 0; ref < columns.trackCount; ref += 1) {
-		if ((ref & SLICE_MASK) === 0) yield;
-		const record = recordOf[ref];
-		canonical[ref] = record < 0 ? ref : (best.get(record)?.[2] ?? ref);
+function lastAtOrBelow(
+	length: number,
+	startAt: (index: number) => number,
+	target: number,
+): number {
+	let low = 0;
+	let high = length - 1;
+	let found = -1;
+	while (low <= high) {
+		const middle = (low + high) >> 1;
+		if (startAt(middle) <= target) {
+			found = middle;
+			low = middle + 1;
+		} else high = middle - 1;
 	}
-	return canonical;
+	return found;
 }
 
-export interface AlbumCanonicalIndex {
-	// `credited` is the album artist, falling back to the artist: the same fallback `artistGroups`
-	// resolves per row, taken here as text since the caller has no ref to resolve it from. Answers
-	// null for a record this library does not hold, never a guess at the nearest one.
-	refFor: (album: string, credited: string) => number | null;
+const lastNumberAtOrBelow = (sorted: ArrayLike<number>, target: number) =>
+	lastAtOrBelow(sorted.length, (index) => sorted[index], target);
+
+const isUntagged = (untagged: readonly number[], run: number) =>
+	untagged[lastNumberAtOrBelow(untagged, run)] === run;
+
+interface RunSpans {
+	groups: AlbumSpan[];
+	runOf: number[];
 }
 
-/**
- * The same canonicalisation `canonicalTrackRefs` sweeps, looked up by an album's tag text rather
- * than by one of its own rows: what a per-track poll or a title-formatted read names a record by,
- * never a ref into this library.
- */
-export const albumCanonicalIndex = overColumns(
-	CANONICAL_FIELDS,
-	canonicalIndexOf,
-);
+function spansFromRuns(runs: RunBounds, positions: Refs | null): RunSpans {
+	const starts = runStarts(runs);
+	const groups: AlbumSpan[] = [];
+	const runOf: number[] = [];
 
-function canonicalIndexOf(columns: LibraryColumns): AlbumCanonicalIndex {
-	const album = columns.fields[FIELD.album];
-	const disc = columns.fields[FIELD.discNumber];
-	const track = columns.fields[FIELD.trackNumber];
-
-	const albums = tagGroups(album);
-	const artists = artistGroups(columns);
-	const discs = byValue(disc, discNumber);
-	const tracks = byValue(track, trackOrdinal);
-
-	const best = new Map<
-		string,
-		readonly [disc: number, track: number, ref: number]
-	>();
-
-	for (let ref = 0; ref < columns.trackCount; ref += 1) {
-		const albumGroup = albums.of[album.ids[ref]];
-		if (albumGroup < 0) continue;
-
-		const key = `${albumGroup}:${artists.at(ref)}`;
-		const order = [
-			discs[disc.ids[ref]] ?? 0,
-			tracks[track.ids[ref]] ?? 0,
-			ref,
-		] as const;
-		const held = best.get(key);
-		if (
-			!held ||
-			order[0] < held[0] ||
-			(order[0] === held[0] && order[1] < held[1])
-		)
-			best.set(key, order);
+	if (positions === null) {
+		runs.lengths.forEach((count, run) => {
+			if (count <= 0) return;
+			groups.push({
+				kind: "span",
+				key: `${run}:${starts[run]}`,
+				start: starts[run],
+				count,
+				cover: runs.covers?.[run] ?? starts[run],
+			});
+			runOf.push(run);
+		});
+		return { groups, runOf };
 	}
+
+	let run = -1;
+	let open: AlbumSpan | null = null;
+	for (let at = 0; at < positions.length; at += 1) {
+		const ordinal = positions[at];
+		if (
+			run < 0 ||
+			ordinal < starts[run] ||
+			ordinal >= starts[run] + runs.lengths[run]
+		)
+			run = lastNumberAtOrBelow(starts, ordinal);
+		if (open && runOf[runOf.length - 1] === run) {
+			open.count += 1;
+			continue;
+		}
+		open = {
+			kind: "span",
+			key: `${run}:${at}`,
+			start: at,
+			count: 1,
+			cover: runs.covers?.[run] ?? starts[run],
+		};
+		groups.push(open);
+		runOf.push(run);
+	}
+	return { groups, runOf };
+}
+
+export const NO_GROUPS: AlbumSpan[] = [];
+
+export const groupsFromRuns = (
+	runs: RunBounds,
+	positions: Refs | null,
+): AlbumSpan[] => spansFromRuns(runs, positions).groups;
+
+export interface CoverCandidates {
+	count: number;
+	at: (index: number) => number;
+}
+
+export function coverCandidates(
+	runs: RunBounds,
+	positions: Refs | null,
+): CoverCandidates {
+	const { groups, runOf } = spansFromRuns(runs, positions);
+	const untagged = runs.untagged ?? [];
+	const seenCovers = new Set<number>();
+	const firsts: number[] = [];
+	const sizes: number[] = [];
+	const ends: number[] = [];
+	let count = 0;
+
+	groups.forEach((group, at) => {
+		let size = 1;
+		if (isUntagged(untagged, runOf[at])) size = group.count;
+		else if (seenCovers.has(group.cover)) return;
+		else seenCovers.add(group.cover);
+
+		firsts.push(group.start);
+		sizes.push(size);
+		count += size;
+		ends.push(count);
+	});
 
 	return {
-		refFor: (albumText, creditedText) => {
-			const albumGroup = albums.group(tagKey(albumText));
-			if (albumGroup < 0) return null;
-
-			const creditedGroup = artists.group(tagKey(creditedText));
-			if (creditedGroup < 0) return null;
-
-			return best.get(`${albumGroup}:${creditedGroup}`)?.[2] ?? null;
+		count,
+		at: (index) => {
+			let low = 0;
+			let high = ends.length - 1;
+			while (low < high) {
+				const middle = (low + high) >> 1;
+				if (ends[middle] > index) high = middle;
+				else low = middle + 1;
+			}
+			const segment = low;
+			return firsts[segment] + index - (ends[segment] - sizes[segment]);
 		},
 	};
 }
 
-export function albumCoverRows(groups: AlbumRun[], length: number) {
-	const cover = new Int32Array(length);
-	groups.forEach((group) => {
-		cover.fill(group.cover, group.start, group.start + group.count);
-	});
-	return cover;
+export function coverCandidatesFromRuns(
+	runs: RunBounds,
+	positions: Refs | null,
+): number[] {
+	const { count, at } = coverCandidates(runs, positions);
+	return Array.from({ length: count }, (_, index) => at(index));
 }
 
-export function multiDiscRows(groups: AlbumRun[], length: number) {
-	const flags = new Uint8Array(length);
-	groups.forEach((group) => {
-		if (group.discs) flags.fill(1, group.start, group.start + group.count);
-	});
-	return flags;
+export function coverTrackOf(runs: RunBounds, ordinal: number): number {
+	const run = lastNumberAtOrBelow(runStarts(runs), ordinal);
+	if (run < 0) return ordinal;
+	return isUntagged(runs.untagged ?? [], run)
+		? ordinal
+		: (runs.covers?.[run] ?? ordinal);
+}
+
+// A group from the runs names its cover by ordinal. Where a list is its own ordinals in order, the
+// ordinal is also a position; in a set it is not, and the cover may lie outside the set.
+const coverIsOrdinal = (group: AlbumSpan, rows: TrackRows) =>
+	!isAlbumRun(group) && rows.indices !== null;
+
+export const coverRefOf = (group: AlbumSpan, rows: TrackRows) =>
+	coverIsOrdinal(group, rows) ? group.cover : rows.ref(group.cover);
+
+export const coverRowOf = (group: AlbumSpan, rows: TrackRows) =>
+	coverIsOrdinal(group, rows)
+		? rowAt(rows.columns, group.cover)
+		: rows.at(group.cover);
+
+export function groupIndexAt(groups: readonly AlbumSpan[], position: number) {
+	const found = lastAtOrBelow(
+		groups.length,
+		(index) => groups[index].start,
+		position,
+	);
+	return found >= 0 && position < groups[found].start + groups[found].count
+		? found
+		: -1;
+}
+
+export const isAlbumRun = (group: AlbumSpan): group is AlbumRun =>
+	group.kind === "run";
+
+export function headingOf(
+	group: AlbumSpan,
+	rows: TrackRows,
+): AlbumHeading | null {
+	if (isAlbumRun(group)) return group;
+	if (rows.isPending(group.start)) return null;
+
+	const first = rows.at(group.start);
+	return {
+		album: readValue(first[FIELD.album]),
+		albumArtist:
+			readValue(first[FIELD.albumArtist]) ?? readValue(first[FIELD.artist]),
+		year: readValue(first[FIELD.year]),
+	};
+}
+
+export function discsOf(group: AlbumSpan, rows: TrackRows): DiscRun[] | null {
+	if (isAlbumRun(group)) return group.discs;
+	if (group.count < 2) return null;
+
+	const found: DiscRun[] = [];
+	for (let at = group.start; at < group.start + group.count; at += 1) {
+		if (rows.isPending(at)) return null;
+		const number = discNumber(rows.at(at)[FIELD.discNumber]);
+		const open = found[found.length - 1];
+		if (open && open.number === number) open.count += 1;
+		else found.push({ number, start: at, count: 1 });
+	}
+	return discsWorthDrawing(found);
 }

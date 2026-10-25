@@ -13,13 +13,14 @@ import {
 	completionsAt,
 	quoted,
 	type Suggestion,
-	type ValueSource,
+	valueWantedAt,
 } from "@/domain/library/queryCompletion";
 import type { Phrase } from "@/shared/i18n/en";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Input } from "@/shared/ui/Input";
 import styles from "./QueryField.module.css";
 import { piecesOf } from "./queryHighlight";
+import { useValueSource } from "./valueSource";
 
 const MAX_OPTIONS = 8;
 
@@ -33,12 +34,14 @@ const KIND_PHRASE = {
 export function QueryField({
 	id,
 	value,
-	values,
+	origin,
+	structure,
 	onChange,
 }: {
 	id: string;
 	value: string;
-	values: ValueSource;
+	origin: string | null;
+	structure: number;
 	onChange: (query: string) => void;
 }) {
 	const t = useTranslate();
@@ -57,6 +60,11 @@ export function QueryField({
 	const [isOpen, setOpen] = useState(false);
 	const [active, setActive] = useState(-1);
 
+	const wanted = useMemo(
+		() => valueWantedAt(value, Math.min(caret, value.length)),
+		[value, caret],
+	);
+	const values = useValueSource(origin, structure, wanted);
 	const completion = useMemo(
 		() => completionsAt(value, Math.min(caret, value.length), values),
 		[value, caret, values],

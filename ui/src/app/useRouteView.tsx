@@ -5,7 +5,11 @@ import {
 	type QuestionFailed,
 	questionFailed,
 } from "@/domain/library/questionFailed";
-import type { Library } from "@/domain/library/useLibrary";
+import {
+	type Library,
+	useSetRows,
+	useWindowedRows,
+} from "@/domain/library/useLibrary";
 import {
 	atStructure,
 	useLibrarySummary,
@@ -13,35 +17,30 @@ import {
 import { NO_WAIT, useWait, type Wait } from "@/domain/library/useOverdue";
 import { AlbumCrumb } from "@/domain/track/AlbumCrumb";
 import type { AlbumTracks } from "@/domain/track/albums";
-import { CREDIT_TAGS } from "@/domain/track/fields";
 import {
 	albumLabel,
 	SCRATCH_KIND,
 	type ScratchKind,
 } from "@/domain/track/jeanPlaylists";
-import { isLoaded } from "@/domain/track/libraryColumns";
-import {
-	EMPTY_VIEW,
-	project,
-	type TrackView,
-	wholeLibrary,
-} from "@/domain/track/project";
+import { type ListedRows, type Refs, wholeRefs } from "@/domain/track/project";
 import { type ArtistTab, href, ROUTE } from "@/domain/track/routes";
 import type { PageHeading } from "@/domain/track/TrackPage";
 import { useLibraryQuestion } from "@/domain/track/useLibraryQuestion";
 import { refsOfShelf } from "@/features/home/shelves";
+import type { ArtistAnswered, SetFigures } from "@/shared/api/libraryQuestions";
 import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
 import { Crumb } from "@/shared/ui/Crumb";
 import type { RouteView } from "./routes";
 
 export interface ListPage {
 	pageKey: string;
-	view: TrackView;
+	view: ListedRows;
 	kind: ScratchKind;
 	label: string;
 	heading: PageHeading & { title: string };
 	emptyNotice: string;
 	wait: Wait;
+	figures: SetFigures | null;
 	isAwaitingColumns: boolean;
 	failure: QuestionFailed | null;
 }
@@ -50,7 +49,8 @@ export interface ArtistPage {
 	name: string;
 	tab: ArtistTab;
 	tracks: ArtistTracks;
-	view: TrackView;
+	answered: ArtistAnswered | null;
+	view: ListedRows;
 	wait: Wait;
 	isAwaitingColumns: boolean;
 	failure: QuestionFailed | null;
@@ -93,11 +93,12 @@ function mergedAscending({
 }
 
 interface ListViews {
-	allMusic: TrackView;
-	shelfView: TrackView | null;
-	genreView: TrackView | null;
-	albumView: TrackView | null;
+	allMusic: ListedRows;
+	shelfView: ListedRows;
+	genreView: ListedRows;
+	albumView: ListedRows;
 	albumTracks: AlbumTracks | null;
+	figures: Record<"all" | "shelf" | "genre" | "album", SetFigures | null>;
 	isAwaitingColumns: boolean;
 	genreFailure: QuestionFailed | null;
 	albumFailure: QuestionFailed | null;
@@ -111,6 +112,7 @@ function listPageOf(
 		genreView,
 		albumView,
 		albumTracks,
+		figures,
 		isAwaitingColumns,
 		genreFailure,
 		albumFailure,
@@ -122,12 +124,13 @@ function listPageOf(
 		case "shelf":
 			return {
 				pageKey: `shelf:${route.shelf.id}`,
-				view: shelfView ?? EMPTY_VIEW,
+				view: shelfView,
 				kind: SCRATCH_KIND.shelf,
 				label: t(route.shelf.title),
 				heading: { eyebrow: t("route.shelf"), title: t(route.shelf.title) },
 				emptyNotice: t("shelf.empty"),
 				wait,
+				figures: figures.shelf,
 				isAwaitingColumns,
 				failure: null,
 			};
@@ -135,7 +138,7 @@ function listPageOf(
 			if (!route.genre) return null;
 			return {
 				pageKey: `genre:${route.genre}`,
-				view: genreView ?? EMPTY_VIEW,
+				view: genreView,
 				kind: SCRATCH_KIND.genre,
 				label: route.genre,
 				heading: {
@@ -146,6 +149,7 @@ function listPageOf(
 				},
 				emptyNotice: t("library.noGenre", { genre: route.genre }),
 				wait,
+				figures: figures.genre,
 				isAwaitingColumns: false,
 				failure: genreFailure,
 			};
@@ -153,7 +157,7 @@ function listPageOf(
 			if (!albumTracks) return null;
 			return {
 				pageKey: `album:${route.album}`,
-				view: albumView ?? EMPTY_VIEW,
+				view: albumView,
 				kind: SCRATCH_KIND.album,
 				label: albumLabel(albumTracks.artist, albumTracks.album),
 				heading: {
@@ -163,6 +167,7 @@ function listPageOf(
 				},
 				emptyNotice: t("library.noAlbum"),
 				wait,
+				figures: figures.album,
 				isAwaitingColumns: false,
 				failure: albumFailure,
 			};
@@ -178,6 +183,7 @@ function listPageOf(
 				},
 				emptyNotice: t("library.empty"),
 				wait: NO_WAIT,
+				figures: figures.all,
 				isAwaitingColumns: false,
 				failure: null,
 			};
@@ -185,6 +191,15 @@ function listPageOf(
 			return null;
 	}
 }
+
+const SUMMARY_ROUTES: ReadonlySet<RouteView["kind"]> = new Set([
+	"all",
+	"shelf",
+	"genre",
+	"album",
+	"artist",
+	"search",
+]);
 
 export function useRouteView(route: RouteView, library: Library) {
 	const t = useTranslate();
@@ -198,29 +213,46 @@ export function useRouteView(route: RouteView, library: Library) {
 	const artist = route.kind === "artist" ? route.artist : null;
 	const artistTab = route.kind === "artist" ? route.tab : "overview";
 
-	const allMusic = useMemo(() => wholeLibrary(snapshot), [snapshot]);
+	const { trackCount } = snapshot.columns;
+	const allMusicRefs = useMemo(
+		() => ({
+			get indices(): Refs {
+				return wholeRefs(trackCount);
+			},
+		}),
+		[trackCount],
+	);
+	const allMusicRows = useWindowedRows(library, true);
 
-	const summary = useLibrarySummary(library);
+	const held = useLibrarySummary(library, {
+		isWanted: SUMMARY_ROUTES.has(route.kind),
+	});
+	const summary = useMemo(
+		() => atStructure(held, snapshot.structure),
+		[held, snapshot.structure],
+	);
 	const shelfAnswer = useMemo(() => {
-		if (!shelf || !library.key || snapshot.columns.trackCount === 0)
-			return { view: null, isPending: false };
-		const document = atStructure(summary, snapshot.structure);
-		if (!document) return { view: null, isPending: true };
-		const held = document.shelves.find((entry) => entry.id === shelf.id);
+		if (!shelf || !library.key || trackCount === 0)
+			return { refs: null, figures: null, isPending: false };
+		if (!summary) return { refs: null, figures: null, isPending: true };
+		const document = summary.shelves.find((entry) => entry.id === shelf.id);
 		return {
-			view: held ? project(snapshot, refsOfShelf(held)) : null,
+			refs: document ? refsOfShelf(document) : null,
+			figures: document?.figures ?? null,
 			isPending: false,
 		};
-	}, [shelf, snapshot, library.key, summary]);
+	}, [shelf, trackCount, library.key, summary]);
+	const shelfView = useSetRows(library, "shelf", shelfAnswer.refs);
 
 	const genreQuestion = useMemo(
 		() => (genre ? ({ kind: "genre", genre } as const) : null),
 		[genre],
 	);
 	const genreSweep = useLibraryQuestion(genreQuestion, library);
-	const genreView = useMemo(
-		() => (genreSweep.answer ? project(snapshot, genreSweep.answer) : null),
-		[genreSweep.answer, snapshot],
+	const genreView = useSetRows(
+		library,
+		"genre",
+		genreSweep.answer?.refs ?? null,
 	);
 
 	const albumQuestion = useMemo(
@@ -241,10 +273,7 @@ export function useRouteView(route: RouteView, library: Library) {
 		[album, albumArtist, albumSweep.answer, albumSweep.isWaiting],
 	);
 
-	const albumView = useMemo(
-		() => (albumTracks ? project(snapshot, albumTracks.refs) : null),
-		[albumTracks, snapshot],
-	);
+	const albumView = useSetRows(library, "album", albumTracks?.refs ?? null);
 
 	const artistQuestion = useMemo(
 		() =>
@@ -259,15 +288,26 @@ export function useRouteView(route: RouteView, library: Library) {
 				: EMPTY_ARTIST_TRACKS,
 		[artistSweep.answer],
 	);
-
-	const artistView = useMemo(
-		() => (artist ? project(snapshot, artistTracks.all) : null),
-		[artist, snapshot, artistTracks.all],
+	const artistAnswer = artistSweep.answer;
+	const artistAnswered = useMemo(
+		(): ArtistAnswered | null =>
+			artistAnswer
+				? {
+						figures: artistAnswer.figures,
+						cards: artistAnswer.cards,
+						records: artistAnswer.records,
+					}
+				: null,
+		[artistAnswer],
 	);
 
-	const isAwaitingColumns =
-		shelfAnswer.isPending ||
-		(artist !== null && !isLoaded(snapshot.columns, CREDIT_TAGS));
+	const artistView = useSetRows(
+		library,
+		"artist",
+		artist ? artistTracks.all : null,
+	);
+
+	const isAwaitingColumns = shelfAnswer.isPending;
 
 	const wait = useWait(
 		genreSweep.isWaiting ||
@@ -280,11 +320,17 @@ export function useRouteView(route: RouteView, library: Library) {
 	const list = listPageOf(
 		route,
 		{
-			allMusic,
-			shelfView: shelfAnswer.view,
+			allMusic: allMusicRows,
+			shelfView,
 			genreView,
 			albumView,
 			albumTracks,
+			figures: {
+				all: summary,
+				shelf: shelfAnswer.figures,
+				genre: genreSweep.answer?.figures ?? null,
+				album: albumSweep.answer?.figures ?? null,
+			},
 			isAwaitingColumns,
 			genreFailure: failureOf(genreSweep),
 			albumFailure: failureOf(albumSweep),
@@ -298,12 +344,13 @@ export function useRouteView(route: RouteView, library: Library) {
 				name: artist,
 				tab: artistTab,
 				tracks: artistTracks,
-				view: artistView ?? EMPTY_VIEW,
+				answered: artistAnswered,
+				view: artistView,
 				wait,
 				isAwaitingColumns,
 				failure: failureOf(artistSweep),
 			}
 		: null;
 
-	return { allMusic, list, artist: artistPage };
+	return { allMusicRefs, list, artist: artistPage };
 }

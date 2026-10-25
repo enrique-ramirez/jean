@@ -164,13 +164,15 @@ function Shell() {
 
 	const library = useLibrary();
 	const isLibraryRead = !isLibraryReading(library.status);
+	const { windowed } = library;
+	useEffect(() => windowed?.start(), [windowed]);
 	useEffect(
 		() => (isLibraryRead ? workWhenIdle(preloadLayers) : undefined),
 		[isLibraryRead],
 	);
 
 	const search = useLibrarySearch(library, playlists);
-	const { play: playSet } = usePlaySet({ library, playlists });
+	const { play: playSet } = usePlaySet({ source: library.source, playlists });
 	const playbackMode = usePlaybackOrder();
 	const home = useHomePlayback({ library, playlists, navigate });
 	const page = useRouteView(view, library);
@@ -281,7 +283,7 @@ function Shell() {
 	const playRow = (row: PlayableRow) => {
 		switch (row.kind) {
 			case "all":
-				return void home.playEverything(page.allMusic.indices);
+				return void home.playEverything(page.allMusicRefs.indices);
 			case "search":
 				if (search.results.indices.length === 0) return;
 				return void playSet({

@@ -5,7 +5,7 @@ import {
 	useEffect,
 	useRef,
 } from "react";
-import type { AlbumRun } from "./grouping";
+import type { AlbumSpan } from "./grouping";
 import type { TrackRows } from "./project";
 import { albumFrom, targetsFrom } from "./trackTargets";
 import type { useTrackDragSource } from "./useTrackDragSource";
@@ -19,7 +19,7 @@ export function useRowPointer({
 	play,
 }: {
 	rows: TrackRows;
-	groups: AlbumRun[];
+	groups: AlbumSpan[];
 	selection: ReturnType<typeof useTrackSelection>;
 	trackDrag: ReturnType<typeof useTrackDragSource>;
 	play: (position: number) => void;

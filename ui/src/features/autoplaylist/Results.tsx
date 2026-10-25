@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { type RefObject, useLayoutEffect, useRef } from "react";
+import { type RefObject, useEffect, useLayoutEffect, useRef } from "react";
 
 import {
 	artistOf,
@@ -8,10 +8,10 @@ import {
 	titleOf,
 	value,
 } from "@/domain/track/fields";
-import type { TrackView } from "@/domain/track/project";
-import { formatDuration } from "@/domain/track/stats";
+import type { ListedRows } from "@/domain/track/project";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { formatTime } from "@/shared/lib/time";
+import { BusyNote, busyProps, Skeleton } from "@/shared/ui/Skeleton";
 import {
 	scaledHeight,
 	scaledVirtualizerOptions,
@@ -27,7 +27,7 @@ function Rows({
 	view,
 	scroller,
 }: {
-	view: TrackView;
+	view: ListedRows;
 	scroller: RefObject<HTMLDivElement | null>;
 }) {
 	const t = useTranslate();
@@ -40,12 +40,42 @@ function Rows({
 	});
 	const shift = scrollShift(virtualizer);
 
+	const items = virtualizer.getVirtualItems();
+	const first = items[0]?.index ?? 0;
+	const end = (items.at(-1)?.index ?? -1) + 1;
+	const { viewport } = view;
+	const lastFirst = useRef(first);
+	useEffect(() => {
+		if (!viewport || end === 0) return;
+		const direction = Math.sign(first - lastFirst.current) as -1 | 0 | 1;
+		lastFirst.current = first;
+		viewport.watch(first, end, direction);
+	}, [viewport, first, end]);
+	useEffect(() => viewport?.leave, [viewport]);
+
 	return (
 		<ul
 			className={styles.rows}
 			style={{ height: scaledHeight(virtualizer.getTotalSize()) }}
 		>
 			{virtualizer.getVirtualItems().map((item) => {
+				if (view.isPending(item.index))
+					return (
+						<li
+							key={item.key}
+							ref={virtualizer.measureElement}
+							data-index={item.index}
+							data-result-row
+							className={styles.row}
+							style={{ transform: `translateY(${item.start - shift}px)` }}
+							{...busyProps(true)}
+						>
+							<Skeleton width="70%" />
+							<Skeleton width="50%" />
+							<BusyNote />
+						</li>
+					);
+
 				const row = view.at(item.index);
 				const artist = artistOf(row, t);
 				const album = value(row, FIELD.album);
@@ -134,15 +164,12 @@ export function Results({
 }) {
 	const t = useTranslate();
 	const scroller = useRef<HTMLDivElement | null>(null);
-	const view = state.kind === "matches" ? state.view : null;
+	const matched = state.kind === "matches" ? state.view.indices : null;
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: a new list fires this rather than being read in it.
 	useLayoutEffect(() => {
 		scroller.current?.scrollTo(0, 0);
-	}, [view]);
-
-	const length =
-		state.kind === "matches" ? formatDuration(state.stats.seconds) : null;
+	}, [matched]);
 
 	return (
 		<>
@@ -153,16 +180,7 @@ export function Results({
 				data-stale={isStale || undefined}
 			>
 				{state.kind === "matches"
-					? [
-							t("autoplaylist.stats.albumArtists", {
-								count: state.stats.albumArtists,
-							}),
-							t("autoplaylist.stats.albums", { count: state.stats.albums }),
-							t("autoplaylist.stats.tracks", { count: state.stats.tracks }),
-							length,
-						]
-							.filter((part) => part !== null)
-							.join(t("autoplaylist.separator"))
+					? t("autoplaylist.stats.tracks", { count: state.stats.tracks })
 					: null}
 			</p>
 

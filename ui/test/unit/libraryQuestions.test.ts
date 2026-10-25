@@ -7,14 +7,8 @@ import {
 	retryLibraryQuestion,
 	subscribeLibraryAnswer,
 } from "../../src/domain/track/libraryAsker.ts";
-import {
-	libraryPollFollower,
-	loadComponentLibrary,
-} from "../../src/domain/track/libraryLoader.ts";
-import {
-	playlistSnapshot,
-	subscribePlaylist,
-} from "../../src/domain/track/playlistEntries.ts";
+import { libraryPollFollower } from "../../src/domain/track/libraryFollower.ts";
+import { libraryEvents } from "../../src/domain/track/libraryHolds.ts";
 import type { components } from "../../src/shared/api/fooJeanSchema.d.ts";
 import type { StateDocument } from "../../src/shared/api/state.ts";
 import { LIBRARY_ROLE_NAMES } from "../fake-api/fooJean/librarySummary.ts";
@@ -31,6 +25,13 @@ const LONG_AFTER_MS = 120_000;
 
 const ALBUM = { kind: "album", artist: "artist", album: "album" } as const;
 const SPELLED = { album: "Album", artist: "Artist" };
+const FIGURES = {
+	albumCount: 1,
+	trackCount: 3,
+	seconds: 600,
+	earliestYear: 1999,
+	latestYear: 1999,
+};
 
 type FakeState = ReturnType<typeof createState>;
 type Library = StateDocument["library"];
@@ -71,17 +72,15 @@ interface QuestionPlayer {
 	state: FakeState;
 	answers: QuestionAnswer[];
 	questions: URL[];
-	exportsAsked: number;
-	changesFailures: number;
 }
 
 const libraryOf = (state: FakeState): Library => ({
 	ready: true,
 	structure: state.libraryFeed.structure,
 	revision: state.libraryFeed.revision,
-	snapshotId: state.librarySnapshotId(),
 	trackCount: state.libraryTracks.length,
 	columns: [...state.libraryFeed.columns],
+	changeCounts: state.libraryChangeCounts(),
 	build: null,
 	halted: false,
 });
@@ -99,6 +98,7 @@ const albumDocument = (
 	structure: pairOf(state).structure + structureAhead,
 	revision: pairOf(state).revision,
 	refs,
+	figures: FIGURES,
 	...SPELLED,
 });
 
@@ -131,22 +131,6 @@ const answerQuestion = (player: QuestionPlayer, answer: QuestionAnswer) => {
 	}
 };
 
-const answerChanges = (player: QuestionPlayer, url: URL) => {
-	if (player.changesFailures > 0) {
-		player.changesFailures -= 1;
-		return Promise.resolve(new Response(null, { status: 500 }));
-	}
-	const changes = player.state.libraryChanges(
-		Number(url.searchParams.get("since")),
-		Number(url.searchParams.get("structure")),
-	);
-	return Promise.resolve(
-		changes.status === 200
-			? new Response(changes.bytes)
-			: Response.json({ error: changes.outcome }, { status: changes.status }),
-	);
-};
-
 const QUESTION_ROUTES = new Set([
 	"/api/library/album",
 	"/api/library/artist",
@@ -166,8 +150,6 @@ const questionPlayer = (
 		state,
 		answers,
 		questions: [],
-		exportsAsked: 0,
-		changesFailures: 0,
 	};
 
 	const realFetch = globalThis.fetch;
@@ -185,11 +167,6 @@ const questionPlayer = (
 			return answerQuestion(player, player.answers[at]);
 		}
 		switch (url.pathname) {
-			case "/api/library/export":
-				player.exportsAsked += 1;
-				return Promise.resolve(new Response(state.libraryExport()));
-			case "/api/library/changes":
-				return answerChanges(player, url);
 			case "/api/library/summary":
 				return Promise.resolve(Response.json(pairOf(state)));
 			case "/api/state":
@@ -207,13 +184,6 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 const settle = async () => {
 	for (let step = 0; step < SETTLE_STEPS; step += 1) await flush();
-};
-
-const readLibrary = async (t: TestContext, origin: string) => {
-	const key = loadComponentLibrary(origin);
-	t.after(subscribePlaylist(key, () => {}));
-	await settle();
-	return key;
 };
 
 type View = ReturnType<typeof libraryAnswerOf<typeof ALBUM>>;
@@ -286,7 +256,7 @@ test("an album question names every role once by the expression the library decl
 			],
 		}),
 	]);
-	await readLibrary(t, origin);
+	await announce(origin, player);
 	await askAlbum(t, origin);
 
 	assert.equal(player.questions.length, 1);
@@ -314,8 +284,8 @@ test("an album question names every role once by the expression the library decl
 
 test("a set sent as a bitset reaches the asker as the ordinals its bits name, least significant bit first", async (t) => {
 	const origin = questionOrigin();
-	questionPlayer(t, [answeredWith({ bitset: "CQY=" })]);
-	await readLibrary(t, origin);
+	const player = questionPlayer(t, [answeredWith({ bitset: "CQY=" })]);
+	await announce(origin, player);
 	await askAlbum(t, origin);
 
 	assert.deepEqual(refsShown(origin), [0, 3, 9, 10]);
@@ -327,8 +297,8 @@ test("an answer computed at a structure other than the library held is never giv
 		answeredWith(FIRST_THREE, 1),
 		answeredWith({ runs: [[5, 2]] }),
 	]);
-	const key = await readLibrary(t, origin);
-	const held = playlistSnapshot(key).structure;
+	await announce(origin, player);
+	const held = pairOf(player.state).structure;
 	const told = await askAlbum(t, origin);
 
 	assert.equal(player.questions.length, 1);
@@ -344,7 +314,7 @@ test("an answer computed at a structure other than the library held is never giv
 
 	rebuild(player);
 	await announce(origin, player);
-	assert.equal(playlistSnapshot(key).structure, held + 1);
+	assert.equal(pairOf(player.state).structure, held + 1);
 	assert.equal(player.questions.length, 2);
 	assert.deepEqual(refsShown(origin), [5, 6]);
 
@@ -359,7 +329,7 @@ test("an answer given at one structure is taken away when the library moves to a
 	const origin = questionOrigin();
 	const next = heldWith({ runs: [[5, 2]] });
 	const player = questionPlayer(t, [answeredWith(FIRST_THREE), next.answer]);
-	await readLibrary(t, origin);
+	await announce(origin, player);
 	await askAlbum(t, origin);
 	assert.deepEqual(refsShown(origin), [0, 1, 2]);
 
@@ -383,7 +353,7 @@ test("a question answered 429 shows no failure, and is asked again by itself onc
 		refusedWith(429, { "Retry-After": "2" }),
 		answeredWith(FIRST_THREE),
 	]);
-	await readLibrary(t, origin);
+	await announce(origin, player);
 	const told = await askAlbum(t, origin);
 	assert.equal(player.questions.length, 1);
 
@@ -411,7 +381,7 @@ test("a question answered 202 is asked again when the poll reports the library r
 		refusedWith(202),
 		answeredWith(FIRST_THREE),
 	]);
-	await readLibrary(t, origin);
+	await announce(origin, player);
 	await askAlbum(t, origin);
 
 	for (const at of [QUESTION_RETRY_MS, 60_000, LONG_AFTER_MS])
@@ -431,25 +401,24 @@ test("a question answered 202 is asked again when the poll reports the library r
 	assert.equal(player.questions.length, 2, "asked again on every ready report");
 });
 
-test("a question answered 409 is asked again once the export has declared again, and not on ticks or with time", async (t) => {
+test("a question answered 409 is asked again once a rows answer has declared again, and not on ticks or with time", async (t) => {
 	const origin = questionOrigin();
 	const player = questionPlayer(t, [
 		refusedWith(409),
 		answeredWith(FIRST_THREE),
 	]);
-	const pair = pairOf(player.state);
-	await readLibrary(t, origin);
+	await announce(origin, player);
 	await askAlbum(t, origin);
 
 	for (const at of [QUESTION_RETRY_MS, 60_000, LONG_AFTER_MS])
 		await tickAt(origin, at);
 	assert.equal(player.questions.length, 1, "asked again before a declaration");
 
-	player.changesFailures = 1;
-	await announce(origin, player, { structure: pair.structure + 1 });
-	assert.equal(player.exportsAsked, 2, "the library never exported again");
-	assert.deepEqual(pairOf(player.state), pair);
+	await announce(origin, player);
+	assert.equal(player.questions.length, 1, "asked again on a report alone");
 
+	libraryEvents.exported(origin);
+	await settle();
 	assert.equal(player.questions.length, 2);
 	assert.deepEqual(refsShown(origin), [0, 1, 2]);
 });
@@ -460,7 +429,7 @@ test("a question refused 400 is not asked again at the same structure whatever t
 		refusedWith(400),
 		answeredWith(FIRST_THREE),
 	]);
-	await readLibrary(t, origin);
+	await announce(origin, player);
 	await askAlbum(t, origin);
 
 	await waitsOutTheClockAndThePoll(origin, player);
@@ -487,7 +456,7 @@ for (const [failing, reason] of [
 			failing,
 			answeredWith(FIRST_THREE),
 		]);
-		await readLibrary(t, origin);
+		await announce(origin, player);
 		const told = await askAlbum(t, origin);
 		assert.equal(player.questions.length, 1);
 
@@ -530,7 +499,7 @@ test("a question that fails once and is answered on its retry is never held as f
 		refusedWith(500),
 		answeredWith(FIRST_THREE),
 	]);
-	await readLibrary(t, origin);
+	await announce(origin, player);
 	const told = await askAlbum(t, origin);
 
 	await advanceTo(QUESTION_RETRY_MS);
@@ -545,3 +514,69 @@ test("a question that fails once and is answered on its retry is never held as f
 		"a failure the retry answered was shown",
 	);
 });
+
+const retag = (player: QuestionPlayer, ordinal: number, field: string) => {
+	const { track } = player.state.ordinalOrder()[ordinal];
+	const value = `${track[`%${field}%`] ?? ""} (retagged)`;
+	track[`%${field}%`] = value;
+	track[`$meta(${field})`] = value;
+	player.state.libraryEdited([field]);
+};
+
+const changeCountOf = (player: QuestionPlayer, expression: string) =>
+	player.state.libraryChangeCounts()[
+		player.state.libraryFeed.columns.indexOf(expression)
+	];
+
+test("a question is asked again once the state counts a change in a column it reads", async (t) => {
+	const origin = questionOrigin();
+	const player = questionPlayer(t, [
+		answeredWith(FIRST_THREE),
+		answeredWith({ runs: [[1, 2]] }),
+	]);
+	await announce(origin, player);
+	await askAlbum(t, origin);
+	const counted = changeCountOf(player, TRACK_EXPRESSIONS[FIELD.album]);
+
+	retag(player, 0, "album");
+	await announce(origin, player);
+
+	assert.equal(
+		changeCountOf(player, TRACK_EXPRESSIONS[FIELD.album]),
+		counted + 1,
+	);
+	assert.equal(player.questions.length, 2);
+	assert.deepEqual(refsShown(origin), [1, 2]);
+});
+
+for (const [moved, change] of [
+	["a rating written", (player: QuestionPlayer) => retag(player, 0, "rating")],
+	[
+		"a play counted",
+		(player: QuestionPlayer) => {
+			assert.ok(player.state.countPlayAt(0));
+		},
+	],
+] as const)
+	test(`a question is not asked again when the state counts ${moved}, a change only in columns it does not read, and keeps the answer it had`, async (t) => {
+		const origin = questionOrigin();
+		const player = questionPlayer(t, [
+			answeredWith(FIRST_THREE),
+			answeredWith({ runs: [[1, 2]] }),
+		]);
+		await announce(origin, player);
+		await askAlbum(t, origin);
+		const held = libraryAnswerOf(origin, ALBUM).answer;
+		const counts = player.state.libraryChangeCounts();
+
+		change(player);
+		await waitsOutTheClockAndThePoll(origin, player);
+
+		assert.notDeepEqual(
+			player.state.libraryChangeCounts(),
+			counts,
+			"the fake counted no change",
+		);
+		assert.equal(player.questions.length, 1);
+		assert.equal(libraryAnswerOf(origin, ALBUM).answer, held);
+	});

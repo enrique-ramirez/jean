@@ -1,5 +1,9 @@
 import { ChevronDown, Mic2, MoreHorizontal } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import {
+	playingArtwork,
+	usePlayingLibrary,
+} from "@/domain/library/usePlayingLibrary";
 import { useInSession } from "@/domain/player/session";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
@@ -19,7 +23,6 @@ import {
 } from "@/domain/player/useTransport";
 import { ArtistLinks } from "@/domain/track/ArtistLinks";
 import { coverKey, readValue } from "@/domain/track/fields";
-import { canonicalPlayingArtworkUrl } from "@/domain/track/librarySource";
 import { albumRoute, href, type PanelTab } from "@/domain/track/routes";
 import { playingArtworkUrl } from "@/shared/api/artwork";
 import { isFooJeanReady } from "@/shared/api/discovery";
@@ -191,13 +194,11 @@ export function NowPlaying({
 
 	const playingAlbum = item?.album ?? null;
 	const playingCredited = item?.albumArtist || item?.columns[0] || null;
-	const centreCanonical = playingAlbum
-		? canonicalPlayingArtworkUrl(origin, playingAlbum, playingCredited || "")
-		: null;
+	const playingLibrary = usePlayingLibrary();
 
 	const artwork = !track
 		? null
-		: (centreCanonical ?? playingArtworkUrl(origin));
+		: playingArtwork(playingLibrary, playingArtworkUrl(origin));
 
 	const playingCover = !track
 		? undefined

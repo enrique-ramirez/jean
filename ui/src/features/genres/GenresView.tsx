@@ -7,7 +7,11 @@ import {
 	readingNotice,
 } from "@/domain/library/libraryStatus";
 import type { Library } from "@/domain/library/useLibrary";
-import { type Genre, genreIndex } from "@/domain/track/genres";
+import {
+	atStructure,
+	useLibrarySummary,
+} from "@/domain/library/useLibrarySummary";
+import { tagKey } from "@/domain/track/fields";
 import { genreRoute } from "@/domain/track/routes";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import type { Phrase } from "@/shared/i18n/en";
@@ -15,12 +19,17 @@ import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { rovedIndex } from "@/shared/lib/rove";
-import { completionFor, fuzzyScore, nameKey } from "@/shared/lib/text";
+import {
+	completionFor,
+	fuzzyKey,
+	fuzzyScore,
+	nameKey,
+} from "@/shared/lib/text";
 import type { IconComponent } from "@/shared/ui/icons";
 import { Segmented } from "@/shared/ui/Segmented";
 import { GenreFinder } from "./GenreFinder";
 import styles from "./GenresView.module.css";
-import { GenreTile } from "./GenreTile";
+import { GenreTile, type GenreTileData } from "./GenreTile";
 
 type Order = "largest" | "name";
 
@@ -37,7 +46,7 @@ const ORDERS = [
 	icon: IconComponent;
 }[];
 
-const NO_GENRES: Genre[] = [];
+const NO_GENRES: GenreTileData[] = [];
 
 export function GenresView({
 	library,
@@ -53,13 +62,26 @@ export function GenresView({
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const gridRef = useRef<HTMLDivElement | null>(null);
 
-	const genres = library.key
-		? genreIndex(library.key, library.snapshot.columns)
-		: NO_GENRES;
+	const held = useLibrarySummary(library, { withGenres: true });
+	const summary = atStructure(held, library.snapshot.structure);
+	const genres = useMemo(
+		() =>
+			summary?.genres?.map((genre) => ({
+				name: genre.name,
+				key: tagKey(genre.name),
+				match: fuzzyKey(genre.name),
+				trackCount: genre.count,
+				albumCount: genre.albumCount,
+				artistCount: genre.artistCount,
+				covers: genre.covers,
+			})) ?? NO_GENRES,
+		[summary],
+	);
 
 	const shown = useMemo(() => {
-		const byName = (a: Genre, b: Genre) => compare(a.key, b.key);
-		const largestFirst = (a: Genre, b: Genre) =>
+		const byName = (a: GenreTileData, b: GenreTileData) =>
+			compare(a.key, b.key);
+		const largestFirst = (a: GenreTileData, b: GenreTileData) =>
 			b.trackCount - a.trackCount || byName(a, b);
 
 		const wanted = nameKey(query);
@@ -194,12 +216,12 @@ export function GenresView({
 				// biome-ignore lint/a11y/noStaticElementInteractions: roving arrows over links
 				<div className={styles.grid} ref={gridRef} onKeyDown={onGridKeyDown}>
 					{shown.map((genre) => (
-						<GenreTile key={genre.key} genre={genre} source={library.source} />
+						<GenreTile key={genre.key} genre={genre} origin={library.origin} />
 					))}
 				</div>
 			) : (
 				<p className={styles.notice}>
-					{isReading
+					{isReading || summary === null
 						? readingNotice(status, "library.reading", t)
 						: genres.length === 0
 							? t("genre.noTags")

@@ -15,8 +15,10 @@ import {
 	expectDisabledWithReason,
 	expectSettlesAt,
 	guidOfPlaylist,
+	HEADER_TILES_AT_MOST,
 	holdRequests,
 	OFFERS_NO_SHUFFLE,
+	recordTileRowsAsked,
 	test,
 	titlesIn,
 	trackRow,
@@ -544,6 +546,39 @@ const ONE_ALONG = [
 
 const sorted = (values: string[]) => [...values].sort();
 
+const TILE_VIEWS = [
+	{
+		name: "All music",
+		path: "all",
+		heading: "All music",
+		asked: ALL_MUSIC_PICKS,
+	},
+	{
+		name: "an artist's tracks",
+		path: artistRoute("Artist 1", "tracks"),
+		heading: "Artist 1",
+		asked: ALL_MUSIC_PICKS,
+	},
+	{
+		name: "a genre",
+		path: genreRoute("Genre 1"),
+		heading: "Genre 1",
+		asked: ONE_ALONG,
+	},
+	{
+		name: "search results",
+		path: searchRoute("track"),
+		heading: "track",
+		asked: ONE_ALONG,
+	},
+	{
+		name: "an album",
+		path: albumRoute("Artist 1", "Album 1"),
+		heading: "Album 1",
+		asked: ["Album 1/1.mp3"],
+	},
+];
+
 test.describe("the covers a header asks for", () => {
 	test.describe("on twenty albums", () => {
 		test.use({
@@ -552,38 +587,7 @@ test.describe("the covers a header asks for", () => {
 			settings: { "jean.artwork": false },
 		});
 
-		for (const { name, path, heading, asked } of [
-			{
-				name: "All music",
-				path: "all",
-				heading: "All music",
-				asked: ALL_MUSIC_PICKS,
-			},
-			{
-				name: "an artist's tracks",
-				path: artistRoute("Artist 1", "tracks"),
-				heading: "Artist 1",
-				asked: ALL_MUSIC_PICKS,
-			},
-			{
-				name: "a genre",
-				path: genreRoute("Genre 1"),
-				heading: "Genre 1",
-				asked: ONE_ALONG,
-			},
-			{
-				name: "search results",
-				path: searchRoute("track"),
-				heading: "track",
-				asked: ONE_ALONG,
-			},
-			{
-				name: "an album",
-				path: albumRoute("Artist 1", "Album 1"),
-				heading: "Album 1",
-				asked: ["Album 1/1.mp3"],
-			},
-		])
+		for (const { name, path, heading, asked } of TILE_VIEWS)
 			test(`${name} asks for the covers the mosaic picked, and no others`, async ({
 				page,
 				player,
@@ -639,6 +643,94 @@ test.describe("the covers a header asks for", () => {
 					"H/Have A Nice Life/(2008) Deathconsciousness/Pt.1 - The Plow That Broke The Plains/01. A Quick One Before The Eternal Worm Devours Connecticut.flac",
 				]),
 			);
+		});
+	});
+});
+
+const pathsOf = (player: FakePlayer, ordinals: number[]) =>
+	ordinals.map((ordinal) => player.ordinalOrder()[ordinal].path);
+
+const tileAsksLogged = (player: FakePlayer) =>
+	player.requests
+		.filter(
+			(entry) => entry.method === "POST" && entry.path === "/api/library/rows",
+		)
+		.map((entry) => entry.body?.ordinals)
+		.filter(
+			(ordinals): ordinals is number[] =>
+				Array.isArray(ordinals) && ordinals.length <= HEADER_TILES_AT_MOST,
+		);
+
+const holdRows = (page: Page, hold: boolean) =>
+	page.request.post("/__control/holdRows", { data: { hold } });
+
+// The header picks its tiles from the runs and reads only the tiles' rows,
+// never a window of the list, so a header over a large library costs nine rows at most.
+test.describe("the rows a header asks for its covers", () => {
+	test.describe("on twenty albums", () => {
+		test.use({
+			libraryShape: TWENTY_ALBUMS,
+			embeddedArt: sleevesFor(TWENTY_ALBUMS),
+			settings: { "jean.artwork": false },
+		});
+
+		for (const { name, path, heading, asked } of TILE_VIEWS)
+			test(`${name} asks once for its tiles' rows, nine at most, and they are the rows of the covers it asks for`, async ({
+				page,
+				player,
+			}) => {
+				const tileAsks = recordTileRowsAsked(page);
+				await page.goto(`/#/${path}`);
+				await expect(title(page)).toHaveText(heading);
+				await coversShown(page);
+
+				await expectSettlesAt(player, () => tileAsks.length, 1);
+				expect(sorted(pathsOf(player, tileAsks[0]))).toEqual(sorted(asked));
+			});
+
+		test.describe("with the rows held", () => {
+			test.use({ fooJean: { holdRows: true } });
+
+			for (const { name, path, heading, asked } of TILE_VIEWS.filter(
+				(view) => view.name === "All music" || view.name === "an album",
+			))
+				test(`${name} asks for no cover while its rows are held, then reads its tiles' rows on their own and asks for the covers the mosaic picked`, async ({
+					page,
+					player,
+				}) => {
+					await page.goto(`/#/${path}`);
+					await expect(title(page)).toHaveText(heading);
+					// One rows request is in flight at a time, so the list's window may hold
+					// the slot and the tile read wait behind it.
+					await expect
+						.poll(() => player.fooJean.rowsHeld.length, {
+							message: "the view never asked for its rows",
+						})
+						.toBeGreaterThan(0);
+					await untilQuiet(player);
+
+					// The whole log, so a cover asked and answered while the rows were held is still seen.
+					expect(coversFromTheComponent(player)).toEqual([]);
+					await expect(backdrop(page)).not.toHaveAttribute(
+						"data-ready",
+						"true",
+					);
+
+					await holdRows(page, false);
+					await coversShown(page);
+					await expectSettlesAt(
+						player,
+						() => sorted(coversFromTheComponent(player)),
+						sorted(asked),
+					);
+					const read = tileAsksLogged(player).map((ordinals) =>
+						JSON.stringify(sorted(pathsOf(player, ordinals))),
+					);
+					expect(read.length).toBeGreaterThan(0);
+					expect(new Set(read)).toEqual(
+						new Set([JSON.stringify(sorted(asked))]),
+					);
+				});
 		});
 	});
 });
@@ -1186,7 +1278,7 @@ test.describe("at 320px", () => {
 
 			// What the header adds to `main`'s sideways overflow, measured against the same page with
 			// the header taken out. All music's toolbar overflows `main` at 320px on its own, which is
-			// not this criterion's to hold.
+			// not the header's to hold.
 			const overflow = await page.evaluate(() => {
 				const root = document.documentElement;
 				const main = document.querySelector("main") as HTMLElement;

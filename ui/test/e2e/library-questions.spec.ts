@@ -1,5 +1,4 @@
 import type { Response } from "@playwright/test";
-import { LATE_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import {
 	albumRoute,
 	artistRoute,
@@ -26,6 +25,12 @@ import {
 	untilQuiet,
 	withNoListOnScreen,
 } from "./fixtures.ts";
+import {
+	libraryState,
+	recordLibraryTraffic,
+	type StateLibrary,
+	untilThePollHasDrawn,
+} from "./libraryLists.ts";
 
 type QuestionRoute = "album" | "artist" | "genre" | "search";
 
@@ -39,25 +44,12 @@ const isQuestionAnswer = (route: QuestionRoute) => (response: Response) =>
 	new URL(response.url()).pathname === `/api/library/${route}` &&
 	response.status() === 200;
 
-const isLatePart = (response: Response) => {
-	const url = new URL(response.url());
-	return (
-		url.pathname === "/api/library/export" &&
-		url.searchParams
-			.getAll("only")
-			.some((column) => LATE_EXPRESSIONS.includes(column)) &&
-		response.ok()
-	);
-};
-
-const openOnceTheLibraryIsWhole = async (
+const openAfterHomeSettles = async (
 	page: Page,
 	player: FakePlayer,
 	route: string,
 ) => {
-	const whole = page.waitForResponse(isLatePart);
 	await page.goto("/");
-	await whole;
 	await untilQuiet(player);
 	await page.goto(`/#/${route}`);
 };
@@ -163,7 +155,7 @@ const failsTwiceThenTriesAgain = async (
 	line: string,
 	asked: () => number,
 ) => {
-	await openOnceTheLibraryIsWhole(page, player, albumRoute(ARTIST, ALBUM));
+	await openAfterHomeSettles(page, player, albumRoute(ARTIST, ALBUM));
 
 	await expect(tryAgain(page, line)).toBeVisible();
 	await expect(reading(page)).toBeHidden();
@@ -214,7 +206,7 @@ test.describe("an album page asking foo_jean", () => {
 			player,
 		}) => {
 			await watchForFailureLines(page);
-			await openOnceTheLibraryIsWhole(page, player, albumRoute(ARTIST, ALBUM));
+			await openAfterHomeSettles(page, player, albumRoute(ARTIST, ALBUM));
 
 			await expectRowsOf(page, tracksOf(player, ALBUM).length);
 			await expectSettlesAt(
@@ -234,7 +226,7 @@ test.describe("an album page asking foo_jean", () => {
 			player,
 		}) => {
 			await watchForFailureLines(page);
-			await openOnceTheLibraryIsWhole(page, player, albumRoute(ARTIST, ALBUM));
+			await openAfterHomeSettles(page, player, albumRoute(ARTIST, ALBUM));
 
 			await expectRowsOf(page, tracksOf(player, ALBUM).length);
 			await expectSettlesAt(
@@ -262,7 +254,7 @@ test.describe("an album page asking foo_jean", () => {
 			);
 
 			await watchRowsDrawn(page);
-			await openOnceTheLibraryIsWhole(
+			await openAfterHomeSettles(
 				page,
 				player,
 				albumRoute(fieldOf(first, "%album artist%"), album),
@@ -274,10 +266,12 @@ test.describe("an album page asking foo_jean", () => {
 				.toBeGreaterThan(0);
 			await expect(reading(page)).toBeVisible();
 
-			const nextLibrary = await holdRequests(page, (request) =>
-				["/api/library/changes", "/api/library/export"].includes(
-					new URL(request.url()).pathname,
-				),
+			// Jean learns of a structure from the poll, so holding the state's answers keeps it at the old
+			// one. The fake still sees each poll, since one reaching it is what finishes its build.
+			const nextLibrary = await holdRequests(
+				page,
+				(request) => new URL(request.url()).pathname === "/api/state",
+				{ answered: true },
 			);
 			const added = await page.request.post("/__control/library", {
 				data: { add: 1 },
@@ -324,7 +318,7 @@ test.describe("an album page asking foo_jean", () => {
 			page,
 			player,
 		}) => {
-			await openOnceTheLibraryIsWhole(page, player, albumRoute(ARTIST, ALBUM));
+			await openAfterHomeSettles(page, player, albumRoute(ARTIST, ALBUM));
 			await expectRowsOf(page, tracksOf(player, ALBUM).length);
 			await expect
 				.poll(() => questionsTo(player, "album").length, {
@@ -337,16 +331,18 @@ test.describe("an album page asking foo_jean", () => {
 			const ordinal = player
 				.ordinalOrder()
 				.findIndex((entry) => fieldOf(entry.track, "%album%") === ALBUM);
-			const delta = page.waitForResponse(
-				(response) =>
-					new URL(response.url()).pathname === "/api/library/changes" &&
-					response.status() === 200,
+			const playedBefore = String(player.libraryFeed.revision);
+			const announced = page.waitForResponse(
+				async (response) =>
+					new URL(response.url()).pathname === "/api/state" &&
+					response.status() === 200 &&
+					String((await response.json()).library?.revision) !== playedBefore,
 			);
 			const played = await page.request.post("/__control/play", {
 				data: { ordinal },
 			});
 			expect(played.ok(), "the fake counts a play by ordinal").toBe(true);
-			await delta;
+			await announced;
 
 			await expectSettlesAt(
 				player,
@@ -354,6 +350,116 @@ test.describe("an album page asking foo_jean", () => {
 				asked,
 			);
 		});
+	});
+});
+
+// Opened straight onto the album rather than after Home, since the page asks its question whatever
+// else of the library it holds.
+const openTheAlbum = async (page: Page, player: FakePlayer) => {
+	const answered = recordLibraryTraffic(page);
+	await page.goto(`/#/${albumRoute(ARTIST, ALBUM)}`);
+	await expectRowsOf(page, tracksOf(player, ALBUM).length);
+	await untilThePollHasDrawn(page, answered);
+	await expectRowsOf(page, tracksOf(player, ALBUM).length);
+	await expect
+		.poll(() => questionsTo(player, "album").length, {
+			message: "Jean never asked foo_jean for the album",
+		})
+		.toBeGreaterThan(0);
+	await untilQuiet(player);
+	return questionsTo(player, "album").length;
+};
+
+const lastOrdinalOf = (player: FakePlayer, album: string) =>
+	player
+		.ordinalOrder()
+		.findLastIndex((entry) => fieldOf(entry.track, "%album%") === album);
+
+const changeCountsNow = async (page: Page) =>
+	JSON.stringify((await libraryState(page)).changeCounts);
+
+const stateCountingAChange = (page: Page, counted: string) =>
+	page.waitForResponse(
+		async (response) =>
+			new URL(response.url()).pathname === "/api/state" &&
+			response.status() === 200 &&
+			JSON.stringify(
+				((await response.json()) as { library: StateLibrary }).library
+					.changeCounts,
+			) !== counted,
+	);
+
+const writeTags = async (
+	page: Page,
+	ordinal: number,
+	fields: Record<string, string>,
+) => {
+	const { structure } = await libraryState(page);
+	const written = await page.request.post("/api/tags", {
+		data: { ordinal, structure, fields },
+	});
+	expect(written.status(), `a write of ${Object.keys(fields)}`).toBe(200);
+};
+
+test.describe("an album page asking foo_jean while its tracks change", () => {
+	test.use({ fooJean: { allowedFields: ["rating", "album"] } });
+
+	test("a track's album retagged asks foo_jean again, once, and the page lists the album without it", async ({
+		page,
+		player,
+	}) => {
+		const before = tracksOf(player, ALBUM).length;
+		const asked = await openTheAlbum(page, player);
+
+		await writeTags(page, lastOrdinalOf(player, ALBUM), {
+			album: `${ALBUM} (retagged)`,
+		});
+
+		await expectRowsOf(page, before - 1);
+		await expectSettlesAt(
+			player,
+			() => questionsTo(player, "album").length,
+			asked + 1,
+		);
+	});
+
+	// Opened on the pair the poll has drawn, unlike the case above, so the play's state is not the first
+	// the page has seen the declared columns in.
+	test("a play counted on one of its tracks asks foo_jean nothing again once the page has the state that counted it", async ({
+		page,
+		player,
+	}) => {
+		const asked = await openTheAlbum(page, player);
+		const told = stateCountingAChange(page, await changeCountsNow(page));
+
+		const played = await page.request.post("/__control/play", {
+			data: { ordinal: lastOrdinalOf(player, ALBUM) },
+		});
+		expect(played.ok(), "the fake counts a play by ordinal").toBe(true);
+
+		await told;
+		await expectSettlesAt(
+			player,
+			() => questionsTo(player, "album").length,
+			asked,
+		);
+	});
+
+	test("a track's rating written asks foo_jean nothing again once the page has the state that counted it", async ({
+		page,
+		player,
+	}) => {
+		const asked = await openTheAlbum(page, player);
+		const told = stateCountingAChange(page, await changeCountsNow(page));
+
+		await writeTags(page, lastOrdinalOf(player, ALBUM), { rating: "2" });
+
+		await told;
+		await expectSettlesAt(
+			player,
+			() => questionsTo(player, "album").length,
+			asked,
+		);
 	});
 });
 
@@ -365,7 +471,7 @@ test.describe("an artist page asking foo_jean", () => {
 		player,
 	}) => {
 		const line = en["library.readFailed"];
-		await openOnceTheLibraryIsWhole(page, player, artistRoute(ARTIST));
+		await openAfterHomeSettles(page, player, artistRoute(ARTIST));
 
 		await expect(tryAgain(page, line)).toBeVisible();
 		await expectSettlesAt(
@@ -391,7 +497,7 @@ test.describe("a genre page asking foo_jean", () => {
 		player,
 	}) => {
 		const line = en["library.readFailed"];
-		await openOnceTheLibraryIsWhole(page, player, genreRoute(GENRE));
+		await openAfterHomeSettles(page, player, genreRoute(GENRE));
 
 		await expect(tryAgain(page, line)).toBeVisible();
 		await expectSettlesAt(player, () => questionsTo(player, "genre").length, 2);
@@ -435,7 +541,7 @@ const answerTo = async (page: Page, query: string) => {
 };
 
 const searchOnceTheLibraryIsWhole = async (page: Page, player: FakePlayer) => {
-	await openOnceTheLibraryIsWhole(page, player, "home");
+	await openAfterHomeSettles(page, player, "home");
 	await revealSearch(page);
 };
 
@@ -650,9 +756,7 @@ test.describe("the search dropdown asking foo_jean", () => {
 			page,
 			player,
 		}) => {
-			const whole = page.waitForResponse(isLatePart);
 			await withNoListOnScreen(page);
-			await whole;
 			await untilQuiet(player);
 			await revealSearch(page);
 
@@ -684,7 +788,7 @@ test.describe("the search results page asking foo_jean", () => {
 	}) => {
 		const line = en["library.readFailed"];
 		const first = answerTo(page, QUERY);
-		await openOnceTheLibraryIsWhole(page, player, searchRoute(QUERY));
+		await openAfterHomeSettles(page, player, searchRoute(QUERY));
 		const held = await first;
 		await expect(countOf(page, held.matchCount)).toBeVisible();
 		await expectRowsOf(page, held.matchCount);

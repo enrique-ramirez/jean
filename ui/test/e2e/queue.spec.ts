@@ -1526,13 +1526,13 @@ const postToComponent = (
 const readFromComponent = async (request: APIRequestContext, url: string) =>
 	await (await request.get(url)).json();
 
-// Nothing is exported until a client names a column set, and a queue by handle
+// Nothing is built until a client names a column set, and a queue by handle
 // against a library that was never built is a 503 before any body is read.
 const buildTheLibrary = async (request: APIRequestContext, origin: string) => {
-	const built = await request.get(
-		`${origin}/api/library/export?columns=${encodeURIComponent("%title%")}`,
-	);
-	expect(built.status()).toBe(200);
+	const declared = await request.post(`${origin}/api/library/rows`, {
+		data: { columns: ["%title%"], structure: "0", ordinals: [0] },
+	});
+	expect(declared.status()).toBe(202);
 	const { library } = await readFromComponent(request, `${origin}/api/state`);
 	return library.structure as number;
 };

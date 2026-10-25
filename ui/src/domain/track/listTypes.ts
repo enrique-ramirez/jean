@@ -9,13 +9,13 @@ export interface TrackRenderProps {
 	source: LibrarySource;
 	columns: Column[];
 	template: string;
-	heat: Float32Array;
-	patina: Float32Array;
+	heat: ArrayLike<number>;
+	patina: ArrayLike<number>;
 	activeIndex: number;
 	isPlaying: boolean;
 	cursor: number;
 	selection: Set<number>;
-	matches: Set<number> | null;
+	matches: Int32Array | null;
 	onSelect: (index: number, event: ReactPointerEvent) => void;
 	isCompactViewport: boolean;
 }

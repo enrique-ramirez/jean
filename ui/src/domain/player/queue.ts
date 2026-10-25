@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 
+import { LIBRARY_ROLES } from "@/domain/track/libraryAsker";
 import type {
 	FillPlaylistRequest,
 	PlaylistAnnotation,
@@ -50,6 +51,7 @@ export interface QueueEntry {
 	duration: number;
 	offset: number;
 	libraryPath: string | null;
+	cover: string | null;
 	location: { playlistId: string; index: number } | null;
 }
 
@@ -67,6 +69,7 @@ export function readQueue(read: QueueRead | undefined): QueueEntry[] {
 			duration,
 			offset,
 			libraryPath: entry.libraryPath,
+			cover: entry.cover ?? null,
 			location: entry.location,
 		};
 		offset += duration;
@@ -108,7 +111,7 @@ function queueFollower(client: QueryClient): FollowRevision {
 		client.setQueryDefaults(QUEUE_KEY, { gcTime: Infinity });
 		follower = followRevision<QueueRead>({
 			resource: "queue",
-			read: fetchQueue,
+			read: (origin) => fetchQueue(origin, LIBRARY_ROLES),
 			apply: (read) => client.setQueryData(QUEUE_KEY, read),
 		});
 		queueFollowers.set(client, follower);

@@ -3,17 +3,18 @@ import { en } from "../../src/shared/i18n/en.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
 	expect,
-	expectSettlesAt,
 	guidOfPlaylist,
-	requestsTo,
+	holdRequests,
+	openAllMusic,
 	test,
 	trackRow,
+	untilQuiet,
 } from "./fixtures.ts";
 
-// Every state a library view can be in before, or instead of, a snapshot: the
-// component not answering, discovery not back yet, a build under way, and an
-// export that failed. Each has to say which one it is. The one thing none of
-// them may say is that the library is empty, because the user's library is not.
+// Every state a library view can be in before, or instead of, the rows it draws: the component not
+// answering, discovery not back yet, a build under way, and a read of rows that failed. Only the
+// first has anything to say. The one thing none of them may say is that the library is empty,
+// because the user's library is not.
 
 const ARTIST = "Babasónicos";
 const QUERY = "Babas";
@@ -69,7 +70,7 @@ const VIEWS: LibraryView[] = [
 	},
 ];
 
-const [ALL_MUSIC, HOME, GENRES, AN_ARTIST] = VIEWS;
+const [ALL_MUSIC] = VIEWS;
 
 const main = (page: Page) => page.locator("main");
 
@@ -89,8 +90,6 @@ const EMPTY_NOTICES = [
 	en["genre.noTags"],
 	en["artist.nothingBy"],
 ].map(patternOf);
-
-const READING_COUNT = "Reading .+? of .+? tracks";
 
 // Every match of `patterns` the page has put on screen since it started
 // loading. An empty notice drawn for one render and replaced on the next is
@@ -119,15 +118,8 @@ const recordFromLoad = (page: Page, patterns: string[]) =>
 const drawnSinceLoad = (page: Page) =>
 	page.evaluate(() => Reflect.get(window, "__drawn") as string[]);
 
-const statePollsSinceExport = (player: FakePlayer) => {
-	const at = player.requests.findIndex((entry) =>
-		entry.path.startsWith("/api/library/export"),
-	);
-	if (at < 0) return 0;
-	return player.requests
-		.slice(at)
-		.filter((entry) => entry.path.startsWith("/api/state")).length;
-};
+const statePolls = (player: FakePlayer) =>
+	player.requests.filter((entry) => entry.path.startsWith("/api/state")).length;
 
 // One read, not a retrying one: the notice is already up, so anything of the
 // view still on screen now was drawn beside it.
@@ -161,21 +153,15 @@ const tryAgain = (page: Page) =>
 const checkAgain = (page: Page) =>
 	main(page).getByRole("button", { name: en["fooJean.checkAgain"] });
 
-const EXPORT_FAILS = (status: 413 | 500 | 503) => ({
-	failLibraryExport: { status, times: 1000 },
-});
+test.describe("foo_jean not answering", () => {
+	test.use({ fooJean: { reachable: false } });
 
-// The component's own `error` string for each, from the fake, which the notice
-// carries through `library.readDetail`.
-const withDetail = (message: string, detail: string) =>
-	fill(en["library.readDetail"], { message, detail });
+	for (const view of VIEWS) {
+		test(`${view.name} says so, says what to check, and offers to check again, in place of its header and content`, async ({
+			page,
+		}) => {
+			await page.goto(view.path);
 
-const NOTICE_STATES = [
-	{
-		state: "foo_jean not answering",
-		fooJean: { reachable: false },
-		promise: "says so, says what to check, and offers to check again",
-		expectNotice: async (page: Page) => {
 			await expect(
 				main(page).getByText(en["fooJean.unreachable.summary"]),
 			).toBeVisible();
@@ -184,83 +170,10 @@ const NOTICE_STATES = [
 			).toBeVisible();
 			await expect(checkAgain(page)).toBeVisible();
 			expect(await tryAgain(page).count()).toBe(0);
-		},
-	},
-	{
-		state: "an export refused as too large",
-		fooJean: EXPORT_FAILS(413),
-		promise: "says so with the component's detail, and offers nothing to press",
-		expectNotice: async (page: Page) => {
-			await expect(
-				main(page).getByText(
-					withDetail(
-						en["library.readTooLarge"],
-						"the library snapshot is larger than this component sends",
-					),
-				),
-			).toBeVisible();
-			expect(await tryAgain(page).count()).toBe(0);
-		},
-	},
-	{
-		state: "a media library the component is not serving",
-		fooJean: EXPORT_FAILS(503),
-		promise: "says so with the component's detail, and offers nothing to press",
-		expectNotice: async (page: Page) => {
-			await expect(
-				main(page).getByText(
-					withDetail(
-						en["library.readUnavailable"],
-						"the media library is not available",
-					),
-				),
-			).toBeVisible();
-			expect(await tryAgain(page).count()).toBe(0);
-		},
-	},
-	{
-		state: "a component that stopped reading the library",
-		fooJean: { libraryHalted: true },
-		promise: "says so, says to restart foobar2000, and offers nothing to press",
-		expectNotice: async (page: Page) => {
-			await expect(
-				main(page).getByText(en["library.halted.summary"]),
-			).toBeVisible();
-			await expect(
-				main(page).getByText(en["library.halted.fix"]),
-			).toBeVisible();
-			expect(await tryAgain(page).count()).toBe(0);
-		},
-	},
-	{
-		state: "an export that failed at the player",
-		fooJean: EXPORT_FAILS(500),
-		promise: "says foo_jean could not answer, and offers to try again",
-		expectNotice: async (page: Page) => {
-			await expect(
-				main(page).getByText(en["library.readFailed"], { exact: false }),
-			).toBeVisible();
-			await expect(tryAgain(page)).toBeVisible();
-		},
-	},
-];
-
-for (const { state, fooJean, promise, expectNotice } of NOTICE_STATES) {
-	test.describe(state, () => {
-		test.use({ fooJean });
-
-		for (const view of VIEWS) {
-			test(`${view.name} ${promise}, in place of its header and content`, async ({
-				page,
-			}) => {
-				await page.goto(view.path);
-
-				await expectNotice(page);
-				await expectNothingOfTheView(page, view);
-			});
-		}
-	});
-}
+			await expectNothingOfTheView(page, view);
+		});
+	}
+});
 
 test.describe("before discovery answers", () => {
 	for (const view of VIEWS) {
@@ -316,14 +229,15 @@ test.describe("foo_jean not answering, and asked again", () => {
 	});
 });
 
-// The window a freshly started player sits in. Discovery lands, the export
-// starts and answers `202`, and the snapshot never comes: every one of those
-// steps is a render where the library is not known to be empty.
+// The window a freshly started player sits in. Discovery lands, the first
+// library ask starts a build and answers `202`, and the snapshot never comes:
+// every one of those steps is a render where the library is not known to be
+// empty.
 test.describe("a library still building its first snapshot", () => {
 	test.use({ fooJean: { libraryReady: false } });
 
 	for (const view of VIEWS) {
-		test(`${view.name} never says the library is empty, from load to the export under way`, async ({
+		test(`${view.name} never says the library is empty, from load to the build under way`, async ({
 			page,
 			player,
 		}) => {
@@ -331,138 +245,282 @@ test.describe("a library still building its first snapshot", () => {
 			await page.goto(view.path);
 
 			await expect(headingOf(page, view)).toBeVisible();
-			await expect
-				.poll(() => statePollsSinceExport(player))
-				.toBeGreaterThanOrEqual(3);
+			await expect.poll(() => statePolls(player)).toBeGreaterThanOrEqual(3);
 
 			expect(await drawnSinceLoad(page)).toEqual([]);
 		});
 	}
 });
 
-test.describe("a build that reports how far along it is", () => {
-	// 54 tracks in slices of 20: the fake walks to 40 formatted and holds there
-	// for as long as `libraryBuilds` lasts.
-	test.use({ fooJean: { libraryBuilds: 1000, librarySlice: 20 } });
+// What a view may say while rows are slow to come, and none of it is said for rows alone: a
+// pending row is its own answer, and an unreachable player has a notice of its own above.
+const SAID_OF_ROWS = [
+	en["library.readFailed"],
+	en["library.readUnavailable"],
+	en["library.readUnreachable"],
+	en["library.readTimedOut"],
+	en["library.halted.summary"],
+	en["action.tryAgain"],
+	en["fooJean.unreachable.summary"],
+].map(patternOf);
 
-	for (const view of [ALL_MUSIC, HOME, GENRES, AN_ARTIST]) {
-		test(`${view.name} counts the tracks read so far`, async ({ page }) => {
-			await page.goto(view.path);
+interface RowsAsk {
+	sentAt: number;
+	answeredAt: number | null;
+	status: number | "dropped" | null;
+}
 
-			await expect(
-				main(page).getByText("Reading 40 of 54 tracks…"),
-			).toBeVisible();
-		});
+interface RowsWatch {
+	asks: RowsAsk[];
+	busyAt: number | null;
+	landedAt: number | null;
+}
+
+declare global {
+	interface Window {
+		__rows: RowsWatch;
 	}
+}
 
-	test("All music's progress bar stands at the tracks read out of the total", async ({
-		page,
-	}) => {
-		await page.goto(ALL_MUSIC.path);
-
-		const bar = main(page).getByRole("progressbar");
-		await expect(bar).toHaveAttribute("aria-valuenow", "40");
-		await expect(bar).toHaveAttribute("aria-valuemax", "54");
-	});
-});
-
-const PAST_FIRST_RETRY_MS = 6_000;
-
-test.describe("a build whose worker halts partway", () => {
-	test.use({ fooJean: { libraryBuilds: 1000, librarySlice: 20 } });
-
-	test("says foo_jean stopped reading the library, offers nothing to press, and asks for the library no more", async ({
-		page,
-		player,
-	}) => {
-		await page.goto(ALL_MUSIC.path);
-		await expect(
-			main(page).getByText("Reading 40 of 54 tracks…"),
-		).toBeVisible();
-
-		player.fooJean.libraryHalted = true;
-
-		await expect(
-			main(page).getByText(en["library.halted.summary"]),
-		).toBeVisible();
-		await expect(main(page).getByText(en["library.halted.fix"])).toBeVisible();
-		expect(await tryAgain(page).count()).toBe(0);
-
-		const exports = () => requestsTo(player, "/api/library/export").length;
-		const asked = exports();
-		await page.waitForTimeout(PAST_FIRST_RETRY_MS);
-		await expectSettlesAt(player, exports, asked);
-	});
-});
-
-test.describe("a build counted in the thousands", () => {
-	// 40 and 54 read the same raw and formatted. 2,500 in slices of 1,000 holds
-	// at 2,000, where a count skipping the app's number formatter shows.
-	test.use({
-		mediaLibrarySize: 2500,
-		fooJean: { libraryBuilds: 1000, librarySlice: 1000 },
+const watchTheRows = (page: Page) =>
+	page.addInitScript(() => {
+		const watch: RowsWatch = { asks: [], busyAt: null, landedAt: null };
+		window.__rows = watch;
+		const send = window.fetch;
+		window.fetch = async (input, init) => {
+			const url = new URL(
+				input instanceof Request ? input.url : String(input),
+				location.href,
+			);
+			if (url.pathname !== "/api/library/rows") return send(input, init);
+			const ask: RowsAsk = {
+				sentAt: performance.now(),
+				answeredAt: null,
+				status: null,
+			};
+			watch.asks.push(ask);
+			try {
+				const answer = await send(input, init);
+				ask.status = answer.status;
+				return answer;
+			} catch (error) {
+				ask.status = "dropped";
+				throw error;
+			} finally {
+				ask.answeredAt = performance.now();
+			}
+		};
+		new MutationObserver(() => {
+			const row = document.querySelector('[role="row"][data-row="0"]');
+			if (!row) return;
+			if (row.getAttribute("aria-busy") === "true")
+				watch.busyAt ??= performance.now();
+			else if (watch.busyAt !== null) watch.landedAt ??= performance.now();
+		}).observe(document, {
+			subtree: true,
+			childList: true,
+			attributes: true,
+			attributeFilter: ["aria-busy"],
+		});
 	});
 
-	test("All music writes both numbers the way the rest of the app does", async ({
-		page,
-	}) => {
-		await page.goto(ALL_MUSIC.path);
+const rowsWatched = (page: Page) => page.evaluate(() => window.__rows);
 
-		await expect(
-			main(page).getByText("Reading 2,000 of 2,500 tracks…"),
-		).toBeVisible();
+const RETRY_FIRST_MS = 5_000;
+const POLL_TICK_MS = 1_000;
+// Room for a loaded machine between a wait running out and the request it releases.
+const SLACK_MS = 1_500;
+// `performance.now()` is coarsened by the browser, and a timer may fire a hair early.
+const EARLY_MS = 50;
+
+// The fake answers the first ask on a fresh player with a declaration rather than rows, so the
+// player is declared first and the case starts from a reload, where the window is the first ask.
+const reloadWithRowsFailing = async (
+	page: Page,
+	player: FakePlayer,
+	failRows: { status: 429 | 500 | 503 | "drop"; times: number },
+) => {
+	await openAllMusic(page);
+	await untilQuiet(player);
+	await watchTheRows(page);
+	await recordFromLoad(page, SAID_OF_ROWS);
+	player.fooJean.failRows = failRows;
+	await page.reload();
+};
+
+const firstRefusal = async (page: Page, refused: RowsAsk["status"]) => {
+	await expect
+		.poll(
+			async () =>
+				(await rowsWatched(page)).asks.findIndex(
+					(ask) => ask.status === refused && ask.answeredAt !== null,
+				),
+			{ message: `no rows request was answered ${refused}` },
+		)
+		.toBeGreaterThanOrEqual(0);
+	const { asks } = await rowsWatched(page);
+	const first = asks.find((ask) => ask.status === refused) as RowsAsk;
+	return { refusedAt: first.answeredAt as number };
+};
+
+const landedAt = async (page: Page) => {
+	await expect(trackRow(page, 0)).not.toHaveAttribute("aria-busy", "true", {
+		timeout: RETRY_FIRST_MS + POLL_TICK_MS + SLACK_MS * 2,
 	});
-});
+	const watched = await rowsWatched(page);
+	expect(watched.busyAt, "row 0 was never drawn pending").not.toBeNull();
+	return watched.landedAt as number;
+};
 
-test.describe("a build of one slice", () => {
-	// A library that fits one slice goes from nothing formatted to done. The
-	// fake still reports `ordering` with the total known, and a count drawn off
-	// that would read "0 of 54".
-	test.use({ fooJean: { libraryBuilds: 1000 } });
-
-	for (const view of [ALL_MUSIC, HOME]) {
-		test(`${view.name} reads the library with no count, ever`, async ({
+for (const status of [500, 503] as const)
+	test.describe(`a window answered ${status} once`, () => {
+		test("stays pending and says nothing until the first poll five seconds after, and then lands", async ({
 			page,
 			player,
 		}) => {
-			await recordFromLoad(page, [READING_COUNT]);
-			await page.goto(view.path);
+			await reloadWithRowsFailing(page, player, { status, times: 1 });
+			const { refusedAt } = await firstRefusal(page, status);
 
-			await expect(main(page).getByText(view.reading)).toBeVisible();
-			await expect
-				.poll(() => statePollsSinceExport(player))
-				.toBeGreaterThanOrEqual(3);
-
+			const waited = (await landedAt(page)) - refusedAt;
+			expect(waited).toBeGreaterThanOrEqual(RETRY_FIRST_MS - EARLY_MS);
+			expect(waited).toBeLessThanOrEqual(
+				RETRY_FIRST_MS + POLL_TICK_MS + SLACK_MS,
+			);
 			expect(await drawnSinceLoad(page)).toEqual([]);
 		});
-	}
-});
-
-test.describe("an export that fails once", () => {
-	test.use({ fooJean: { failLibraryExport: { status: 500, times: 1 } } });
-
-	test("the rows arrive on their own after the failure is shown", async ({
-		page,
-	}) => {
-		await page.goto(ALL_MUSIC.path);
-		await expect(
-			main(page).getByText(en["library.readFailed"], { exact: false }),
-		).toBeVisible();
-
-		await expect(trackRow(page, 0)).toBeAttached();
 	});
 
-	test("Try again brings the rows in before the automatic retry could", async ({
+test.describe("a window refused 429 once", () => {
+	test("lands once the Retry-After has passed, without the five seconds a failure waits", async ({
 		page,
+		player,
 	}) => {
-		await page.goto(ALL_MUSIC.path);
-		await expect(tryAgain(page)).toBeVisible();
+		const RETRY_AFTER_MS = 1_000;
 
-		// The store waits five seconds after a failure before asking on its own,
-		// and the button is pressed the moment it shows, so rows inside two
-		// seconds of the press are the button's.
-		await tryAgain(page).click();
-		await expect(trackRow(page, 0)).toBeAttached({ timeout: 2_000 });
+		await reloadWithRowsFailing(page, player, { status: 429, times: 1 });
+		const { refusedAt } = await firstRefusal(page, 429);
+
+		const waited = (await landedAt(page)) - refusedAt;
+		expect(waited).toBeGreaterThanOrEqual(RETRY_AFTER_MS - EARLY_MS);
+		expect(waited).toBeLessThan(RETRY_FIRST_MS - EARLY_MS);
+		expect(await drawnSinceLoad(page)).toEqual([]);
+	});
+});
+
+const BESIDE_THE_FIRST_MS = 500;
+
+// Chromium sends a request again by itself on a fresh connection when a reused one is dropped, so
+// the fake drops every rows request rather than one, and the page sees each ask fail.
+test.describe("a player that drops every rows request", () => {
+	test("leaves the rows pending and says nothing, and asks nothing more until five seconds have passed", async ({
+		page,
+		player,
+	}) => {
+		await reloadWithRowsFailing(page, player, {
+			status: "drop",
+			times: 1_000,
+		});
+		const { refusedAt } = await firstRefusal(page, "dropped");
+
+		const sentAfter = async (from: number) =>
+			(await rowsWatched(page)).asks
+				.map((ask) => ask.sentAt - refusedAt)
+				.filter((after) => after > from);
+		await expect
+			.poll(async () => (await sentAfter(RETRY_FIRST_MS - EARLY_MS)).length, {
+				message: "the dropped rows were never asked for again",
+				timeout: RETRY_FIRST_MS + POLL_TICK_MS + SLACK_MS * 2,
+			})
+			.toBeGreaterThan(0);
+		expect(
+			(await sentAfter(BESIDE_THE_FIRST_MS)).filter(
+				(after) => after < RETRY_FIRST_MS - EARLY_MS,
+			),
+			"rows were asked for again inside the wait",
+		).toEqual([]);
+
+		await expect(trackRow(page, 0)).toHaveAttribute("aria-busy", "true");
+		expect(
+			(await rowsWatched(page)).landedAt,
+			"row 0 drew a track nobody answered",
+		).toBeNull();
+		expect(await drawnSinceLoad(page)).toEqual([]);
+	});
+});
+
+// The declaration names the structure the poll last announced, and foo_jean answers it 409 where
+// tracks were added since, as foobar2000 does while it imports a folder in batches.
+const isTheDeclaration = (request: {
+	method: () => string;
+	url: () => string;
+	postDataJSON: () => unknown;
+}) => {
+	if (request.method() !== "POST") return false;
+	if (new URL(request.url()).pathname !== "/api/library/rows") return false;
+	const runs = (request.postDataJSON() as { runs?: unknown[] } | null)?.runs;
+	return Array.isArray(runs) && runs.length === 0;
+};
+
+const declaredStructures = (page: Page) => {
+	const structures: string[] = [];
+	page.on("request", (request) => {
+		if (
+			request.method() === "POST" &&
+			new URL(request.url()).pathname === "/api/library/rows"
+		)
+			structures.push(
+				String((request.postDataJSON() as { structure: unknown }).structure),
+			);
+	});
+	return structures;
+};
+
+test.describe("a declaration answered 409 because tracks were added meanwhile", () => {
+	test("is declared again at the structure the poll announces, says nothing, and All Music draws its rows", async ({
+		page,
+		player,
+	}) => {
+		await recordFromLoad(page, [
+			...SAID_OF_ROWS,
+			patternOf(en["library.readRefused"]),
+			"tracks were added or removed",
+		]);
+		const declaration = await holdRequests(page, isTheDeclaration, {
+			count: 1,
+		});
+		const declared = declaredStructures(page);
+		await page.goto("/#/all");
+		await declaration.untilHeld();
+
+		player.libraryFeed.columns = [...TRACK_EXPRESSIONS];
+		player.libraryFeed.building = [...TRACK_EXPRESSIONS];
+		player.finishLibraryBuild();
+		const before = String(player.libraryFeed.structure);
+
+		const added = await page.request.post("/__control/library", {
+			data: { add: 1 },
+		});
+		expect(added.ok(), "the fake adds a file to the library").toBe(true);
+		await expect
+			.poll(() => String(player.libraryFeed.structure), {
+				message: "the fake never finished the build the added file started",
+			})
+			.not.toBe(before);
+		const moved = String(player.libraryFeed.structure);
+
+		declaration.release();
+		await expect
+			.poll(() => declared.filter((structure) => structure === moved).length, {
+				message:
+					"Jean never declared again at the structure the poll announced",
+				timeout: POLL_TICK_MS + SLACK_MS * 2,
+			})
+			.toBeGreaterThan(0);
+
+		await expect(trackRow(page, 0)).not.toHaveAttribute("aria-busy", "true");
+		await expect(trackRow(page, 0)).toBeVisible();
+		await untilQuiet(player);
+		expect(await drawnSinceLoad(page)).toEqual([]);
 	});
 });
 
@@ -531,38 +589,5 @@ test.describe("columns before the first snapshot", () => {
 
 		expect(onPlaylist.map((item) => item.name)).toContain(YEAR_UNAVAILABLE);
 		expect(onShelf).toEqual(onPlaylist);
-	});
-});
-
-// The now-playing screen, Settings, the shortcut sheet and the palette are fetched ahead of their
-// first opening, once the page is idle. A page waiting on the library is idle on its main thread
-// and busy on its connection, and on a phone at the edge of the wifi those bytes are the library's.
-test.describe("the layers nobody has opened yet", () => {
-	const EXPORT = "/api/library/export";
-	const LAYER =
-		/\/assets\/(NowPlaying|SettingsDialog|ShortcutSheet|CommandPalette)-[^/]+\.js$/;
-
-	test.use({
-		fooJean: { routeLatency: { [`GET ${EXPORT}`]: { ms: 1_500 } } },
-	});
-
-	test("are fetched after the library, never beside it", async ({ page }) => {
-		let libraryHasArrived = false;
-		const fetched: { layer: string; besideTheLibrary: boolean }[] = [];
-
-		page.on("requestfinished", (request) => {
-			if (new URL(request.url()).pathname === EXPORT) libraryHasArrived = true;
-		});
-		page.on("request", (request) => {
-			const { pathname } = new URL(request.url());
-			if (LAYER.test(pathname))
-				fetched.push({ layer: pathname, besideTheLibrary: !libraryHasArrived });
-		});
-
-		await page.goto("/#/all");
-		await expect(trackRow(page, 0)).toBeAttached();
-
-		await expect.poll(() => fetched.length).toBeGreaterThan(0);
-		expect(fetched.filter((layer) => layer.besideTheLibrary)).toEqual([]);
 	});
 });

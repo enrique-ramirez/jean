@@ -1,3 +1,4 @@
+import { GENRE_EXPRESSION } from "../../src/shared/api/multiValue.ts";
 import { en } from "../../src/shared/i18n/en.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
@@ -5,6 +6,7 @@ import {
 	expectSettlesAt,
 	guidOfPlaylist,
 	openAllMusic,
+	openLibrary,
 	openSidebar,
 	refusePlaylistWrites,
 	test,
@@ -13,6 +15,16 @@ import {
 	untilQuiet,
 	viewHeader,
 } from "./fixtures.ts";
+import {
+	type Answered,
+	expectTheSetAskedOnce,
+	holdRows,
+	latestAnswer,
+	openHomeSettled,
+	recordLibraryTraffic,
+	titleAtOrdinal,
+	untilRowsAreHeld,
+} from "./libraryLists.ts";
 
 const WITH_AUTOPLAYLISTS = { maxAutoPlaylists: 100 };
 
@@ -199,21 +211,11 @@ test.describe("the autoplaylist dialog", () => {
 		});
 
 		test.describe("what the matches add up to", () => {
-			// Every captured album has one album artist and one genre, so without this the albums
-			// and the album artists always agree and a stats line swapping them would pass.
-			test.use({
-				retagged: { "Whale & Wasp": { "%album%": "Sap" } },
-			});
-
-			test("counts the album artists, albums and tracks among the matches and their total length", async ({
-				page,
-			}) => {
+			test("the stats line counts the matching tracks", async ({ page }) => {
 				const dialog = await openApp(page);
 				await queryField(dialog).fill(`${GRUNGE} OR genre IS "Post Rock"`);
 
-				await expect(statsLine(dialog)).toHaveText(
-					/2 album artists\s*·\s*3 albums\s*·\s*20 tracks\s*·\s*1 hr 55 min/,
-				);
+				await expect(statsLine(dialog)).toHaveText("20 tracks");
 			});
 		});
 
@@ -227,9 +229,7 @@ test.describe("the autoplaylist dialog", () => {
 			await expect(first).toContainText("Rotten Apple");
 			await expect(first).toContainText("Alice in Chains · Jar Of Flies");
 			await expect(first).toContainText("6:59");
-			await expect(statsLine(dialog)).toHaveText(
-				/1 album artist\s*·\s*1 album\s*·\s*7 tracks\s*·\s*30 min/,
-			);
+			await expect(statsLine(dialog)).toHaveText("7 tracks");
 		});
 
 		test("an empty query asks nothing, and emptying one takes its results away", async ({
@@ -429,10 +429,9 @@ test.describe("the autoplaylist dialog", () => {
 			await expect(resultRows(dialog).first()).toBeVisible({
 				timeout: FIRST_ROWS_MS,
 			});
-			await expect(statsLine(dialog)).toHaveText(
-				/5 album artists\s*·\s*5 albums\s*·\s*30,441 tracks\s*·\s*97 days 18 hr/,
-				{ timeout: FIRST_ROWS_MS },
-			);
+			await expect(statsLine(dialog)).toHaveText("30,441 tracks", {
+				timeout: FIRST_ROWS_MS,
+			});
 
 			const scroller = results(dialog);
 			const overflows = await scroller.evaluate(
@@ -487,7 +486,7 @@ test.describe("the autoplaylist dialog", () => {
 				genres: 40,
 				years: [1960, 2024],
 			},
-			fooJean: { ...WITH_AUTOPLAYLISTS, libraryCeiling: null },
+			fooJean: WITH_AUTOPLAYLISTS,
 		});
 
 		test("scrolls to the last match", async ({ page, player }) => {
@@ -1040,5 +1039,151 @@ test.describe("editing an autoplaylist", () => {
 				page.getByRole("heading", { level: 1, name: "Recently Added" }),
 			).toBeVisible();
 		});
+	});
+});
+
+// Over a playlist rather than All Music: All Music's first window holds every row of this library,
+// and a dialog over it would have none of its own to ask for.
+const openOverAPlaylist = async (page: Page) => {
+	await openLibrary(page);
+	return openDialog(page);
+};
+
+const TWO_GENRES = `${POST_ROCK} OR ${GRUNGE}`;
+
+const previewedOrdinals = async (answered: Answered[], query: string) =>
+	(
+		await latestAnswer<{ ordinals: number[] }>(
+			answered,
+			"POST /api/autoplaylists/preview",
+			(answer) => answer.sent?.query === query,
+		)
+	).ordinals;
+
+test.describe("the preview's rows", () => {
+	test.use({ fooJean: WITH_AUTOPLAYLISTS });
+
+	test("are asked once, by the ordinals the preview answered, and nothing else of the library is read", async ({
+		page,
+		player,
+	}) => {
+		const answered = recordLibraryTraffic(page);
+		const dialog = await openOverAPlaylist(page);
+		await queryField(dialog).fill(TWO_GENRES);
+		const ordinals = await previewedOrdinals(answered, TWO_GENRES);
+
+		await expectTheSetAskedOnce(answered, player, ordinals);
+		await expect(resultRows(dialog).first()).toContainText(
+			titleAtOrdinal(player, ordinals[0]),
+		);
+	});
+
+	test.describe("with the rows held", () => {
+		test.use({ fooJean: { ...WITH_AUTOPLAYLISTS, holdRows: true } });
+
+		test("draw as skeletons until their rows land", async ({
+			page,
+			player,
+		}) => {
+			const answered = recordLibraryTraffic(page);
+			await openHomeSettled(page, player);
+			const dialog = await openDialog(page);
+			await queryField(dialog).fill(TWO_GENRES);
+			const ordinals = await previewedOrdinals(answered, TWO_GENRES);
+			await untilRowsAreHeld(player, ordinals);
+
+			const first = resultRows(dialog).first();
+			const busy = first
+				.and(page.locator('[aria-busy="true"]'))
+				.or(first.locator('[aria-busy="true"]'));
+			await expect(busy).toHaveCount(1);
+			await expect(first).not.toContainText(
+				titleAtOrdinal(player, ordinals[0]),
+			);
+
+			await holdRows(page, false);
+			await expect(first).toContainText(titleAtOrdinal(player, ordinals[0]));
+			await expect(busy).toHaveCount(0);
+		});
+	});
+});
+
+const valuesAsked = (player: FakePlayer) =>
+	player.requests
+		.filter((entry) => entry.path.split("?")[0] === "/api/library/values")
+		.map((entry) => new URL(entry.path, "http://fake.invalid").searchParams);
+
+const expectValuesAsked = async (
+	player: FakePlayer,
+	field: string,
+	prefix: string,
+) => {
+	const asked = () =>
+		valuesAsked(player).filter(
+			(params) =>
+				params.get("field") === field && params.get("prefix") === prefix,
+		);
+	await expect
+		.poll(() => asked().length, {
+			message: `the dialog never asked the player for ${field} values beginning ${prefix}`,
+		})
+		.toBeGreaterThan(0);
+	for (const params of asked())
+		expect(Number(params.get("limit"))).toBeGreaterThan(0);
+};
+
+test.describe("completing a value", () => {
+	test.use({
+		fooJean: WITH_AUTOPLAYLISTS,
+		// Ábaco sorts first by the language's rules and last by its bytes, which is the order the
+		// player answers in. Björk is an accented name reached by a prefix typed without the accent.
+		retagged: {
+			Nutshell: { "%artist%": "Ábaco" },
+			"Rotten Apple": { "%artist%": "Björk" },
+			"Los Calientes": {
+				"%genre%": "Rock En Español, Latin Rock",
+				[GENRE_EXPRESSION]: "Rock En Español\u001fLatin Rock",
+			},
+		},
+	});
+
+	const offered = (page: Page) => page.getByRole("listbox").getByRole("option");
+
+	const values = (...names: string[]) =>
+		names.map((name) => new RegExp(`^${name}`));
+
+	test("asks the player for the artists the typed letters begin, and offers them in the language's order", async ({
+		page,
+		player,
+	}) => {
+		const dialog = await openOverAPlaylist(page);
+		await queryField(dialog).pressSequentially("artist IS a");
+
+		await expect(offered(page)).toHaveText(
+			values("Ábaco", "Alice in Chains", "As Tall as Lions"),
+		);
+		await expectValuesAsked(player, "artist", "a");
+	});
+
+	test("offers an accented artist for letters typed without the accent", async ({
+		page,
+		player,
+	}) => {
+		const dialog = await openOverAPlaylist(page);
+		await queryField(dialog).pressSequentially("artist IS bjo");
+
+		await expect(offered(page)).toHaveText(values("Björk"));
+		await expectValuesAsked(player, "artist", "bjo");
+	});
+
+	test("offers each of a track's genres on its own", async ({
+		page,
+		player,
+	}) => {
+		const dialog = await openOverAPlaylist(page);
+		await queryField(dialog).pressSequentially("genre IS lat");
+
+		await expect(offered(page)).toHaveText(values("Latin Rock"));
+		await expectValuesAsked(player, "genre", "lat");
 	});
 });

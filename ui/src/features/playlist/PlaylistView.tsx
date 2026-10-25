@@ -1,15 +1,16 @@
 import { SquarePen } from "lucide-react";
-import { type RefObject, useMemo, useRef } from "react";
+import { type RefObject, useRef } from "react";
 import { isEditableAutoPlaylist } from "@/domain/player/editableAutoPlaylist";
 import { useActiveItem } from "@/domain/player/usePlayer";
 import { usePlayItem } from "@/domain/player/useTransport";
-import { librarySourceOf } from "@/domain/track/librarySource";
 import type { TrackBrowserHandle } from "@/domain/track/listTypes";
-import { trackRows } from "@/domain/track/project";
-import { summarise } from "@/domain/track/stats";
+import { PendingRows } from "@/domain/track/PendingRows";
 import { TrackPage } from "@/domain/track/TrackPage";
 import { useFinder } from "@/domain/track/useFinder";
-import { usePlaylistItems } from "@/domain/track/usePlaylistItems";
+import {
+	usePlaylistItems,
+	usePlaylistWindows,
+} from "@/domain/track/usePlaylistItems";
 import { usePlaylistRowEdits } from "@/domain/track/usePlaylistRowEdits";
 import { permitsPlaylistWrites } from "@/shared/api/discovery";
 import type { PlaylistInfo } from "@/shared/api/types";
@@ -33,43 +34,13 @@ export function PlaylistView({
 	const t = useTranslate();
 	const { discovery } = useFooJean();
 	const { origin } = discovery;
-	const held = usePlaylistItems(
-		origin,
-		playlist?.id,
-		playlist?.structure,
-		playlist?.revision,
-		playlist?.itemCount,
-	);
-	const { snapshot, onReorder, onNudge, onRemove, sort } = usePlaylistRowEdits({
+	const windowed = usePlaylistWindows(playlist?.id);
+	const { drawn, onReorder, onNudge, onRemove, sort } = usePlaylistRowEdits({
 		playlist,
-		snapshot: held,
+		windowed,
 	});
-	const {
-		columns,
-		paths,
-		subsongs,
-		loaded,
-		total,
-		isLoading,
-		error,
-		heat,
-		patina,
-	} = snapshot;
-
-	const rows = useMemo(() => trackRows(columns), [columns]);
-
-	const source = useMemo(() => {
-		const options = {
-			kind: "playlist" as const,
-			playlistId: playlist?.id as string,
-			origin,
-			structure: playlist?.structure,
-		};
-
-		return paths && subsongs
-			? librarySourceOf({ ...options, paths, subsongs })
-			: librarySourceOf(options);
-	}, [playlist?.id, playlist?.structure, origin, paths, subsongs]);
+	const { isOpening, failure, rows, groups, hasDiscs, stats } =
+		usePlaylistItems(windowed, playlist, drawn);
 
 	const browserRef = useRef<TrackBrowserHandle | null>(null);
 	const activeItem = useActiveItem(playlist?.id);
@@ -77,43 +48,50 @@ export function PlaylistView({
 
 	const finder = useFinder({
 		rows,
+		over:
+			playlist && origin
+				? {
+						kind: "playlist",
+						origin,
+						id: playlist.id,
+						structure: playlist.structure,
+						revision: playlist.revision,
+						length: playlist.itemCount,
+					}
+				: null,
 		browserRef,
 		label: t("shortcut.openFinder"),
 	});
 
-	const isArriving = isLoading || loaded < total;
-	const stats = useMemo(
-		() => (isArriving ? null : summarise(rows)),
-		[rows, isArriving],
-	);
-
 	if (!playlist)
 		return <p className={styles.notice}>{t("playlist.chooseOne")}</p>;
+	if (!windowed) return <PendingRows />;
+
+	if (failure)
+		return (
+			<p className={styles.notice}>
+				{t("playlist.loadFailed", { message: failure })}
+			</p>
+		);
 
 	const canEditQuery =
 		permitsPlaylistWrites(discovery) && isEditableAutoPlaylist(playlist);
-
-	if (error) {
-		return (
-			<p className={styles.notice}>
-				{t("playlist.loadFailed", { message: error.message })}
-			</p>
-		);
-	}
 
 	return (
 		<TrackPage
 			browserRef={browserRef}
 			rows={rows}
-			source={source}
+			source={windowed.source}
+			runGroups={{ groups, hasDiscs }}
 			viewKey={`playlist:${playlist.id}`}
-			heat={heat}
-			patina={patina}
+			heat={rows.heat}
+			patina={rows.patina}
 			activeIndex={activeItem?.index ?? -1}
 			matches={finder.matches}
-			isLoading={isLoading}
-			loaded={loaded}
-			total={total}
+			isLoading={isOpening}
+			loaded={0}
+			total={playlist.itemCount}
+			hasPendingRows={isOpening}
 			scrollRef={scrollRef}
 			isCompactViewport={isCompactViewport}
 			keysEnabled={!finder.isFinding}
@@ -138,6 +116,7 @@ export function PlaylistView({
 				title: playlist.title,
 			}}
 			stats={stats}
+			trackCount={playlist.itemCount}
 			mosaicSeed={playlist.id}
 			toolbarLeading={finder.toolbarLeading}
 		/>

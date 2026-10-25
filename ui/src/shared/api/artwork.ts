@@ -4,6 +4,11 @@ import { playlistPath } from "./playlists";
 export const libraryArtworkUrl = (origin: string | null, path: string) =>
 	origin && `${origin}/api/artwork?track=${encodeURIComponent(path)}`;
 
+export const coverPathOf = <Path extends string | null>(row: {
+	cover?: string | null;
+	libraryPath: Path;
+}): string | Path => row.cover || row.libraryPath;
+
 export const playingArtworkUrl = (origin: string | null) => {
 	if (!origin) return origin;
 	const scope = sessionScope();

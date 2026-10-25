@@ -56,22 +56,6 @@ export const CREDIT_TAGS = [
 	FIELD.albumArtistIds,
 ];
 
-export const LATE_FIELDS = [
-	FIELD.codec,
-	FIELD.bitrate,
-	FIELD.added,
-	...CREDIT_TAGS,
-	FIELD.artistSort,
-];
-
-export const LATE_EXPRESSIONS = LATE_FIELDS.map(
-	(field) => TRACK_EXPRESSIONS[field],
-);
-
-export const EARLY_EXPRESSIONS = TRACK_EXPRESSIONS.filter(
-	(expression) => !LATE_EXPRESSIONS.includes(expression),
-);
-
 export const EMPTY_COLUMNS = libraryColumnsOf([], TRACK_EXPRESSIONS.length);
 
 const ABSENT = new Set([UNRESOLVED, "", "N/A"]);

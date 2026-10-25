@@ -6,7 +6,7 @@ import { BusyNote, busyProps, Skeleton } from "@/shared/ui/Skeleton";
 import { HeaderBackdrop } from "./HeaderBackdrop";
 import type { LibrarySource } from "./librarySource";
 import type { TrackRows } from "./project";
-import { formatDuration, type TrackStats } from "./stats";
+import { formatDuration, type HeaderStats } from "./stats";
 import { useCoverPicks } from "./useCoverPicks";
 import styles from "./ViewHeader.module.css";
 
@@ -15,7 +15,7 @@ function Figures({
 	isPending,
 	albumCount,
 }: {
-	stats: TrackStats | null;
+	stats: HeaderStats | null;
 	isPending: boolean;
 	albumCount: number | null;
 }) {
@@ -90,14 +90,14 @@ export function ViewHeader({
 }: {
 	eyebrow?: ReactNode;
 	title: ReactNode;
-	stats: TrackStats | null;
+	stats: HeaderStats | null;
 	isStatsPending: boolean;
 	covers: { source: LibrarySource; rows: TrackRows; seed: string | null };
 	cover?: { src: string | null; identity: string | undefined; alt: string };
 	tabs?: ReactNode;
 	actions?: ReactNode;
 }) {
-	const picks = useCoverPicks(covers.rows, covers.seed);
+	const picks = useCoverPicks(covers.source, covers.rows, covers.seed);
 
 	return (
 		<header className={styles.header} data-tabs={tabs ? "true" : undefined}>
@@ -124,7 +124,7 @@ export function ViewHeader({
 				<Figures
 					stats={stats}
 					isPending={isStatsPending}
-					albumCount={picks.albumCount}
+					albumCount={stats?.albumCount ?? picks.albumCount}
 				/>
 
 				<div className={styles.actions}>{actions}</div>

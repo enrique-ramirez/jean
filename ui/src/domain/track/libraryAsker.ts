@@ -5,31 +5,57 @@ import {
 	type LibraryRoles,
 	type QuestionAnswerTo,
 } from "@/shared/api/libraryQuestions";
+import type { StateDocument } from "@/shared/api/state";
 import { subscribers } from "@/shared/lib/store";
-import { overColumns } from "./columnCache";
 import { FIELD, TRACK_EXPRESSIONS } from "./fields";
 import { INTENSITY_FIELDS } from "./intensity";
 import {
+	announcedLibraryOf,
 	declaredAgain,
 	holdAfterResult,
+	holdsDeclaration,
 	isDue,
 	isWaitingOnTime,
+	now,
 	reportedReady,
 	type Waiting,
 	watchLibrary,
 } from "./libraryHolds";
-import {
-	componentLibraryKey,
-	heldEntry,
-	playlistSnapshot,
-	subscribePlaylist,
-} from "./playlistEntries";
 
-const ANSWERED_FROM = TRACK_EXPRESSIONS.map((_, field) => field).filter(
-	(field) => !INTENSITY_FIELDS.includes(field),
+const FIELDS_NO_QUESTION_READS = [...INTENSITY_FIELDS, FIELD.rating];
+
+const READ_EXPRESSIONS = TRACK_EXPRESSIONS.filter(
+	(_, field) => !FIELDS_NO_QUESTION_READS.includes(field),
 );
 
-export const contentOf = overColumns(ANSWERED_FROM, () => ({}));
+type Announced = StateDocument["library"];
+
+function movedAmong(
+	before: Announced,
+	after: Announced,
+	expressions: readonly string[],
+) {
+	return expressions.some((expression) => {
+		const was = before.columns.indexOf(expression);
+		const is = after.columns.indexOf(expression);
+		return (
+			was >= 0 && is >= 0 && before.changeCounts[was] !== after.changeCounts[is]
+		);
+	});
+}
+
+export const readColumnMoved = (before: Announced, after: Announced) =>
+	movedAmong(before, after, READ_EXPRESSIONS);
+
+const RATING_EXPRESSION_ONLY = [TRACK_EXPRESSIONS[FIELD.rating]];
+
+const OTHER_EXPRESSIONS = TRACK_EXPRESSIONS.filter(
+	(_, field) => field !== FIELD.rating,
+);
+
+export const onlyRatingMoved = (before: Announced, after: Announced) =>
+	movedAmong(before, after, RATING_EXPRESSION_ONLY) &&
+	!movedAmong(before, after, OTHER_EXPRESSIONS);
 
 export const LIBRARY_ROLES = (() => {
 	const roles = {} as LibraryRoles;
@@ -58,7 +84,8 @@ interface Asker extends Waiting {
 	origin: string;
 	question: LibraryQuestion;
 	listeners: ReturnType<typeof subscribers>;
-	at: { structure: number; content: object } | null;
+	at: { structure: number } | null;
+	seen: Announced | null;
 	kept: Kept | null;
 	failure: AnswerFailure | null;
 	tries: number;
@@ -115,6 +142,19 @@ function releaseTurn(origin: string) {
 	else if (line) line.isOut = false;
 }
 
+export async function inTurn<Result>(
+	origin: string,
+	signal: AbortSignal,
+	run: () => Promise<Result>,
+): Promise<Result> {
+	await takeTurn(origin, signal);
+	try {
+		return await run();
+	} finally {
+		releaseTurn(origin);
+	}
+}
+
 const askerKey = (origin: string, question: LibraryQuestion) =>
 	`${origin}\n${JSON.stringify(question)}`;
 
@@ -125,26 +165,24 @@ function cancel(asker: Asker) {
 	asker.timer = null;
 }
 
-const libraryAt = (origin: string) =>
-	playlistSnapshot(componentLibraryKey(origin));
+function libraryAt(origin: string) {
+	const library = announcedLibraryOf(origin);
+	return library && holdsDeclaration(library)
+		? { structure: library.structure, trackCount: library.trackCount }
+		: { structure: 0, trackCount: 0 };
+}
 
 function keyNow(origin: string) {
-	const { columns, structure } = libraryAt(origin);
-	return columns.trackCount > 0
-		? { structure, content: contentOf(columns) }
-		: null;
+	const { structure, trackCount } = libraryAt(origin);
+	return trackCount > 0 ? { structure } : null;
 }
 
 function followLibrary(asker: Asker) {
 	const now = keyNow(asker.origin);
-	if (
-		asker.at?.structure === now?.structure &&
-		asker.at?.content === now?.content
-	)
-		return;
+	if (asker.at?.structure === now?.structure) return;
 
 	cancel(asker);
-	if (asker.at?.structure !== now?.structure) asker.kept = null;
+	asker.kept = null;
 	asker.at = now;
 	asker.hold = { kind: "none" };
 	asker.pair = null;
@@ -162,11 +200,10 @@ async function askAgain(asker: Asker) {
 	cancel(asker);
 	const controller = new AbortController();
 	asker.controller = controller;
-	const feed = heldEntry(componentLibraryKey(asker.origin))?.feed;
-	asker.pair =
-		feed?.kind === "library"
-			? { structure: feed.structure, revision: feed.revision }
-			: null;
+	const library = announcedLibraryOf(asker.origin);
+	asker.pair = library
+		? { structure: library.structure, revision: library.revision }
+		: null;
 	asker.announced = null;
 
 	const isSearch = asker.question.kind === "search";
@@ -185,7 +222,7 @@ async function askAgain(asker: Asker) {
 		LIBRARY_ROLES,
 		{
 			structure: at.structure,
-			trackCount: libraryAt(asker.origin).columns.trackCount,
+			trackCount: libraryAt(asker.origin).trackCount,
 		},
 		controller.signal,
 	)
@@ -230,7 +267,7 @@ function land(
 				asker.timer = null;
 				if (asker.hold.kind === "tooFast") void askAgain(asker);
 			},
-			Math.max(0, asker.hold.until - Date.now()),
+			Math.max(0, asker.hold.until - now()),
 		);
 	asker.listeners.notify();
 }
@@ -249,16 +286,33 @@ function retryOnceThenFail(asker: Asker, reason: AnswerFailure["reason"]) {
 	asker.listeners.notify();
 }
 
+function followChangeCounts(asker: Asker, library: Announced) {
+	const before = asker.seen;
+	asker.seen = library;
+	if (
+		!before ||
+		!asker.at ||
+		before.structure !== library.structure ||
+		!readColumnMoved(before, library)
+	)
+		return;
+
+	asker.hold = { kind: "none" };
+	asker.tries = 0;
+	asker.failure = null;
+	asker.listeners.notify();
+	void askAgain(asker);
+}
+
 function startAsking(asker: Asker) {
-	const stopFollowing = subscribePlaylist(
-		componentLibraryKey(asker.origin),
-		() => followLibrary(asker),
-	);
+	asker.seen ??= announcedLibraryOf(asker.origin);
 	const stopWatching = watchLibrary(asker.origin, {
 		exported: () => {
 			if (declaredAgain(asker)) void askAgain(asker);
 		},
 		announced: (library) => {
+			followLibrary(asker);
+			followChangeCounts(asker, library);
 			if (reportedReady(asker, library)) void askAgain(asker);
 		},
 		answered: () => {
@@ -267,7 +321,6 @@ function startAsking(asker: Asker) {
 		},
 	});
 	asker.detach = () => {
-		stopFollowing();
 		stopWatching();
 		asker.detach = null;
 	};
@@ -289,6 +342,7 @@ export function subscribeLibraryAnswer(
 			question,
 			listeners: subscribers(),
 			at: null,
+			seen: null,
 			kept: null,
 			failure: null,
 			tries: 0,

@@ -58,6 +58,7 @@ export async function fetchLibrarySummary(
 	roles: SummaryRoles,
 	tag: string | null,
 	signal?: AbortSignal,
+	withGenres = false,
 ): Promise<SummaryResult> {
 	const answer = await reach(
 		ask(
@@ -66,7 +67,7 @@ export async function fetchLibrarySummary(
 			(api, init) =>
 				api.GET("/library/summary", {
 					...init,
-					params: { query: roles },
+					params: { query: withGenres ? { ...roles, genres: true } : roles },
 					headers: tag ? { "If-None-Match": tag } : undefined,
 					cache: "no-store",
 				}),

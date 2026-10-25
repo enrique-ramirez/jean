@@ -1,4 +1,3 @@
-import { LATE_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import {
 	albumRoute,
 	artistRoute,
@@ -14,7 +13,6 @@ import {
 	openLibrary,
 	playedFrom,
 	playRequests,
-	requestsTo,
 	revealSearch,
 	runClockFor,
 	scratchOf,
@@ -26,6 +24,23 @@ import {
 	untilQuiet,
 	viewHeader,
 } from "./fixtures.ts";
+import {
+	type Answered,
+	expectPendingRowsPlayByPosition,
+	expectTheSetCoveredOnce,
+	latestAnswer,
+	mark,
+	openHomeSettled,
+	ordinalsOfSet,
+	recordLibraryTraffic,
+	untilRowsAreHeld,
+} from "./libraryLists.ts";
+import {
+	expectNoRowsLanded,
+	expectTheFiguresOf,
+	NOTHING_TO_SUM,
+	type SetFigures,
+} from "./setFigures.ts";
 
 const ARTIST = "Babasónicos";
 const ALBUM = "Jessico";
@@ -147,9 +162,7 @@ const WARMED_UP = "Alice in Chains";
 const WARM_UP = artistRoute(WARMED_UP);
 
 const warmUp = async (page: Page, player: FakePlayer) => {
-	const whole = page.waitForResponse(isLatePart);
 	await openLibrary(page);
-	await whole;
 	const before = questionsTo(player, WARM_UP);
 	await open(page, WARM_UP);
 	await expect(
@@ -214,17 +227,6 @@ const untilAskedPast = (player: FakePlayer, route: string, before: number) =>
 			message: `Jean never asked foo_jean for the ${questionOf(route)}`,
 		})
 		.toBeGreaterThan(before);
-
-const isLatePart = (response: { url: () => string; ok: () => boolean }) => {
-	const url = new URL(response.url());
-	return (
-		url.pathname === "/api/library/export" &&
-		url.searchParams
-			.getAll("only")
-			.some((column) => LATE_EXPRESSIONS.includes(column)) &&
-		response.ok()
-	);
-};
 
 test.describe("while foo_jean has not answered a search", () => {
 	test.beforeEach(({ page }) => watchThePage(page));
@@ -550,8 +552,6 @@ const recordTheHeader = (
 const headerSeen = (page: Page) =>
 	page.evaluate(() => Reflect.get(window, "__headerSeen") as HeaderSeen);
 
-const CHANGES = "/api/library/changes";
-
 const UNDER_THE_PATIENCE_MS = 40;
 
 const runClockUntil = async (
@@ -675,17 +675,15 @@ test.describe("a page's header answered within 100 ms", () => {
 				kept: counts.map((count) => count.replace(/^\d+/, "\\d+")),
 			});
 			const asked = questionsTo(player, route);
-			const changesBefore = requestsTo(player, CHANGES).length;
 			const added = await page.request.post("/__control/library", {
 				data: { add: 1 },
 			});
 			expect(added.ok(), "the fake adds a track").toBe(true);
 			await runClockUntil(
 				page,
-				() => requestsTo(player, CHANGES).length > changesBefore,
-				"Jean never asked for the change",
+				() => questionsTo(player, route) > asked,
+				`Jean never asked for the ${questionOf(route)} again`,
 			);
-			await untilAskedPast(player, route, asked);
 			await untilQuiet(player);
 
 			await expect(viewHeader(page)).toContainText(/\d+ tracks?\b/);
@@ -880,4 +878,118 @@ test.describe("a suggestion chosen from an answer the typing has moved past", ()
 			await untilQuiet(player);
 			expect(await searchField(page).inputValue()).toBe(query);
 		});
+});
+
+const MATCHES_APART = "the";
+
+type SearchAnswer = { matched: Parameters<typeof ordinalsOfSet>[0] };
+
+const matchedIn = async (answered: Answered[]) =>
+	ordinalsOfSet(
+		(
+			await latestAnswer<SearchAnswer>(
+				answered,
+				"GET /api/library/search",
+				(answer) =>
+					answer.params.get("query") === MATCHES_APART &&
+					(answer.json as SearchAnswer).matched !== null,
+			)
+		).matched,
+	);
+
+// The dropdown asks for its best tracks as the query is typed, before Enter opens the page, so
+// `opened` marks what the page itself asked.
+const typeTheSearch = async (page: Page, player: FakePlayer) => {
+	const answered = recordLibraryTraffic(page);
+	await openLibrary(page);
+	await revealSearch(page);
+	await searchField(page).fill(MATCHES_APART);
+	await expect(page.getByRole("option").first()).toBeVisible();
+	await untilQuiet(player);
+	const opened = mark(answered, player);
+	await searchField(page).press("Escape");
+	await searchField(page).press("Enter");
+	await expect(
+		page.getByRole("heading", { level: 1, name: MATCHES_APART }),
+	).toBeVisible();
+	return { answered, opened, matched: await matchedIn(answered) };
+};
+
+// By its route, with no dropdown asking rows ahead of it: one rows request is in flight at a time,
+// so a dropdown's held ask would keep the page from asking its own.
+const openTheResults = async (page: Page, player: FakePlayer) => {
+	const answered = recordLibraryTraffic(page);
+	await openHomeSettled(page, player);
+	await page.goto(`/#/${searchRoute(MATCHES_APART)}`);
+	await expect(
+		page.getByRole("heading", { level: 1, name: MATCHES_APART }),
+	).toBeVisible();
+	return { matched: await matchedIn(answered) };
+};
+
+test.describe("the results page's rows", () => {
+	test("are the ordinals the search matched, none the dropdown already holds asked again, and nothing else of the library is read", async ({
+		page,
+		player,
+	}) => {
+		const { answered, matched, opened } = await typeTheSearch(page, player);
+		expect(
+			matched.some((ordinal, at) => at > 0 && ordinal !== matched[at - 1] + 1),
+			"the matches are one run, so a list asking a window of the library would pass",
+		).toBe(true);
+
+		await expectTheSetCoveredOnce(answered, player, matched, opened);
+		await expect(page.getByRole("grid")).toHaveAttribute(
+			"aria-rowcount",
+			String(matched.length),
+		);
+		await expect(trackRow(page, 0)).toContainText(
+			String(player.ordinalOrder()[matched[0]].track["%title%"]),
+		);
+	});
+
+	test.describe("with the rows held", () => {
+		test.use({ fooJean: { holdRows: true } });
+
+		test("draw as skeletons and play by their position in the results", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			const { matched } = await openTheResults(page, player);
+			await untilRowsAreHeld(player, matched);
+
+			await expectPendingRowsPlayByPosition(page, player, isMobile, matched);
+		});
+	});
+});
+
+// The figures come with the matches, so the header has nothing to count, and
+// with the rows and the whole library held there is nothing on the page to count from.
+test.describe("the results page's header", () => {
+	test.use({ fooJean: NOTHING_TO_SUM });
+
+	test("draws the figures the search answer carries before any of its rows land", async ({
+		page,
+		player,
+	}) => {
+		const answered = recordLibraryTraffic(page);
+		await page.goto(`/#/${searchRoute(MATCHES_APART)}`);
+		await expect(
+			page.getByRole("heading", { level: 1, name: MATCHES_APART }),
+		).toBeVisible();
+		const { figures } = await latestAnswer<{ figures: SetFigures }>(
+			answered,
+			"GET /api/library/search",
+			(answer) =>
+				answer.params.get("query") === MATCHES_APART &&
+				(answer.json as SearchAnswer).matched !== null,
+		);
+		expect(figures.albumCount, "the matches are on one record").toBeGreaterThan(
+			1,
+		);
+
+		await expectTheFiguresOf(page, figures);
+		expectNoRowsLanded(player);
+	});
 });

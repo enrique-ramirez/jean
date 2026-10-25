@@ -1,3 +1,4 @@
+import { albumRoute } from "../../src/domain/track/routes.ts";
 import type { Page } from "./fixtures.ts";
 import {
 	expect,
@@ -429,5 +430,45 @@ test.describe("at library scale", () => {
 			await expectCentredOrClamped(page, FAR.index);
 			await expect(pill).toBeHidden();
 		});
+	});
+});
+
+// On a list with a set of its own the playing row is the playing track's place
+// in that set, read from the state's `libraryOrdinal` rather than found by a sweep of the whole
+// library's paths. The record is the last in the library, so its tracks' ordinals run from 41 and
+// none of them is a place on this page: a row lit at the ordinal itself is a row the page does not
+// have.
+test.describe("on an album's page", () => {
+	test.use({ settings: { "jean.followPlayback": false } });
+
+	const ALBUM = "Deathconsciousness";
+	const ARTIST = "Have a Nice Life";
+	const PLAYING = { row: 53, title: "Earthmover", place: 12 };
+
+	test("lights the playing track at its place in the record, the pill takes you there, and nothing reads the whole library", async ({
+		page,
+		player,
+	}) => {
+		await page.goto(`/#/${albumRoute(ARTIST, ALBUM)}`);
+		await expect(
+			page.getByRole("heading", { level: 1, name: ALBUM }),
+		).toBeVisible();
+		await expect(trackRow(page, 0)).toBeAttached();
+
+		player.playItem("p7", PLAYING.row);
+		await expect(statusBar(page)).toContainText(PLAYING.title);
+
+		const playing = trackRow(page, PLAYING.place);
+		await expect(playing).toContainText(PLAYING.title);
+		await expect(playing).toHaveAttribute("data-active", "true");
+		await expect(
+			page.locator('main [role="row"][data-active="true"]'),
+		).toHaveCount(1);
+
+		const pill = page.getByRole("button", { name: "Now playing" });
+		await expect(pill).toBeVisible();
+		await pill.click();
+		await settle(page);
+		await expectCentredOrClamped(page, PLAYING.place);
 	});
 });

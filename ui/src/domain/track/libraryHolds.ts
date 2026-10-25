@@ -1,5 +1,6 @@
 import type { ReadFailure, ReadFailureReason } from "@/shared/api/readFailure";
 import type { StateDocument } from "@/shared/api/state";
+import { TRACK_EXPRESSIONS } from "./fields";
 import type { LibraryGeneration } from "./playlistEntries";
 
 const LIBRARY_RETRY_MIN_MS = 5_000;
@@ -8,13 +9,16 @@ const LIBRARY_RETRY_MAX_MS = 60_000;
 export const retryWait = (failures: number) =>
 	Math.min(LIBRARY_RETRY_MIN_MS * 2 ** (failures - 1), LIBRARY_RETRY_MAX_MS);
 
+// Intervals are measured on the monotonic clock, which a stepped or frozen wall clock does not move.
+export const now = () => performance.now();
+
 export type Hold =
 	| { kind: "none" }
 	| { kind: "libraryReady" }
 	| { kind: "declaration" }
-	| { kind: "refused" }
+	| { kind: "refused"; detail?: string }
 	| { kind: "tooFast"; until: number }
-	| { kind: "failing"; failures: number; failedAt: number };
+	| { kind: "failing"; failures: number; failedAt: number; detail?: string };
 
 type AnnouncedLibrary = StateDocument["library"];
 
@@ -24,18 +28,26 @@ export interface Waiting {
 	announced: AnnouncedLibrary | null;
 }
 
-export const isDue = ({ hold }: Waiting) => {
+export const isDue = ({ hold }: Pick<Waiting, "hold">) => {
 	switch (hold.kind) {
 		case "none":
 			return true;
 		case "tooFast":
-			return Date.now() >= hold.until;
+			return now() >= hold.until;
 		case "failing":
-			return Date.now() - hold.failedAt >= retryWait(hold.failures);
+			return now() - hold.failedAt >= retryWait(hold.failures);
 		default:
 			return false;
 	}
 };
+
+const QUIET_MISSES = 2;
+
+export const isSaid = (misses: number, isDefinite = false) =>
+	isDefinite || misses >= QUIET_MISSES;
+
+export const isFailureSaid = (hold: Hold) =>
+	hold.kind === "refused" || (hold.kind === "failing" && isSaid(hold.failures));
 
 export const isWaitingOnTime = ({ hold }: Waiting) =>
 	hold.kind === "tooFast" || hold.kind === "failing";
@@ -44,6 +56,7 @@ export function holdAfter(
 	hold: Hold,
 	reason: ReadFailureReason,
 	retryAfterMs: number | null,
+	detail = "",
 ): Hold {
 	switch (reason) {
 		case "notReady":
@@ -51,17 +64,18 @@ export function holdAfter(
 		case "undeclared":
 			return { kind: "declaration" };
 		case "refused":
-			return { kind: "refused" };
+			return { kind: "refused", detail };
 		case "tooFast":
 			return {
 				kind: "tooFast",
-				until: Date.now() + (retryAfterMs ?? LIBRARY_RETRY_MIN_MS),
+				until: now() + (retryAfterMs ?? LIBRARY_RETRY_MIN_MS),
 			};
 		default:
 			return {
 				kind: "failing",
 				failures: (hold.kind === "failing" ? hold.failures : 0) + 1,
-				failedAt: Date.now(),
+				failedAt: now(),
+				detail,
 			};
 	}
 }
@@ -82,12 +96,15 @@ export function holdAfterResult(
 		waiting.hold = { kind: "none" };
 		return true;
 	}
-	waiting.hold = holdAfter(waiting.hold, result.reason, result.retryAfterMs);
+	waiting.hold = holdAfter(
+		waiting.hold,
+		result.reason,
+		result.retryAfterMs,
+		result.detail,
+	);
 	return false;
 }
 
-// foo_jean answers 409 for an expression no export has declared, and an export that lands at the pair
-// already asked declares them again.
 export function declaredAgain(waiting: Waiting) {
 	if (waiting.hold.kind !== "declaration") return false;
 	waiting.hold = { kind: "none" };
@@ -106,6 +123,14 @@ export function reportedReady(waiting: Waiting, library: AnnouncedLibrary) {
 	waiting.hold = { kind: "none" };
 	return true;
 }
+
+export const holdsDeclaration = (library: AnnouncedLibrary) =>
+	library.ready &&
+	library.columns.length === TRACK_EXPRESSIONS.length &&
+	TRACK_EXPRESSIONS.every((expression) => library.columns.includes(expression));
+
+export const isWaitingOnDeclaration = (hold: Hold) =>
+	hold.kind === "libraryReady" || hold.kind === "declaration";
 
 export interface LibraryWatcher {
 	exported: () => void;
@@ -127,15 +152,32 @@ export function watchLibrary(origin: string, watcher: LibraryWatcher) {
 	};
 }
 
+export const watchAnnounced = (
+	origin: string,
+	listener: (library: AnnouncedLibrary) => void,
+) =>
+	watchLibrary(origin, {
+		exported: () => {},
+		announced: listener,
+		answered: () => {},
+	});
+
+const lastAnnounced = new Map<string, AnnouncedLibrary>();
+
+export const announcedLibraryOf = (origin: string) =>
+	lastAnnounced.get(origin) ?? null;
+
 export const libraryEvents = {
 	exported: (origin: string) =>
 		[...(watchers.get(origin) ?? [])].forEach((one) => {
 			one.exported();
 		}),
-	announced: (origin: string, library: AnnouncedLibrary) =>
+	announced: (origin: string, library: AnnouncedLibrary) => {
+		lastAnnounced.set(origin, library);
 		[...(watchers.get(origin) ?? [])].forEach((one) => {
 			one.announced(library);
-		}),
+		});
+	},
 	answered: (origin: string) =>
 		[...(watchers.get(origin) ?? [])].forEach((one) => {
 			one.answered();

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-
+import { type JlibColumn, unloadedColumn } from "@/shared/api/jlib";
 import {
 	readStoredState,
 	writeStoredState,
@@ -43,8 +43,10 @@ const storedNamesFor = (mask: number): string[] =>
 		.filter((field) => (mask & (1 << field)) !== 0)
 		.map((field) => TRACK_EXPRESSIONS[field]);
 
-let resolved = maskFromStoredNames(readStoredState<unknown>(STORAGE_KEY, null));
+const stored = readStoredState<unknown>(STORAGE_KEY, null);
+let resolved = maskFromStoredNames(stored);
 let answer = answerFor(resolved);
+let areKnown = stored !== null;
 
 export function recordFieldAvailability(columns: LibraryColumns) {
 	const next = Object.values(FIELD).reduce(
@@ -52,7 +54,12 @@ export function recordFieldAvailability(columns: LibraryColumns) {
 			resolvesAnywhere(columns, field) ? mask | (1 << field) : mask,
 		NEVER_HIDDEN,
 	);
-	if (next === resolved) return;
+	const wasKnown = areKnown;
+	areKnown = true;
+	if (next === resolved) {
+		if (!wasKnown) listeners.notify();
+		return;
+	}
 
 	resolved = next;
 	answer = answerFor(next);
@@ -60,5 +67,26 @@ export function recordFieldAvailability(columns: LibraryColumns) {
 	listeners.notify();
 }
 
+const UNDECLARED = unloadedColumn({
+	distinct: 0,
+	hasUnresolved: true,
+	allUnresolved: true,
+});
+
+export function recordWindowAvailability(
+	columns: ReadonlyMap<string, JlibColumn>,
+) {
+	recordFieldAvailability({
+		load: columns,
+		trackCount: 0,
+		fields: TRACK_EXPRESSIONS.map(
+			(expression) => columns.get(expression) ?? UNDECLARED,
+		),
+	});
+}
+
 export const useAvailableFields = () =>
 	useSyncExternalStore(listeners.subscribe, () => answer);
+
+export const useFieldFactsKnown = () =>
+	useSyncExternalStore(listeners.subscribe, () => areKnown);

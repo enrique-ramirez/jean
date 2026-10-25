@@ -5,6 +5,7 @@ import {
 	useEffectEvent,
 	useLayoutEffect,
 	useRef,
+	useState,
 } from "react";
 import { useDebounced } from "@/shared/hooks/useDebounced";
 import { useEarnedHover } from "@/shared/hooks/useEarnedHover";
@@ -33,7 +34,7 @@ export function Finder({
 	rows: TrackRows;
 	label: string;
 	results: number[];
-	matches: Set<number> | null;
+	matches: Int32Array | null;
 	query: string;
 	onQueryChange: (query: string) => void;
 	onPreview: (index: number) => void;
@@ -48,6 +49,7 @@ export function Finder({
 	const preview = useEffectEvent((index: number) => onPreview(index));
 
 	const navigatedFor = useRef<string | null>(null);
+	const [steps, setSteps] = useState(0);
 
 	const aimedAt = useEarnedHover(results);
 
@@ -56,10 +58,11 @@ export function Finder({
 	// letters scrambled.
 	const previewIndex = results[debouncedActive];
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a step fires this rather than being read in it, so stepping with one match, where the active index does not move, still reaches it.
 	useEffect(() => {
 		if (navigatedFor.current !== query) return;
 		if (previewIndex !== undefined) preview(previewIndex);
-	}, [previewIndex, query]);
+	}, [previewIndex, query, steps]);
 
 	const revealActive = useRef(false);
 
@@ -80,6 +83,7 @@ export function Finder({
 	const step = (delta: number) => {
 		if (results.length === 0) return;
 		navigatedFor.current = query;
+		setSteps((count) => count + 1);
 		// Only a key scrolls: scrolling under a stationary pointer fires mouseenter, which moves the
 		// cursor, which scrolls again.
 		revealActive.current = true;
@@ -114,9 +118,9 @@ export function Finder({
 						<span role="status" className={matches ? styles.count : undefined}>
 							{matches ? (
 								<>
-									<span aria-hidden="true">{matches.size}</span>
+									<span aria-hidden="true">{matches.length}</span>
 									<span className="visually-hidden">
-										{t("finder.matches", { count: matches.size })}
+										{t("finder.matches", { count: matches.length })}
 									</span>
 								</>
 							) : null}

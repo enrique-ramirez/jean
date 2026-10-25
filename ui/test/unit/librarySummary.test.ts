@@ -3,18 +3,13 @@ import test, { mock, type TestContext } from "node:test";
 
 import {
 	atStructure,
+	keepAsking,
 	subscribeSummary,
 	summaryOf,
 } from "../../src/domain/library/useLibrarySummary.ts";
 import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
-import {
-	libraryPollFollower,
-	loadComponentLibrary,
-} from "../../src/domain/track/libraryLoader.ts";
-import {
-	playlistSnapshot,
-	subscribePlaylist,
-} from "../../src/domain/track/playlistEntries.ts";
+import { libraryPollFollower } from "../../src/domain/track/libraryFollower.ts";
+import { libraryEvents } from "../../src/domain/track/libraryHolds.ts";
 import type { LibrarySummary } from "../../src/shared/api/librarySummary.ts";
 import type { StateDocument } from "../../src/shared/api/state.ts";
 import { createState } from "../fake-api/state.ts";
@@ -93,7 +88,19 @@ const summaryAt = (structure: number, revision: number): LibrarySummary => ({
 			cover: ALBUM.cover,
 		},
 	],
-	shelves: [{ id: "added", albums: [ALBUM] }],
+	shelves: [
+		{
+			id: "added",
+			albums: [ALBUM],
+			figures: {
+				albumCount: 1,
+				trackCount: 3,
+				seconds: 600,
+				earliestYear: 1999,
+				latestYear: 1999,
+			},
+		},
+	],
 });
 
 type SummaryAnswer =
@@ -121,18 +128,15 @@ interface SummaryPlayer {
 	state: FakeState;
 	answers: SummaryAnswer[];
 	summaries: URL[];
-	exportsAsked: number;
-	changesAsked: number;
-	changesFailures: number;
 }
 
 const libraryOf = (state: FakeState): Library => ({
 	ready: true,
 	structure: state.libraryFeed.structure,
 	revision: state.libraryFeed.revision,
-	snapshotId: state.librarySnapshotId(),
 	trackCount: state.libraryTracks.length,
 	columns: [...state.libraryFeed.columns],
+	changeCounts: state.libraryChangeCounts(),
 	build: null,
 	halted: false,
 });
@@ -167,23 +171,6 @@ const answerSummary = (player: SummaryPlayer, answer: SummaryAnswer) => {
 	}
 };
 
-const answerChanges = (player: SummaryPlayer, url: URL) => {
-	player.changesAsked += 1;
-	if (player.changesFailures > 0) {
-		player.changesFailures -= 1;
-		return Promise.resolve(new Response(null, { status: 500 }));
-	}
-	const changes = player.state.libraryChanges(
-		Number(url.searchParams.get("since")),
-		Number(url.searchParams.get("structure")),
-	);
-	return Promise.resolve(
-		changes.status === 200
-			? new Response(changes.bytes)
-			: Response.json({ error: changes.outcome }, { status: changes.status }),
-	);
-};
-
 const summaryPlayer = (
 	t: TestContext,
 	answers: SummaryAnswer[],
@@ -197,14 +184,13 @@ const summaryPlayer = (
 		state,
 		answers,
 		summaries: [],
-		exportsAsked: 0,
-		changesAsked: 0,
-		changesFailures: 0,
 	};
 
 	const realFetch = globalThis.fetch;
 	mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+	const clock = mock.method(performance, "now", () => Date.now());
 	t.after(() => {
+		clock.mock.restore();
 		mock.timers.reset();
 		globalThis.fetch = realFetch;
 	});
@@ -212,11 +198,6 @@ const summaryPlayer = (
 	globalThis.fetch = ((input: Request | URL | string) => {
 		const url = new URL(input instanceof Request ? input.url : String(input));
 		switch (url.pathname) {
-			case "/api/library/export":
-				player.exportsAsked += 1;
-				return Promise.resolve(new Response(state.libraryExport()));
-			case "/api/library/changes":
-				return answerChanges(player, url);
 			case "/api/library/summary": {
 				const at = Math.min(player.summaries.length, player.answers.length - 1);
 				player.summaries.push(url);
@@ -237,14 +218,6 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 const settle = async () => {
 	for (let step = 0; step < SETTLE_STEPS; step += 1) await flush();
-};
-
-const readLibrary = async (t: TestContext, origin: string) => {
-	const key = loadComponentLibrary(origin);
-	t.after(subscribePlaylist(key, () => {}));
-	t.after(subscribeSummary(origin, () => {}));
-	await settle();
-	return key;
 };
 
 const advanceTo = async (at: number) => {
@@ -272,6 +245,16 @@ const announce = async (
 	await settle();
 };
 
+const openWithTheLibrary = async (
+	t: TestContext,
+	origin: string,
+	player: SummaryPlayer,
+) => {
+	t.after(keepAsking(origin, false));
+	t.after(subscribeSummary(origin, () => {}));
+	await announce(origin, player);
+};
+
 const movePlayCount = (player: SummaryPlayer) =>
 	player.state.countPlay(player.state.libraryTracks[0]);
 
@@ -280,11 +263,11 @@ const rebuild = (player: SummaryPlayer) => {
 	player.state.finishLibraryBuild();
 };
 
-test("the summary is asked once when the library lands, naming every role by the expression the library declares for it", async (t) => {
+test("the summary is asked once the poll announces the library, naming every role by the expression the library declares for it", async (t) => {
 	const origin = summaryOrigin();
 	const player = summaryPlayer(t, [DOCUMENT]);
 	const landedAt = pairOf(player.state);
-	await readLibrary(t, origin);
+	await openWithTheLibrary(t, origin, player);
 
 	assert.equal(player.summaries.length, 1);
 	const { searchParams } = player.summaries[0];
@@ -312,7 +295,7 @@ test("a pair moved asks for the summary once more, and the previous document is 
 	const next = held();
 	const player = summaryPlayer(t, [DOCUMENT, next.answer]);
 	const first = pairOf(player.state);
-	await readLibrary(t, origin);
+	await openWithTheLibrary(t, origin, player);
 	const read: (number | undefined)[] = [];
 	t.after(
 		subscribeSummary(origin, () => read.push(summaryOf(origin)?.revision)),
@@ -322,7 +305,6 @@ test("a pair moved asks for the summary once more, and the previous document is 
 	const moved = pairOf(player.state);
 	assert.notEqual(moved.revision, first.revision);
 	await announce(origin, player);
-	assert.equal(player.changesAsked, 1, "the library never asked for the delta");
 
 	assert.equal(player.summaries.length, 2);
 	assert.deepEqual(
@@ -352,24 +334,21 @@ test("a document kept across a rebuild gives no rows at the rebuilt structure un
 	const next = held();
 	const player = summaryPlayer(t, [DOCUMENT, next.answer]);
 	const first = pairOf(player.state);
-	const key = await readLibrary(t, origin);
+	await openWithTheLibrary(t, origin, player);
 
 	rebuild(player);
 	const rebuilt = pairOf(player.state);
 	await announce(origin, player);
-	assert.equal(playlistSnapshot(key).structure, rebuilt.structure);
+	assert.notEqual(rebuilt.structure, first.structure);
 	assert.equal(player.summaries.length, 2);
 
 	assert.equal(summaryOf(origin)?.structure, first.structure);
-	assert.equal(
-		atStructure(summaryOf(origin), playlistSnapshot(key).structure),
-		null,
-	);
+	assert.equal(atStructure(summaryOf(origin), rebuilt.structure), null);
 
 	next.release();
 	await settle();
 	assert.deepEqual(
-		atStructure(summaryOf(origin), playlistSnapshot(key).structure),
+		atStructure(summaryOf(origin), rebuilt.structure),
 		summaryAt(rebuilt.structure, rebuilt.revision),
 	);
 });
@@ -386,7 +365,7 @@ test("a summary answered 500 is asked again on the first answered tick 5 s later
 	const origin = summaryOrigin();
 	const player = summaryPlayer(t, [answeredWith(500), DOCUMENT]);
 	const pair = pairOf(player.state);
-	await readLibrary(t, origin);
+	await openWithTheLibrary(t, origin, player);
 	assert.equal(player.summaries.length, 1);
 	assert.equal(summaryOf(origin), null);
 
@@ -413,7 +392,7 @@ test("each further 500, 503 or unreachable doubles the wait before the summary i
 		UNREACHABLE,
 		answeredWith(500),
 	]);
-	await readLibrary(t, origin);
+	await openWithTheLibrary(t, origin, player);
 	assert.equal(player.summaries.length, 1);
 
 	const waits = [5_000, 10_000, 20_000, 40_000, 60_000, 60_000];
@@ -440,7 +419,7 @@ for (const status of [400, 413]) {
 	test(`a summary refused with ${status} is not asked again at the same pair, and is asked once when the pair moves`, async (t) => {
 		const origin = summaryOrigin();
 		const player = summaryPlayer(t, [answeredWith(status), DOCUMENT]);
-		await readLibrary(t, origin);
+		await openWithTheLibrary(t, origin, player);
 
 		for (const at of [RETRY_MIN_MS, RETRY_MAX_MS, 2 * RETRY_MAX_MS])
 			await tickAt(origin, at);
@@ -465,7 +444,7 @@ test("a summary answered 202 is asked again when the poll reports the library re
 	const origin = summaryOrigin();
 	const player = summaryPlayer(t, [answeredWith(202), DOCUMENT]);
 	const pair = pairOf(player.state);
-	await readLibrary(t, origin);
+	await openWithTheLibrary(t, origin, player);
 
 	for (const at of [RETRY_MIN_MS, RETRY_MAX_MS, 2 * RETRY_MAX_MS])
 		await tickAt(origin, at);
@@ -491,7 +470,7 @@ test("a summary answered 429 is asked again once its Retry-After has passed, and
 		DOCUMENT,
 	]);
 	const pair = pairOf(player.state);
-	await readLibrary(t, origin);
+	await openWithTheLibrary(t, origin, player);
 
 	await tickAt(origin, 1_999);
 	assert.equal(
@@ -505,21 +484,21 @@ test("a summary answered 429 is asked again once its Retry-After has passed, and
 	assert.deepEqual(summaryOf(origin), summaryAt(pair.structure, pair.revision));
 });
 
-test("a summary answered 409 is asked again once the export has declared again, and not on ticks", async (t) => {
+test("a summary answered 409 is asked again once a rows answer has declared again, and not on ticks", async (t) => {
 	const origin = summaryOrigin();
 	const player = summaryPlayer(t, [answeredWith(409), DOCUMENT]);
 	const pair = pairOf(player.state);
-	await readLibrary(t, origin);
+	await openWithTheLibrary(t, origin, player);
 
 	for (const at of [RETRY_MIN_MS, RETRY_MAX_MS, 2 * RETRY_MAX_MS])
 		await tickAt(origin, at);
 	assert.equal(player.summaries.length, 1, "asked again before a declaration");
 
-	player.changesFailures = 1;
-	await announce(origin, player, { structure: pair.structure + 1 });
-	assert.equal(player.exportsAsked, 2, "the library never exported again");
-	assert.deepEqual(pairOf(player.state), pair);
+	await announce(origin, player);
+	assert.equal(player.summaries.length, 1, "asked again on a report alone");
 
+	libraryEvents.exported(origin);
+	await settle();
 	assert.equal(player.summaries.length, 2);
 	assert.deepEqual(summaryOf(origin), summaryAt(pair.structure, pair.revision));
 });

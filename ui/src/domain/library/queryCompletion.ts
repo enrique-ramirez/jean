@@ -1,6 +1,6 @@
 import { fold } from "@/shared/lib/text";
 
-type ValueField = "artist" | "album artist" | "album" | "genre";
+export type ValueField = "artist" | "album artist" | "album" | "genre";
 export type ValueSource = Readonly<Record<ValueField, readonly string[]>>;
 
 export interface Suggestion {
@@ -207,11 +207,7 @@ function suggest(
 	}
 }
 
-export function completionsAt(
-	text: string,
-	caret: number,
-	values: ValueSource,
-): Completion {
+function stateAt(text: string, caret: number) {
 	const head = text.slice(0, caret);
 	const tokens = tokenize(head);
 	const last = tokens.at(-1);
@@ -220,15 +216,33 @@ export function completionsAt(
 			? last
 			: undefined;
 	const finished = partial ? tokens.slice(0, -1) : tokens;
-	const from = partial ? partial.start : caret;
-	const prefix = fold(partial?.text ?? "");
 
 	let state: State = { at: "field" };
 	for (const token of finished) state = advance(state, token, head);
 
+	return { state, partial, from: partial ? partial.start : caret };
+}
+
+export function completionsAt(
+	text: string,
+	caret: number,
+	values: ValueSource,
+): Completion {
+	const { state, partial, from } = stateAt(text, caret);
+
 	return {
 		from,
 		to: caret,
-		suggestions: suggest(state, prefix, values),
+		suggestions: suggest(state, fold(partial?.text ?? ""), values),
 	};
+}
+
+export type ValueWant = { field: ValueField; prefix: string };
+
+// foo_jean folds the prefix itself, so it is asked for as typed.
+export function valueWantedAt(text: string, caret: number): ValueWant | null {
+	const { state, partial } = stateAt(text, caret);
+	return state.at === "value" && state.field
+		? { field: state.field, prefix: partial?.text ?? "" }
+		: null;
 }

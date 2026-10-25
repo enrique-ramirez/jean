@@ -22,6 +22,13 @@ import {
 	untilTheInstallIsKnown,
 	viewHeader,
 } from "./fixtures.ts";
+import {
+	expectPendingRowsPlayByPosition,
+	expectTheSetAskedOnce,
+	latestAnswer,
+	recordLibraryTraffic,
+	untilRowsAreHeld,
+} from "./libraryLists.ts";
 import { scrollUntilMounted } from "./scrolling.ts";
 
 // Recently played has a heading of its own. Every other shelf is inside
@@ -1236,5 +1243,62 @@ test.describe("a shelf's page", () => {
 		await inSequence(titles.slice(0, 10), (title: string, at: number) =>
 			expect(trackRow(page, at)).toContainText(title),
 		);
+	});
+});
+
+type SummaryAnswer = {
+	shelves: { id: string; albums: { ordinals: number[] }[] }[];
+};
+
+const MOST_PLAYED = "top";
+
+const openTheShelf = async (page: Page) => {
+	const answered = recordLibraryTraffic(page);
+	await page.goto(`/#/${shelfRoute(MOST_PLAYED)}`);
+	await expect(
+		page.getByRole("heading", { level: 1, name: "Most played" }),
+	).toBeVisible();
+	const summary = await latestAnswer<SummaryAnswer>(
+		answered,
+		"GET /api/library/summary",
+	);
+	const shelf = summary.shelves.find((one) => one.id === MOST_PLAYED);
+	expect(shelf, "the summary carries no Most played shelf").toBeDefined();
+	const ordinals = (shelf?.albums ?? [])
+		.flatMap((album) => album.ordinals)
+		.sort((a, b) => a - b);
+	return { answered, ordinals };
+};
+
+test.describe("a shelf page's rows", () => {
+	test("are its albums' ordinals, asked in one body, and nothing else of the library is read", async ({
+		page,
+		player,
+	}) => {
+		const { answered, ordinals } = await openTheShelf(page);
+
+		await expectTheSetAskedOnce(answered, player, ordinals);
+		await expect(page.getByRole("grid")).toHaveAttribute(
+			"aria-rowcount",
+			String(ordinals.length),
+		);
+		await expect(trackRow(page, 0)).toContainText(
+			String(player.ordinalOrder()[ordinals[0]].track["%title%"]),
+		);
+	});
+
+	test.describe("with the rows held", () => {
+		test.use({ fooJean: { holdRows: true } });
+
+		test("draw as skeletons and play by their position on the shelf's page", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			const { ordinals } = await openTheShelf(page);
+			await untilRowsAreHeld(player, ordinals);
+
+			await expectPendingRowsPlayByPosition(page, player, isMobile, ordinals);
+		});
 	});
 });

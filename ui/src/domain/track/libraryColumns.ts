@@ -26,22 +26,6 @@ export const someFieldMoved = (
 	after: LibraryColumns,
 ) => fields.some((field) => before.fields[field] !== after.fields[field]);
 
-export function rowsMoved(
-	fields: readonly number[],
-	before: LibraryColumns,
-	after: LibraryColumns,
-): number[] {
-	const moved = new Set<number>();
-	for (const field of fields) {
-		const was = before.fields[field];
-		const now = after.fields[field];
-		if (was === now) continue;
-		for (let ref = 0; ref < now.ids.length; ref += 1)
-			if (was.ids[ref] !== now.ids[ref]) moved.add(ref);
-	}
-	return [...moved].sort((a, b) => a - b);
-}
-
 export function* byValueSteps<T>(
 	column: JlibColumn,
 	of: (raw: string) => T,
@@ -96,7 +80,7 @@ function interned(): Interned {
 		column: (length) =>
 			jlibColumn(
 				ids.subarray(0, length),
-				{ count: values.length, of: (id) => values[id], appended: [] },
+				{ count: values.length, of: (id) => values[id] },
 				{
 					distinct: values.length,
 					hasUnresolved: byText.has(UNRESOLVED),

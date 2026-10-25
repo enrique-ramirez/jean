@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { ScratchKind } from "@/domain/track/jeanPlaylists";
-import type { Refs } from "@/domain/track/project";
+import type { LibrarySource } from "@/domain/track/librarySource";
+import { type Refs, wholeRefs } from "@/domain/track/project";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useActivePosition } from "./useActivePosition";
 import type { Library } from "./useLibrary";
@@ -8,16 +9,20 @@ import { usePlaySet } from "./usePlaySet";
 
 export function useViewPlayback({
 	library,
+	source = library.source,
 	playlists,
 	kind,
 	label,
 	indices,
+	length = indices?.length ?? 0,
 }: {
 	library: Library;
+	source?: Extract<LibrarySource, { kind: "library" }>;
 	playlists: PlaylistInfo[];
 	kind: ScratchKind;
 	label: string | null;
-	indices: Refs;
+	indices: Refs | null;
+	length?: number;
 }): {
 	playAt: (position: number) => Promise<unknown>;
 	activeIndex: number;
@@ -25,20 +30,26 @@ export function useViewPlayback({
 	holdsThisView: boolean;
 	canPlaySets: boolean;
 } {
-	const { play, scratch, canPlaySets } = usePlaySet({ library, playlists });
+	const { play, scratch, canPlaySets } = usePlaySet({ source, playlists });
 
-	const holdsThisView = scratch.holdsView(kind, label, indices.length);
+	const holdsThisView = scratch.holdsView(kind, label, length);
 
 	const activeIndex = useActivePosition({
-		source: library.source,
+		source,
 		indices,
 		scratch,
 		holdsThisView,
 	});
 
 	const playAt = useCallback(
-		(position: number) => play({ kind, label, refs: indices, position }),
-		[play, kind, label, indices],
+		(position: number) =>
+			play({
+				kind,
+				label,
+				refs: indices ?? wholeRefs(length),
+				position,
+			}),
+		[play, kind, label, indices, length],
 	);
 
 	return {

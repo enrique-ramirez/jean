@@ -5,40 +5,16 @@ import {
 	libraryStatusOf,
 	readingNotice,
 } from "../../src/domain/library/libraryStatus.ts";
-import {
-	EMPTY_PLAYLIST,
-	type PlaylistSnapshot,
-} from "../../src/domain/track/playlistEntries.ts";
+import { TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
+import type { Hold } from "../../src/domain/track/libraryHolds.ts";
 import type { FooJeanDiscovery } from "../../src/shared/api/discovery.ts";
-import type { LibraryFailure } from "../../src/shared/api/fooJeanLibrary.ts";
+import type { StateDocument } from "../../src/shared/api/state.ts";
 import type { Translate } from "../../src/shared/i18n/useTranslate.ts";
+
+type Announced = StateDocument["library"];
 
 const said = ((key: string, fields?: Record<string, unknown>) =>
 	fields ? `${key} ${JSON.stringify(fields)}` : key) as Translate;
-
-const reading = { kind: "reading", loaded: 40, total: 900 } as const;
-
-test("before anything has loaded, the reading notice is the plain phrase", () => {
-	assert.equal(
-		readingNotice({ kind: "checking" }, "library.reading", said),
-		"library.reading",
-	);
-	assert.equal(
-		readingNotice({ ...reading, loaded: 0 }, "home.reading", said),
-		"home.reading",
-	);
-});
-
-test("once rows arrive, the library counts them and a search words it its own way", () => {
-	assert.equal(
-		readingNotice(reading, "library.reading", said),
-		'library.readingCount {"loaded":40,"total":900,"count":900}',
-	);
-	assert.equal(
-		readingNotice(reading, "library.reading", said, "search.reading"),
-		'search.reading {"loaded":40,"total":900}',
-	);
-});
 
 const UNREACHABLE: FooJeanDiscovery = {
 	state: { kind: "unreachable" },
@@ -51,61 +27,100 @@ const discovered = (canReadLibrary: boolean) =>
 		origin: "http://player",
 	}) as FooJeanDiscovery;
 
-const LOADED: PlaylistSnapshot = { ...EMPTY_PLAYLIST, loaded: 54, total: 54 };
-
-const TOO_LARGE: LibraryFailure = {
-	ok: false,
-	reason: "too-large",
-	detail: "",
+const READY: Announced = {
+	ready: true,
+	structure: 4,
+	revision: 9,
+	trackCount: 54,
+	columns: [...TRACK_EXPRESSIONS],
+	changeCounts: TRACK_EXPRESSIONS.map(() => 0),
+	build: null,
+	halted: false,
 };
 
-test("the library is being checked for until discovery answers, whatever is already held", () => {
-	assert.deepEqual(libraryStatusOf(null, LOADED), { kind: "checking" });
+const BUILDING: Announced = {
+	...READY,
+	ready: false,
+	trackCount: 0,
+	columns: [],
+	build: { phase: "formatting", formatted: 40, total: 900 },
+} as Announced;
+
+const NONE: Hold = { kind: "none" };
+const MISSED_ONCE: Hold = { kind: "failing", failures: 1, failedAt: 0 };
+const FAILING: Hold = { kind: "failing", failures: 2, failedAt: 0 };
+const REFUSED: Hold = { kind: "refused" };
+
+test("the library is being checked for until discovery answers, whatever the player announced", () => {
+	assert.deepEqual(libraryStatusOf(null, READY, NONE), { kind: "checking" });
 });
 
-test("a player that cannot be reached, or cannot read a library, outranks the rows and a failure to read them", () => {
-	const failed: PlaylistSnapshot = { ...LOADED, failure: TOO_LARGE };
+test("a player that cannot be reached, or cannot read a library, outranks a failure to read it", () => {
+	const halted = { ...READY, halted: true };
 
-	assert.deepEqual(libraryStatusOf(UNREACHABLE, failed), {
+	assert.deepEqual(libraryStatusOf(UNREACHABLE, halted, FAILING), {
 		kind: "unreachable",
 	});
-	assert.deepEqual(libraryStatusOf(discovered(false), failed), {
+	assert.deepEqual(libraryStatusOf(discovered(false), halted, FAILING), {
 		kind: "olderPlayer",
 	});
 });
 
-test("a failed read is reported with its reason, even while a retry is loading", () => {
-	assert.deepEqual(
-		libraryStatusOf(discovered(true), {
-			...LOADED,
-			isLoading: true,
-			failure: TOO_LARGE,
-		}),
-		{ kind: "failed", failure: TOO_LARGE },
-	);
+test("a halted library, a refusal and a failure are each reported with their own reason", () => {
+	const reasonOf = (announced: Announced, hold: Hold) => {
+		const status = libraryStatusOf(discovered(true), announced, hold);
+		return status.kind === "failed" ? status.failure.reason : status.kind;
+	};
+
+	assert.equal(reasonOf({ ...READY, halted: true }, NONE), "halted");
+	assert.equal(reasonOf(READY, REFUSED), "refused");
+	assert.equal(reasonOf(READY, FAILING), "failed");
 });
 
-test("the library reads as reading before a load has published and while one is under way, with how far it has got", () => {
-	assert.deepEqual(libraryStatusOf(discovered(true), EMPTY_PLAYLIST), {
+test("a read that missed once says nothing while its retry is out, before the library is announced and after", () => {
+	assert.deepEqual(libraryStatusOf(discovered(true), null, MISSED_ONCE), {
 		kind: "reading",
 		loaded: 0,
 		total: 0,
 	});
-	assert.deepEqual(
-		libraryStatusOf(discovered(true), {
-			...LOADED,
-			isLoading: true,
-			loaded: 20,
-		}),
-		{ kind: "reading", loaded: 20, total: 54 },
+	assert.deepEqual(libraryStatusOf(discovered(true), READY, MISSED_ONCE), {
+		kind: "ready",
+	});
+});
+
+test("the library reads as reading until the player announces it ready with Jean's declaration", () => {
+	const kindOf = (announced: Announced | null) =>
+		libraryStatusOf(discovered(true), announced, NONE).kind;
+
+	assert.equal(kindOf(null), "reading");
+	assert.equal(kindOf(BUILDING), "reading");
+	assert.equal(
+		kindOf({ ...READY, columns: TRACK_EXPRESSIONS.slice(1) }),
+		"reading",
 	);
 });
 
-test("a published load that is not loading is ready, an empty library included", () => {
-	assert.deepEqual(libraryStatusOf(discovered(true), LOADED), {
+test("a library announced ready with Jean's declaration is ready, an empty one included", () => {
+	assert.deepEqual(libraryStatusOf(discovered(true), READY, NONE), {
 		kind: "ready",
 	});
-	assert.deepEqual(libraryStatusOf(discovered(true), { ...EMPTY_PLAYLIST }), {
-		kind: "ready",
-	});
+	assert.deepEqual(
+		libraryStatusOf(discovered(true), { ...READY, trackCount: 0 }, NONE),
+		{ kind: "ready" },
+	);
+});
+
+test("while the library is checked for or the player builds it, the notice says it is reading your library", () => {
+	assert.equal(
+		readingNotice({ kind: "checking" }, "library.reading", said),
+		"library.reading",
+	);
+	assert.equal(
+		readingNotice(
+			libraryStatusOf(discovered(true), null, NONE),
+			"home.reading",
+			said,
+		),
+		"home.reading",
+	);
 });

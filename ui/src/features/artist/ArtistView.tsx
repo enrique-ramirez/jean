@@ -10,26 +10,28 @@ import {
 } from "@/domain/library/libraryStatus";
 import { QuestionFailure } from "@/domain/library/QuestionFailure";
 import type { QuestionFailed } from "@/domain/library/questionFailed";
-import type { Library } from "@/domain/library/useLibrary";
+import {
+	type Library,
+	useSetRows,
+	useWatchedWhole,
+} from "@/domain/library/useLibrary";
 import { byWait, type Wait } from "@/domain/library/useOverdue";
 import {
 	useCanControlPlayback,
 	whenControllable,
 } from "@/domain/player/usePlaybackControl";
-import { albumsOf } from "@/domain/track/albums";
 import { useAvailableFields } from "@/domain/track/fieldAvailability";
-import { CREDIT_TAGS, FIELD, titleOf, value } from "@/domain/track/fields";
+import { FIELD, titleOf, value } from "@/domain/track/fields";
 import { LibraryCards } from "@/domain/track/LibraryCards";
-import { isLoaded } from "@/domain/track/libraryColumns";
-import {
-	EMPTY_VIEW,
-	project,
-	type Refs,
-	type TrackView,
-} from "@/domain/track/project";
+import type { Refs } from "@/domain/track/project";
 import { type ArtistTab, albumRoute, href } from "@/domain/track/routes";
-import { summarise } from "@/domain/track/stats";
+import { statsOfFigures } from "@/domain/track/stats";
 import { ViewHeader } from "@/domain/track/ViewHeader";
+import { libraryArtworkUrl } from "@/shared/api/artwork";
+import type {
+	AlbumRecord,
+	ArtistAnswered,
+} from "@/shared/api/libraryQuestions";
 import { useDeferredPress } from "@/shared/hooks/useDeferredPress";
 import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
@@ -38,18 +40,6 @@ import { Artwork } from "@/shared/ui/Artwork";
 import { Button } from "@/shared/ui/Button";
 import { BusyNote, busyProps, Skeleton } from "@/shared/ui/Skeleton";
 import styles from "./ArtistView.module.css";
-
-const inLibrarySpace = (refs: Refs, view: TrackView) =>
-	Int32Array.from(refs, (at) => view.indices[at]);
-
-const recordsOf = (view: TrackView | null) =>
-	view
-		? albumsOf(view)
-				.map((album) => ({ ...album, refs: inLibrarySpace(album.refs, view) }))
-				.sort((a, b) => (b.year ?? 0) - (a.year ?? 0))
-		: [];
-
-type AlbumRecord = ReturnType<typeof recordsOf>[number];
 
 const PLACEHOLDER_RECORDS = 6;
 
@@ -83,12 +73,12 @@ export type SlideDirection = 1 | -1 | 0;
 function Records({
 	heading,
 	records,
-	library,
+	origin,
 	showsCredit,
 }: {
 	heading: string;
 	records: AlbumRecord[];
-	library: Library;
+	origin: string | null;
 	showsCredit: boolean;
 }) {
 	const t = useTranslate();
@@ -100,20 +90,20 @@ function Records({
 			<div className={styles.records}>
 				{records.map((album) => (
 					<a
-						key={album.key}
+						key={`${album.artist}\n${album.album}`}
 						className={styles.record}
-						href={href(albumRoute(album.artistTag, album.album))}
+						href={href(albumRoute(album.artist, album.album))}
 					>
 						<span className={styles.sleeve}>
 							<Artwork
-								src={library.source.artworkUrl(album.refs[0])}
+								src={libraryArtworkUrl(origin, album.cover)}
 								size="100%"
 								className={styles.cover}
 							/>
 						</span>
 						<span className={styles.recordTitle}>{album.album}</span>
-						{showsCredit && album.artistTag ? (
-							<span className={styles.recordMeta}>{album.artistTag}</span>
+						{showsCredit && album.artist ? (
+							<span className={styles.recordMeta}>{album.artist}</span>
 						) : null}
 						<span className={styles.recordMeta}>
 							{album.year ? (
@@ -137,6 +127,7 @@ export function ArtistView({
 	name,
 	library,
 	tracks,
+	answered,
 	wait,
 	failure,
 	tab,
@@ -151,6 +142,7 @@ export function ArtistView({
 	name: string;
 	library: Library;
 	tracks: ArtistTracks;
+	answered: ArtistAnswered | null;
 	wait: Wait;
 	failure: QuestionFailed | null;
 	tab: ArtistTab;
@@ -165,36 +157,30 @@ export function ArtistView({
 	const t = useTranslate();
 	const say = useSpoken();
 	const canControlPlayback = useCanControlPlayback();
-	const { snapshot } = library;
-	const isSplitting = !isLoaded(snapshot.columns, CREDIT_TAGS);
+	const { status } = library;
+	const isReading = isLibraryReading(status);
+	const isAwaiting = isReading || wait.isWaiting;
 
-	const own = useMemo(
-		() => project(snapshot, tracks.own) ?? null,
-		[snapshot, tracks.own],
-	);
-	const shared = useMemo(
-		() => project(snapshot, tracks.shared) ?? null,
-		[snapshot, tracks.shared],
-	);
-	const guest = useMemo(
-		() => project(snapshot, tracks.guest) ?? null,
-		[snapshot, tracks.guest],
-	);
-
-	const isAwaiting = isSplitting || wait.isWaiting;
 	const stats = useMemo(
-		() => (isAwaiting ? null : summarise(own ?? EMPTY_VIEW)),
-		[own, isAwaiting],
+		() => (answered ? statsOfFigures(answered.figures) : null),
+		[answered],
 	);
 
-	const discography = useMemo(() => recordsOf(own), [own]);
-	const withOthers = useMemo(() => recordsOf(shared), [shared]);
+	const ownRows = useSetRows(library, "artistOwn", tracks.own);
+	const guestRows = useSetRows(
+		library,
+		"artistGuest",
+		tracks.guest.length > 0 ? tracks.guest : null,
+		{ isBeside: true },
+	);
+	const guestCount = tracks.guest.length;
+	useWatchedWhole(guestRows, tab === "overview");
 
 	const { hasPlayCounts } = useAvailableFields();
 
-	const held =
-		(own?.length ?? 0) + (shared?.length ?? 0) + (guest?.length ?? 0);
+	const held = tracks.all.length;
 	const allRefs = tracks.all;
+	const showsActions = held > 0 || wait.isWaiting;
 	const isPlayable =
 		(held > 0 || isAwaiting) && !wait.isOverdue && canControlPlayback;
 
@@ -218,11 +204,13 @@ export function ArtistView({
 	const notice = libraryNoticeFor(library);
 	if (notice) return notice;
 
-	const { status } = library;
-	const isReading = isLibraryReading(status);
-
-	const overview = isSplitting ? (
-		<PendingOverview />
+	const overview = isReading ? (
+		<>
+			<p className={styles.notice}>
+				{readingNotice(status, "library.reading", t)}
+			</p>
+			<PendingOverview />
+		</>
 	) : (
 		<div className={styles.overview}>
 			{held === 0 ? (
@@ -241,14 +229,12 @@ export function ArtistView({
 				)
 			) : null}
 
-			{own ? (
-				<LibraryCards
-					stats={stats}
-					rows={own}
-					hasPlayCounts={hasPlayCounts}
-					isOverdue={wait.isOverdue}
-				/>
-			) : null}
+			<LibraryCards
+				cards={answered?.cards ?? null}
+				trackCount={answered?.figures.trackCount ?? 0}
+				hasPlayCounts={hasPlayCounts}
+				isOverdue={wait.isOverdue}
+			/>
 
 			{held > 0 ? (
 				<section className={styles.section}>
@@ -259,24 +245,24 @@ export function ArtistView({
 
 			<Records
 				heading={t("artist.discography")}
-				records={discography}
-				library={library}
+				records={answered?.records.own ?? []}
+				origin={library.origin}
 				showsCredit={false}
 			/>
 
 			<Records
 				heading={t("artist.withOthers")}
-				records={withOthers}
-				library={library}
+				records={answered?.records.shared ?? []}
+				origin={library.origin}
 				showsCredit
 			/>
 
-			{guest && guest.length > 0 ? (
+			{guestCount > 0 ? (
 				<section className={styles.section}>
 					<h2 className={styles.heading}>{t("artist.appearsOn")}</h2>
 					<ul className={styles.guests}>
-						{Array.from({ length: guest.length }, (_, position) => {
-							const row = guest.at(position);
+						{Array.from({ length: guestCount }, (_, position) => {
+							const row = guestRows.at(position);
 							return (
 								<li key={`${tracks.guest[position]}`}>
 									<button
@@ -313,10 +299,10 @@ export function ArtistView({
 				title={name}
 				stats={stats}
 				isStatsPending={wait.isOverdue}
-				covers={{ source: library.source, rows: own ?? EMPTY_VIEW, seed: name }}
+				covers={{ source: library.source, rows: ownRows, seed: name }}
 				tabs={tabs}
 				actions={
-					held > 0 || isAwaiting ? (
+					showsActions ? (
 						<>
 							<Button
 								variant="primary"

@@ -1,11 +1,27 @@
 import {
-	EMPTY_PLAYLIST,
-	type PlaylistSnapshot,
-} from "@/domain/track/playlistEntries";
+	type Hold,
+	holdsDeclaration,
+	isFailureSaid,
+} from "@/domain/track/libraryHolds";
 import type { FooJeanDiscovery } from "@/shared/api/discovery";
-import type { LibraryFailure } from "@/shared/api/fooJeanLibrary";
+import type { StateDocument } from "@/shared/api/state";
 import type { Phrase } from "@/shared/i18n/en";
 import type { Translate } from "@/shared/i18n/useTranslate";
+
+type Announced = StateDocument["library"];
+
+export type LibraryFailureReason = "refused" | "failed" | "halted";
+
+export interface LibraryFailure {
+	reason: LibraryFailureReason;
+	detail: string;
+}
+
+export const READ_FAILED = {
+	refused: "library.readRefused",
+	halted: "library.halted.summary",
+	failed: "library.readFailed",
+} as const satisfies Record<LibraryFailureReason, Phrase>;
 
 export type LibraryStatus =
 	| { kind: "checking" }
@@ -15,17 +31,33 @@ export type LibraryStatus =
 	| { kind: "failed"; failure: LibraryFailure }
 	| { kind: "ready" };
 
+function failureOf(announced: Announced | null, hold: Hold) {
+	if (announced?.halted) return { reason: "halted", detail: "" } as const;
+	if (hold.kind !== "refused" && hold.kind !== "failing") return null;
+	if (!isFailureSaid(hold)) return null;
+	return {
+		reason: hold.kind === "refused" ? "refused" : "failed",
+		detail: hold.detail ?? "",
+	} as const;
+}
+
 export function libraryStatusOf(
 	discovery: FooJeanDiscovery | null,
-	library: PlaylistSnapshot,
+	announced: Announced | null,
+	hold: Hold,
 ): LibraryStatus {
 	if (!discovery) return { kind: "checking" };
 	if (discovery.state.kind === "unreachable") return { kind: "unreachable" };
 	if (!discovery.state.capabilities.canReadLibrary)
 		return { kind: "olderPlayer" };
-	if (library.failure) return { kind: "failed", failure: library.failure };
-	if (library.isLoading || library === EMPTY_PLAYLIST)
-		return { kind: "reading", loaded: library.loaded, total: library.total };
+	const failure = failureOf(announced, hold);
+	if (failure) return { kind: "failed", failure };
+	if (!announced || !holdsDeclaration(announced))
+		return {
+			kind: "reading",
+			loaded: announced?.build?.formatted ?? 0,
+			total: announced?.build?.total ?? 0,
+		};
 	return { kind: "ready" };
 }
 

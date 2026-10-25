@@ -7,8 +7,11 @@ import { whenControllable } from "@/domain/player/usePlaybackControl";
 import { usePlayer } from "@/domain/player/usePlayer";
 import { useQueue, useQueueActions } from "@/domain/player/useQueue";
 import { coverKey } from "@/domain/track/fields";
-import { canonicalArtworkUrl } from "@/domain/track/librarySource";
-import { playlistRowArtworkUrl } from "@/shared/api/artwork";
+import {
+	coverPathOf,
+	libraryArtworkUrl,
+	playlistRowArtworkUrl,
+} from "@/shared/api/artwork";
 import { isFooJeanReady } from "@/shared/api/discovery";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useDismissable } from "@/shared/hooks/useDismissable";
@@ -52,7 +55,13 @@ interface QueueCover {
 // `ui/src/shared/api/README.md`, *What Jean does about artwork*, for the fallback chain `src` takes.
 const coverOf = (origin: string | null, entry: QueueEntry): QueueCover => {
 	if (entry.libraryPath) {
-		const src = canonicalArtworkUrl(origin, entry.libraryPath);
+		const src = libraryArtworkUrl(
+			origin,
+			coverPathOf({
+				cover: entry.cover,
+				libraryPath: entry.libraryPath,
+			}),
+		);
 		const identity = entry.album
 			? coverKey(entry.albumArtist || entry.artist, entry.album)
 			: `lib:${entry.libraryPath}`;

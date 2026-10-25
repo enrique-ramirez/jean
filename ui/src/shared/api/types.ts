@@ -33,6 +33,7 @@ export interface ActiveItem {
 	// Library-relative and forward-slashed where the media library holds the playing track, `null`
 	// where it does not. `path` above is foobar2000's own absolute one, which no route accepts.
 	libraryPath: string | null;
+	libraryOrdinal?: number | null;
 	// The record the playing track is from, and its album artist, computed by the player and carried
 	// on every poll: `null` where the player has not computed one. A cover is keyed by these, never
 	// by the track, so an album played through costs one request.
@@ -101,6 +102,7 @@ export interface PlaybackPosition {
 export interface TrackIdentity {
 	path: string | null;
 	subsong: number;
+	libraryOrdinal?: number | null;
 }
 
 // The ways the player already holds a track, and what a tag write is addressed by. A library path

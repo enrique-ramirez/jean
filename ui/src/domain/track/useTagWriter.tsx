@@ -9,7 +9,6 @@ import {
 	useState,
 } from "react";
 
-import { useExportHeldWhenLibraryUnbuilt } from "@/domain/player/playerPoll";
 import { retryWhenTooFast } from "@/shared/api/client";
 import { libraryOrigin } from "@/shared/api/discovery";
 import type { WriteFailure } from "@/shared/api/tags";
@@ -241,27 +240,20 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 	);
 
 	const origin = libraryOrigin(discovery);
-	const exportHeldWhenLibraryUnbuilt = useExportHeldWhenLibraryUnbuilt();
 
 	const hasWritableAddress = useCallback(
 		(field: string, forms: readonly TrackAddress[]) => {
 			if (!writer.allows(field)) return false;
-			const resolves = libraryAddressesResolve(
-				origin,
-				exportHeldWhenLibraryUnbuilt,
-			);
+			const resolves = libraryAddressesResolve(origin);
 			return forms.some((form) => form.kind === "playlist" || resolves);
 		},
-		[writer, origin, exportHeldWhenLibraryUnbuilt],
+		[writer, origin],
 	);
 
 	const writableAddress = useCallback(
 		(field: string, forms: readonly TrackAddress[]) => {
 			if (!writer.allows(field)) return null;
-			const resolves = libraryAddressesResolve(
-				origin,
-				exportHeldWhenLibraryUnbuilt,
-			);
+			const resolves = libraryAddressesResolve(origin);
 			const usable = forms.filter(
 				(form) => form.kind === "playlist" || resolves,
 			);
@@ -269,7 +261,7 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 				? null
 				: { address: usable[0], retry: usable[1] ?? null };
 		},
-		[writer, origin, exportHeldWhenLibraryUnbuilt],
+		[writer, origin],
 	);
 
 	// Coalesced per address rather than through `useCoalescedWrite`, which holds one pending value and

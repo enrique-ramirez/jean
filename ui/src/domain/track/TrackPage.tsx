@@ -5,7 +5,7 @@ import { useTranslate } from "@/shared/i18n/useTranslate";
 import { coverIdentity, FIELD, value } from "./fields";
 import type { TrackBrowserHandle } from "./listTypes";
 import { PlayActions } from "./PlayActions";
-import type { TrackStats } from "./stats";
+import type { HeaderStats } from "./stats";
 import { TrackBrowser, type TrackBrowserProps } from "./TrackBrowser";
 import { ViewHeader } from "./ViewHeader";
 
@@ -21,10 +21,11 @@ type TrackPageProps = Omit<
 > & {
 	browserRef: RefObject<TrackBrowserHandle | null>;
 	heading?: PageHeading;
-	stats: TrackStats | null;
+	stats: HeaderStats | null;
 	wait?: Wait;
 	mosaicSeed: string;
 	canPlaySets?: boolean;
+	trackCount?: number;
 	actions?: ReactNode;
 };
 
@@ -35,6 +36,7 @@ export function TrackPage({
 	wait = NO_WAIT,
 	mosaicSeed,
 	canPlaySets,
+	trackCount,
 	actions,
 	...browser
 }: TrackPageProps) {
@@ -65,13 +67,13 @@ export function TrackPage({
 						cover={cover}
 						covers={{
 							source: browser.source,
-							rows: browser.rows,
+							rows,
 							seed: mosaicSeed,
 						}}
 						actions={
 							<PlayActions
 								browserRef={browserRef}
-								trackCount={browser.rows.length}
+								trackCount={trackCount ?? browser.rows.length}
 								wait={wait}
 								canPlaySets={canPlaySets}
 							>

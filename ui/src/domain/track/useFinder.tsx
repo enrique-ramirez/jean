@@ -4,7 +4,6 @@ import {
 	useCallback,
 	useDeferredValue,
 	useLayoutEffect,
-	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -15,14 +14,16 @@ import { Finder } from "./Finder";
 import type { TrackBrowserHandle } from "./listTypes";
 import type { TrackRows } from "./project";
 import styles from "./useFinder.module.css";
-import { search, useSearchIndex } from "./useSearchIndex";
+import { type FinderOver, useFound } from "./useFound";
 
 export function useFinder({
 	rows,
+	over,
 	browserRef,
 	label,
 }: {
 	rows: TrackRows;
+	over: FinderOver | null;
 	browserRef: RefObject<TrackBrowserHandle | null>;
 	label: string;
 }) {
@@ -30,15 +31,17 @@ export function useFinder({
 	const [singleKeys] = useSingleKeyShortcuts();
 	const finderHint = hintFor("openFinder", singleKeys);
 	const [query, setQuery] = useState("");
+	const [session, setSession] = useState(0);
 
-	// The field updates instantly and the scan runs off the deferred copy, or a keystroke carries a
-	// scan of the whole list before the character can paint and a phone keyboard starts dropping and
+	// The field updates instantly and the question runs off the deferred copy, or a keystroke carries
+	// the work of an answer before the character can paint and a phone keyboard starts dropping and
 	// reordering input.
 	const deferredQuery = useDeferredValue(query);
-	const index = useSearchIndex(rows, isFinding);
-	const { matches, results } = useMemo(
-		() => search(index, rows, deferredQuery),
-		[index, rows, deferredQuery],
+	const { matches, results } = useFound(
+		over,
+		rows.indices,
+		deferredQuery,
+		session,
 	);
 
 	const inputRef = useRef<HTMLInputElement | null>(null);
@@ -58,6 +61,7 @@ export function useFinder({
 	const close = useCallback(() => {
 		setIsFinding(false);
 		setQuery("");
+		setSession((count) => count + 1);
 	}, []);
 
 	useLayoutEffect(() => {

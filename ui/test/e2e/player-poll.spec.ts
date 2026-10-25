@@ -39,8 +39,15 @@ import {
 } from "./fixtures.ts";
 import { touchDrag } from "./gestures.ts";
 import { openPanels, panelTab } from "./nowPlaying.ts";
+import {
+	expectRowLanded,
+	LONG_PLAYLIST_ROWS,
+	pageAsks,
+	scrollToRow,
+	titleIn,
+	WINDOW_ROWS,
+} from "./playlistPages.ts";
 import { queuePanel } from "./queue.ts";
-import { scrollTo, scrollUntilMounted } from "./scrolling.ts";
 
 const isPlayingTrackRead = (request: Request) =>
 	new URL(request.url()).pathname === "/api/track/playing";
@@ -1084,91 +1091,8 @@ test.describe("with each playlist's window of changed positions spent", () => {
 	});
 });
 
-// A patch appends what it answered to the row cache's dictionaries and nothing
-// evicts it while the playlist stays open, so what the waste is measured in is
-// characters: one lyric-sized value outweighs a thousand ratings, and an edit
-// count cannot tell the two apart. The two runs below are the same edit at two
-// sizes, and the small one is what says the case is not had by reading the
-// playlist whole every time.
-//
-// `%genre%` carries the characters because Jean holds it as a row column and
-// draws it in no default column set, so what a run costs the cache is not what
-// it costs layout.
-const BULKY_CHARS = 256 * 1024;
-
-const SMALL_EDITS = 3;
-const BULKY_EDITS = 8;
-
-const editedTitle = (at: number) => `${RETITLED} [${at}]`;
-
-const smallGenre = (at: number) => `Alternative ${at}`;
-
-const bulkyGenre = (at: number) => smallGenre(at).padEnd(BULKY_CHARS, "x");
-
-const tagsFor = (at: number, genre: (at: number) => string): Track => ({
-	"%title%": editedTitle(at),
-	"%genre%": genre(at),
-});
-
-const expectRowShows = (page: Page, at: number) =>
-	expect(rowByTitle(page, editedTitle(at))).toBeVisible();
-
-// Each edit is waited for by the value it wrote, because two edits made inside
-// one poll reach the client as one changed row: the one in between would cost
-// the cache nothing and the run would never add up to what it claims.
-const retagAndWait = async (
-	page: Page,
-	player: FakePlayer,
-	at: number,
-	genre: (at: number) => string,
-) => {
-	player.retagPlaying(tagsFor(at, genre));
-	await expectRowShows(page, at);
-};
-
-test("goes on patching small changes into a playlist, and reads its rows whole again once the patches have appended enough characters", async ({
-	page,
-	player,
-}) => {
-	await openPlaylistView(page, player, WATCHED);
-	const guid = guidOfPlaylist(player, WATCHED.id);
-
-	await editTheFirstRow(page, player, tagsFor(1, smallGenre));
-	await expectRowShows(page, 1);
-	for (let at = 2; at <= SMALL_EDITS; at += 1)
-		await retagAndWait(page, player, at, smallGenre);
-
-	expect(changeReads(player, guid).length).toBeGreaterThanOrEqual(SMALL_EDITS);
-	await expectSettlesAt(player, () => wholeRowReads(player, guid), []);
-
-	player.requests.length = 0;
-	const last = SMALL_EDITS + BULKY_EDITS;
-	for (let at = SMALL_EDITS + 1; at <= last; at += 1)
-		await retagAndWait(page, player, at, bulkyGenre);
-
-	await expect
-		.poll(() => wholeRowReads(player, guid).length)
-		.toBeGreaterThan(0);
-
-	// A refresh rather than a reset: the row the reload answered carries the
-	// last edit, and the count holds once the player has gone quiet.
-	await expectSettlesAt(
-		player,
-		() => rowByTitle(page, editedTitle(last)).count(),
-		1,
-	);
-});
-
-// The cap the client reads the playlist whole at, from `MAX_APPENDED_CHARS` in
-// `domain/track/playlistPatch.ts`.
-const APPEND_CAP = 256 * 1024;
-
-// A bulk retag reaches many rows with one value. Whether that value arrives once
-// or once per changed row is invisible from outside the client, since both patch
-// the same rows and draw the same screen, so what the repeat costs the row cache
-// is what tells them apart. The run below repeats one long value at a size where
-// a copy per changed row crosses the cap and one copy per distinct value does
-// not.
+// A bulk retag reaches many rows with one long value, which on a slow link is the
+// case where reading the rows again would cost the most.
 const SHARED_ROWS = 4;
 
 const SHARED_CHARS = 70 * 1024;
@@ -1183,7 +1107,7 @@ const sharedGenre = (round: number) =>
 const titleOfRow = (round: number, at: number) => `Retagged ${round}.${at}`;
 
 // One synchronous run per round, because a poll landing mid-round splits it into
-// two responses and neither carries enough rows to cost what this case measures.
+// two responses.
 const retagEveryRow = (player: FakePlayer, round: number) => {
 	for (let at = 0; at < SHARED_ROWS; at += 1) {
 		player.playItem(WATCHED.id, at);
@@ -1194,19 +1118,10 @@ const retagEveryRow = (player: FakePlayer, round: number) => {
 	}
 };
 
-test("patches a long value every changed row shares, where a copy per changed row would have crossed the cap", async ({
+test("a bulk retag sharing one long value lands from the changes route, with no rows read again", async ({
 	page,
 	player,
 }) => {
-	expect(
-		SHARED_ROWS * SHARED_CHARS,
-		"a copy per changed row has to cross the cap, or the run measures nothing",
-	).toBeGreaterThan(APPEND_CAP);
-	expect(
-		SHARED_ROUNDS * SHARED_CHARS,
-		"one copy per distinct value has to stay under the cap for the whole run",
-	).toBeLessThan(APPEND_CAP);
-
 	await openPlaylistView(page, player, WATCHED);
 	const guid = guidOfPlaylist(player, WATCHED.id);
 	player.requests.length = 0;
@@ -1440,188 +1355,43 @@ test("a changes read the network drops leaves the rows catching up on the next e
 	await expectSettlesAt(player, () => uncaught, []);
 });
 
-// `FIRST_CHUNK` and `CHUNK_SIZE` in `domain/track/playlistLoader.ts`: a playlist
-// arrives one page at a time, and a third page is what leaves a prefix on screen
-// long enough for a restart to shorten it visibly.
-const FIRST_PAGE = 2500;
-
-const LATER_PAGE = 7500;
-
-const READ_SO_FAR = FIRST_PAGE + LATER_PAGE;
-
-const PLAYLIST_ROWS = READ_SO_FAR + 2000;
-
-// Past every row read so far, so the changes route names a position the client
-// holds no path against yet.
-const CHANGED_ROW = READ_SO_FAR + 1000;
-
-const PATCHED_PAST_THE_PREFIX = "Retagged past the prefix";
-
-// The first row, which the client holds a path for from the first page on and
-// which stays mounted with no scrolling, so the assertion below waits on the
-// playlist rather than on a list still moving.
-const ROW_IN_THE_PREFIX = 0;
-
-const PATCHED_INSIDE_THE_PREFIX = "Retagged inside the prefix";
-
-// The playlist `librarySize` fills, and the only one long enough to be read in
-// pages.
 const LONG = { id: "p7", title: "Library" };
 
-const PAGE_READ = /^\/api\/playlists\/[^/]+\/items$/;
+const CHANGED_ROW = 2 * WINDOW_ROWS + 500;
 
-// Every page of a playlist but the first, answered by the player and then held,
-// so the load can be left part way through at a known row. A page let through
-// later carries what the player held when it was asked rather than what an edit
-// made since left behind.
-const holdThePages = async (page: Page) => {
-	const held = new Map<number, () => void>();
-	let freely = false;
+const PATCHED_OUTSIDE_THE_WINDOWS = "Retagged outside the windows held";
 
-	const release = (offset: number) => {
-		held.get(offset)?.();
-		held.delete(offset);
-	};
+test.describe("with a playlist longer than a window", () => {
+	test.use({
+		librarySize: LONG_PLAYLIST_ROWS,
+		settings: { "jean.followPlayback": false },
+	});
 
-	await page.route(
-		(url) => PAGE_READ.test(url.pathname),
-		async (route) => {
-			const request = route.request();
-			const offset = Number(new URL(request.url()).searchParams.get("offset"));
-			if (freely || offset === 0 || request.method() !== "GET")
-				return route.continue();
-
-			const response = await route.fetch();
-			const body = await response.body();
-			await new Promise<void>((resolve) => held.set(offset, resolve));
-			// Reading the playlist again aborts the pages already out, and a request
-			// nobody is waiting for can no longer be answered.
-			await route.fulfill({ response, body }).catch(() => {});
-		},
-	);
-
-	return {
-		letThrough: async (offset: number) => {
-			await expect
-				.poll(() => held.has(offset), {
-					message: `no page of the playlist was read at offset ${offset}`,
-				})
-				.toBe(true);
-			release(offset);
-		},
-		letTheRestThrough: () => {
-			freely = true;
-			for (const offset of [...held.keys()]) release(offset);
-		},
-	};
-};
-
-// How many rows the list says it has, which is what a screen reader announces
-// and what the scrollbar is drawn from.
-const rowCount = (page: Page) =>
-	page.getByRole("grid").getAttribute("aria-rowcount");
-
-const expectRowCount = (page: Page, rows: number) =>
-	expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", String(rows));
-
-// What a given row says, counted rather than asserted on, so `expectSettlesAt`
-// can read it: a row that is not there answers zero instead of throwing.
-const rowsSaying = (page: Page, at: number, title: string) =>
-	trackRow(page, at).filter({ hasText: title }).count();
-
-const firstPageReads = (player: FakePlayer, guid: string) =>
-	wholeRowReads(player, guid).filter(
-		(path) => new URLSearchParams(path.split("?")[1]).get("offset") === "0",
-	);
-
-// Measured rather than assumed: the row is a different height on a phone, and in
-// album layout it sits under a cover.
-const rowHeightOf = async (page: Page) => {
-	const box = await trackRow(page, 0).boundingBox();
-	expect(
-		box,
-		"the first row has to be on screen to be measured",
-	).not.toBeNull();
-	return box?.height ?? 0;
-};
-
-test.describe("with a playlist longer than the pages it arrives in", () => {
-	test.use({ librarySize: PLAYLIST_ROWS });
-
-	test("patches a row changed past the rows read so far, rather than starting the playlist again from the top", async ({
+	test("a row changed in a window not held costs no read of rows, and draws its new value once scrolled to", async ({
 		page,
 		player,
 	}) => {
-		const pages = await holdThePages(page);
 		await openPlaylistView(page, player, LONG);
 		const guid = guidOfPlaylist(player, LONG.id);
-
-		await expectRowCount(page, FIRST_PAGE);
-		const rowHeight = await rowHeightOf(page);
-
-		// One more page through and the last one left out, so the list is part read
-		// and the row about to change is past everything it holds.
-		await pages.letThrough(FIRST_PAGE);
-		await expectRowCount(page, READ_SO_FAR);
+		await expectRowLanded(page, 0, titleIn(player, LONG.id, 0));
+		await untilQuiet(player);
+		const changesBefore = changeReads(player, guid).length;
+		const from = player.requests.length;
 
 		player.playItem(LONG.id, CHANGED_ROW);
-		player.retagPlaying({ "%title%": PATCHED_PAST_THE_PREFIX });
+		player.retagPlaying({ "%title%": PATCHED_OUTSIDE_THE_WINDOWS });
 		await expect
 			.poll(() => changeReads(player, guid).length)
-			.toBeGreaterThan(0);
+			.toBeGreaterThan(changesBefore);
+		await expectSettlesAt(player, () => pageAsks(player, LONG.id, from), []);
 
-		await expectSettlesAt(player, () => rowCount(page), String(READ_SO_FAR));
-		await expectSettlesAt(player, () => firstPageReads(player, guid).length, 1);
-
-		pages.letTheRestThrough();
-		await expectRowCount(page, PLAYLIST_ROWS);
-		await scrollTo(page, rowHeight * CHANGED_ROW);
-		await scrollUntilMounted(page, trackRow(page, CHANGED_ROW));
-		await expect(trackRow(page, CHANGED_ROW)).toContainText(
-			PATCHED_PAST_THE_PREFIX,
-		);
-	});
-
-	// The case above changes a row past everything the client holds, so its new
-	// value has to wait for the load. This one changes a row the client already
-	// has, which can be patched straight in while the pages after it are still
-	// arriving, and those pages are published from rows read before the patch. So
-	// the value can be right and then wrong again, and what is asserted is what
-	// the row says once the whole playlist is in rather than what it said on the
-	// way.
-	test("a row changed inside the rows already read keeps its new value once the rest of the playlist arrives", async ({
-		page,
-		player,
-	}) => {
-		const pages = await holdThePages(page);
-		await openPlaylistView(page, player, LONG);
-		const guid = guidOfPlaylist(player, LONG.id);
-
-		await expectRowCount(page, FIRST_PAGE);
-
-		const ticks = ticksTaken(player);
-		player.playItem(LONG.id, ROW_IN_THE_PREFIX);
-		player.retagPlaying({ "%title%": PATCHED_INSIDE_THE_PREFIX });
-
-		// Two whole polls with the later pages still held, so the tick carrying the
-		// edit was spent while the playlist had nothing but its first page. The row
-		// count says the hold held for both of them.
-		await expect.poll(() => ticksTaken(player)).toBeGreaterThan(ticks + 1);
-		await expectRowCount(page, FIRST_PAGE);
-
-		pages.letTheRestThrough();
-		await expectRowCount(page, PLAYLIST_ROWS);
-
-		await expectSettlesAt(
-			player,
-			() => rowsSaying(page, ROW_IN_THE_PREFIX, PATCHED_INSIDE_THE_PREFIX),
-			1,
-		);
-		// And the value is there because the row was patched, not because the
-		// playlist was read again from the top.
-		await expectSettlesAt(player, () => firstPageReads(player, guid).length, 1);
+		await scrollToRow(page, CHANGED_ROW - 5);
+		await expectRowLanded(page, CHANGED_ROW, PATCHED_OUTSIDE_THE_WINDOWS);
 	});
 });
+
+const rowsSaying = (page: Page, at: number, title: string) =>
+	trackRow(page, at).filter({ hasText: title }).count();
 
 // The status the component answers when the revision asked about has fallen out
 // of its window, which is one of the two the client reads the playlist whole

@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { type FormEvent, useId, useMemo, useState } from "react";
+import { type FormEvent, useId, useState } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import { editedAutoPlaylist } from "@/domain/player/editableAutoPlaylist";
 import { useCatchUpPlaylists } from "@/domain/player/usePlaylistActions";
@@ -11,7 +11,7 @@ import { orThrow } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
 import { createAutoPlaylist, updateAutoPlaylist } from "@/shared/api/playlists";
 import type { PlaylistInfo } from "@/shared/api/types";
-import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
+import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
 import { Input } from "@/shared/ui/Input";
 import { ModalDialog } from "@/shared/ui/ModalDialog";
@@ -19,7 +19,6 @@ import styles from "./AutoPlaylistDialog.module.css";
 import { QueryField } from "./QueryField";
 import { Results } from "./Results";
 import { usePreviewedQuery } from "./usePreviewedQuery";
-import { valueSourceOf } from "./valueSource";
 
 const AUTOPLAYLIST_KEYBOARD = "autoplaylist";
 
@@ -35,7 +34,6 @@ export function AutoPlaylistDialog({
 	onDismiss: () => void;
 }) {
 	const t = useTranslate();
-	const format = useFormats();
 	const { data: playlists = [] } = usePlaylists();
 	const catchUpPlaylists = useCatchUpPlaylists();
 	const { origin, snapshot } = library;
@@ -54,17 +52,7 @@ export function AutoPlaylistDialog({
 	const [query, setQuery] = useState(opened.query);
 	const isForeign = editing !== undefined && !editing.managed;
 
-	const values = useMemo(
-		() => valueSourceOf(snapshot.columns, format.compare),
-		[snapshot.columns, format.compare],
-	);
-
-	const { state, isStale } = usePreviewedQuery({
-		origin,
-		snapshot,
-		isLibraryReady: library.status.kind === "ready",
-		query,
-	});
+	const { state, isStale } = usePreviewedQuery({ library, query });
 
 	const save = useMutation({
 		mutationFn: async () => {
@@ -156,7 +144,8 @@ export function AutoPlaylistDialog({
 						<QueryField
 							id={queryId}
 							value={query}
-							values={values}
+							origin={origin}
+							structure={snapshot.structure}
 							onChange={(next) => {
 								setQuery(next);
 								save.reset();

@@ -1,5 +1,6 @@
 import {
 	ask,
+	askResult,
 	READ_TIMEOUT_MS,
 	reach,
 	refusalOf,
@@ -26,10 +27,20 @@ export type LibraryRoles = Record<LibraryRoleName, string>;
 export type NamedArtist = Schema["NamedArtist"];
 export type NamedAlbum = Schema["NamedAlbum"];
 export type NamedGenre = Schema["NamedGenre"];
+export type SetFigures = Schema["SetFigures"];
+export type ArtistCards = Schema["ArtistCards"];
+export type AlbumRecord = Schema["AlbumRecord"];
+
+export interface ArtistAnswered {
+	figures: SetFigures;
+	cards: ArtistCards;
+	records: Record<"own" | "shared", AlbumRecord[]>;
+}
 
 export interface LibrarySearchAnswer {
 	matched: Int32Array | null;
 	matchCount: number;
+	figures: SetFigures;
 	best: Int32Array;
 	artists: { total: number; top: NamedArtist[] };
 	albums: { total: number; top: NamedAlbum[] };
@@ -51,7 +62,13 @@ export const PREVIEW_GENRES = 1;
 const ENTITY_LIMIT = Math.max(PREVIEW_ARTISTS, PREVIEW_ALBUMS, PREVIEW_GENRES);
 
 export type LibraryQuestion =
-	| { kind: "search"; query: string; limit: number; splitsCredits: boolean }
+	| {
+			kind: "search";
+			query: string;
+			limit: number;
+			entityLimit?: number;
+			splitsCredits: boolean;
+	  }
 	| { kind: "album"; artist: string | null; album: string }
 	| { kind: "artist"; artist: string; splitsCredits: boolean }
 	| { kind: "genre"; genre: string };
@@ -60,10 +77,19 @@ export type QuestionAnswerTo<Question extends LibraryQuestion> =
 	Question extends { kind: "search" }
 		? LibrarySearchAnswer
 		: Question extends { kind: "album" }
-			? { refs: Int32Array; album: string; artist: string | null }
+			? {
+					refs: Int32Array;
+					album: string;
+					artist: string | null;
+					figures: SetFigures;
+				}
 			: Question extends { kind: "artist" }
-				? { own: Int32Array; shared: Int32Array; guest: Int32Array }
-				: Int32Array;
+				? {
+						own: Int32Array;
+						shared: Int32Array;
+						guest: Int32Array;
+					} & ArtistAnswered
+				: { refs: Int32Array; figures: SetFigures };
 
 export type QuestionResult<Question extends LibraryQuestion> =
 	| {
@@ -84,7 +110,10 @@ const QUESTION_REFUSALS: Partial<Record<number, ReadFailureReason>> = {
 
 type OrdinalSet = Schema["OrdinalSet"];
 
-function decodeSet(set: OrdinalSet, trackCount: number): Int32Array | null {
+export function decodeSet(
+	set: OrdinalSet,
+	trackCount: number,
+): Int32Array | null {
 	try {
 		if ("runs" in set) {
 			let count = 0;
@@ -189,7 +218,7 @@ export async function fetchLibraryAnswer<Question extends LibraryQuestion>(
 									...roles,
 									query: question.query,
 									limit: question.limit,
-									entityLimit: ENTITY_LIMIT,
+									entityLimit: question.entityLimit ?? ENTITY_LIMIT,
 									splitsCredits: question.splitsCredits,
 								},
 							},
@@ -210,6 +239,7 @@ export async function fetchLibraryAnswer<Question extends LibraryQuestion>(
 									? {
 											matched,
 											matchCount: data.matchCount,
+											figures: data.figures,
 											best,
 											artists: data.artists,
 											albums: data.albums,
@@ -245,7 +275,12 @@ export async function fetchLibraryAnswer<Question extends LibraryQuestion>(
 							error,
 							document: data,
 							answer: refs
-								? { refs, album: data?.album, artist: orNull(data?.artist) }
+								? {
+										refs,
+										album: data?.album,
+										artist: orNull(data?.artist),
+										figures: data?.figures,
+									}
 								: null,
 						};
 					}
@@ -265,11 +300,20 @@ export async function fetchLibraryAnswer<Question extends LibraryQuestion>(
 							},
 						});
 						const data = ok<Schema["ArtistAnswer"]>(response, body);
+						const sets = data ? decodeSets(data, boundOf(library, data)) : null;
 						return {
 							response,
 							error,
 							document: data,
-							answer: data ? decodeSets(data, boundOf(library, data)) : null,
+							answer:
+								data && sets
+									? {
+											...sets,
+											figures: data.figures,
+											cards: data.cards,
+											records: data.records,
+										}
+									: null,
 						};
 					}
 					case "genre": {
@@ -282,13 +326,14 @@ export async function fetchLibraryAnswer<Question extends LibraryQuestion>(
 							params: { query: { ...roles, name: question.genre } },
 						});
 						const data = ok<Schema["GenreAnswer"]>(response, body);
+						const refs = data
+							? decodeSet(data.refs, boundOf(library, data))
+							: null;
 						return {
 							response,
 							error,
 							document: data,
-							answer: data
-								? decodeSet(data.refs, boundOf(library, data))
-								: null,
+							answer: refs ? { refs, figures: data?.figures } : null,
 						};
 					}
 				}
@@ -319,3 +364,23 @@ export async function fetchLibraryAnswer<Question extends LibraryQuestion>(
 		answer: answer as QuestionAnswerTo<Question>,
 	};
 }
+
+export type ValueField = "artist" | "albumArtist" | "album" | "genre";
+
+export const fetchLibraryValues = (
+	origin: string,
+	roles: LibraryRoles,
+	wanted: { field: ValueField; prefix: string; limit: number },
+	signal?: AbortSignal,
+) =>
+	askResult(
+		origin,
+		READ_TIMEOUT_MS,
+		(api, init) =>
+			api.GET("/library/values", {
+				...init,
+				cache: "no-store",
+				params: { query: { ...roles, ...wanted } },
+			}),
+		signal,
+	);

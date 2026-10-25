@@ -5,13 +5,16 @@ import { createRoot } from "react-dom/client";
 import { App } from "@/app/App";
 import { RootErrorBoundary } from "@/app/RootErrorBoundary";
 import { followPollWith } from "@/domain/player/playerPoll";
-import { libraryPollFollower } from "@/domain/track/libraryLoader";
+import { libraryPollFollower } from "@/domain/track/libraryFollower";
 import { startLocale } from "@/shared/i18n/locale";
 import "@/shared/styles/global.css";
 
 const queryClient = new QueryClient();
 
 followPollWith(libraryPollFollower);
+
+// A browser never removes an IndexedDB database by itself.
+indexedDB.deleteDatabase("jean-library");
 
 await startLocale();
 

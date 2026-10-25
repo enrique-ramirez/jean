@@ -1,22 +1,32 @@
 import { DiscAlbum, Music2, User } from "lucide-react";
 import { useState } from "react";
-import type { Genre } from "@/domain/track/genres";
-import type { LibrarySource } from "@/domain/track/librarySource";
 import { genreRoute, href } from "@/domain/track/routes";
+import { libraryArtworkUrl } from "@/shared/api/artwork";
 import { useTranslate } from "@/shared/i18n/useTranslate";
+import type { FuzzyKey } from "@/shared/lib/text";
 import { Artwork } from "@/shared/ui/Artwork";
 import styles from "./GenreTile.module.css";
 
+export interface GenreTileData {
+	name: string;
+	key: string;
+	match: FuzzyKey;
+	trackCount: number;
+	albumCount: number;
+	artistCount: number;
+	covers: string[];
+}
+
 export function GenreTile({
 	genre,
-	source,
+	origin,
 }: {
-	genre: Genre;
-	source: LibrarySource;
+	genre: GenreTileData;
+	origin: string | null;
 }) {
 	const t = useTranslate();
-	const [settled, setSettled] = useState<ReadonlySet<number>>(new Set());
-	const ready = genre.coverRefs.every((ref) => settled.has(ref));
+	const [settled, setSettled] = useState<ReadonlySet<string>>(new Set());
+	const ready = genre.covers.every((cover) => settled.has(cover));
 
 	const figures = [
 		{
@@ -52,13 +62,13 @@ export function GenreTile({
 			data-genre-tile=""
 		>
 			<span className={styles.stack} data-ready={ready ? "" : undefined}>
-				{genre.coverRefs.length > 0 ? (
-					genre.coverRefs.map((ref) => (
-						<span key={ref} className={styles.sleeve}>
+				{genre.covers.length > 0 ? (
+					genre.covers.map((cover) => (
+						<span key={cover} className={styles.sleeve}>
 							<Artwork
-								src={source.artworkUrl(ref)}
+								src={libraryArtworkUrl(origin, cover)}
 								size="100%"
-								onSettled={() => setSettled((seen) => new Set(seen).add(ref))}
+								onSettled={() => setSettled((seen) => new Set(seen).add(cover))}
 							/>
 						</span>
 					))

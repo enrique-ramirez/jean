@@ -75,15 +75,6 @@
 	"autoplaylist.query": "Consulta",
 	"autoplaylist.queryFailed": "foobar2000 no pudo leer la consulta",
 	"autoplaylist.saveFailed": "No se guardó la playlist automática: {error}",
-	"autoplaylist.separator": " · ",
-	"autoplaylist.stats.albumArtists": {
-		"one": "{count} artista de álbum",
-		"other": "{count} artistas de álbum"
-	},
-	"autoplaylist.stats.albums": {
-		"one": "{count} álbum",
-		"other": "{count} álbumes"
-	},
 	"autoplaylist.stats.tracks": {
 		"one": "{count} canción",
 		"other": "{count} canciones"
@@ -277,7 +268,6 @@
 	"library.readFailed": "foo_jean no pudo entregar la biblioteca.",
 	"library.readRefused": "foo_jean no quiso aceptar las columnas que pidió Jean.",
 	"library.readTimedOut": "foo_jean dejó de avanzar con la biblioteca.",
-	"library.readTooLarge": "Esta biblioteca es más grande de lo que foo_jean envía de una sola vez.",
 	"library.readUnavailable": "foo_jean no está sirviendo la Media Library.",
 	"library.readUnreachable": "No se pudo conectar con foo_jean.",
 	"library.reading": "Leyendo tu biblioteca…",
@@ -617,9 +607,6 @@
 	"search.stillReading": "Todavía leyendo tu biblioteca",
 	"search.title": "Búsqueda",
 	"search.yourLibrary": "Busca en tu biblioteca",
-	"settings.advanced.keepLibrary": "Guardar la biblioteca en este dispositivo",
-	"settings.advanced.keepLibraryDetail": "Jean abre desde esta copia y pide a foobar2000 solo lo que cambió. Sin esto, descarga la biblioteca entera en cada carga.",
-	"settings.advanced.title": "Avanzado",
 	"settings.appearance.choose": "Tema",
 	"settings.appearance.dark": "Oscuro",
 	"settings.appearance.follow": "El de mi sistema",

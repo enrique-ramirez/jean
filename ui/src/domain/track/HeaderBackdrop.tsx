@@ -22,9 +22,9 @@ export function HeaderBackdrop({
 	source: LibrarySource;
 	covers: CoverPicks;
 }) {
-	const { albumCount, tiles, picks, settled, isReady, hasCover } = covers;
+	const { tiles, picks, settled, isReady, hasCover } = covers;
 
-	if (albumCount === null || tiles === 0) return null;
+	if (tiles === 0) return null;
 	if (isReady && !hasCover) return null;
 
 	return (
@@ -40,7 +40,9 @@ export function HeaderBackdrop({
 					<Artwork
 						// biome-ignore lint/suspicious/noArrayIndexKey: a fixed grid of tiles, never reordered, so the slot is the identity
 						key={`${pick.ref}-${position}`}
-						src={source.artworkUrl(pick.ref)}
+						src={
+							pick.src === undefined ? source.artworkUrl(pick.ref) : pick.src
+						}
 						identity={pick.identity}
 						size="100%"
 						className={styles.tile}

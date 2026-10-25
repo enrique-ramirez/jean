@@ -74,7 +74,7 @@ export function MainView({
 	onEditAutoPlaylist,
 }: MainViewProps) {
 	const t = useTranslate();
-	const { allMusic, list, artist } = page;
+	const { allMusicRefs, list, artist } = page;
 	const artistName = artist?.name ?? null;
 	const artistTab = artist?.tab ?? "overview";
 	const [swipe, setSwipe] = useState<TabMotion | null>(null);
@@ -163,6 +163,7 @@ export function MainView({
 			onOpenPlaylist={onOpenPlaylist}
 			emptyNotice={shown.emptyNotice}
 			wait={shown.wait}
+			figures={shown.figures}
 			isAwaitingColumns={shown.isAwaitingColumns}
 			failure={shown.failure}
 		/>
@@ -173,6 +174,7 @@ export function MainView({
 			name={shown.name}
 			library={library}
 			tracks={shown.tracks}
+			answered={shown.answered}
 			wait={shown.wait}
 			failure={shown.failure}
 			tab={shown.tab}
@@ -185,6 +187,7 @@ export function MainView({
 				label: shown.name,
 				emptyNotice: t("library.noArtist", { artist: shown.name }),
 				wait: shown.wait,
+				figures: shown.answered?.figures ?? null,
 				isAwaitingColumns: shown.isAwaitingColumns,
 				failure: shown.failure,
 			})}
@@ -215,9 +218,11 @@ export function MainView({
 				<HomeView
 					library={library}
 					onPlayAlbum={home.playShelf}
-					onPlayTrack={(ref) => home.playTrack(allMusic.indices, ref)}
-					onPlayEverything={() => home.playEverything(allMusic.indices)}
-					onShuffleEverything={() => home.shuffleEverything(allMusic.indices)}
+					onPlayTrack={(ref) => home.playTrack(allMusicRefs.indices, ref)}
+					onPlayEverything={() => home.playEverything(allMusicRefs.indices)}
+					onShuffleEverything={() =>
+						home.shuffleEverything(allMusicRefs.indices)
+					}
 					onSearch={onSearch}
 					canPlay={home.canPlay}
 					canShuffle={home.canShuffle}

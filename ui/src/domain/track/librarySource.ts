@@ -1,9 +1,12 @@
 import type { QueueSource } from "@/domain/player/queue";
-import { libraryArtworkUrl, playlistRowArtworkUrl } from "@/shared/api/artwork";
+import {
+	coverPathOf,
+	libraryArtworkUrl,
+	playlistRowArtworkUrl,
+} from "@/shared/api/artwork";
 import { orThrow } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
 import { encodeFill, runsOf } from "@/shared/api/fillEncoding";
-import { libraryPathTails } from "@/shared/api/playerState";
 import {
 	copyPlaylistRows,
 	type Duplicates,
@@ -17,16 +20,17 @@ import type {
 	TrackAddress,
 	TrackIdentity,
 } from "@/shared/api/types";
-import { overObjects } from "./columnCache";
-import { albumCanonicalIndex, canonicalTrackRefs } from "./grouping";
-import { positionOf } from "./libraryIndex";
+import { announcedLibraryOf } from "./libraryHolds";
 import type { PathTable } from "./pathTable";
-import {
-	componentLibraryKey,
-	type PlaylistSnapshot,
-	playlistSnapshot,
-} from "./playlistEntries";
+import { componentLibraryKey, playlistSnapshot } from "./playlistEntries";
 import type { Refs } from "./project";
+import {
+	isAnswered,
+	type LibraryList,
+	type PlaylistList,
+	type RowWindows,
+	trackPathAt,
+} from "./rowWindows";
 
 export interface AddedRows {
 	positions: number[];
@@ -48,7 +52,7 @@ export interface LibrarySourceCommon {
 	) => Promise<AddedRows>;
 	queueTargets: (refs: Refs) => Promise<QueueSource>;
 	playingPosition: (
-		refs: Refs,
+		refs: Refs | null,
 		track: TrackIdentity | null | undefined,
 		activeItem?: PlaybackPosition | null,
 	) => number;
@@ -87,14 +91,19 @@ export type LibrarySourceOptions =
 	| ({ kind: "library" } & MediaLibraryOptions)
 	| ({ kind: "playlist" } & PlaylistOptions);
 
+interface LibraryFigures {
+	structure: number;
+	trackCount: number;
+}
+
 const fillScratch =
-	(paths: PathTable, origin: string | null, structure: number) =>
+	(figures: () => LibraryFigures, origin: string | null) =>
 	async (title: string, refs: Refs): Promise<Filled | null> => {
 		if (!origin) return null;
 
 		const request: FillOwnPlaylistRequest = {
 			title,
-			...encodeFill(refs, { structure, trackCount: paths.length }),
+			...encodeFill(refs, figures()),
 		};
 
 		const result = orThrow(await fillOwnPlaylist(origin, "scratch", request));
@@ -102,7 +111,7 @@ const fillScratch =
 	};
 
 const addToPlaylist =
-	(paths: PathTable, origin: string | null, structure: number) =>
+	(figures: () => LibraryFigures, origin: string | null) =>
 	async (
 		targetId: string,
 		refs: Refs,
@@ -111,7 +120,7 @@ const addToPlaylist =
 		const required = requireFooJean(origin);
 
 		const request: FillPlaylistRequest = {
-			...encodeFill(refs, { structure, trackCount: paths.length }),
+			...encodeFill(refs, figures()),
 			duplicates,
 		};
 
@@ -124,119 +133,37 @@ const addToPlaylist =
 	};
 
 const queueLibraryTracks =
-	(paths: PathTable, structure: number) =>
+	(figures: () => LibraryFigures) =>
 	async (refs: Refs): Promise<QueueSource> => ({
 		kind: "tracks",
-		request: encodeFill(refs, { structure, trackCount: paths.length }),
+		request: encodeFill(refs, figures()),
 	});
 
-const canonicalPaths = overObjects<Map<string, string>>();
+export const libraryAddressesResolve = (origin: string | null) =>
+	origin !== null && announcedLibraryOf(origin)?.ready === true;
 
-const canonicalPathOf = (snapshot: PlaylistSnapshot, path: string): string => {
-	const paths = snapshot.paths;
-	if (!paths) return path;
+export function positionOf(
+	indices: Refs,
+	index: number | null | undefined,
+): number {
+	if (index == null || index < 0) return -1;
 
-	const refs = canonicalTrackRefs(snapshot.columns);
-	const keys = [refs, paths];
-	let byPath = canonicalPaths.get(keys);
-	if (!byPath) {
-		byPath = new Map<string, string>();
-		for (let ref = 0; ref < refs.length; ref += 1) {
-			const own = paths.at(ref);
-			const canonical = own ? paths.at(refs[ref]) : "";
-			if (own && canonical) byPath.set(own, canonical);
-		}
-		canonicalPaths.set(keys, byPath);
-	}
-
-	return byPath.get(path) ?? path;
-};
-
-export const libraryAddressesResolve = (
-	origin: string | null,
-	exportHeldWhenLibraryUnbuilt: number | null,
-) => {
-	if (origin === null) return false;
-
-	const { structure, paths } = playlistSnapshot(componentLibraryKey(origin));
-	return paths !== null && structure !== exportHeldWhenLibraryUnbuilt;
-};
-
-export function canonicalArtworkUrl(
-	origin: string | null,
-	path: string,
-): string | null {
-	const snapshot = origin
-		? playlistSnapshot(componentLibraryKey(origin))
-		: null;
-	return libraryArtworkUrl(
-		origin,
-		snapshot ? canonicalPathOf(snapshot, path) : path,
-	);
-}
-
-export function canonicalPlayingArtworkUrl(
-	origin: string | null,
-	album: string,
-	credited: string,
-): string | null {
-	if (!origin || !album) return null;
-
-	const snapshot = playlistSnapshot(componentLibraryKey(origin));
-	if (!snapshot.paths) return null;
-
-	const ref = albumCanonicalIndex(snapshot.columns).refFor(album, credited);
-	if (ref === null) return null;
-
-	const canonical = snapshot.paths.at(ref);
-	return canonical ? libraryArtworkUrl(origin, canonical) : null;
-}
-
-function playingPositionIn(paths: PathTable, subsongs: Int32Array) {
-	let refsByPath: Map<string, number[]> | null = null;
-	const placesByView = new WeakMap<Refs, Int32Array>();
-
-	const refsOfPath = () => {
-		if (refsByPath) return refsByPath;
-		refsByPath = new Map();
-		for (let ref = 0; ref < paths.length; ref += 1) {
-			const path = paths.at(ref);
-			if (!path) continue;
-			const held = refsByPath.get(path);
-			if (held) held.push(ref);
-			else refsByPath.set(path, [ref]);
-		}
-		return refsByPath;
+	const bisect = (low: number, high: number): number => {
+		if (low > high) return -1;
+		const middle = (low + high) >> 1;
+		if (indices[middle] === index) return middle;
+		return indices[middle] < index
+			? bisect(middle + 1, high)
+			: bisect(low, middle - 1);
 	};
 
-	const placesIn = (refs: Refs) => {
-		let places = placesByView.get(refs);
-		if (!places) {
-			places = new Int32Array(paths.length).fill(-1);
-			for (let place = 0; place < refs.length; place += 1)
-				if (places[refs[place]] === -1) places[refs[place]] = place;
-			placesByView.set(refs, places);
-		}
-		return places;
-	};
-
-	return (refs: Refs, track: TrackIdentity | null | undefined) => {
-		if (!track?.path || !paths || !subsongs) return -1;
-
-		const subsong = track.subsong ?? 0;
-		const places = placesIn(refs);
-		const candidates = libraryPathTails(track.path);
-
-		let first = -1;
-		for (const candidate of candidates)
-			for (const ref of refsOfPath().get(candidate) ?? []) {
-				const place = places[ref];
-				if (subsongs[ref] !== subsong || place < 0) continue;
-				first = first < 0 ? place : Math.min(first, place);
-			}
-		return first;
-	};
+	return bisect(0, indices.length - 1);
 }
+
+const placeOfOrdinal = (
+	refs: Refs | null,
+	ordinal: number | null | undefined,
+) => (ordinal == null ? -1 : refs === null ? ordinal : refs.indexOf(ordinal));
 
 const fromMediaLibrary = ({
 	paths,
@@ -247,7 +174,7 @@ const fromMediaLibrary = ({
 		? playlistSnapshot(componentLibraryKey(artworkOrigin))
 		: null;
 	const structure = snapshot ? snapshot.structure : 0;
-	const canonicalRefs = snapshot ? canonicalTrackRefs(snapshot.columns) : null;
+	const figures = () => ({ structure, trackCount: paths.length });
 
 	const addresses = (ref: number): TrackAddress[] => {
 		const track = paths.at(ref);
@@ -264,17 +191,190 @@ const fromMediaLibrary = ({
 		playlistId: null,
 
 		artworkUrl: (ref: number) =>
-			libraryArtworkUrl(artworkOrigin, paths.at(canonicalRefs?.[ref] ?? ref)),
+			libraryArtworkUrl(artworkOrigin, paths.at(ref)),
 
 		addresses,
 		address: (ref: number) => addresses(ref)[0] ?? null,
 
-		fill: fillScratch(paths, artworkOrigin, structure),
-		queueTargets: queueLibraryTracks(paths, structure),
+		fill: fillScratch(figures, artworkOrigin),
+		queueTargets: queueLibraryTracks(figures),
 
-		addTo: addToPlaylist(paths, artworkOrigin, structure),
+		addTo: addToPlaylist(figures, artworkOrigin),
 
-		playingPosition: playingPositionIn(paths, subsongs),
+		playingPosition: (refs, track) =>
+			placeOfOrdinal(refs, track?.libraryOrdinal),
+	};
+};
+
+export interface WindowedLibraryOptions {
+	windows: RowWindows;
+	origin: string;
+	listNow: () => LibraryList | null;
+	coverOf: (ordinal: number) => number | null;
+}
+
+export const windowedSourceOf = ({
+	windows,
+	origin,
+	listNow,
+	coverOf,
+}: WindowedLibraryOptions): Extract<LibrarySource, { kind: "library" }> => {
+	const figures = () => {
+		const list = listNow();
+		return { structure: list?.structure ?? 0, trackCount: list?.length ?? 0 };
+	};
+
+	const heldRow = (ordinal: number) => {
+		const list = listNow();
+		const held = list ? windows.at(list, ordinal) : null;
+		return held?.kind === "library" ? held : null;
+	};
+
+	const pathOf = (ordinal: number) => {
+		const held = heldRow(ordinal);
+		return held ? trackPathAt(held.window, held.row) : null;
+	};
+
+	const addresses = (ordinal: number): TrackAddress[] => {
+		const list = listNow();
+		const held = heldRow(ordinal);
+		const track = pathOf(ordinal);
+		if (!list || !held || !track) return [];
+
+		return [
+			{
+				kind: "library",
+				track,
+				subsong: Number(held.window.spine.subsong.at(held.row)) || 0,
+			},
+			{ kind: "ordinal", ordinal, structure: list.structure },
+		];
+	};
+
+	return {
+		kind: "library",
+		playlistId: null,
+
+		artworkUrl: (ordinal) => {
+			const cover = coverOf(ordinal);
+			if (cover === null) return null;
+			const track = pathOf(cover) ?? pathOf(ordinal);
+			return track === null ? null : libraryArtworkUrl(origin, track);
+		},
+
+		addresses,
+		address: (ordinal) => addresses(ordinal)[0] ?? null,
+
+		fill: fillScratch(figures, origin),
+		queueTargets: queueLibraryTracks(figures),
+		addTo: addToPlaylist(figures, origin),
+
+		playingPosition: (refs, track) =>
+			placeOfOrdinal(refs, track?.libraryOrdinal),
+	};
+};
+
+const queuePlaylistRows = async (
+	playlistId: string,
+	refs: Refs,
+): Promise<QueueSource> => ({
+	kind: "rows",
+	targets: Array.from(refs, (ref) => ({ playlistId, itemIndex: ref })),
+});
+
+const copyPlaylistRowsTo = async (
+	origin: string | null,
+	playlistId: string,
+	targetId: string,
+	refs: Refs,
+	duplicates: Duplicates,
+): Promise<AddedRows> => {
+	const required = requireFooJean(origin);
+	return orThrow(
+		await copyPlaylistRows(required, targetId, {
+			source: playlistId,
+			runs: runsOf(refs),
+			duplicates,
+		}),
+	);
+};
+
+export interface WindowedPlaylistOptions {
+	windows: RowWindows;
+	origin: string;
+	listNow: () => PlaylistList | null;
+	id?: string;
+}
+
+export const windowedPlaylistSourceOf = ({
+	windows,
+	origin,
+	listNow,
+	id,
+}: WindowedPlaylistOptions): Extract<LibrarySource, { kind: "playlist" }> => {
+	const heldItem = (position: number) => {
+		const list = listNow();
+		const held = list ? windows.at(list, position) : null;
+		return held?.kind === "playlist" ? held.page.items[held.row] : null;
+	};
+
+	const addresses = (position: number): TrackAddress[] => {
+		const list = listNow();
+		if (!list) return [];
+
+		const forms: TrackAddress[] = [];
+		const item = heldItem(position);
+		if (item?.libraryPath)
+			forms.push({
+				kind: "library",
+				track: item.libraryPath,
+				subsong: item.subsong,
+			});
+		if (isAnswered(list.structure))
+			forms.push({
+				kind: "playlist",
+				playlist: list.id,
+				index: position,
+				structure: list.structure,
+			});
+		return forms;
+	};
+
+	const idNow = () => {
+		const named = id ?? listNow()?.id;
+		if (!named) throw new Error("no playlist is on screen");
+		return named;
+	};
+
+	return {
+		kind: "playlist",
+		get playlistId() {
+			return id ?? listNow()?.id ?? null;
+		},
+
+		artworkUrl: (position) => {
+			const list = listNow();
+			const item = heldItem(position);
+			if (!list || !item) return null;
+			const path = coverPathOf(item);
+			return path
+				? libraryArtworkUrl(origin, path)
+				: playlistRowArtworkUrl(origin, list.id, position);
+		},
+
+		addresses,
+		address: (position) => addresses(position)[0] ?? null,
+
+		queueTargets: (positions) => queuePlaylistRows(idNow(), positions),
+		addTo: (targetId, positions, duplicates) =>
+			copyPlaylistRowsTo(origin, idNow(), targetId, positions, duplicates),
+
+		playingPosition: (refs, _track, activeItem) =>
+			activeItem && activeItem.playlistId === (id ?? listNow()?.id)
+				? refs
+					? positionOf(refs, activeItem.index)
+					: activeItem.index
+				: -1,
 	};
 };
 
@@ -315,7 +415,7 @@ const fromPlaylist = (
 			if (!options.paths) return null;
 
 			const path = options.paths.at(ref);
-			if (path) return canonicalArtworkUrl(origin, path);
+			if (path) return libraryArtworkUrl(origin, path);
 
 			return origin ? playlistRowArtworkUrl(origin, playlistId, ref) : null;
 		},
@@ -323,31 +423,16 @@ const fromPlaylist = (
 		addresses,
 		address: (ref: number) => addresses(ref)[0] ?? null,
 
-		queueTargets: async (refs: Refs): Promise<QueueSource> => ({
-			kind: "rows",
-			targets: Array.from(refs, (ref) => ({ playlistId, itemIndex: ref })),
-		}),
-		addTo: async (
-			targetId: string,
-			refs: Refs,
-			duplicates: Duplicates,
-		): Promise<AddedRows> => {
-			const required = requireFooJean(origin);
-			return orThrow(
-				await copyPlaylistRows(required, targetId, {
-					source: playlistId,
-					runs: runsOf(refs),
-					duplicates,
-				}),
-			);
-		},
+		queueTargets: (refs: Refs) => queuePlaylistRows(playlistId, refs),
+		addTo: (targetId: string, refs: Refs, duplicates: Duplicates) =>
+			copyPlaylistRowsTo(origin, playlistId, targetId, refs, duplicates),
 
 		playingPosition: (
-			refs: Refs,
+			refs: Refs | null,
 			_track: TrackIdentity | null | undefined,
 			activeItem?: PlaybackPosition | null,
 		) =>
-			activeItem?.playlistId === playlistId
+			refs && activeItem?.playlistId === playlistId
 				? positionOf(refs, activeItem.index)
 				: -1,
 	};

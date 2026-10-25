@@ -7,7 +7,6 @@ import type {
 	PlayerSnapshot,
 	PlayerState,
 } from "@/shared/api/types";
-import { useCacheOnly } from "@/shared/hooks/useCacheOnly";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { forgetHeard, rememberSnapshot } from "./audible";
 import { AUDIENCE_POLL_MS } from "./audience";
@@ -65,6 +64,7 @@ function mergePlayer(
 			index: doc.playingLocation?.index ?? -1,
 			path: doc.path || null,
 			libraryPath: doc.libraryPath,
+			libraryOrdinal: doc.libraryOrdinal,
 			album: doc.album,
 			albumArtist: doc.albumArtist,
 			playlistGuid: doc.playingLocation?.playlistId ?? null,
@@ -83,12 +83,6 @@ function mergePlayer(
 		outputDeviceId: doc.outputDeviceId,
 		outputSilent: doc.outputSilent ?? null,
 	};
-}
-
-const LIBRARY_UNBUILT_KEY = ["library", "unbuilt"];
-
-export function useExportHeldWhenLibraryUnbuilt(): number | null {
-	return useCacheOnly<number | null>(LIBRARY_UNBUILT_KEY).data ?? null;
 }
 
 interface AnnouncedRevisions {
@@ -249,6 +243,7 @@ const NOTHING_PLAYING: ActiveItem = {
 	index: -1,
 	path: null,
 	libraryPath: null,
+	libraryOrdinal: null,
 	album: null,
 	albumArtist: null,
 	playlistGuid: null,
@@ -292,13 +287,11 @@ function forgetSession(client: QueryClient): boolean {
 }
 
 export interface PollFollower {
-	heldLibraryStructure: (origin: string) => number;
 	answered: (origin: string) => void;
 	libraryAnnounced: (origin: string, library: StateDocument["library"]) => void;
 }
 
 const UNFOLLOWED: PollFollower = {
-	heldLibraryStructure: () => 0,
 	answered: () => {},
 	libraryAnnounced: () => {},
 };
@@ -323,7 +316,6 @@ async function applyPoll(
 	drawn.asked += 1;
 	const ask = drawn.asked;
 	const tag = read === "conditional" ? drawn.tag : null;
-	const exportHeldWhenAsked = follower.heldLibraryStructure(origin);
 	const askedAt = performance.now();
 	const result = await fetchState(origin, tag);
 	if (!result.ok && result.reason === "unreachable")
@@ -371,13 +363,6 @@ async function applyPoll(
 	client.setQueryData<PlayerSnapshot>(PLAYER_KEY, snapshot);
 	const sawChangeOrSeek = rememberSnapshot(snapshot);
 	notePlaybackState(snapshot.player.playbackState);
-
-	// The mark a library address is checked against: `shared/api/README.md`, *What Jean does about
-	// the library*.
-	client.setQueryData<number | null>(
-		LIBRARY_UNBUILT_KEY,
-		result.state.library.ready ? null : exportHeldWhenAsked,
-	);
 
 	follower.libraryAnnounced(origin, result.state.library);
 	const revisions: AnnouncedRevisions = {

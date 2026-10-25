@@ -1,3 +1,4 @@
+import type { TrackColumns } from "@/shared/api/types";
 import { finished, SLICE_MASK, type Steps } from "@/shared/lib/idle";
 import { clamp } from "@/shared/lib/math";
 import {
@@ -9,7 +10,6 @@ import {
 	withBothSources,
 } from "./fields";
 import type { LibraryColumns } from "./libraryColumns";
-import { rowsMoved } from "./libraryColumns";
 
 export const INTENSITY_FIELDS = withBothSources([
 	FIELD.playCount,
@@ -19,7 +19,7 @@ export const INTENSITY_FIELDS = withBothSources([
 const PATINA_YEARS = 6;
 const YEAR_MS = 365.25 * 24 * 60 * 60 * 1000;
 
-export interface Intensity {
+interface Intensity {
 	heat: Float32Array;
 	patina: Float32Array;
 	playedCount: number;
@@ -39,6 +39,25 @@ const patinaOf = (plays: number, lastPlayed: number | null, now: number) =>
 	plays > 0 && lastPlayed !== null
 		? clamp((now - lastPlayed) / YEAR_MS / PATINA_YEARS, 0, 1)
 		: 0;
+
+export interface Shading {
+	heat: number;
+	patina: number;
+}
+
+// A row is shaded alone, against the library's highest play count, which `GET /api/library/summary`
+// answers as its first top track.
+export const intensityOf = (
+	row: TrackColumns,
+	mostPlayed: number,
+	now: number,
+): Shading => {
+	const plays = playCountOf(row) ?? 0;
+	return {
+		heat: clamp(heatOf(plays, Math.log1p(mostPlayed)), 0, 1),
+		patina: patinaOf(plays, lastPlayedOf(row), now),
+	};
+};
 
 const mostIn = (plays: Int32Array) =>
 	plays.reduce((most, one) => Math.max(most, one), 0);
@@ -76,47 +95,3 @@ export function* intensitySteps(columns: LibraryColumns): Steps<Intensity> {
 
 export const deriveIntensity = (columns: LibraryColumns) =>
 	finished(intensitySteps(columns));
-
-export const rowPlays = (columns: LibraryColumns, ref: number) => {
-	const row: string[] = [];
-	for (const field of INTENSITY_FIELDS)
-		row[field] = columns.fields[field].at(ref);
-	return { plays: playCountOf(row) ?? 0, lastPlayed: lastPlayedOf(row) };
-};
-
-export function patchedIntensity(
-	held: Intensity,
-	before: LibraryColumns,
-	after: LibraryColumns,
-): Intensity {
-	const counted = countedBy.get(held.heat);
-	if (!counted || counted.plays.length !== after.trackCount)
-		return deriveIntensity(after);
-
-	const moved = rowsMoved(INTENSITY_FIELDS, before, after);
-	if (moved.length === 0) return held;
-
-	const plays = counted.plays.slice();
-	const patina = held.patina.slice();
-	const now = Date.now();
-	let playedCount = held.playedCount;
-
-	for (const ref of moved) {
-		const { plays: next, lastPlayed } = rowPlays(after, ref);
-		const was = plays[ref];
-		plays[ref] = next;
-		playedCount += (plays[ref] > 0 ? 1 : 0) - (was > 0 ? 1 : 0);
-		patina[ref] = patinaOf(plays[ref], lastPlayed, now);
-	}
-
-	const mostPlayed = mostIn(plays);
-	const ceiling = Math.log1p(mostPlayed);
-	let heat: Float32Array;
-	if (mostPlayed === counted.mostPlayed) {
-		heat = held.heat.slice();
-		for (const ref of moved) heat[ref] = heatOf(plays[ref], ceiling);
-	} else heat = Float32Array.from(plays, (one) => heatOf(one, ceiling));
-
-	countedBy.set(heat, { plays, mostPlayed });
-	return { heat, patina, playedCount };
-}

@@ -11,6 +11,7 @@ export function playingTrack(
 		title: title || null,
 		path,
 		subsong: player?.activeItem?.subsong ?? 0,
+		libraryOrdinal: player?.activeItem?.libraryOrdinal ?? null,
 	};
 }
 

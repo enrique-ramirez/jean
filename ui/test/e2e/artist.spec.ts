@@ -1,15 +1,14 @@
-import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import { albumRoute, artistRoute } from "../../src/domain/track/routes.ts";
 import { everyValueOf } from "../../src/shared/api/multiValue.ts";
 import { en } from "../../src/shared/i18n/en.ts";
 import type { FakePlayer, Page } from "./fixtures.ts";
 import {
+	coversFromTheComponent,
 	expect,
 	expectPlayingFrom,
 	openLibrary,
 	playedFrom,
 	playRequests,
-	requestsTo,
 	revealSearch,
 	scratchOf,
 	searchField,
@@ -19,8 +18,32 @@ import {
 	untilQuiet,
 	viewHeader,
 } from "./fixtures.ts";
+import {
+	expectPendingRowsPlayByPosition,
+	expectTheSetAskedOnce,
+	holdRows,
+	latestAnswer,
+	openHomeSettled,
+	ordinalsOfSet,
+	recordLibraryTraffic,
+	untilRowsAreHeld,
+} from "./libraryLists.ts";
+import {
+	ARTIST_ON_THREE_RECORDS,
+	type ArtistAnswer as ArtistPage,
+	expectTheFiguresOf,
+	NOTHING_TO_SUM,
+	THREE_RECORDS,
+} from "./setFigures.ts";
 
 const ARTIST = "Babasónicos";
+
+const untilTheScratchIsFilled = (player: FakePlayer) =>
+	expect
+		.poll(() => scratchOf(player)?.guid, {
+			message: "Jean never filled the scratch playlist",
+		})
+		.toBeDefined();
 
 const openArtist = async (
 	page: Parameters<typeof openLibrary>[0],
@@ -85,6 +108,7 @@ test.describe("an artist is a place", () => {
 			.getByRole("button", { name: "Play", exact: true })
 			.click();
 
+		await untilTheScratchIsFilled(player);
 		await expect
 			.poll(() => playedFrom(player)?.id)
 			.toBe(scratchOf(player)?.guid);
@@ -102,6 +126,7 @@ test.describe("an artist is a place", () => {
 		await openArtist(page, ARTIST);
 		await page.keyboard.press("p");
 
+		await untilTheScratchIsFilled(player);
 		await expect
 			.poll(() => playedFrom(player))
 			.toEqual({ id: scratchOf(player)?.guid, index: 0 });
@@ -386,18 +411,9 @@ test.describe("the pictures on an artist's page", () => {
 	});
 });
 
-// foobar2000 holds a shared credit as written; the per-artist tags that split it arrive in the library's second part.
-test.describe("before the credit columns arrive", () => {
-	const LATE = [
-		FIELD.codec,
-		FIELD.bitrate,
-		FIELD.added,
-		FIELD.artists,
-		FIELD.artistIds,
-		FIELD.albumArtists,
-		FIELD.albumArtistIds,
-	].map((field) => TRACK_EXPRESSIONS[field]);
-
+// foobar2000 holds a shared credit as written, and `%artists%` splits it into its members. The
+// component answers who an artist is from both, so a member is known before any row arrives.
+test.describe("a shared credit split by its artists tag", () => {
 	const SHARED = "Revelries & Henri Purnell";
 	const MEMBER = "Revelries";
 	const SEPARATOR = String.fromCharCode(31);
@@ -411,7 +427,6 @@ test.describe("before the credit columns arrive", () => {
 				),
 			},
 		},
-		fooJean: { holdSubset: LATE },
 	});
 
 	interface Drawn {
@@ -454,11 +469,22 @@ test.describe("before the credit columns arrive", () => {
 			},
 		);
 
-	const releaseTheLatePart = async (page: Page) => {
-		await page.evaluate(() => {
+	const markReleased = (page: Page) =>
+		page.evaluate(() => {
 			(Reflect.get(window, "__drawn") as Drawn).releasedAt = performance.now();
 		});
-		await page.request.post("/__control/holdSubset", { data: {} });
+
+	const releaseTheRows = async (page: Page) => {
+		await markReleased(page);
+		await holdRows(page, false);
+	};
+
+	const holdQuestions = (page: Page) =>
+		page.request.post("/__control/holdQuestions", { data: { hold: true } });
+
+	const releaseTheAnswer = async (page: Page) => {
+		await markReleased(page);
+		await page.request.post("/__control/holdQuestions", { data: {} });
 	};
 
 	const expectFirstDrawnOnceReleased = async (page: Page, name: string) => {
@@ -468,114 +494,180 @@ test.describe("before the credit columns arrive", () => {
 		expect(firstSeen[name], `${name} was never drawn`).toBeDefined();
 		expect(
 			firstSeen[name],
-			`${name} was drawn before the credit columns arrived`,
+			`${name} was drawn before the answer arrived`,
 		).toBeGreaterThanOrEqual(releasedAt as number);
 	};
 
 	const busyWithin = (page: Page, scope: string) =>
 		page.locator(`${scope}[aria-busy="true"], ${scope} [aria-busy="true"]`);
 
-	test("search shows the artist results at once, before the credits are split, with no busy group", async ({
-		page,
-	}) => {
-		await recordWhatIsDrawn(page);
-		await openLibrary(page);
-		await revealSearch(page);
-		await searchField(page).fill("revelries");
-
-		const results = page.getByRole("listbox");
-		await expect(
-			results.getByRole("option").filter({ hasText: /^Revelries(?! &)/ }),
-		).toBeVisible();
-		await expect(
-			results.getByRole("option").filter({ hasText: "Bloodhail" }),
-		).toBeVisible();
-		await expect(busyWithin(page, '[role="listbox"]')).toHaveCount(0);
-
-		await releaseTheLatePart(page);
-		const { releasedAt, firstSeen } = await page.evaluate(
-			() => Reflect.get(window, "__drawn") as Drawn,
-		);
-		expect(
-			firstSeen["an artist result"],
-			"the artist result was drawn only once the credit columns arrived",
-		).toBeLessThan(releasedAt as number);
-	});
-
-	interface DropdownStates {
-		recording: boolean;
-		states: { busy: boolean; artists: boolean }[];
-	}
-
-	const recordTheDropdown = (page: Page) =>
-		page.addInitScript((member) => {
-			const recorded: DropdownStates = { recording: false, states: [] };
-			Reflect.set(window, "__dropdown", recorded);
-			const isAnArtist = new RegExp(`^${member}(?! &)`);
-			const look = () => {
-				if (!recorded.recording) return;
-				const results = document.querySelector('[role="listbox"]');
-				recorded.states.push({
-					busy: results?.querySelector('[aria-busy="true"]') != null,
-					artists: [
-						...(results?.querySelectorAll('[role="option"]') ?? []),
-					].some((option) => isAnArtist.test(option.textContent ?? "")),
-				});
-			};
-			Reflect.set(window, "__lookAtTheDropdown", look);
-			new MutationObserver(look).observe(document, {
-				subtree: true,
-				childList: true,
-				characterData: true,
-				attributes: true,
-				attributeFilter: ["aria-busy"],
-			});
-		}, MEMBER);
-
-	test("the open dropdown never draws a busy artist group, and keeps the artists drawn while the credit columns land", async ({
-		page,
-		player,
-	}) => {
-		const lateAnswers = countLateAnswers(page);
-		await recordTheDropdown(page);
-		await openLibrary(page);
-		await revealSearch(page);
-		await page.evaluate(() => {
-			(Reflect.get(window, "__dropdown") as DropdownStates).recording = true;
+	const countRowsAnswers = (page: Page) => {
+		let answered = 0;
+		page.on("response", (response) => {
+			if (
+				new URL(response.url()).pathname === "/api/library/rows" &&
+				response.status() === 200
+			)
+				answered += 1;
 		});
-		await searchField(page).fill("revelries");
+		return () => answered;
+	};
 
-		const artist = page
-			.getByRole("listbox")
-			.getByRole("option")
-			.filter({ hasText: /^Revelries(?! &)/ });
-		await expect(artist).toBeVisible();
+	test.describe("with the rows held", () => {
+		test.use({ fooJean: { holdRows: true } });
 
-		await page.request.post("/__control/holdSubset", { data: {} });
-		await expect.poll(lateAnswers).toBeGreaterThan(0);
-		await untilQuiet(player);
-		await expect(artist).toBeVisible();
+		const busyArtists = (page: Page) =>
+			page
+				.getByRole("listbox")
+				.getByRole("option")
+				.filter({ hasText: /^Revelries/ })
+				.and(page.locator('[aria-busy="true"], :has([aria-busy="true"])'));
 
-		const { states } = await page.evaluate(
-			() => Reflect.get(window, "__dropdown") as DropdownStates,
-		);
-		expect(
-			states.filter((state) => state.busy),
-			"the dropdown drew a busy artist group",
-		).toEqual([]);
-		expect(
-			states
-				.slice(states.findIndex((state) => state.artists))
-				.filter((state) => !state.artists),
-			"the artists went away once drawn",
-		).toEqual([]);
+		test("search shows the artist results at once, before any track row lands, none of them busy", async ({
+			page,
+			player,
+		}) => {
+			await recordWhatIsDrawn(page);
+			await openHomeSettled(page, player);
+			await revealSearch(page);
+			await searchField(page).fill("revelries");
+
+			const results = page.getByRole("listbox");
+			await expect(
+				results.getByRole("option").filter({ hasText: /^Revelries(?! &)/ }),
+			).toBeVisible();
+			await expect(busyArtists(page)).toHaveCount(0);
+
+			await releaseTheRows(page);
+			await expect(
+				results.getByRole("option").filter({ hasText: "Bloodhail" }),
+			).toBeVisible();
+			const { releasedAt, firstSeen } = await page.evaluate(
+				() => Reflect.get(window, "__drawn") as Drawn,
+			);
+			expect(
+				firstSeen["an artist result"],
+				"the artist result was drawn only once the rows arrived",
+			).toBeLessThan(releasedAt as number);
+		});
+
+		interface DropdownStates {
+			recording: boolean;
+			states: { busy: boolean; artists: boolean }[];
+		}
+
+		const recordTheDropdown = (page: Page) =>
+			page.addInitScript((member) => {
+				const recorded: DropdownStates = { recording: false, states: [] };
+				Reflect.set(window, "__dropdown", recorded);
+				const isAnArtist = new RegExp(`^${member}(?! &)`);
+				const look = () => {
+					if (!recorded.recording) return;
+					const results = document.querySelector('[role="listbox"]');
+					const artists = [
+						...(results?.querySelectorAll('[role="option"]') ?? []),
+					].filter((option) => isAnArtist.test(option.textContent ?? ""));
+					recorded.states.push({
+						busy: artists.some(
+							(option) =>
+								option.matches('[aria-busy="true"]') ||
+								option.querySelector('[aria-busy="true"]') !== null,
+						),
+						artists: artists.length > 0,
+					});
+				};
+				Reflect.set(window, "__lookAtTheDropdown", look);
+				new MutationObserver(look).observe(document, {
+					subtree: true,
+					childList: true,
+					characterData: true,
+					attributes: true,
+					attributeFilter: ["aria-busy"],
+				});
+			}, MEMBER);
+
+		test("the open dropdown never draws an artist busy, and keeps the artists drawn while the track rows land", async ({
+			page,
+			player,
+		}) => {
+			const rowsAnswers = countRowsAnswers(page);
+			await recordTheDropdown(page);
+			await openHomeSettled(page, player);
+			await revealSearch(page);
+			await page.evaluate(() => {
+				(Reflect.get(window, "__dropdown") as DropdownStates).recording = true;
+			});
+			await searchField(page).fill("revelries");
+
+			const artist = page
+				.getByRole("listbox")
+				.getByRole("option")
+				.filter({ hasText: /^Revelries(?! &)/ });
+			await expect(artist).toBeVisible();
+
+			await holdRows(page, false);
+			await expect.poll(rowsAnswers).toBeGreaterThan(0);
+			await untilQuiet(player);
+			await expect(artist).toBeVisible();
+
+			const { states } = await page.evaluate(
+				() => Reflect.get(window, "__dropdown") as DropdownStates,
+			);
+			expect(
+				states.filter((state) => state.busy),
+				"the dropdown drew an artist busy",
+			).toEqual([]);
+			expect(
+				states
+					.slice(states.findIndex((state) => state.artists))
+					.filter((state) => !state.artists),
+				"the artists went away once drawn",
+			).toEqual([]);
+		});
+
+		const firstRow = (page: Page) =>
+			trackRow(page, 0).evaluate((row) => {
+				const main = row.closest("main") as HTMLElement;
+				const box = row.getBoundingClientRect();
+				const origin = main.getBoundingClientRect().top - main.scrollTop;
+				return { top: box.top - origin, height: box.height };
+			});
+
+		test("the tracks tab's first row stays where it is, at its height, when its window lands", async ({
+			page,
+			player,
+		}) => {
+			await openHomeSettled(page, player);
+			await page.goto(`/#/${artistRoute(MEMBER, "tracks")}`);
+			await expect
+				.poll(() => player.fooJean.rowsHeld.length, {
+					message: "the tracks tab never asked for its rows",
+				})
+				.toBeGreaterThan(0);
+			await expect(trackRow(page, 0)).toHaveAttribute("aria-busy", "true");
+			const before = await firstRow(page);
+
+			await holdRows(page, false);
+			await expect(trackRow(page, 0)).toContainText("Bloodhail");
+			const after = await firstRow(page);
+
+			expect(
+				Math.abs(after.top - before.top),
+				`the first row stood at ${before.top}px and moved to ${after.top}px`,
+			).toBeLessThan(0.5);
+			expect(
+				Math.abs(after.height - before.height),
+				`the first row was ${before.height}px tall and became ${after.height}px`,
+			).toBeLessThan(0.5);
+		});
 	});
 
-	test("a member's page is busy until the credits are split, and never says they have nothing here", async ({
+	test("a member's page is busy until its answer arrives, and never says they have nothing here", async ({
 		page,
 	}) => {
 		await recordWhatIsDrawn(page);
 		await openLibrary(page);
+		await holdQuestions(page);
 		await page.goto(`/#/${artistRoute(MEMBER)}`);
 		await expect(
 			page.getByRole("heading", { level: 1, name: MEMBER }),
@@ -583,7 +675,7 @@ test.describe("before the credit columns arrive", () => {
 		const busy = busyWithin(page, "main");
 		await expect(busy.first()).toBeAttached();
 
-		await releaseTheLatePart(page);
+		await releaseTheAnswer(page);
 		await expect(
 			page.locator("main").getByRole("link", { name: /Deathconsciousness/ }),
 		).toBeVisible();
@@ -604,11 +696,12 @@ test.describe("before the credit columns arrive", () => {
 			LOADING,
 		);
 
-	test("the header's placeholder is busy and says Loading once, until the credits are split", async ({
+	test("the header's placeholder is busy and says Loading once, until its answer arrives", async ({
 		page,
 	}) => {
 		await recordWhatIsDrawn(page);
 		await openLibrary(page);
+		await holdQuestions(page);
 		await page.goto(`/#/${artistRoute(MEMBER)}`);
 		await expect(
 			page.getByRole("heading", { level: 1, name: MEMBER }),
@@ -618,117 +711,12 @@ test.describe("before the credit columns arrive", () => {
 		await expect(busy.first()).toBeAttached();
 		expect(await loadingsIn(header)).toBe(1);
 
-		await releaseTheLatePart(page);
+		await releaseTheAnswer(page);
 		await expect(
 			page.locator("main").getByRole("link", { name: /Deathconsciousness/ }),
 		).toBeVisible();
 		await expect(busy).toHaveCount(0);
 		expect(await loadingsIn(header)).toBe(0);
-	});
-
-	const busyBelowTheHeader = (page: Page, loading: string) =>
-		page.locator("main").evaluate(
-			(main, said) =>
-				[...main.querySelectorAll('[aria-busy="true"]')]
-					.filter(
-						(element) =>
-							!element.closest("header") &&
-							!element.closest("[data-library-cards]"),
-					)
-					.map((element) => ({
-						loadings: (element.textContent ?? "").split(said).length - 1,
-						holdsAPlaceholder: [
-							...element.querySelectorAll(
-								'[aria-hidden="true"]:not(svg, button *)',
-							),
-						].some((bar) => {
-							const box = bar.getBoundingClientRect();
-							return box.width > 0 && box.height > 0;
-						}),
-					})),
-			loading,
-		);
-
-	const untilTheLatePartIsAsked = (player: FakePlayer) =>
-		expect
-			.poll(
-				() =>
-					requestsTo(player, "/api/library/export").filter((entry) =>
-						new URL(entry.path, "http://fake.invalid").searchParams
-							.getAll("only")
-							.some((column) => LATE.includes(column)),
-					).length,
-				{ message: "Jean never asked for the late part" },
-			)
-			.toBeGreaterThan(0);
-
-	const countLateAnswers = (page: Page) => {
-		let answered = 0;
-		page.on("response", (response) => {
-			const url = new URL(response.url());
-			if (
-				url.pathname === "/api/library/export" &&
-				url.searchParams.getAll("only").some((column) => LATE.includes(column))
-			)
-				answered += 1;
-		});
-		return () => answered;
-	};
-
-	test("the tracks tab lists the artist's tracks before the credits are split, with no placeholder rows below the header", async ({
-		page,
-		player,
-	}) => {
-		const lateAnswers = countLateAnswers(page);
-		await openLibrary(page);
-		await untilTheLatePartIsAsked(player);
-
-		await page.goto(`/#/${artistRoute(MEMBER, "tracks")}`);
-		await expect(
-			page.getByRole("heading", { level: 1, name: MEMBER }),
-		).toBeVisible();
-
-		await expect(trackRow(page, 0)).toContainText("Bloodhail");
-		expect(await busyBelowTheHeader(page, LOADING)).toEqual([]);
-		expect(lateAnswers(), "the credit columns arrived first").toBe(0);
-
-		await page.request.post("/__control/holdSubset", { data: {} });
-		await expect.poll(lateAnswers).toBeGreaterThan(0);
-		await expect(trackRow(page, 0)).toContainText("Bloodhail");
-	});
-
-	const firstRealRow = (page: Page) =>
-		trackRow(page, 0).evaluate((row) => {
-			const main = row.closest("main") as HTMLElement;
-			const box = row.getBoundingClientRect();
-			const origin = main.getBoundingClientRect().top - main.scrollTop;
-			return { top: box.top - origin, height: box.height };
-		});
-
-	test("the tracks tab's first row stays where it is, at its height, when the credits arrive", async ({
-		page,
-		player,
-	}) => {
-		const lateAnswers = countLateAnswers(page);
-		await openLibrary(page);
-		await untilTheLatePartIsAsked(player);
-		await page.goto(`/#/${artistRoute(MEMBER, "tracks")}`);
-		await expect(trackRow(page, 0)).toContainText("Bloodhail");
-		const before = await firstRealRow(page);
-
-		await page.request.post("/__control/holdSubset", { data: {} });
-		await expect.poll(lateAnswers).toBeGreaterThan(0);
-		await expect(trackRow(page, 0)).toContainText("Bloodhail");
-		const after = await firstRealRow(page);
-
-		expect(
-			Math.abs(after.top - before.top),
-			`the first row stood at ${before.top}px and moved to ${after.top}px`,
-		).toBeLessThan(0.5);
-		expect(
-			Math.abs(after.height - before.height),
-			`the first row was ${before.height}px tall and became ${after.height}px`,
-		).toBeLessThan(0.5);
 	});
 });
 
@@ -791,5 +779,158 @@ test.describe("the header's bottom edge", () => {
 		expect(behind.y).toBeLessThanOrEqual(tabs.y);
 		expect(behind.bottom).toBeGreaterThanOrEqual(tabs.bottom - 1);
 		expect(await rulesAbove(page, shuffle.bottom, tabs.y - 1)).toEqual([]);
+	});
+});
+
+type ArtistAnswer = Record<
+	"own" | "shared" | "guest",
+	Parameters<typeof ordinalsOfSet>[0]
+>;
+
+// A guest spot on another band's record, so the artist's tracks are two sets apart in the library and
+// the list is all three of theirs merged.
+test.describe("the tracks tab's rows", () => {
+	test.use({
+		retagged: { Bloodhail: { "%artist%": `Have a Nice Life feat. ${ARTIST}` } },
+	});
+
+	const openTheTracks = async (page: Page) => {
+		const answered = recordLibraryTraffic(page);
+		await page.goto(`/#/${artistRoute(ARTIST, "tracks")}`);
+		await expect(
+			page.getByRole("heading", { level: 1, name: ARTIST }),
+		).toBeVisible();
+		const answer = await latestAnswer<ArtistAnswer>(
+			answered,
+			"GET /api/library/artist",
+		);
+		const all = [
+			...ordinalsOfSet(answer.own),
+			...ordinalsOfSet(answer.shared),
+			...ordinalsOfSet(answer.guest),
+		].sort((a, b) => a - b);
+		return { answered, answer, all };
+	};
+
+	test("are asked once, for their own, shared and guest tracks together, and nothing else of the library is read", async ({
+		page,
+		player,
+	}) => {
+		const { answered, answer, all } = await openTheTracks(page);
+		expect(
+			ordinalsOfSet(answer.guest).length,
+			"the guest spot is not in the answer",
+		).toBe(1);
+
+		await expectTheSetAskedOnce(answered, player, all);
+		await expect(page.getByRole("grid")).toHaveAttribute(
+			"aria-rowcount",
+			String(all.length),
+		);
+		await expect(trackRow(page, 0)).toContainText(
+			String(player.ordinalOrder()[all[0]].track["%title%"]),
+		);
+	});
+
+	test.describe("with the rows held", () => {
+		test.use({ fooJean: { holdRows: true } });
+
+		test("draw as skeletons and play by their position in the artist's tracks", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			const { all } = await openTheTracks(page);
+			await untilRowsAreHeld(player, all);
+
+			await expectPendingRowsPlayByPosition(page, player, isMobile, all);
+		});
+	});
+});
+
+// The header and the records come from the artist answer, which computes them
+// over the artist's tracks, with the rows and the whole library held so nothing is there to count.
+test.describe("the overview, from the artist answer", () => {
+	test.use({ retagged: THREE_RECORDS, fooJean: NOTHING_TO_SUM });
+
+	const openTheOverview = async (page: Page) => {
+		const answered = recordLibraryTraffic(page);
+		await page.goto(`/#/${artistRoute(ARTIST_ON_THREE_RECORDS)}`);
+		await expect(
+			page.getByRole("heading", { level: 1, name: ARTIST_ON_THREE_RECORDS }),
+		).toBeVisible();
+		return latestAnswer<ArtistPage>(answered, "GET /api/library/artist");
+	};
+
+	const recordsUnder = (page: Page, heading: string) =>
+		page
+			.locator("main section")
+			.filter({
+				has: page.getByRole("heading", {
+					level: 2,
+					name: heading,
+					exact: true,
+				}),
+			})
+			.getByRole("link");
+
+	const trackCountOf = (count: number) =>
+		`${count} ${count === 1 ? "track" : "tracks"}`;
+
+	const expectTheRecords = async (
+		page: Page,
+		heading: string,
+		records: ArtistPage["records"]["own"],
+		showsCredit: boolean,
+	) => {
+		const links = recordsUnder(page, heading);
+		await expect(links).toHaveCount(records.length);
+		for (const [at, record] of records.entries()) {
+			const link = links.nth(at);
+			await expect(link, record.album).toContainText(record.album);
+			await expect(link, record.album).toHaveAttribute(
+				"href",
+				`#/${albumRoute(record.artist, record.album)}`,
+			);
+			await expect(link, record.album).toContainText(String(record.year));
+			await expect(link, record.album).toContainText(
+				trackCountOf(record.trackCount),
+			);
+			if (showsCredit && record.artist)
+				await expect(link, record.album).toContainText(record.artist);
+		}
+	};
+
+	test("the header draws the answer's albums, tracks, duration and years", async ({
+		page,
+	}) => {
+		const { figures, records } = await openTheOverview(page);
+		expect(
+			figures.albumCount,
+			"the figures leave out the record shared with others",
+		).toBe(records.own.length + records.shared.length);
+
+		await expectTheFiguresOf(page, figures);
+	});
+
+	test("Discography is the answer's own records and With other artists its shared ones, each with its year and its tracks", async ({
+		page,
+		player,
+	}) => {
+		const { records } = await openTheOverview(page);
+		expect(records.own.map((record) => record.year)).toEqual([2003, 1994]);
+		expect(records.shared).toHaveLength(1);
+
+		await expectTheRecords(page, en["artist.discography"], records.own, false);
+		await expectTheRecords(page, en["artist.withOthers"], records.shared, true);
+
+		await expect
+			.poll(() => {
+				const asked = new Set(coversFromTheComponent(player));
+				return [...records.own, ...records.shared]
+					.map((record) => record.cover)
+					.filter((cover) => !asked.has(cover));
+			})
+			.toEqual([]);
 	});
 });

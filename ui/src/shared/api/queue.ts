@@ -7,6 +7,7 @@ import {
 	type Result,
 	type Schema,
 } from "./client";
+import type { LibraryRoles } from "./libraryQuestions";
 
 export type QueueRead = Schema["QueueRead"];
 export type QueuedTrack = Schema["QueuedTrack"];
@@ -28,8 +29,10 @@ async function queueMutation(
 		: written;
 }
 
-export const fetchQueue = (origin: string) =>
-	askResult(origin, PROBE_TIMEOUT_MS, (api, init) => api.GET("/queue", init));
+export const fetchQueue = (origin: string, roles?: LibraryRoles) =>
+	askResult(origin, PROBE_TIMEOUT_MS, (api, init) =>
+		api.GET("/queue", { ...init, params: { query: { ...roles } } }),
+	);
 
 export const postQueue = (
 	origin: string,

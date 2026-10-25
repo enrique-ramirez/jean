@@ -3,14 +3,26 @@ import {
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
 import { useAudiblePlayer } from "@/domain/player/usePlayer";
 import { usePlaylists } from "@/domain/player/usePlaylists";
-import { namedTrack, readValue } from "@/domain/track/fields";
-import { type HeldRating, nowPlayingKey } from "@/domain/track/playingRating";
+import { FIELD, namedTrack, readValue } from "@/domain/track/fields";
+import {
+	announcedLibraryOf,
+	watchAnnounced,
+} from "@/domain/track/libraryHolds";
+import { windowedLibraryOf } from "@/domain/track/libraryWindows";
+import {
+	type HeldRating,
+	nowPlayingKey,
+	ratingsWrittenByJean,
+} from "@/domain/track/playingRating";
+import { rowInWindow } from "@/domain/track/project";
 import { orThrow, retryWhenTooFast } from "@/shared/api/client";
+import type { RowsWindow } from "@/shared/api/libraryRows";
 import { playingTrack } from "@/shared/api/playerState";
+import { RATING_EXPRESSION } from "@/shared/api/rating";
 import { fetchPlayingTrack } from "@/shared/api/tracks";
 import type {
 	ActiveItem,
@@ -113,6 +125,54 @@ function addressesOfPlaying(
 	return forms;
 }
 
+const NOTHING = () => () => {};
+
+let adoptsAnswer = false;
+
+const ratingChangesIn = (library: {
+	columns: string[];
+	changeCounts: number[];
+}) => library.changeCounts[library.columns.indexOf(RATING_EXPRESSION)] ?? null;
+
+const NO_VERSION = () => 0;
+
+function useAdoptRereadRating(
+	origin: string | null,
+	ordinal: number | null | undefined,
+	path: string | null,
+	subsong: number,
+) {
+	const queryClient = useQueryClient();
+	const windowed = origin ? windowedLibraryOf(origin) : null;
+	const landed = useSyncExternalStore(
+		windowed ? windowed.windows.subscribe : NOTHING,
+		windowed ? windowed.windows.version : NO_VERSION,
+	);
+	const read = useRef<{ ordinal: number; window: RowsWindow } | null>(null);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a window landing fires the read rather than being read in it
+	useEffect(() => {
+		const list = windowed?.state().list;
+		const held =
+			windowed && list && ordinal != null
+				? windowed.windows.at(list, ordinal)
+				: null;
+		const row = held?.kind === "library" ? held : null;
+		const previous = read.current;
+		read.current =
+			row && ordinal != null ? { ordinal, window: row.window } : null;
+		if (!row || !previous || path === null) return;
+		if (previous.ordinal !== ordinal || previous.window === row.window) return;
+
+		const rating = rowInWindow(row.window, row.row)[FIELD.rating];
+		queryClient.setQueryData(
+			nowPlayingKey(path, subsong),
+			(current: HeldRating | null | undefined) =>
+				current ? { ...current, rating, agreedRating: rating } : current,
+		);
+	}, [landed, windowed, ordinal, path, subsong, queryClient]);
+}
+
 export function useNowPlayingTrack({ enabled = true } = {}) {
 	const t = useTranslate();
 	const snapshot = useAudiblePlayer();
@@ -130,6 +190,7 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 	const duration = item && item.duration > 0 ? item.duration : null;
 
 	const ready = enabled && path !== null && Boolean(origin);
+	useAdoptRereadRating(origin, item?.libraryOrdinal, path, subsong);
 
 	const queryClient = useQueryClient();
 	const query = useQuery({
@@ -148,18 +209,42 @@ export function useNowPlayingTrack({ enabled = true } = {}) {
 				nowPlayingKey(path, subsong),
 			);
 			const answered = answer.columns[NOW_PLAYING_FIELD.rating];
+			const keeps = holding && !adoptsAnswer;
+			adoptsAnswer = false;
 
 			return {
 				row: answer.columns,
 				path: answer.path,
-				rating: holding ? holding.rating : answered,
-				agreedRating: holding ? holding.agreedRating : answered,
+				rating: keeps ? holding.rating : answered,
+				agreedRating: keeps ? holding.agreedRating : answered,
 			};
 		},
 		staleTime: Infinity,
 		refetchOnWindowFocus: false,
 		...retryWhenTooFast({ otherFailures: 1 }),
 	});
+
+	const refetch = query.refetch;
+	useEffect(() => {
+		if (!origin || !ready) return undefined;
+		let counted = ((library) => (library ? ratingChangesIn(library) : null))(
+			announcedLibraryOf(origin),
+		);
+		let written = ratingsWrittenByJean();
+		let owed = 0;
+		return watchAnnounced(origin, (library) => {
+			const now = ratingChangesIn(library);
+			owed += ratingsWrittenByJean() - written;
+			written = ratingsWrittenByJean();
+			const delta = counted !== null && now !== null ? now - counted : 0;
+			const moved = delta > owed;
+			owed = Math.max(0, owed - Math.max(0, delta));
+			counted = now;
+			if (!moved) return;
+			adoptsAnswer = true;
+			void refetch();
+		});
+	}, [origin, ready, refetch]);
 
 	useEffect(() => {
 		const previous = lastAnnouncedPoll;

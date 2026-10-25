@@ -1,3 +1,7 @@
+import {
+	playingArtwork,
+	usePlayingLibrary,
+} from "@/domain/library/usePlayingLibrary";
 import { useConnection } from "@/domain/player/connection";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
@@ -16,7 +20,6 @@ import {
 	useTransport,
 } from "@/domain/player/useTransport";
 import { coverKey, namedTrack } from "@/domain/track/fields";
-import { canonicalPlayingArtworkUrl } from "@/domain/track/librarySource";
 import { usePlayingTrackDragSource } from "@/domain/track/useTrackDragSource";
 import { playingArtworkUrl } from "@/shared/api/artwork";
 import { isFooJeanReady } from "@/shared/api/discovery";
@@ -120,6 +123,8 @@ export function StatusBar({
 		title: track?.title ?? null,
 	});
 
+	const playingLibrary = usePlayingLibrary();
+
 	if (isPending || !snapshot) {
 		return (
 			<footer className={styles.statusbar}>
@@ -146,11 +151,9 @@ export function StatusBar({
 
 	const album = item.album;
 	const credited = item.albumArtist || item.columns[0] || null;
-	const canonical = album
-		? canonicalPlayingArtworkUrl(origin, album, credited || "")
-		: null;
-
-	const artwork = !track ? null : (canonical ?? playingArtworkUrl(origin));
+	const artwork = !track
+		? null
+		: playingArtwork(playingLibrary, playingArtworkUrl(origin));
 	const identity = !track
 		? undefined
 		: album

@@ -7,7 +7,6 @@ import {
 	fuzzyScore,
 	glyphs,
 	nameKey,
-	queryOf,
 	squash,
 	TIER,
 } from "../../src/shared/lib/text.ts";
@@ -49,19 +48,6 @@ test("a name's key is its letters, and its marks only where it has no letters", 
 	assert.equal(nameKey("･ ･－･ ･－ ･･･ ･ －･･"), "..-..-....-..");
 	assert.equal(nameKey("   "), "");
 	assert.equal(squash("!!!"), "");
-});
-
-test("a query with no letter or digit is one token with its whitespace gone", () => {
-	assert.deepEqual(queryOf("..-..-... .-.."), {
-		tokens: ["..-..-....-.."],
-		glyphic: true,
-	});
-	assert.deepEqual(queryOf("star lord"), {
-		tokens: ["star", "lord"],
-		glyphic: false,
-	});
-	assert.deepEqual(queryOf("a-b"), { tokens: ["a-b"], glyphic: false });
-	assert.deepEqual(queryOf("  "), { tokens: [], glyphic: false });
 });
 
 test("a morse name is named by its marks however the query is spaced, and never by letters", () => {

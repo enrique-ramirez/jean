@@ -11,10 +11,7 @@ import {
 	TRACK_EXPRESSIONS,
 	tagGroups,
 } from "../../src/domain/track/fields.ts";
-import {
-	canonicalTrackRefs,
-	groupByAlbum,
-} from "../../src/domain/track/grouping.ts";
+import { groupByAlbum } from "../../src/domain/track/grouping.ts";
 import { growingIndex } from "../../src/domain/track/growingIndex.ts";
 import {
 	deriveIntensity,
@@ -152,11 +149,6 @@ test("inSlices answers what finished answers for the same derivation", async (t)
 		await inSlices(groupByAlbum.steps(trackRows(sliced, VIEW)), live),
 		groupByAlbum(trackRows(whole, VIEW)),
 	);
-
-	assert.deepEqual(
-		await inSlices(canonicalTrackRefs.steps(sliced), live),
-		canonicalTrackRefs(whole),
-	);
 });
 
 test("inSlices gives the event loop a turn between slices", async (t) => {
@@ -232,14 +224,6 @@ test("slicedOver resumes a build begun in slices instead of starting it again", 
 
 test("a derivation begun in slices and read whole gives a fresh build's answer, once", () => {
 	const columns = freshColumns();
-	const begun = canonicalTrackRefs.steps(columns);
-	for (let at = 0; at < 3; at += 1) begun.next();
-
-	const read = canonicalTrackRefs(columns);
-	assert.deepEqual(read, canonicalTrackRefs(freshColumns()));
-	assert.equal(canonicalTrackRefs(columns), read);
-	assert.equal(finished(begun), read);
-
 	const rows = trackRows(columns, VIEW);
 	const runs = groupByAlbum.steps(rows);
 	for (let at = 0; at < 3; at += 1) runs.next();

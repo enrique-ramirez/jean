@@ -16,6 +16,13 @@ import {
 	titleOf,
 	viewHeader,
 } from "./fixtures.ts";
+import { latestAnswer, recordLibraryTraffic } from "./libraryLists.ts";
+import {
+	ARTIST_ON_THREE_RECORDS,
+	type ArtistAnswer,
+	NOTHING_TO_SUM,
+	THREE_RECORDS,
+} from "./setFigures.ts";
 import { expectTapTarget } from "./tapping.ts";
 
 // Every expected figure is counted here from the fake's own tracks, so a figure the cards draw is
@@ -560,5 +567,58 @@ test.describe("in Spanish", () => {
 			await dateIn(page, set.lastPlayed!, "es"),
 		);
 		await expect(cards(page)).not.toContainText("Last listened");
+	});
+});
+
+const dateOfStamp = (page: Page, at: number) =>
+	page.evaluate(
+		([at, parts]) => new Intl.DateTimeFormat("en", parts).format(at),
+		[at, DATE_PARTS] as const,
+	);
+
+// The answer computes the cards over every track of the artist's, the shared one
+// on Lafcadio among them, so a count over their own tracks draws other figures; and with the rows and
+// the whole library held there is nothing on the page to count from at all.
+test.describe("the cards, from the artist answer", () => {
+	test.use({ retagged: THREE_RECORDS, fooJean: NOTHING_TO_SUM });
+
+	test("carry the answer's share played, plays, never played, last listened, most played track and largest genres", async ({
+		page,
+	}) => {
+		const answered = recordLibraryTraffic(page);
+		await openArtist(page, ARTIST_ON_THREE_RECORDS);
+		const { figures, cards: answer } = await latestAnswer<ArtistAnswer>(
+			answered,
+			"GET /api/library/artist",
+		);
+		expect(answer.neverPlayed, "every track is played").toBeGreaterThan(0);
+		expect(answer.lastPlayed).not.toBeNull();
+		expect(answer.mostPlayed).not.toBeNull();
+		expect(answer.topGenres.length).toBeGreaterThan(1);
+
+		const played = card(page, "played");
+		await expectFigure(played, `${Math.round(answer.playedShare * 100)}%`);
+		await expectFigure(
+			played,
+			`${figures.trackCount - answer.neverPlayed} of ${figures.trackCount}`,
+		);
+		await expectFigure(played, `${answer.neverPlayed} never played`);
+
+		const plays = card(page, "plays");
+		await expectFigure(plays, await numberIn(page, answer.plays, "en"));
+		await expect(plays).toContainText(
+			`Last listened ${await dateOfStamp(page, answer.lastPlayed!)}`,
+		);
+
+		const most = card(page, "most-played");
+		await expect(most).toContainText(answer.mostPlayed!.title);
+		await expectFigure(most, `${answer.mostPlayed!.plays} plays`);
+
+		await expect(genreLinks(page)).toHaveCount(answer.topGenres.length);
+		for (const genre of answer.topGenres)
+			await expect(
+				genreLinkNamed(page, genre.name, genre.share),
+				`${genre.name} at ${genre.share}%`,
+			).toHaveAttribute("href", `#/${genreRoute(genre.name)}`);
 	});
 });

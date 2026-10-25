@@ -1,5 +1,13 @@
-import type { Page } from "./fixtures.ts";
-import { expect, test, viewHeader } from "./fixtures.ts";
+import { albumRoute, shelfRoute } from "../../src/domain/track/routes.ts";
+import type { FakePlayer, Page } from "./fixtures.ts";
+import { expect, fieldOf, test, viewHeader } from "./fixtures.ts";
+import { latestAnswer, recordLibraryTraffic } from "./libraryLists.ts";
+import {
+	expectNoRowsLanded,
+	expectTheFiguresOf,
+	NOTHING_TO_SUM,
+	type SetFigures,
+} from "./setFigures.ts";
 
 const heading = (page: Page) =>
 	viewHeader(page).getByRole("heading", { level: 1 });
@@ -284,5 +292,111 @@ test.describe("a library a tagger left whitespace in", () => {
 		await settled(page);
 
 		expect(await figure(page, "album")).toBe("5");
+	});
+});
+
+type Summary = SetFigures & {
+	shelves: { id: string; figures: SetFigures }[];
+};
+
+const SUMMARY = "GET /api/library/summary";
+
+const openList = async (page: Page, route: string, title: string) => {
+	const answered = recordLibraryTraffic(page);
+	await page.goto(`/#/${route}`);
+	await expect(
+		page.getByRole("heading", { level: 1, name: title }),
+	).toBeVisible();
+	return answered;
+};
+
+test.describe("All Music's header", () => {
+	test.use({ fooJean: NOTHING_TO_SUM });
+
+	test("draws the summary's albums, tracks, duration and years before any of its rows land", async ({
+		page,
+		player,
+	}) => {
+		const answered = await openList(page, "all", "All music");
+		const summary = await latestAnswer<Summary>(answered, SUMMARY);
+		expect(summary.albumCount, "the library is one album").toBeGreaterThan(1);
+		expect(summary.seconds, "the library has no durations").toBeGreaterThan(0);
+		expect(summary.earliestYear).not.toBe(summary.latestYear);
+
+		await expectTheFiguresOf(page, summary);
+		expectNoRowsLanded(player);
+	});
+});
+
+// A credit counts by the tag as written, whitespace and all, so Jar Of Flies is three records by
+// that count: Alice in Chains, a credit of two spaces, and a track credited to nobody. The summary
+// reads a credit of whitespace alone as no credit, which makes it two.
+test.describe("All Music's header over a credit of whitespace alone", () => {
+	test.use({
+		retagged: {
+			Nutshell: { "%artist%": "  ", "%album artist%": "  " },
+			"Rotten Apple": { "%artist%": "?", "%album artist%": "?" },
+		},
+		fooJean: NOTHING_TO_SUM,
+	});
+
+	const albumsByCreditAsWritten = (player: FakePlayer) =>
+		new Set(
+			player.libraryTracks.map((track) => {
+				const credit = fieldOf(track, "%album artist%");
+				return `${credit === "?" ? "" : credit}\u0000${fieldOf(track, "%album%").trim().toLowerCase()}`;
+			}),
+		).size;
+
+	test("counts the summary's albums, one fewer than the credits as written", async ({
+		page,
+		player,
+	}) => {
+		const answered = await openList(page, "all", "All music");
+		const summary = await latestAnswer<Summary>(answered, SUMMARY);
+		expect(albumsByCreditAsWritten(player)).toBe(summary.albumCount + 1);
+
+		await expectTheFiguresOf(page, summary);
+		expectNoRowsLanded(player);
+	});
+});
+
+test.describe("an album's header", () => {
+	test.use({ fooJean: NOTHING_TO_SUM });
+
+	test("draws the figures the album answer carries before any of its rows land", async ({
+		page,
+		player,
+	}) => {
+		const answered = await openList(
+			page,
+			albumRoute("Alice in Chains", "Jar Of Flies"),
+			"Jar Of Flies",
+		);
+		const { figures } = await latestAnswer<{ figures: SetFigures }>(
+			answered,
+			"GET /api/library/album",
+		);
+
+		await expectTheFiguresOf(page, figures);
+		expectNoRowsLanded(player);
+	});
+});
+
+test.describe("a shelf's header", () => {
+	test.use({ fooJean: NOTHING_TO_SUM });
+
+	test("draws the figures the summary carries for the shelf before any of its rows land", async ({
+		page,
+		player,
+	}) => {
+		const answered = await openList(page, shelfRoute("top"), "Most played");
+		const summary = await latestAnswer<Summary>(answered, SUMMARY);
+		const shelf = summary.shelves.find((one) => one.id === "top");
+		expect(shelf, "the summary carries no Most played shelf").toBeDefined();
+		expect(shelf!.figures.albumCount).toBeGreaterThan(1);
+
+		await expectTheFiguresOf(page, shelf!.figures);
+		expectNoRowsLanded(player);
 	});
 });

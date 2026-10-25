@@ -1,6 +1,14 @@
-import type { AlbumRun } from "./grouping";
+import type { Translate } from "@/shared/i18n/locale";
+import { titleOf } from "./fields";
+import type { AlbumSpan } from "./grouping";
+import type { TrackRows } from "./project";
 
 export const REORDER_DROP_TARGET = "reorder";
+
+export const rowTitleAt = (rows: TrackRows, position: number, t: Translate) =>
+	rows.isPending(position)
+		? t("view.trackCount", { count: 1, total: 1 })
+		: titleOf(rows.at(position), t);
 
 export function targetsFrom(
 	event: { target: EventTarget | null },
@@ -26,8 +34,8 @@ export function positionsOf(index: number, selection: Set<number>) {
 
 export function albumFrom(
 	event: { target: EventTarget | null },
-	groups: AlbumRun[],
-): AlbumRun | null {
+	groups: AlbumSpan[],
+): AlbumSpan | null {
 	const span = (event.target as HTMLElement | null)
 		?.closest?.("[data-album-cover]")
 		?.closest<HTMLElement>("[data-span-start]");

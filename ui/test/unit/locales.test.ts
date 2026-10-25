@@ -135,3 +135,20 @@ for (const file of shipped) {
 		}
 	});
 }
+
+const spanish = JSON.parse(
+	readFileSync(join(FOLDER, "es.json"), "utf8"),
+) as Record<string, Message>;
+
+test("Spanish carries every phrase English has", () => {
+	assert.deepEqual(
+		Object.keys(en).filter((key) => !(key in spanish)),
+		[],
+	);
+});
+
+// foo_jean answers a library of any size a window at a time, so nothing refuses one for its size.
+test("neither catalogue says a library is too large to send", () => {
+	for (const catalogue of [en, spanish] as Record<string, Message>[])
+		assert.equal(catalogue["library.readTooLarge"], undefined);
+});

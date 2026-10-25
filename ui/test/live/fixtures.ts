@@ -1,6 +1,10 @@
 import { test as base, expect } from "@playwright/test";
 import { TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
-import { fetchLibrary } from "../../src/shared/api/fooJeanLibrary.ts";
+import {
+	type RowsFailure,
+	type RowsWindow,
+	readRows,
+} from "../../src/shared/api/libraryRows.ts";
 import {
 	COMPONENT,
 	capabilities,
@@ -54,31 +58,100 @@ const LIBRARY_BUILD_MS = 5 * 60_000;
 // this budgets the closing read beside the two opening ones.
 const LIBRARY_BUILDS = 3;
 
-// The same client the app polls the export from, so a caller waits out a build exactly as Jean
-// does rather than through a second copy of the 202/429 protocol.
-const readTracks = async (): Promise<LiveTrack[]> => {
-	const result = await fetchLibrary(COMPONENT(), Object.values(COLUMNS));
-	if (!result.ok)
-		throw new Error(
-			`GET /api/library/export -> ${result.reason} ${result.detail}`,
-		);
-	const library = result.library;
-	const column = (expression: string) => {
-		const found = library.columns.get(expression);
-		if (!found) throw new Error(`the library export carries no ${expression}`);
-		return found;
-	};
-	const columns = Object.entries(COLUMNS).map(
-		([name, expression]) => [name, column(expression)] as const,
-	);
-	const { directory, filename } = library.spine;
+// The most rows one answer carries, `kMaxRowsPerAnswer` in foo_jean's `core/library_rows.h`.
+const WINDOW_ORDINALS = 4096;
+const READ_AGAIN_MS = 1000;
 
-	return Array.from({ length: library.trackCount }, (_, row) => ({
-		...(Object.fromEntries(
-			columns.map(([name, values]) => [name, values.at(row)]),
-		) as Record<keyof typeof COLUMNS, string>),
-		libraryPath: directory.at(row) + filename.at(row),
-	}));
+const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
+
+interface LibraryState {
+	ready: boolean;
+	structure: number;
+	trackCount: number;
+	columns: string[];
+}
+
+const libraryState = async () =>
+	(await component<{ library: LibraryState }>("/api/state")).library;
+
+const sameMembers = (one: readonly string[], other: readonly string[]) =>
+	one.length === other.length && one.every((column) => other.includes(column));
+
+const builtUnder = async (columns: readonly string[], until: number) => {
+	for (;;) {
+		const library = await libraryState();
+		if (library.ready && sameMembers(library.columns, columns)) return library;
+
+		const declared = await readRows(COMPONENT(), {
+			columns,
+			structure: library.structure,
+			set: { ordinals: [0] },
+		});
+		if (!declared.ok) await waitOrGiveUp(declared, until);
+	}
+};
+
+const waitOrGiveUp = async (failure: RowsFailure, until: number) => {
+	const curable =
+		failure.reason === "notReady" ||
+		failure.reason === "tooFast" ||
+		failure.structureMoved;
+	if (!curable || Date.now() > until)
+		throw new Error(
+			`POST /api/library/rows -> ${failure.reason} ${failure.detail}`,
+		);
+	await wait(failure.retryAfterMs ?? READ_AGAIN_MS);
+};
+
+const everyWindow = async (
+	columns: readonly string[],
+): Promise<RowsWindow[]> => {
+	const until = Date.now() + LIBRARY_BUILD_MS;
+	for (;;) {
+		const library = await builtUnder(columns, until);
+		const windows: RowsWindow[] = [];
+		let failed: RowsFailure | null = null;
+		for (
+			let start = 0;
+			start < library.trackCount && !failed;
+			start += WINDOW_ORDINALS
+		) {
+			const read = await readRows(COMPONENT(), {
+				columns,
+				structure: library.structure,
+				set: {
+					runs: [
+						[start, Math.min(WINDOW_ORDINALS, library.trackCount - start)],
+					],
+				},
+			});
+			if (read.ok) windows.push(read.window);
+			else failed = read;
+		}
+		if (!failed) return windows;
+		await waitOrGiveUp(failed, until);
+	}
+};
+
+const readTracks = async (): Promise<LiveTrack[]> => {
+	const windows = await everyWindow(Object.values(COLUMNS));
+	return windows.flatMap((window) => {
+		const column = (expression: string) => {
+			const found = window.columns.get(expression);
+			if (!found) throw new Error(`a window of rows carries no ${expression}`);
+			return found;
+		};
+		const columns = Object.entries(COLUMNS).map(
+			([name, expression]) => [name, column(expression)] as const,
+		);
+		const { directory, filename } = window.spine;
+		return Array.from({ length: window.rows }, (_, row) => ({
+			...(Object.fromEntries(
+				columns.map(([name, values]) => [name, values.at(row)]),
+			) as Record<keyof typeof COLUMNS, string>),
+			libraryPath: directory.at(row) + filename.at(row),
+		}));
+	});
 };
 
 const readInstall = async (): Promise<Install> => {
@@ -98,16 +171,15 @@ const readInstall = async (): Promise<Install> => {
 
 	// Warmed here, once, under this fixture's own budget, so a page in a later spec finds Jean's
 	// columns already built instead of waiting out a fresh one under its test's shorter timeout.
-	const warmed = await fetchLibrary(COMPONENT(), TRACK_EXPRESSIONS);
-	if (!warmed.ok)
-		throw new Error(
-			`GET /api/library/export -> ${warmed.reason} ${warmed.detail}`,
-		);
+	const warmed = await builtUnder(
+		TRACK_EXPRESSIONS,
+		Date.now() + LIBRARY_BUILD_MS,
+	);
 
 	const allowed = await capabilities();
 	return {
 		root,
-		structure: warmed.library.structure,
+		structure: warmed.structure,
 		itemCount: tracks.length,
 		tracks,
 		canWriteRatings:

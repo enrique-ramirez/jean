@@ -1,19 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-	artistIndex,
-	artistsOf,
-	refsOfArtist,
-} from "../../src/domain/artist/artists.ts";
+import { artistsOf, refsOfArtist } from "../../src/domain/artist/artists.ts";
 import {
 	FIELD,
 	namesAnArtist,
 	TRACK_EXPRESSIONS,
 } from "../../src/domain/track/fields.ts";
-import {
-	columnCollector,
-	libraryColumnsOf,
-} from "../../src/domain/track/libraryColumns.ts";
+import { libraryColumnsOf } from "../../src/domain/track/libraryColumns.ts";
 import { trackRows } from "../../src/domain/track/project.ts";
 import { rankEntities } from "../../src/domain/track/rankEntities.ts";
 import { TIER } from "../../src/shared/lib/text.ts";
@@ -117,37 +110,6 @@ test("the counts a page shows are the rows it draws", () => {
 		);
 		assert.equal(refs.guest.length, artist.guestCount, artist.name);
 	}
-});
-
-// `growingIndex`'s own comment has why a key on its own is not enough; this is that trap with a
-// doubled tag rather than a joined one.
-test("the index takes in rows that arrive after it was first asked for", () => {
-	const key = "library:10";
-
-	const collector = columnCollector(TRACK_EXPRESSIONS.length);
-	collector.add(rows.slice(0, 2));
-	assert.equal(artistIndex(key, collector.table(), true).length, 1);
-	assert.equal(
-		artistIndex(key, collector.table(), true)[0].name,
-		"Foo Fighters",
-	);
-
-	collector.add(rows.slice(2));
-	const grown = artistIndex(key, collector.table(), true);
-	assert.ok(grown.length > 1, "the rest of the library reached the index");
-	assert.ok(grown.some((entry) => entry.key === "sinead harnett"));
-
-	assert.equal(
-		grown.find((entry) => entry.key === "foo fighters")?.trackCount,
-		2,
-	);
-});
-
-test("a different library is built afresh rather than added to", () => {
-	artistIndex("library:10", columns, true);
-	const other = artistIndex("library:1", columnsOf(rows.slice(2, 3)), true);
-	assert.equal(other.length, 1);
-	assert.equal(other[0].key, "blood, sweat & tears");
 });
 
 const named = (query: string, floor: number = TIER.word) =>

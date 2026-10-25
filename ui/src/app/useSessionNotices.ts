@@ -58,9 +58,11 @@ export function useSessionNotices() {
 		markRaised(sessionDocument.id, latest.sequence);
 		for (const report of unraised)
 			if (report.kind === "undecodable")
-				pushToast({
-					tone: "error",
-					message: t("listen.skipped", { track: nameOfTrack(origin, report) }),
-				});
+				void nameOfTrack(origin, report).then((track) =>
+					pushToast({
+						tone: "error",
+						message: t("listen.skipped", { track }),
+					}),
+				);
 	}, [sessionDocument, origin, t]);
 }

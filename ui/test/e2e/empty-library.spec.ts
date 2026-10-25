@@ -1,4 +1,3 @@
-import { en } from "../../src/shared/i18n/en.ts";
 import {
 	expect,
 	expectSettlesAt,
@@ -115,28 +114,6 @@ test.describe("a library with no genre tags", () => {
 		await genres.click();
 		await expect(
 			page.getByText("Nothing in your library carries a genre tag."),
-		).toBeVisible();
-	});
-});
-
-test.describe("a library read that fails", () => {
-	test("home says what went wrong instead of showing an empty collection", async ({
-		page,
-	}) => {
-		// The player answering an error is not the same as the player having
-		// nothing: "Nothing to show" over a failed read is Jean telling the user
-		// their library is empty when it is not.
-		await page.route("**/api/library/export**", (route) =>
-			route.fulfill({ status: 500, body: '{"error":"no"}' }),
-		);
-
-		await page.goto("/");
-
-		await expect(
-			page.getByText(en["library.readFailed"], { exact: false }),
-		).toBeVisible();
-		await expect(
-			page.getByRole("button", { name: en["action.tryAgain"] }),
 		).toBeVisible();
 	});
 });

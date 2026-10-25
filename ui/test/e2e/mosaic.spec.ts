@@ -1,5 +1,12 @@
-import type { Page } from "./fixtures.ts";
-import { expect, openLibrary, test, viewHeader } from "./fixtures.ts";
+import type { FakePlayer, Page } from "./fixtures.ts";
+import {
+	expect,
+	expectSettlesAt,
+	openLibrary,
+	recordTileRowsAsked,
+	test,
+	viewHeader,
+} from "./fixtures.ts";
 
 // `#/all` for anything shaped: `libraryShape` replaces the media library and leaves the captured
 // playlists alone, so `p7` there is still the real five.
@@ -88,13 +95,28 @@ const withSleeves = (tracks: number, albums: number) => ({
 	),
 });
 
+// The tiles are picked from the runs and only their rows are read, in one
+// request naming as many ordinals as there are covers.
+const openAllMusicCounting = async (page: Page) => {
+	const tileAsks = recordTileRowsAsked(page);
+	await page.goto("/#/all");
+	return tileAsks;
+};
+
 const expectShape = async (
 	page: Page,
+	player: FakePlayer,
+	tileAsks: number[][],
 	count: number,
 	albums: string | null,
 ) => {
 	await drawn(page);
 	await expect(covers(page)).toHaveCount(count);
+	await expectSettlesAt(
+		player,
+		() => tileAsks.map((ordinals) => ordinals.length),
+		[count],
+	);
 	await expect(
 		figureLine(page).locator('span[data-figure="tracks"]'),
 	).toBeVisible();
@@ -108,9 +130,10 @@ test.describe("how many covers", () => {
 
 		test("draws it once, and the figures say nothing about a count", async ({
 			page,
+			player,
 		}) => {
-			await page.goto("/#/all");
-			await expectShape(page, 1, null);
+			const tileAsks = await openAllMusicCounting(page);
+			await expectShape(page, player, tileAsks, 1, null);
 		});
 	});
 
@@ -119,56 +142,59 @@ test.describe("how many covers", () => {
 
 		test("still draws one, and the figures say how many there are", async ({
 			page,
+			player,
 		}) => {
-			await page.goto("/#/all");
+			const tileAsks = await openAllMusicCounting(page);
 			// One cover cannot stand for two, so the figure is what makes it honest.
-			await expectShape(page, 1, "2 albums");
+			await expectShape(page, player, tileAsks, 1, "2 albums");
 		});
 	});
 
 	test.describe("four albums", () => {
 		test.use(withSleeves(40, 4));
 
-		test("draws four, and the figures count four", async ({ page }) => {
-			await page.goto("/#/all");
-			await expectShape(page, 4, "4 albums");
+		test("draws four, and the figures count four", async ({ page, player }) => {
+			const tileAsks = await openAllMusicCounting(page);
+			await expectShape(page, player, tileAsks, 4, "4 albums");
 		});
 	});
 
 	test.describe("five albums", () => {
 		test.use(withSleeves(50, 5));
 
-		test("draws four and the figures say five", async ({ page }) => {
-			await page.goto("/#/all");
-			await expectShape(page, 4, "5 albums");
+		test("draws four and the figures say five", async ({ page, player }) => {
+			const tileAsks = await openAllMusicCounting(page);
+			await expectShape(page, player, tileAsks, 4, "5 albums");
 		});
 	});
 
 	test.describe("nine albums", () => {
 		test.use(withSleeves(90, 9));
 
-		test("draws nine, and the figures count nine", async ({ page }) => {
-			await page.goto("/#/all");
-			await expectShape(page, 9, "9 albums");
+		test("draws nine, and the figures count nine", async ({ page, player }) => {
+			const tileAsks = await openAllMusicCounting(page);
+			await expectShape(page, player, tileAsks, 9, "9 albums");
 		});
 	});
 
 	test.describe("more than nine", () => {
 		test.use(withSleeves(200, 20));
 
-		test("draws nine and the figures say twenty", async ({ page }) => {
-			await page.goto("/#/all");
-			await expectShape(page, 9, "20 albums");
+		test("draws nine and the figures say twenty", async ({ page, player }) => {
+			const tileAsks = await openAllMusicCounting(page);
+			await expectShape(page, player, tileAsks, 9, "20 albums");
 		});
 	});
 
 	test.describe("a library with nothing in it", () => {
 		test.use({ libraryShape: { tracks: 0 } });
 
-		test("draws no backdrop and nothing in its place, at the height of a header with covers", async ({
+		test("draws no backdrop and nothing in its place, at the height of a header with covers, and asks for no rows for it", async ({
 			page,
+			player,
 			isMobile,
 		}) => {
+			const tileAsks = recordTileRowsAsked(page);
 			// The captured playlists survive an empty media library, so `Library` is a header with
 			// covers on the same page and the same screen.
 			await openLibrary(page);
@@ -187,6 +213,8 @@ test.describe("how many covers", () => {
 			// disc mark a single missing cover gets would be a picture of nothing.
 			await expect(backdrop(page)).toHaveCount(0);
 			expect(await standIns(page)).toEqual([]);
+			// An empty set of ordinals is a request the component refuses.
+			await expectSettlesAt(player, () => tileAsks, []);
 
 			const height = (await viewHeader(page).boundingBox())?.height ?? 0;
 			expect(height).toBeCloseTo(withCovers, 0);

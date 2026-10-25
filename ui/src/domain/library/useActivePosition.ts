@@ -14,7 +14,7 @@ export function useActivePosition({
 	holdsThisView,
 }: {
 	source: LibrarySource;
-	indices: Refs;
+	indices: Refs | null;
 	scratch: ReturnType<typeof useScratchPlaylist>;
 	holdsThisView: boolean;
 }) {
@@ -26,6 +26,7 @@ export function useActivePosition({
 	// Read by value: a player message arrives for every volume nudge, each carrying a new `activeItem` object, and the memo below sweeps every ref in the view.
 	const path = playing?.path ?? null;
 	const subsong = playing?.subsong ?? 0;
+	const libraryOrdinal = playing?.libraryOrdinal ?? null;
 	const playlistId =
 		useResolvedPlaylistId(activeItem?.playlistGuid ?? null) ?? null;
 	const index = activeItem?.index ?? -1;
@@ -37,7 +38,7 @@ export function useActivePosition({
 		if (holdsThisView && playlistId === scratchId) return index;
 		return source.playingPosition(
 			indices,
-			{ path, subsong },
+			{ path, subsong, libraryOrdinal },
 			{ playlistId, index },
 		);
 	}, [
@@ -48,6 +49,7 @@ export function useActivePosition({
 		indices,
 		path,
 		subsong,
+		libraryOrdinal,
 		playlistId,
 		index,
 	]);

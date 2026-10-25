@@ -90,15 +90,6 @@ export const en = {
 	"autoplaylist.query": "Query",
 	"autoplaylist.queryFailed": "foobar2000 could not read the query",
 	"autoplaylist.saveFailed": "The autoplaylist was not saved: {error}",
-	"autoplaylist.separator": " · ",
-	"autoplaylist.stats.albumArtists": {
-		one: "{count} album artist",
-		other: "{count} album artists",
-	},
-	"autoplaylist.stats.albums": {
-		one: "{count} album",
-		other: "{count} albums",
-	},
 	"autoplaylist.stats.tracks": {
 		one: "{count} track",
 		other: "{count} tracks",
@@ -314,8 +305,6 @@ export const en = {
 	"library.readRefused":
 		"foo_jean would not accept the columns Jean asked for.",
 	"library.readTimedOut": "foo_jean stopped making progress on the library.",
-	"library.readTooLarge":
-		"This library is larger than foo_jean will send in one piece.",
 	"library.readUnavailable": "foo_jean is not serving the media library.",
 	"library.readUnreachable": "Could not reach foo_jean.",
 	"library.reading": "Reading your library…",
@@ -691,10 +680,6 @@ export const en = {
 	"search.stillReading": "Still reading your library",
 	"search.title": "Search",
 	"search.yourLibrary": "Search your library",
-	"settings.advanced.keepLibrary": "Keep the library on this device",
-	"settings.advanced.keepLibraryDetail":
-		"Jean opens from this copy and asks foobar2000 only for what changed. Off, it downloads the whole library on every load.",
-	"settings.advanced.title": "Advanced",
 	"settings.appearance.choose": "Theme",
 	"settings.appearance.dark": "Dark",
 	"settings.appearance.follow": "Match my system",

@@ -44,13 +44,13 @@ Apply `doctrine/documentation.md` and the profile's documentation map. Flag:
 - history, status, roadmap, decision records, thought process
 - a "do not" or "never" sentence guarding a decision without naming the test that holds it. It becomes a test, or it goes
 - in a `CLAUDE.md` or `AGENTS.md`: anything an agent can read off the code (what a screen shows, a route returns, a function does or a directory contains), a table of the other doc files, or craft that belongs in `CONTRIBUTING.md`
-- a stale claim. Grep every file, symbol, constant and count the prose names, and check a written contract (an API spec) route by route; say which side is wrong
+- a stale claim, in both directions. Grep every file, symbol, constant and count the prose names, and check a written contract (an API spec) route by route; say which side is wrong. Then take what the change deletes or renames, a file, a route, an identifier, a constant, a mechanism, and grep every documentation file in the repository for its name and for the words that describe it, the files outside the diff included; fix or flag each sentence that still describes it. A sentence is stale without naming an identifier
 
 Prose is never hard-wrapped. RFC 2119 keywords carry obligations.
 
 ### Documentation audit
 
-With `--docs`, the target is every `CLAUDE.md`, `AGENTS.md`, `README.md`, `CONTRIBUTING.md` and `ARCHITECTURE.md` under the path, read whole. For each file report its prose word count against the hook's budget (400 nested, 800 at the root, or the `=claude-budget` and `=claude-root-budget` lines in `.claude/register.local.txt`), then the findings above, then duplication across the set. Propose cuts as a list with the words each saves. Edit only what is unambiguous: a stale name, a broken pointer, a sentence duplicated verbatim elsewhere. Every other cut is the owner's.
+With `--docs`, the target is every documentation file under the path, read whole: the files the profile's documentation map names, and every other markdown file the repository tracks there, agent and skill files included. For each file report its prose word count against the hook's budget (400 nested, 800 at the root, or the `=claude-budget` and `=claude-root-budget` lines in `.claude/register.local.txt`), then the findings above, then duplication across the set. Propose cuts as a list with the words each saves. Edit only what is unambiguous: a stale name, a broken pointer, a sentence duplicated verbatim elsewhere. Every other cut is the owner's.
 
 ## Register
 

@@ -11,6 +11,10 @@ is already served prints the URL and exits. `--once` writes the page to a file a
 The times in the metrics file are the coordinator's own clock. The page also records
 when it first saw each row open and close, under `_tmp/<n>-build/dashboard-state.json`,
 so "running for" comes from this machine's clock even when the coordinator's is wrong.
+
+The "files changed" stat is the newest write anywhere in the repository's working tree,
+listed through `git ls-files` so ignored directories do not count. Without git it falls
+back to the bundle's own files.
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ import json
 import pathlib
 import re
 import statistics
+import subprocess
 import sys
 import threading
 import time
@@ -106,6 +111,7 @@ class Bundle:
     lanes: list[Lane]
     rows: list[Row]
     changed: float
+    written: float
 
 
 # --- reading the bundle -------------------------------------------------------------
@@ -227,6 +233,28 @@ def read_rows(body: str, lanes: list[Lane]) -> list[Row]:
     return rows
 
 
+def tree_changed(root: pathlib.Path) -> float:
+    """The newest write among the files git tracks or would track under `root`; 0.0 without git."""
+    try:
+        listing = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            capture_output=True,
+            check=True,
+            timeout=10,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return 0.0
+    newest = 0.0
+    for name in listing.split(b"\0"):
+        if not name:
+            continue
+        try:
+            newest = max(newest, (root / name.decode("utf-8", errors="surrogateescape")).stat().st_mtime)
+        except OSError:
+            continue
+    return newest
+
+
 def read_bundle(path: pathlib.Path) -> Bundle:
     metrics_path = path / "build-metrics.md"
     tasks_path = path / "tasks.md"
@@ -240,7 +268,8 @@ def read_bundle(path: pathlib.Path) -> Bundle:
     titles = {task.number: task.title for task in tasks}
     lanes = read_layout(section(metrics, "Layout"), titles)
     rows = read_rows(section(metrics, "Dispatches"), lanes)
-    changed = max((p.stat().st_mtime for p in (metrics_path, tasks_path) if p.exists()), default=0.0)
+    written = max((p.stat().st_mtime for p in (metrics_path, tasks_path) if p.exists()), default=0.0)
+    changed = max(written, tree_changed(path.parent.parent))
     return Bundle(
         path=path,
         title=title,
@@ -251,6 +280,7 @@ def read_bundle(path: pathlib.Path) -> Bundle:
         lanes=lanes,
         rows=rows,
         changed=changed,
+        written=written,
     )
 
 
@@ -554,7 +584,7 @@ def head_html(bundle: Bundle, statuses: dict[int, str], steps: list[tuple[str, s
     updated = fmt_ago(quiet_seconds) if bundle.changed else "never"
     state_word = "finished" if finished else ("running" if has_open_row else "between dispatches")
     estimate = "" if finished else estimate_note(bundle, statuses, clock)
-    drift = "" if finished else drift_note(clock, bundle.changed)
+    drift = "" if finished else drift_note(clock, bundle.written)
     return (
         '<section class="head">'
         f'<div class="titles"><span class="eyebrow">build</span><h1>{esc(bundle.title)}</h1></div>'

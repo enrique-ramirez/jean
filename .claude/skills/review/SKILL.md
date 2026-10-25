@@ -16,7 +16,7 @@ argument-hint: [<path>...|<ref>|<range>] | --docs [<path>]
 | a ref or range | that commit or range |
 | a path | the files under it |
 | a list of files | those files, each against the commit the caller names, `HEAD` where it names none |
-| `--docs [<path>]` | a documentation audit of every `CLAUDE.md`, `AGENTS.md`, `README.md`, `CONTRIBUTING.md` and `ARCHITECTURE.md` under the path, the repository root by default |
+| `--docs [<path>]` | a documentation audit of every documentation file under the path, the repository root by default: the profile's documentation map and every other markdown file tracked there |
 
 Say the target back before starting. For a path, count the files: above about forty for the reviewer or thirty for the reaper, propose batches that follow the directory structure and let the caller choose.
 
@@ -28,7 +28,7 @@ Launch `style-reviewer` with the target and any worry the caller mentioned, then
 
 ## `--docs`
 
-List the files with `python3 <kit>/hooks/check-prose.py --words <file>...`, which prints each one's prose words and budget as the hook counts them (`<kit>` is `.claude` in a copy install). Launch `style-reviewer` in documentation-audit mode over the list, one agent per batch of about fifteen files grouped by directory, each handed the full list so it can grep for duplication outside its batch. The reaper does not run. Relay, per file: words against its budget, the findings, and the proposed cuts with the words each saves. Cuts beyond the unambiguous ones are the owner's to accept.
+The list is every markdown file `git ls-files` reports under the path plus the profile's documentation map, less what the profile excludes. Measure it with `python3 <kit>/hooks/check-prose.py --words <file>...`, which prints each one's prose words and budget as the hook counts them (`<kit>` is `.claude` in a copy install). Launch `style-reviewer` in documentation-audit mode over the list, one agent per batch of about fifteen files grouped by directory, each handed the full list so it can grep for duplication outside its batch. The reaper does not run. Relay, per file: words against its budget, the findings, and the proposed cuts with the words each saves. Cuts beyond the unambiguous ones are the owner's to accept.
 
 ## Afterwards
 

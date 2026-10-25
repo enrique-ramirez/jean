@@ -348,6 +348,10 @@ export interface paths {
          *     The answer carries the playlist's whole `totalCount` alongside the page, and the `structure` and `revision` it was read at. Rows held against an older `structure` sit at positions that have moved and MUST be read again; a moved `revision` alone means the rows are where they were and their content is what changed.
          *
          *     A `count` reaching past the end answers the rows that remain, and an `offset` at or past the end answers no rows at all. Both still carry `totalCount`, `structure` and `revision`, so a client wanting only those asks for a `count` of zero.
+         *
+         *     **`cover`.** A request that names roles as query parameters beside the route's own, as `GET /library/summary` takes them, gets a `cover` on every row: the library-relative path `GET /artwork?track=` takes, of the cover track of the row's album, or `null` where the media library does not hold the row, where the declaration does not hold a role's expression, or where no snapshot is ready. A request naming no role gets no `cover` at all. The roles are the ones `GET /library/search` takes; a role that is unknown, empty or named twice is a `400` as it is there.
+         *
+         *     Reads are budgeted per client, a burst of 30 refilling one every 100 milliseconds, with `GET /playlists/{id}/items/changes` in the same bucket.
          */
         get: operations["getPlaylistItems"];
         put?: never;
@@ -393,9 +397,73 @@ export interface paths {
          *
          *     A revision nothing has changed since is a `200` carrying no rows, never an error.
          *
-         *     The component keeps a bounded window of which positions changed at each revision and drops a playlist's window when its `structure` moves. Falling behind that window is a `410`. Both refusals have the same remedy, and it is this playlist's page rather than the library export `GET /library/changes` sends a client to.
+         *     **`cover`.** A request that names roles as query parameters beside the route's own, as `GET /library/summary` takes them, gets a `cover` on every changed row: the library-relative path `GET /artwork?track=` takes, of the cover track of the row's album, or `null` where the media library does not hold the row, where the declaration does not hold a role's expression, or where no snapshot is ready. A request naming no role gets no `cover` at all. The roles are the ones `GET /library/search` takes; a role that is unknown, empty or named twice is a `400` as it is there.
+         *
+         *     Reads are budgeted with `GET /playlists/{id}/items`, in one bucket per client.
+         *
+         *     The component keeps a bounded window of which positions changed at each revision and drops a playlist's window when its `structure` moves. Falling behind that window is a `410`. Both refusals have the same remedy, and it is this playlist's page.
          */
         get: operations["getPlaylistItemChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists/{id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * How a playlist falls into album runs, and its header figures.
+         * @description In one pass over every row of the playlist: its runs, by the rule `GET /library/runs` gives, each as its length; its highest play count; and the figures `GET /library/summary` draws a header from, over the playlist's rows. A row the media library holds is read from the snapshot, and any other row from its own handle, as `GET /playlists/{id}/items` evaluates it. The roles are the ones the four questions take.
+         *
+         *     `structure` and `revision` are the playlist's own, strings of decimal digits for the reason `PlaylistAnnotation.structure` gives. The `ETag` is strong and names the content, so a `revision` that moved without changing a figure is answered `304`.
+         *
+         *     **Refusals** are the library runs', in their order, with a budget of its own at the summary's depth and refill. `409` is a `structure` that is not the playlist's, or a role naming an expression the declaration does not hold.
+         */
+        get: operations["getPlaylistRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists/{id}/find": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * The positions of a playlist whose rows match what was typed.
+         * @description The positions whose row matches `query` as `GET /library/search` matches a track: every folded word of the query is found in the row's title, artist, album artist, album or artist sort. A row the media library holds is matched on the folded text the component holds for the snapshot, and any other row on text folded from its own handle.
+         *
+         *     `matched` is a set of positions in the playlist, ascending, at the playlist's `structure`. A query with no words matches every row of the playlist, and a client has no reason to send one. `structure` and `revision` are the playlist's own, as `GET /playlists/{id}/runs` has them.
+         *
+         *     **Refusals** are the questions', with a budget of its own at their depth and refill. `query` is up to 1024 bytes of UTF-8. `409` is a `structure` that is not the playlist's, or a role naming an expression the declaration does not hold.
+         */
+        get: operations["findInPlaylist"];
         put?: never;
         post?: never;
         delete?: never;
@@ -592,7 +660,7 @@ export interface paths {
          *
          *     The player's own session plays a set through `POST /playlists/own/{role}/items` and `POST /playlists/{id}/items/{index}/play`. Naming it, or naming no session, is a `403` while `controlPlayback` is off and a `409` otherwise, either before the body is read. A detached session is never refused for `controlPlayback`.
          *
-         *     A `structure` that has moved is answered `409` before `index` is looked at, so a client holding a stale snapshot is told to export again rather than that its `index` is wrong.
+         *     A `structure` that has moved is answered `409` before `index` is looked at, so a client holding a stale snapshot is told to read the state again rather than that its `index` is wrong.
          */
         post: operations["playLibrarySet"];
         delete?: never;
@@ -884,17 +952,17 @@ export interface paths {
          * What the player is doing, and the library's two generations.
          * @description The document a client polls. It is small, it is `ETag`ged, and a poll that finds nothing new is a `304` with no body.
          *
-         *     Read `library.structure` and `library.revision` from here and compare them with the ones in the header of the snapshot already held. A different `structure` means fetch a splice from `GET /library/changes`; a `410` there means export again, and a `409` means the pair names no position this run has held. A higher `revision` with the same `structure` means fetch a delta. Both the same means there is nothing to do. `snapshotId` names the content at that pair.
+         *     Read `library.structure` and `library.revision` from here and compare them with the ones held. A different `structure` means every ordinal held names another track, so a client asks for its windows again. A higher `revision` with the same `structure` means rows changed in place, and `library.changeCounts` says in which columns. Both the same means there is nothing to do.
          *
-         *     `library.ready` is `false` between the component starting and its first snapshot being built, and also on an install with no media library at all: the two are indistinguishable from this document alone. This is also what a client polls after a `202` from `GET /library/export`: wait until `library.ready` is true and `library.columns` has the same members as the set declared, then ask for the export again.
+         *     `library.ready` is `false` between the component starting and its first snapshot being built, and also on an install with no media library at all: the two are indistinguishable from this document alone. This is also what a client polls after a `202` from `POST /library/rows`: wait until `library.ready` is true and `library.columns` has the same members as the set declared, then ask again.
          *
          *     This route never answers `503`: a player with no library is still a player, so it answers `200` with `library.ready` false and a populated `player` section. The three routes under `/library` keep their own `503` when there is no library to serve.
          *
          *     This route never waits on foobar2000's main thread either, so it answers while every command is waiting on that thread and headed for a `504`. `mainThread` is how a client tells the two apart: see `MainThread`.
          *
-         *     Its `ETag` names the content coding, exactly as the two binary routes do. See *Compression*.
+         *     Its `ETag` names the content coding. See *Compression*.
          *
-         *     Naming a detached session, `player` answers that session: its `playback`, `path`, `subsong`, `libraryPath`, `position`, `duration`, `playbackMode`, `title`, `artist`, `album`, `albumArtist`, `queueRevision`, `timelineRevision` and `sessionRevision`. `volume`, `muted`, `outputDeviceId`, `outputSilent`, `currentPlaylistId` and `playlistsRevision` answer the player whichever session is named, and so do `library`, `mainThread` and `configGeneration`. `playingLocation` is `null`: a detached session plays a snapshot of a playlist, which stops matching it at the playlist's first edit. Each session is polled under an `ETag` of its own, so a change in one leaves every other answering `304`.
+         *     Naming a detached session, `player` answers that session: its `playback`, `path`, `subsong`, `libraryPath`, `libraryOrdinal`, `position`, `duration`, `playbackMode`, `title`, `artist`, `album`, `albumArtist`, `queueRevision`, `timelineRevision` and `sessionRevision`. `volume`, `muted`, `outputDeviceId`, `outputSilent`, `currentPlaylistId` and `playlistsRevision` answer the player whichever session is named, and so do `library`, `mainThread` and `configGeneration`. `playingLocation` is `null`: a detached session plays a snapshot of a playlist, which stops matching it at the playlist's first edit. Each session is polled under an `ETag` of its own, so a change in one leaves every other answering `304`.
          *
          *     A poll naming a detached session with a `deviceId` keeps that device a member, and so keeps the session from ending, whether it is answered `200` or `304`. A poll naming no device holds nothing, and neither does a command.
          */
@@ -921,6 +989,8 @@ export interface paths {
          *     A queued library track carries `libraryPath` and no `location`. A queued playlist row carries `location`, and `libraryPath` too where the media library also holds that track. Either may be missing on its own, and both are missing for a track queued from a playlist row or a whole playlist since removed: the core keeps such an entry rather than dropping it, so this reports it with `location: null` rather than a stale position.
          *
          *     Naming a detached session, this is that session's queue, read at its own revision: the `queueRevision` a poll naming the session answers. Every entry's `location` is `null`, since a session holds what it queued by handle and not by a playlist row.
+         *
+         *     **`cover`.** A request that names roles as query parameters beside the route's own, as `GET /library/summary` takes them, gets a `cover` on every entry: the library-relative path `GET /artwork?track=` takes, of the cover track of the row's album, or `null` where the media library does not hold the row, where the declaration does not hold a role's expression, or where no snapshot is ready. A request naming no role gets no `cover` at all. The roles are the ones `GET /library/search` takes; a role that is unknown, empty or named twice is a `400` as it is there.
          */
         get: operations["getQueue"];
         put?: never;
@@ -993,62 +1063,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/library/export": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Declare a column set, and take the whole library in one binary snapshot.
-         * @description Every track, every declared column, in one response. The format is in the description at the top of this document, under *The media library*; the header's shape is `LibraryHeader`.
-         *
-         *     `columns` is the declaration, and it is required. A `200` means a snapshot of exactly that set is built and this is it. A `202` means one is not, that the component has started building it, and that the client should poll `GET /state` until `library.columns` match and `library.ready` is true, then ask again. **The first export after the component starts, and the first after the declared set changes, is the slow one**: it walks and formats every track. Nothing else on this API is affected while it runs.
-         *
-         *     There is no paged variant and none is planned. Paging a library needs a stable sorted order, producing one needs a full pass, and the component is where the whole database already sits in memory. A client that holds everything answers its own searches, counts and shelves without another request.
-         *
-         *     The response is `ETag`ged on the two generations, so a client that polls `GET /state` and finds nothing new never gets here, and one that arrives anyway is answered `304`. With `only` or `spine` the tag names the subset as well. See *Asking for part of the declaration*.
-         *
-         *     Large. Expect single-digit megabytes for a library of thirty thousand tracks, growing roughly linearly. A client MUST read it as an `ArrayBuffer` rather than as text.
-         */
-        get: operations["exportLibrary"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/library/changes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * What has changed since a revision, per column, or as a splice.
-         * @description The patch between the pair a client holds and the current one, in the same binary format as the snapshot. Where `structure` is the current one it is a delta: it carries only the columns that moved and, within each, only the rows that moved, so the common case of a play count and a last-played date advancing touches two columns and leaves the rest of a client's arrays untouched by identity as well as by value.
-         *
-         *     Call this when `GET /state` reports a higher `library.revision`. Where `library.structure` is also different, tracks were added or removed and ordinals have shifted, so the answer is a splice: the rows removed, the rows inserted and what was appended, from which the client reaches the current pair without exporting. See *Reading a splice*. It is a `410` when no splice is held or one would cost half an export or more, and the client exports again.
-         *
-         *     There is no `columns` here, because the pair already names the generation. A rebuild with a different set moves `structure` in a way no splice describes, so a client whose declaration is stale reaches the `410` and exports, which is where it declares again.
-         *
-         *     The component keeps a bounded window of past revisions, and falling behind it is a `410`, whose description is where that window's reach is written down. The answer is the same one: export again. A client that polls at any sane interval will not see it.
-         *
-         *     There is no promise of freshness the player cannot keep. A component storing its data privately and publishing it through a title-formatting hook, which is how several play-count components work, changes a value with no notification to anybody; foobar2000's own playlist columns show the same stale value. The snapshot catches up when that track next plays or when somebody calls `POST /library/refresh`.
-         */
-        get: operations["getLibraryChanges"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/library/summary": {
         parameters: {
             query?: never;
@@ -1058,9 +1072,9 @@ export interface paths {
         };
         /**
          * The numbers and shelves Home draws, computed from the held snapshot.
-         * @description One small document about the whole library: its size and span, its top genres, its most played album, artist and tracks, and a few shelves of albums. It is computed from the snapshot the component already holds, so it formats nothing and walks no files, and it is the one aggregate route here: a client that holds the library still asks everything else locally.
+         * @description One small document about the whole library: its size and span, its top genres, its most played album, artist and tracks, and a few shelves of albums. It is computed from the snapshot the component already holds, so it formats nothing and walks no files, and it is the widest of the aggregate routes here, beside the runs, the values, the credits and the four set questions.
          *
-         *     Each query parameter names one **role**, what a declared column means to the summary, and its value is a title-formatting expression the client declared in `GET /library/export`. The component reads the column it already holds under that expression. A role left out is unresolved on every track: a summary with no play count has no plays, and no shelf that needs one.
+         *     Each query parameter names one **role**, what a declared column means to the summary, and its value is a title-formatting expression the client declared through `POST /library/rows`. The component reads the column it already holds under that expression. A role left out is unresolved on every track: a summary with no play count has no plays, and no shelf that needs one.
          *
          *     **Albums.** Two tracks belong to one album exactly when their album tags match and their credited artists match. The credited artist is the album artist, or the artist where there is no album artist. Two tags match when their keys are equal, and a key is the tag with leading and trailing whitespace removed, lower-cased as ECMAScript's `String.prototype.toLowerCase` does, and with every run of whitespace replaced by one space. An album's `album` and `artist` are the spellings carried by the track with the lowest dictionary id for that tag, the album artist's before the artist's. The `cover` of an album is the library-relative path of its first track by disc, then track number, then ordinal, and `null` where it has none. `ordinals` lists every track of the album in ascending order, at the document's `structure`.
          *
@@ -1072,9 +1086,7 @@ export interface paths {
          *
          *     **Held per day.** A document is computed at most once per pair, role set and calendar day on the machine the component runs on, and served from what is held after that. Two requests arriving together for a document not yet held compute it once. The `ETag` names the pair, the role set, the date and the coding, so a pair that moves or a date that changes gives a new one and a request repeating it is answered `304`.
          *
-         *     **Size.** A library over the export's ceiling is still summarised, since the document never carries the snapshot: this route never answers `413`.
-         *
-         *     **Refusals come in this order.** A role that is unknown, empty or named twice in two spellings is a `400`; a byte-identical pair sent twice is collapsed by the server before the component sees it and is accepted. A component that does not serve the media library is a `503`. The route's own budget is a `429`: a burst of 200, refilling one every 50 milliseconds, as the delta reads have, and a request refused for what it asks spends nothing. A component with no snapshot ready, or one that was not built with a declared role's expression, answers `202` and starts no build; the client declares through `GET /library/export` and asks again when `GET /state` reports the library ready. An expression the declaration does not hold is a `409` naming it.
+         *     **Refusals come in this order.** A role that is unknown, empty or named twice in two spellings is a `400`; a byte-identical pair sent twice is collapsed by the server before the component sees it and is accepted. A component that does not serve the media library is a `503`. The route's own budget is a `429`: a burst of 200, refilling one every 50 milliseconds, a budget of its own, and a request refused for what it asks spends nothing. A component with no snapshot ready, or one that was not built with a declared role's expression, answers `202` and starts no build; the client declares through `POST /library/rows` and asks again when `GET /state` reports the library ready. An expression the declaration does not hold is a `409` naming it.
          */
         get: operations["getLibrarySummary"];
         put?: never;
@@ -1191,6 +1203,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/library/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Declare a column set, and take the rows a window names.
+         * @description The rows at the ordinals named, in the order named, in the format *The rows format* describes: every declared column and the three spine columns, one dictionary id per row, and a dictionary holding only the values those rows use. A client holds windows of the library and asks for the ones it draws; this is the route that reads them, and it is the one that declares the columns (see *Who declares the columns*).
+         *
+         *     **The request.** `columns` is the declaration, at most 64, each 1 to 1024 printable characters and no repeats, and `structure` is the generation the ordinals were resolved against, from `library.structure` in `GET /state`. The rows are named by exactly one of `runs` and `ordinals`, read as `POST /playlists/{id}/items` reads them: `runs` in ascending order, `ordinals` in the order given, which is the order the rows come back in. At most 4096 rows may be named. A client that wants more asks again.
+         *
+         *     **The body.** `Content-Type` is `application/octet-stream`, framed as *The rows format* gives, and the header is `LibraryRowsHeader`. Every `ids` array has `rows` entries, entry *i* belonging to the *i*th row named, and no body carries `ordinals`. Each dictionary lists, in bytewise order, only the values this body's rows use, so two answers for different windows number the same value differently and a client MUST NOT carry an id from one into the other. `distinct`, `hasUnresolved` and `allUnresolved` describe the whole library, not the rows asked for, and the three come back for every declared column, which is what a client's capability detection reads. Gzip is negotiated as *Compression* gives.
+         *
+         *     **Refusals come in this order.** A `400` to a request the component can refuse without the library: the declaration the column gate refuses, a `structure` that is missing, empty, a JSON number or not a string of decimal digits (`malformed request`), a set naming both forms or neither, a malformed set, or more than 4096 rows (`too many rows asked for`). Then `503` while the media library is unavailable, then `429` against the route's own budget: per client, 30 deep, refilling one every 100 milliseconds, with `Retry-After`. Then `202` and a build when the declaration differs from the one held, which is what makes this route the one that declares. Then `409` to a `structure` that is not the current one, and last a `400` to an ordinal past `trackCount`, which only the generation held can judge, so a stale `structure` with an ordinal past the new end is a `409`. A request refused before the `503` spends nothing from the budget; one refused for an ordinal past `trackCount` has spent a token.
+         */
+        post: operations["readLibraryRows"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How the whole library falls into album runs.
+         * @description The runs of the whole library in ordinal order: for each run, its length and the ordinal of its cover track. Two neighbouring ordinals are in one run exactly when they are in one album group (the album tags match, an absent album tag counting as one group of its own) and have the same credited artist, as *The media library* reads the credited artist. A credit of whitespace alone reads as nobody.
+         *
+         *     `lengths` and `covers` are parallel arrays, one entry per run. A tagged run's cover is the ordinal of its album's cover track, which may lie outside the run; an untagged run's is its first ordinal. The lengths sum to `trackCount`.
+         *
+         *     Each query parameter names one **role**, as `GET /library/summary` takes them, and the roles are the ones the four questions take. The `ETag` is strong and names the content: it moves only when a length, a cover or the set of untagged runs does, so a `revision` that moved without changing a run is answered `304` to a client sending it back as `If-None-Match`.
+         *
+         *     **Refusals** are the summary's, in its order, with a budget of its own at the summary's depth and refill. A request refused for what it asks spends nothing.
+         */
+        get: operations["getLibraryRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The values of one field that begin with what was typed.
+         * @description The distinct values of `field` whose folded form begins with the folded `prefix`, for completing an autoplaylist's query. A value is folded as the four questions fold what is typed at a list. `genre` values are split at the multi-value separator the genre question splits them at, so each genre of a multi-valued tag is a value of its own.
+         *
+         *     `values` holds at most `limit` of them, in the order the component holds them. The order is not alphabetical and a client sorts for itself. An empty `prefix` matches every value.
+         *
+         *     `prefix` is up to 1024 bytes of UTF-8. A `limit` of 0 answers no values.
+         */
+        get: operations["getLibraryValues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/library/credits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The artists one track's credit names.
+         * @description The members the artist credit and the album artist credit of the track at `ordinal` name, as the credit reading *The four questions* describes reads them, with `splitsCredits` saying whether a credit line holding several names is read as each of them. Each member is `CreditMember`; a credit that names nobody answers an empty list.
+         *
+         *     Refusals are the four questions', and a `structure` that is not the current one is a `409` before an `ordinal` past the end is a `400`, since the ordinal means nothing at another `structure`.
+         */
+        get: operations["getLibraryCredits"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/library/refresh": {
         parameters: {
             query?: never;
@@ -1204,7 +1314,7 @@ export interface paths {
          * Rebuild the snapshot from the player.
          * @description Asks foobar2000 to walk its media library again and patches the snapshot with the result: where the tracks and the columns are the same, `structure` holds and only the rows whose values changed move `revision`. This is the hand on the wheel behind the two automatic mechanisms, the player's own change notifications and the re-read of every track as it stops playing, and it is what recovers a value neither of those can see.
          *
-         *     It rebuilds the column set last declared by an export, so it takes no body. On a component nothing has declared to since it started, it rebuilds the set already built, which is why a refresh cannot cost a client the snapshot it is using.
+         *     It rebuilds the column set last declared through `POST /library/rows`, so it takes no body. On a component nothing has declared to since it started, it rebuilds the set already built, which is why a refresh cannot cost a client the snapshot it is using.
          *
          *     Expensive: it re-queries and re-formats every track. Rate limited to a burst of three, refilling one every thirty seconds, which is what a person pressing a button needs and a looping client does not get.
          *
@@ -1228,7 +1338,7 @@ export interface paths {
          * One track's columns, addressed the way a cover is, or by its position.
          * @description The columns a client declares, evaluated against the one track the address names. The address is exactly one of two: `track` with `subsong`, `GET /artwork?track=`'s address word for word, or `ordinal` with `structure`, a position in the media library snapshot, resolved the way `POST /tags` resolves the same pair because it names one track where a relative path can name two. Sending both forms, or neither, is a `400`, and so is sending half of the ordinal form. The answer is the positional `columns` array `GET /playlists/{id}/items` gives a row.
          *
-         *     This is what reads one value back. The library arrives in bulk and is patched by delta, so a client that has just written a tag and wants to know what landed has nothing else to ask: a delta carries the change when the player notices it, which is not when the client is asking. The ordinal form is what that read-back sends after a write the library form answered `409` for, or after a write retried by ordinal and then timed out.
+         *     This is what reads one value back. The library arrives in windows read from a snapshot the player refreshes when it notices a change, which is not when the client is asking, so a client that has just written a tag and wants to know what landed has nothing else to ask. The ordinal form is what that read-back sends after a write the library form answered `409` for, or after a write retried by ordinal and then timed out.
          *
          *     `libraryPath` is not echoed. The caller supplied the address, so the answer carries only what it did not already have.
          *
@@ -1974,7 +2084,7 @@ export interface components {
              */
             subsong?: number;
             /**
-             * @description The precise library form: the track's position in the media library snapshot `structure` names, from `GET /library/export` or a delta. It names one track and one subsong, where a `track` address names every root holding that relative path.
+             * @description The precise library form: the track's position in the media library snapshot `structure` names, as any route answering ordinals gives it. It names one track and one subsong, where a `track` address names every root holding that relative path.
              *
              *     This is what a client sends after a `409` saying the address holds more than one track. Requires `structure`, which is the media library's own generation and a number.
              * @example 1904
@@ -2043,7 +2153,7 @@ export interface components {
             /** @constant */
             written: false;
             /** @enum {string} */
-            error: "foobar2000 does not know that track" | "the media library holds more than one track at that address" | "the playlist's rows were added, removed or reordered; read them again" | "the media library was rebuilt; export it again" | "the player could not write the tags" | "the player did not answer in time" | "tag writing is not available" | "too many tag writes";
+            error: "foobar2000 does not know that track" | "the media library holds more than one track at that address" | "the playlist's rows were added, removed or reordered; read them again" | "the media library was rebuilt; read the state and ask again" | "the player could not write the tags" | "the player did not answer in time" | "tag writing is not available" | "too many tag writes";
         };
         /** @description One playlist, with everything a client draws its entry in a list from. */
         PlaylistAnnotation: {
@@ -2072,7 +2182,7 @@ export interface components {
              *
              *     **A string of decimal digits, and never a JSON number.** This is a 64-bit counter, seeded so that no value it has ever published comes back after a restart, which puts it far above 2^53. A JSON number is an IEEE 754 double and exact only to 2^53, so a parser that reads this as a number rounds four consecutive generations to a single value and a client comparing two of them cannot see the edit between them. Compare these for equality and send them back as they arrived. Nothing here is ordered, counted or added to, so a string costs a client nothing.
              *
-             *     The other counters on this API are inside 2^53 and stay numbers: `GET /state`'s `playlistsRevision`, `queueRevision` and `timelineRevision`, the media library's own `structure` and `revision`, and the library `structure` a fill or a create resolves its ordinals against. Only a playlist's own two are spelled this way.
+             *     The other counters on this API are inside 2^53 and stay numbers: `GET /state`'s `playlistsRevision`, `queueRevision` and `timelineRevision`, the media library's own `structure` and `revision`, and the library `structure` a fill or a create resolves its ordinals against. Only a playlist's own two are spelled this way, and the library `structure` that `POST /library/rows` and `GET /library/credits` take, which they take as text.
              */
             structure: string;
             /**
@@ -2139,7 +2249,7 @@ export interface components {
              */
             title: string;
             /**
-             * @description The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
+             * @description The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. A value other than the one currently held is a `409`: read `GET /state` again and resolve the set against the `structure` it reports.
              * @example 41
              */
             structure: number;
@@ -2149,7 +2259,7 @@ export interface components {
         };
         FillPlaylistRequest: {
             /**
-             * @description The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
+             * @description The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. A value other than the one currently held is a `409`: read `GET /state` again and resolve the set against the `structure` it reports.
              * @example 41
              */
             structure: number;
@@ -2160,7 +2270,7 @@ export interface components {
         };
         PlayLibrarySetRequest: {
             /**
-             * @description The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
+             * @description The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. A value other than the one currently held is a `409`: read `GET /state` again and resolve the set against the `structure` it reports.
              * @example 41
              */
             structure: number;
@@ -2248,7 +2358,7 @@ export interface components {
             /** @description What to title the playlist, exactly as it will read in foobar2000's own tabs. No control characters, which would be line breaks in a playlist tab. */
             title: string;
             /**
-             * @description The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. Required with `runs`, `bitset` or `ordinals`, and refused with `source`, which names rows rather than library tracks. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
+             * @description The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. Required with `runs`, `bitset` or `ordinals`, and refused with `source`, which names rows rather than library tracks. A value other than the one currently held is a `409`: read `GET /state` again and resolve the set against the `structure` it reports.
              * @example 41
              */
             structure?: number;
@@ -2417,7 +2527,7 @@ export interface components {
         /** @description The request was acceptable and the attempt failed. */
         PlaylistFailed: {
             /** @enum {string} */
-            error: "foobar2000 could not read that query" | "no such playlist" | "that position is past the end" | "the media library holds more than one track at that address" | "that playlist is not an autoplaylist" | "unacceptable key" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; export the library again" | "the queue changed since that revision; read it again" | "the playlist's rows were added, removed or reordered; read them again" | "that revision is not one this playlist can catch up from; read its rows again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them" | "another component has locked that playlist against that edit" | "that playlist is foo_jean's own; address it by its role rather than by its id" | "this install has playback control turned off; turn on controlPlayback in config.json to allow it" | "this install has output device changes turned off; turn on changeOutput in config.json to allow them" | "the player does not list that output device; read the outputs again";
+            error: "foobar2000 could not read that query" | "no such playlist" | "that position is past the end" | "the media library holds more than one track at that address" | "that playlist is not an autoplaylist" | "unacceptable key" | "another playlist already has that key" | "this install's autoplaylist limit is reached" | "tracks were added or removed; read the state and ask again" | "the queue changed since that revision; read it again" | "the playlist's rows were added, removed or reordered; read them again" | "that revision is not one this playlist can catch up from; read its rows again" | "the player could not do that" | "the player did not answer in time" | "autoplaylists are not available" | "this install has playlist writes turned off; turn on writePlaylists in config.json to allow them" | "another component has locked that playlist against that edit" | "that playlist is foo_jean's own; address it by its role rather than by its id" | "this install has playback control turned off; turn on controlPlayback in config.json to allow it" | "this install has output device changes turned off; turn on changeOutput in config.json to allow them" | "the player does not list that output device; read the outputs again";
             /** @description Empty except for a query foobar2000 could not read, where it carries the player's own parse error, and for a key refused on an autoplaylist this component did not make, where it says what a key names. Both describe text the client sent rather than anything on the player's disk, so they are safe to show. */
             detail: string;
         };
@@ -2449,34 +2559,29 @@ export interface components {
              */
             unansweredSeconds: number | null;
         };
-        /** @description What rides under `library` in `GET /state`'s `200`, and what `GET /library/export` and `POST /library/refresh` hand back on a `202`. Small on purpose: it is polled. */
+        /** @description What rides under `library` in `GET /state`'s `200`, and what `POST /library/rows`, the questions and `POST /library/refresh` hand back on a `202`. Small on purpose: it is polled. */
         Library: {
             /** @description Whether a snapshot has been built. False only between the component starting and its first walk finishing. Every other library route answers `503` while it is false. */
             ready: boolean;
             /**
-             * @description Moves when tracks are added to or removed from the library. A different value from the one a client's snapshot header carries means every ordinal it holds is meaningless: apply a splice, or export again where `GET /library/changes` answers `410`. `0` before the first build. The first value of a run is seeded at start and never repeats across runs of the component, within the range of an integer JSON can carry exactly, so a `structure` names one generation of one run.
+             * @description Moves when tracks are added to or removed from the library. A different value from the one a client's windows were read at means every ordinal it holds is meaningless: it asks for its windows again. `0` before the first build. The first value of a run is seeded at start and never repeats across runs of the component, within the range of an integer JSON can carry exactly, so a `structure` names one generation of one run.
              * @example 41
              */
             structure: number;
             /**
-             * @description Moves when a row changes in place, which is what a play, a rating or a tag edit does. A higher value with an unchanged `structure` means fetch a delta. Contiguous, so it is exactly the `since` to ask with.
+             * @description Moves when a row changes in place, which is what a play, a rating or a tag edit does. A higher value with an unchanged `structure` means rows changed in place, and `changeCounts` says in which columns.
              * @example 903
              */
             revision: number;
             /**
-             * @description The validator of the snapshot at the `structure` and `revision` beside it: 16 lowercase hexadecimal digits, a 64-bit sum of one hash per cell. The same across a restart of the player with an unchanged library, and different after any change to a cell, a column, the count or the order of the rows. A client compares it for equality, with `trackCount` beside it, and reads nothing else into it. Sixteen zeros before the first build. See *The validator*.
-             * @example 9f3c2a71b5d04e68
-             */
-            snapshotId: string;
-            /**
-             * @description Rows in the snapshot, which is the length of every `ids` array in it.
+             * @description Rows in the snapshot.
              * @example 30441
              */
             trackCount: number;
             /**
-             * @description The title-formatting expressions the ready snapshot was built with, in the order they appear in the header's `columns` array. Empty while `ready` is false. The spine is not among them: `directory`, `filename` and `subsong` are always built and are reported under `spine` instead.
+             * @description The title-formatting expressions the ready snapshot was built with, in the order of a rows header's `columns` array. Empty while `ready` is false. The spine is not among them: `directory`, `filename` and `subsong` are always built and are reported under `spine` instead.
              *
-             *     This is what a client compares against between a `202` from `GET /library/export` and its next attempt. The comparison is by membership: same members, in any order, is the same declaration.
+             *     This is what a client compares against between a `202` from `POST /library/rows` and its next attempt. The comparison is by membership: same members, in any order, is the same declaration.
              * @example [
              *       "%title%",
              *       "%album artist%",
@@ -2484,6 +2589,15 @@ export interface components {
              *     ]
              */
             columns: string[];
+            /**
+             * @description One count per entry of `columns`, in the same order: a counter that moves whenever a value in that column changes in place. A client compares it for equality, which is how it learns a held window or an answer computed from that column is stale when `revision` moved for another column's sake. Empty while `columns` is.
+             * @example [
+             *       0,
+             *       12,
+             *       903
+             *     ]
+             */
+            changeCounts: number[];
             /** @description Progress on a snapshot the component is building right now, or `null` while none is. This covers every build: the first walk, one started by a newly declared column set, and a rebuild asked for through `POST /library/refresh`. */
             build: components["schemas"]["LibraryBuild"] | null;
             /** @description Whether the implementation has stopped reading the library for good, after failing too often to recover on its own. Once true it stays true until the implementation restarts: `build` is `null`, no further build starts, and the snapshot held when it stopped, if any, goes on being served at the generations above. A client waiting on a build stops waiting and tells its user the player needs restarting. */
@@ -2526,6 +2640,8 @@ export interface components {
             topTracks: components["schemas"]["SummaryTrack"][];
             /** @description The shelves that reach their minimum, in the order `GET /library/summary` lists them. */
             shelves: components["schemas"]["SummaryShelf"][];
+            /** @description Present only when the request sent `genres=true`, and absent otherwise. Every genre of the library, most tracks first and then by the genre's key compared by UTF-16 code unit, which is not bytewise order. */
+            genres?: components["schemas"]["SummaryGenre"][];
         };
         SummaryArtist: {
             /** @description The credited artist, or `null` for tracks that credit none. */
@@ -2564,10 +2680,12 @@ export interface components {
             /** @description The library-relative path `GET /artwork?track=` takes, or `null`. */
             cover: string | null;
         };
+        /** @description One shelf. `figures` is computed over the tracks of the shelf's albums together. */
         SummaryShelf: {
             /** @enum {string} */
             id: "added" | "recent" | "top" | "rated" | "loved" | "upgrade" | "unopened" | "starter";
             albums: components["schemas"]["SummaryAlbum"][];
+            figures: components["schemas"]["SetFigures"];
         };
         /** @description A set of tracks as ascending ordinals at the `structure` of the answer carrying it, in exactly one of two forms: `runs`, or `bitset`. Whichever serialises shorter is sent, and `runs` on a tie. An empty set is `{ "runs": [] }`. See *The four questions*. */
         OrdinalSet: {
@@ -2575,7 +2693,70 @@ export interface components {
         } | {
             bitset: components["schemas"]["Bitset"];
         };
-        /** @description What `GET /library/search` answers, computed at the `structure` and `revision` it carries. An ordinal anywhere in it is at that `structure`, and means nothing at another. */
+        /** @description The header figures of a set of tracks, computed over exactly that set by the rules `GET /library/summary` uses for the whole library. */
+        SetFigures: {
+            /** @description Albums, as the grouping rule in `GET /library/summary` forms them, over the set. */
+            albumCount: number;
+            /** @description Tracks in the set. */
+            trackCount: number;
+            /** @description Total length of the set in seconds. */
+            seconds: number;
+            /** @description The earliest year any track of the set carries, or `null` where none carries one. */
+            earliestYear: number | null;
+            /** @description The latest year any track of the set carries, or `null` where none carries one. */
+            latestYear: number | null;
+        };
+        /** @description The figures an artist page draws its cards from, computed over the artist's `all` set, which is `own`, `shared` and `guest` together. */
+        ArtistCards: {
+            /** @description The share of the set's tracks with at least one play. */
+            playedShare: number;
+            /** @description Plays summed over the set. */
+            plays: number;
+            /** @description Tracks of the set with no play. */
+            neverPlayed: number;
+            /** @description Milliseconds since the epoch of the latest play of any track in the set, or `null` where none has one. */
+            lastPlayed: number | null;
+            /** @description The most played track of the set, or `null` where none has a play. */
+            mostPlayed: {
+                /** @description The track's ordinal at the document's `structure`. */
+                ordinal: number;
+                /** @description The track's title, carried so a client that does not hold the row can draw the card. */
+                title: string;
+                /** @description Its play count. */
+                plays: number;
+            } | null;
+            /** @description The most common genres of the set, most common first. */
+            topGenres: {
+                name: string;
+                count: number;
+                /** @description `count` as a percentage of the set's tracks, rounded to a whole number. */
+                share: number;
+            }[];
+        };
+        /** @description One album of an artist's `own` or `shared` set, as a record on the artist's page. */
+        AlbumRecord: {
+            album: string;
+            artist: string | null;
+            /** @description The album's year, or `null` where its tracks carry none. */
+            year: number | null;
+            /** @description The library-relative path `GET /artwork?track=` takes, of the album's first row within the set the records are computed over, the artist's `own` or `shared`. For a shared album that need not be the album's canonical cover track. */
+            cover: string;
+            /** @description Tracks of the album within the set. */
+            trackCount: number;
+        };
+        /** @description One genre of the whole library, as the genres page draws its tiles. */
+        SummaryGenre: {
+            name: string;
+            /** @description Tracks holding the genre. */
+            count: number;
+            /** @description Albums, as the grouping rule in `GET /library/summary` forms them, with at least one track in the genre. */
+            albumCount: number;
+            /** @description Distinct credited artists over the genre's tracks, as the credited artist is read for an album. */
+            artistCount: number;
+            /** @description The library-relative paths `GET /artwork?track=` takes, of the first track in this genre of each of the tile's two largest albums, largest by tracks in the genre. They are not the albums' cover tracks. */
+            covers: string[];
+        };
+        /** @description What `GET /library/search` answers, computed at the `structure` and `revision` it carries. `figures` is over `matched`, and all zero and null where `matched` is `null`. An ordinal anywhere in it is at that `structure`, and means nothing at another. */
         SearchAnswer: {
             /** @description The snapshot's `structure` the document was computed at. */
             structure: number;
@@ -2585,6 +2766,7 @@ export interface components {
             matched: components["schemas"]["OrdinalSet"] | null;
             /** @description The size of `matched`, and `0` where it is `null`. */
             matchCount: number;
+            figures: components["schemas"]["SetFigures"];
             /** @description The best `limit` matching tracks as ordinals, in rank order. */
             best: number[];
             artists: components["schemas"]["ArtistSection"];
@@ -2632,19 +2814,20 @@ export interface components {
             name: string;
             trackCount: number;
         };
-        /** @description What `GET /library/album` answers, computed at the `structure` and `revision` it carries. */
+        /** @description What `GET /library/album` answers, computed at the `structure` and `revision` it carries. `figures` is over `refs`. */
         AlbumAnswer: {
             /** @description The snapshot's `structure` the document was computed at. */
             structure: number;
             /** @description The snapshot's `revision` the document was computed at. */
             revision: number;
             refs: components["schemas"]["OrdinalSet"];
+            figures: components["schemas"]["SetFigures"];
             /** @description The album as its tracks spell it, or as asked where no track matched. */
             album: string;
             /** @description The credited artist as the tracks spell it, `null` where none. */
             artist: string | null;
         };
-        /** @description What `GET /library/artist` answers, computed at the `structure` and `revision` it carries. The three sets share no ordinal. */
+        /** @description What `GET /library/artist` answers, computed at the `structure` and `revision` it carries. The three sets share no ordinal. `figures` and `cards` are computed over `own`, `shared` and `guest` together. */
         ArtistAnswer: {
             /** @description The snapshot's `structure` the document was computed at. */
             structure: number;
@@ -2653,14 +2836,132 @@ export interface components {
             own: components["schemas"]["OrdinalSet"];
             shared: components["schemas"]["OrdinalSet"];
             guest: components["schemas"]["OrdinalSet"];
+            figures: components["schemas"]["SetFigures"];
+            cards: components["schemas"]["ArtistCards"];
+            /** @description The albums of the `own` set and of the `shared` set, each as records. */
+            records: {
+                own: components["schemas"]["AlbumRecord"][];
+                shared: components["schemas"]["AlbumRecord"][];
+            };
         };
-        /** @description What `GET /library/genre` answers, computed at the `structure` and `revision` it carries. */
+        /** @description What `GET /library/genre` answers, computed at the `structure` and `revision` it carries. `figures` is over `refs`. */
         GenreAnswer: {
             /** @description The snapshot's `structure` the document was computed at. */
             structure: number;
             /** @description The snapshot's `revision` the document was computed at. */
             revision: number;
             refs: components["schemas"]["OrdinalSet"];
+            figures: components["schemas"]["SetFigures"];
+        };
+        /** @description The body of `POST /library/rows`: the declaration, the generation, and exactly one form of the set. */
+        LibraryRowsRequest: {
+            /** @description The declaration: at most 64, each 1 to 1024 printable characters, no repeats. The three spine columns are always built and MUST NOT be named. */
+            columns: string[];
+            /**
+             * @description The `structure` generation the ordinals were resolved against: `library.structure` from `GET /state`, spelled as a string of decimal digits. `GET /state` carries the pair as JSON numbers, and this body carries it as text, as a playlist's own `structure` travels, so the same rule applies: send the digits exactly as they were read, and anything else is a `400`. A value other than the one currently held is a `409`.
+             * @example 41
+             */
+            structure: string;
+            runs?: components["schemas"]["Runs"];
+            ordinals?: components["schemas"]["Ordinals"];
+        };
+        /** @description The JSON header inside a `POST /library/rows` body, between the four-byte magic number and the blob. It is not served on its own. The framing and how to read a column are in *The media library*, at the top of this document. */
+        LibraryRowsHeader: {
+            /**
+             * @description What this body is. A client MUST check it rather than infer it from the URL.
+             * @enum {string}
+             */
+            kind: "rows";
+            /** @description The generation the rows were read at. */
+            structure: number;
+            /** @description The revision the rows were read at. */
+            revision: number;
+            /** @description Rows in the whole snapshot, not the rows in this body. */
+            trackCount: number;
+            /** @description Rows in this body, the length of every `ids` array in it. */
+            rows: number;
+            /** @description Every declared column, in the order declared, each with its `name`, its `ids` and `dict`, and the whole library's `distinct`, `hasUnresolved` and `allUnresolved`. */
+            columns: components["schemas"]["LibraryColumn"][];
+            /** @description The three columns the component always builds, keyed by name rather than carrying one, always carried in full. */
+            spine: {
+                /** @description The track's directory relative to the library root, forward-slashed on every platform and keeping its trailing slash, so `directory + filename` is the whole relative path. Empty for a track at the root. The library root itself is never published. */
+                directory: components["schemas"]["LibraryColumn"];
+                /** @description The last segment of the path, extension included. */
+                filename: components["schemas"]["LibraryColumn"];
+                /** @description The player's own subsong number within the file, as decimal text, for cue sheets and disc images. `0` for an ordinary file, and never a position among the rows at one path. Text like every other column, because nothing here types a value. */
+                subsong: components["schemas"]["LibraryColumn"];
+            };
+        };
+        /** @description What `GET /library/runs` answers, computed at the `structure` and `revision` it carries. Run *i* covers the next `lengths[i]` ordinals after the runs before it. */
+        LibraryRuns: {
+            /** @description The snapshot's `structure` the document was computed at. */
+            structure: number;
+            /** @description The snapshot's `revision` the document was computed at. */
+            revision: number;
+            /** @description Each run's length, in ordinal order. */
+            lengths: number[];
+            /** @description The ordinal of each run's cover track, parallel to `lengths`. It may lie outside the run. */
+            covers: number[];
+            /** @description The ascending indices into `lengths` of the runs whose rows carry no album tag, each a group of untagged rows by one credit, and empty where there are none. A client needs it because a tagged run contributes its first position once per album record to the header's covers, where an untagged run contributes every position, and `covers` alone cannot tell the two apart. */
+            untagged: number[];
+        };
+        /** @description What `GET /library/values` answers, computed at the `structure` and `revision` it carries. */
+        LibraryValues: {
+            /** @description The snapshot's `structure` the document was computed at. */
+            structure: number;
+            /** @description The snapshot's `revision` the document was computed at. */
+            revision: number;
+            /** @description The field's distinct values beginning with the prefix, at most `limit`, in the order the component holds them. */
+            values: string[];
+        };
+        /** @description One artist a credit names. */
+        CreditMember: {
+            /** @description The artist as the credit spells it. */
+            name: string;
+            /** @description The name folded as the four questions match an artist. */
+            key: string;
+            /** @description Whether the credit names the artist as a guest. */
+            isGuest: boolean;
+        };
+        /** @description What `GET /library/credits` answers, computed at the `structure` and `revision` it carries. */
+        LibraryCredits: {
+            /** @description The snapshot's `structure` the document was computed at. */
+            structure: number;
+            /** @description The snapshot's `revision` the document was computed at. */
+            revision: number;
+            /** @description The members the track's artist credit names. */
+            artist: components["schemas"]["CreditMember"][];
+            /** @description The members the track's album artist credit names. */
+            albumArtist: components["schemas"]["CreditMember"][];
+        };
+        /** @description What `GET /playlists/{id}/runs` answers, at the playlist's `structure` and `revision`. */
+        PlaylistRuns: {
+            /** @description The playlist's structure generation, as `PlaylistPage` has it. */
+            structure: string;
+            /** @description The playlist's content revision, as `PlaylistPage` has it. */
+            revision: string;
+            /** @description Each run's length, in row order. They sum to `trackCount`. */
+            lengths: number[];
+            /** @description The highest play count of any row. */
+            mostPlays: number;
+            /** @description Albums, as `LibrarySummary.albumCount` counts them, over the playlist's rows. */
+            albumCount: number;
+            /** @description Rows in the playlist. */
+            trackCount: number;
+            /** @description Total length of the playlist in seconds. */
+            seconds: number;
+            /** @description The earliest year any row carries, or `null` where none carries one. */
+            earliestYear: number | null;
+            /** @description The latest year any row carries, or `null` where none carries one. */
+            latestYear: number | null;
+        };
+        /** @description What `GET /playlists/{id}/find` answers, at the playlist's `structure` and `revision`. `matched` holds positions in the playlist, counted from zero, and never library ordinals. */
+        PlaylistFind: {
+            /** @description The playlist's structure generation, as `PlaylistPage` has it. */
+            structure: string;
+            /** @description The playlist's content revision, as `PlaylistPage` has it. */
+            revision: string;
+            matched: components["schemas"]["OrdinalSet"];
         };
         /** @description How far the running build has gotten. */
         LibraryBuild: {
@@ -2711,6 +3012,8 @@ export interface components {
             subsong: number;
             /** @description The library-relative, forward-slashed key `GET /artwork?track=` takes, where the media library holds the playing track, or `null` where it does not. With `subsong` it is the library address `POST /tags` takes, and it is the only address a client can write a rating for the playing track to: `path` is foobar2000's own absolute one and no route here accepts it. */
             libraryPath: string | null;
+            /** @description The playing track's ordinal in the snapshot, at the `structure` the same document reports under `library`, or `null` where the media library does not hold the playing track. It is resolved when the document is written, so a move of `structure` under a playing track moves it, and it means nothing at another `structure`. A detached session's `player` carries its own. */
+            libraryOrdinal: number | null;
             position: components["schemas"]["Position"];
             /** @description The playing track's length in seconds, or `0` when nothing is playing. */
             duration: number;
@@ -2800,7 +3103,7 @@ export interface components {
         /**
          * @description One column's values across this response: the distinct strings it takes, and one id per changed row. Row *i* in `items` takes `text[ids[i]]`, so `ids` is as long as `items` and `text` is as long as the column has distinct values here.
          *
-         *     The names come from `LibraryColumn`, and so does what they mean. Two things differ, both because this is JSON rather than a blob. There is no `ends`: JSON delimits its own strings, so `text` is the array of values instead of a run of bytes with offsets into it. And there is no `base`, because nothing here is appended to a dictionary the client already holds.
+         *     The names come from `LibraryColumn`, and so does what they mean. Two things differ, both because this is JSON rather than a blob. There is no `ends`: JSON delimits its own strings, so `text` is the array of values instead of a run of bytes with offsets into it.
          */
         ChangedPlaylistColumn: {
             /**
@@ -2830,10 +3133,12 @@ export interface components {
             position: number;
             /** @description The library-relative, forward-slashed key `GET /artwork?track=` takes, where the media library holds this track, or `null` where it does not. */
             libraryPath: string | null;
+            /** @description The library-relative, forward-slashed key `GET /artwork?track=` takes, of the cover track of this row's album, or `null` where the media library does not hold the row. Present only when the request named roles, and absent otherwise. */
+            cover?: string | null;
             /**
              * @description Which track inside the file this row holds, `0` for an ordinary file, read from the handle the row was drawn from rather than from the media library. It is the other half of the library address `POST /tags` takes: every track of one cue sheet shares a `libraryPath`, and a cue sheet's subsongs number from 1, so an address carrying the path alone reaches none of them.
              *
-             *     It is not one of the declared `columns`, and a client MUST NOT ask for `%subsong%` there: that declaration is shared with `GET /library/export`, so widening it rebuilds the snapshot and moves its `structure`.
+             *     It is not one of the declared `columns`, and a client MUST NOT ask for `%subsong%` there: that declaration is shared with `POST /library/rows`, so widening it rebuilds the snapshot and moves its `structure`.
              * @example 0
              */
             subsong: number;
@@ -2850,10 +3155,12 @@ export interface components {
             columns: string[];
             /** @description The library-relative, forward-slashed key `GET /artwork?track=` takes, where the media library holds this track, or `null` where it does not. */
             libraryPath: string | null;
+            /** @description The library-relative, forward-slashed key `GET /artwork?track=` takes, of the cover track of this row's album, or `null` where the media library does not hold the row. Present only when the request named roles, and absent otherwise. */
+            cover?: string | null;
             /**
              * @description Which track inside the file this row holds, `0` for an ordinary file, read from the handle the row was drawn from rather than from the media library. It is the other half of the library address `POST /tags` takes: every track of one cue sheet shares a `libraryPath`, and a cue sheet's subsongs number from 1, so an address carrying the path alone reaches none of them.
              *
-             *     It is not one of the declared `columns`, and a client MUST NOT ask for `%subsong%` there: that declaration is shared with `GET /library/export`, so widening it rebuilds the snapshot and moves its `structure`.
+             *     It is not one of the declared `columns`, and a client MUST NOT ask for `%subsong%` there: that declaration is shared with `POST /library/rows`, so widening it rebuilds the snapshot and moves its `structure`.
              * @example 0
              */
             subsong: number;
@@ -2874,6 +3181,8 @@ export interface components {
             albumArtist: string;
             /** @description The library-relative, forward-slashed key `GET /artwork?track=` takes, where the media library holds this track, or `null` where it does not. */
             libraryPath: string | null;
+            /** @description The library-relative, forward-slashed key `GET /artwork?track=` takes, of the cover track of this row's album, or `null` where the media library does not hold the row. Present only when the request named roles, and absent otherwise. */
+            cover?: string | null;
             /** @description Where this entry sits in a playlist, or `null` for a library track queued by handle and for a playlist row whose position the player has lost. The core keeps such an entry rather than dropping it; read it through the handle it carries, never through a stale position. */
             location: components["schemas"]["PlayingLocation"] | null;
         };
@@ -2905,7 +3214,7 @@ export interface components {
         };
         QueueLibraryTracksRequest: {
             /**
-             * @description The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. A value other than the one currently held is a `409`: export the library again and resolve the set against the `structure` it reports.
+             * @description The `structure` generation the set was resolved against, read from `library.structure` in `GET /state`. A value other than the one currently held is a `409`: read `GET /state` again and resolve the set against the `structure` it reports.
              * @example 41
              */
             structure: number;
@@ -2940,49 +3249,10 @@ export interface components {
              */
             revision: number;
         };
-        /** @description The JSON header inside a snapshot or a delta, between the four-byte magic number and the blob. It is not served on its own by any route; it is documented here so a client can be generated for it. *The media library*, at the top of this document, has the framing and how to read a column. */
-        LibraryHeader: {
-            /**
-             * @description What this body is. `GET /library/export` answers a snapshot. `GET /library/changes` answers a delta or a splice. A client MUST check it rather than infer it from the URL it asked for or from `structure` having moved.
-             * @enum {string}
-             */
-            kind: "snapshot" | "delta" | "splice";
-            /** @description The generation the ordinals in this body belong to. */
-            structure: number;
-            /** @description The generation this body brings a client up to. */
-            revision: number;
-            /** @description Deltas and splices only, and absent from a snapshot. The revision this body patches from, echoing the request so a client can confirm what it is applying. */
-            since?: number;
-            /** @description Splices only. The `structure` this body patches from, echoing the request. `structure` is the one it reaches. */
-            sinceStructure?: number;
-            /** @description The validator of the snapshot this body brings a client to: what `library.snapshotId` in `GET /state` is at `structure` and `revision`. In a subset of an export it still names the whole export. See *The validator*. */
-            snapshotId: string;
-            /** @description Snapshots only. The `name` of each declared column whose `ids` and `dict` the body carries. Every other entry in `columns` has only `name`, `distinct`, `hasUnresolved` and `allUnresolved`. Every declared column when the request named no `only`. */
-            carried?: string[];
-            /** @description Snapshots only. Whether the entries under `spine` carry their `ids` and `dict`. `false` when the request said `spine=false`, in which case they have only `distinct`, `hasUnresolved` and `allUnresolved`. */
-            spineCarried?: boolean;
-            /** @description Splices only. The ordinals of the rows to remove, ascending, in the numbering of `sinceStructure`. See *Reading a splice*. */
-            removed?: components["schemas"]["LibrarySection"];
-            /** @description Splices only. The ordinals the inserted rows take, ascending, in the numbering of `structure`. Each is also in every carried column's `ordinals`. */
-            inserted?: components["schemas"]["LibrarySection"];
-            /** @description Rows in the whole snapshot, in a delta or a splice as well as in a snapshot, and never the subset's. In a snapshot it is the length of every `ids` array; in a delta or a splice it is the count after the patch, what `ordinals` are bounded by, and what their width was chosen from. */
-            trackCount: number;
-            /** @description The columns the client declared, each carrying its own `name`, in the order it named them. In a snapshot, every one, though a subset's body carries the `ids` and `dict` of only the ones in `carried`. In a delta, only the ones that moved. In a splice, every one when it inserts rows, and otherwise only the ones that moved or whose dictionary grew. */
-            columns: components["schemas"]["LibraryColumn"][];
-            /** @description The three columns the component always builds, keyed by name rather than carrying one. A snapshot has all three. A delta has only the ones that moved, which for the spine is rare: a track whose path changed is a removal and an addition, which is a splice. A splice that inserts rows has all three, with one id per inserted row and `ordinals` equal to `inserted`; one that only removes has only the ones whose dictionary grew, with no ordinals. */
-            spine: {
-                /** @description The track's directory relative to the library root, forward-slashed on every platform and keeping its trailing slash, so `directory + filename` is the whole relative path. Empty for a track at the root. The library root itself is never published. */
-                directory?: components["schemas"]["LibraryColumn"];
-                /** @description The last segment of the path, extension included. */
-                filename?: components["schemas"]["LibraryColumn"];
-                /** @description The player's own subsong number within the file, as decimal text, for cue sheets and disc images. `0` for an ordinary file, and never a position among the rows at one path. Text like every other column, because nothing here types a value. */
-                subsong?: components["schemas"]["LibraryColumn"];
-            };
-        };
         /**
          * @description One column: a dictionary of distinct strings, and one dictionary id per row. Every `offset` is a byte offset from the start of the blob and is a multiple of four.
          *
-         *     Both routes answer with this shape. A delta's or a splice's columns carry `ordinals` and `dict.base` on top of it; a snapshot's carry neither, and a client reads `kind` on the header to know which it is holding rather than testing for a key.
+         *     Every route that answers in this format uses this shape.
          */
         LibraryColumn: {
             /**
@@ -2990,23 +3260,18 @@ export interface components {
              * @example %title%
              */
             name?: string;
-            /** @description Absent from the entry of a column the body does not carry (see `carried` and `spineCarried`), and present on every other. One dictionary id per row. In a snapshot `count` is `trackCount` and entry *i* belongs to ordinal *i*. In a delta `count` is `ordinals.count` and entry *i* belongs to ordinal `ordinals[i]`. */
+            /** @description One dictionary id per row. `count` is `rows` and entry *i* belongs to the *i*th row named. */
             ids?: components["schemas"]["LibrarySection"];
-            /** @description Deltas and splices only, and absent from a snapshot. The ordinals this column changed at, ascending and without repeats, one for each entry in `ids`. In a splice they are in the numbering of `structure`, after the removals and the insertions, and include every `inserted` ordinal. Its `width` is the narrowest of 1, 2 and 4 that holds every ordinal from `0` to `trackCount - 1`: these index rows rather than dictionary entries, so it is chosen from a different number than `ids.width` and is often a different width. */
-            ordinals?: components["schemas"]["LibrarySection"];
-            /** @description Absent on the same entries as `ids`. */
             dict?: {
                 /** @description Every value in the dictionary, concatenated with nothing between them, `length` bytes of UTF-8 as the player produced it. One `TextDecoder` call reads the lot; slice it lazily rather than building every string up front. */
                 text: {
                     offset: number;
                     length: number;
                 };
-                /** @description Where each value ends within `text`, exclusive. Value *i* spans `[ends[i - 1], ends[i])`, reading `ends[-1]` as `0`. In a snapshot `count` is `distinct`; in a delta it is `distinct - base`, because a delta carries only what was appended. */
+                /** @description Where each value ends within `text`, exclusive. Value *i* spans `[ends[i - 1], ends[i])`, reading `ends[-1]` as `0`. `count` is the number of values the rows use, which is not `distinct`. */
                 ends: components["schemas"]["LibrarySection"];
-                /** @description Deltas and splices only, and absent from a snapshot. How many entries the client's dictionary already holds. Dictionaries are append-only within a `structure` generation, so the values in `text` are appended at this index and nothing already held is restated. */
-                base?: number;
             };
-            /** @description Values in the whole dictionary, in a delta as well as in a snapshot. This is what `ids.width` was chosen from. */
+            /** @description Values in the whole library's dictionary for this column, which is not the number the body carries: `ids.width` is chosen from the dictionary the body carries. */
             distinct: number;
             /**
              * @description Whether `?`, the single question mark, is one of the values. That is what a field the player could not resolve formats to, so this is capability detection answered exactly rather than sampled: a field that resolves on one track in ten thousand is detected here and missed by sampling.
@@ -3058,14 +3323,14 @@ export interface components {
         /** @description A refusal the client can act on. The request was understood and declined before the snapshot was touched. */
         LibraryRefusal: {
             /** @enum {string} */
-            error: "too many columns" | "unacceptable column" | "duplicate column" | "column not declared" | "unacceptable spine" | "unacceptable revision" | "unacceptable role" | "duplicate role" | "unacceptable question" | "duplicate question";
+            error: "too many columns" | "unacceptable column" | "duplicate column" | "unacceptable revision" | "unacceptable role" | "duplicate role" | "unacceptable question" | "duplicate question" | "too many rows asked for";
             /** @description What specifically was wrong, naming the position of the offending column where there is one. Safe to show a person: it describes the request the client sent and nothing on the player's disk. */
             detail: string;
         };
         /** @description The request was acceptable and the snapshot could not answer it. */
         LibraryFailed: {
             /** @enum {string} */
-            error: "the library snapshot has not been built yet" | "tracks were added or removed; export the library again" | "that revision is older than the retained window; export the library again" | "no such revision" | "that structure and revision name no position this library held; export the library again" | "the tracks added or removed since then are too many to send; export the library again" | "the library was rebuilt with its dictionaries compacted; export the library again" | "the library was rebuilt with other columns or in another order; export the library again";
+            error: "the library snapshot has not been built yet" | "tracks were added or removed; read the state and ask again";
             /** @description Always empty. It is present so that every library failure reads as one shape. */
             detail: string;
         };
@@ -3171,7 +3436,7 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
-        /** @description The `structure` the request named is no longer the current one: tracks were added to or removed from the library, so every ordinal it carries has shifted and inserting them would land the wrong rows. The remedy is to bring the library up to date, with the splice `GET /api/library/changes` answers or by exporting again, and to resolve the set against the `structure` the client then holds. */
+        /** @description The `structure` the request named is no longer the current one: tracks were added to or removed from the library, so every ordinal it carries has shifted and inserting them would land the wrong rows. The remedy is to read `library.structure` from `GET /state` and resolve the set against it. */
         StructureMoved: {
             headers: {
                 [name: string]: unknown;
@@ -3180,7 +3445,7 @@ export interface components {
                 "application/json": components["schemas"]["LibraryFailed"];
             };
         };
-        /** @description The `structure` the request named is no longer the current one, or another component has locked the target playlist against having rows added. The `error` string distinguishes them. The remedy for the first is to bring the library up to date, with the splice `GET /library/changes` answers or by exporting again, and to resolve the set against the `structure` the client then holds. The second is released at the player, by whatever put it there, and nothing a client sends changes that. */
+        /** @description The `structure` the request named is no longer the current one, or another component has locked the target playlist against having rows added. The `error` string distinguishes them. The remedy for the first is to read `library.structure` from `GET /state` and resolve the set against it. The second is released at the player, by whatever put it there, and nothing a client sends changes that. */
         FillConflict: {
             headers: {
                 [name: string]: unknown;
@@ -3413,7 +3678,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description The request was understood and declined before the snapshot was touched: no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, a `since` or a `structure` that is missing or not a whole number, or, on `GET /library/export`, an `only` naming a column `columns` does not declare or naming one twice in two spellings, or a `spine` that is neither `true` nor `false`. On `GET /library/summary` it is a role that is not one of the published names, one with an empty expression, one longer than 1024 characters or one carrying a control character, or one named twice in two spellings (`unacceptable role`, `duplicate role`). The four questions refuse the same roles in the same words, with the credit roles beside the summary's, and refuse a question parameter that is missing, empty where it may not be, not a whole number of 0 or more where it names a count, not `true` or `false` where it is a flag, named twice, or a `query` over 1024 bytes (`unacceptable question`, `duplicate question`). A parameter that is neither a role nor one the route owns is `unacceptable role`. */
+        /** @description The request was understood and declined before the snapshot was touched. On the routes that take roles as query parameters it is a role that is not one of the published names, one with an empty expression, one longer than 1024 characters or one carrying a control character, or one named twice in two spellings (`unacceptable role`, `duplicate role`). The four questions refuse the same roles in the same words, with the credit roles beside the summary's, and refuse a question parameter that is missing, empty where it may not be, not a whole number of 0 or more where it names a count, not `true` or `false` where it is a flag, named twice, or a `query` over 1024 bytes (`unacceptable question`, `duplicate question`). A parameter that is neither a role nor one the route owns is `unacceptable role`. */
         LibraryRefused: {
             headers: {
                 [name: string]: unknown;
@@ -3431,7 +3696,7 @@ export interface components {
                 "application/json": components["schemas"]["Library"];
             };
         };
-        /** @description A role names an expression the declaration does not hold. The error names the expression, so a client declares again through `GET /library/export`. */
+        /** @description A role names an expression the declaration does not hold. The error names the expression, so a client declares again through `POST /library/rows`. */
         LibraryUndeclared: {
             headers: {
                 [name: string]: unknown;
@@ -3441,46 +3706,7 @@ export interface components {
             };
         };
         /**
-         * @description The pair `structure` and `since` names no position this run of the component has held: `since` does not belong to that `structure`, or the `structure` is ahead of the current one. This is what a client that kept a snapshot across a restart can see, and a patch would be meaningless. Export again, which is also where a client declares its columns afresh.
-         *
-         *     Tracks having been added or removed is not this: that is a splice, or a `410` where none can be sent.
-         */
-        LibraryConflict: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["LibraryFailed"];
-            };
-        };
-        /**
-         * @description No delta or splice can be sent from the pair asked to catch up from: the revision is outside the retained window of 1920 or ahead of the current one, or `structure` has moved and no splice can be sent. That last is a splice of half the export's serialised bytes or more, one no longer held, a compaction of the dictionaries, and a move of `structure` that was not an addition or a removal. All mean the same thing: export again.
-         *
-         *     That window is spent by listening rather than by the clock. Every track that stops playing is re-read and moves `revision`, and nothing moves it while nobody is listening, so a client asleep overnight comes back inside it. One away across days of playback does not, and exports again.
-         */
-        LibraryRevisionGone: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["LibraryFailed"];
-            };
-        };
-        /**
-         * @description The snapshot serialises to more than 256 MiB and this component will not send it. The ceiling is on the serialised bytes rather than on what crosses the wire, so gzip does not buy room underneath it. That is a ceiling on the *response*; `413` on a request body is a different limit and a different number.
-         *
-         *     Nothing a client can do about it. It means a library far larger than this format was measured against, and it is worth reporting.
-         */
-        LibraryTooLarge: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["Error"];
-            };
-        };
-        /**
-         * @description Rebuilds are arriving faster than this component will make them: a burst of three, refilling one every thirty seconds, shared between `POST /library/refresh` and the builds an export declares. A rebuild re-queries and re-formats every track in the library, so this bounds what a looping client, or one varying the set it asks for, can do to the player.
+         * @description Rebuilds are arriving faster than this component will make them: a burst of three, refilling one every thirty seconds, shared between `POST /library/refresh` and the builds a rows request declares. A rebuild re-queries and re-formats every track in the library, so this bounds what a looping client, or one varying the set it asks for, can do to the player.
          *
          *     Asking again for a set already being built costs nothing here, so an ordinary client never meets this.
          */
@@ -3495,12 +3721,121 @@ export interface components {
             };
         };
         /**
-         * @description Either this install does not serve the media library at all, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or `GET /library/changes` was asked for a patch on a component with no snapshot yet.
+         * @description Either this install does not serve the media library at all, which `GET /capabilities` reports in advance as `canReadLibrary: false`, or a route that needs the snapshot was asked on a component with none yet.
          *
-         *     The `error` string tells them apart: `the media library is not available` is the first, `the library snapshot has not been built yet` the second. `GET /library/export` answers the second case with a `202` instead, because there the client has just said what to build.
+         *     The `error` string tells them apart: `the media library is not available` is the first, `the library snapshot has not been built yet` the second. `POST /library/rows` and the questions answer the second case with a `202` instead, because there the client has just said what to build.
          */
         LibraryUnavailable: {
             headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The request was understood and declined before the player was asked: the library's refusals of a declaration, a role or a question parameter (`LibraryRefused` lists them), or an `id` that is not a playlist GUID, which is a `PlaylistRefusal`. */
+        PlaylistReadRefused: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["LibraryRefusal"] | components["schemas"]["PlaylistRefusal"];
+            };
+        };
+        /** @description Either this install does not serve the media library at all, or it cannot read a playlist's rows. The `error` string tells them apart: `the media library is not available` is the first, `the playlist's rows are not available` the second. */
+        PlaylistReadUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The request was understood and declined before the snapshot was touched. A declaration the column gate refuses is a `LibraryRefusal`; a `structure` that is missing, empty, a JSON number or not a string of decimal digits, a set naming both of `runs` and `ordinals` or neither, a malformed set, or a body that is not JSON, is a `PlaylistRefusal` on the terms `POST /playlists/{id}/items` has; and a set naming more than 4096 rows is a `LibraryRefusal` whose error is `too many rows asked for`. An ordinal past `trackCount` is judged last, against the generation held, and is a `PlaylistRefusal` too. */
+        LibraryRowsRefused: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["LibraryRefusal"] | components["schemas"]["PlaylistRefusal"];
+            };
+        };
+        /** @description The `structure` the request named is not the current one, so every ordinal it holds names a different track. The `error` is `tracks were added or removed; read the state and ask again`: read `GET /state` for the current one and ask again with ordinals resolved against it. */
+        LibraryStructureMoved: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["LibraryFailed"];
+            };
+        };
+        /** @description Either the `structure` the request named is not the current one (`LibraryStructureMoved`), or a role names an expression the declaration does not hold (`LibraryUndeclared`). The `error` string tells them apart. */
+        LibraryUndeclaredOrMoved: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["LibraryFailed"] | components["schemas"]["Error"];
+            };
+        };
+        /** @description Either the `structure` the request named is not the playlist's current one (`PlaylistRowsMoved`), or a role names an expression the declaration does not hold (`LibraryUndeclared`). The `error` string tells them apart. */
+        PlaylistReadConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["PlaylistFailed"] | components["schemas"]["Error"];
+            };
+        };
+        /** @description Rows are being asked for faster than this component will answer them: a burst of 30, refilling one every 100 milliseconds, per client, in a bucket of its own. A client scrolling a list asks for a window at a time and never meets it. A request refused for what it asks spends nothing. `Retry-After` is sent in seconds. */
+        LibraryRowsTooFast: {
+            headers: {
+                /** @description Seconds to wait. */
+                "Retry-After"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Library runs are being asked for faster than this component will answer them: a burst of 200, refilling one every 50 milliseconds, a budget of its own. A client asks once per `structure` it sees move and never meets it. A request refused for what it asks spends nothing. `Retry-After` is sent in seconds. */
+        LibraryRunsTooFast: {
+            headers: {
+                /** @description Seconds to wait. */
+                "Retry-After"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Playlist runs are being asked for faster than this component will answer them: a burst of 200, refilling one every 50 milliseconds, a budget of its own. A request refused for what it asks spends nothing. `Retry-After` is sent in seconds. */
+        PlaylistRunsTooFast: {
+            headers: {
+                /** @description Seconds to wait. */
+                "Retry-After"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Playlist searches are arriving faster than this component will answer them: a burst of 200, refilling one every 50 milliseconds, a budget of its own. A request refused for what it asks spends nothing. `Retry-After` is sent in seconds. */
+        PlaylistSearchedTooFast: {
+            headers: {
+                /** @description Seconds to wait. */
+                "Retry-After"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Rows of playlists are being read faster than this component will answer them: a burst of 30, refilling one every 100 milliseconds, per client, one bucket shared by `GET /playlists/{id}/items` and `GET /playlists/{id}/items/changes`. A client scrolling a list asks for a window at a time and never meets it. The refusal comes after what the request says and after `503`, and before anything is asked of the player, and a request refused for what it asks spends nothing. `Retry-After` is sent in seconds. */
+        PlaylistRowsReadTooFast: {
+            headers: {
+                /** @description Seconds to wait. */
+                "Retry-After"?: string;
                 [name: string]: unknown;
             };
             content: {
@@ -3624,17 +3959,6 @@ export interface components {
         };
         /** @description Reads of one library track are arriving faster than this component will answer them: a burst of 200, refilling one every 50 milliseconds, the same budget tag writes have, because the read this route exists for follows a write. Each read evaluates columns the client wrote, so what this bounds is a client stuck in a loop. A request refused for what it asks is refused for that first and spends nothing. The player was not asked. `Retry-After` is sent in seconds. */
         LibraryTrackReadTooFast: {
-            headers: {
-                /** @description Seconds to wait. */
-                "Retry-After"?: string;
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["Error"];
-            };
-        };
-        /** @description Deltas are being asked for faster than this component will answer them: a burst of 200, refilling one every 50 milliseconds, the budget `GET /track/library` has. A client asks once per `revision` it sees move and never meets it; a client stuck in a loop would otherwise hold the library's lock against every state poll. A request refused for what it asks is refused for that first and spends nothing. `Retry-After` is sent in seconds. */
-        LibraryChangesTooFast: {
             headers: {
                 /** @description Seconds to wait. */
                 "Retry-After"?: string;
@@ -3877,7 +4201,7 @@ export interface operations {
              *
              *     The `structure` the playlist form named is no longer that playlist's current one, so the row at `index` may be another track: read the playlist's rows again from the generation `GET /playlists` now reports, and send the position that names.
              *
-             *     The ordinal form resolved to nothing, for one of three reasons the component cannot tell apart. The `structure` it named is no longer the media library's, so every ordinal held against it names another track. Or the snapshot at that generation holds no ordinal that high. Or no snapshot is built, which is where a component sits between starting and its first one. One resolver serves the ordinal here and the ones `POST /playlists/{id}/items` and the queue routes take, and it reports all three as a miss, so the error string names the rebuild alone. Export the library again and send the ordinal that names; where the `structure` sent is the one `GET /state` reports, the ordinal itself was wrong and exporting again will not help.
+             *     The ordinal form resolved to nothing, for one of three reasons the component cannot tell apart. The `structure` it named is no longer the media library's, so every ordinal held against it names another track. Or the snapshot at that generation holds no ordinal that high. Or no snapshot is built, which is where a component sits between starting and its first one. One resolver serves the ordinal here and the ones `POST /playlists/{id}/items` and the queue routes take, and it reports all three as a miss, so the error string names the rebuild alone. Read the library's state again and send an ordinal resolved against the `structure` it reports; where the `structure` sent is already the one `GET /state` reports, the ordinal itself was wrong and reading again will not help.
              *
              *     The `track` address names a track under more than one media library root, so nothing about it says which was meant: send the `ordinal` the row was read at instead. A client SHOULD retry once, and on this refusal only.
              */
@@ -4395,9 +4719,53 @@ export interface operations {
                 /**
                  * @description The columns to evaluate, repeated once per column: `?columns=%25title%25&columns=%25artist%25`. Never comma-separated, because a title-formatting expression may contain commas. Each row answers one value per column, in the order declared.
                  *
-                 *     Passed to foobar2000's title-formatting compiler untouched, under the same gate `GET /library/export` puts on a declaration: at most 64, each 1 to 1024 printable characters, and no repeats.
+                 *     Passed to foobar2000's title-formatting compiler untouched, under the same gate `POST /library/rows` puts on a declaration: at most 64, each 1 to 1024 printable characters, and no repeats.
                  */
                 columns: string[];
+                /** @description The declared expression that reads the track's number on its disc. */
+                trackNumber?: components["parameters"]["RoleTrackNumber"];
+                /** @description The declared expression that reads the disc the track is on. */
+                discNumber?: components["parameters"]["RoleDiscNumber"];
+                /** @description The declared expression that reads the track's title. */
+                title?: components["parameters"]["RoleTitle"];
+                /** @description The declared expression that reads the track's artist. */
+                artist?: components["parameters"]["RoleArtist"];
+                /** @description The declared expression that reads the album the track belongs to. */
+                album?: components["parameters"]["RoleAlbum"];
+                /** @description The declared expression that reads the artist the album is credited to. */
+                albumArtist?: components["parameters"]["RoleAlbumArtist"];
+                /** @description The declared expression that reads the track's length in seconds. */
+                duration?: components["parameters"]["RoleDuration"];
+                /** @description The declared expression that reads the track's play count from the scrobbling source. */
+                playCount?: components["parameters"]["RolePlayCount"];
+                /** @description The declared expression that reads when the scrobbling source last saw the track played, as a timestamp. */
+                lastPlayed?: components["parameters"]["RoleLastPlayed"];
+                /** @description The declared expression that reads the track's rating. */
+                rating?: components["parameters"]["RoleRating"];
+                /** @description The declared expression that reads the track's year. */
+                year?: components["parameters"]["RoleYear"];
+                /** @description The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several. */
+                genre?: components["parameters"]["RoleGenre"];
+                /** @description The declared expression that reads the track's codec. */
+                codec?: components["parameters"]["RoleCodec"];
+                /** @description The declared expression that reads the track's bitrate in kilobits per second. */
+                bitrate?: components["parameters"]["RoleBitrate"];
+                /** @description The declared expression that reads the track's play count from the player's own counter. */
+                playCountLocal?: components["parameters"]["RolePlayCountLocal"];
+                /** @description The declared expression that reads when the player's own counter last saw the track played, as a timestamp. */
+                lastPlayedLocal?: components["parameters"]["RoleLastPlayedLocal"];
+                /** @description The declared expression that reads when the track entered the library, as a timestamp. */
+                added?: components["parameters"]["RoleAdded"];
+                /** @description The declared expression that reads every value of the track's `artists` tag, separated by the unit separator (U+001F) where there are several. */
+                artists?: components["parameters"]["RoleArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz artist id tag, separated by the unit separator (U+001F) where there are several. */
+                artistIds?: components["parameters"]["RoleArtistIds"];
+                /** @description The declared expression that reads every value of the track's `albumartists` tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtists?: components["parameters"]["RoleAlbumArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+                /** @description The declared expression that reads the artist's sort name, the plain spelling a tagger writes beside a stylised one. */
+                artistSort?: components["parameters"]["RoleArtistSort"];
             };
             header?: never;
             path: {
@@ -4430,6 +4798,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NoSuchPlaylist"];
+            429: components["responses"]["PlaylistRowsReadTooFast"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaylistRowsUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
@@ -4486,12 +4855,56 @@ export interface operations {
                  */
                 structure: string;
                 /**
-                 * @description The `revision` the client currently holds for this playlist, as a run of decimal digits, on the same terms as `structure` above. Unlike `GET /library/changes`'s `since`, which names the media library's revision and is a number, this one is a playlist's own.
+                 * @description The `revision` the client currently holds for this playlist, as a run of decimal digits, on the same terms as `structure` above. Unlike the media library's `revision`, which is a number, this one is a playlist's own.
                  * @example 9204739866101318976
                  */
                 since: string;
                 /** @description The columns to evaluate, on the same terms as `GET /playlists/{id}/items`: repeated once per column, never comma-separated, at most 64, each 1 to 1024 printable characters, and no repeats. Send the set the held page was read with, or the patched rows will carry different values from the rows around them. */
                 columns: string[];
+                /** @description The declared expression that reads the track's number on its disc. */
+                trackNumber?: components["parameters"]["RoleTrackNumber"];
+                /** @description The declared expression that reads the disc the track is on. */
+                discNumber?: components["parameters"]["RoleDiscNumber"];
+                /** @description The declared expression that reads the track's title. */
+                title?: components["parameters"]["RoleTitle"];
+                /** @description The declared expression that reads the track's artist. */
+                artist?: components["parameters"]["RoleArtist"];
+                /** @description The declared expression that reads the album the track belongs to. */
+                album?: components["parameters"]["RoleAlbum"];
+                /** @description The declared expression that reads the artist the album is credited to. */
+                albumArtist?: components["parameters"]["RoleAlbumArtist"];
+                /** @description The declared expression that reads the track's length in seconds. */
+                duration?: components["parameters"]["RoleDuration"];
+                /** @description The declared expression that reads the track's play count from the scrobbling source. */
+                playCount?: components["parameters"]["RolePlayCount"];
+                /** @description The declared expression that reads when the scrobbling source last saw the track played, as a timestamp. */
+                lastPlayed?: components["parameters"]["RoleLastPlayed"];
+                /** @description The declared expression that reads the track's rating. */
+                rating?: components["parameters"]["RoleRating"];
+                /** @description The declared expression that reads the track's year. */
+                year?: components["parameters"]["RoleYear"];
+                /** @description The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several. */
+                genre?: components["parameters"]["RoleGenre"];
+                /** @description The declared expression that reads the track's codec. */
+                codec?: components["parameters"]["RoleCodec"];
+                /** @description The declared expression that reads the track's bitrate in kilobits per second. */
+                bitrate?: components["parameters"]["RoleBitrate"];
+                /** @description The declared expression that reads the track's play count from the player's own counter. */
+                playCountLocal?: components["parameters"]["RolePlayCountLocal"];
+                /** @description The declared expression that reads when the player's own counter last saw the track played, as a timestamp. */
+                lastPlayedLocal?: components["parameters"]["RoleLastPlayedLocal"];
+                /** @description The declared expression that reads when the track entered the library, as a timestamp. */
+                added?: components["parameters"]["RoleAdded"];
+                /** @description The declared expression that reads every value of the track's `artists` tag, separated by the unit separator (U+001F) where there are several. */
+                artists?: components["parameters"]["RoleArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz artist id tag, separated by the unit separator (U+001F) where there are several. */
+                artistIds?: components["parameters"]["RoleArtistIds"];
+                /** @description The declared expression that reads every value of the track's `albumartists` tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtists?: components["parameters"]["RoleAlbumArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+                /** @description The declared expression that reads the artist's sort name, the plain spelling a tagger writes beside a stylised one. */
+                artistSort?: components["parameters"]["RoleArtistSort"];
             };
             header?: never;
             path: {
@@ -4526,8 +4939,194 @@ export interface operations {
             404: components["responses"]["NoSuchPlaylist"];
             409: components["responses"]["PlaylistRowsMoved"];
             410: components["responses"]["PlaylistRevisionGone"];
+            429: components["responses"]["PlaylistRowsReadTooFast"];
             500: components["responses"]["PlayerRefused"];
             503: components["responses"]["PlaylistRowsUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    getPlaylistRuns: {
+        parameters: {
+            query: {
+                /**
+                 * @description The playlist's `structure` the client holds, as a run of decimal digits sent exactly as it arrived, on the terms `GET /playlists/{id}/items/changes` gives.
+                 * @example 9204739866101318923
+                 */
+                structure: string;
+                /** @description The declared expression that reads the track's number on its disc. */
+                trackNumber?: components["parameters"]["RoleTrackNumber"];
+                /** @description The declared expression that reads the disc the track is on. */
+                discNumber?: components["parameters"]["RoleDiscNumber"];
+                /** @description The declared expression that reads the track's title. */
+                title?: components["parameters"]["RoleTitle"];
+                /** @description The declared expression that reads the track's artist. */
+                artist?: components["parameters"]["RoleArtist"];
+                /** @description The declared expression that reads the album the track belongs to. */
+                album?: components["parameters"]["RoleAlbum"];
+                /** @description The declared expression that reads the artist the album is credited to. */
+                albumArtist?: components["parameters"]["RoleAlbumArtist"];
+                /** @description The declared expression that reads the track's length in seconds. */
+                duration?: components["parameters"]["RoleDuration"];
+                /** @description The declared expression that reads the track's play count from the scrobbling source. */
+                playCount?: components["parameters"]["RolePlayCount"];
+                /** @description The declared expression that reads when the scrobbling source last saw the track played, as a timestamp. */
+                lastPlayed?: components["parameters"]["RoleLastPlayed"];
+                /** @description The declared expression that reads the track's rating. */
+                rating?: components["parameters"]["RoleRating"];
+                /** @description The declared expression that reads the track's year. */
+                year?: components["parameters"]["RoleYear"];
+                /** @description The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several. */
+                genre?: components["parameters"]["RoleGenre"];
+                /** @description The declared expression that reads the track's codec. */
+                codec?: components["parameters"]["RoleCodec"];
+                /** @description The declared expression that reads the track's bitrate in kilobits per second. */
+                bitrate?: components["parameters"]["RoleBitrate"];
+                /** @description The declared expression that reads the track's play count from the player's own counter. */
+                playCountLocal?: components["parameters"]["RolePlayCountLocal"];
+                /** @description The declared expression that reads when the player's own counter last saw the track played, as a timestamp. */
+                lastPlayedLocal?: components["parameters"]["RoleLastPlayedLocal"];
+                /** @description The declared expression that reads when the track entered the library, as a timestamp. */
+                added?: components["parameters"]["RoleAdded"];
+                /** @description The declared expression that reads every value of the track's `artists` tag, separated by the unit separator (U+001F) where there are several. */
+                artists?: components["parameters"]["RoleArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz artist id tag, separated by the unit separator (U+001F) where there are several. */
+                artistIds?: components["parameters"]["RoleArtistIds"];
+                /** @description The declared expression that reads every value of the track's `albumartists` tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtists?: components["parameters"]["RoleAlbumArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+                /** @description The declared expression that reads the artist's sort name, the plain spelling a tagger writes beside a stylised one. */
+                artistSort?: components["parameters"]["RoleArtistSort"];
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The runs and figures. `Cache-Control` is `private, no-cache`, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
+            200: {
+                headers: {
+                    /** @description `private, no-cache`. */
+                    "Cache-Control"?: string;
+                    /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
+                    "Content-Encoding"?: "gzip";
+                    /** @description `Accept-Encoding`. */
+                    Vary?: string;
+                    /** @description Strong, quoted and opaque. Send it back as `If-None-Match`. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistRuns"];
+                };
+            };
+            202: components["responses"]["LibraryNotReady"];
+            304: components["responses"]["NotModified"];
+            400: components["responses"]["PlaylistReadRefused"];
+            404: components["responses"]["NoSuchPlaylist"];
+            409: components["responses"]["PlaylistReadConflict"];
+            429: components["responses"]["PlaylistRunsTooFast"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaylistReadUnavailable"];
+            504: components["responses"]["PlayerTooSlow"];
+        };
+    };
+    findInPlaylist: {
+        parameters: {
+            query: {
+                /** @description What was typed. Up to 1024 bytes as UTF-8, and it may be empty. */
+                query: string;
+                /**
+                 * @description The playlist's `structure` the client holds, as a run of decimal digits sent exactly as it arrived, on the terms `GET /playlists/{id}/items/changes` gives.
+                 * @example 9204739866101318923
+                 */
+                structure: string;
+                /** @description The declared expression that reads the track's number on its disc. */
+                trackNumber?: components["parameters"]["RoleTrackNumber"];
+                /** @description The declared expression that reads the disc the track is on. */
+                discNumber?: components["parameters"]["RoleDiscNumber"];
+                /** @description The declared expression that reads the track's title. */
+                title?: components["parameters"]["RoleTitle"];
+                /** @description The declared expression that reads the track's artist. */
+                artist?: components["parameters"]["RoleArtist"];
+                /** @description The declared expression that reads the album the track belongs to. */
+                album?: components["parameters"]["RoleAlbum"];
+                /** @description The declared expression that reads the artist the album is credited to. */
+                albumArtist?: components["parameters"]["RoleAlbumArtist"];
+                /** @description The declared expression that reads the track's length in seconds. */
+                duration?: components["parameters"]["RoleDuration"];
+                /** @description The declared expression that reads the track's play count from the scrobbling source. */
+                playCount?: components["parameters"]["RolePlayCount"];
+                /** @description The declared expression that reads when the scrobbling source last saw the track played, as a timestamp. */
+                lastPlayed?: components["parameters"]["RoleLastPlayed"];
+                /** @description The declared expression that reads the track's rating. */
+                rating?: components["parameters"]["RoleRating"];
+                /** @description The declared expression that reads the track's year. */
+                year?: components["parameters"]["RoleYear"];
+                /** @description The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several. */
+                genre?: components["parameters"]["RoleGenre"];
+                /** @description The declared expression that reads the track's codec. */
+                codec?: components["parameters"]["RoleCodec"];
+                /** @description The declared expression that reads the track's bitrate in kilobits per second. */
+                bitrate?: components["parameters"]["RoleBitrate"];
+                /** @description The declared expression that reads the track's play count from the player's own counter. */
+                playCountLocal?: components["parameters"]["RolePlayCountLocal"];
+                /** @description The declared expression that reads when the player's own counter last saw the track played, as a timestamp. */
+                lastPlayedLocal?: components["parameters"]["RoleLastPlayedLocal"];
+                /** @description The declared expression that reads when the track entered the library, as a timestamp. */
+                added?: components["parameters"]["RoleAdded"];
+                /** @description The declared expression that reads every value of the track's `artists` tag, separated by the unit separator (U+001F) where there are several. */
+                artists?: components["parameters"]["RoleArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz artist id tag, separated by the unit separator (U+001F) where there are several. */
+                artistIds?: components["parameters"]["RoleArtistIds"];
+                /** @description The declared expression that reads every value of the track's `albumartists` tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtists?: components["parameters"]["RoleAlbumArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+                /** @description The declared expression that reads the artist's sort name, the plain spelling a tagger writes beside a stylised one. */
+                artistSort?: components["parameters"]["RoleArtistSort"];
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description The `id` from a `PlaylistAnnotation`: foobar2000's own playlist GUID, lower case, dashed, no braces.
+                 * @example 45837d74-fa4f-415c-bba9-bf2db8f0dc04
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The matches. `Cache-Control` is `private, no-cache`, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
+            200: {
+                headers: {
+                    /** @description `private, no-cache`. */
+                    "Cache-Control"?: string;
+                    /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
+                    "Content-Encoding"?: "gzip";
+                    /** @description `Accept-Encoding`. */
+                    Vary?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistFind"];
+                };
+            };
+            202: components["responses"]["LibraryNotReady"];
+            400: components["responses"]["PlaylistReadRefused"];
+            404: components["responses"]["NoSuchPlaylist"];
+            409: components["responses"]["PlaylistReadConflict"];
+            429: components["responses"]["PlaylistSearchedTooFast"];
+            500: components["responses"]["PlayerRefused"];
+            503: components["responses"]["PlaylistReadUnavailable"];
             504: components["responses"]["PlayerTooSlow"];
         };
     };
@@ -5309,6 +5908,50 @@ export interface operations {
                 session?: components["parameters"]["Session"];
                 /** @description The device asking, as it names itself in `DeviceIdentity`. A private session answers only its members, and a request naming no device is from none of them. A `deviceId` longer than 64 bytes, or holding an unprintable character, reads as no device. */
                 deviceId?: components["parameters"]["DeviceId"];
+                /** @description The declared expression that reads the track's number on its disc. */
+                trackNumber?: components["parameters"]["RoleTrackNumber"];
+                /** @description The declared expression that reads the disc the track is on. */
+                discNumber?: components["parameters"]["RoleDiscNumber"];
+                /** @description The declared expression that reads the track's title. */
+                title?: components["parameters"]["RoleTitle"];
+                /** @description The declared expression that reads the track's artist. */
+                artist?: components["parameters"]["RoleArtist"];
+                /** @description The declared expression that reads the album the track belongs to. */
+                album?: components["parameters"]["RoleAlbum"];
+                /** @description The declared expression that reads the artist the album is credited to. */
+                albumArtist?: components["parameters"]["RoleAlbumArtist"];
+                /** @description The declared expression that reads the track's length in seconds. */
+                duration?: components["parameters"]["RoleDuration"];
+                /** @description The declared expression that reads the track's play count from the scrobbling source. */
+                playCount?: components["parameters"]["RolePlayCount"];
+                /** @description The declared expression that reads when the scrobbling source last saw the track played, as a timestamp. */
+                lastPlayed?: components["parameters"]["RoleLastPlayed"];
+                /** @description The declared expression that reads the track's rating. */
+                rating?: components["parameters"]["RoleRating"];
+                /** @description The declared expression that reads the track's year. */
+                year?: components["parameters"]["RoleYear"];
+                /** @description The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several. */
+                genre?: components["parameters"]["RoleGenre"];
+                /** @description The declared expression that reads the track's codec. */
+                codec?: components["parameters"]["RoleCodec"];
+                /** @description The declared expression that reads the track's bitrate in kilobits per second. */
+                bitrate?: components["parameters"]["RoleBitrate"];
+                /** @description The declared expression that reads the track's play count from the player's own counter. */
+                playCountLocal?: components["parameters"]["RolePlayCountLocal"];
+                /** @description The declared expression that reads when the player's own counter last saw the track played, as a timestamp. */
+                lastPlayedLocal?: components["parameters"]["RoleLastPlayedLocal"];
+                /** @description The declared expression that reads when the track entered the library, as a timestamp. */
+                added?: components["parameters"]["RoleAdded"];
+                /** @description The declared expression that reads every value of the track's `artists` tag, separated by the unit separator (U+001F) where there are several. */
+                artists?: components["parameters"]["RoleArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz artist id tag, separated by the unit separator (U+001F) where there are several. */
+                artistIds?: components["parameters"]["RoleArtistIds"];
+                /** @description The declared expression that reads every value of the track's `albumartists` tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtists?: components["parameters"]["RoleAlbumArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+                /** @description The declared expression that reads the artist's sort name, the plain spelling a tagger writes beside a stylised one. */
+                artistSort?: components["parameters"]["RoleArtistSort"];
             };
             header?: never;
             path?: never;
@@ -5325,6 +5968,7 @@ export interface operations {
                     "application/json": components["schemas"]["QueueRead"];
                 };
             };
+            400: components["responses"]["LibraryRefused"];
             404: components["responses"]["NoSuchSession"];
             /** @description The player refused. No reason is given, because error text leaks filesystem paths. */
             500: {
@@ -5404,7 +6048,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistFailed"] | components["schemas"]["Error"];
                 };
             };
-            /** @description Either the `structure` a library-tracks request named has moved -- tracks were added to or removed from the library, so every ordinal it carries has shifted -- or `at` was sent with a `revision` the queue has moved past or never reached. `error` tells the two apart: re-read `GET /state`'s `library.structure` and export again for the first, or re-read `GET /queue` and try again for the second. Naming a detached session, a request that would take its queue past 10000 entries is refused whole, and changes nothing. */
+            /** @description Either the `structure` a library-tracks request named has moved -- tracks were added to or removed from the library, so every ordinal it carries has shifted -- or `at` was sent with a `revision` the queue has moved past or never reached. `error` tells the two apart: re-read `GET /state`'s `library.structure` and resolve the ordinals again for the first, or re-read `GET /queue` and try again for the second. Naming a detached session, a request that would take its queue past 10000 entries is refused whole, and changes nothing. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5664,118 +6308,11 @@ export interface operations {
             };
         };
     };
-    exportLibrary: {
-        parameters: {
-            query: {
-                /**
-                 * @description The columns to build, repeated once per column: `?columns=%25title%25&columns=%25artist%25`. Never comma-separated, because a title-formatting expression may contain commas. Required: an export with none is a `400` rather than a rebuild from nothing.
-                 *
-                 *     Passed to foobar2000's title-formatting compiler untouched. The three spine columns are always built and MUST NOT be named here.
-                 *
-                 *     At most 64, each 1 to 1024 printable characters, and no repeats. Two spellings of one column, such as `a` and `%61`, are a repeat and are refused. An identical pair sent twice is not: the server collapses it before the component sees it, so it is accepted.
-                 */
-                columns: string[];
-                /**
-                 * @description Some of the declared columns, repeated once per column and spelled exactly as in `columns`: the body carries only these columns' ids and dictionaries, and the header says which in `carried`. It never changes the declaration, so it starts no rebuild and is answered at once whenever the declaration is built. Absent means every declared column.
-                 *
-                 *     Each must be one of `columns`. One that is not is a `400` with the error `column not declared`, and a repeat spelled differently from the first, such as `a` and `%61`, is a `400` with `duplicate column`. A byte-identical pair sent twice is collapsed by the server before the component reads it and is accepted. The spine cannot be named; `spine` decides it. See *Asking for part of the declaration*.
-                 */
-                only?: string[];
-                /** @description Whether the body carries the three spine columns. `true` when absent. `false` leaves them out and the header's `spineCarried` says so, which is what a request for the rest of a declaration sends, since the client already holds the spine. Any other value is a `400` with the error `unacceptable spine`. */
-                spine?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The snapshot. `Cache-Control` is `private, no-cache`, so no cache but the client's own may hold it and a client revalidates with `If-None-Match` rather than reusing it blind, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
-            200: {
-                headers: {
-                    /** @description `private, no-cache`. */
-                    "Cache-Control"?: string;
-                    /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
-                    "Content-Encoding"?: "gzip";
-                    /** @description `Accept-Encoding`. */
-                    Vary?: string;
-                    /** @description The generations, the subset when the request named one, and the coding, quoted. */
-                    ETag?: string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/octet-stream": string;
-                };
-            };
-            /**
-             * @description No snapshot of that set exists and one is being built. The body is the `Library` object `GET /state` carries under `library`, as it stands now, so a client can see what it is waiting to change.
-             *
-             *     Asking again for a set already being built is another `202` and does not start a second build. A client SHOULD poll `GET /state` rather than re-asking here.
-             */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Library"];
-                };
-            };
-            304: components["responses"]["NotModified"];
-            400: components["responses"]["LibraryRefused"];
-            413: components["responses"]["LibraryTooLarge"];
-            429: components["responses"]["LibraryRefreshedTooFast"];
-            503: components["responses"]["LibraryUnavailable"];
-        };
-    };
-    getLibraryChanges: {
-        parameters: {
-            query: {
-                /**
-                 * @description The `revision` the client currently holds. A whole number. `revision` values are contiguous, so this is exactly what the last snapshot, delta or splice header reported.
-                 * @example 900
-                 */
-                since: number;
-                /**
-                 * @description The `structure` the client currently holds, from the same header as `since`. A whole number. The pair is what the component answers from: `since` alone cannot say which numbering a client's ordinals are in.
-                 * @example 41
-                 */
-                structure: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The delta, or the splice when `structure` is not the current one. Its header carries `kind`, `since` and, on a splice, `sinceStructure`, so a client can confirm what it was patched from. A revision that moved with no id changing is not a revision at all, so an answer here always has something in it. `Cache-Control` is `private, no-cache`, and the bytes are gzipped on the same terms as the snapshot; see *Compression*. */
-            200: {
-                headers: {
-                    /** @description `private, no-cache`. */
-                    "Cache-Control"?: string;
-                    /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
-                    "Content-Encoding"?: "gzip";
-                    /** @description `Accept-Encoding`. */
-                    Vary?: string;
-                    /** @description The generations, the pair patched from, and the coding, quoted. */
-                    ETag?: string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/octet-stream": string;
-                };
-            };
-            304: components["responses"]["NotModified"];
-            400: components["responses"]["LibraryRefused"];
-            409: components["responses"]["LibraryConflict"];
-            410: components["responses"]["LibraryRevisionGone"];
-            413: components["responses"]["LibraryTooLarge"];
-            429: components["responses"]["LibraryChangesTooFast"];
-            503: components["responses"]["LibraryUnavailable"];
-        };
-    };
     getLibrarySummary: {
         parameters: {
             query?: {
+                /** @description `true` adds `genres`, every genre of the library with its track count and up to two cover tracks, to the document. `false` or absent leaves it out. Any other value is a `400`, `unacceptable question`. The `ETag` names it. */
+                genres?: boolean;
                 /** @description The declared expression that reads the track's number on its disc. */
                 trackNumber?: components["parameters"]["RoleTrackNumber"];
                 /** @description The declared expression that reads the disc the track is on. */
@@ -6164,6 +6701,293 @@ export interface operations {
             503: components["responses"]["LibraryUnavailable"];
         };
     };
+    readLibraryRows: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryRowsRequest"];
+            };
+        };
+        responses: {
+            /** @description The rows. `Cache-Control` is `private, no-cache`, and `Content-Encoding` is `gzip` whenever the request offered it. There is no `ETag`: a window is asked for once and held. */
+            200: {
+                headers: {
+                    /** @description `private, no-cache`. */
+                    "Cache-Control"?: string;
+                    /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
+                    "Content-Encoding"?: "gzip";
+                    /** @description `Accept-Encoding`. */
+                    Vary?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description No snapshot of that declaration exists and one is being built. The body is the `Library` object `GET /state` carries under `library`, as it stands now. Asking again for a declaration already being built is another `202` and does not start a second build. A client polls `GET /state` until `library.columns` match and `library.ready` is true, then asks again. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Library"];
+                };
+            };
+            400: components["responses"]["LibraryRowsRefused"];
+            409: components["responses"]["LibraryStructureMoved"];
+            415: components["responses"]["JsonRequired"];
+            429: components["responses"]["LibraryRowsTooFast"];
+            503: components["responses"]["LibraryUnavailable"];
+        };
+    };
+    getLibraryRuns: {
+        parameters: {
+            query?: {
+                /** @description The declared expression that reads the track's number on its disc. */
+                trackNumber?: components["parameters"]["RoleTrackNumber"];
+                /** @description The declared expression that reads the disc the track is on. */
+                discNumber?: components["parameters"]["RoleDiscNumber"];
+                /** @description The declared expression that reads the track's title. */
+                title?: components["parameters"]["RoleTitle"];
+                /** @description The declared expression that reads the track's artist. */
+                artist?: components["parameters"]["RoleArtist"];
+                /** @description The declared expression that reads the album the track belongs to. */
+                album?: components["parameters"]["RoleAlbum"];
+                /** @description The declared expression that reads the artist the album is credited to. */
+                albumArtist?: components["parameters"]["RoleAlbumArtist"];
+                /** @description The declared expression that reads the track's length in seconds. */
+                duration?: components["parameters"]["RoleDuration"];
+                /** @description The declared expression that reads the track's play count from the scrobbling source. */
+                playCount?: components["parameters"]["RolePlayCount"];
+                /** @description The declared expression that reads when the scrobbling source last saw the track played, as a timestamp. */
+                lastPlayed?: components["parameters"]["RoleLastPlayed"];
+                /** @description The declared expression that reads the track's rating. */
+                rating?: components["parameters"]["RoleRating"];
+                /** @description The declared expression that reads the track's year. */
+                year?: components["parameters"]["RoleYear"];
+                /** @description The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several. */
+                genre?: components["parameters"]["RoleGenre"];
+                /** @description The declared expression that reads the track's codec. */
+                codec?: components["parameters"]["RoleCodec"];
+                /** @description The declared expression that reads the track's bitrate in kilobits per second. */
+                bitrate?: components["parameters"]["RoleBitrate"];
+                /** @description The declared expression that reads the track's play count from the player's own counter. */
+                playCountLocal?: components["parameters"]["RolePlayCountLocal"];
+                /** @description The declared expression that reads when the player's own counter last saw the track played, as a timestamp. */
+                lastPlayedLocal?: components["parameters"]["RoleLastPlayedLocal"];
+                /** @description The declared expression that reads when the track entered the library, as a timestamp. */
+                added?: components["parameters"]["RoleAdded"];
+                /** @description The declared expression that reads every value of the track's `artists` tag, separated by the unit separator (U+001F) where there are several. */
+                artists?: components["parameters"]["RoleArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz artist id tag, separated by the unit separator (U+001F) where there are several. */
+                artistIds?: components["parameters"]["RoleArtistIds"];
+                /** @description The declared expression that reads every value of the track's `albumartists` tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtists?: components["parameters"]["RoleAlbumArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+                /** @description The declared expression that reads the artist's sort name, the plain spelling a tagger writes beside a stylised one. */
+                artistSort?: components["parameters"]["RoleArtistSort"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The runs at the `structure` and `revision` the document carries. `Cache-Control` is `private, no-cache`, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
+            200: {
+                headers: {
+                    /** @description `private, no-cache`. */
+                    "Cache-Control"?: string;
+                    /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
+                    "Content-Encoding"?: "gzip";
+                    /** @description `Accept-Encoding`. */
+                    Vary?: string;
+                    /** @description Strong, quoted and opaque. Send it back as `If-None-Match`. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryRuns"];
+                };
+            };
+            202: components["responses"]["LibraryNotReady"];
+            304: components["responses"]["NotModified"];
+            400: components["responses"]["LibraryRefused"];
+            409: components["responses"]["LibraryUndeclared"];
+            429: components["responses"]["LibraryRunsTooFast"];
+            503: components["responses"]["LibraryUnavailable"];
+        };
+    };
+    getLibraryValues: {
+        parameters: {
+            query: {
+                /** @description Which field's values to complete. */
+                field: "artist" | "albumArtist" | "album" | "genre";
+                /** @description What was typed. Up to 1024 bytes as UTF-8, and it may be empty. */
+                prefix: string;
+                /** @description How many values `values` lists at most. */
+                limit: number;
+                /** @description The declared expression that reads the track's number on its disc. */
+                trackNumber?: components["parameters"]["RoleTrackNumber"];
+                /** @description The declared expression that reads the disc the track is on. */
+                discNumber?: components["parameters"]["RoleDiscNumber"];
+                /** @description The declared expression that reads the track's title. */
+                title?: components["parameters"]["RoleTitle"];
+                /** @description The declared expression that reads the track's artist. */
+                artist?: components["parameters"]["RoleArtist"];
+                /** @description The declared expression that reads the album the track belongs to. */
+                album?: components["parameters"]["RoleAlbum"];
+                /** @description The declared expression that reads the artist the album is credited to. */
+                albumArtist?: components["parameters"]["RoleAlbumArtist"];
+                /** @description The declared expression that reads the track's length in seconds. */
+                duration?: components["parameters"]["RoleDuration"];
+                /** @description The declared expression that reads the track's play count from the scrobbling source. */
+                playCount?: components["parameters"]["RolePlayCount"];
+                /** @description The declared expression that reads when the scrobbling source last saw the track played, as a timestamp. */
+                lastPlayed?: components["parameters"]["RoleLastPlayed"];
+                /** @description The declared expression that reads the track's rating. */
+                rating?: components["parameters"]["RoleRating"];
+                /** @description The declared expression that reads the track's year. */
+                year?: components["parameters"]["RoleYear"];
+                /** @description The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several. */
+                genre?: components["parameters"]["RoleGenre"];
+                /** @description The declared expression that reads the track's codec. */
+                codec?: components["parameters"]["RoleCodec"];
+                /** @description The declared expression that reads the track's bitrate in kilobits per second. */
+                bitrate?: components["parameters"]["RoleBitrate"];
+                /** @description The declared expression that reads the track's play count from the player's own counter. */
+                playCountLocal?: components["parameters"]["RolePlayCountLocal"];
+                /** @description The declared expression that reads when the player's own counter last saw the track played, as a timestamp. */
+                lastPlayedLocal?: components["parameters"]["RoleLastPlayedLocal"];
+                /** @description The declared expression that reads when the track entered the library, as a timestamp. */
+                added?: components["parameters"]["RoleAdded"];
+                /** @description The declared expression that reads every value of the track's `artists` tag, separated by the unit separator (U+001F) where there are several. */
+                artists?: components["parameters"]["RoleArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz artist id tag, separated by the unit separator (U+001F) where there are several. */
+                artistIds?: components["parameters"]["RoleArtistIds"];
+                /** @description The declared expression that reads every value of the track's `albumartists` tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtists?: components["parameters"]["RoleAlbumArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+                /** @description The declared expression that reads the artist's sort name, the plain spelling a tagger writes beside a stylised one. */
+                artistSort?: components["parameters"]["RoleArtistSort"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The values at the `structure` and `revision` the document carries. `Cache-Control` is `private, no-cache`, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
+            200: {
+                headers: {
+                    /** @description `private, no-cache`. */
+                    "Cache-Control"?: string;
+                    /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
+                    "Content-Encoding"?: "gzip";
+                    /** @description `Accept-Encoding`. */
+                    Vary?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryValues"];
+                };
+            };
+            202: components["responses"]["LibraryNotReady"];
+            400: components["responses"]["LibraryRefused"];
+            409: components["responses"]["LibraryUndeclared"];
+            429: components["responses"]["LibraryQuestionsTooFast"];
+            503: components["responses"]["LibraryUnavailable"];
+        };
+    };
+    getLibraryCredits: {
+        parameters: {
+            query: {
+                /** @description Whether a credit line holding several names is counted as each of them, as `true` or `false`. */
+                splitsCredits: boolean;
+                /** @description The library `structure` the ordinal was read at: `library.structure` from `GET /state`, spelled as a string of decimal digits. `GET /state` carries it as a JSON number, and this query carries it as text, as a playlist's own `structure` travels. */
+                structure: string;
+                /** @description The track's position in the snapshot at `structure`, counted from zero. */
+                ordinal: number;
+                /** @description The declared expression that reads the track's number on its disc. */
+                trackNumber?: components["parameters"]["RoleTrackNumber"];
+                /** @description The declared expression that reads the disc the track is on. */
+                discNumber?: components["parameters"]["RoleDiscNumber"];
+                /** @description The declared expression that reads the track's title. */
+                title?: components["parameters"]["RoleTitle"];
+                /** @description The declared expression that reads the track's artist. */
+                artist?: components["parameters"]["RoleArtist"];
+                /** @description The declared expression that reads the album the track belongs to. */
+                album?: components["parameters"]["RoleAlbum"];
+                /** @description The declared expression that reads the artist the album is credited to. */
+                albumArtist?: components["parameters"]["RoleAlbumArtist"];
+                /** @description The declared expression that reads the track's length in seconds. */
+                duration?: components["parameters"]["RoleDuration"];
+                /** @description The declared expression that reads the track's play count from the scrobbling source. */
+                playCount?: components["parameters"]["RolePlayCount"];
+                /** @description The declared expression that reads when the scrobbling source last saw the track played, as a timestamp. */
+                lastPlayed?: components["parameters"]["RoleLastPlayed"];
+                /** @description The declared expression that reads the track's rating. */
+                rating?: components["parameters"]["RoleRating"];
+                /** @description The declared expression that reads the track's year. */
+                year?: components["parameters"]["RoleYear"];
+                /** @description The declared expression that reads the track's genres, separated by the unit separator (U+001F) where there are several. */
+                genre?: components["parameters"]["RoleGenre"];
+                /** @description The declared expression that reads the track's codec. */
+                codec?: components["parameters"]["RoleCodec"];
+                /** @description The declared expression that reads the track's bitrate in kilobits per second. */
+                bitrate?: components["parameters"]["RoleBitrate"];
+                /** @description The declared expression that reads the track's play count from the player's own counter. */
+                playCountLocal?: components["parameters"]["RolePlayCountLocal"];
+                /** @description The declared expression that reads when the player's own counter last saw the track played, as a timestamp. */
+                lastPlayedLocal?: components["parameters"]["RoleLastPlayedLocal"];
+                /** @description The declared expression that reads when the track entered the library, as a timestamp. */
+                added?: components["parameters"]["RoleAdded"];
+                /** @description The declared expression that reads every value of the track's `artists` tag, separated by the unit separator (U+001F) where there are several. */
+                artists?: components["parameters"]["RoleArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz artist id tag, separated by the unit separator (U+001F) where there are several. */
+                artistIds?: components["parameters"]["RoleArtistIds"];
+                /** @description The declared expression that reads every value of the track's `albumartists` tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtists?: components["parameters"]["RoleAlbumArtists"];
+                /** @description The declared expression that reads every value of the track's MusicBrainz album artist id tag, separated by the unit separator (U+001F) where there are several. */
+                albumArtistIds?: components["parameters"]["RoleAlbumArtistIds"];
+                /** @description The declared expression that reads the artist's sort name, the plain spelling a tagger writes beside a stylised one. */
+                artistSort?: components["parameters"]["RoleArtistSort"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The members at the `structure` and `revision` the document carries. `Cache-Control` is `private, no-cache`, and `Content-Encoding` is `gzip` whenever the request offered it. See *Compression*. */
+            200: {
+                headers: {
+                    /** @description `private, no-cache`. */
+                    "Cache-Control"?: string;
+                    /** @description Present only when the request offered gzip. Absent means the bytes as they stand. */
+                    "Content-Encoding"?: "gzip";
+                    /** @description `Accept-Encoding`. */
+                    Vary?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryCredits"];
+                };
+            };
+            202: components["responses"]["LibraryNotReady"];
+            400: components["responses"]["LibraryRefused"];
+            409: components["responses"]["LibraryUndeclaredOrMoved"];
+            429: components["responses"]["LibraryQuestionsTooFast"];
+            503: components["responses"]["LibraryUnavailable"];
+        };
+    };
     refreshLibrary: {
         parameters: {
             query?: never;
@@ -6205,21 +7029,21 @@ export interface operations {
                  */
                 subsong?: number;
                 /**
-                 * @description The precise form's address: the track's position in the media library snapshot `structure` names, from `GET /library/export` or a delta. It names one track and one subsong, where a `track` address can name one under each of two media library roots.
+                 * @description The precise form's address: the track's position in the media library snapshot `structure` names, as any route answering ordinals gives it. It names one track and one subsong, where a `track` address can name one under each of two media library roots.
                  *
                  *     Requires `structure`; sending `track` as well is a `400`. A `structure` the player has moved past is a `409`; an ordinal past the end of the snapshot at that generation is the `404` an unknown address gets.
                  * @example 1904
                  */
                 ordinal?: number;
                 /**
-                 * @description The media library's own generation the `ordinal` was read at: `library.structure` in `GET /state`, or the `structure` an export or a delta carried. Required with `ordinal`, and meaningless without it.
+                 * @description The media library's own generation the `ordinal` was read at: `library.structure` in `GET /state`, or the `structure` a rows body or an answer carried. Required with `ordinal`, and meaningless without it.
                  * @example 41
                  */
                 structure?: number;
                 /**
                  * @description The columns to evaluate, repeated once per column: `?columns=%25title%25&columns=%25artist%25`. Never comma-separated, because a title-formatting expression may contain commas. The answer carries one value per column, in the order declared.
                  *
-                 *     Passed to foobar2000's title-formatting compiler untouched, under the same gate `GET /library/export` puts on a declaration: at most 64, each 1 to 1024 printable characters, and no repeats.
+                 *     Passed to foobar2000's title-formatting compiler untouched, under the same gate `POST /library/rows` puts on a declaration: at most 64, each 1 to 1024 printable characters, and no repeats.
                  */
                 columns: string[];
             };
@@ -6251,9 +7075,9 @@ export interface operations {
             /**
              * @description The address no longer names one definite track, and nothing was answered. The `error` string says which of two.
              *
-             *     An address given without an ordinal names a track under more than one media library root, so answering one of them would confirm a value that may belong to the other. The client asked this route to find out what a write did, so the wrong track's columns are worse than none. `POST /tags` refuses the same address in the same words, and a client that read the row from an export holds the `ordinal` that names one track instead.
+             *     An address given without an ordinal names a track under more than one media library root, so answering one of them would confirm a value that may belong to the other. The client asked this route to find out what a write did, so the wrong track's columns are worse than none. `POST /tags` refuses the same address in the same words, and a client that read the row from a rows body holds the `ordinal` that names one track instead.
              *
-             *     Or the `ordinal` form's `structure` is no longer the media library's current one, which is also the answer while no snapshot has been built at all: tracks were added or removed since the generation it names, so every ordinal read against it has shifted. Export the library again and send the ordinal that names. An ordinal past the end of that generation is the `404` an unknown address gets, not this.
+             *     Or the `ordinal` form's `structure` is no longer the media library's current one, which is also the answer while no snapshot has been built at all: tracks were added or removed since the generation it names, so every ordinal read against it has shifted. Read `GET /state` again and send an ordinal resolved against the `structure` it reports. An ordinal past the end of that generation is the `404` an unknown address gets, not this.
              */
             409: {
                 headers: {

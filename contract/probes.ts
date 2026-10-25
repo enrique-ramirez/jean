@@ -90,7 +90,11 @@ export const drives: Drive[] = [
 	{ id: "getStatus", probe: () => ({}) },
 	{ id: "getCapabilities", probe: () => ({}) },
 	{ id: "getPlaylists", probe: () => ({}) },
-	{ id: "getQueue", probe: () => ({}) },
+	{
+		// Naming the roles asks for `cover` on every entry, which the schema declares optional.
+		id: "getQueue",
+		probe: () => ({ query: questionRoles }),
+	},
 	{
 		// Same refusal shape as fillOwnPlaylist and fillPlaylist: the spec's own example
 		// names a structure no real library will be sitting on, so this queues nothing.
@@ -183,17 +187,6 @@ export const drives: Drive[] = [
 			context.structure = state.library?.structure ?? null;
 		},
 	},
-	{
-		id: "exportLibrary",
-		probe: () => ({ query: { columns: "%title%" } }),
-	},
-	{
-		id: "getLibraryChanges",
-		probe: (_, context) =>
-			context.revision === null
-				? null
-				: { query: { since: String(context.revision) } },
-	},
 	{ id: "refreshLibrary", probe: () => ({}) },
 	{
 		id: "getLibrarySummary",
@@ -232,6 +225,45 @@ export const drives: Drive[] = [
 		probe: () => ({ query: { name: "contract check", ...questionRoles } }),
 	},
 	{
+		// The example names a `structure` no real library sits on: the answer is `409`, or `202`
+		// while the library is not ready or the declaration is not the one built, and no row is read.
+		id: "readLibraryRows",
+		probe: (operation) => ({
+			body: {
+				...(example(operation, "runs") as object),
+				columns: ["%title%"],
+			},
+		}),
+	},
+	{
+		id: "getLibraryRuns",
+		probe: () => ({ query: questionRoles }),
+	},
+	{
+		id: "getLibraryValues",
+		probe: () => ({
+			query: {
+				field: "album",
+				prefix: "contract check",
+				limit: "8",
+				...questionRoles,
+			},
+		}),
+	},
+	{
+		// A `structure` no real library sits on, so a track's credit is never read: the answer is
+		// the `409` that names the structure, or the `202` of a library not yet ready.
+		id: "getLibraryCredits",
+		probe: () => ({
+			query: {
+				splitsCredits: "true",
+				structure: "1",
+				ordinal: "0",
+				...questionRoles,
+			},
+		}),
+	},
+	{
 		// The suite holds no library-relative path, for the reason `getArtwork` gives, so this
 		// drives the refusal instead. `columns` is a declaration the column gate accepts, so the
 		// 404 says the snapshot did not hold the address rather than the gate refusing first.
@@ -244,8 +276,8 @@ export const drives: Drive[] = [
 		}),
 	},
 	{
-		// The snapshot is binary and the suite holds no library-relative path out of it, so
-		// this drives the refusal instead. That is the answer worth pinning anyway: an
+		// The suite reads no row of the library, so it holds no library-relative path to ask a
+		// cover for, and this drives the refusal instead. That is the answer worth pinning anyway: an
 		// address the snapshot does not carry MUST be a 404 in the published shape and never
 		// somebody else's sleeve.
 		id: "getArtwork",
@@ -310,7 +342,12 @@ export const drives: Drive[] = [
 				? null
 				: {
 						pathParams: { id: context.playlistId },
-						query: { offset: "0", count: "1", columns: "%title%" },
+						query: {
+							offset: "0",
+							count: "1",
+							columns: "%title%",
+							...questionRoles,
+						},
 					},
 		learns: (body, context) => {
 			const page = body as { structure?: string; revision?: string };
@@ -331,6 +368,34 @@ export const drives: Drive[] = [
 							structure: context.playlistPage.structure,
 							since: context.playlistPage.revision,
 							columns: "%title%",
+							...questionRoles,
+						},
+					},
+	},
+	{
+		id: "getPlaylistRuns",
+		probe: (_, context) =>
+			context.playlistId === null || context.playlistPage === null
+				? null
+				: {
+						pathParams: { id: context.playlistId },
+						query: {
+							structure: context.playlistPage.structure,
+							...questionRoles,
+						},
+					},
+	},
+	{
+		id: "findInPlaylist",
+		probe: (_, context) =>
+			context.playlistId === null || context.playlistPage === null
+				? null
+				: {
+						pathParams: { id: context.playlistId },
+						query: {
+							query: "contract check",
+							structure: context.playlistPage.structure,
+							...questionRoles,
 						},
 					},
 	},

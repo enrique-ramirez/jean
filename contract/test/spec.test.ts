@@ -66,7 +66,6 @@ test("a probe with no answer to build on asks for nothing", () => {
 		"updateAutoPlaylist",
 		"removeAutoPlaylist",
 		"openStream",
-		"getLibraryChanges",
 	])
 		assert.equal(drive(id).probe(operation(id), fresh), null);
 });

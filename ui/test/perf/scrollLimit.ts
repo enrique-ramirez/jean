@@ -1,5 +1,7 @@
 // Serialised into the page by Playwright, like `pageProbes.ts`.
 
+import type { Host } from "./pageProbes.ts";
+
 // The tallest an element can be made before the engine stops honouring it: Chromium clamps to its
 // limit, Firefox ignores a height past its own. Found by bisection on what `scrollHeight` reads
 // back, so it is whatever this browser build does.
@@ -57,4 +59,45 @@ export function scrollListToStart() {
 	const grid = document.querySelector('[role="grid"]');
 	const scroller = grid?.closest("[data-drop-scroller]");
 	if (scroller) scroller.scrollTop = 0;
+}
+
+export async function scrollToStop(stop: number | "fling"): Promise<number> {
+	const REST_FRAMES = 2;
+	const FLING_FIRST_PX = 400;
+	const FLING_DECAY = 0.97;
+	const FLING_LAST_PX = 4;
+
+	const grid = document.querySelector('[role="grid"]');
+	const scroller = grid?.closest<HTMLElement>("[data-drop-scroller]");
+	if (!grid || !scroller) throw new Error("the track list was not on the page");
+	const frame = () =>
+		new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+	const reach = () => scroller.scrollHeight - scroller.clientHeight;
+
+	let quietFrames = 0;
+	const moved = () => {
+		quietFrames = 0;
+	};
+	scroller.addEventListener("scroll", moved);
+	if (stop === "fling") {
+		for (
+			let step = FLING_FIRST_PX;
+			step > FLING_LAST_PX && scroller.scrollTop < reach();
+			step *= FLING_DECAY
+		) {
+			scroller.scrollTop += step;
+			await frame();
+		}
+	} else {
+		scroller.scrollTop = reach() * stop;
+	}
+	while (quietFrames < REST_FRAMES) {
+		await frame();
+		quietFrames += 1;
+	}
+	scroller.removeEventListener("scroll", moved);
+
+	const restedAt = performance.now();
+	await (globalThis as unknown as Host).__perf.viewportPainted(scroller);
+	return performance.now() - restedAt;
 }

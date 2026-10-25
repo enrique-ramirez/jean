@@ -12,44 +12,28 @@ export interface PagePerf {
 	// Runs `callback` after the next frame has painted: a message queued from a frame callback is
 	// delivered once that frame is on screen.
 	afterPaint: (callback: () => void) => void;
+	viewportPainted: (scroller: HTMLElement) => Promise<void>;
 	keystroke: Promise<number> | null;
 	marks: Marks;
 }
 
 interface Marks {
-	rowInDomAt: number | null;
-	restoreAskedAt: number | null;
-	restoredAt: number | null;
 	lateShownAt: number | null;
 	stateAnswers: { at: number; structure: string | null }[];
-	stallAtFirstRow: number | null;
-	storeWindow: {
-		openedAt: number | null;
-		closedAt: number | null;
-		stallMs: number;
-	};
 }
 
-type Host = { __perf: PagePerf };
+export type Host = { __perf: PagePerf };
 
 export function installProbes() {
+	const BUSY_ROW = '[data-row][aria-busy="true"]';
 	// The default buffer holds 250 entries, which a screenful of covers fills before the page is read.
 	performance.setResourceTimingBufferSize(10_000);
 	let stall = 0;
 	let longTask = 0;
 	let last = performance.now();
-	const storeWindow: Marks["storeWindow"] = {
-		openedAt: null,
-		closedAt: null,
-		stallMs: 0,
-	};
 	const tick = () => {
 		const now = performance.now();
 		if (now - last > stall) stall = now - last;
-		if (storeWindow.openedAt !== null && storeWindow.closedAt === null) {
-			const gap = now - Math.max(last, storeWindow.openedAt);
-			if (gap > storeWindow.stallMs) storeWindow.stallMs = gap;
-		}
 		last = now;
 		setTimeout(tick, 0);
 	};
@@ -65,61 +49,9 @@ export function installProbes() {
 		}).observe({ type: "longtask" });
 
 	const marks: Marks = {
-		rowInDomAt: null,
-		restoreAskedAt: null,
-		restoredAt: null,
 		lateShownAt: null,
 		stateAnswers: [],
-		stallAtFirstRow: null,
-		storeWindow,
 	};
-
-	// An IndexedDB read from here is queued behind the worker's writes.
-	const STORE_POLL_MS = 50;
-	const watchStore = () => {
-		storeWindow.openedAt = performance.now();
-		const opening = indexedDB.open("jean-library", 1);
-		opening.onupgradeneeded = () => opening.result.createObjectStore("library");
-		opening.onsuccess = () => {
-			const db = opening.result;
-			const look = () => {
-				const read = db
-					.transaction("library")
-					.objectStore("library")
-					.get("meta");
-				read.onsuccess = () => {
-					if (read.result === undefined)
-						return void setTimeout(look, STORE_POLL_MS);
-					storeWindow.closedAt = performance.now();
-					db.close();
-				};
-				read.onerror = () => {
-					storeWindow.closedAt = performance.now();
-					db.close();
-				};
-			};
-			look();
-		};
-	};
-
-	const PageWorker = globalThis.Worker;
-	globalThis.Worker = class extends PageWorker {
-		constructor(url: string | URL, options?: WorkerOptions) {
-			super(url, options);
-			this.addEventListener("message", ({ data }: MessageEvent) => {
-				if (data?.type === "restored") marks.restoredAt ??= performance.now();
-			});
-		}
-
-		override postMessage(
-			message: unknown,
-			transfer?: Transferable[] | StructuredSerializeOptions,
-		) {
-			if ((message as { type?: string } | null)?.type === "restore")
-				marks.restoreAskedAt ??= performance.now();
-			super.postMessage(message, transfer as StructuredSerializeOptions);
-		}
-	} as unknown as typeof Worker;
 
 	const pageFetch = globalThis.fetch;
 	globalThis.fetch = async (input, init) => {
@@ -130,12 +62,6 @@ export function installProbes() {
 				: input instanceof URL
 					? input.href
 					: input.url;
-		if (
-			url.includes("/library/export") &&
-			!url.includes("spine=false") &&
-			storeWindow.openedAt === null
-		)
-			watchStore();
 		if (url.includes("/api/state")) {
 			if (answer.status !== 200)
 				marks.stateAnswers.push({ at: performance.now(), structure: null });
@@ -155,10 +81,6 @@ export function installProbes() {
 		return answer;
 	};
 
-	addEventListener("pagehide", () =>
-		sessionStorage.setItem("perf.pagehideAt", String(Date.now())),
-	);
-
 	const perf: PagePerf = {
 		firstRowAt: null,
 		keystroke: null,
@@ -169,6 +91,34 @@ export function installProbes() {
 				channel.port1.onmessage = () => callback();
 				channel.port2.postMessage(null);
 			}),
+		viewportPainted: async (scroller) => {
+			const GIVE_UP_MS = 30_000;
+			const inViewport = () => {
+				const view = scroller.getBoundingClientRect();
+				return [...document.querySelectorAll<HTMLElement>("[data-row]")]
+					.map((row) => ({ row, box: row.getBoundingClientRect() }))
+					.filter(({ box }) => box.bottom > view.top && box.top < view.bottom);
+			};
+			const isPainted = () => {
+				const rows = inViewport();
+				if (rows.length === 0) return false;
+				if (rows.some(({ row }) => row.matches(BUSY_ROW))) return false;
+				const atEnd =
+					scroller.scrollTop >=
+					scroller.scrollHeight - scroller.clientHeight - 1;
+				const bottom = Math.max(...rows.map(({ box }) => box.bottom));
+				return atEnd || bottom >= scroller.getBoundingClientRect().bottom - 1;
+			};
+			const began = performance.now();
+			while (!isPainted()) {
+				if (performance.now() - began > GIVE_UP_MS)
+					throw new Error("the viewport was not painted");
+				await new Promise<void>((resolve) =>
+					requestAnimationFrame(() => resolve()),
+				);
+			}
+			await new Promise<void>((resolve) => perf.afterPaint(resolve));
+		},
 		stallMs: () => stall,
 		longTaskMs: () => (hasLongTasks ? longTask : null),
 		reset: () => {
@@ -182,12 +132,9 @@ export function installProbes() {
 	const watching = new MutationObserver(() => {
 		if (!document.querySelector("[data-row]")) return;
 		watching.disconnect();
-		marks.rowInDomAt = performance.now();
 		perf.afterPaint(() => {
 			perf.firstRowAt = performance.now();
-			marks.stallAtFirstRow = stall;
-			const isBusy = () =>
-				document.querySelector('[data-row][aria-busy="true"]');
+			const isBusy = () => document.querySelector(BUSY_ROW);
 			if (!isBusy()) {
 				marks.lateShownAt = perf.firstRowAt;
 				return;
@@ -215,54 +162,6 @@ export const resetProbes = () => (globalThis as unknown as Host).__perf.reset();
 export const readProbes = () => {
 	const perf = (globalThis as unknown as Host).__perf;
 	return { stallMs: perf.stallMs(), longTaskMs: perf.longTaskMs() };
-};
-
-export const lateShownAt = () =>
-	(globalThis as unknown as Host).__perf.marks.lateShownAt;
-
-export function readTimeline() {
-	const { marks, firstRowAt: painted } = (globalThis as unknown as Host).__perf;
-	const [navigation] = performance.getEntriesByType(
-		"navigation",
-	) as PerformanceNavigationTiming[];
-	const resources = performance.getEntriesByType(
-		"resource",
-	) as PerformanceResourceTiming[];
-	const span = (entry: PerformanceResourceTiming | undefined) =>
-		entry ? { start: entry.startTime, end: entry.responseEnd } : null;
-	const exportParts = resources.filter((entry) =>
-		entry.name.includes("/library/export"),
-	);
-	const isLate = (entry: PerformanceResourceTiming) =>
-		entry.name.includes("only=") && entry.name.includes("spine=false");
-	return {
-		timeOrigin: performance.timeOrigin,
-		pagehideEpoch: Number(sessionStorage.getItem("perf.pagehideAt")) || null,
-		responseStart: navigation?.responseStart ?? null,
-		domContentLoaded: navigation?.domContentLoadedEventEnd ?? null,
-		stateAsked:
-			resources.find((entry) => entry.name.includes("/api/state"))?.startTime ??
-			null,
-		restoreAsked: marks.restoreAskedAt,
-		restored: marks.restoredAt,
-		firstExport: span(exportParts.find((entry) => !isLate(entry))),
-		lateExport: span(exportParts.find(isLate)),
-		rowInDom: marks.rowInDomAt,
-		rowPainted: painted,
-		lateShown: marks.lateShownAt,
-		stallAtFirstRow: marks.stallAtFirstRow,
-		storeWindow: { ...marks.storeWindow },
-	};
-}
-
-export const changesAfter = (began: number) => {
-	const asked = (
-		performance.getEntriesByType("resource") as PerformanceResourceTiming[]
-	).find(
-		(entry) =>
-			entry.name.includes("/library/changes") && entry.startTime >= began,
-	);
-	return asked ? { start: asked.startTime, end: asked.responseEnd } : null;
 };
 
 export const stateAnswers = () =>

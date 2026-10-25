@@ -8,24 +8,31 @@ import type {
 	Request,
 } from "@playwright/test";
 
+import {
+	type Answers,
+	type FakeClock,
+	type FakeTime,
+	FROM_RUN_START,
+	fakeTimeSince,
+	recordAnswers,
+} from "./answers.ts";
 import { Over, orElse, within } from "./ceiling.ts";
-import type { Pages } from "./exportCost.ts";
 import { postControl } from "./fakePlayer.ts";
+import { type Fling, flingList } from "./fling.ts";
 import {
 	armKeystroke,
-	changesAfter,
 	describePage,
 	firstRowAt,
 	installProbes,
 	keystrokeMs,
 	readProbes,
-	readTimeline,
 	resetProbes,
 	searchCount,
 	stateAnswers,
 	timeOpening,
 	timeRowCount,
 } from "./pageProbes.ts";
+import type { Pages } from "./pages.ts";
 import {
 	honouredHeight,
 	type ListEnd,
@@ -37,13 +44,35 @@ export interface ProjectDefinition {
 	engine: "chromium" | "firefox" | "webkit";
 	options: BrowserContextOptions;
 	cpuThrottle: number | null;
+	network: NetworkConditions | null;
+}
+
+export interface NetworkConditions {
+	latencyMs: number;
+	downBytesPerSecond: number;
+	upBytesPerSecond: number;
 }
 
 export interface Target {
 	origin: string;
 	pages: Pages;
 	hasControls: boolean;
+	playlistHash: string | null;
 }
+
+export type Step =
+	| "B1"
+	| "landing"
+	| "B5"
+	| "list end"
+	| "fling all"
+	| "playlist"
+	| "fling playlist"
+	| "B2"
+	| "B3"
+	| `B4 ${"album" | "artist" | "genre"}`
+	| "home landing"
+	| "B7";
 
 export type Taken = number | Error;
 
@@ -52,69 +81,25 @@ export interface Task {
 	longTaskMs: number | null;
 }
 
-export const TIMELINE_MARKS = [
-	"pagehideOfOldDocument",
-	"navigationStart",
-	"documentFirstByte",
-	"domContentLoaded",
-	"firstStateAsked",
-	"restoreAsked",
-	"restored",
-	"exportRequested",
-	"exportComplete",
-	"firstRowInDom",
-	"firstRowPainted",
-	"lateComplete",
-	"lateShown",
-] as const;
-export type TimelineMark = (typeof TIMELINE_MARKS)[number];
-
-export interface Reload {
-	// The page's clock: navigation start to the frame after the first row. Where the browser starts
-	// that clock after the old document is gone, this leaves its teardown out.
-	ms: number;
-	waitedMs: number;
-	timeline: Record<TimelineMark, number | null>;
-	stallToFirstRowsMs: number;
-	leavingMs: number | null;
-	exportRequested: boolean;
-	settled: Task;
-}
-
-export const RELOAD_KINDS = ["reload", "afterBlank", "cacheDisabled"] as const;
-export type ReloadKind = (typeof RELOAD_KINDS)[number];
-
-export interface Late {
-	responseMs: number;
-	shownMs: number;
-}
-
-export interface StoreWrite {
-	stallMs: number;
-	windowMs: number;
-}
-
 export interface Added {
 	ms: Taken;
 	sinceStateMovedMs: Taken;
 	bytes: Taken;
-	changesRequestedMs: Taken;
-	changesCompleteMs: Taken;
 	pollMs: Taken;
 }
 
 export interface RunResult {
+	fake: Partial<Record<Step, FakeTime>>;
+	playlist: Taken;
+	fling: { allMusic: Fling | Error; playlist: Fling | Error };
 	B1: Taken;
 	landing: Task | Error;
-	late: Late | Error;
-	storeWrite: StoreWrite | Error;
 	B2: Task | Error;
 	B3: (Task & { keystrokeMs: number }) | Error;
 	B4: Record<"album" | "artist" | "genre", Taken>;
 	homeLanding: { cold: Task; reload: Task } | Error;
 	B4Tasks: Record<"album" | "artist" | "genre", Task | Error>;
 	B5: Taken;
-	B6: Record<ReloadKind, Reload | Error>;
 	B7: Added | Error;
 	scrollEnd: ListEnd | Error;
 }
@@ -125,6 +110,8 @@ const PAGE_ANSWER_MS = 5000;
 export const CLOSE_MS = 15_000;
 const SETTLE_MS = 2500;
 const IDLE_BEFORE_HEAP_MS = 2000;
+// Firefox holds a navigation back for a while after a large page has loaded.
+const DOCUMENT_AGE_MS = IDLE_BEFORE_HEAP_MS;
 const ALBUM_TRACKS = 10;
 
 const SEEDED_SETTINGS = {
@@ -139,7 +126,11 @@ const control = async (origin: string, action: string, body: object) => {
 		throw new Error(`POST /__control/${action} answered ${answer.status}`);
 };
 
-async function openPage(browser: Browser, project: ProjectDefinition) {
+async function openPage(
+	browser: Browser,
+	project: ProjectDefinition,
+	answers: Answers,
+) {
 	const context = await browser.newContext(project.options);
 	await context.addInitScript((values: Record<string, unknown>) => {
 		for (const [key, value] of Object.entries(values))
@@ -148,6 +139,7 @@ async function openPage(browser: Browser, project: ProjectDefinition) {
 	await context.addInitScript(installProbes);
 	const page = await context.newPage();
 	page.setDefaultTimeout(0);
+	recordAnswers(page, answers);
 
 	let cdp: CDPSession | null = null;
 	if (project.engine === "chromium") {
@@ -156,6 +148,15 @@ async function openPage(browser: Browser, project: ProjectDefinition) {
 			await cdp.send("Emulation.setCPUThrottlingRate", {
 				rate: project.cpuThrottle,
 			});
+		if (project.network !== null) {
+			await cdp.send("Network.enable");
+			await cdp.send("Network.emulateNetworkConditions", {
+				offline: false,
+				latency: project.network.latencyMs,
+				downloadThroughput: project.network.downBytesPerSecond,
+				uploadThroughput: project.network.upBytesPerSecond,
+			});
+		}
 	}
 	return { context, page, cdp };
 }
@@ -192,17 +193,15 @@ const taskOf = ({
 }): Task => ({ stallMs, longTaskMs });
 
 async function playCountDelta(page: Page, target: Target): Promise<Task> {
-	const delta = page.waitForResponse(/\/api\/library\/changes/);
 	const ordinal = target.pages.trackCount >> 1;
 	return taskOf(
 		await watched(page, async () => {
 			await control(target.origin, "play", { ordinal });
-			await delta;
 		}),
 	);
 }
 
-async function keystroke(page: Page, isPhone: boolean) {
+async function keystroke(page: Page, isPhone: boolean, clock: FakeClock) {
 	const field = page.getByRole("combobox", { name: "Search your library" });
 	if (!(await field.isVisible()))
 		await page.getByRole("button", { name: "Search your library" }).click();
@@ -220,8 +219,10 @@ async function keystroke(page: Page, isPhone: boolean) {
 		query: "Track 12",
 		countBefore: before,
 	});
+	const answersFrom = clock.start();
 	await page.keyboard.press("2");
 	const timed = await page.evaluate(keystrokeMs);
+	clock.stop(answersFrom);
 	await page.waitForTimeout(SETTLE_MS);
 	const tasks = taskOf(await page.evaluate(readProbes));
 	await field.fill("");
@@ -232,7 +233,12 @@ async function keystroke(page: Page, isPhone: boolean) {
 const TRACK_ROWS = "[data-row]";
 const DISCOGRAPHY = 'main a[href^="#/album/"]';
 
-async function openingPage(page: Page, hash: string, shown: string) {
+async function openingPage(
+	page: Page,
+	hash: string,
+	shown: string,
+	clock: FakeClock,
+) {
 	await page.evaluate(() => {
 		location.hash = "#/search";
 	});
@@ -242,7 +248,9 @@ async function openingPage(page: Page, hash: string, shown: string) {
 	);
 	await page.waitForTimeout(300);
 	await page.evaluate(resetProbes);
+	const answersFrom = clock.start();
 	const ms = await page.evaluate(timeOpening, { hash, shown });
+	clock.stop(answersFrom);
 	await page.waitForTimeout(SETTLE_MS);
 	return { ms, task: taskOf(await page.evaluate(readProbes)) };
 }
@@ -254,7 +262,11 @@ const medianGap = (stamps: number[]) => {
 	return gaps[gaps.length >> 1];
 };
 
-async function addedAlbum(page: Page, target: Target): Promise<Added> {
+async function addedAlbum(
+	page: Page,
+	target: Target,
+	clock: FakeClock,
+): Promise<Added> {
 	const bytes: Promise<number>[] = [];
 	const counting = (request: Request) => {
 		bytes.push(
@@ -276,9 +288,10 @@ async function addedAlbum(page: Page, target: Target): Promise<Added> {
 			timeRowCount,
 			target.pages.trackCount + ALBUM_TRACKS,
 		);
+		const answersFrom = clock.start();
 		await control(target.origin, "library", { add: ALBUM_TRACKS });
-		const { ms, sinceStateMovedMs, movedAt, began } = await shown;
-		const changes = await page.evaluate(changesAfter, began);
+		const { ms, sinceStateMovedMs } = await shown;
+		clock.stop(answersFrom);
 		await page.waitForTimeout(500);
 		page.off("requestfinished", counting);
 		const total = (await Promise.all(bytes)).reduce(
@@ -295,14 +308,6 @@ async function addedAlbum(page: Page, target: Target): Promise<Added> {
 			sinceStateMovedMs:
 				sinceStateMovedMs ?? new Error("no state answer moved the structure"),
 			bytes: total,
-			changesRequestedMs:
-				changes && movedAt !== null
-					? changes.start - movedAt
-					: new Error("no request for the changes followed"),
-			changesCompleteMs:
-				changes && movedAt !== null
-					? changes.end - movedAt
-					: new Error("no request for the changes followed"),
 			pollMs: medianGap(answers.map((answer) => answer.at)),
 		};
 	} finally {
@@ -317,25 +322,12 @@ async function homeLanding(
 	browser: Browser,
 	project: ProjectDefinition,
 	origin: string,
+	answers: Answers,
 ): Promise<{ cold: Task; reload: Task }> {
-	const { context, page } = await openPage(browser, project);
+	const { context, page } = await openPage(browser, project, answers);
 	try {
 		await page.goto(`${origin}/#/`, { waitUntil: "commit" });
 		await page.waitForSelector(HOME_SHELF);
-		await page
-			.waitForFunction(
-				() =>
-					performance
-						.getEntriesByType("resource")
-						.some(
-							(entry) =>
-								entry.name.includes("spine=false") &&
-								(entry as PerformanceResourceTiming).responseEnd > 0,
-						),
-				null,
-				{ timeout: LATE_PART_WAIT_MS },
-			)
-			.catch(() => undefined);
 		await page.waitForTimeout(SETTLE_MS);
 		const cold = taskOf(await page.evaluate(readProbes));
 
@@ -348,91 +340,12 @@ async function homeLanding(
 	}
 }
 
-const BLANK_IDLE_MS = 1000;
-// Firefox holds a navigation back for a while after a large page has loaded.
-const DOCUMENT_AGE_MS = IDLE_BEFORE_HEAP_MS;
-const LATE_PART_WAIT_MS = 10_000;
-
-async function reloadTimed(
-	page: Page,
-	isReload: boolean,
-	begin: () => Promise<unknown>,
-	leavingMs: number | null = null,
-): Promise<Reload> {
-	const calledAt = Date.now();
-	await begin();
-	const ms = await rowsPainted(page);
-	await page.waitForFunction(
-		() =>
-			(
-				globalThis as unknown as {
-					__perf: { marks: { lateShownAt: number | null } };
-				}
-			).__perf.marks.lateShownAt !== null,
-	);
-	await page.waitForTimeout(SETTLE_MS);
-	const settled = taskOf(await page.evaluate(readProbes));
-	const raw = (await page.evaluate(readTimeline)) as ReturnType<
-		typeof readTimeline
-	>;
-	const since = (at: number | null) =>
-		at === null ? null : raw.timeOrigin + at - calledAt;
-	const timeline: Reload["timeline"] = {
-		pagehideOfOldDocument:
-			isReload && raw.pagehideEpoch !== null
-				? raw.pagehideEpoch - calledAt
-				: null,
-		navigationStart: since(0),
-		documentFirstByte: since(raw.responseStart),
-		domContentLoaded: since(raw.domContentLoaded),
-		firstStateAsked: since(raw.stateAsked),
-		restoreAsked: since(raw.restoreAsked),
-		restored: since(raw.restored),
-		exportRequested: since(raw.firstExport?.start ?? null),
-		exportComplete: since(raw.firstExport?.end ?? null),
-		firstRowInDom: since(raw.rowInDom),
-		firstRowPainted: since(raw.rowPainted),
-		lateComplete: since(raw.lateExport?.end ?? null),
-		lateShown: since(raw.lateShown),
-	};
-	return {
-		ms,
-		waitedMs: timeline.firstRowPainted as number,
-		timeline,
-		exportRequested: raw.firstExport !== null,
-		stallToFirstRowsMs: raw.stallAtFirstRow as number,
-		leavingMs,
-		settled,
-	};
-}
-
-async function agedDocument(page: Page, home: string) {
-	await page.goto(home, { waitUntil: "commit" });
-	await rowsPainted(page);
-	await page.waitForTimeout(DOCUMENT_AGE_MS);
-}
-
-// What the HTTP cache holds is the thing varied: Chromium has a switch for it, and in the other
-// engines Playwright turns the cache off while a route is installed.
-async function withoutHttpCache<T>(
-	page: Page,
-	cdp: CDPSession | null,
-	work: () => Promise<T>,
-) {
-	if (cdp) await cdp.send("Network.setCacheDisabled", { cacheDisabled: true });
-	else await page.route("**/*", (route) => route.continue());
-	try {
-		return await work();
-	} finally {
-		if (cdp)
-			await cdp.send("Network.setCacheDisabled", { cacheDisabled: false });
-		else await page.unroute("**/*");
-	}
-}
-
 export const unmeasured = (): RunResult => {
 	const waiting = new Error("not measured yet");
 	return {
+		fake: {},
+		playlist: waiting,
+		fling: { allMusic: waiting, playlist: waiting },
 		B1: waiting,
 		landing: waiting,
 		B2: waiting,
@@ -441,9 +354,6 @@ export const unmeasured = (): RunResult => {
 		B4Tasks: { album: waiting, artist: waiting, genre: waiting },
 		homeLanding: waiting,
 		B5: waiting,
-		late: waiting,
-		storeWrite: waiting,
-		B6: { reload: waiting, afterBlank: waiting, cacheDisabled: waiting },
 		B7: waiting,
 		scrollEnd: waiting,
 	};
@@ -457,10 +367,12 @@ export async function measureRun(
 	into: RunResult,
 	saved: () => void,
 ): Promise<{ pageStopped: boolean }> {
-	const { context, page, cdp } = await openPage(browser, project);
+	const answers: Answers = [];
+	const { context, page, cdp } = await openPage(browser, project, answers);
 	const isPhone = project.options.isMobile === true;
 	const noControls = new Error("the page's player has no /__control routes");
 	const unloaded = new Error("the first rows never appeared");
+	const notLoaded = new Error("the playlist did not load");
 	let stopped: string | null = null;
 
 	const describe = () =>
@@ -469,10 +381,10 @@ export async function measureRun(
 		);
 
 	const take = async <T>(
-		step: string,
+		step: Step,
 		bound: number,
 		store: (taken: T | Error) => void,
-		work: () => Promise<T>,
+		work: (clock: FakeClock) => Promise<T>,
 		skipped: Error | null = null,
 	) => {
 		let taken: T | Error;
@@ -486,11 +398,21 @@ export async function measureRun(
 		} else {
 			process.stderr.write(`    ${step}\n`);
 			const began = performance.now();
+			const answeredFrom = answers.length;
+			let windowed = false;
+			const clock: FakeClock = {
+				start: () => answers.length,
+				stop: (from) => {
+					windowed = true;
+					into.fake[step] = fakeTimeSince(answers, from);
+				},
+			};
 			try {
-				taken = await within(bound, describe, work);
+				taken = await within(bound, describe, () => work(clock));
 			} catch (error) {
 				taken = error instanceof Error ? error : new Error(String(error));
 			}
+			if (!windowed) into.fake[step] = fakeTimeSince(answers, answeredFrom);
 			process.stderr.write(
 				`    ${step} ${taken instanceof Error ? `failed: ${taken.message}` : "took"} (${Math.round(performance.now() - began)} ms)\n`,
 			);
@@ -524,75 +446,14 @@ export async function measureRun(
 		const gate = loaded ? null : unloaded;
 
 		await take(
-			"late part",
-			CELL_BOUND_MS,
-			(taken) => {
-				into.late = taken;
-			},
-			async (): Promise<Late> => {
-				await page
-					.waitForFunction(
-						() =>
-							performance
-								.getEntriesByType("resource")
-								.some(
-									(entry) =>
-										entry.name.includes("/library/export") &&
-										entry.name.includes("spine=false") &&
-										(entry as PerformanceResourceTiming).responseEnd > 0,
-								),
-						null,
-						{ timeout: LATE_PART_WAIT_MS },
-					)
-					.catch(() => {
-						throw new Error("no late part was requested");
-					});
-				const raw = await page.evaluate(readTimeline);
-				if (raw.lateExport === null || raw.lateShown === null)
-					throw new Error("no late part was requested");
-				return {
-					responseMs: raw.lateExport.end - (raw.rowPainted as number),
-					shownMs: raw.lateShown - (raw.rowPainted as number),
-				};
-			},
-			gate,
-		);
-
-		await take(
-			"store write",
-			CELL_BOUND_MS,
-			(taken) => {
-				into.storeWrite = taken;
-			},
-			async (): Promise<StoreWrite> => {
-				await page.waitForFunction(
-					() =>
-						(
-							globalThis as unknown as {
-								__perf: {
-									marks: { storeWindow: { closedAt: number | null } };
-								};
-							}
-						).__perf.marks.storeWindow.closedAt !== null,
-				);
-				const { storeWindow } = await page.evaluate(readTimeline);
-				return {
-					stallMs: storeWindow.stallMs,
-					windowMs:
-						(storeWindow.closedAt as number) - (storeWindow.openedAt as number),
-				};
-			},
-			gate,
-		);
-
-		await take(
 			"landing",
 			CELL_BOUND_MS,
 			(taken) => {
 				into.landing = taken;
 			},
-			async () => {
+			async (clock: FakeClock) => {
 				await page.waitForTimeout(SETTLE_MS);
+				clock.stop(FROM_RUN_START);
 				return taskOf(await page.evaluate(readProbes));
 			},
 			gate,
@@ -632,39 +493,54 @@ export async function measureRun(
 				);
 		}
 
-		const reloads: Record<ReloadKind, () => Promise<Reload>> = {
-			reload: () =>
-				reloadTimed(page, true, () => page.reload({ waitUntil: "commit" })),
-			afterBlank: async () => {
-				await agedDocument(page, home);
-				const left = performance.now();
+		await take(
+			"fling all",
+			LOAD_BOUND_MS,
+			(taken) => {
+				into.fling.allMusic = taken;
+			},
+			() => flingList(page, answers),
+			gate,
+		);
+
+		const { playlistHash } = target;
+		const playlistGate =
+			playlistHash === null
+				? new Error("no playlist of the whole library could be made")
+				: gate;
+		await take(
+			"playlist",
+			LOAD_BOUND_MS,
+			(taken) => {
+				into.playlist = taken;
+			},
+			async () => {
 				await page.goto("about:blank");
-				const leavingMs = performance.now() - left;
-				await page.waitForTimeout(BLANK_IDLE_MS);
-				return reloadTimed(
-					page,
-					false,
-					() => page.goto(home, { waitUntil: "commit" }),
-					leavingMs,
-				);
+				await page.goto(`${target.origin}/${playlistHash}`, {
+					waitUntil: "commit",
+				});
+				return rowsPainted(page);
 			},
-			cacheDisabled: async () => {
-				await agedDocument(page, home);
-				return withoutHttpCache(page, cdp, () =>
-					reloadTimed(page, true, () => page.reload({ waitUntil: "commit" })),
-				);
+			playlistGate,
+		);
+		const playlistLoaded = typeof into.playlist === "number";
+		await take(
+			"fling playlist",
+			LOAD_BOUND_MS,
+			(taken) => {
+				into.fling.playlist = taken;
 			},
-		};
-		for (const kind of RELOAD_KINDS)
-			await take(
-				kind === "reload" ? "B6" : `B6 ${kind}`,
-				LOAD_BOUND_MS,
-				(taken) => {
-					into.B6[kind] = taken;
-				},
-				reloads[kind],
-				gate,
-			);
+			() => flingList(page, answers),
+			playlistLoaded ? null : (playlistGate ?? notLoaded),
+		);
+
+		if (stopped === null)
+			await orElse(LOAD_BOUND_MS, undefined, async () => {
+				await page.goto("about:blank");
+				await page.goto(home, { waitUntil: "commit" });
+				await rowsPainted(page);
+				await page.waitForTimeout(DOCUMENT_AGE_MS + SETTLE_MS);
+			});
 
 		const { tracePath } = options;
 		const traced = tracePath !== null && project.engine === "chromium";
@@ -687,7 +563,7 @@ export async function measureRun(
 			(taken) => {
 				into.B3 = taken;
 			},
-			() => keystroke(page, isPhone),
+			(clock: FakeClock) => keystroke(page, isPhone, clock),
 			gate,
 		);
 
@@ -713,7 +589,7 @@ export async function measureRun(
 						into.B4Tasks[name] = taken.task;
 					}
 				},
-				() => openingPage(page, hash, shown),
+				(clock: FakeClock) => openingPage(page, hash, shown, clock),
 				gate,
 			);
 
@@ -723,7 +599,7 @@ export async function measureRun(
 			(taken) => {
 				into.homeLanding = taken;
 			},
-			() => homeLanding(browser, project, target.origin),
+			() => homeLanding(browser, project, target.origin, answers),
 			gate,
 		);
 
@@ -733,7 +609,7 @@ export async function measureRun(
 			(taken) => {
 				into.B7 = taken;
 			},
-			() => addedAlbum(page, target),
+			(clock: FakeClock) => addedAlbum(page, target, clock),
 			controlsGate,
 		);
 
@@ -747,7 +623,7 @@ export async function honouredHeightOf(
 	browser: Browser,
 	project: ProjectDefinition,
 ) {
-	const { context, page } = await openPage(browser, project);
+	const { context, page } = await openPage(browser, project, []);
 	try {
 		await page.goto("about:blank");
 		return await within(

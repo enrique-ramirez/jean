@@ -2,6 +2,8 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { join } from "node:path";
 
+import { WHOLE_LIBRARY } from "../fake-api/fooJean/wholeLibrary.ts";
+
 export interface RunningFake {
 	origin: string;
 	startupMs: number;
@@ -44,7 +46,7 @@ export async function startFake({
 			"test/fake-api/main.ts",
 			"--tracks",
 			String(tracks),
-			"--no-ceiling",
+			"--rate-limits",
 			"--port",
 			String(port),
 			"--serve",
@@ -75,4 +77,33 @@ export async function startFake({
 			return stopped;
 		},
 	};
+}
+
+// The playlist holding the whole library: the one a fake started with `--tracks` already holds,
+// or else an ordinary playlist made here, since a real player has none and an autoplaylist cannot
+// be filled on creation.
+export async function makeWholeLibraryPlaylist(
+	origin: string,
+	trackCount: number,
+): Promise<string> {
+	const listed = (await (
+		await fetch(new URL("/api/playlists", origin))
+	).json()) as { playlists: { id: string; title: string }[] };
+	const held = listed.playlists.find((entry) => entry.title === WHOLE_LIBRARY);
+	if (held) return held.id;
+
+	const state = (await (await fetch(new URL("/api/state", origin))).json()) as {
+		library: { structure: number };
+	};
+	const made = await fetch(new URL("/api/playlists", origin), {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({
+			title: WHOLE_LIBRARY,
+			structure: state.library.structure,
+			runs: [[0, trackCount]],
+		}),
+	});
+	if (!made.ok) throw new Error(`POST /api/playlists answered ${made.status}`);
+	return ((await made.json()) as { id: string }).id;
 }

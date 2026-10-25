@@ -1,6 +1,7 @@
 export const PROJECT_NAMES = [
 	"desktop",
 	"mobile",
+	"edge",
 	"iphone",
 	"firefox",
 ] as const;

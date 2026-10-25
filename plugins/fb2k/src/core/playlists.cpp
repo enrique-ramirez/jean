@@ -295,11 +295,11 @@ ChangedSince PlaylistVersions::changedSince(const std::string& playlistId, uint6
         const Tracked& tracked = found == playlists_.end() ? untouched_ : found->second;
 
         if (structure != tracked.version.structure || since < tracked.structureBegan)
-            return {DeltaOutcome::structureChanged, 0, {}};
+            return {ReadOutcome::structureMoved, 0, {}};
         if (since > tracked.version.revision)
-            return {DeltaOutcome::revisionUnknown, 0, {}};
+            return {ReadOutcome::revisionUnknown, 0, {}};
         if (!tracked.retained.empty() && tracked.retained.front().revision > since + 1)
-            return {DeltaOutcome::revisionTooOld, 0, {}};
+            return {ReadOutcome::revisionTooOld, 0, {}};
 
         revision = tracked.version.revision;
         moved = positionsAfterLocked(tracked.retained, since);
@@ -308,7 +308,7 @@ ChangedSince PlaylistVersions::changedSince(const std::string& playlistId, uint6
     std::sort(moved.begin(), moved.end());
     moved.erase(std::unique(moved.begin(), moved.end()), moved.end());
 
-    return {DeltaOutcome::ok, revision, std::move(moved)};
+    return {ReadOutcome::ok, revision, std::move(moved)};
 }
 
 std::vector<uint32_t> PlaylistVersions::positionsAfterLocked(const std::deque<Retained>& retained,

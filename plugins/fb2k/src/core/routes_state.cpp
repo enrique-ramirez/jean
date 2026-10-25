@@ -2,6 +2,7 @@
 
 #include "core/documents.h"
 #include "core/http_responses.h"
+#include "core/library_paths.h"
 #include "core/log.h"
 #include "core/routes_sessions.h"
 #include "core/session_scope.h"
@@ -68,6 +69,18 @@ PlayerState StateRoute::sessionState(Session& session,
     return session.state(now);
 }
 
+PlayerState StateRoute::withLibraryOrdinal(PlayerState player, const Library::State& state) const {
+    player.libraryOrdinal.reset();
+    if (!library_ || !player.libraryPath)
+        return player;
+
+    library_->readWithPaths([&](const Snapshot& snapshot, const LibraryPaths& paths) {
+        if (snapshot.structure == state.structure)
+            player.libraryOrdinal = paths.ordinalOf(*player.libraryPath, player.subsong);
+    });
+    return player;
+}
+
 void StateRoute::addTo(httplib::Server& server) {
     server.Get("/api/state", [this](const httplib::Request& req, httplib::Response& res) {
         // cpp-httplib gives one pooled thread the whole life of a socket, not just one request
@@ -93,14 +106,16 @@ void StateRoute::addTo(httplib::Server& server) {
 
         if (!named.session) {
             const auto tag = snapshotTag(state, runId_, published.version) + commonTag;
-            sendIfChanged(
-                req, res, tag, "application/json", [&state, &published, generation, &mainThread] {
-                    return stateDocument(
-                        state, published.state, std::chrono::steady_clock::now(),
-                        PlayerRevisions{published.queueRevision, published.playlistsRevision,
-                                        published.timelineRevision},
-                        generation, mainThread);
-                });
+            sendIfChanged(req, res, tag, "application/json",
+                          [this, &state, &published, generation, &mainThread] {
+                              return stateDocument(state,
+                                                   withLibraryOrdinal(published.state, state),
+                                                   std::chrono::steady_clock::now(),
+                                                   PlayerRevisions{published.queueRevision,
+                                                                   published.playlistsRevision,
+                                                                   published.timelineRevision},
+                                                   generation, mainThread);
+                          });
             return;
         }
 
@@ -122,14 +137,14 @@ void StateRoute::addTo(httplib::Server& server) {
                                 named.session->id() + "-v" + std::to_string(revisions.version) +
                                 (unnamed ? "-u" : "");
 
-        sendIfChanged(req, res, sessionTag, "application/json",
-                      [&state, &player, now, &revisions, &published, generation, &mainThread] {
-                          return stateDocument(
-                              state, player, now,
-                              PlayerRevisions{revisions.queue, published.playlistsRevision,
-                                              revisions.timeline, revisions.session},
-                              generation, mainThread);
-                      });
+        sendIfChanged(
+            req, res, sessionTag, "application/json",
+            [this, &state, &player, now, &revisions, &published, generation, &mainThread] {
+                return stateDocument(state, withLibraryOrdinal(player, state), now,
+                                     PlayerRevisions{revisions.queue, published.playlistsRevision,
+                                                     revisions.timeline, revisions.session},
+                                     generation, mainThread);
+            });
     });
 }
 

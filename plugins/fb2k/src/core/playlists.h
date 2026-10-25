@@ -77,15 +77,14 @@ struct PlaylistVersion {
 enum class RowsChanged { added, removed, reordered, replaced };
 
 struct ChangedSince {
-    DeltaOutcome catchUp = DeltaOutcome::ok;
+    ReadOutcome catchUp = ReadOutcome::ok;
     uint64_t revision = 0;
     std::vector<uint32_t> positions;
 };
 
-// Same figure as core/library.h's kRetainedRevisions, ARCHITECTURE.md *Two generations* is
-// why. Named separately because this window is kept per playlist rather than once per
-// install, so what it costs is multiplied by however many playlists have seen a change.
-constexpr size_t kRetainedPlaylistRevisions = kRetainedRevisions;
+// ARCHITECTURE.md *Two generations* is why this many. It is kept per playlist rather than once
+// per install, so what it costs is multiplied by however many playlists have seen a change.
+constexpr size_t kRetainedPlaylistRevisions = 1920;
 
 class PlaylistVersions {
 public:

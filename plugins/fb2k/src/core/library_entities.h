@@ -32,6 +32,14 @@ struct EntityKey {
 
 constexpr size_t kSearchedColumnCount = 5;
 
+enum SearchedColumn : size_t {
+    kSearchedTitle,
+    kSearchedArtist,
+    kSearchedAlbumArtist,
+    kSearchedAlbum,
+    kSearchedArtistSort,
+};
+
 std::array<std::optional<size_t>, kSearchedColumnCount> searchedColumns(const LibraryRoles& roles);
 
 struct SearchText {

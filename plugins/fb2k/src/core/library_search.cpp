@@ -2,6 +2,7 @@
 #include "core/library_entities.h"
 #include "core/library_groups.h"
 #include "core/library_questions.h"
+#include "core/library_sets.h"
 #include "core/ordinal_sets.h"
 #include "core/text.h"
 
@@ -299,7 +300,7 @@ json genresSection(const GenreEntities& genres, const std::string& query, size_t
 
 bool namesAMatchedTrack(const Snapshot& snapshot, const LibraryRoles& roles, const SearchText& text,
                         const std::string& query, const std::vector<uint32_t>& matched) {
-    const auto& titles = text.folded[0];
+    const auto& titles = text.folded[kSearchedTitle];
     std::vector<char> namesIt(titles.size());
     std::transform(titles.begin(), titles.end(), namesIt.begin(),
                    [&](const std::string& title) { return title == query ? 1 : 0; });
@@ -318,6 +319,7 @@ json LibraryQuestions::search(const Snapshot& snapshot, const LibraryRoles& role
                    {"revision", snapshot.revision},
                    {"matched", nullptr},
                    {"matchCount", 0},
+                   {"figures", figuresDocument({})},
                    {"best", json::array()},
                    {"artists", sectionOf(0, json::array())},
                    {"albums", sectionOf(0, json::array())},
@@ -330,7 +332,7 @@ json LibraryQuestions::search(const Snapshot& snapshot, const LibraryRoles& role
 
     const SearchParts parts = searchPartsFor(snapshot, roles, splitsCredits);
     std::vector<std::string> words = foldedWords(query);
-    const bool glyphic = !words.empty() && squash(query).empty();
+    const bool glyphic = searchesMarks(query);
     const std::shared_ptr<const SearchText> text =
         glyphic ? glyphTextFor(snapshot, roles) : parts.text;
     if (glyphic)
@@ -343,6 +345,7 @@ json LibraryQuestions::search(const Snapshot& snapshot, const LibraryRoles& role
         matched = rowsMatchingEveryWord(fields, asked, rows);
         answer["matched"] = ordinalSetDocument(matched, rows);
         answer["matchCount"] = matched.size();
+        answer["figures"] = figuresDocument(figuresOver(snapshot, roles, matched));
         answer["best"] = bestOf(matched, fields, asked, limit);
     }
 

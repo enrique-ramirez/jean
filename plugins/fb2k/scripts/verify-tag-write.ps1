@@ -119,12 +119,13 @@ if ($strays.Count -gt 0) {
   throw "$($strays.Count) of $($before.Count) rows in '$PlaylistTitle' sit outside $fixtureRoot, refusing to write any of them. First: $($strays[0].Path)"
 }
 
-# foo_jean resolves a library address against its media library snapshot, and builds none until a client exports, so on
-# a player no client has asked since it started every library address answers 404. One that exists is left as declared.
+# foo_jean resolves a library address against its media library snapshot, and builds none until a client declares
+# columns, so on a player no client has asked since it started every library address answers 404. One that exists is
+# left as declared.
 if (-not (Get-Json "$FooJean/state").library.ready) {
   Write-Output "No media library snapshot yet; asking foo_jean to build one"
-  $column = [System.Uri]::EscapeDataString('%rating%')
-  Invoke-WebRequest -Uri "$FooJean/library/export?columns=$column" -UseBasicParsing -TimeoutSec 60 | Out-Null
+  $declaration = @{ columns = @('%rating%'); structure = '0'; ordinals = @(0) } | ConvertTo-Json -Compress
+  Invoke-WebRequest -Uri "$FooJean/library/rows" -Method Post -Body $declaration -ContentType 'application/json' -UseBasicParsing -TimeoutSec 60 | Out-Null
   $deadline = (Get-Date).AddSeconds(120)
   while (-not (Get-Json "$FooJean/state").library.ready) {
     if ((Get-Date) -gt $deadline) { throw "foo_jean built no media library snapshot within 120s" }

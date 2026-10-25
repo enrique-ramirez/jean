@@ -7,13 +7,16 @@
 #include "third_party/doctest.h"
 
 #include "core/documents.h"
+#include "core/library_rows.h"
 #include "core/library_summary.h"
 #include "core/outputs.h"
+#include "support/fake_player.h"
 #include "support/fixtures.h"
 #include "support/keys.h"
 #include "support/library_routes_server.h"
 #include "support/question_library.h"
 #include "support/repository.h"
+#include "support/set_cases.h"
 #include "support/spec.h"
 #include "support/streams.h"
 #include "support/summary_library.h"
@@ -426,6 +429,74 @@ TEST_CASE("every document carrying a playlist's counters carries them as strings
           digits);
 }
 
+// A playlist's runs carry its counters as every other playlist answer does, and the two years as
+// null where no row carries one, so the key set is pinned on a playlist that has none.
+TEST_CASE("a playlist's runs are the shape contract/openapi.yaml publishes") {
+    INFO(kUpdateSpec);
+
+    constexpr uint64_t kSeeded = 9204739866101318923ULL;
+    const std::string digits = R"("9204739866101318923")";
+
+    Library library;
+    buildLibrary(library);
+    FakePlayer foobar(&library);
+    PlaylistAnnotation playlist;
+    playlist.id = kPlaylistId;
+    playlist.title = "Road trip";
+    playlist.structure = kSeeded;
+    playlist.revision = kSeeded;
+    foobar.add(playlist, {libraryTrack(0), titled("Dragged in")});
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto response = get(server, std::string("/api/playlists/") + kPlaylistId +
+                                          "/runs?structure=9204739866101318923&title=%25title%25");
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+    const auto document = json::parse(response->body);
+
+    const auto required = publishedRequired("PlaylistRuns");
+    CHECK(keysOf(document) == Keys(required.begin(), required.end()));
+    CHECK(keysOf(document) == Keys{"structure", "revision", "lengths", "mostPlays", "albumCount",
+                                   "trackCount", "seconds", "earliestYear", "latestYear"});
+
+    CHECK(document.at("structure").dump() == digits);
+    CHECK(document.at("revision").dump() == digits);
+    CHECK(document.at("earliestYear").is_null());
+    CHECK(document.at("latestYear").is_null());
+}
+
+TEST_CASE("a find in a playlist is the shape contract/openapi.yaml publishes") {
+    INFO(kUpdateSpec);
+
+    constexpr uint64_t kSeeded = 9204739866101318923ULL;
+    const std::string digits = R"("9204739866101318923")";
+
+    Library library;
+    buildLibrary(library);
+    FakePlayer foobar(&library);
+    PlaylistAnnotation playlist;
+    playlist.id = kPlaylistId;
+    playlist.title = "Road trip";
+    playlist.structure = kSeeded;
+    playlist.revision = kSeeded;
+    foobar.add(playlist, {libraryTrack(0), titled("Dragged in")});
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto response = get(server, std::string("/api/playlists/") + kPlaylistId +
+                                          "/find?query=track&structure=" + std::to_string(kSeeded) +
+                                          "&title=%25title%25");
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto document = json::parse(response->body);
+    const auto required = publishedRequired("PlaylistFind");
+    CHECK(keysOf(document) == Keys(required.begin(), required.end()));
+    CHECK((keysOf(document.at("matched")) == Keys{"runs"} ||
+           keysOf(document.at("matched")) == Keys{"bitset"}));
+    CHECK(document.at("structure").dump() == digits);
+    CHECK(document.at("revision").dump() == digits);
+}
+
 TEST_CASE("the other playlist answers are the shapes contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
@@ -491,8 +562,21 @@ TEST_CASE("every refusal is sent with a status contract/openapi.yaml publishes f
     SUBCASE("LibraryRefusal") {
         checkPublishedAsSent<LibraryRefusal>({"LibraryRefusal"});
     }
-    SUBCASE("DeltaOutcome") {
-        checkPublishedAsSent<DeltaOutcome>({"LibraryFailed"});
+    SUBCASE("the two failures a library route sends") {
+        const auto underSchema = publishedSchemaStatuses();
+        const auto shown = publishedErrorExamples();
+        for (const auto outcome : {ReadOutcome::notBuilt, ReadOutcome::structureMoved}) {
+            const auto sentence = describe(outcome);
+            INFO("error: ", sentence, ", sent with ", httpStatusFor(outcome));
+            CHECK(publishesError("LibraryFailed", sentence));
+
+            std::set<int> published;
+            if (const auto found = underSchema.find("LibraryFailed"); found != underSchema.end())
+                published.insert(found->second.begin(), found->second.end());
+            if (const auto found = shown.find(sentence); found != shown.end())
+                published.insert(found->second.begin(), found->second.end());
+            CHECK(published.count(httpStatusFor(outcome)) == 1);
+        }
     }
 }
 
@@ -508,15 +592,17 @@ TEST_CASE("the library answers are the shapes contract/openapi.yaml publishes") 
 
     // `build` is required and nullable, so a library nobody is building still sends the key.
     const auto idle = json::parse(libraryDocument(state));
-    CHECK(keysOf(idle) == Keys{"ready", "structure", "revision", "snapshotId", "trackCount",
-                               "columns", "build", "halted"});
+    CHECK(keysOf(idle) == Keys{"ready", "structure", "revision", "trackCount", "columns",
+                               "changeCounts", "build", "halted"});
+    const auto required = publishedRequired("Library");
+    CHECK(keysOf(idle) == Keys(required.begin(), required.end()));
     CHECK((idle.contains("build") && idle.at("build").is_null()));
 
     const auto refused = parseLibraryRequest({"%title%", "%title%"}, std::string());
     REQUIRE_FALSE(refused.ok());
     CHECK(keysOf(refusalDocument(refused.refusal, refused.detail)) == Keys{"error", "detail"});
 
-    CHECK(keysOf(failureDocument(DeltaOutcome::structureChanged)) == Keys{"error", "detail"});
+    CHECK(keysOf(failureDocument(ReadOutcome::structureMoved)) == Keys{"error", "detail"});
 
     // No libraryPath: the caller supplied the address, so the answer carries only what it did
     // not already have.
@@ -621,6 +707,115 @@ TEST_CASE("the question answers are the shapes contract/openapi.yaml publishes")
     }
 }
 
+TEST_CASE(
+    "a set's figures, cards, records and genres are the shapes contract/openapi.yaml publishes") {
+    INFO(kUpdateSpec);
+
+    const auto published = [](const std::string& schema, const std::string& property = {}) {
+        const auto required = publishedRequired(schema, property);
+        return Keys(required.begin(), required.end());
+    };
+
+    const json& setsCase = setCase("credits: artist \"Beta\" splits true");
+    const auto questions = measuredLibraryOf(setsCase);
+    Library library;
+    const LibraryRoutesServer server(&library, 0);
+    declareAndBuild(server, library, questions);
+
+    const auto answerTo = [&server, &questions](const std::vector<Owned>& owned,
+                                                const std::string_view kind) {
+        const auto response = server.client().Get(questionPath(kind, owned, questions.roles));
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+        return json::parse(response->body);
+    };
+
+    const auto artist = answerTo({{"name", "Beta"}, {"splitsCredits", "true"}}, "artist");
+    CHECK(keysOf(artist.at("figures")) == published("SetFigures"));
+    CHECK(keysOf(artist.at("cards")) == published("ArtistCards"));
+    REQUIRE(artist.at("cards").at("mostPlayed").is_object());
+    CHECK(keysOf(artist.at("cards").at("mostPlayed")) == published("ArtistCards", "mostPlayed"));
+    REQUIRE_FALSE(artist.at("cards").at("topGenres").empty());
+    CHECK(keysOf(artist.at("cards").at("topGenres").at(0)) ==
+          published("ArtistCards", "topGenres"));
+    CHECK(keysOf(artist.at("records")) == published("ArtistAnswer", "records"));
+    for (const char* part : {"own", "shared"}) {
+        INFO("records: ", part);
+        REQUIRE_FALSE(artist.at("records").at(part).empty());
+        CHECK(keysOf(artist.at("records").at(part).at(0)) == published("AlbumRecord"));
+    }
+
+    const std::vector<std::pair<std::string_view, std::vector<Owned>>> others{
+        {"album", {{"name", "Second"}, {"by", "Beta"}}},
+        {"genre", {{"name", "Rock"}}},
+        {"search",
+         {{"query", "a"}, {"limit", "8"}, {"entityLimit", "3"}, {"splitsCredits", "true"}}},
+    };
+    for (const auto& [kind, owned] : others) {
+        INFO("route: ", kind);
+        CHECK(keysOf(answerTo(owned, kind).at("figures")) == published("SetFigures"));
+    }
+
+    Snapshot snapshot = summarySnapshot();
+    snapshot.structure = 1;
+    snapshot.revision = 1;
+    const auto summary = json::parse(summariseLibrary(snapshot, summaryRolesFor(everyRole()),
+                                                      localNoon(kSummaryDate),
+                                                      localTimeOn(kSummaryDate), {.genres = true}));
+    auto withGenres = published("LibrarySummary");
+    withGenres.insert("genres");
+    CHECK(keysOf(summary) == withGenres);
+    REQUIRE_FALSE(summary.at("genres").empty());
+    CHECK(keysOf(summary.at("genres").at(0)) == published("SummaryGenre"));
+    REQUIRE_FALSE(summary.at("shelves").empty());
+    for (const auto& shelf : summary.at("shelves")) {
+        INFO("shelf: ", shelf.value("id", std::string()));
+        CHECK(keysOf(shelf.at("figures")) == published("SetFigures"));
+    }
+}
+
+TEST_CASE("the credit and values answers are the shapes contract/openapi.yaml publishes") {
+    INFO(kUpdateSpec);
+
+    const auto published = [](const std::string& schema) {
+        const auto required = publishedRequired(schema);
+        return Keys(required.begin(), required.end());
+    };
+
+    const json& asked = questionCase("credits: search \"alpha\" splits true");
+    const auto questions = questionLibraryOf(asked);
+    Library library;
+    const LibraryRoutesServer server(&library, 0);
+    declareAndBuild(server, library, questions);
+
+    const auto answerTo = [&server, &questions](const std::vector<Owned>& owned,
+                                                const std::string_view kind) {
+        const auto response = server.client().Get(questionPath(kind, owned, questions.roles));
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+        return json::parse(response->body);
+    };
+
+    const auto credits = answerTo({{"splitsCredits", "true"},
+                                   {"structure", std::to_string(library.state().structure)},
+                                   {"ordinal", "2"}},
+                                  "credits");
+    CHECK(keysOf(credits) == published("LibraryCredits"));
+    for (const char* list : {"artist", "albumArtist"}) {
+        INFO("list: ", list);
+        REQUIRE(credits.at(list).is_array());
+        REQUIRE_FALSE(credits.at(list).empty());
+        for (const auto& member : credits.at(list))
+            CHECK(keysOf(member) == published("CreditMember"));
+    }
+
+    const auto values = answerTo({{"field", "artist"}, {"prefix", "a"}, {"limit", "8"}}, "values");
+    CHECK(keysOf(values) == published("LibraryValues"));
+    REQUIRE(values.at("values").is_array());
+    REQUIRE_FALSE(values.at("values").empty());
+    CHECK(values.at("values").at(0).is_string());
+}
+
 TEST_CASE("a library being built carries its progress in the shape LibraryBuild publishes") {
     INFO(kUpdateSpec);
 
@@ -628,8 +823,8 @@ TEST_CASE("a library being built carries its progress in the shape LibraryBuild 
     state.build = BuildProgress{BuildPhase::formatting, 16384, 30441};
 
     const auto library = json::parse(libraryDocument(state));
-    CHECK(keysOf(library) == Keys{"ready", "structure", "revision", "snapshotId", "trackCount",
-                                  "columns", "build", "halted"});
+    CHECK(keysOf(library) == Keys{"ready", "structure", "revision", "trackCount", "columns",
+                                  "changeCounts", "build", "halted"});
 
     REQUIRE(library.contains("build"));
     const auto& build = library.at("build");
@@ -730,6 +925,7 @@ TEST_CASE("GET /state's documented examples are the shape PlayerState declares")
                                "path",
                                "subsong",
                                "libraryPath",
+                               "libraryOrdinal",
                                "position",
                                "duration",
                                "volume",
@@ -774,22 +970,21 @@ TEST_CASE("GET /state's documented examples are the shape PlayerState declares")
 
 // The one document a client reads without JSON.parse. Everything a TypeScript client needs to
 // find the header at all is here: any of these three moving is a client reading garbage.
-TEST_CASE("the snapshot is framed the way contract/openapi.yaml describes") {
+TEST_CASE("a window of rows is framed the way contract/openapi.yaml describes") {
     INFO(kUpdateSpec);
 
     LibraryBuilder builder({"%title%"}, 1);
     builder.sink().row(0, {"Music/", "a.flac", "0", "A title"});
+    const Snapshot snapshot = builder.finish();
 
-    Library library;
-    library.replace(builder.finish());
+    const std::vector<uint32_t> first{0};
+    const auto window = serialiseRows(snapshot, first);
+    REQUIRE(window.size() > 8);
 
-    const auto snapshot = *library.exported().bytes;
-    REQUIRE(snapshot.size() > 8);
+    CHECK(window.substr(0, 4) == "JLIB");
 
-    CHECK(snapshot.substr(0, 4) == "JLIB");
-
-    const auto byteAt = [&snapshot](size_t at) {
-        return static_cast<uint32_t>(static_cast<unsigned char>(snapshot[at]));
+    const auto byteAt = [&window](size_t at) {
+        return static_cast<uint32_t>(static_cast<unsigned char>(window[at]));
     };
 
     const auto headerLength = static_cast<size_t>(byteAt(4) | (byteAt(5) << 8U) |
@@ -797,47 +992,16 @@ TEST_CASE("the snapshot is framed the way contract/openapi.yaml describes") {
 
     CHECK((8 + headerLength) % 4 == 0);
 
-    const auto header = json::parse(snapshot.substr(8, headerLength));
-    CHECK(keysOf(header) == Keys{"kind", "structure", "revision", "snapshotId", "trackCount",
-                                 "carried", "spineCarried", "columns", "spine"});
-    CHECK(header["kind"] == "snapshot");
+    const auto header = json::parse(window.substr(8, headerLength));
+    const auto required = publishedRequired("LibraryRowsHeader");
+    CHECK(keysOf(header) == Keys(required.begin(), required.end()));
+    CHECK(header["kind"] == "rows");
 
     CHECK(keysOf(header["columns"][0]) ==
           Keys{"name", "ids", "dict", "distinct", "hasUnresolved", "allUnresolved"});
     CHECK(keysOf(header["columns"][0]["ids"]) == Keys{"offset", "count", "width"});
     CHECK(keysOf(header["columns"][0]["dict"]) == Keys{"text", "ends"});
     CHECK(keysOf(header["spine"]) == Keys{"directory", "filename", "subsong"});
-}
-
-// A delta is framed like a snapshot and carries three keys a snapshot does not: `since` on the
-// header, `ordinals` on a column, and `base` on its dictionary. A client generating types from
-// the spec cannot decode one the spec does not declare all three of.
-TEST_CASE("a delta is the shape contract/openapi.yaml publishes") {
-    INFO(kUpdateSpec);
-
-    LibraryBuilder builder({"%title%", "%play_count%"}, 1);
-    builder.sink().row(0, {"Music/", "a.flac", "0", "A title", "1"});
-
-    Library library;
-    library.replace(builder.finish());
-
-    const uint64_t before = library.state().revision;
-    REQUIRE(library.apply({{0, {"Music/", "a.flac", "0", "A title", "2"}}}) > before);
-
-    const auto changes = library.changes(library.state().structure, before);
-    REQUIRE(changes.outcome == DeltaOutcome::ok);
-
-    const auto header = decode(serialiseDelta(changes.delta)).header;
-
-    CHECK(keysOf(header) == Keys{"kind", "structure", "revision", "since", "snapshotId",
-                                 "trackCount", "columns", "spine"});
-    CHECK(header["kind"] == "delta");
-
-    const auto& moved = header["columns"][0];
-    CHECK(keysOf(moved) ==
-          Keys{"name", "ids", "ordinals", "dict", "distinct", "hasUnresolved", "allUnresolved"});
-    CHECK(keysOf(moved["ordinals"]) == Keys{"offset", "count", "width"});
-    CHECK(keysOf(moved["dict"]) == Keys{"text", "ends", "base"});
 }
 
 // The other half of the case above: a client switches on these sentences, so one the contract
@@ -876,7 +1040,7 @@ TEST_CASE("every error contract/openapi.yaml publishes is one this component can
     }
 
     SUBCASE("LibraryFailed") {
-        CHECK(unsendable("LibraryFailed", everyDescribed<DeltaOutcome>()) == std::string());
+        CHECK(unsendable("LibraryFailed", everyDescribed<ReadOutcome>()) == std::string());
     }
 }
 
@@ -932,8 +1096,8 @@ TEST_CASE("no refusal the component sends or the contract publishes says who mad
     CHECK(publishedErrorExamples().count(sentence) == 0);
 }
 
-TEST_CASE("a moved generation is refused with the 409 GET /library/changes already sends") {
-    const auto moved = describe(DeltaOutcome::structureChanged);
+TEST_CASE("a moved generation is refused with the 409 POST /library/rows already sends") {
+    const auto moved = describe(ReadOutcome::structureMoved);
 
     INFO("add an enumerator to PlayerOutcome in core/player_outcome.h whose describe() is ", moved);
     CHECK(statusAnswered<PlayerOutcome>(moved) == 409);
@@ -945,11 +1109,11 @@ TEST_CASE("a moved generation is refused with the 409 GET /library/changes alrea
 
 // Distinct from the structure-moved 409 above: a client naming a stale revision to a move, a
 // remove or a positioned queue has a different remedy, re-reading the queue rather than
-// exporting the library again, and needs a string of its own to tell the two apart.
+// reading the state again, and needs a string of its own to tell the two apart.
 TEST_CASE("a stale queue revision is refused with a 409 distinct from a moved structure") {
     const auto moved = describe(PlayerOutcome::queueMoved);
 
-    CHECK(moved != describe(DeltaOutcome::structureChanged));
+    CHECK(moved != describe(ReadOutcome::structureMoved));
 
     INFO("add an enumerator to PlayerOutcome in core/player_outcome.h whose describe() is ", moved);
     CHECK(statusAnswered<PlayerOutcome>(moved) == 409);
@@ -1276,4 +1440,46 @@ TEST_CASE(
     }
 
     CHECK(posts >= 25);
+}
+
+// A client acts on the sentence, and no route answers the whole library: a sentence sending a
+// client to export it again names a remedy nothing serves.
+TEST_CASE("no refusal the component sends or the contract publishes tells a client to export") {
+    const auto namesTheExport = [](const std::string& sentence) {
+        return unquoted(sentence).find("export") != std::string::npos;
+    };
+    const auto naming = [&namesTheExport](const auto& sentences) {
+        std::vector<std::string> found;
+        std::copy_if(sentences.begin(), sentences.end(), std::back_inserter(found), namesTheExport);
+        return found;
+    };
+
+    const std::vector<std::pair<std::string, std::set<std::string>>> sent{
+        {"PlayerOutcome", everyDescribed<PlayerOutcome>()},
+        {"TagWriteOutcome", everyDescribed<TagWriteOutcome>()},
+        {"ReadOutcome", everyDescribed<ReadOutcome>()},
+        {"LibraryRefusal", everyDescribed<LibraryRefusal>()},
+    };
+    for (const auto& [enumeration, sentences] : sent) {
+        const auto found = naming(sentences);
+        CHECK_MESSAGE(found.empty(), enumeration, " says ", listed(found));
+    }
+
+    INFO(kUpdateSpec);
+    for (const std::string schema :
+         {"LibraryRefusal", "LibraryFailed", "PlaylistFailed", "TagFailed"}) {
+        const auto found = naming(publishedEnum(schema, "error"));
+        CHECK_MESSAGE(found.empty(), schema, " publishes ", listed(found));
+    }
+    for (const auto& [sentence, statuses] : publishedErrorExamples())
+        CHECK_MESSAGE(!namesTheExport(sentence), "an example shows ", sentence);
+}
+
+TEST_CASE("the contract publishes no refusal of a spine flag") {
+    INFO(kUpdateSpec);
+    const auto published = publishedEnum("LibraryRefusal", "error");
+    CHECK(std::none_of(published.begin(), published.end(), [](const std::string& error) {
+        return unquoted(error) == "unacceptable spine";
+    }));
+    CHECK(everyDescribed<LibraryRefusal>().count("unacceptable spine") == 0);
 }

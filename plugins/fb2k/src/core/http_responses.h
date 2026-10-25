@@ -30,7 +30,7 @@ void respondError(httplib::Response& res, int status, const std::string& message
 void respondUnavailable(httplib::Response& res, const std::string& message);
 
 void respondOutcome(httplib::Response& res, PlayerOutcome outcome, const std::string& detail = {});
-void respondOutcome(httplib::Response& res, DeltaOutcome outcome);
+void respondOutcome(httplib::Response& res, ReadOutcome outcome);
 void respondOutcome(httplib::Response& res, TagWriteOutcome outcome);
 
 void respondRefusal(httplib::Response& res, PlaylistRefusal refusal,
@@ -73,6 +73,10 @@ std::optional<Library::State> readyLibrary(const Library* library, httplib::Resp
 
 void respondTooFast(httplib::Response& res, const Throttle& throttle, std::string body);
 
+bool perClientTooFast(PerClientRateLimiter& limiter, const std::string& client,
+                      std::chrono::steady_clock::time_point now, const char* message,
+                      httplib::Response& res);
+
 // `changes` is the budget playlist and queue edits share, refused as a PlaylistRefusal whose
 // `detail` names that budget where a route says which one ran out.
 bool changingTooFast(Throttle& changes, httplib::Response& res, const std::string& detail = {});
@@ -114,14 +118,15 @@ public:
     // Null where compression failed.
     SharedBytes of(const SharedBytes& plain);
 
-    void forget();
-
 private:
     std::mutex lock_;
 
     std::weak_ptr<const std::string> plain_;
     SharedBytes packed_;
 };
+
+void sendUnvalidated(const httplib::Request& req, httplib::Response& res, const SharedBytes& bytes,
+                     const char* contentType);
 
 // The body is produced only once the client is known not to hold it already, because
 // serialising a library is the expensive half of any of these requests.

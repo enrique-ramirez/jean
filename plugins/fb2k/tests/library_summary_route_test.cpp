@@ -1,4 +1,3 @@
-
 #include "third_party/doctest.h"
 
 #include "core/failures.h"
@@ -215,7 +214,6 @@ TEST_CASE("documents for two role sets asked for in turn are each computed once"
     CHECK(server.summaryComputations() == 2);
 }
 
-// cpp-httplib's client unwraps gzip itself, so the wire is read with that turned off.
 TEST_CASE(
     "a summary is gzipped where offered, varies on the encoding and is computed once for both") {
     Library library;
@@ -256,8 +254,6 @@ TEST_CASE("a role that is unknown, empty, unprintable or named twice is refused 
         {"no role beside a good one", "title=%25title%25&colour=%25title%25", "unacceptable role"},
         {"an empty expression", "album=", "unacceptable role"},
         {"an expression carrying a control character", "album=%25al%01bum%25", "unacceptable role"},
-        // cpp-httplib drops a query pair repeating an earlier one byte for byte, so the two name
-        // different expressions.
         {"a role named twice", "album=%25album%25&album=%25artist%25", "duplicate role"},
     };
 
@@ -292,7 +288,7 @@ TEST_CASE("without the media library a summary is a 503, after the roles are jud
 TEST_CASE("with no snapshot ready a summary answers the library document and starts no build") {
     const Library library;
     const LibraryRoutesServer server(&library, localNoon(kSummaryDate));
-    const auto declared = server.client().Get(exportPath(summaryColumns()));
+    const auto declared = declareThroughRows(server, summaryColumns());
     REQUIRE(declared);
     REQUIRE(declared->status == 202);
     const int refreshesBefore = server.refreshes();
@@ -302,8 +298,8 @@ TEST_CASE("with no snapshot ready a summary answers the library document and sta
     CHECK(response->status == 202);
 
     const auto document = documentOf(*response);
-    CHECK(keysOf(document) == Keys{"ready", "structure", "revision", "snapshotId", "trackCount",
-                                   "columns", "build", "halted"});
+    CHECK(keysOf(document) == Keys{"ready", "structure", "revision", "trackCount", "columns",
+                                   "changeCounts", "build", "halted"});
     CHECK(document.at("ready") == false);
 
     CHECK(server.refreshes() == refreshesBefore);
@@ -319,7 +315,7 @@ TEST_CASE(
     constexpr char kMood[] = "%mood%";
     auto wider = summaryColumns();
     wider.emplace_back(kMood);
-    const auto declared = server.client().Get(exportPath(wider));
+    const auto declared = declareThroughRows(server, wider);
     REQUIRE(declared);
     REQUIRE(declared->status == 202);
     const int refreshesBefore = server.refreshes();
@@ -351,19 +347,22 @@ TEST_CASE("a role naming a column the declaration does not hold is a 409 naming 
     CHECK(server.summaryComputations() == 0);
 }
 
-TEST_CASE("a library too large to export is still summarised") {
-    const int64_t now = localNoon(kSummaryDate);
-    constexpr size_t kTinyCeiling = 64;
-    Library library(kRetainedRevisions, kTinyCeiling);
-    const LibraryRoutesServer server(&library, now);
+TEST_CASE("a third role set's summary leaves the two before it held no longer than the newer") {
+    Library library;
+    const LibraryRoutesServer server(&library, localNoon(kSummaryDate));
     declareAndBuild(server, library);
 
-    const auto exported = server.client().Get(exportPath(summaryColumns()));
-    REQUIRE(exported);
-    REQUIRE(exported->status == 413);
+    const auto& whole = everyRole();
+    const auto withoutRating = everyRoleBut({"rating"});
+    const auto withoutGenre = everyRoleBut({"genre"});
+    etagAt(server, whole);
+    etagAt(server, withoutRating);
+    etagAt(server, withoutGenre);
+    REQUIRE(server.summaryComputations() == 3);
 
-    const auto response = server.client().Get(summaryPath(everyRole()));
-    REQUIRE(response);
-    CHECK(response->status == 200);
-    CHECK(documentOf(*response) == expectedSummary(library, everyRole(), now, kSummaryDate));
+    etagAt(server, withoutRating);
+    CHECK(server.summaryComputations() == 3);
+
+    etagAt(server, whole);
+    CHECK(server.summaryComputations() == 4);
 }

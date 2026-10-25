@@ -9,9 +9,8 @@
 
 namespace jean::testing {
 
-// The snapshot and delta format, read the way a browser would rather than the way the component
-// wrote it: an offset that is right in the header and wrong in the blob reads as success
-// everywhere else. contract/openapi.yaml, *The snapshot format*, is what this implements.
+// The JLIB framing, read the way a browser would rather than the way the component wrote it: an
+// offset that is right in the header and wrong in the blob reads as success everywhere else.
 struct Wire {
     nlohmann::json header;
     std::string blob;
@@ -34,30 +33,5 @@ std::vector<std::string> column(const Wire& wire, const nlohmann::json& placed);
 nlohmann::json namedColumn(const Wire& wire, const std::string& name);
 
 std::vector<std::string> columnNames(const nlohmann::json& header);
-
-struct HeldColumn {
-    std::vector<std::string> dictionary;
-    std::vector<uint32_t> ids;
-    size_t distinct = 0;
-    bool hasUnresolved = false;
-    bool allUnresolved = false;
-};
-
-struct HeldLibrary {
-    uint64_t structure = 0;
-    uint64_t revision = 0;
-    size_t trackCount = 0;
-    std::map<std::string, HeldColumn> spine;
-    std::map<std::string, HeldColumn> columns;
-};
-
-HeldLibrary held(const Wire& snapshot);
-
-void applyChanges(HeldLibrary& library, const Wire& changes);
-
-void checkSameLibrary(const HeldLibrary& patched, const HeldLibrary& exported);
-
-std::vector<std::vector<std::string>> rowsOf(const HeldLibrary& library,
-                                             const std::vector<std::string>& declared);
 
 }  // namespace jean::testing

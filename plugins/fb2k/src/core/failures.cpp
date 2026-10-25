@@ -27,7 +27,7 @@ std::string describe(PlayerOutcome outcome) {
         case PlayerOutcome::tooMany:
             return "this install's autoplaylist limit is reached";
         case PlayerOutcome::structureMoved:
-            return describe(DeltaOutcome::structureChanged);
+            return kRowsStructureMoved;
         case PlayerOutcome::queueMoved:
             return "the queue changed since that revision; read it again";
         case PlayerOutcome::rowsMoved:
@@ -124,7 +124,7 @@ std::string describe(TagWriteOutcome outcome) {
         case TagWriteOutcome::rowsMoved:
             return "the playlist's rows were added, removed or reordered; read them again";
         case TagWriteOutcome::libraryRebuilt:
-            return "the media library was rebuilt; export it again";
+            return "the media library was rebuilt; read the state and ask again";
         case TagWriteOutcome::writeFailed:
             return "the player could not write the tags";
         case TagWriteOutcome::timedOut:
@@ -149,10 +149,6 @@ std::string describe(LibraryRefusal refusal) {
             return "duplicate column";
         case LibraryRefusal::badSince:
             return "unacceptable revision";
-        case LibraryRefusal::columnNotDeclared:
-            return "column not declared";
-        case LibraryRefusal::badSpine:
-            return "unacceptable spine";
         case LibraryRefusal::badRole:
             return "unacceptable role";
         case LibraryRefusal::duplicateRole:
@@ -161,34 +157,24 @@ std::string describe(LibraryRefusal refusal) {
             return "unacceptable question";
         case LibraryRefusal::duplicateQuestion:
             return "duplicate question";
+        case LibraryRefusal::tooManyRows:
+            return kTooManyRowsAsked;
     }
     return "unknown";
 }
 
-std::string describe(DeltaOutcome outcome) {
+std::string describe(ReadOutcome outcome) {
     switch (outcome) {
-        case DeltaOutcome::ok:
+        case ReadOutcome::ok:
             return "ok";
-        case DeltaOutcome::notBuilt:
+        case ReadOutcome::notBuilt:
             return "the library snapshot has not been built yet";
-        case DeltaOutcome::structureChanged:
-            return "tracks were added or removed; export the library again";
-        case DeltaOutcome::revisionTooOld:
-            return "that revision is older than the retained window; export the library again";
-        case DeltaOutcome::revisionUnknown:
+        case ReadOutcome::revisionTooOld:
+            return "that revision is older than the retained window; read the state and ask again";
+        case ReadOutcome::revisionUnknown:
             return "no such revision";
-        case DeltaOutcome::pairNotHeld:
-            return "that structure and revision name no position this library held; export the "
-                   "library again";
-        case DeltaOutcome::spliceTooLarge:
-            return "the tracks added or removed since then are too many to send; export the "
-                   "library again";
-        case DeltaOutcome::dictionariesCompacted:
-            return "the library was rebuilt with its dictionaries compacted; export the library "
-                   "again";
-        case DeltaOutcome::rearranged:
-            return "the library was rebuilt with other columns or in another order; export the "
-                   "library again";
+        case ReadOutcome::structureMoved:
+            return kRowsStructureMoved;
     }
     return "unknown";
 }
@@ -304,31 +290,26 @@ int httpStatusFor(LibraryRefusal refusal) {
         case LibraryRefusal::badColumn:
         case LibraryRefusal::duplicateColumn:
         case LibraryRefusal::badSince:
-        case LibraryRefusal::columnNotDeclared:
-        case LibraryRefusal::badSpine:
         case LibraryRefusal::badRole:
         case LibraryRefusal::duplicateRole:
         case LibraryRefusal::unacceptableQuestion:
         case LibraryRefusal::duplicateQuestion:
+        case LibraryRefusal::tooManyRows:
             return 400;
     }
     return 400;
 }
 
-int httpStatusFor(DeltaOutcome outcome) {
+int httpStatusFor(ReadOutcome outcome) {
     switch (outcome) {
-        case DeltaOutcome::ok:
+        case ReadOutcome::ok:
             return 200;
-        case DeltaOutcome::structureChanged:
-        case DeltaOutcome::pairNotHeld:
+        case ReadOutcome::structureMoved:
             return 409;
-        case DeltaOutcome::revisionTooOld:
-        case DeltaOutcome::revisionUnknown:
-        case DeltaOutcome::spliceTooLarge:
-        case DeltaOutcome::dictionariesCompacted:
-        case DeltaOutcome::rearranged:
+        case ReadOutcome::revisionTooOld:
+        case ReadOutcome::revisionUnknown:
             return 410;
-        case DeltaOutcome::notBuilt:
+        case ReadOutcome::notBuilt:
             return 503;
     }
     return 500;
@@ -352,7 +333,7 @@ std::string tagFailureDocument(TagWriteOutcome outcome) {
     return json{{"written", false}, {"error", describe(outcome)}}.dump();
 }
 
-std::string failureDocument(DeltaOutcome outcome) {
+std::string failureDocument(ReadOutcome outcome) {
     return json{{"error", describe(outcome)}, {"detail", ""}}.dump();
 }
 

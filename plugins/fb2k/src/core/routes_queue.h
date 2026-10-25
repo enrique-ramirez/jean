@@ -5,6 +5,8 @@
 #include "core/http_server.h"
 #include "core/json.h"
 #include "core/library.h"
+#include "core/library_questions.h"
+#include "core/library_roles.h"
 #include "core/player.h"
 #include "core/player_state.h"
 #include "core/rate_limit.h"
@@ -22,8 +24,9 @@ public:
     // `changes` is the one budget playlist and queue edits share. A null `playerState` reads
     // as revision 0, the revision of a fresh queue with nothing to name.
     QueueRoutes(const QueueCalls& queue, const SessionCalls& sessions, SessionRegistry& registry,
-                const Library* library, const PlayerStateStore* playerState,
-                const LiveSettings& settings, Throttle& changes, const RateLimitClock& clock);
+                const Library* library, LibraryQuestions& questions,
+                const PlayerStateStore* playerState, const LiveSettings& settings,
+                Throttle& changes, const RateLimitClock& clock);
 
     void addTo(httplib::Server& server);
 
@@ -34,7 +37,8 @@ private:
     void queuePlaylistRows(Session* session, const JsonObject& body, httplib::Response& res);
     void queueLibraryTracks(Session* session, const JsonObject& body, httplib::Response& res);
 
-    void readSessionQueue(const Session& session, httplib::Response& res);
+    void readSessionQueue(const Session& session, const RolesAsked& roles, httplib::Response& res);
+    void attachCovers(const RolesAsked& roles, std::vector<QueuedTrack>& entries) const;
     void queueInSession(Session& session, std::optional<QueuePosition> at, size_t requestedCount,
                         const std::function<SessionTracksRead()>& take, httplib::Response& res);
 
@@ -44,6 +48,7 @@ private:
     const SessionCalls& sessions_;
     SessionRegistry& registry_;
     const Library* const library_;
+    LibraryQuestions& questions_;
     const PlayerStateStore* const playerState_;
     const LiveSettings& settings_;
     Throttle& changes_;

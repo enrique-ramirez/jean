@@ -50,6 +50,12 @@ using PlaylistChangeReader =
     std::function<PlaylistChangesRead(const std::string& playlistId, uint64_t structure,
                                       uint64_t since, const std::vector<std::string>& columns)>;
 
+// Every row of `playlistId`, its handles copied in one main-thread job: a row the media library
+// holds as its ordinal, any other with `columns` evaluated against its own handle off the main
+// thread.
+using PlaylistTrackReader = std::function<PlaylistTracksRead(
+    const std::string& playlistId, const std::vector<std::string>& columns)>;
+
 // What GET /api/artwork/playlists/{id}/{row} has to decide from: `outcome` carries the two
 // only the player can answer, an unknown playlist and a position past its end. `libraryPath`
 // is set where the media library already holds a path for the row, which the route refuses
@@ -167,6 +173,7 @@ struct PlaylistCalls {
     PlaylistRoleReader readRole;
     PlaylistRowReader readRows;
     PlaylistChangeReader readChangedRows;
+    PlaylistTrackReader readTracks;
     PlaylistRowArtworkReader readRowArtwork;
     PlaylistCreator create;
     PlaylistRenamer rename;

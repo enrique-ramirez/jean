@@ -1,15 +1,13 @@
 # Runs the checks the automated suite cannot make: they need a real player and a real library.
-# Writes no tag, no playlist and nothing aimed at the library root. The one file it writes is the
-# library export, and only where JEAN_LIBRARY_EXPORT names a destination.
+# Writes no tag, no playlist and no file, and nothing aimed at the library root. The library is read
+# the way a client reads it, through POST /library/rows in windows.
 #
 #   scripts\verify-library.ps1
 #   scripts\verify-library.ps1 -Full
-#   $env:JEAN_LIBRARY_EXPORT = 'D:\path\export.jlib'; scripts\verify-library.ps1
 #   scripts\verify-library.ps1 -Origin 'https://jean.example'
 param(
   [string]$FooJean = 'http://127.0.0.1:8881/api',
   [switch]$Full,
-  [string]$LibraryExport = $env:JEAN_LIBRARY_EXPORT,
   [string]$Origin = $env:JEAN_ALLOWED_ORIGIN
 )
 
@@ -18,8 +16,6 @@ $ErrorActionPreference = 'Stop'
 $script:passed = 0
 $script:failed = 0
 $script:skipped = 0
-$script:libraryExportBytes = $null
-
 function Invoke-Check {
   param(
     [Parameter(Mandatory = $true)][string]$Name,
@@ -90,8 +86,7 @@ function Get-MissingHeaderNames($value, [string[]]$required) {
 # run time: scripts/deploy.local.sh syncs only src/, scripts/, third_party/ and tests/ to the
 # player, so neither ui/ nor node ever reaches this machine. Regenerate by importing
 # TRACK_EXPRESSIONS from that file in a throwaway node script run from ui/ and pasting one
-# expression per line back here if fields.ts changes. This is the one place both this probe and
-# the export a later check takes read the declared columns.
+# expression per line back here if fields.ts changes.
 $script:DeclaredColumns = @(
   '%tracknumber%'
   '%discnumber%'
@@ -237,11 +232,11 @@ function Get-CodingHeaders([string]$coding) {
   return @{ 'Accept-Encoding' = $coding }
 }
 
-# The three library routes name the content coding in the validator (sendIfChanged in
-# core/http_responses.cpp appends "-gzip" or "-identity" to the generation string), so a validator
-# taken under one coding must not revalidate the other. GET /api/artwork does not: sendArtwork
-# never varies its ETag by coding, and images are outside can_compress_content_type's list, so
-# this helper is exercised only against the three routes that do.
+# GET /state names the content coding in its validator (sendIfChanged in core/http_responses.cpp
+# appends "-gzip" or "-identity" to the generation string), so a validator taken under one coding
+# must not revalidate the other. GET /api/artwork does not: sendArtwork never varies its ETag by
+# coding, and images are outside can_compress_content_type's list, so this helper is exercised
+# only against the route that does.
 function Test-ConditionalRoute([string]$label, [string]$uri) {
   $identityHeaders = Get-CodingHeaders 'identity'
   $gzipHeaders = Get-CodingHeaders 'gzip'
@@ -303,32 +298,18 @@ function Test-ConditionalRoute([string]$label, [string]$uri) {
   }
 }
 
-$script:exportCheckAttempted = $false
+$script:declarationCheckAttempted = $false
 function Get-SnapshotSkipMessage {
   $needs = 'needs a warm snapshot matching the declared columns'
   if (-not $Full) { return "$needs; run with -Full to let a check build one" }
-  if ($script:exportCheckAttempted) { return "$needs; the export check above already ran, so read its result first" }
-  return "$needs; the export check below builds one, so a second run reaches this"
+  if ($script:declarationCheckAttempted) { return "$needs; the declaration check above already ran, so read its result first" }
+  return "$needs; the declaration check below builds one, so a second run reaches this"
 }
 function Assert-SnapshotWarm {
   if (-not $script:snapshotWarm) {
     Skip-Check (Get-SnapshotSkipMessage)
   }
 }
-
-function Get-LibraryExportQuery {
-  return ($script:DeclaredColumns | ForEach-Object { 'columns=' + [System.Uri]::EscapeDataString($_) }) -join '&'
-}
-
-function Get-LibraryExportUri {
-  Assert-SnapshotWarm
-  return "$FooJean/library/export?$(Get-LibraryExportQuery)"
-}
-
-# GET /library/export can be answering a walk of a genuinely large library rather than a status
-# check, so this budget is wider than the rest of the script's requests and is a guess rather
-# than a measurement.
-$script:LibraryExportTimeoutSeconds = 120
 
 function Get-CurrentLibraryState {
   Assert-SnapshotWarm
@@ -337,13 +318,6 @@ function Get-CurrentLibraryState {
     throw "GET /state answered $($probe.StatusCode), not 200"
   }
   return ($probe.Body | ConvertFrom-Json).library
-}
-
-# Reading the current revision back through GET /state, which never starts a build, is what
-# makes a 'since' value on /library/changes safe to build without risking notBuilt or
-# revisionUnknown (Library::changes in core/library.cpp).
-function Get-CurrentLibraryRevision {
-  return (Get-CurrentLibraryState).revision
 }
 
 # Library::state() in core/library.cpp reports build progress under build, but this script does
@@ -375,66 +349,62 @@ function Wait-ForDeclaredColumns([int]$TimeoutSeconds, [uint64]$MinStructure = 0
   throw "the declared columns did not finish building within $TimeoutSeconds second(s)"
 }
 
-Invoke-Check -Name "GET /state revalidates by ETag, in both codings, and rejects a validator from the other" -Body {
-  $initial = Invoke-ApiProbe "$FooJean/state" 'Get' @{}
-  if ($initial.StatusCode -ne 200) {
-    throw "GET /state answered $($initial.StatusCode), not 200"
+# The most rows one answer carries, kMaxRowsPerAnswer in core/library_rows.h.
+$script:RowsWindow = 4096
+
+function Invoke-RowsWindow([uint64]$Structure, [uint64]$Start, [uint64]$Count) {
+  $body = @{
+    columns   = @($script:DeclaredColumns)
+    structure = "$Structure"
+    runs      = @(, @($Start, $Count))
+  } | ConvertTo-Json -Compress -Depth 4
+  try {
+    $resp = Invoke-WebRequest -Uri "$FooJean/library/rows" -Method Post -Body $body -ContentType 'application/json' -Headers (Get-CodingHeaders 'identity') -UseBasicParsing -TimeoutSec 120
+    return @{ StatusCode = [int]$resp.StatusCode; Headers = $resp.Headers; Bytes = $resp.RawContentStream.ToArray() }
+  } catch {
+    $errorResponse = $_.Exception.Response
+    if (-not $errorResponse) { throw }
+    return @{ StatusCode = [int]$errorResponse.StatusCode; Headers = $errorResponse.Headers; Bytes = @() }
   }
-  if (($initial.Body | ConvertFrom-Json).player.playback -eq 'playing') {
-    Skip-Check "the player is playing, and GET /state's ETag folds in playback as well as the library"
-  }
-  Test-ConditionalRoute "GET /state" "$FooJean/state"
 }
 
-Invoke-Check -Name "GET /library/export revalidates by ETag, in both codings, and rejects a validator from the other" -Body {
-  Test-ConditionalRoute "GET /library/export" (Get-LibraryExportUri)
-}
+$script:RowsReadSeconds = 600
 
-Invoke-Check -Name "GET /library/changes revalidates by ETag, in both codings, and rejects a validator from the other" -Body {
-  $revision = Get-CurrentLibraryRevision
-  Test-ConditionalRoute "GET /library/changes" "$FooJean/library/changes?since=$revision"
-}
-
-Invoke-Check -Name "GET /library/export captures the export to JEAN_LIBRARY_EXPORT, in the identity coding" -Body {
-  if (-not $script:snapshotWarm -and -not $Full) {
-    Skip-Check (Get-SnapshotSkipMessage)
-  }
-  $script:exportCheckAttempted = $true
-
-  $headers = Get-CodingHeaders 'identity'
-  $uri = "$FooJean/library/export?$(Get-LibraryExportQuery)"
-  $export = Invoke-WebRequest -Uri $uri -Method Get -Headers $headers -UseBasicParsing -TimeoutSec $script:LibraryExportTimeoutSeconds
-
-  if ([int]$export.StatusCode -eq 202) {
-    if (-not $Full) {
-      throw "GET /library/export answered 202 though the snapshot was warm moments ago; rerun with -Full"
+function Read-LibrarySpine {
+  $deadline = (Get-Date).AddSeconds($script:RowsReadSeconds)
+  :restart while ((Get-Date) -lt $deadline) {
+    $library = Get-CurrentLibraryState
+    $directory = New-Object 'System.Collections.Generic.List[string]'
+    $filename = New-Object 'System.Collections.Generic.List[string]'
+    $start = [uint64]0
+    while ($start -lt [uint64]$library.trackCount) {
+      $count = [Math]::Min([uint64]$script:RowsWindow, [uint64]$library.trackCount - $start)
+      $answer = Invoke-RowsWindow ([uint64]$library.structure) $start $count
+      if ($answer.StatusCode -eq 429) {
+        $wait = [int]($answer.Headers['Retry-After'] | Select-Object -First 1)
+        Start-Sleep -Seconds ([Math]::Max($wait, 1))
+        continue
+      }
+      if ($answer.StatusCode -eq 409 -or $answer.StatusCode -eq 202) {
+        Start-Sleep -Seconds 2
+        continue restart
+      }
+      if ($answer.StatusCode -ne 200) {
+        throw "POST /library/rows answered $($answer.StatusCode), not 200, 202, 409 or 429"
+      }
+      $window = Read-RowsSpine $answer.Bytes
+      $directory.AddRange([string[]]$window.Directory)
+      $filename.AddRange([string[]]$window.Filename)
+      $start += $count
     }
-    Wait-ForDeclaredColumns $script:LibraryBuildTimeoutSeconds
-    # A set already building answers 202 again rather than starting a second build (startBuilding()
-    # in core/routes_library.cpp), so this second ask is the one that reads the finished export.
-    $export = Invoke-WebRequest -Uri $uri -Method Get -Headers $headers -UseBasicParsing -TimeoutSec $script:LibraryExportTimeoutSeconds
-    if ([int]$export.StatusCode -ne 200) {
-      throw "GET /library/export answered $([int]$export.StatusCode) after the declared columns were reported ready, not 200"
-    }
-  } elseif ([int]$export.StatusCode -ne 200) {
-    throw "GET /library/export answered $([int]$export.StatusCode), not 200 or 202"
+    return @{ TrackCount = $directory.Count; Directory = $directory.ToArray(); Filename = $filename.ToArray() }
   }
-
-  if ($export.Headers['Content-Encoding']) {
-    throw "asked for identity but answered Content-Encoding: $($export.Headers['Content-Encoding'])"
-  }
-
-  $script:libraryExportBytes = $export.RawContentStream.ToArray()
-
-  if (-not $LibraryExport) {
-    Skip-Check "needs JEAN_LIBRARY_EXPORT (or -LibraryExport) set to a destination file"
-  }
-  [System.IO.File]::WriteAllBytes($LibraryExport, $script:libraryExportBytes)
+  throw "the library was not read within $script:RowsReadSeconds second(s)"
 }
 
 # fb2k::sortStringCompare is StrCmpLogicalW (ARCHITECTURE.md, "foobar2000 does not compare paths
 # byte by byte"). Calling it directly, rather than sorting a playlist at the player, is what
-# lets this script stay read-only. The export's spine carries neither subsong nor the canonical
+# lets this script stay read-only. A window's spine carries neither subsong nor the canonical
 # path, so this reproduces the primary comparison alone; Get-NaturalOrderComparisonCounts below
 # is where a pair it calls equal is counted as a tie rather than a mismatch for that reason.
 Add-Type -Namespace Jean -Name NativeSort -MemberDefinition @'
@@ -444,7 +414,7 @@ public static extern int StrCmpLogicalW(string a, string b);
 
 # fb2k::makeSortString keys off the unnormalised path on purpose, because the separator weighs in
 # foobar2000's comparison (fb2k/library.cpp, the comment above sortKeys[n] = fb2k::makeSortString);
-# on Windows that separator is a backslash. The export publishes forward-slashed addresses
+# on Windows that separator is a backslash. The rows route publishes forward-slashed addresses
 # (fb2k/library.cpp's forwardSlashed), so comparing on those directly compares a different string
 # than the component compared. Reversing that mapping is exact because a filename cannot itself
 # hold a forward slash on Windows, so every '/' in an address is a separator forwardSlashed wrote.
@@ -466,7 +436,7 @@ function Get-PositionMismatchCount([string[]]$expected, [string[]]$actual) {
 
 # A position where the two addresses differ but Compare-LibraryPath still calls them equal is not
 # a mismatch: it is a pair sortStringCompare would go on to resolve with wcscmp, or, on a further
-# tie, ordinalOrder's own subsong and canonical path (core/library.cpp), and the export's spine
+# tie, ordinalOrder's own subsong and canonical path (core/library.cpp), and a window's spine
 # carries none of the three. Counting it as a tie rather than a mismatch accepts that limit
 # instead of expecting an exact match.
 function Get-NaturalOrderComparisonCounts([string[]]$expected, [string[]]$actual) {
@@ -479,7 +449,7 @@ function Get-NaturalOrderComparisonCounts([string[]]$expected, [string[]]$actual
   return @{ Mismatch = $mismatch; Tie = $tie }
 }
 
-# LibraryHeader in contract/openapi.yaml, decoded the way ui/src/shared/api/jlib.ts's decodeJlib
+# LibraryRowsHeader in contract/openapi.yaml, decoded the way ui/src/shared/api/jlib.ts's decodeRows
 # does: a magic number, a JSON header, then a blob starting on a four-byte boundary. Only the
 # spine's directory and filename are read here; the declared columns are not.
 function Read-LibrarySection([byte[]]$bytes, [int]$blobAt, $section) {
@@ -523,48 +493,40 @@ function Get-LibraryColumnValues([byte[]]$bytes, [int]$blobAt, $column) {
   return , $values
 }
 
-function Read-LibrarySpine([byte[]]$bytes) {
-  if ($bytes.Length -lt 8) { throw "the export is shorter than its own framing" }
+function Read-RowsHeader([byte[]]$bytes) {
+  if ($bytes.Length -lt 8) { throw "the window is shorter than its own framing" }
   if ([System.Text.Encoding]::ASCII.GetString($bytes, 0, 4) -ne 'JLIB') {
-    throw "the export's magic number is not JLIB"
+    throw "the window's magic number is not JLIB"
   }
   $headerBytes = [int][System.BitConverter]::ToUInt32($bytes, 4)
   $blobAt = 8 + $headerBytes
   if ($blobAt % 4 -ne 0) {
-    throw "the export's blob starts at $blobAt, which is not a multiple of four"
+    throw "the window's blob starts at $blobAt, which is not a multiple of four"
   }
-  $header = [System.Text.Encoding]::UTF8.GetString($bytes, 8, $headerBytes) | ConvertFrom-Json
-  if ($header.kind -ne 'snapshot') {
-    throw "the export is a $($header.kind), not a snapshot"
-  }
-  if (-not $header.spine.directory) { throw "the export's spine carries no directory column" }
-  if (-not $header.spine.filename) { throw "the export's spine carries no filename column" }
-
   return @{
-    TrackCount = [int]$header.trackCount
-    Directory  = Get-LibraryColumnValues $bytes $blobAt $header.spine.directory
-    Filename   = Get-LibraryColumnValues $bytes $blobAt $header.spine.filename
+    Header = [System.Text.Encoding]::UTF8.GetString($bytes, 8, $headerBytes) | ConvertFrom-Json
+    BlobAt = $blobAt
   }
 }
 
-function Get-LibraryExportBytes {
-  Assert-SnapshotWarm
-  if (-not $script:libraryExportBytes) {
-    $headers = Get-CodingHeaders 'identity'
-    $export = Invoke-WebRequest -Uri (Get-LibraryExportUri) -Method Get -Headers $headers -UseBasicParsing -TimeoutSec $script:LibraryExportTimeoutSeconds
-    if ([int]$export.StatusCode -ne 200) {
-      throw "GET /library/export (for the spine) answered $([int]$export.StatusCode), not 200"
-    }
-    $script:libraryExportBytes = $export.RawContentStream.ToArray()
+function Read-RowsSpine([byte[]]$bytes) {
+  $framed = Read-RowsHeader $bytes
+  $header = $framed.Header
+  if ($header.kind -ne 'rows') { throw "the window is a $($header.kind) body, not rows" }
+  if (-not $header.spine.directory) { throw "the window's spine carries no directory column" }
+  if (-not $header.spine.filename) { throw "the window's spine carries no filename column" }
+
+  return @{
+    Directory = Get-LibraryColumnValues $bytes $framed.BlobAt $header.spine.directory
+    Filename  = Get-LibraryColumnValues $bytes $framed.BlobAt $header.spine.filename
   }
-  return $script:libraryExportBytes
 }
 
 $script:librarySpine = $null
 function Get-LibrarySpine {
   Assert-SnapshotWarm
   if (-not $script:librarySpine) {
-    $script:librarySpine = Read-LibrarySpine (Get-LibraryExportBytes)
+    $script:librarySpine = Read-LibrarySpine
   }
   return $script:librarySpine
 }
@@ -575,6 +537,36 @@ function Get-LibraryAddresses($spine) {
     $addresses[$i] = $spine.Directory[$i] + $spine.Filename[$i]
   }
   return , $addresses
+}
+
+Invoke-Check -Name "POST /library/rows declares the columns, answers a window in the identity coding, and frames it as a rows body" -Body {
+  if (-not $script:snapshotWarm -and -not $Full) {
+    Skip-Check (Get-SnapshotSkipMessage)
+  }
+  $script:declarationCheckAttempted = $true
+
+  $state = Invoke-ApiProbe "$FooJean/state" 'Get' @{}
+  if ($state.StatusCode -ne 200) { throw "GET /state answered $($state.StatusCode), not 200" }
+  $structure = [uint64](($state.Body | ConvertFrom-Json).library.structure)
+
+  $answer = Invoke-RowsWindow $structure 0 1
+  if ($answer.StatusCode -eq 202) {
+    if (-not $Full) {
+      throw "POST /library/rows answered 202 though the snapshot was warm moments ago; rerun with -Full"
+    }
+    Wait-ForDeclaredColumns $script:LibraryBuildTimeoutSeconds
+    $structure = [uint64](Get-CurrentLibraryState).structure
+    $answer = Invoke-RowsWindow $structure 0 1
+  }
+  if ($answer.StatusCode -ne 200) {
+    throw "POST /library/rows answered $($answer.StatusCode) with the declared columns ready, not 200"
+  }
+  if ($answer.Headers['Content-Encoding']) {
+    throw "asked for identity but answered Content-Encoding: $($answer.Headers['Content-Encoding'])"
+  }
+  $framed = Read-RowsHeader $answer.Bytes
+  if ($framed.Header.kind -ne 'rows') { throw "the window is a $($framed.Header.kind) body, not rows" }
+  if ([int]$framed.Header.rows -ne 1) { throw "a window of one row carried $($framed.Header.rows)" }
 }
 
 Invoke-Check -Name "the component's ordinal order matches the player's own path comparator, with a byte-order control" -Body {
@@ -755,7 +747,7 @@ Invoke-Check -Name "two tracks sharing a cover share an ETag, and the sample doe
   }
 }
 
-# Guarded the way Get-CurrentLibraryRevision is: GET /state never needs a warm snapshot
+# Guarded the way Get-CurrentLibraryState is: GET /state never needs a warm snapshot
 # itself, but the value this reads is only meaningful as the baseline for a rebuild the caller
 # is about to force on one.
 function Get-CurrentLibraryStructure {
@@ -781,7 +773,6 @@ Invoke-Check -Name "a forced rebuild reproduces the same ordinal order, position
     throw "POST /library/refresh answered $($refresh.StatusCode), not 202"
   }
 
-  $script:libraryExportBytes = $null
   $script:librarySpine = $null
   # Library::replace() in core/library.cpp increments structure on every rebuild, whether or
   # not the walk found a different set of tracks, which is what makes waiting for it to move
@@ -794,10 +785,10 @@ Invoke-Check -Name "a forced rebuild reproduces the same ordinal order, position
 
   $after = Get-LibraryAddresses (Get-LibrarySpine)
   if ($after.Length -ne $before.Length) {
-    throw "the rebuilt export holds $($after.Length) row(s), the first held $($before.Length); the two are not comparable position by position"
+    throw "the rebuilt library holds $($after.Length) row(s), the first held $($before.Length); the two are not comparable position by position"
   }
 
-  # A different structure between the two exports is this check working, not a race to retry:
+  # A different structure between the two reads is this check working, not a race to retry:
   # it is forced on purpose, to prove get_all_items's undefined order still lands on the same
   # ordinals once ordinalOrder (core/library.cpp) has sorted it twice.
   $moved = Get-PositionMismatchCount $before $after

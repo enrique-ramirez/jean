@@ -78,6 +78,15 @@ struct TagGroups {
     std::vector<int32_t> over(const Snapshot& snapshot, std::optional<size_t> role);
 };
 
+// A genre tag splits on the multi-value separator into genres, each counted once per cell.
+struct GenreGroups {
+    TagGroups tags;
+    std::vector<std::string> keys;
+    PerValue<std::vector<int32_t>> of;
+};
+
+GenreGroups genreGroupsOf(const Snapshot& snapshot, std::optional<size_t> role);
+
 struct Credits {
     PerValue<int32_t> albumGroup, albumArtistGroup, artistGroup;
     TagGroups albums;
@@ -87,6 +96,9 @@ struct Credits {
 };
 
 Credits creditsOf(const Snapshot& snapshot, const LibraryRoles& roles);
+
+// The artist a row's credit names, or -1 where it names nobody: none, or whitespace alone.
+int64_t artistKeyOf(const Credits& credits, size_t row);
 
 struct AlbumRecord {
     std::string name;
@@ -99,6 +111,8 @@ struct AlbumRecord {
     double coverTrack = 0;
     uint32_t cover = 0;
 };
+
+uint64_t albumPairOf(int32_t albumGroup, int64_t artistKey);
 
 struct AlbumIndex {
     std::unordered_map<uint64_t, uint32_t> byPair;

@@ -3,25 +3,38 @@
 #include "core/documents.h"
 #include "core/http_responses.h"
 #include "core/json.h"
+#include "core/library_paths.h"
 #include "core/playlists.h"
 #include "core/requests_playlists.h"
 #include "core/text.h"
+
+#include <algorithm>
+#include <array>
+#include <iterator>
+#include <optional>
+#include <string_view>
+#include <vector>
 
 namespace jean {
 
 namespace {
 
+constexpr std::array<std::string_view, 3> kRowsOwned{"offset", "count", "columns"};
+constexpr std::array<std::string_view, 3> kRowChangesOwned{"structure", "since", "columns"};
+
 constexpr char kPlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items)";
+constexpr char kPlaylistRuns[] = R"(/api/playlists/([0-9a-f-]{36})/runs)";
+constexpr char kPlaylistFind[] = R"(/api/playlists/([0-9a-f-]{36})/find)";
 constexpr char kPlaylistItemChanges[] = R"(/api/playlists/([0-9a-f-]{36})/items/changes)";
 constexpr char kCopyPlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items/copy)";
 constexpr char kRemovePlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items/remove)";
 constexpr char kMovePlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items/move)";
 constexpr char kSortPlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items/sort)";
 
-// The same gate as columnsDeclared, with the revision the client is catching up from. Unlike
-// GET /api/library/changes, where a present but empty `since` is read as revision zero, a
-// playlist's own `since` has no such zero to fall back to, so an empty value is refused here
-// rather than forwarded to parseLibraryRequest's library reading of it.
+// The same gate as columnsDeclared, with the revision the client is catching up from. A
+// present but empty `since` is read by parseLibraryRequest as revision zero, and a playlist's
+// own `since` has no such zero to fall back to, so an empty value is refused here rather than
+// forwarded to it.
 LibraryRequest columnsAndSinceDeclared(const httplib::Request& req) {
     const auto asked = columnsAsked(req);
     if (asked.empty())
@@ -33,16 +46,27 @@ LibraryRequest columnsAndSinceDeclared(const httplib::Request& req) {
     return parseLibraryRequest(asked, req.get_param_value("since"));
 }
 
-PlayerOutcome rowsRefusal(DeltaOutcome catchUp) {
-    return catchUp == DeltaOutcome::structureChanged ? PlayerOutcome::rowsMoved
-                                                     : PlayerOutcome::rowsRevisionTooOld;
+PlayerOutcome rowsRefusal(ReadOutcome catchUp) {
+    return catchUp == ReadOutcome::structureMoved ? PlayerOutcome::rowsMoved
+                                                  : PlayerOutcome::rowsRevisionTooOld;
 }
 
 }  // namespace
 
 PlaylistRowRoutes::PlaylistRowRoutes(const PlaylistCalls& playlists, const Library* library,
-                                     const LiveSettings& settings, Throttle& changes)
-    : playlists_(playlists), library_(library), settings_(settings), changes_(changes) {}
+                                     const LiveSettings& settings, Throttle& changes,
+                                     LibraryRoutes& libraryRoutes, const RateLimitClock& clock)
+    : playlists_(playlists),
+      library_(library),
+      settings_(settings),
+      changes_(changes),
+      libraryRoutes_(libraryRoutes),
+      rowReads_(kRowsBurst, kRowsRefill),
+      clock_(clock) {}
+
+bool PlaylistRowRoutes::readingRowsTooFast(const httplib::Request& req, httplib::Response& res) {
+    return perClientTooFast(rowReads_, req.remote_addr, clock_(), kReadingPlaylistRowsTooFast, res);
+}
 
 // Only POST /playlists/{id}/items calls this. POST /playlists/own/{role}/items resolves its id
 // through the role itself, so it never holds a client-supplied one for this guard to check.
@@ -131,18 +155,40 @@ void PlaylistRowRoutes::addTo(httplib::Server& server) {
             return;
         }
 
+        const auto roles = rolesAsked(req, kAllRoleNames, kRowsOwned);
+        if (!roles.ok()) {
+            respondRefusal(res, roles.refusal, roles.detail);
+            return;
+        }
+
         if (!playlists_.readRows) {
             respondUnavailable(res, kNoPlaylistRows);
             return;
         }
 
-        const auto read = playlists_.readRows(id, page.offset, page.count, declared.columns);
+        if (readingRowsTooFast(req, res))
+            return;
+
+        auto read = playlists_.readRows(id, page.offset, page.count, declared.columns);
         if (read.outcome != PlayerOutcome::done) {
             respondOutcome(res, read.outcome);
             return;
         }
 
+        std::vector<PlaylistRow*> rows;
+        std::transform(read.rows.begin(), read.rows.end(), std::back_inserter(rows),
+                       [](PlaylistRow& row) { return &row; });
+        attachCovers(library_, libraryRoutes_.questions(), roles.expressions, rows);
+
         respond(res, 200, playlistRowsDocument(read));
+    });
+
+    server.Get(kPlaylistRuns, [this](const httplib::Request& req, httplib::Response& res) {
+        libraryRoutes_.readPlaylistRuns(req, res, playlists_.readTracks);
+    });
+
+    server.Get(kPlaylistFind, [this](const httplib::Request& req, httplib::Response& res) {
+        libraryRoutes_.findInPlaylist(req, res, playlists_.readTracks);
     });
 
     server.Get(kPlaylistItemChanges, [this](const httplib::Request& req, httplib::Response& res) {
@@ -162,22 +208,35 @@ void PlaylistRowRoutes::addTo(httplib::Server& server) {
             return;
         }
 
+        const auto roles = rolesAsked(req, kAllRoleNames, kRowChangesOwned);
+        if (!roles.ok()) {
+            respondRefusal(res, roles.refusal, roles.detail);
+            return;
+        }
+
         if (!playlists_.readChangedRows) {
             respondUnavailable(res, kNoPlaylistRows);
             return;
         }
 
-        const auto read =
-            playlists_.readChangedRows(id, structure, declared.since, declared.columns);
+        if (readingRowsTooFast(req, res))
+            return;
+
+        auto read = playlists_.readChangedRows(id, structure, declared.since, declared.columns);
         if (read.outcome != PlayerOutcome::done) {
             respondOutcome(res, read.outcome);
             return;
         }
 
-        if (read.catchUp != DeltaOutcome::ok) {
+        if (read.catchUp != ReadOutcome::ok) {
             respondOutcome(res, rowsRefusal(read.catchUp));
             return;
         }
+
+        std::vector<PlaylistRow*> rows;
+        std::transform(read.rows.begin(), read.rows.end(), std::back_inserter(rows),
+                       [](ChangedPlaylistRow& changed) { return &changed.row; });
+        attachCovers(library_, libraryRoutes_.questions(), roles.expressions, rows);
 
         respond(res, 200, playlistChangesDocument(read));
     });

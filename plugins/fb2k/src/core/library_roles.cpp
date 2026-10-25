@@ -66,6 +66,9 @@ std::string rolesKey(const std::map<std::string, std::string>& roles) {
 
 std::optional<LibraryRoles> rolesIn(const Snapshot& snapshot,
                                     const std::map<std::string, std::string>& roles) {
+    if (snapshot.columns.size() < kSpineFieldCount)
+        return roles.empty() ? std::optional<LibraryRoles>(LibraryRoles{}) : std::nullopt;
+
     LibraryRoles found;
     for (const auto& [name, expression] : roles) {
         const auto column =

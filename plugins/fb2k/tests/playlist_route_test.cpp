@@ -6,14 +6,17 @@
 
 #include "core/library.h"
 #include "core/settings.h"
+#include "support/cover_library.h"
 #include "support/fake_player.h"
 #include "support/keys.h"
 #include "support/log_capture.h"
 #include "support/spec.h"
+#include "support/summary_library.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -527,6 +530,72 @@ std::map<uint32_t, json> byPosition(const json& delta) {
     }
 
     return rows;
+}
+
+FakeRow coverRow(const std::string& title, const std::optional<std::string>& libraryPath) {
+    FakeRow row;
+    row.fields = {{"%title%", title}};
+    row.libraryPath = libraryPath;
+    return row;
+}
+
+std::vector<FakeRow> rowsOfCovers() {
+    return {
+        coverRow("Second", kRecordSecondTrack), coverRow("Bonus", kRecordBonusTrack),
+        coverRow("Cover", kRecordCover),        coverRow("Other album", kSecondRecordSecondTrack),
+        coverRow("Gone", kGoneFromTheLibrary),  coverRow("Dragged in", std::nullopt)};
+}
+
+json coversOfTheRows() {
+    return json::array(
+        {kRecordCover, kRecordCover, kRecordCover, kSecondRecordCover, nullptr, nullptr});
+}
+
+json nullCovers(size_t count) {
+    json covers = json::array();
+    for (size_t at = 0; at < count; ++at)
+        covers.push_back(nullptr);
+    return covers;
+}
+
+json coversIn(const json& items) {
+    json covers = json::array();
+    for (const auto& item : items) {
+        INFO("row: ", item.dump());
+        REQUIRE(item.contains("cover"));
+        covers.push_back(item.at("cover"));
+    }
+    return covers;
+}
+
+std::string coverPage(const std::vector<RoleAsked>& roles = coverRoles()) {
+    return withRoles(itemsPath(kPlaylistId, 0, rowsOfCovers().size(), {"%title%"}), roles);
+}
+
+json coverPageItems(const TestServer& server, const std::vector<RoleAsked>& roles = coverRoles()) {
+    const auto response = get(server, coverPage(roles));
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+    return json::parse(response->body).at("items");
+}
+
+void holdingChangedCoverRows(FakePlayer& player) {
+    auto entry = userPlaylist(kPlaylistId, "Road trip", kRowsStructure);
+    entry.revision = kChangedSince;
+
+    player.add(entry, rowsOfCovers());
+    player.retag(kPlaylistId, {{0, coverRow("Second, five stars", kRecordSecondTrack)},
+                               {4, coverRow("Gone, five stars", kGoneFromTheLibrary)},
+                               {5, coverRow("Dragged in, five stars", std::nullopt)}});
+    player.retainRevisionsFrom(kPlaylistId, kOldestRetained);
+}
+
+std::string coverChanges(const std::vector<RoleAsked>& roles = coverRoles()) {
+    return withRoles(changesPath(kPlaylistId, kRowsStructure, kChangedSince, {"%title%"}), roles);
+}
+
+void holdingCoverRows(FakePlayer& player) {
+    holdingRows(player, rowsOfCovers());
 }
 
 json patchedTitles(const json& delta) {
@@ -1325,6 +1394,233 @@ TEST_CASE("a changed row carries where it sits and nothing else, so a value trav
     for (const auto& item : delta.at("items")) {
         INFO("row: ", item.dump());
         CHECK(keysOf(item) == Keys{"position", "libraryPath", "subsong"});
+    }
+}
+
+TEST_CASE(
+    "a page naming roles carries each row's album cover, null for a row outside the library") {
+    Library library;
+    library.replace(coverSnapshot());
+    FakePlayer foobar;
+    holdingCoverRows(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto items = coverPageItems(server);
+
+    REQUIRE(items.size() == rowsOfCovers().size());
+    CHECK(coversIn(items) == coversOfTheRows());
+    CHECK(items[0].at("libraryPath") == kRecordSecondTrack);
+    CHECK(items[0].at("columns") == json::array({"Second"}));
+}
+
+TEST_CASE("a page naming roles carries a cover on a row of a page that starts part way in") {
+    Library library;
+    library.replace(coverSnapshot());
+    FakePlayer foobar;
+    holdingCoverRows(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto response =
+        get(server, withRoles(itemsPath(kPlaylistId, 3, 2, {"%title%"}), coverRoles()));
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    CHECK(coversIn(json::parse(response->body).at("items")) ==
+          json::array({kSecondRecordCover, nullptr}));
+}
+
+TEST_CASE("a row of a page naming roles carries its three keys and the cover") {
+    Library library;
+    library.replace(coverSnapshot());
+    FakePlayer foobar;
+    holdingCoverRows(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    for (const auto& item : coverPageItems(server)) {
+        INFO("row: ", item.dump());
+        CHECK(keysOf(item) == Keys{"columns", "libraryPath", "subsong", "cover"});
+    }
+}
+
+// A client that names no roles is one that draws no cover from this read, and the cover costs a
+// pass over the library's albums.
+TEST_CASE("a page naming no roles carries no cover") {
+    Library library;
+    library.replace(coverSnapshot());
+    FakePlayer foobar;
+    holdingCoverRows(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto page = pageOf(server, kPlaylistId, 0, rowsOfCovers().size(), {"%title%"});
+
+    REQUIRE(page.at("items").size() == rowsOfCovers().size());
+    for (const auto& item : page.at("items")) {
+        INFO("row: ", item.dump());
+        CHECK_FALSE(item.contains("cover"));
+    }
+}
+
+// The playlist still draws without its covers: neither is a reason to refuse the read, nor to
+// make a client wait on a build it did not ask for.
+TEST_CASE("a page whose roles the library cannot answer yet carries a null cover on each row") {
+    FakePlayer foobar;
+    holdingCoverRows(foobar);
+
+    SUBCASE("no snapshot built yet") {
+        Library library;
+        const TestServer server(servingSettings(), foobar.player(), &library);
+        CHECK(coversIn(coverPageItems(server)) == nullCovers(rowsOfCovers().size()));
+    }
+
+    SUBCASE("a role naming an expression the snapshot was not built with") {
+        Library library;
+        library.replace(coverSnapshot());
+        const TestServer server(servingSettings(), foobar.player(), &library);
+        CHECK(coversIn(coverPageItems(server, coverRolesWith({"album", "%album_x%"}))) ==
+              nullCovers(rowsOfCovers().size()));
+    }
+
+    SUBCASE("no media library at all") {
+        const TestServer server(servingSettings(), foobar.player());
+        CHECK(coversIn(coverPageItems(server)) == nullCovers(rowsOfCovers().size()));
+    }
+}
+
+// The map from a path to its row is the snapshot's at one structure. One left over from the
+// structure before answers rows that now belong to other tracks, and their albums' covers.
+TEST_CASE("a page's covers are read at the library's structure after an album is added ahead") {
+    Library library;
+    library.replace(coverSnapshot());
+    FakePlayer foobar;
+    holdingCoverRows(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+    REQUIRE(coversIn(coverPageItems(server)) == coversOfTheRows());
+
+    library.replace(coverSnapshotBehind(3));
+
+    CHECK(coversIn(coverPageItems(server)) == coversOfTheRows());
+}
+
+TEST_CASE("a page or a delta naming a role it cannot read is a 400 that never reaches the player") {
+    Library library;
+    library.replace(coverSnapshot());
+    FakePlayer foobar;
+    holdingChangedCoverRows(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+    const std::string tooLong = "role 'album' must be printable text of 1 to " +
+                                std::to_string(kMaxColumnLength) + " characters";
+
+    struct Refused {
+        const char* what;
+        std::vector<RoleAsked> roles;
+        std::string more;
+        const char* error;
+        std::string detail;
+    };
+    const std::vector<Refused> refused{
+        {"a name that is no role", coverRoles(), "&colour=%25title%25", "unacceptable role",
+         "'colour' is not a role"},
+        {"an empty expression", coverRolesBut("album"), "&album=", "unacceptable role", tooLong},
+        {"a role named twice", coverRoles(), "&album=%25artist%25", "duplicate role",
+         "role 'album' is named twice"},
+    };
+
+    for (const auto& request : refused) {
+        for (const auto& path : {coverPage(request.roles), coverChanges(request.roles)}) {
+            INFO(request.what, ": ", path + request.more);
+            const auto response = get(server, path + request.more);
+            REQUIRE(response);
+            CHECK(response->status == 400);
+            const auto body = json::parse(response->body);
+            CHECK(body.value("error", "") == request.error);
+            CHECK(body.value("detail", "") == request.detail);
+        }
+    }
+
+    CHECK(foobar.count(Call::readRows) == 0);
+    CHECK(foobar.count(Call::readChangedRows) == 0);
+}
+
+TEST_CASE("a delta naming roles carries each changed row's album cover, null outside the library") {
+    Library library;
+    library.replace(coverSnapshot());
+    FakePlayer foobar;
+    holdingChangedCoverRows(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto response = get(server, coverChanges());
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+    const auto rows = byPosition(json::parse(response->body));
+
+    REQUIRE(rows.size() == 3);
+    REQUIRE(rows.count(0) == 1);
+    CHECK(rows.at(0).at("cover") == kRecordCover);
+    REQUIRE(rows.count(4) == 1);
+    REQUIRE(rows.at(4).contains("cover"));
+    CHECK(rows.at(4).at("cover").is_null());
+    REQUIRE(rows.count(5) == 1);
+    REQUIRE(rows.at(5).contains("cover"));
+    CHECK(rows.at(5).at("cover").is_null());
+}
+
+TEST_CASE("a changed row of a delta naming roles carries where it sits and the cover") {
+    Library library;
+    library.replace(coverSnapshot());
+    FakePlayer foobar;
+    holdingChangedCoverRows(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto response = get(server, coverChanges());
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+    const auto delta = json::parse(response->body);
+
+    REQUIRE(delta.at("items").size() == 3);
+    for (const auto& item : delta.at("items")) {
+        INFO("row: ", item.dump());
+        CHECK(keysOf(item) == Keys{"position", "libraryPath", "subsong", "cover"});
+    }
+}
+
+TEST_CASE("a delta naming no roles carries no cover") {
+    Library library;
+    library.replace(coverSnapshot());
+    FakePlayer foobar;
+    holdingChangedCoverRows(foobar);
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto delta = deltaOf(server, kChangedSince, {"%title%"});
+
+    REQUIRE(delta.at("items").size() == 3);
+    for (const auto& item : delta.at("items")) {
+        INFO("row: ", item.dump());
+        CHECK_FALSE(item.contains("cover"));
+    }
+}
+
+TEST_CASE("a delta whose roles the library cannot answer yet carries a null cover on each row") {
+    FakePlayer foobar;
+    holdingChangedCoverRows(foobar);
+
+    const auto coversOfDelta = [](const TestServer& server, const std::vector<RoleAsked>& roles) {
+        const auto response = get(server, coverChanges(roles));
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+        return coversIn(json::parse(response->body).at("items"));
+    };
+
+    SUBCASE("no snapshot built yet") {
+        Library library;
+        const TestServer server(servingSettings(), foobar.player(), &library);
+        CHECK(coversOfDelta(server, coverRoles()) == nullCovers(3));
+    }
+
+    SUBCASE("a role naming an expression the snapshot was not built with") {
+        Library library;
+        library.replace(coverSnapshot());
+        const TestServer server(servingSettings(), foobar.player(), &library);
+        CHECK(coversOfDelta(server, coverRolesWith({"album", "%album_x%"})) == nullCovers(3));
     }
 }
 
@@ -3813,7 +4109,7 @@ TEST_CASE("a fill with nothing to resolve a set against names what is missing, n
     }
 
     SUBCASE("a library whose first snapshot has not been built yet") {
-        refused(&unbuilt, describe(DeltaOutcome::notBuilt));
+        refused(&unbuilt, describe(ReadOutcome::notBuilt));
     }
 
     CHECK(foobar.count(Call::resolveOwn) == 0);
@@ -3860,7 +4156,7 @@ TEST_CASE("a fill resolved against a generation the library has moved past inser
         REQUIRE(response);
         CHECK(response->status == 409);
 
-        CHECK(json::parse(response->body)["error"] == describe(DeltaOutcome::structureChanged));
+        CHECK(json::parse(response->body)["error"] == describe(ReadOutcome::structureMoved));
     }
 
     CHECK(foobar.titlesOf(kScratchPlaylistId) == alreadyHeld());
@@ -3888,7 +4184,7 @@ TEST_CASE("a fill whose ordinals were valid against a larger library answers 409
         REQUIRE(response);
         CHECK(response->status == 409);
 
-        CHECK(json::parse(response->body)["error"] == describe(DeltaOutcome::structureChanged));
+        CHECK(json::parse(response->body)["error"] == describe(ReadOutcome::structureMoved));
     }
 
     CHECK(foobar.titlesOf(kScratchPlaylistId) == alreadyHeld());
@@ -4941,9 +5237,7 @@ TEST_CASE("the contract publishes a 429 on every write the playlist limit can re
         CHECK(statusesOf(name).count(429) == 1);
     }
 
-    // Reading spends nothing, so a client may page a playlist while another is being written.
     CHECK(statusesOf("GET /playlists").count(429) == 0);
-    CHECK(statusesOf("GET /playlists/{id}/items").count(429) == 0);
 }
 
 TEST_CASE("with controlPlayback off, playing a row and both scratch routes are 403") {
@@ -5527,4 +5821,164 @@ TEST_CASE("a create refuses `duplicates` with either set, and makes nothing") {
     }
 
     CHECK(foobar.count(Call::createPlaylist) == 0);
+}
+
+namespace {
+
+constexpr int kRowReadBurst = 30;
+constexpr auto kRowReadRefill = std::chrono::milliseconds(100);
+
+std::string pagePath(const std::string& id = kPlaylistId) {
+    return itemsPath(id, 0, 2, {"%title%"});
+}
+
+std::string deltaPath() {
+    return changesPath(kPlaylistId, kRowsStructure, kChangedSince, {"%title%"});
+}
+
+void checkTooManyRowReads(const httplib::Result& refused) {
+    REQUIRE(refused);
+    CHECK(refused->status == 429);
+    CHECK(json::parse(refused->body, nullptr, false) ==
+          json{{"error", "too many playlist row reads"}});
+    const auto wait = refused->get_header_value("Retry-After");
+    CHECK_FALSE(wait.empty());
+    CHECK(wait.find_first_not_of("0123456789") == std::string::npos);
+}
+
+int rowReadsAsked(const FakePlayer& foobar) {
+    return foobar.count(Call::readRows) + foobar.count(Call::readChangedRows);
+}
+
+}  // namespace
+
+TEST_CASE("the contract publishes a 429 on both playlist row reads, each its row budget's") {
+    const auto published = publishedRoutes();
+
+    for (const std::string path : {"/playlists/{id}/items", "/playlists/{id}/items/changes"}) {
+        INFO("route: GET ", path);
+        const auto found =
+            std::find_if(published.begin(), published.end(), [&path](const SpecRoute& route) {
+                return route.method == "GET" && route.path == path;
+            });
+        REQUIRE(found != published.end());
+        CHECK(found->statuses.count(429) == 1);
+    }
+}
+
+// A list scrolling far asks for a screenful of windows at once, a page or a delta each, and the
+// two draw on one budget so a client cannot double it by mixing them.
+TEST_CASE("playlist pages and deltas share one budget of 30, then are refused before the player") {
+    FakePlayer foobar;
+    holdingChangedRows(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    for (int sent = 0; sent < kRowReadBurst; ++sent) {
+        const auto response = get(server, sent % 3 == 0 ? deltaPath() : pagePath());
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+    }
+    REQUIRE(rowReadsAsked(foobar) == kRowReadBurst);
+
+    checkTooManyRowReads(get(server, pagePath()));
+    checkTooManyRowReads(get(server, deltaPath()));
+    CHECK(rowReadsAsked(foobar) == kRowReadBurst);
+}
+
+TEST_CASE("a playlist row read the component judges for itself spends none of the row budget") {
+    FakePlayer foobar;
+    holdingRows(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    const std::vector<std::string> refused{
+        "/api/playlists/" + std::string(kPlaylistId) +
+            "/items?offset=two&count=2&columns=%25title%25",
+        "/api/playlists/" + std::string(kPlaylistId) + "/items?offset=0&count=2",
+        // Right length and right alphabet, so the router hands it over and the component's own
+        // check is what refuses it.
+        pagePath("------------------------------------"),
+        changesPath(kPlaylistId, "nine", std::to_string(kChangedSince), {"%title%"}),
+        changesPath(kPlaylistId, std::to_string(kRowsStructure), "", {"%title%"}),
+    };
+    for (int sent = 0; sent <= kRowReadBurst; ++sent) {
+        const auto& path = refused[static_cast<size_t>(sent) % refused.size()];
+        INFO("refused: ", path);
+        const auto response = get(server, path);
+        REQUIRE(response);
+        CHECK(response->status == 400);
+    }
+    CHECK(foobar.total() == 0);
+
+    const auto page = get(server, pagePath());
+    REQUIRE(page);
+    CHECK(page->status == 200);
+}
+
+TEST_CASE("an install that reads no playlist rows answers 503 without spending the row budget") {
+    const TestServer server(servingSettings(), Player{});
+
+    for (int sent = 0; sent <= kRowReadBurst; ++sent) {
+        const auto page = get(server, pagePath());
+        const auto delta = get(server, deltaPath());
+        REQUIRE(page);
+        REQUIRE(delta);
+        CHECK(page->status == 503);
+        CHECK(delta->status == 503);
+    }
+}
+
+TEST_CASE("pages of a playlist the player does not hold spend the row budget before their 404") {
+    FakePlayer foobar;
+    holdingRows(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    for (int sent = 0; sent < kRowReadBurst; ++sent) {
+        const auto response = get(server, pagePath(kSecondPlaylistId));
+        REQUIRE(response);
+        REQUIRE(response->status == 404);
+    }
+
+    checkTooManyRowReads(get(server, pagePath(kSecondPlaylistId)));
+    checkTooManyRowReads(get(server, pagePath()));
+    CHECK(foobar.count(Call::readRows) == kRowReadBurst);
+}
+
+TEST_CASE("the playlist row budget earns one read back every 100 ms") {
+    FakePlayer foobar;
+    holdingRows(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    for (int sent = 0; sent < kRowReadBurst; ++sent) {
+        const auto response = get(server, pagePath());
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+    }
+    checkTooManyRowReads(get(server, pagePath()));
+
+    server.advanceClock(kRowReadRefill - std::chrono::milliseconds(1));
+    checkTooManyRowReads(get(server, pagePath()));
+
+    server.advanceClock(std::chrono::milliseconds(1));
+    const auto earned = get(server, pagePath());
+    REQUIRE(earned);
+    CHECK(earned->status == 200);
+    checkTooManyRowReads(get(server, pagePath()));
+}
+
+TEST_CASE("playlist row reads past their budget leave playlist edits their own budget") {
+    FakePlayer foobar;
+    holdingRows(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    for (int sent = 0; sent < kRowReadBurst; ++sent) {
+        const auto response = get(server, pagePath());
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+    }
+    checkTooManyRowReads(get(server, pagePath()));
+
+    const auto renamed =
+        post(server, "/api/playlists/" + std::string(kPlaylistId), R"({"title": "Night drive"})");
+    CHECK(accepted(renamed));
+    CHECK(foobar.count(Call::renamePlaylist) == 1);
 }

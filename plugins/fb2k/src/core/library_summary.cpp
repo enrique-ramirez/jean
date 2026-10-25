@@ -1,6 +1,7 @@
 #include "core/library_summary.h"
 
 #include "core/library_groups.h"
+#include "core/library_sets.h"
 #include "core/text.h"
 #include "third_party/json.hpp"
 
@@ -18,9 +19,24 @@
 
 namespace jean {
 
-namespace {
-
 using Json = nlohmann::ordered_json;
+
+double roundHalfUp(double value) {
+    return std::floor(value + 0.5);
+}
+
+Json numberJson(double value) {
+    constexpr double kLastExactInteger = 9007199254740992.0;
+    if (std::isfinite(value) && value == std::floor(value) && std::fabs(value) < kLastExactInteger)
+        return static_cast<int64_t>(value);
+    return value;
+}
+
+Json optionalNumberJson(const std::optional<double>& value) {
+    return value ? numberJson(*value) : Json(nullptr);
+}
+
+namespace {
 
 constexpr size_t kShelfLimit = 24;
 constexpr size_t kMinimumPicks = 4;
@@ -42,23 +58,7 @@ constexpr double kMedian = 0.5;
 constexpr double kUpperQuartile = 0.75;
 constexpr double kLowerQuartile = 0.25;
 
-constexpr int kFirstRealYear = 1000;
 constexpr uint64_t kSplitMixStep = 0x9e3779b97f4a7c15ULL;
-
-double roundHalfUp(double value) {
-    return std::floor(value + 0.5);
-}
-
-Json numberJson(double value) {
-    constexpr double kLastExactInteger = 9007199254740992.0;
-    if (std::isfinite(value) && value == std::floor(value) && std::fabs(value) < kLastExactInteger)
-        return static_cast<int64_t>(value);
-    return value;
-}
-
-Json optionalNumberJson(const std::optional<double>& value) {
-    return value ? numberJson(*value) : Json(nullptr);
-}
 
 constexpr int kExactDigits = 15;
 constexpr int kExactPower = 22;
@@ -142,6 +142,8 @@ std::optional<double> parseDecimal(std::string_view raw) {
     return std::isfinite(parsed) ? std::optional<double>(parsed) : std::nullopt;
 }
 
+}  // namespace
+
 // Number() of the text, kept to the finite results. A text of only spaces is 0, as Number does.
 std::optional<double> readNumber(std::string_view raw) {
     if (!isPresent(raw))
@@ -184,6 +186,8 @@ std::optional<double> readNumber(std::string_view raw) {
 
     return parseDecimal(raw);
 }
+
+namespace {
 
 bool isLeapYear(int year) {
     return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
@@ -237,23 +241,30 @@ bool isLossy(std::string_view codec) {
     return std::find(kLossless.begin(), kLossless.end(), lower) == kLossless.end();
 }
 
-std::optional<double> either(std::optional<double> a, std::optional<double> b,
-                             double (*pick)(double, double)) {
-    if (!a)
-        return b;
-    if (!b)
-        return a;
-    return pick(*a, *b);
-}
-
-double higher(double a, double b) {
-    return std::max(a, b);
-}
-
 // `0` as written by foobar2000 for a track never played is no answer, from either component.
 std::optional<double> unplayedAsNone(std::optional<double> answer, std::string_view raw) {
     return raw == "0" ? std::nullopt : answer;
 }
+
+}  // namespace
+
+std::optional<double> readPlayCount(std::string_view raw) {
+    return unplayedAsNone(readNumber(raw), raw);
+}
+
+std::optional<double> readPlayMoment(std::string_view raw, const LocalTime& local) {
+    return unplayedAsNone(readTimestamp(raw, local), raw);
+}
+
+std::optional<double> higherOf(std::optional<double> a, std::optional<double> b) {
+    if (!a)
+        return b;
+    if (!b)
+        return a;
+    return std::max(*a, *b);
+}
+
+namespace {
 
 struct Album : AlbumRecord {
     double plays = 0;
@@ -314,24 +325,22 @@ struct Facts {
     Credits credits;
 
     std::optional<double> playsOf(size_t row) const {
-        return either(playsScrobbled.of(row), playsLocal.of(row), higher);
+        return higherOf(playsScrobbled.of(row), playsLocal.of(row));
     }
     std::optional<double> lastPlayedOf(size_t row) const {
-        return either(playedScrobbled.of(row), playedLocal.of(row), higher);
+        return higherOf(playedScrobbled.of(row), playedLocal.of(row));
     }
 };
 
 PerValue<std::optional<double>> counts(const Snapshot& snapshot, std::optional<size_t> role) {
-    return resolve<std::optional<double>>(snapshot, role, [](const std::string& value) {
-        return unplayedAsNone(readNumber(value), value);
-    });
+    return resolve<std::optional<double>>(
+        snapshot, role, [](const std::string& value) { return readPlayCount(value); });
 }
 
 PerValue<std::optional<double>> moments(const Snapshot& snapshot, std::optional<size_t> role,
                                         const LocalTime& local, bool unplayedIsNone) {
     return resolve<std::optional<double>>(snapshot, role, [&](const std::string& value) {
-        const auto moment = readTimestamp(value, local);
-        return unplayedIsNone ? unplayedAsNone(moment, value) : moment;
+        return unplayedIsNone ? readPlayMoment(value, local) : readTimestamp(value, local);
     });
 }
 
@@ -631,17 +640,24 @@ Picks starterPicks(size_t count, uint64_t seed) {
                  order.end());
 }
 
-Json shelvesJson(const Snapshot& snapshot, const std::vector<Album>& albums, int64_t nowMs,
-                 const LocalTime& local) {
+Json shelvesJson(const Facts& facts, const SummaryRoles& roles, const std::vector<Album>& albums,
+                 int64_t nowMs, const LocalTime& local) {
+    const Snapshot& snapshot = facts.snapshot;
     const double now = static_cast<double>(nowMs);
     const auto shelfJson = [&](const char* id, const Picks& picks, size_t shown) {
         Json albumsJson = Json::array();
-        for (size_t at = 0; at < std::min(shown, picks.size()); ++at)
-            albumsJson.push_back(albumJson(snapshot, albums[picks[at]]));
+        std::vector<uint32_t> tracks;
+        for (size_t at = 0; at < std::min(shown, picks.size()); ++at) {
+            const Album& album = albums[picks[at]];
+            albumsJson.push_back(albumJson(snapshot, album));
+            tracks.insert(tracks.end(), album.ordinals.begin(), album.ordinals.end());
+        }
+        std::sort(tracks.begin(), tracks.end());
 
         Json shelf = Json::object();
         shelf["id"] = id;
         shelf["albums"] = std::move(albumsJson);
+        shelf["figures"] = figuresDocument(figuresOver(snapshot, roles, facts.credits, tracks));
         return shelf;
     };
 
@@ -745,56 +761,28 @@ struct GenreBars {
 };
 
 GenreBars genreBarsOf(const Snapshot& snapshot, std::optional<size_t> role, size_t rows) {
-    TagGroups genres;
-    PerValue<std::vector<int32_t>> genreOf;
-    if (role) {
-        const Column& column = snapshot.columns[*role];
-        genreOf.ids = &column.ids;
-        for (const std::string& value : column.dictionary.values) {
-            std::vector<int32_t> groups;
-            if (isPresent(value)) {
-                for (size_t from = 0; from <= value.size();) {
-                    const size_t end =
-                        std::min(value.find(kMultiValueSeparator, from), value.size());
-                    const std::string_view part = std::string_view(value).substr(from, end - from);
-                    const std::string key = tagKey(part);
-                    if (!key.empty()) {
-                        const int32_t group = genres.add(key, part);
-                        if (std::find(groups.begin(), groups.end(), group) == groups.end())
-                            groups.push_back(group);
-                    }
-                    from = end + 1;
-                }
-            }
-            genreOf.answers.push_back(std::move(groups));
-        }
-    }
-    std::vector<size_t> genreCounts(genres.names.size(), 0);
-    if (genreOf.ids) {
-        for (size_t row = 0; row < rows; ++row) {
-            for (const int32_t group : genreOf.of(row))
-                ++genreCounts[static_cast<size_t>(group)];
-        }
+    const GenreGroups genres = genreGroupsOf(snapshot, role);
+    std::vector<size_t> genreCounts(genres.tags.names.size(), 0);
+    for (size_t row = 0; row < rows; ++row) {
+        for (const int32_t group : genres.of.of(row))
+            ++genreCounts[static_cast<size_t>(group)];
     }
 
-    std::vector<size_t> named;
+    std::vector<int32_t> named;
     for (size_t group = 0; group < genreCounts.size(); ++group) {
         if (genreCounts[group] > 0)
-            named.push_back(group);
+            named.push_back(static_cast<int32_t>(group));
     }
-    std::stable_sort(named.begin(), named.end(),
-                     [&](size_t a, size_t b) { return genreCounts[a] > genreCounts[b]; });
 
     GenreBars result;
     result.distinct = named.size();
-    for (size_t at = 0; at < std::min(kGenreBars, named.size()); ++at) {
-        const size_t group = named[at];
-        Json genre = Json::object();
-        genre["name"] = genres.names[group];
-        genre["count"] = genreCounts[group];
-        genre["share"] = numberJson(
-            roundHalfUp(static_cast<double>(genreCounts[group]) / static_cast<double>(rows) * 100));
-        result.bars.push_back(std::move(genre));
+    for (const GenreShare& genre :
+         topGenresOf(genres.tags.names, genreCounts, std::move(named), rows, kGenreBars)) {
+        Json bar = Json::object();
+        bar["name"] = genre.name;
+        bar["count"] = genre.count;
+        bar["share"] = genre.share;
+        result.bars.push_back(std::move(bar));
     }
     return result;
 }
@@ -802,7 +790,7 @@ GenreBars genreBarsOf(const Snapshot& snapshot, std::optional<size_t> role, size
 }  // namespace
 
 std::string summariseLibrary(const Snapshot& snapshot, const SummaryRoles& roles, int64_t nowMs,
-                             const LocalTime& local) {
+                             const LocalTime& local, SummaryParts parts) {
     const Facts facts = factsOf(snapshot, roles, local);
     const size_t rows = facts.rows;
 
@@ -866,7 +854,9 @@ std::string summariseLibrary(const Snapshot& snapshot, const SummaryRoles& roles
     document["topAlbum"] = topAlbum;
     document["topArtist"] = topArtist;
     document["topTracks"] = topTracksJson(facts, held, roles);
-    document["shelves"] = shelvesJson(snapshot, albums, nowMs, local);
+    document["shelves"] = shelvesJson(facts, roles, albums, nowMs, local);
+    if (parts.genres)
+        document["genres"] = genresDocument(snapshot, genreTilesOf(snapshot, roles, facts.credits));
     return document.dump(-1, ' ', false, Json::error_handler_t::replace);
 }
 

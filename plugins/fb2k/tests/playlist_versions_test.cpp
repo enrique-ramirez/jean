@@ -22,6 +22,7 @@ namespace {
 constexpr char kAlbums[] = "45837d74-fa4f-415c-bba9-bf2db8f0dc04";
 constexpr char kSingles[] = "0c2f9d91-6c8a-4f1c-9a7f-2d3b5e7c1a80";
 constexpr char kMixes[] = "b7e1c3a2-5d48-4f90-8c11-6a2e9f70d3b5";
+constexpr size_t kPlaylistRevisionsRetained = 1920;
 
 struct Handed {
     std::set<uint64_t> structures;
@@ -171,7 +172,7 @@ TEST_CASE("a client catches up on every position that changed while it was away"
     versions.contentChanged(kAlbums, {7});
 
     const ChangedSince changed = versions.changedSince(kAlbums, held.structure, held.revision);
-    CHECK(changed.catchUp == DeltaOutcome::ok);
+    CHECK(changed.catchUp == ReadOutcome::ok);
     CHECK(sorted(changed.positions) == std::vector<uint32_t>{1, 4, 7});
     CHECK(changed.revision == versions.of(kAlbums).revision);
 }
@@ -182,7 +183,7 @@ TEST_CASE("a client at the current revision is told nothing changed rather than 
 
     const PlaylistVersion now = versions.of(kAlbums);
     const ChangedSince changed = versions.changedSince(kAlbums, now.structure, now.revision);
-    CHECK(changed.catchUp == DeltaOutcome::ok);
+    CHECK(changed.catchUp == ReadOutcome::ok);
     CHECK(changed.positions.empty());
     CHECK(changed.revision == now.revision);
 }
@@ -195,11 +196,11 @@ TEST_CASE("a client further behind than the window is refused rather than answer
         versions.contentChanged(kAlbums, {position});
 
     CHECK(versions.changedSince(kAlbums, start.structure, start.revision + 2).catchUp ==
-          DeltaOutcome::ok);
+          ReadOutcome::ok);
 
     const ChangedSince refused =
         versions.changedSince(kAlbums, start.structure, start.revision + 1);
-    CHECK(refused.catchUp == DeltaOutcome::revisionTooOld);
+    CHECK(refused.catchUp == ReadOutcome::revisionTooOld);
     CHECK(refused.positions.empty());
 }
 
@@ -216,6 +217,20 @@ TEST_CASE("the client furthest behind the window still answers gets every positi
     CHECK(changed.revision == start.revision + 5);
 }
 
+TEST_CASE("a playlist keeps 1920 revisions a client may catch up from, under a figure of its own") {
+    CHECK(kRetainedPlaylistRevisions == kPlaylistRevisionsRetained);
+
+    PlaylistVersions versions;
+    const PlaylistVersion start = versions.of(kAlbums);
+    for (uint32_t change = 0; change <= kPlaylistRevisionsRetained; ++change)
+        versions.contentChanged(kAlbums, {change % 16});
+
+    CHECK(versions.changedSince(kAlbums, start.structure, start.revision + 1).catchUp ==
+          ReadOutcome::ok);
+    CHECK(versions.changedSince(kAlbums, start.structure, start.revision).catchUp ==
+          ReadOutcome::revisionTooOld);
+}
+
 TEST_CASE("a structural change drops the window, so a client from before it reads the rows whole") {
     PlaylistVersions versions;
     const PlaylistVersion before = versions.of(kAlbums);
@@ -225,17 +240,17 @@ TEST_CASE("a structural change drops the window, so a client from before it read
     const PlaylistVersion after = versions.of(kAlbums);
 
     CHECK(versions.changedSince(kAlbums, before.structure, before.revision).catchUp ==
-          DeltaOutcome::structureChanged);
+          ReadOutcome::structureMoved);
 
     // A client that has already re-read the list holds the current structure generation with a
     // revision older than the reorder. Every position it kept names a different row now, so it
     // is refused the same way rather than handed a patch that would land on the wrong rows.
     const ChangedSince stale = versions.changedSince(kAlbums, after.structure, before.revision);
-    CHECK(stale.catchUp == DeltaOutcome::structureChanged);
+    CHECK(stale.catchUp == ReadOutcome::structureMoved);
     CHECK(stale.positions.empty());
 
     CHECK(versions.changedSince(kAlbums, after.structure, after.revision).catchUp ==
-          DeltaOutcome::ok);
+          ReadOutcome::ok);
 }
 
 // foobar2000 reports one track's change once per playlist holding it, each call carrying that
@@ -252,12 +267,12 @@ TEST_CASE("one track changing reaches every playlist holding it, with that playl
 
     const ChangedSince intoAlbums =
         versions.changedSince(kAlbums, albums.structure, albums.revision);
-    CHECK(intoAlbums.catchUp == DeltaOutcome::ok);
+    CHECK(intoAlbums.catchUp == ReadOutcome::ok);
     CHECK(sorted(intoAlbums.positions) == std::vector<uint32_t>{12, 129});
 
     const ChangedSince intoSingles =
         versions.changedSince(kSingles, singles.structure, singles.revision);
-    CHECK(intoSingles.catchUp == DeltaOutcome::ok);
+    CHECK(intoSingles.catchUp == ReadOutcome::ok);
     CHECK(intoSingles.positions == std::vector<uint32_t>{4});
 
     CHECK(versions.of(kMixes).structure == mixes.structure);
@@ -286,7 +301,7 @@ TEST_CASE("the row a track stops playing at is recorded though nothing announced
 
     const ChangedSince changed =
         versions.changedSince(kAlbums, playing.structure, playing.revision);
-    CHECK(changed.catchUp == DeltaOutcome::ok);
+    CHECK(changed.catchUp == ReadOutcome::ok);
     CHECK(changed.positions == std::vector<uint32_t>{3});
     CHECK(versions.of(kAlbums).structure == playing.structure);
 
@@ -322,7 +337,7 @@ TEST_CASE("a structural change to one playlist leaves another's window alone") {
     versions.contentChanged(kSingles, {9});
 
     const ChangedSince changed = versions.changedSince(kAlbums, albums.structure, albums.revision);
-    CHECK(changed.catchUp == DeltaOutcome::ok);
+    CHECK(changed.catchUp == ReadOutcome::ok);
     CHECK(changed.positions == std::vector<uint32_t>{3});
 }
 
@@ -341,7 +356,7 @@ TEST_CASE("a playlist the player removes reads afterwards like one nothing ever 
     CHECK(versions.of(kAlbums).revision == untouched.revision);
 
     const ChangedSince changed = versions.changedSince(kAlbums, held.structure, held.revision);
-    CHECK(changed.catchUp == DeltaOutcome::ok);
+    CHECK(changed.catchUp == ReadOutcome::ok);
     CHECK(changed.positions.empty());
 }
 
@@ -367,7 +382,7 @@ TEST_CASE("forgetting one playlist leaves another's window alone") {
 
     const ChangedSince changed =
         versions.changedSince(kSingles, singles.structure, singles.revision);
-    CHECK(changed.catchUp == DeltaOutcome::ok);
+    CHECK(changed.catchUp == ReadOutcome::ok);
     CHECK(changed.positions == std::vector<uint32_t>{9});
 }
 
@@ -403,7 +418,7 @@ TEST_CASE("a client following a playlist while the player writes to it misses no
 
         const auto catchUp = [&] {
             const ChangedSince changed = versions.changedSince(kAlbums, start.structure, cursor);
-            if (changed.catchUp != DeltaOutcome::ok) {
+            if (changed.catchUp != ReadOutcome::ok) {
                 ++refusals;
                 return;
             }
@@ -496,7 +511,7 @@ TEST_CASE("an answer given while the player is writing carries only rows that pl
             const ChangedSince changed =
                 versions.changedSince(playlist.id, state.structure, state.cursor);
 
-            if (changed.catchUp != DeltaOutcome::ok) {
+            if (changed.catchUp != ReadOutcome::ok) {
                 if (!changed.positions.empty())
                     ++strange.refusalsCarryingPositions;
 

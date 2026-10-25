@@ -5,7 +5,6 @@
       "name": "empty",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7038,
       "now": 1792132200000,
       "directory": [],
       "filename": [],
@@ -32,7 +31,6 @@
       "name": "no-playcount-component",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7075,
       "now": 1792132200000,
       "directory": [
         "Band 01/Record 01/",
@@ -710,7 +708,6 @@
       "name": "no-playcount-spelled-out",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7112,
       "now": 1792132200000,
       "directory": [
         "Band 01/Record 01/",
@@ -1638,7 +1635,6 @@
       "name": "local-plays-only",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7149,
       "now": 1792132200000,
       "directory": [
         "Band 01/Record 01/",
@@ -2807,7 +2803,6 @@
       "name": "scrobbled-plays-only",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7186,
       "now": 1792132200000,
       "directory": [
         "Band 01/Record 01/",
@@ -3958,7 +3953,6 @@
       "name": "both-plays",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7223,
       "now": 1792132200000,
       "directory": [
         "Band 01/Record 01/",
@@ -5389,7 +5383,6 @@
       "name": "first-run-stamp",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7260,
       "now": 1792132200000,
       "directory": [
         "Group 01/Arrival 01/",
@@ -5888,7 +5881,6 @@
       "name": "first-run-at-share",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7297,
       "now": 1792132200000,
       "directory": [
         "Group 01/Arrival 01/",
@@ -6387,7 +6379,6 @@
       "name": "first-run-under-share",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7334,
       "now": 1792132200000,
       "directory": [
         "Group 01/Arrival 01/",
@@ -6950,7 +6941,6 @@
       "name": "shelf-added-at-minimum",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7371,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -7219,7 +7209,6 @@
       "name": "shelf-added-one-under-minimum",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7408,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -7560,7 +7549,6 @@
       "name": "shelf-recent-at-minimum",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7445,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -8173,7 +8161,6 @@
       "name": "shelf-recent-one-under-minimum",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7482,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -8647,7 +8634,6 @@
       "name": "shelf-top-at-minimum",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7519,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -9147,7 +9133,6 @@
       "name": "shelf-top-one-under-minimum",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7556,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -9621,7 +9606,6 @@
       "name": "shelf-rated-at-minimum",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7593,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -10144,7 +10128,6 @@
       "name": "shelf-rated-one-under-candidates",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7630,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -10717,7 +10700,6 @@
       "name": "shelf-loved-at-minimum",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7667,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -11502,7 +11484,6 @@
       "name": "shelf-loved-one-under-minimum",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7704,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -12210,7 +12191,6 @@
       "name": "shelf-loved-one-under-candidates",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7741,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -12856,7 +12836,6 @@
       "name": "shelf-upgrade-at-minimum",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7778,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -13759,7 +13738,6 @@
       "name": "shelf-upgrade-one-under-minimum",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7815,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -14585,7 +14563,6 @@
       "name": "shelf-upgrade-one-under-candidates",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7852,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -15345,7 +15322,6 @@
       "name": "shelf-unopened-at-minimum",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7889,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -15757,7 +15733,6 @@
       "name": "shelf-unopened-one-under-minimum",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7926,
       "now": 1792132200000,
       "directory": [
         "Shelf Artist 01/Shelf Album 01/",
@@ -16125,7 +16100,6 @@
       "name": "ties",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 7963,
       "now": 1792132200000,
       "directory": [
         "Twin Artist 01/Twin 01/",
@@ -18422,7 +18396,6 @@
       "name": "ties-old",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 8000,
       "now": 1792132200000,
       "directory": [
         "Elder Artist 01/Elder 01/",
@@ -20547,7 +20520,6 @@
       "name": "multi-valued-genres",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 8037,
       "now": 1792132200000,
       "directory": [
         "Variety/Mixed Bag 1/",
@@ -21263,7 +21235,6 @@
       "name": "album-across-directories",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 8074,
       "now": 1792132200000,
       "directory": [
         "Pink Floyd/The Wall (Disc 2)/",
@@ -21719,7 +21690,6 @@
       "name": "album-cover-order",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 8111,
       "now": 1792132200000,
       "directory": [
         "Ordinal/Numbering/",
@@ -21936,7 +21906,6 @@
       "name": "compilation-by-album-artist",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 8148,
       "now": 1792132200000,
       "directory": [
         "Various Artists/Now That's Music/",
@@ -22417,7 +22386,6 @@
       "name": "untagged",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 8185,
       "now": 1792132200000,
       "directory": [
         "Tagger/Tagged/",
@@ -22874,7 +22842,6 @@
       "name": "whitespace-only-tags",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 8222,
       "now": 1792132200000,
       "directory": [
         "Padded/1/",
@@ -23133,7 +23100,6 @@
       "name": "spellings",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 8259,
       "now": 1792132200000,
       "directory": [
         "Acme/a/",
@@ -23471,7 +23437,6 @@
       "name": "starter",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 8296,
       "now": 1792132200000,
       "directory": [
         "Sleeper Artist 01/Sleeper 01/",
@@ -24798,7 +24763,6 @@
       "name": "starter-next-day",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 8333,
       "now": 1792218600000,
       "directory": [
         "Sleeper Artist 01/Sleeper 01/",
@@ -26119,7 +26083,6 @@
       "name": "starter-local-midnight",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 8370,
       "now": 1772305200000,
       "directory": [
         "Sleeper Artist 01/Sleeper 01/",
@@ -27445,7 +27408,6 @@
       "name": "starter-exactly-24",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 8407,
       "now": 1792132200000,
       "directory": [
         "Sleeper Artist 01/Sleeper 01/",
@@ -28426,7 +28388,6 @@
       "name": "starter-small",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 8444,
       "now": 1792132200000,
       "directory": [
         "Sleeper Artist 01/Sleeper 01/",
@@ -28723,7 +28684,6 @@
       "name": "starter-under-minimum",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 8481,
       "now": 1792132200000,
       "directory": [
         "Sleeper Artist 01/Sleeper 01/",
@@ -28852,7 +28812,6 @@
       "name": "mixed",
       "structure": 1,
       "revision": 1,
-      "snapshotId": 8518,
       "now": 1792132200000,
       "directory": [
         "Low Harbour/Glass 1/",

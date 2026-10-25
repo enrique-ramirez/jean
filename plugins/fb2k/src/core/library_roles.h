@@ -13,6 +13,8 @@
 
 namespace jean {
 
+inline constexpr size_t kHeldRoleSets = 2;
+
 struct LibraryRoles {
     std::optional<size_t> trackNumber, discNumber, title, artist, album, albumArtist, duration,
         playCount, lastPlayed, rating, year, genre, codec, bitrate, playCountLocal, lastPlayedLocal,

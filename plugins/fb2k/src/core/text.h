@@ -31,6 +31,8 @@ std::string fold(std::string_view text);
 
 std::string squash(std::string_view text);
 
+bool searchesMarks(std::string_view query);
+
 std::string glyphs(std::string_view text);
 
 std::string nameKey(std::string_view text);
@@ -52,6 +54,18 @@ bool utf16Before(std::string_view a, std::string_view b);
 size_t utf16Length(std::string_view text);
 
 std::string toHex(std::span<const unsigned char> bytes);
+
+// FNV-1a over 64-bit values, a byte at a time, for a digest that moves when any value does.
+class ValueDigest {
+public:
+    ValueDigest();
+
+    void mix(uint64_t value);
+    uint64_t digest() const { return digest_; }
+
+private:
+    uint64_t digest_;
+};
 
 // The non-empty elements of a delimited header field, each trimmed of the optional whitespace
 // RFC 9110 allows around it.

@@ -40,9 +40,6 @@ std::string sharedPortNotice(int port);
 
 constexpr size_t kMaxBodyBytes = size_t{256} * 1024;
 
-// The one response too big for kMaxBodyBytes to say anything about, which bounds a request.
-constexpr size_t kMaxLibraryBytes = size_t{256} * 1024 * 1024;
-
 // Each connection is served on a pool thread: `threads` start with the server, the pool
 // grows to `maxThreads` while every one is busy, and a connection accepted past that waits in a
 // queue at most `queued` deep. One accepted past the queue is closed unanswered.

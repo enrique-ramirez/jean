@@ -31,13 +31,13 @@ bool operator==(const PlaylistMark& a, const PlaylistMark& b) {
 
 bool operator==(const PlayerState& a, const PlayerState& b) {
     return a.playback == b.playback && a.path == b.path && a.subsong == b.subsong &&
-           a.libraryPath == b.libraryPath && a.position.seconds == b.position.seconds &&
-           a.position.taken == b.position.taken && a.duration == b.duration &&
-           a.volume == b.volume && a.muted == b.muted && a.playbackMode == b.playbackMode &&
-           a.outputDeviceId == b.outputDeviceId && a.outputSilent == b.outputSilent &&
-           a.title == b.title && a.artist == b.artist && a.album == b.album &&
-           a.albumArtist == b.albumArtist && a.playingLocation == b.playingLocation &&
-           a.currentPlaylistId == b.currentPlaylistId;
+           a.libraryPath == b.libraryPath && a.libraryOrdinal == b.libraryOrdinal &&
+           a.position.seconds == b.position.seconds && a.position.taken == b.position.taken &&
+           a.duration == b.duration && a.volume == b.volume && a.muted == b.muted &&
+           a.playbackMode == b.playbackMode && a.outputDeviceId == b.outputDeviceId &&
+           a.outputSilent == b.outputSilent && a.title == b.title && a.artist == b.artist &&
+           a.album == b.album && a.albumArtist == b.albumArtist &&
+           a.playingLocation == b.playingLocation && a.currentPlaylistId == b.currentPlaylistId;
 }
 
 void PlayerStateStore::publish(PlayerState state) {

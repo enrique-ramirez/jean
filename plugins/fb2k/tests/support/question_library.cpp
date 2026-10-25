@@ -94,7 +94,7 @@ QuestionLibrary questionLibraryOf(const nlohmann::json& questionCase) {
 
 void declareAndBuild(const LibraryRoutesServer& server, Library& library,
                      const QuestionLibrary& questions) {
-    const auto declared = server.client().Get(exportPath(questions.declared));
+    const auto declared = declareThroughRows(server, questions.declared);
     REQUIRE(declared);
     REQUIRE(declared->status == 202);
 
@@ -137,6 +137,14 @@ std::string questionPathOf(const nlohmann::json& questionCase,
         owned.push_back(
             {"splitsCredits", question.at("splitsCredits").get<bool>() ? "true" : "false"});
     return questionPath(kind, owned, roles);
+}
+
+nlohmann::json withoutSetSummaries(nlohmann::json answer, const nlohmann::json& expected) {
+    for (const char* key : {"figures", "cards", "records"}) {
+        if (!expected.contains(key))
+            answer.erase(key);
+    }
+    return answer;
 }
 
 nlohmann::json expectedAnswer(const nlohmann::json& questionCase, const Library::State& state) {

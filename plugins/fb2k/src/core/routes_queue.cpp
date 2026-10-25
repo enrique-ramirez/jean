@@ -3,11 +3,18 @@
 #include "core/documents.h"
 #include "core/http_responses.h"
 #include "core/json.h"
+#include "core/library_paths.h"
 #include "core/requests_queue.h"
 #include "core/session_scope.h"
 
 #include <algorithm>
+#include <array>
+#include <iterator>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 namespace jean {
 
@@ -15,6 +22,8 @@ namespace {
 
 constexpr char kQueuePath[] = "/api/queue";
 constexpr char kMoveQueuePath[] = "/api/queue/move";
+
+constexpr std::array<std::string_view, 2> kQueueOwned{"session", "deviceId"};
 
 // Matched loosely, on purpose: a non-numeric segment must reach parseRemoveQueue's own 400
 // rather than fall through to a generic 404.
@@ -24,12 +33,14 @@ constexpr char kQueueEntryPath[] = R"(/api/queue/([^/]+))";
 
 QueueRoutes::QueueRoutes(const QueueCalls& queue, const SessionCalls& sessions,
                          SessionRegistry& registry, const Library* library,
-                         const PlayerStateStore* playerState, const LiveSettings& settings,
-                         Throttle& changes, const RateLimitClock& clock)
+                         LibraryQuestions& questions, const PlayerStateStore* playerState,
+                         const LiveSettings& settings, Throttle& changes,
+                         const RateLimitClock& clock)
     : queue_(queue),
       sessions_(sessions),
       registry_(registry),
       library_(library),
+      questions_(questions),
       playerState_(playerState),
       settings_(settings),
       changes_(changes),
@@ -54,7 +65,16 @@ bool QueueRoutes::queueMoved(uint64_t revision, httplib::Response& res) const {
     return true;
 }
 
-void QueueRoutes::readSessionQueue(const Session& session, httplib::Response& res) {
+void QueueRoutes::attachCovers(const RolesAsked& roles, std::vector<QueuedTrack>& entries) const {
+    std::vector<QueuedTrack*> rows;
+    rows.reserve(entries.size());
+    std::transform(entries.begin(), entries.end(), std::back_inserter(rows),
+                   [](QueuedTrack& entry) { return &entry; });
+    jean::attachCovers(library_, questions_, roles.expressions, rows);
+}
+
+void QueueRoutes::readSessionQueue(const Session& session, const RolesAsked& roles,
+                                   httplib::Response& res) {
     if (!sessions_.readQueue) {
         respondUnavailable(res, kNoQueue);
         return;
@@ -70,6 +90,7 @@ void QueueRoutes::readSessionQueue(const Session& session, httplib::Response& re
     read.revision = queue.revision;
     std::for_each(read.entries.begin(), read.entries.end(),
                   [](QueuedTrack& entry) { entry.location.reset(); });
+    attachCovers(roles, read.entries);
 
     respond(res, 200, queueDocument(read));
 }
@@ -189,8 +210,14 @@ void QueueRoutes::addTo(httplib::Server& server) {
         if (named.which == SessionAnswer::Which::none)
             return;
 
+        const auto roles = rolesAsked(req, kAllRoleNames, kQueueOwned);
+        if (!roles.ok()) {
+            respondRefusal(res, roles.refusal, roles.detail);
+            return;
+        }
+
         if (named.session) {
-            readSessionQueue(*named.session, res);
+            readSessionQueue(*named.session, roles, res);
             return;
         }
 
@@ -199,11 +226,12 @@ void QueueRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        const auto read = queue_.read();
+        auto read = queue_.read();
         if (read.outcome != PlayerOutcome::done) {
             respondOutcome(res, read.outcome);
             return;
         }
+        attachCovers(roles, read.entries);
 
         respond(res, 200, queueDocument(read));
     });

@@ -12,6 +12,7 @@
 #include "core/player_state.h"
 #include "core/session.h"
 #include "core/settings.h"
+#include "support/cover_library.h"
 #include "support/devices.h"
 #include "support/fake_player.h"
 #include "support/http.h"
@@ -1687,6 +1688,26 @@ void checkMoved(const httplib::Result& response, const std::string& tag) {
     CHECK(response->get_header_value("ETag") != tag);
 }
 
+// Two tracks ahead of every row tracks("Road", kRows) makes, so a session's ordinal is never its
+// row's index, then those rows, then the engine's track, so an ordinal read off the engine shows.
+void buildRoadLibrary(Library& library, size_t ahead = 2) {
+    std::vector<std::vector<std::string>> rows;
+    for (size_t at = 0; at < ahead; ++at)
+        rows.push_back({"Abba/", std::to_string(at) + ".flac", "0", "Ahead"});
+    for (const auto& made : tracks("Road", kRows)) {
+        const auto path = libraryPathOf(made);
+        const auto slash = path.rfind('/') + 1;
+        rows.push_back({path.substr(0, slash), path.substr(slash), "0", nameOf(made)});
+    }
+    rows.push_back({"Fictional Artist/Engine Album/", "07 Engine Track.flac", "2", "Engine"});
+
+    LibraryBuilder builder({"%title%"}, rows.size());
+    auto& sink = builder.sink();
+    for (size_t at = 0; at < rows.size(); ++at)
+        sink.row(at, rows[at]);
+    library.replace(builder.finish());
+}
+
 }  // namespace
 
 // state_route_test.cpp is the full proof of the engine's poll; this is that naming the engine is
@@ -1813,6 +1834,58 @@ TEST_CASE(
         CHECK(stoppedPoll[key] == enginePoll[key]);
     }
     CHECK(recorder.calls() == 0);
+}
+
+TEST_CASE("a detached session's poll carries its own track's ordinal, and the engine's its own") {
+    Recorder recorder;
+    Library library;
+    buildRoadLibrary(library);
+    PlayerStateStore store;
+    store.publish(engineState());
+    const TestServer server = servingWith(recorder.player(), &library, &store);
+
+    const auto rows = tracks("Road", kRows);
+    const auto id = playingSession(server, recorder, phone().id, rows, 3);
+    const auto ears = listening(recorder, id, phone().id);
+    const auto stopped = createdId(server, laptop().id);
+
+    const auto player = playerPolled(server, id, phone().id);
+    REQUIRE(player.contains("libraryOrdinal"));
+    CHECK(player["libraryPath"] == libraryPathOf(rows[3]));
+    CHECK(player["libraryOrdinal"] == 2 + 3);
+
+    CHECK(playerPolled(server, "", "")["libraryOrdinal"] == 2 + kRows);
+
+    const auto idle = playerPolled(server, stopped, laptop().id);
+    REQUIRE(idle.contains("libraryOrdinal"));
+    CHECK(idle["libraryOrdinal"].is_null());
+    CHECK(recorder.calls() == 0);
+}
+
+TEST_CASE("an album added ahead of a session's track moves the ordinal its next poll answers") {
+    constexpr size_t kAdded = 3;
+    Recorder recorder;
+    Library library;
+    buildRoadLibrary(library);
+    const TestServer server = servingWith(recorder.player(), &library);
+
+    const auto rows = tracks("Road", kRows);
+    const auto id = playingSession(server, recorder, phone().id, rows, 1);
+    const auto ears = listening(recorder, id, phone().id);
+
+    const auto before = poll(server, id, phone().id);
+    REQUIRE(before);
+    REQUIRE(before->status == 200);
+    REQUIRE(json::parse(before->body)["player"]["libraryOrdinal"] == 2 + 1);
+
+    buildRoadLibrary(library, 2 + kAdded);
+
+    const auto after = pollHolding(server, id, phone().id, before->get_header_value("ETag"));
+    checkMoved(after, before->get_header_value("ETag"));
+    const auto body = json::parse(after->body);
+    CHECK(body["library"]["structure"] == library.state().structure);
+    CHECK(body.at("player").at("libraryOrdinal") == 2 + kAdded + 1);
+    CHECK(body.at("player").at("libraryPath") == libraryPathOf(rows[1]));
 }
 
 // Pausing keeps the turn, so the names read for it hold; the next track is a new turn.
@@ -2577,6 +2650,32 @@ TEST_CASE(
     CHECK(recorder.calls() == 0);
 }
 
+TEST_CASE("GET /api/queue naming a session and roles carries each entry's album cover") {
+    Recorder recorder;
+    Library library;
+    library.replace(coverSnapshot());
+    const TestServer server = servingWith(recorder.player(), &library);
+    const auto id = createdId(server, phone().id);
+
+    auto held = track("Held");
+    held.libraryPath = kRecordThirdTrack;
+    auto elsewhere = track("Elsewhere");
+    elsewhere.libraryPath.reset();
+    REQUIRE(recorder.session(id)->enqueue({held, elsewhere}) == PlayerOutcome::done);
+
+    const auto response = get(server, withCoverRoles(scoped(kQueue, id, phone().id)));
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto entries = json::parse(response->body)["entries"];
+    REQUIRE(entries.size() == 2);
+    REQUIRE(entries[0].contains("cover"));
+    CHECK(entries[0].at("cover") == kRecordCover);
+    REQUIRE(entries[1].contains("cover"));
+    CHECK(entries[1].at("cover").is_null());
+    CHECK(recorder.engineCalls(Call::readQueue) == 0);
+}
+
 // A multi-select is queued in the order it was clicked, so 5 before 2.
 TEST_CASE("POST /api/queue naming a session takes its ordinals from the library once, at the end") {
     Recorder recorder;
@@ -2691,7 +2790,7 @@ TEST_CASE("POST /api/queue naming a session is the engine's 409 for a library th
         queueing(server, id, phone().id, librarySet(exported, "ordinals", {1}));
     REQUIRE(duringTheTake);
     CHECK(duringTheTake->status == 409);
-    CHECK(errorOf(*duringTheTake) == describe(DeltaOutcome::structureChanged));
+    CHECK(errorOf(*duringTheTake) == describe(ReadOutcome::structureMoved));
     CHECK(recorder.libraryTaken().size() == 1);
 
     buildLibrary(library, kLibraryTracks - 2);
@@ -2699,7 +2798,7 @@ TEST_CASE("POST /api/queue naming a session is the engine's 409 for a library th
         queueing(server, id, phone().id, librarySet(exported, "ordinals", {1}));
     REQUIRE(beforeTheTake);
     CHECK(beforeTheTake->status == 409);
-    CHECK(errorOf(*beforeTheTake) == describe(DeltaOutcome::structureChanged));
+    CHECK(errorOf(*beforeTheTake) == describe(ReadOutcome::structureMoved));
     CHECK(recorder.libraryTaken().size() == 1);
 
     CHECK(queuedIn(recorder, id) == std::vector<std::string>{"Queued A", "Queued B"});
@@ -3116,14 +3215,14 @@ TEST_CASE("a library set played in a session is the fill's 409 for a library tha
     const auto duringTheTake = playing(server, id, phone().id, body);
     REQUIRE(duringTheTake);
     CHECK(duringTheTake->status == 409);
-    CHECK(errorOf(*duringTheTake) == describe(DeltaOutcome::structureChanged));
+    CHECK(errorOf(*duringTheTake) == describe(ReadOutcome::structureMoved));
     CHECK(recorder.libraryTaken().size() == 1);
 
     buildLibrary(library, kLibraryTracks - 2);
     const auto beforeTheTake = playing(server, id, phone().id, body);
     REQUIRE(beforeTheTake);
     CHECK(beforeTheTake->status == 409);
-    CHECK(errorOf(*beforeTheTake) == describe(DeltaOutcome::structureChanged));
+    CHECK(errorOf(*beforeTheTake) == describe(ReadOutcome::structureMoved));
     CHECK(recorder.libraryTaken().size() == 1);
 
     CHECK(documentOf(server, id, phone().id)["playback"] == "stopped");
@@ -3359,8 +3458,6 @@ TEST_CASE("a paused session's playing track is answered, and a stopped one is th
     CHECK(recorder.calls() == 0);
 }
 
-// cpp-httplib drops a query pair whose raw text repeats an earlier one, so a repeat is spelled
-// twice to arrive twice: %74 is `t`.
 TEST_CASE("a column list the engine's playing track refuses is refused naming a session too") {
     Recorder recorder;
     const TestServer server = serving(recorder.player());

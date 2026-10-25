@@ -38,6 +38,7 @@ enum class Call {
     readRole,
     readRows,
     readChangedRows,
+    readTracks,
     createPlaylist,
     renamePlaylist,
     removePlaylist,

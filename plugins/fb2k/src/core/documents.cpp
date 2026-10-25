@@ -78,11 +78,16 @@ json buildOf(const std::optional<BuildProgress>& build) {
                 {"total", build->total}};
 }
 
+void addCover(json& body, const std::optional<std::optional<std::string>>& cover) {
+    if (cover)
+        body["cover"] = *cover ? json(**cover) : json(nullptr);
+}
+
 json libraryFields(const Library::State& state) {
-    return json{{"ready", state.ready},           {"structure", state.structure},
-                {"revision", state.revision},     {"snapshotId", snapshotIdText(state.snapshotId)},
-                {"trackCount", state.trackCount}, {"columns", state.columns},
-                {"build", buildOf(state.build)},  {"halted", state.halted}};
+    return json{{"ready", state.ready},          {"structure", state.structure},
+                {"revision", state.revision},    {"trackCount", state.trackCount},
+                {"columns", state.columns},      {"changeCounts", state.changeCounts},
+                {"build", buildOf(state.build)}, {"halted", state.halted}};
 }
 
 const char* playbackName(PlaybackState playback) {
@@ -110,26 +115,32 @@ json playingLocationOf(const std::optional<PlayingLocation>& location) {
 }
 
 json playlistRowOf(const PlaylistRow& row) {
-    return json{{"columns", row.columns},
-                {"libraryPath", row.libraryPath ? json(*row.libraryPath) : json(nullptr)},
-                {"subsong", row.subsong}};
+    json body{{"columns", row.columns},
+              {"libraryPath", row.libraryPath ? json(*row.libraryPath) : json(nullptr)},
+              {"subsong", row.subsong}};
+    addCover(body, row.cover);
+    return body;
 }
 
 json changedPlaylistRowOf(const ChangedPlaylistRow& changed) {
-    return json{
+    json body{
         {"position", changed.position},
         {"libraryPath", changed.row.libraryPath ? json(*changed.row.libraryPath) : json(nullptr)},
         {"subsong", changed.row.subsong}};
+    addCover(body, changed.row.cover);
+    return body;
 }
 
 json queuedTrackOf(const QueuedTrack& track) {
-    return json{{"title", track.title},
-                {"artist", track.artist},
-                {"duration", track.duration},
-                {"album", track.album},
-                {"albumArtist", track.albumArtist},
-                {"libraryPath", track.libraryPath ? json(*track.libraryPath) : json(nullptr)},
-                {"location", playingLocationOf(track.location)}};
+    json body{{"title", track.title},
+              {"artist", track.artist},
+              {"duration", track.duration},
+              {"album", track.album},
+              {"albumArtist", track.albumArtist},
+              {"libraryPath", track.libraryPath ? json(*track.libraryPath) : json(nullptr)},
+              {"location", playingLocationOf(track.location)}};
+    addCover(body, track.cover);
+    return body;
 }
 
 json playerFields(const PlayerState& player, std::chrono::steady_clock::time_point now,
@@ -139,6 +150,7 @@ json playerFields(const PlayerState& player, std::chrono::steady_clock::time_poi
         {"path", player.path},
         {"subsong", player.subsong},
         {"libraryPath", player.libraryPath ? json(*player.libraryPath) : json(nullptr)},
+        {"libraryOrdinal", player.libraryOrdinal ? json(*player.libraryOrdinal) : json(nullptr)},
         {"position", positionOf(player.position, now)},
         {"duration", player.duration},
         {"volume", player.volume},

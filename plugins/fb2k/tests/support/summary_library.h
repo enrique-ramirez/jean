@@ -40,7 +40,8 @@ void declareAndBuild(const LibraryRoutesServer& server, Library& library);
 SummaryRoles summaryRolesFor(const std::vector<RoleAsked>& roles);
 
 std::string summaryPath(const std::vector<RoleAsked>& roles);
-std::string exportPath(const std::vector<std::string>& columns);
+httplib::Result declareThroughRows(const LibraryRoutesServer& server,
+                                   const std::vector<std::string>& columns);
 
 nlohmann::json expectedSummary(const Library& library, const std::vector<RoleAsked>& roles,
                                int64_t nowMs, uint32_t yyyymmdd);

@@ -1,7 +1,9 @@
 #include "core/library_groups.h"
 
+#include "core/library_credits.h"
 #include "core/text.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace jean {
@@ -59,6 +61,33 @@ std::vector<int32_t> TagGroups::over(const Snapshot& snapshot, std::optional<siz
     return groups;
 }
 
+GenreGroups genreGroupsOf(const Snapshot& snapshot, std::optional<size_t> role) {
+    GenreGroups genres;
+    if (!role)
+        return genres;
+
+    const Column& column = snapshot.columns[*role];
+    genres.of.ids = &column.ids;
+    for (const std::string& value : column.dictionary.values) {
+        std::vector<int32_t> groups;
+        if (isPresent(value)) {
+            for (const std::string_view part : splitOnValues(value)) {
+                std::string key = tagKey(part);
+                if (key.empty())
+                    continue;
+                const size_t known = genres.tags.names.size();
+                const int32_t group = genres.tags.add(key, part);
+                if (static_cast<size_t>(group) == known)
+                    genres.keys.push_back(std::move(key));
+                if (std::find(groups.begin(), groups.end(), group) == groups.end())
+                    groups.push_back(group);
+            }
+        }
+        genres.of.answers.push_back(std::move(groups));
+    }
+    return genres;
+}
+
 uint32_t idAt(std::optional<size_t> role, const Snapshot& snapshot, size_t row) {
     return role ? snapshot.columns[*role].ids[row] : kNoId;
 }
@@ -88,24 +117,20 @@ Credits creditsOf(const Snapshot& snapshot, const LibraryRoles& roles) {
     return credits;
 }
 
-namespace {
-
 int64_t artistKeyOf(const Credits& credits, size_t row) {
     const int32_t artist = credits.creditedArtist(row);
     return artist >= 0 && !credits.artists.blank[static_cast<size_t>(artist)] ? artist : -1;
 }
 
-uint64_t pairOf(int32_t albumGroup, int64_t artistKey) {
+uint64_t albumPairOf(int32_t albumGroup, int64_t artistKey) {
     return (static_cast<uint64_t>(albumGroup) << 32U) | static_cast<uint32_t>(artistKey + 1);
 }
-
-}  // namespace
 
 std::optional<size_t> AlbumIndex::of(const Credits& credits, size_t row) const {
     const int32_t group = credits.albumGroup.of(row);
     if (group < 0)
         return std::nullopt;
-    return byPair.at(pairOf(group, artistKeyOf(credits, row)));
+    return byPair.at(albumPairOf(group, artistKeyOf(credits, row)));
 }
 
 AlbumRecords albumRecordsOf(const Snapshot& snapshot, const LibraryRoles& roles,
@@ -121,7 +146,7 @@ AlbumRecords albumRecordsOf(const Snapshot& snapshot, const LibraryRoles& roles,
 
         const int64_t artistKey = artistKeyOf(credits, row);
         const auto [at, fresh] = albums.index.byPair.try_emplace(
-            pairOf(group, artistKey), static_cast<uint32_t>(albums.list.size()));
+            albumPairOf(group, artistKey), static_cast<uint32_t>(albums.list.size()));
         if (fresh) {
             const int32_t artist = credits.creditedArtist(row);
             AlbumRecord album;

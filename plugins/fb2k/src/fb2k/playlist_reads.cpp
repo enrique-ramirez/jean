@@ -56,9 +56,36 @@ CopiedPage copyPageOnMainThread(const std::string& playlistId, size_t offset, si
     return page;
 }
 
+struct CopiedPlaylist {
+    PlayerOutcome outcome = PlayerOutcome::done;
+    uint64_t structure = 0;
+    uint64_t revision = 0;
+    metadb_handle_list handles;
+    std::vector<titleformat_object::ptr> scripts;
+};
+
+CopiedPlaylist copyPlaylistOnMainThread(const std::string& playlistId,
+                                        const std::vector<std::string>& columns,
+                                        const PlaylistVersions& versions) {
+    const auto index = findPlaylist(playlistId);
+    if (index == pfc::infinite_size)
+        return failureOf<CopiedPlaylist>(PlayerOutcome::noSuchPlaylist);
+
+    CopiedPlaylist playlist;
+
+    const auto version = versions.of(playlistId);
+    playlist.structure = version.structure;
+    playlist.revision = version.revision;
+
+    playlist_manager::get()->playlist_get_all_items(index, playlist.handles);
+
+    playlist.scripts = compiledColumns(titleformat_compiler::get(), columns);
+    return playlist;
+}
+
 struct CopiedChanges {
     PlayerOutcome outcome = PlayerOutcome::done;
-    DeltaOutcome catchUp = DeltaOutcome::ok;
+    ReadOutcome catchUp = ReadOutcome::ok;
     uint64_t revision = 0;
     std::vector<uint32_t> positions;
     metadb_handle_list handles;
@@ -77,7 +104,7 @@ CopiedChanges copyChangedRowsOnMainThread(const std::string& playlistId, uint64_
     CopiedChanges copied;
     copied.catchUp = changed.catchUp;
     copied.revision = changed.revision;
-    if (copied.catchUp != DeltaOutcome::ok)
+    if (copied.catchUp != ReadOutcome::ok)
         return copied;
 
     const auto manager = playlist_manager::get();
@@ -224,6 +251,49 @@ PlaylistRowReader makePlaylistRowReader(MainThreadQueue& mainThread,
     };
 }
 
+PlaylistTrackReader makePlaylistTracksReader(MainThreadQueue& mainThread,
+                                             const PlaylistVersions& versions,
+                                             HandleOrdinalMapper ordinalsOf) {
+    return [&mainThread, &versions, ordinalsOf = std::move(ordinalsOf)](
+               const std::string& playlistId, const std::vector<std::string>& columns) {
+        const auto copied = askForOutcome<CopiedPlaylist>(
+            mainThread, "reading every row of a playlist", [playlistId, columns, &versions] {
+                return copyPlaylistOnMainThread(playlistId, columns, versions);
+            });
+
+        PlaylistTracksRead read;
+        read.outcome = copied.outcome;
+        read.structure = copied.structure;
+        read.revision = copied.revision;
+
+        if (read.outcome != PlayerOutcome::done)
+            return read;
+
+        HandleOrdinals held;
+        if (ordinalsOf)
+            held = ordinalsOf(copied.handles);
+        read.libraryStructure = held.structure;
+
+        read.rows.reserve(copied.handles.get_count());
+        for (size_t at = 0; at < copied.handles.get_count(); ++at) {
+            const std::optional<uint32_t> ordinal =
+                at < held.ordinals.size() ? held.ordinals[at] : std::nullopt;
+            if (ordinal) {
+                read.rows.push_back({ordinal, {}});
+                continue;
+            }
+
+            const metadb_handle_ptr& handle = copied.handles[at];
+            read.rows.push_back(
+                {std::nullopt, handle.is_valid()
+                                   ? formattedColumns(handle, copied.scripts)
+                                   : std::vector<std::string>(copied.scripts.size(), kUnresolved)});
+        }
+
+        return read;
+    };
+}
+
 PlaylistChangeReader makeChangedPlaylistRowReader(MainThreadQueue& mainThread,
                                                   const PlaylistVersions& versions) {
     const auto libraryManager = library_manager::get();
@@ -242,7 +312,7 @@ PlaylistChangeReader makeChangedPlaylistRowReader(MainThreadQueue& mainThread,
         read.catchUp = copied.catchUp;
         read.revision = copied.revision;
 
-        if (read.outcome != PlayerOutcome::done || read.catchUp != DeltaOutcome::ok)
+        if (read.outcome != PlayerOutcome::done || read.catchUp != ReadOutcome::ok)
             return read;
 
         read.rows.reserve(copied.positions.size());

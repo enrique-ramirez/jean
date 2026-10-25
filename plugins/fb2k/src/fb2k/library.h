@@ -4,6 +4,7 @@
 #include "core/player.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,13 @@ struct MatchedOrdinals {
 };
 
 using OrdinalMatcher = std::function<MatchedOrdinals(const metadb_handle_list& matches)>;
+
+struct HandleOrdinals {
+    uint64_t structure = 0;
+    std::vector<std::optional<uint32_t>> ordinals;
+};
+
+using HandleOrdinalMapper = std::function<HandleOrdinals(const metadb_handle_list& handles)>;
 
 // The handle the snapshot holds at one address. Invalid where it holds no such track, and
 // `heldTwice` with no handle where it holds more than one: two media library roots can share
@@ -66,6 +74,8 @@ public:
     OrdinalResolver ordinalResolver();
 
     OrdinalMatcher ordinalMatcher();
+
+    HandleOrdinalMapper handleOrdinalMapper();
 
     LibraryTrackResolver trackResolver();
 

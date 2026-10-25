@@ -294,49 +294,27 @@ std::shared_ptr<const GenreEntities> genreEntitiesOf(const Snapshot& snapshot,
     if (!roles.genre)
         return genres;
 
+    const GenreGroups groups = genreGroupsOf(snapshot, roles.genre);
     const Column& column = snapshot.columns[*roles.genre];
-    const auto& values = column.dictionary.values;
 
-    TagGroups groups;
-    std::vector<std::vector<int32_t>> groupsOfId(values.size());
-    std::vector<uint32_t> rowsOfId(values.size(), 0);
-    for (const uint32_t id : column.ids)
-        ++rowsOfId[id];
-
-    for (size_t id = 0; id < values.size(); ++id) {
-        if (rowsOfId[id] == 0 || !isPresent(values[id]))
-            continue;
-        for (const std::string_view one : splitOnValues(values[id])) {
-            const std::string key = tagKey(one);
-            if (key.empty())
-                continue;
-            const int32_t group = groups.add(key, one);
-            std::vector<int32_t>& own = groupsOfId[id];
-            if (std::find(own.begin(), own.end(), group) == own.end())
-                own.push_back(group);
-        }
+    genres->entities.resize(groups.tags.names.size());
+    for (size_t group = 0; group < groups.tags.names.size(); ++group) {
+        genres->entities[group].name = groups.tags.names[group];
+        genres->entities[group].match = entityKeyOf(groups.tags.names[group]);
+    }
+    for (const uint32_t id : column.ids) {
+        for (const int32_t group : groups.of.answers[id])
+            ++genres->entities[static_cast<size_t>(group)].trackCount;
     }
 
-    std::vector<std::string> keys(groups.names.size());
-    for (const auto& [key, group] : groups.byKey)
-        keys[static_cast<size_t>(group)] = key;
-
-    genres->entities.resize(groups.names.size());
-    for (size_t group = 0; group < groups.names.size(); ++group) {
-        genres->entities[group].name = groups.names[group];
-        genres->entities[group].match = entityKeyOf(groups.names[group]);
-    }
-    for (size_t id = 0; id < values.size(); ++id) {
-        for (const int32_t group : groupsOfId[id])
-            genres->entities[static_cast<size_t>(group)].trackCount += rowsOfId[id];
-    }
-
-    std::vector<size_t> order(keys.size());
+    std::vector<size_t> order(groups.keys.size());
     std::iota(order.begin(), order.end(), size_t{0});
+    const auto unused = [&](size_t group) { return genres->entities[group].trackCount == 0; };
+    order.erase(std::remove_if(order.begin(), order.end(), unused), order.end());
     std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
         const uint32_t one = genres->entities[a].trackCount;
         const uint32_t other = genres->entities[b].trackCount;
-        return one != other ? one > other : utf16Before(keys[a], keys[b]);
+        return one != other ? one > other : utf16Before(groups.keys[a], groups.keys[b]);
     });
     std::vector<GenreEntities::Entity> sorted;
     sorted.reserve(order.size());

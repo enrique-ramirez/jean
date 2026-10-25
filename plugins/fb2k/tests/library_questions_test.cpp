@@ -5,7 +5,9 @@
 #include "core/library_roles.h"
 #include "core/ordinal_sets.h"
 #include "core/selection.h"
+#include "support/cover_library.h"
 #include "support/fixtures.h"
+#include "support/question_library.h"
 #include "support/summary_cases.h"
 #include "third_party/json.hpp"
 
@@ -16,6 +18,7 @@
 #include <exception>
 #include <iterator>
 #include <latch>
+#include <map>
 #include <optional>
 #include <ranges>
 #include <string>
@@ -129,7 +132,8 @@ bool isSet(const std::string& key) {
     return key == "refs" || key == "own" || key == "shared" || key == "guest" || key == "matched";
 }
 
-void checkAnswer(const json& answer, const json& expected, const size_t trackCount) {
+void checkAnswer(const json& sent, const json& expected, const size_t trackCount) {
+    const json answer = withoutSetSummaries(sent, expected);
     INFO("answer: ", answer.dump());
     INFO("expected: ", expected.dump());
     REQUIRE(answer.is_object());
@@ -545,4 +549,53 @@ TEST_CASE("a question racing row changes answers the rows of the revision it car
 
     INFO("asks: ", asks.load());
     CHECK(wrong == 0);
+}
+
+TEST_CASE("an album's cover is the first track of its record, held for every ask after the first") {
+    Library library;
+    library.replace(coverSnapshot());
+    LibraryQuestions questions;
+
+    const auto coversOf = [&](const std::vector<uint32_t>& ordinals) {
+        return library.read([&](const Snapshot& snapshot) {
+            std::map<std::string, std::string> asked;
+            for (const auto& role : coverRoles())
+                asked.emplace(role.name, role.expression);
+            const auto roles = rolesIn(snapshot, asked);
+            REQUIRE(roles.has_value());
+            return questions.coverOrdinals(snapshot, *roles, ordinals);
+        });
+    };
+
+    CHECK(coversOf({0, 1, 2, 4, 5}) == std::vector<uint32_t>{1, 1, 1, 4, 4});
+    CHECK(questions.albumBuilds() == 1);
+
+    CHECK(coversOf({5}) == std::vector<uint32_t>{4});
+    CHECK(questions.albumBuilds() == 1);
+}
+
+TEST_CASE(
+    "a third role set asked for costs the least recently asked of the two before it its place") {
+    CaseLibrary rows = playedLibrary();
+    const Snapshot snapshot = snapshotOf(rows.declared, rows.rows);
+
+    LibraryRoles withoutAlbumArtist = rows.roles;
+    withoutAlbumArtist.albumArtist.reset();
+    LibraryRoles withoutGenre = rows.roles;
+    withoutGenre.genre.reset();
+
+    LibraryQuestions questions;
+    const auto ask = [&](const LibraryRoles& roles) {
+        questions.album(snapshot, roles, kAlbum, std::string(kArtist));
+    };
+    ask(rows.roles);
+    ask(withoutAlbumArtist);
+    ask(withoutGenre);
+    const size_t built = questions.groupingBuilds();
+
+    ask(withoutAlbumArtist);
+    CHECK(questions.groupingBuilds() == built);
+
+    ask(rows.roles);
+    CHECK(questions.groupingBuilds() == built + 1);
 }

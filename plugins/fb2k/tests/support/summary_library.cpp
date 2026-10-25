@@ -179,7 +179,7 @@ LocalTime localTimeOn(const uint32_t yyyymmdd) {
 }
 
 void declareAndBuild(const LibraryRoutesServer& server, Library& library) {
-    const auto declared = server.client().Get(exportPath(summaryColumns()));
+    const auto declared = declareThroughRows(server, summaryColumns());
     REQUIRE(declared);
     REQUIRE(declared->status == 202);
 
@@ -211,11 +211,10 @@ std::string summaryPath(const std::vector<RoleAsked>& roles) {
     return path;
 }
 
-std::string exportPath(const std::vector<std::string>& columns) {
-    std::string path = "/api/library/export";
-    for (size_t at = 0; at < columns.size(); ++at)
-        path += (at == 0 ? "?columns=" : "&columns=") + encoded(columns[at]);
-    return path;
+httplib::Result declareThroughRows(const LibraryRoutesServer& server,
+                                   const std::vector<std::string>& columns) {
+    const nlohmann::json body{{"columns", columns}, {"structure", "0"}, {"ordinals", {0}}};
+    return server.client().Post("/api/library/rows", body.dump(), "application/json");
 }
 
 nlohmann::json expectedSummary(const Library& library, const std::vector<RoleAsked>& roles,

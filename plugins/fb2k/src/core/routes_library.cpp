@@ -3,8 +3,12 @@
 #include "core/artwork.h"
 #include "core/documents.h"
 #include "core/http_responses.h"
+#include "core/library_entities.h"
 #include "core/library_roles.h"
+#include "core/library_rows.h"
 #include "core/local_time.h"
+#include "core/ordinal_sets.h"
+#include "core/playlist_find.h"
 #include "core/tag_write.h"
 #include "core/text.h"
 
@@ -14,6 +18,7 @@
 #include <functional>
 #include <limits>
 #include <map>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -39,28 +44,58 @@ constexpr auto kTagWriteRefill = std::chrono::milliseconds(50);
 constexpr int kTrackReadBurst = kTagWriteBurst;
 constexpr auto kTrackReadRefill = kTagWriteRefill;
 
-// A delta is asked for once per revision a client sees move, so the track read's depth is ample.
-constexpr int kDeltaReadBurst = kTrackReadBurst;
-constexpr auto kDeltaReadRefill = kTrackReadRefill;
+constexpr int kLibraryReadBurst = 200;
+constexpr auto kLibraryReadRefill = std::chrono::milliseconds(50);
 
-constexpr int kSummaryReadBurst = kDeltaReadBurst;
-constexpr auto kSummaryReadRefill = kDeltaReadRefill;
-
-constexpr int kLibraryQuestionBurst = kDeltaReadBurst;
-constexpr auto kLibraryQuestionRefill = kDeltaReadRefill;
-
-// The snapshot and the deltas. Opaque bytes with a magic number of their own, so nothing on
-// the way to the client sniffs, transcodes or reformats them; contract/openapi.yaml is the
-// only description of what is inside.
+// Opaque bytes with a magic number of their own, so nothing on the way to the client sniffs,
+// transcodes or reformats them; contract/openapi.yaml is the only description of what is inside.
 constexpr char kLibraryBytes[] = "application/octet-stream";
 
 // Order is the client's to choose and does not make two declarations different: it decides
 // only where a column lands in the snapshot's own array.
-bool sameColumns(std::vector<std::string> a, std::vector<std::string> b) {
+bool sameDeclaration(std::vector<std::string> a, std::vector<std::string> b) {
     std::sort(a.begin(), a.end());
     std::sort(b.begin(), b.end());
 
     return a == b;
+}
+
+struct RowsRead {
+    enum class Kind { rows, structureMoved, badOrdinals, declarationMoved } kind = Kind::rows;
+    std::string bytes;
+};
+
+RowsRead rowsFrom(const Snapshot& snapshot, const RowsRequest& asked) {
+    if (snapshot.structure != asked.structure)
+        return {RowsRead::Kind::structureMoved, {}};
+
+    std::vector<std::string> held;
+    for (size_t field = kSpineFieldCount; field < snapshot.columns.size(); ++field)
+        held.push_back(snapshot.columns[field].name);
+    if (!sameDeclaration(held, asked.declaration.columns))
+        return {RowsRead::Kind::declarationMoved, {}};
+
+    const size_t tracks = snapshot.trackCount();
+    if (std::any_of(asked.ordinals.begin(), asked.ordinals.end(),
+                    [tracks](uint32_t ordinal) { return ordinal >= tracks; }))
+        return {RowsRead::Kind::badOrdinals, {}};
+
+    return {RowsRead::Kind::rows, serialiseRows(snapshot, asked.ordinals)};
+}
+
+struct RunsRead {
+    std::shared_ptr<const LibraryRuns> runs;
+    uint64_t structure = 0;
+    uint64_t revision = 0;
+};
+
+std::string runsDocument(const RunsRead& read) {
+    return nlohmann::json{{"structure", read.structure},
+                          {"revision", read.revision},
+                          {"lengths", read.runs->lengths},
+                          {"covers", read.runs->covers},
+                          {"untagged", read.runs->untagged}}
+        .dump();
 }
 
 std::optional<uint32_t> subsongAsked(const httplib::Request& req) {
@@ -110,31 +145,6 @@ OrdinalAsked ordinalAsked(const httplib::Request& req) {
     return asked;
 }
 
-struct ChangesAsked {
-    LibraryRequest request;
-    uint64_t structure = 0;
-};
-
-ChangesAsked changesAsked(const httplib::Request& req) {
-    ChangesAsked asked;
-    if (!req.has_param("since")) {
-        asked.request = refused<LibraryRequest>(LibraryRefusal::badSince, "'since' is required");
-        return asked;
-    }
-
-    asked.request = parseLibraryRequest({}, req.get_param_value("since"));
-    if (!asked.request.ok())
-        return asked;
-
-    if (!req.has_param("structure"))
-        asked.request =
-            refused<LibraryRequest>(LibraryRefusal::badSince, "'structure' is required");
-    else if (!readDecimal(req.get_param_value("structure"), asked.structure))
-        asked.request =
-            refused<LibraryRequest>(LibraryRefusal::badSince, "'structure' must be a whole number");
-    return asked;
-}
-
 void respondTrackRead(httplib::Response& res, const LibraryTrackRead& read) {
     if (read.outcome != PlayerOutcome::done) {
         respondOutcome(res, read.outcome);
@@ -163,7 +173,20 @@ constexpr std::array<std::string_view, 1> kGenreRequired{"name"};
 constexpr std::array<std::string_view, 4> kSearchOwned{"query", "limit", "entityLimit",
                                                        "splitsCredits"};
 
+constexpr std::array<std::string_view, 3> kCreditsOwned{"splitsCredits", "structure", "ordinal"};
+constexpr std::array<std::string_view, 3> kValuesOwned{"field", "prefix", "limit"};
+
+constexpr std::array<std::string_view, 1> kPlaylistRunsOwned{"structure"};
+constexpr std::array<std::string_view, 2> kPlaylistFindOwned{"query", "structure"};
+
 constexpr size_t kMaxQueryBytes = 1024;
+
+constexpr std::array<std::pair<std::string_view, ValueField>, 4> kValueFields{{
+    {"artist", ValueField::artist},
+    {"albumArtist", ValueField::albumArtist},
+    {"album", ValueField::album},
+    {"genre", ValueField::genre},
+}};
 
 QuestionParameters parametersOf(const LibraryRoutes::Question kind) {
     switch (kind) {
@@ -175,8 +198,24 @@ QuestionParameters parametersOf(const LibraryRoutes::Question kind) {
             return {kGenreOwned, kGenreRequired};
         case LibraryRoutes::Question::search:
             return {kSearchOwned, kSearchOwned};
+        case LibraryRoutes::Question::credits:
+            return {kCreditsOwned, kCreditsOwned};
+        case LibraryRoutes::Question::values:
+            return {kValuesOwned, kValuesOwned};
     }
     return {};
+}
+
+constexpr std::array<std::string_view, 1> kSummaryOwned{"genres"};
+
+std::optional<bool> genresAsked(const httplib::Request& req) {
+    if (!req.has_param("genres"))
+        return false;
+
+    const std::string value = req.get_param_value("genres");
+    if (value != "true" && value != "false")
+        return std::nullopt;
+    return value == "true";
 }
 
 bool listsName(std::span<const std::string_view> names, const std::string_view name) {
@@ -192,6 +231,10 @@ struct QuestionAsked {
     std::string query;
     size_t limit = 0;
     size_t entityLimit = 0;
+    uint64_t structure = 0;
+    size_t ordinal = 0;
+    ValueField field = ValueField::artist;
+    std::string prefix;
 
     bool ok() const { return refusal == LibraryRefusal::none; }
 };
@@ -235,6 +278,38 @@ constexpr std::array kOwnedParameters{
             asked.query = value;
             return std::nullopt;
         }},
+    OwnedParameter{
+        "prefix",
+        [](const std::string& value, QuestionAsked& asked) -> std::optional<std::string> {
+            if (value.size() > kMaxQueryBytes)
+                return "'prefix' must be at most " + std::to_string(kMaxQueryBytes) + " bytes";
+
+            asked.prefix = value;
+            return std::nullopt;
+        }},
+    OwnedParameter{
+        "field",
+        [](const std::string& value, QuestionAsked& asked) -> std::optional<std::string> {
+            const auto named =
+                std::find_if(kValueFields.begin(), kValueFields.end(),
+                             [&value](const auto& candidate) { return candidate.first == value; });
+            if (named == kValueFields.end())
+                return "'field' must be artist, albumArtist, album or genre";
+
+            asked.field = named->second;
+            return std::nullopt;
+        }},
+    OwnedParameter{
+        "structure",
+        [](const std::string& value, QuestionAsked& asked) -> std::optional<std::string> {
+            if (!readDecimal(value, asked.structure))
+                return "'structure' must be a string of decimal digits";
+            return std::nullopt;
+        }},
+    OwnedParameter{"ordinal",
+                   [](const std::string& value, QuestionAsked& asked) {
+                       return readCount("ordinal", value, asked.ordinal);
+                   }},
     OwnedParameter{"limit",
                    [](const std::string& value, QuestionAsked& asked) {
                        return readCount("limit", value, asked.limit);
@@ -309,18 +384,28 @@ LibraryRoutes::LibraryRoutes(const LibraryCalls& calls, const Library* library,
                   "refusing library track reads: they are arriving faster than this component "
                   "will answer them, which usually means a client is looping",
                   clock),
-      deltaReads_(kDeltaReadBurst, kDeltaReadRefill,
-                  "refusing library delta reads: they are arriving faster than this component "
-                  "will answer them, which usually means a client is looping",
-                  clock),
-      summaryReads_(kSummaryReadBurst, kSummaryReadRefill,
+      summaryReads_(kLibraryReadBurst, kLibraryReadRefill,
                     "refusing library summary reads: they are arriving faster than this "
                     "component will answer them, which usually means a client is looping",
                     clock),
-      questionReads_(kLibraryQuestionBurst, kLibraryQuestionRefill,
+      questionReads_(kLibraryReadBurst, kLibraryReadRefill,
                      "refusing library questions: they are arriving faster than this component "
                      "will answer them, which usually means a client is looping",
                      clock),
+      runReads_(kLibraryReadBurst, kLibraryReadRefill,
+                "refusing library run reads: they are arriving faster than this component will "
+                "answer them, which usually means a client is looping",
+                clock),
+      playlistRunReads_(kLibraryReadBurst, kLibraryReadRefill,
+                        "refusing playlist run reads: they are arriving faster than this "
+                        "component will answer them, which usually means a client is looping",
+                        clock),
+      playlistSearches_(kLibraryReadBurst, kLibraryReadRefill,
+                        "refusing playlist searches: they are arriving faster than this "
+                        "component will answer them, which usually means a client is looping",
+                        clock),
+      rowReads_(kRowsBurst, kRowsRefill),
+      clock_(clock),
       summaryNow_(systemNowMs) {}
 
 void LibraryRoutes::summaryClock(std::function<int64_t()> nowMs) {
@@ -354,19 +439,35 @@ bool LibraryRoutes::readingTooFast(httplib::Response& res) {
     return true;
 }
 
-bool LibraryRoutes::readingChangesTooFast(httplib::Response& res) {
-    if (!deltaReads_.refuses())
-        return false;
-
-    respondTooFast(res, deltaReads_, errorDocument(kReadingChangesTooFast));
-    return true;
-}
-
 bool LibraryRoutes::summarisingTooFast(httplib::Response& res) {
     if (!summaryReads_.refuses())
         return false;
 
     respondTooFast(res, summaryReads_, errorDocument(kReadingSummariesTooFast));
+    return true;
+}
+
+bool LibraryRoutes::readingRunsTooFast(httplib::Response& res) {
+    if (!runReads_.refuses())
+        return false;
+
+    respondTooFast(res, runReads_, errorDocument(kReadingRunsTooFast));
+    return true;
+}
+
+bool LibraryRoutes::readingPlaylistRunsTooFast(httplib::Response& res) {
+    if (!playlistRunReads_.refuses())
+        return false;
+
+    respondTooFast(res, playlistRunReads_, errorDocument(kReadingPlaylistRunsTooFast));
+    return true;
+}
+
+bool LibraryRoutes::searchingPlaylistsTooFast(httplib::Response& res) {
+    if (!playlistSearches_.refuses())
+        return false;
+
+    respondTooFast(res, playlistSearches_, errorDocument(kSearchingPlaylistsTooFast));
     return true;
 }
 
@@ -395,7 +496,7 @@ void LibraryRoutes::startBuilding(httplib::Response& res, const std::vector<std:
         return;
     }
 
-    if (!sameColumns(declaration(), columns) || !state.build) {
+    if (!sameDeclaration(declaration(), columns) || !state.build) {
         if (rebuildingTooFast(res))
             return;
 
@@ -404,68 +505,6 @@ void LibraryRoutes::startBuilding(httplib::Response& res, const std::vector<std:
     }
 
     respond(res, 202, libraryDocument(state));
-}
-
-std::shared_ptr<GzipOnce> LibraryRoutes::packingFor(const Library::State& state,
-                                                    const std::string& partKey) {
-    const std::lock_guard<std::mutex> lock(packedPartsLock_);
-
-    if (packedPartsStructure_ != state.structure || packedPartsRevision_ != state.revision) {
-        packedParts_.clear();
-        packedPartsStructure_ = state.structure;
-        packedPartsRevision_ = state.revision;
-    }
-
-    const auto held =
-        std::find_if(packedParts_.begin(), packedParts_.end(),
-                     [&partKey](const PackedPart& part) { return part.key == partKey; });
-    if (held != packedParts_.end())
-        return held->packing;
-
-    packedParts_.push_back({partKey, std::make_shared<GzipOnce>()});
-    while (packedParts_.size() > kHeldParts)
-        packedParts_.pop_front();
-
-    return packedParts_.back().packing;
-}
-
-void LibraryRoutes::exportSnapshot(const httplib::Request& req, httplib::Response& res) {
-    const auto request = columnsDeclared(req);
-    if (!request.ok()) {
-        respondRefusal(res, request.refusal, request.detail);
-        return;
-    }
-
-    const auto part = parseExportPart(
-        request.columns, req.get_param_values("only"),
-        req.has_param("spine") ? std::optional(req.get_param_value("spine")) : std::nullopt);
-    if (!part.ok()) {
-        respondRefusal(res, part.refusal, part.detail);
-        return;
-    }
-
-    if (!library_) {
-        respondUnavailable(res, kNoLibrary);
-        return;
-    }
-
-    const auto state = library_->state();
-    if (!state.ready || !sameColumns(state.columns, request.columns)) {
-        startBuilding(res, request.columns, state);
-        return;
-    }
-
-    const auto key = carryingOf(state.columns, part.part).key();
-    const auto produce = [this, &part] { return library_->exported(part.part).bytes; };
-    const auto name = snapshotTag(state, runId_) + (key.empty() ? std::string() : "-" + key);
-
-    if (key.empty()) {
-        sendIfChanged(req, res, name, kLibraryBytes, produce, packedExport_);
-        return;
-    }
-
-    const auto packing = packingFor(state, key);
-    sendIfChanged(req, res, name, kLibraryBytes, produce, *packing);
 }
 
 std::shared_ptr<LibraryRoutes::HeldSummary> LibraryRoutes::heldSummaryFor(const SummaryKey& key) {
@@ -477,7 +516,7 @@ std::shared_ptr<LibraryRoutes::HeldSummary> LibraryRoutes::heldSummaryFor(const 
         return *held;
 
     heldSummaries_.push_back(std::make_shared<HeldSummary>(key));
-    while (heldSummaries_.size() > kHeldParts)
+    while (heldSummaries_.size() > kHeldSummaries)
         heldSummaries_.pop_front();
 
     return heldSummaries_.back();
@@ -497,7 +536,8 @@ SharedBytes LibraryRoutes::summaryOf(HeldSummary& held,
 
             ++summaryComputations_;
             return std::make_shared<const std::string>(
-                summariseLibrary(snapshot, *indices, nowMs, systemLocalTime()));
+                summariseLibrary(snapshot, *indices, nowMs, systemLocalTime(),
+                                 SummaryParts{.genres = held.key.genres}));
         });
     });
     return held.bytes;
@@ -530,9 +570,15 @@ std::optional<Library::State> LibraryRoutes::stateForRoles(
 }
 
 void LibraryRoutes::summarise(const httplib::Request& req, httplib::Response& res) {
-    const auto roles = rolesAsked(req, kSummaryRoleNames, {});
+    const auto roles = rolesAsked(req, kSummaryRoleNames, kSummaryOwned);
     if (!roles.ok()) {
         respondRefusal(res, roles.refusal, roles.detail);
+        return;
+    }
+
+    const auto genres = genresAsked(req);
+    if (!genres) {
+        respondRefusal(res, LibraryRefusal::unacceptableQuestion, "'genres' must be true or false");
         return;
     }
 
@@ -545,14 +591,14 @@ void LibraryRoutes::summarise(const httplib::Request& req, httplib::Response& re
     const std::string key = rolesKey(roles.expressions);
 
     const auto name = snapshotTag(*state, runId_) + "-d" + std::to_string(date) + "-h" +
-                      std::to_string(std::hash<std::string>{}(key));
+                      std::to_string(std::hash<std::string>{}(key)) + (*genres ? "-g" : "");
 
     if (alreadyHoldsCurrent(req, name)) {
         sendIfChanged(req, res, name, "application/json", [] { return SharedBytes(); });
         return;
     }
 
-    const auto held = heldSummaryFor({state->structure, state->revision, date, key});
+    const auto held = heldSummaryFor({state->structure, state->revision, date, key, *genres});
     if (!summaryOf(*held, roles.expressions, nowMs)) {
         respond(res, 202, libraryDocument(library_->state()));
         return;
@@ -561,6 +607,213 @@ void LibraryRoutes::summarise(const httplib::Request& req, httplib::Response& re
     sendIfChanged(
         req, res, name, "application/json", [&held] { return held->bytes; }, held->packing);
 }
+
+void LibraryRoutes::readRuns(const httplib::Request& req, httplib::Response& res) {
+    const auto roles = rolesAsked(req, kAllRoleNames, {});
+    if (!roles.ok()) {
+        respondRefusal(res, roles.refusal, roles.detail);
+        return;
+    }
+
+    if (!stateForRoles(res, roles, &LibraryRoutes::readingRunsTooFast))
+        return;
+
+    const auto read = library_->read([&](const Snapshot& snapshot) -> std::optional<RunsRead> {
+        const auto indices = rolesIn(snapshot, roles.expressions);
+        if (!indices)
+            return std::nullopt;
+        return RunsRead{runs_.of(snapshot, *indices), snapshot.structure, snapshot.revision};
+    });
+    if (!read) {
+        respond(res, 202, libraryDocument(library_->state()));
+        return;
+    }
+
+    const auto name = "r" + std::to_string(runsHash(*read->runs));
+    sendIfChanged(req, res, name, "application/json", [&read] { return runsDocument(*read); });
+}
+
+namespace {
+
+using PlaylistColumns = LibraryRoutes::PlaylistColumns;
+
+std::optional<LibraryRoles> rolesOfCopy(const Snapshot& snapshot, const RolesAsked& asked,
+                                        const PlaylistTracksRead& read,
+                                        const std::vector<std::string>& columns,
+                                        PlaylistColumns columnsOf) {
+    if (snapshot.structure != read.libraryStructure)
+        return std::nullopt;
+
+    const auto roles = rolesIn(snapshot, asked.expressions);
+    if (!roles || columnsOf(snapshot, *roles) != columns)
+        return std::nullopt;
+
+    return roles;
+}
+
+nlohmann::ordered_json playlistCounters(const PlaylistTracksRead& read) {
+    return {{"structure", std::to_string(read.structure)},
+            {"revision", std::to_string(read.revision)}};
+}
+
+std::string playlistRunsDocument(const PlaylistTracksRead& read, const PlaylistRuns& runs) {
+    auto document = playlistCounters(read);
+    document["lengths"] = runs.lengths;
+    document["mostPlays"] = numberJson(runs.mostPlays);
+    document["albumCount"] = runs.albumCount;
+    document["trackCount"] = runs.trackCount;
+    document["seconds"] = numberJson(runs.seconds);
+    document["earliestYear"] = optionalNumberJson(runs.earliestYear);
+    document["latestYear"] = optionalNumberJson(runs.latestYear);
+    return document.dump();
+}
+
+}  // namespace
+
+struct LibraryRoutes::PlaylistCopy {
+    PlaylistTracksRead read;
+    std::vector<std::string> columns;
+};
+
+// The copy cannot be taken inside Library::read: the player's reader may wait on the main thread,
+// which a rebuild waiting to replace the snapshot would then be stalled behind.
+std::optional<LibraryRoutes::PlaylistCopy> LibraryRoutes::copyPlaylist(
+    httplib::Response& res, const std::string& playlistId, uint64_t structure,
+    const RolesAsked& roles, bool (LibraryRoutes::*tooFast)(httplib::Response&),
+    const PlaylistTrackReader& readTracks, PlaylistColumns columnsOf) {
+    if (!readTracks) {
+        respondUnavailable(res, kNoPlaylistRows);
+        return std::nullopt;
+    }
+
+    if (!stateForRoles(res, roles, tooFast))
+        return std::nullopt;
+
+    auto columns =
+        library_->read([&](const Snapshot& snapshot) -> std::optional<std::vector<std::string>> {
+            const auto indices = rolesIn(snapshot, roles.expressions);
+            if (!indices)
+                return std::nullopt;
+            return columnsOf(snapshot, *indices);
+        });
+    if (!columns) {
+        respond(res, 202, libraryDocument(library_->state()));
+        return std::nullopt;
+    }
+
+    PlaylistCopy copy{readTracks(playlistId, *columns), std::move(*columns)};
+    if (copy.read.outcome != PlayerOutcome::done) {
+        respondOutcome(res, copy.read.outcome);
+        return std::nullopt;
+    }
+
+    if (copy.read.structure != structure) {
+        respondOutcome(res, PlayerOutcome::rowsMoved);
+        return std::nullopt;
+    }
+
+    return copy;
+}
+
+void LibraryRoutes::readPlaylistRuns(const httplib::Request& req, httplib::Response& res,
+                                     const PlaylistTrackReader& readTracks) {
+    const auto id = req.matches[1].str();
+    if (playlistIdRefused(id, res))
+        return;
+
+    const auto roles = rolesAsked(req, kAllRoleNames, kPlaylistRunsOwned);
+    if (!roles.ok()) {
+        respondRefusal(res, roles.refusal, roles.detail);
+        return;
+    }
+
+    const auto asked = questionAsked(req, {kPlaylistRunsOwned, kPlaylistRunsOwned});
+    if (!asked.ok()) {
+        respondRefusal(res, asked.refusal, asked.detail);
+        return;
+    }
+
+    const auto copy =
+        copyPlaylist(res, id, asked.structure, roles, &LibraryRoutes::readingPlaylistRunsTooFast,
+                     readTracks, playlistRunsColumns);
+    if (!copy)
+        return;
+
+    const auto runs =
+        library_->read([&](const Snapshot& snapshot) -> std::shared_ptr<const PlaylistRuns> {
+            const auto indices =
+                rolesOfCopy(snapshot, roles, copy->read, copy->columns, playlistRunsColumns);
+            if (!indices)
+                return nullptr;
+            return playlistRuns_.of(id, copy->read, snapshot, *indices);
+        });
+    if (!runs) {
+        respond(res, 202, libraryDocument(library_->state()));
+        return;
+    }
+
+    const auto name = "p" + std::to_string(playlistRunsHash(*runs));
+    sendIfChanged(req, res, name, "application/json",
+                  [&] { return playlistRunsDocument(copy->read, *runs); });
+}
+
+void LibraryRoutes::findInPlaylist(const httplib::Request& req, httplib::Response& res,
+                                   const PlaylistTrackReader& readTracks) {
+    const auto id = req.matches[1].str();
+    if (playlistIdRefused(id, res))
+        return;
+
+    const auto roles = rolesAsked(req, kAllRoleNames, kPlaylistFindOwned);
+    if (!roles.ok()) {
+        respondRefusal(res, roles.refusal, roles.detail);
+        return;
+    }
+
+    const auto asked = questionAsked(req, {kPlaylistFindOwned, kPlaylistFindOwned});
+    if (!asked.ok()) {
+        respondRefusal(res, asked.refusal, asked.detail);
+        return;
+    }
+
+    const auto copy =
+        copyPlaylist(res, id, asked.structure, roles, &LibraryRoutes::searchingPlaylistsTooFast,
+                     readTracks, playlistFindColumns);
+    if (!copy)
+        return;
+
+    const auto matched =
+        library_->read([&](const Snapshot& snapshot) -> std::optional<std::vector<uint32_t>> {
+            const auto indices =
+                rolesOfCopy(snapshot, roles, copy->read, copy->columns, playlistFindColumns);
+            if (!indices)
+                return std::nullopt;
+
+            const auto folded = questions_.searchTextFor(snapshot, *indices);
+            const auto glyphText =
+                searchesMarks(asked.query) ? questions_.glyphTextFor(snapshot, *indices) : folded;
+            return playlistMatches(snapshot, *indices, *folded, *glyphText, copy->read.rows,
+                                   asked.query);
+        });
+    if (!matched) {
+        respond(res, 202, libraryDocument(library_->state()));
+        return;
+    }
+
+    auto document = playlistCounters(copy->read);
+    document["matched"] = ordinalSetDocument(*matched, copy->read.rows.size());
+    respond(res, 200, document.dump());
+    res.set_header("Cache-Control", kAskEveryTime);
+    res.set_header("Vary", "Accept-Encoding");
+}
+
+namespace {
+
+struct QuestionRead {
+    enum class Kind { answered, structureMoved, pastTheEnd } kind = Kind::answered;
+    std::string body;
+};
+
+}  // namespace
 
 void LibraryRoutes::answerQuestion(const Question kind, const httplib::Request& req,
                                    httplib::Response& res) {
@@ -580,7 +833,7 @@ void LibraryRoutes::answerQuestion(const Question kind, const httplib::Request& 
     const auto state = stateForRoles(res, roles, &LibraryRoutes::questioningTooFast);
     if (!state)
         return;
-    const auto body = library_->read([&](const Snapshot& snapshot) -> std::optional<std::string> {
+    const auto read = library_->read([&](const Snapshot& snapshot) -> std::optional<QuestionRead> {
         const auto indices = rolesIn(snapshot, roles.expressions);
         if (!indices)
             return std::nullopt;
@@ -594,23 +847,97 @@ void LibraryRoutes::answerQuestion(const Question kind, const httplib::Request& 
                 answer = questions_.artist(snapshot, *indices, asked.name, asked.splitsCredits);
                 break;
             case Question::genre:
-                answer = LibraryQuestions::genre(snapshot, *indices, asked.name);
+                answer = questions_.genre(snapshot, *indices, asked.name);
                 break;
             case Question::search:
                 answer = questions_.search(snapshot, *indices, asked.query, asked.limit,
                                            asked.entityLimit, asked.splitsCredits);
                 break;
+            case Question::credits:
+                if (snapshot.structure != asked.structure)
+                    return QuestionRead{QuestionRead::Kind::structureMoved, {}};
+                if (asked.ordinal >= snapshot.trackCount())
+                    return QuestionRead{QuestionRead::Kind::pastTheEnd, {}};
+                answer = questions_.credits(
+                    snapshot, *indices, static_cast<uint32_t>(asked.ordinal), asked.splitsCredits);
+                break;
+            case Question::values:
+                answer =
+                    questions_.values(snapshot, *indices, asked.field, asked.prefix, asked.limit);
+                break;
         }
-        return answer.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+        return QuestionRead{QuestionRead::Kind::answered,
+                            answer.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace)};
     });
-    if (!body) {
+    if (!read) {
         respond(res, 202, libraryDocument(library_->state()));
         return;
     }
 
-    respond(res, 200, *body);
+    switch (read->kind) {
+        case QuestionRead::Kind::structureMoved:
+            respondOutcome(res, ReadOutcome::structureMoved);
+            return;
+        case QuestionRead::Kind::pastTheEnd:
+            respondRefusal(res, LibraryRefusal::unacceptableQuestion,
+                           "'ordinal' is past the last track");
+            return;
+        case QuestionRead::Kind::answered:
+            break;
+    }
+
+    respond(res, 200, read->body);
     res.set_header("Cache-Control", kAskEveryTime);
     res.set_header("Vary", "Accept-Encoding");
+}
+
+bool LibraryRoutes::readingRowsTooFast(httplib::Response& res, const std::string& client) {
+    return perClientTooFast(rowReads_, client, clock_(), kReadingRowsTooFast, res);
+}
+
+void LibraryRoutes::readRows(const httplib::Request& req, httplib::Response& res) {
+    const auto asked = parseRowsRequest(req.body);
+    if (asked.refusal != PlaylistRefusal::none) {
+        respondRefusal(res, asked.refusal);
+        return;
+    }
+    if (!asked.declaration.ok()) {
+        respondRefusal(res, asked.declaration.refusal, asked.declaration.detail);
+        return;
+    }
+
+    if (!library_) {
+        respondUnavailable(res, kNoLibrary);
+        return;
+    }
+
+    if (readingRowsTooFast(res, req.remote_addr))
+        return;
+
+    const auto state = library_->state();
+    if (!state.ready || !sameDeclaration(state.columns, asked.declaration.columns)) {
+        startBuilding(res, asked.declaration.columns, state);
+        return;
+    }
+
+    auto read =
+        library_->read([&asked](const Snapshot& snapshot) { return rowsFrom(snapshot, asked); });
+    switch (read.kind) {
+        case RowsRead::Kind::structureMoved:
+            respondOutcome(res, ReadOutcome::structureMoved);
+            return;
+        case RowsRead::Kind::badOrdinals:
+            respondRefusal(res, PlaylistRefusal::badOrdinals);
+            return;
+        case RowsRead::Kind::declarationMoved:
+            respond(res, 202, libraryDocument(library_->state()));
+            return;
+        case RowsRead::Kind::rows:
+            break;
+    }
+
+    sendUnvalidated(req, res, std::make_shared<const std::string>(std::move(read.bytes)),
+                    kLibraryBytes);
 }
 
 void LibraryRoutes::readTrack(const httplib::Request& req, httplib::Response& res) {
@@ -685,13 +1012,12 @@ void LibraryRoutes::readTrack(const httplib::Request& req, httplib::Response& re
 }
 
 void LibraryRoutes::addTo(httplib::Server& server) {
-    server.Get("/api/library/export", [this](const httplib::Request& req, httplib::Response& res) {
-        exportSnapshot(req, res);
-    });
-
     server.Get("/api/library/summary", [this](const httplib::Request& req, httplib::Response& res) {
         summarise(req, res);
     });
+
+    server.Get("/api/library/runs",
+               [this](const httplib::Request& req, httplib::Response& res) { readRuns(req, res); });
 
     server.Get("/api/library/album", [this](const httplib::Request& req, httplib::Response& res) {
         answerQuestion(Question::album, req, res);
@@ -709,38 +1035,16 @@ void LibraryRoutes::addTo(httplib::Server& server) {
         answerQuestion(Question::search, req, res);
     });
 
-    server.Get("/api/library/changes", [this](const httplib::Request& req, httplib::Response& res) {
-        const auto asked = changesAsked(req);
-        if (!asked.request.ok()) {
-            respondRefusal(res, asked.request.refusal, asked.request.detail);
-            return;
-        }
+    server.Get("/api/library/credits", [this](const httplib::Request& req, httplib::Response& res) {
+        answerQuestion(Question::credits, req, res);
+    });
 
-        if (!library_) {
-            respondUnavailable(res, kNoLibrary);
-            return;
-        }
+    server.Get("/api/library/values", [this](const httplib::Request& req, httplib::Response& res) {
+        answerQuestion(Question::values, req, res);
+    });
 
-        if (readingChangesTooFast(res))
-            return;
-
-        const auto state = library_->state();
-        const auto name = snapshotTag(state, runId_) + "-f" + std::to_string(asked.request.since) +
-                          "-g" + std::to_string(asked.structure);
-
-        std::optional<Library::Changes> missed;
-        if (!alreadyHoldsCurrent(req, name)) {
-            missed = library_->changes(asked.structure, asked.request.since);
-            if (missed->outcome != DeltaOutcome::ok) {
-                respondOutcome(res, missed->outcome);
-                return;
-            }
-        }
-
-        sendIfChanged(req, res, name, kLibraryBytes, [this, &missed]() -> SharedBytes {
-            auto body = serialiseDeltaWithin(missed->delta, library_->maxBytes());
-            return body ? std::make_shared<const std::string>(std::move(*body)) : nullptr;
-        });
+    server.Post("/api/library/rows", [this](const httplib::Request& req, httplib::Response& res) {
+        readRows(req, res);
     });
 
     server.Post("/api/library/refresh", [this](const httplib::Request&, httplib::Response& res) {

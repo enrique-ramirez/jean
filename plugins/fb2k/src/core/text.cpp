@@ -357,6 +357,20 @@ std::string fold(std::string_view text) {
     return folded;
 }
 
+ValueDigest::ValueDigest() : digest_(kFnvBasis) {}
+
+void ValueDigest::mix(uint64_t value) {
+    constexpr unsigned kBitsPerByte = 8;
+    for (unsigned shift = 0; shift < 64U; shift += kBitsPerByte) {
+        digest_ ^= (value >> shift) & 0xFFU;
+        digest_ *= kFnvPrime;
+    }
+}
+
+bool searchesMarks(std::string_view query) {
+    return !foldedWords(query).empty() && squash(query).empty();
+}
+
 std::string squash(std::string_view text) {
     std::string squashed;
     squashed.reserve(text.size());

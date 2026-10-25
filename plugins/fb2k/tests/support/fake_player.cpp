@@ -1,5 +1,6 @@
 #include "support/fake_player.h"
 
+#include "core/library_groups.h"
 #include "core/refusal_order.h"
 #include "support/fixtures.h"
 
@@ -90,6 +91,22 @@ Result failed(PlayerOutcome outcome) {
     Result result;
     result.outcome = outcome;
     return result;
+}
+
+// Where the snapshot holds the row's track, as fb2k/library.cpp's handle map finds it: the same
+// library-relative path at the same subsong.
+std::optional<uint32_t> ordinalIn(const Snapshot& snapshot, const FakeRow& row) {
+    if (!row.libraryPath || snapshot.columns.size() < kSpineFieldCount)
+        return std::nullopt;
+
+    const std::string subsong = std::to_string(row.subsong);
+    const Column& subsongs = snapshot.columns[kSpineFieldCount - 1];
+    for (size_t ordinal = 0; ordinal < snapshot.trackCount(); ++ordinal) {
+        if (pathOf(snapshot, ordinal) == *row.libraryPath &&
+            subsongs.dictionary.values[subsongs.ids[ordinal]] == subsong)
+            return static_cast<uint32_t>(ordinal);
+    }
+    return std::nullopt;
 }
 
 }  // namespace
@@ -353,8 +370,9 @@ int FakePlayer::count(Call call) const {
 }
 
 int FakePlayer::writes() const {
-    static const std::set<Call> reads{Call::listPlaylists,   Call::readRole,     Call::readRows,
-                                      Call::readChangedRows, Call::previewQuery, Call::readQueue};
+    static const std::set<Call> reads{Call::listPlaylists,   Call::readRole,   Call::readRows,
+                                      Call::readChangedRows, Call::readTracks, Call::previewQuery,
+                                      Call::readQueue};
 
     const Lock guard(mutex_);
     return static_cast<int>(std::count_if(asked_.begin(), asked_.end(), [](const Asked& asked) {
@@ -448,12 +466,12 @@ Player FakePlayer::player() {
 
         PlaylistChangesRead read;
         if (structure != found->entry.structure) {
-            read.catchUp = DeltaOutcome::structureChanged;
+            read.catchUp = ReadOutcome::structureMoved;
             return read;
         }
 
         if (since < found->oldestRetained) {
-            read.catchUp = DeltaOutcome::revisionTooOld;
+            read.catchUp = ReadOutcome::revisionTooOld;
             return read;
         }
 
@@ -461,6 +479,45 @@ Player FakePlayer::player() {
         for (const auto& [position, revision] : found->changedAt)
             if (revision > since)
                 read.rows.push_back({position, formatted(found->rows.at(position), columns)});
+        return read;
+    };
+
+    player.playlists.readTracks = [this](const std::string& id,
+                                         const std::vector<std::string>& columns) {
+        const Lock guard(mutex_);
+        ask(Call::readTracks, id);
+
+        if (const auto refused = refusal(Call::readTracks))
+            return failed<PlaylistTracksRead>(*refused);
+
+        const auto found = find(id);
+        if (found == playlists_.end())
+            return failed<PlaylistTracksRead>(PlayerOutcome::noSuchPlaylist);
+
+        PlaylistTracksRead read;
+        read.structure = found->entry.structure;
+        read.revision = found->entry.revision;
+
+        const auto copy = [&](const Snapshot* snapshot) {
+            for (const FakeRow& row : found->rows) {
+                const auto ordinal = snapshot ? ordinalIn(*snapshot, row) : std::nullopt;
+                if (ordinal)
+                    read.rows.push_back({ordinal, {}});
+                else
+                    read.rows.push_back({std::nullopt, formatted(row, columns).columns});
+            }
+        };
+
+        if (!library_) {
+            copy(nullptr);
+            return read;
+        }
+
+        library_->read([&](const Snapshot& snapshot) {
+            read.libraryStructure = snapshot.structure;
+            copy(&snapshot);
+            return 0;
+        });
         return read;
     };
 

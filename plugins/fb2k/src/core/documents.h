@@ -101,6 +101,24 @@ struct PlaylistRow {
     std::vector<std::string> columns;
     std::optional<std::string> libraryPath;
     uint32_t subsong = 0;
+    std::optional<std::optional<std::string>> cover;
+};
+
+// One row of a playlist: a row the media library holds by its ordinal at
+// PlaylistTracksRead::libraryStructure and no columns; any other by `columns`, evaluated against
+// its own handle.
+struct PlaylistTrack {
+    std::optional<uint32_t> ordinal;
+    std::vector<std::string> columns;
+};
+
+// Every row of a playlist, at the playlist's own pair, its handles copied in one main-thread job.
+struct PlaylistTracksRead {
+    PlayerOutcome outcome = PlayerOutcome::done;
+    uint64_t structure = 0;
+    uint64_t revision = 0;
+    uint64_t libraryStructure = 0;
+    std::vector<PlaylistTrack> rows;
 };
 
 struct PlaylistRowsRead {
@@ -122,7 +140,7 @@ struct ChangedPlaylistRow {
 
 struct PlaylistChangesRead {
     PlayerOutcome outcome = PlayerOutcome::done;
-    DeltaOutcome catchUp = DeltaOutcome::ok;
+    ReadOutcome catchUp = ReadOutcome::ok;
 
     uint64_t revision = 0;
 
@@ -146,6 +164,10 @@ struct QueuedTrack {
 
     std::optional<std::string> libraryPath;
     std::optional<PlayingLocation> location;
+
+    // Set exactly when the request named roles: the library path of the album's cover track, or
+    // null where there is none.
+    std::optional<std::optional<std::string>> cover;
 };
 
 struct QueueRead {

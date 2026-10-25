@@ -8,10 +8,13 @@
 
 #include "core/http_server.h"
 #include "core/library.h"
+#include "core/library_roles.h"
 #include "core/player_state.h"
+#include "support/cover_library.h"
 #include "support/fake_player.h"
 #include "support/keys.h"
 #include "support/spec.h"
+#include "support/summary_library.h"
 #include "support/test_server.h"
 #include "third_party/json.hpp"
 
@@ -73,6 +76,66 @@ const Keys& entryKeys() {
     static const Keys keys = {"title",       "artist",      "duration", "album",
                               "albumArtist", "libraryPath", "location"};
     return keys;
+}
+
+QueuedTrack queuedAt(std::string title, const std::string& libraryPath) {
+    auto queued = track(std::move(title));
+    queued.libraryPath = libraryPath;
+    return queued;
+}
+
+std::vector<QueuedTrack> queueOfCovers() {
+    return {
+        queuedAt("Second", kRecordSecondTrack), queuedAt("Bonus", kRecordBonusTrack),
+        queuedAt("Cover", kRecordCover),        queuedAt("Other album", kSecondRecordSecondTrack),
+        queuedAt("Gone", kGoneFromTheLibrary),  track("Dragged in")};
+}
+
+const std::vector<std::optional<std::string>>& coversOfTheQueue() {
+    static const std::vector<std::optional<std::string>> covers{
+        kRecordCover, kRecordCover, kRecordCover, kSecondRecordCover, std::nullopt, std::nullopt};
+    return covers;
+}
+
+json coverOrNull(const std::optional<std::string>& cover) {
+    return cover ? json(*cover) : json(nullptr);
+}
+
+json coversIn(const json& entries) {
+    json covers = json::array();
+    for (const auto& entry : entries) {
+        INFO("entry: ", entry.dump());
+        REQUIRE(entry.contains("cover"));
+        covers.push_back(entry.at("cover"));
+    }
+    return covers;
+}
+
+json expectedCovers(const std::vector<std::optional<std::string>>& covers) {
+    json expected = json::array();
+    for (const auto& cover : covers)
+        expected.push_back(coverOrNull(cover));
+    return expected;
+}
+
+json nullCovers(size_t count) {
+    json covers = json::array();
+    for (size_t at = 0; at < count; ++at)
+        covers.push_back(nullptr);
+    return covers;
+}
+
+json entriesAsked(const TestServer& server, const std::string& path) {
+    const auto response = get(server, path);
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+    const auto body = json::parse(response->body);
+    REQUIRE(body.contains("entries"));
+    return body.at("entries");
+}
+
+std::string queueWithRoles(const std::vector<RoleAsked>& roles = coverRoles()) {
+    return withRoles("/api/queue", roles);
 }
 
 constexpr uint32_t kQueueLimit = 1000;
@@ -273,6 +336,147 @@ TEST_CASE("every queue entry carries exactly its seven keys, whichever of them a
     }
 
     CHECK(keysOf(entries[0]["location"]) == Keys{"index", "playlistId"});
+}
+
+TEST_CASE("the roles this suite names for a cover are every role the library questions take") {
+    std::vector<std::string_view> named;
+    std::transform(coverRoles().begin(), coverRoles().end(), std::back_inserter(named),
+                   [](const RoleAsked& role) { return std::string_view(role.name); });
+    CHECK(named == std::vector<std::string_view>(kAllRoleNames.begin(), kAllRoleNames.end()));
+}
+
+TEST_CASE("a queue read naming roles carries each entry's album cover, null outside the library") {
+    Library library;
+    library.replace(coverSnapshot());
+    FakePlayer foobar;
+    foobar.queue(queueOfCovers());
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto entries = entriesAsked(server, queueWithRoles());
+
+    REQUIRE(entries.size() == queueOfCovers().size());
+    CHECK(coversIn(entries) == expectedCovers(coversOfTheQueue()));
+    CHECK(entries[0].at("libraryPath") == kRecordSecondTrack);
+}
+
+TEST_CASE("a queue read naming roles carries exactly the seven keys and the cover") {
+    Library library;
+    library.replace(coverSnapshot());
+    FakePlayer foobar;
+    foobar.queue({fromAPlaylistRow("Row", 0), queuedAt("Held", kRecordCover), track("Neither")});
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    auto keys = entryKeys();
+    keys.insert("cover");
+    for (const auto& entry : entriesAsked(server, queueWithRoles())) {
+        INFO("entry: ", entry.dump());
+        CHECK(keysOf(entry) == keys);
+    }
+}
+
+// A client that names no roles is one that draws no cover from this read, and the cover costs a
+// pass over the library's albums.
+TEST_CASE("a queue read naming no roles carries no cover") {
+    Library library;
+    library.replace(coverSnapshot());
+    FakePlayer foobar;
+    foobar.queue(queueOfCovers());
+    const TestServer server(servingSettings(), foobar.player(), &library);
+
+    const auto entries = entriesAsked(server, "/api/queue");
+
+    REQUIRE(entries.size() == queueOfCovers().size());
+    for (const auto& entry : entries) {
+        INFO("entry: ", entry.dump());
+        CHECK_FALSE(entry.contains("cover"));
+    }
+}
+
+// The queue still draws without its covers: neither is a reason to refuse the read, nor to make a
+// client wait on a build it did not ask for.
+TEST_CASE("a queue read whose roles the library cannot answer yet carries a null cover on each") {
+    FakePlayer foobar;
+    foobar.queue(queueOfCovers());
+
+    SUBCASE("no snapshot built yet") {
+        Library library;
+        const TestServer server(servingSettings(), foobar.player(), &library);
+
+        const auto entries = entriesAsked(server, queueWithRoles());
+        REQUIRE(entries.size() == queueOfCovers().size());
+        CHECK(coversIn(entries) == nullCovers(queueOfCovers().size()));
+    }
+
+    SUBCASE("a role naming an expression the snapshot was not built with") {
+        Library library;
+        library.replace(coverSnapshot());
+        const TestServer server(servingSettings(), foobar.player(), &library);
+
+        const auto entries =
+            entriesAsked(server, queueWithRoles(coverRolesWith({"album", "%album_x%"})));
+        REQUIRE(entries.size() == queueOfCovers().size());
+        CHECK(coversIn(entries) == nullCovers(queueOfCovers().size()));
+    }
+
+    SUBCASE("no media library at all") {
+        const TestServer server(servingSettings(), foobar.player());
+
+        const auto entries = entriesAsked(server, queueWithRoles());
+        REQUIRE(entries.size() == queueOfCovers().size());
+        CHECK(coversIn(entries) == nullCovers(queueOfCovers().size()));
+    }
+}
+
+// The map from a path to its row is the snapshot's at one structure. One left over from the
+// structure before answers rows that now belong to other tracks, and their albums' covers.
+TEST_CASE("a cover is read at the library's structure after an album is added ahead of it") {
+    Library library;
+    library.replace(coverSnapshot());
+    FakePlayer foobar;
+    foobar.queue(queueOfCovers());
+    const TestServer server(servingSettings(), foobar.player(), &library);
+    REQUIRE(coversIn(entriesAsked(server, queueWithRoles())) == expectedCovers(coversOfTheQueue()));
+
+    library.replace(coverSnapshotBehind(3));
+
+    CHECK(coversIn(entriesAsked(server, queueWithRoles())) == expectedCovers(coversOfTheQueue()));
+}
+
+TEST_CASE("a queue read naming a role it cannot read is a 400 that never reaches the player") {
+    Library library;
+    library.replace(coverSnapshot());
+    FakePlayer foobar;
+    foobar.queue(queueOfCovers());
+    const TestServer server(servingSettings(), foobar.player(), &library);
+    const std::string tooLong = "role 'album' must be printable text of 1 to " +
+                                std::to_string(kMaxColumnLength) + " characters";
+
+    struct Refused {
+        const char* what;
+        std::string path;
+        const char* error;
+        std::string detail;
+    };
+    const std::vector<Refused> refused{
+        {"a name that is no role", queueWithRoles() + "&colour=%25title%25", "unacceptable role",
+         "'colour' is not a role"},
+        {"an empty expression", withRoles("/api/queue?album=", coverRolesBut("album")),
+         "unacceptable role", tooLong},
+        {"a role named twice", queueWithRoles() + "&album=%25artist%25", "duplicate role",
+         "role 'album' is named twice"},
+    };
+
+    for (const auto& request : refused) {
+        INFO(request.what, ": ", request.path);
+        const auto response = get(server, request.path);
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        const auto body = json::parse(response->body);
+        CHECK(body.value("error", "") == request.error);
+        CHECK(body.value("detail", "") == request.detail);
+    }
+
+    CHECK(foobar.count(Call::readQueue) == 0);
 }
 
 TEST_CASE("a queue of QUEUE_LIMIT entries is answered whole and in order") {
@@ -644,7 +848,7 @@ TEST_CASE(
 
         REQUIRE(response);
         CHECK(response->status == 409);
-        CHECK(json::parse(response->body)["error"] == describe(DeltaOutcome::structureChanged));
+        CHECK(json::parse(response->body)["error"] == describe(ReadOutcome::structureMoved));
     }
 
     CHECK(foobar.writes() == 0);
@@ -665,7 +869,7 @@ TEST_CASE("a structure the library moves past before the player's job runs is a 
 
     REQUIRE(response);
     CHECK(response->status == 409);
-    CHECK(json::parse(response->body)["error"] == describe(DeltaOutcome::structureChanged));
+    CHECK(json::parse(response->body)["error"] == describe(ReadOutcome::structureMoved));
     CHECK(foobar.count(Call::queueTracks) == 1);
     CHECK(foobar.queued().empty());
 }
@@ -719,7 +923,7 @@ TEST_CASE(
     }
 
     SUBCASE("a library whose first snapshot has not been built yet") {
-        refused(&unbuilt, describe(DeltaOutcome::notBuilt));
+        refused(&unbuilt, describe(ReadOutcome::notBuilt));
     }
 
     CHECK(foobar.writes() == 0);
@@ -863,7 +1067,7 @@ TEST_CASE(
             REQUIRE(error.is_string());
             // A library request can be a 409 for either reason, and the remedies differ: export
             // again, or read the queue again.
-            CHECK(error != describe(DeltaOutcome::structureChanged));
+            CHECK(error != describe(ReadOutcome::structureMoved));
         }
     }
 

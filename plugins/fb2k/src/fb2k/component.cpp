@@ -150,6 +150,8 @@ Player playerUsing(const Settings& settings, MainThreadQueue& mainThread,
     player.playlists.readRole = makePlaylistRoleReader(mainThread);
     player.playlists.readRows = makePlaylistRowReader(mainThread, playlistVersions);
     player.playlists.readChangedRows = makeChangedPlaylistRowReader(mainThread, playlistVersions);
+    player.playlists.readTracks =
+        makePlaylistTracksReader(mainThread, playlistVersions, libraryFeed.handleOrdinalMapper());
     player.playlists.readRowArtwork = makePlaylistRowArtworkReader(mainThread, rowArt);
     player.playlists.create =
         makePlaylistCreator(mainThread, playlistVersions, libraryFeed.ordinalResolver());

@@ -2,22 +2,24 @@
 
 #include "third_party/httplib.h"
 
+#include "core/documents.h"
 #include "core/http_server.h"
 #include "core/library.h"
+#include "core/library_roles.h"
 #include "core/player.h"
 #include "core/rate_limit.h"
+#include "core/routes_library.h"
 
 #include <string>
+#include <vector>
 
-// A playlist's rows: a page of them, the ones that changed, and filling, copying into and
-// removing from a playlist addressed by its id.
 namespace jean {
 
 class PlaylistRowRoutes {
 public:
-    // `changes` is the one budget playlist and queue edits share.
     PlaylistRowRoutes(const PlaylistCalls& playlists, const Library* library,
-                      const LiveSettings& settings, Throttle& changes);
+                      const LiveSettings& settings, Throttle& changes, LibraryRoutes& libraryRoutes,
+                      const RateLimitClock& clock);
 
     void addTo(httplib::Server& server);
 
@@ -26,10 +28,15 @@ private:
 
     bool ownPlaylistRefused(const std::string& id, httplib::Response& res) const;
 
+    bool readingRowsTooFast(const httplib::Request& req, httplib::Response& res);
+
     const PlaylistCalls& playlists_;
     const Library* const library_;
     const LiveSettings& settings_;
     Throttle& changes_;
+    LibraryRoutes& libraryRoutes_;
+    PerClientRateLimiter rowReads_;
+    const RateLimitClock clock_;
 };
 
 }  // namespace jean

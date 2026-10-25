@@ -4,6 +4,8 @@
 #include "core/library_credits.h"
 #include "core/library_entities.h"
 #include "core/library_groups.h"
+#include "core/library_sets.h"
+#include "core/local_time.h"
 #include "core/ordinal_sets.h"
 #include "core/text.h"
 
@@ -28,20 +30,44 @@ template <class Part>
 struct Kept {
     std::vector<uint64_t> counts;
     std::shared_ptr<const Part> value;
+
+    void reset() { value.reset(); }
 };
 
 }  // namespace
+
+struct HeldCredits {
+    Credits credits;
+    std::array<const void*, 3> boundTo{};
+};
+
+struct HeldAlbums {
+    std::shared_ptr<const HeldCredits> credits;
+    AlbumRecords records;
+};
+
+struct CompletionValues {
+    struct Value {
+        std::string name;
+        std::string folded;
+    };
+
+    std::vector<Value> sorted;
+};
 
 struct LibraryQuestions::Held {
     Roles roles;
 
     Kept<AlbumGrouping> grouping;
+    Kept<HeldCredits> credits;
+    Kept<HeldAlbums> albumRecords;
     Kept<CreditLessons> lessons;
     Kept<SearchText> text;
     Kept<SearchText> glyphs;
     Kept<AlbumEntities> albums;
     std::array<Kept<ArtistEntities>, 2> artists;
     Kept<GenreEntities> genres;
+    std::array<Kept<CompletionValues>, 4> completions;
 };
 
 namespace {
@@ -63,6 +89,12 @@ json pairOf(const Snapshot& snapshot) {
 json withSet(json answer, const char* key, const std::vector<uint32_t>& ordinals,
              const Snapshot& snapshot) {
     answer[key] = ordinalSetDocument(ordinals, snapshot.trackCount());
+    return answer;
+}
+
+json withFigures(json answer, const Snapshot& snapshot, const LibraryRoles& roles,
+                 const Credits& credits, const std::vector<uint32_t>& ordinals) {
+    answer["figures"] = figuresDocument(figuresOver(snapshot, roles, credits, ordinals));
     return answer;
 }
 
@@ -217,7 +249,8 @@ std::shared_ptr<const Part> keep(Kept<Part>& slot, const Snapshot& snapshot, con
 
 }  // namespace
 
-LibraryQuestions::LibraryQuestions() = default;
+LibraryQuestions::LibraryQuestions() : LibraryQuestions(systemLocalTime()) {}
+LibraryQuestions::LibraryQuestions(LocalTime local) : local_(std::move(local)) {}
 LibraryQuestions::~LibraryQuestions() = default;
 
 LibraryQuestions::Held& LibraryQuestions::heldFor(const Snapshot& snapshot,
@@ -262,7 +295,87 @@ std::shared_ptr<const CreditLessons> lessonsIn(LibraryQuestions::Held& held,
                 [&] { return std::make_shared<const CreditLessons>(lessonsOf(snapshot, roles)); });
 }
 
+std::shared_ptr<const HeldCredits> creditsIn(LibraryQuestions::Held& held, const Snapshot& snapshot,
+                                             const LibraryRoles& roles,
+                                             std::atomic<size_t>& builds) {
+    const auto idsOf = [&](std::optional<size_t> role) -> const void* {
+        return role ? &snapshot.columns[*role].ids : nullptr;
+    };
+    const std::array<const void*, 3> where{idsOf(roles.album), idsOf(roles.albumArtist),
+                                           idsOf(roles.artist)};
+    const auto build = [&] {
+        auto built = std::make_shared<HeldCredits>();
+        built->credits = creditsOf(snapshot, roles);
+        built->boundTo = where;
+        return std::shared_ptr<const HeldCredits>(std::move(built));
+    };
+    const Roles read{roles.album, roles.albumArtist, roles.artist};
+
+    auto kept = keep(held.credits, snapshot, read, builds, build);
+    if (kept->boundTo != where) {
+        held.credits.reset();
+        kept = keep(held.credits, snapshot, read, builds, build);
+    }
+    return kept;
+}
+
+std::shared_ptr<const HeldAlbums> albumRecordsIn(LibraryQuestions::Held& held,
+                                                 const Snapshot& snapshot,
+                                                 const LibraryRoles& roles,
+                                                 std::atomic<size_t>& creditBuilds,
+                                                 std::atomic<size_t>& albumBuilds) {
+    const auto credits = creditsIn(held, snapshot, roles, creditBuilds);
+    const Roles read{roles.album, roles.albumArtist, roles.artist, roles.discNumber,
+                     roles.trackNumber};
+    const auto build = [&] {
+        auto built = std::make_shared<HeldAlbums>();
+        built->credits = credits;
+        built->records = albumRecordsOf(snapshot, roles, credits->credits);
+        return std::shared_ptr<const HeldAlbums>(std::move(built));
+    };
+
+    auto kept = keep(held.albumRecords, snapshot, read, albumBuilds, build);
+    if (kept->credits != credits) {
+        held.albumRecords.reset();
+        kept = keep(held.albumRecords, snapshot, read, albumBuilds, build);
+    }
+    return kept;
+}
+
+std::shared_ptr<const SearchText> textIn(LibraryQuestions::Held& held, const Snapshot& snapshot,
+                                         const LibraryRoles& roles, std::atomic<size_t>& builds) {
+    const auto searched = searchedColumns(roles);
+    return keep(held.text, snapshot, Roles(searched.begin(), searched.end()), builds,
+                [&] { return searchTextOf(snapshot, roles); });
+}
+
 }  // namespace
+
+std::shared_ptr<const HeldCredits> LibraryQuestions::creditsFor(const Snapshot& snapshot,
+                                                                const LibraryRoles& roles) {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    return creditsIn(heldFor(snapshot, roles), snapshot, roles, creditBuilds_);
+}
+
+std::vector<uint32_t> LibraryQuestions::coverOrdinals(const Snapshot& snapshot,
+                                                      const LibraryRoles& roles,
+                                                      const std::vector<uint32_t>& ordinals) {
+    std::shared_ptr<const HeldAlbums> held;
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        held =
+            albumRecordsIn(heldFor(snapshot, roles), snapshot, roles, creditBuilds_, albumBuilds_);
+    }
+
+    std::vector<uint32_t> covers;
+    covers.reserve(ordinals.size());
+    std::transform(ordinals.begin(), ordinals.end(), std::back_inserter(covers),
+                   [&](uint32_t ordinal) {
+                       const auto record = held->records.index.of(held->credits->credits, ordinal);
+                       return record ? held->records.list[*record].cover : ordinal;
+                   });
+    return covers;
+}
 
 std::shared_ptr<const AlbumGrouping> LibraryQuestions::groupingFor(const Snapshot& snapshot,
                                                                    const LibraryRoles& roles) {
@@ -287,10 +400,8 @@ SearchParts LibraryQuestions::searchPartsFor(const Snapshot& snapshot, const Lib
     artistColumns.insert(artistColumns.end(), {roles.artists, roles.artistIds, roles.albumArtists,
                                                roles.albumArtistIds, roles.artistSort});
 
-    const auto searched = searchedColumns(roles);
     SearchParts parts;
-    parts.text = keep(held.text, snapshot, Roles(searched.begin(), searched.end()), groupingBuilds_,
-                      [&] { return searchTextOf(snapshot, roles); });
+    parts.text = textIn(held, snapshot, roles, groupingBuilds_);
     const auto grouping = groupingIn(held, snapshot, roles, groupingBuilds_);
     parts.albums = keep(held.albums, snapshot, albumColumns, groupingBuilds_,
                         [&] { return albumEntitiesOf(snapshot, roles, *grouping); });
@@ -305,6 +416,12 @@ SearchParts LibraryQuestions::searchPartsFor(const Snapshot& snapshot, const Lib
     return parts;
 }
 
+std::shared_ptr<const SearchText> LibraryQuestions::searchTextFor(const Snapshot& snapshot,
+                                                                  const LibraryRoles& roles) {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    return textIn(heldFor(snapshot, roles), snapshot, roles, groupingBuilds_);
+}
+
 std::shared_ptr<const SearchText> LibraryQuestions::glyphTextFor(const Snapshot& snapshot,
                                                                  const LibraryRoles& roles) {
     const std::lock_guard<std::mutex> lock(mutex_);
@@ -314,12 +431,94 @@ std::shared_ptr<const SearchText> LibraryQuestions::glyphTextFor(const Snapshot&
                 [&] { return glyphTextOf(snapshot, roles); });
 }
 
+namespace {
+
+Roles completionColumns(const LibraryRoles& roles, ValueField field) {
+    switch (field) {
+        case ValueField::artist:
+            return {roles.artist};
+        case ValueField::albumArtist:
+            return {roles.albumArtist};
+        case ValueField::album:
+            return {roles.album};
+        case ValueField::genre:
+            return {roles.genre};
+    }
+    return {};
+}
+
+std::optional<SearchedColumn> searchedColumnOf(ValueField field) {
+    switch (field) {
+        case ValueField::artist:
+            return kSearchedArtist;
+        case ValueField::albumArtist:
+            return kSearchedAlbumArtist;
+        case ValueField::album:
+            return kSearchedAlbum;
+        case ValueField::genre:
+            return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+std::shared_ptr<CompletionValues> completionOfTags(const Snapshot& snapshot,
+                                                   std::optional<size_t> role,
+                                                   const std::vector<std::string>& folded) {
+    auto completion = std::make_shared<CompletionValues>();
+    TagGroups groups;
+    const std::vector<int32_t> groupOfId = groups.over(snapshot, role);
+    std::vector<char> offered(groups.names.size(), 0);
+    for (size_t id = 0; id < groupOfId.size(); ++id) {
+        const int32_t group = groupOfId[id];
+        if (group < 0 || groups.blank[static_cast<size_t>(group)] ||
+            offered[static_cast<size_t>(group)] != 0)
+            continue;
+        offered[static_cast<size_t>(group)] = 1;
+        completion->sorted.push_back({groups.names[static_cast<size_t>(group)], folded[id]});
+    }
+    return completion;
+}
+
+std::shared_ptr<CompletionValues> completionOfGenres(const Snapshot& snapshot,
+                                                     std::optional<size_t> role) {
+    auto completion = std::make_shared<CompletionValues>();
+    const GenreGroups genres = genreGroupsOf(snapshot, role);
+    for (const std::string& name : genres.tags.names)
+        completion->sorted.push_back({name, fold(name)});
+    return completion;
+}
+
+}  // namespace
+
+std::shared_ptr<const CompletionValues> LibraryQuestions::completionFor(const Snapshot& snapshot,
+                                                                        const LibraryRoles& roles,
+                                                                        ValueField field) {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    Held& held = heldFor(snapshot, roles);
+    const auto build = [&]() -> std::shared_ptr<const CompletionValues> {
+        std::shared_ptr<CompletionValues> built;
+        if (const auto folded = searchedColumnOf(field)) {
+            const auto text = textIn(held, snapshot, roles, groupingBuilds_);
+            built = completionOfTags(snapshot, completionColumns(roles, field).front(),
+                                     text->folded[*folded]);
+        } else {
+            built = completionOfGenres(snapshot, roles.genre);
+        }
+        std::sort(built->sorted.begin(), built->sorted.end(),
+                  [](const auto& a, const auto& b) { return a.name < b.name; });
+        return built;
+    };
+    return keep(held.completions[static_cast<size_t>(field)], snapshot,
+                completionColumns(roles, field), groupingBuilds_, build);
+}
+
 json LibraryQuestions::album(const Snapshot& snapshot, const LibraryRoles& roles,
                              std::string_view name, const std::optional<std::string>& by) {
     json answer = pairOf(snapshot);
     const auto nothing = [&] {
         answer["album"] = std::string(name);
         answer["artist"] = nullptr;
+        answer["figures"] = figuresDocument({});
         return withSet(std::move(answer), "refs", {}, snapshot);
     };
 
@@ -362,7 +561,8 @@ json LibraryQuestions::album(const Snapshot& snapshot, const LibraryRoles& roles
     answer["artist"] = artistGroup < 0
                            ? json(nullptr)
                            : json(grouping->artists.names[static_cast<size_t>(artistGroup)]);
-    return withSet(std::move(answer), "refs", refs, snapshot);
+    return withFigures(withSet(std::move(answer), "refs", refs, snapshot), snapshot, roles,
+                       creditsFor(snapshot, roles)->credits, refs);
 }
 
 json LibraryQuestions::artist(const Snapshot& snapshot, const LibraryRoles& roles,
@@ -372,10 +572,24 @@ json LibraryQuestions::artist(const Snapshot& snapshot, const LibraryRoles& role
                                            : classifyArtist(snapshot, roles, wanted, splitsCredits,
                                                             *lessonsFor(snapshot, roles));
 
+    std::vector<uint32_t> all;
+    all.reserve(sets.own.size() + sets.shared.size() + sets.guest.size());
+    for (const auto* part : {&sets.own, &sets.shared, &sets.guest})
+        all.insert(all.end(), part->begin(), part->end());
+    std::sort(all.begin(), all.end());
+
+    const auto held = creditsFor(snapshot, roles);
+    const Credits& credits = held->credits;
     json answer = pairOf(snapshot);
     answer = withSet(std::move(answer), "own", sets.own, snapshot);
     answer = withSet(std::move(answer), "shared", sets.shared, snapshot);
-    return withSet(std::move(answer), "guest", sets.guest, snapshot);
+    answer = withSet(std::move(answer), "guest", sets.guest, snapshot);
+    answer["figures"] = figuresDocument(figuresOver(snapshot, roles, credits, all));
+    answer["cards"] = cardsDocument(cardsOver(snapshot, roles, all, local_));
+    answer["records"] = {
+        {"own", recordsDocument(snapshot, recordsOver(snapshot, roles, credits, sets.own))},
+        {"shared", recordsDocument(snapshot, recordsOver(snapshot, roles, credits, sets.shared))}};
+    return answer;
 }
 
 json LibraryQuestions::genre(const Snapshot& snapshot, const LibraryRoles& roles,
@@ -395,7 +609,54 @@ json LibraryQuestions::genre(const Snapshot& snapshot, const LibraryRoles& roles
                 refs.push_back(static_cast<uint32_t>(row));
         }
     }
-    return withSet(pairOf(snapshot), "refs", refs, snapshot);
+    return withFigures(withSet(pairOf(snapshot), "refs", refs, snapshot), snapshot, roles,
+                       creditsFor(snapshot, roles)->credits, refs);
+}
+
+json LibraryQuestions::credits(const Snapshot& snapshot, const LibraryRoles& roles,
+                               uint32_t ordinal, bool splitsCredits) {
+    const auto lessons = lessonsFor(snapshot, roles);
+    const auto cellAt = [&](std::optional<size_t> role) {
+        return cellOf(snapshot, role, idAt(role, snapshot, ordinal));
+    };
+
+    const bool guesses = splitsCredits && !cellAt(roles.artistIds) && !cellAt(roles.albumArtistIds);
+    const auto membersOfCredit = [&](std::optional<size_t> credit, std::optional<size_t> names,
+                                     std::optional<size_t> ids) {
+        json members = json::array();
+        const auto named = cellAt(credit);
+        if (!named)
+            return members;
+        for (const Member& member :
+             membersOf(*named, cellAt(names), cellAt(ids), *lessons, guesses))
+            members.push_back(
+                {{"name", member.name}, {"key", member.key}, {"isGuest", member.isGuest}});
+        return members;
+    };
+
+    json answer = pairOf(snapshot);
+    answer["artist"] = membersOfCredit(roles.artist, roles.artists, roles.artistIds);
+    answer["albumArtist"] =
+        membersOfCredit(roles.albumArtist, roles.albumArtists, roles.albumArtistIds);
+    return answer;
+}
+
+json LibraryQuestions::values(const Snapshot& snapshot, const LibraryRoles& roles, ValueField field,
+                              std::string_view prefix, size_t limit) {
+    const auto offered = completionFor(snapshot, roles, field);
+    const std::string folded = fold(prefix);
+
+    json names = json::array();
+    for (const auto& value : offered->sorted) {
+        if (names.size() >= limit)
+            break;
+        if (value.folded.starts_with(folded))
+            names.push_back(value.name);
+    }
+
+    json answer = pairOf(snapshot);
+    answer["values"] = std::move(names);
+    return answer;
 }
 
 }  // namespace jean

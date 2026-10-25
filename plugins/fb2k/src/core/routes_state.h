@@ -32,6 +32,8 @@ public:
 private:
     bool pollingTooFast(httplib::Response& res, const std::string& client);
 
+    PlayerState withLibraryOrdinal(PlayerState player, const Library::State& state) const;
+
     PlayerState sessionState(Session& session, std::chrono::steady_clock::time_point now) const;
 
     const Library* const library_;

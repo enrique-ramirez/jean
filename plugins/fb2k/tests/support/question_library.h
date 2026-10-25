@@ -43,4 +43,6 @@ std::string questionPathOf(const nlohmann::json& questionCase, const std::vector
 
 nlohmann::json expectedAnswer(const nlohmann::json& questionCase, const Library::State& state);
 
+nlohmann::json withoutSetSummaries(nlohmann::json answer, const nlohmann::json& expected);
+
 }  // namespace jean::testing

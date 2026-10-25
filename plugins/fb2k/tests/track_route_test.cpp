@@ -305,8 +305,6 @@ TEST_CASE("an address held under two roots is a 409 instead of one track's colum
     CHECK(body.count("columns") == 0);
 }
 
-// parseLibraryRequest is the gate GET /api/library/export puts on a declaration, reused here
-// rather than restated, so a client reads the refusal it already knows from declaring a set.
 TEST_CASE("a column list past the cap is refused, and the player is never asked") {
     FakeLibrary library = holding();
     const TestServer server(servingSettings(), reading(&library));
@@ -646,8 +644,6 @@ TEST_CASE(
     FakePlayback playback;
     const TestServer server(servingSettings(), playingFrom(&playback));
 
-    // cpp-httplib drops a query pair whose raw text repeats an earlier one, so a repeat has to
-    // be spelled twice to arrive twice: %74 is `t`.
     const std::map<std::string, std::string> refused{
         {"no columns", ""},
         {"one past the cap", columnsQuery(columnsNumbering(kMaxColumns + 1))},

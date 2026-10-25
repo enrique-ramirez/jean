@@ -262,21 +262,34 @@ struct LibraryFeed::State {
     }
 
     MatchedOrdinals ordinalsOf(const metadb_handle_list& matches) const {
-        const OrderedPtr ordered = order();
+        const HandleOrdinals among = ordinalsAmong(matches);
 
         MatchedOrdinals found;
+        found.structure = among.structure;
+        for (const std::optional<uint32_t>& ordinal : among.ordinals) {
+            if (ordinal)
+                found.ordinals.push_back(*ordinal);
+        }
+
+        std::sort(found.ordinals.begin(), found.ordinals.end());
+        return found;
+    }
+
+    // The handles of a playlist are the library's own objects where it holds the track.
+    HandleOrdinals ordinalsAmong(const metadb_handle_list& handles) const {
+        const OrderedPtr ordered = order();
+
+        HandleOrdinals found;
+        found.ordinals.assign(handles.get_count(), std::nullopt);
         if (!ordered)
             return found;
 
         found.structure = ordered->structure;
-        found.ordinals.reserve(matches.get_count());
-        for (size_t n = 0; n < matches.get_count(); ++n) {
-            const auto held = ordered->ordinals.find(matches[n].get_ptr());
+        for (size_t n = 0; n < handles.get_count(); ++n) {
+            const auto held = ordered->ordinals.find(handles[n].get_ptr());
             if (held != ordered->ordinals.end())
-                found.ordinals.push_back(held->second);
+                found.ordinals[n] = held->second;
         }
-
-        std::sort(found.ordinals.begin(), found.ordinals.end());
         return found;
     }
 
@@ -759,6 +772,15 @@ OrdinalMatcher LibraryFeed::ordinalMatcher() {
 
     return
         [state = state_](const metadb_handle_list& matches) { return state->ordinalsOf(matches); };
+}
+
+HandleOrdinalMapper LibraryFeed::handleOrdinalMapper() {
+    if (!state_)
+        return {};
+
+    return [state = state_](const metadb_handle_list& handles) {
+        return state->ordinalsAmong(handles);
+    };
 }
 
 LibraryTrackResolver LibraryFeed::trackResolver() {

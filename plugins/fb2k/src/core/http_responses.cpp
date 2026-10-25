@@ -10,6 +10,23 @@ namespace jean {
 
 namespace {
 
+constexpr char kRetryPerClientAfterSeconds[] = "1";
+
+}  // namespace
+
+bool perClientTooFast(PerClientRateLimiter& limiter, const std::string& client,
+                      std::chrono::steady_clock::time_point now, const char* message,
+                      httplib::Response& res) {
+    if (limiter.allow(client, now))
+        return false;
+
+    res.set_header("Retry-After", kRetryPerClientAfterSeconds);
+    respondError(res, 429, message);
+    return true;
+}
+
+namespace {
+
 constexpr char kGzipSuffix[] = "-gzip";
 constexpr char kIdentitySuffix[] = "-identity";
 
@@ -93,7 +110,7 @@ void respondOutcome(httplib::Response& res, PlayerOutcome outcome, const std::st
     respond(res, httpStatusFor(outcome), failureDocument(outcome, detail));
 }
 
-void respondOutcome(httplib::Response& res, DeltaOutcome outcome) {
+void respondOutcome(httplib::Response& res, ReadOutcome outcome) {
     respond(res, httpStatusFor(outcome), failureDocument(outcome));
 }
 
@@ -208,7 +225,7 @@ std::optional<Library::State> readyLibrary(const Library* library, httplib::Resp
 
     auto state = library->state();
     if (!state.ready) {
-        respondOutcome(res, DeltaOutcome::notBuilt);
+        respondOutcome(res, ReadOutcome::notBuilt);
         return std::nullopt;
     }
 
@@ -270,11 +287,6 @@ void sendBodyIfChanged(const httplib::Request& req, httplib::Response& res, cons
     }
 
     const auto body = produce();
-    if (!body) {
-        respondError(res, 413, kLibraryTooLarge);
-        return;
-    }
-
     const auto packed = offered ? pack(body) : nullptr;
 
     revalidatePerEncoding(res, packed ? tag : quoted(name + kIdentitySuffix));
@@ -304,10 +316,20 @@ SharedBytes packedNow(const SharedBytes& plain) {
 
 }  // namespace
 
-void GzipOnce::forget() {
-    const std::lock_guard<std::mutex> lock(lock_);
-    plain_.reset();
-    packed_.reset();
+void sendUnvalidated(const httplib::Request& req, httplib::Response& res, const SharedBytes& bytes,
+                     const char* contentType) {
+    const auto packed = acceptsGzip(req) ? packedNow(bytes) : nullptr;
+
+    res.status = 200;
+    res.set_header("Cache-Control", kAskEveryTime);
+    res.set_header("Vary", "Accept-Encoding");
+    if (!packed) {
+        sendHeld(res, bytes, contentType);
+        return;
+    }
+
+    res.set_header("Content-Encoding", "gzip");
+    sendHeld(res, packed, contentType);
 }
 
 SharedBytes GzipOnce::of(const SharedBytes& plain) {
@@ -334,13 +356,7 @@ void sendIfChanged(const httplib::Request& req, httplib::Response& res, const st
 void sendIfChanged(const httplib::Request& req, httplib::Response& res, const std::string& name,
                    const char* contentType, const std::function<SharedBytes()>& produce,
                    GzipOnce& packing) {
-    const auto producing = [&produce, &packing] {
-        const auto body = produce();
-        if (!body)
-            packing.forget();
-        return body;
-    };
-    sendBodyIfChanged(req, res, name, contentType, producing,
+    sendBodyIfChanged(req, res, name, contentType, produce,
                       [&packing](const SharedBytes& plain) { return packing.of(plain); });
 }
 

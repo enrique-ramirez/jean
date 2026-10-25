@@ -33,6 +33,11 @@ struct PlayerState {
     // own absolute one, and no route here takes it.
     std::optional<std::string> libraryPath;
 
+    // Where the snapshot holds the playing track, at the `structure` the same document reports.
+    // Resolved when a document is written and never published: a structure move under the
+    // playing track moves it with no event from the player.
+    std::optional<uint32_t> libraryOrdinal;
+
     PositionMark position;
     double duration = 0;
     double volume = 0;

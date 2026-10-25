@@ -29,7 +29,6 @@ constexpr char kNothingPlaying[] = "nothing is playing";
 constexpr char kBadSubsong[] = "'subsong' must be a whole number";
 constexpr char kTwoTrackAddressForms[] = "a request names one of 'track' and 'ordinal', never both";
 constexpr char kNoTrackAddressForm[] = "'track' or 'ordinal' is required";
-constexpr char kLibraryTooLarge[] = "the library snapshot is larger than this component sends";
 constexpr char kNoArtwork[] = "artwork is not available";
 constexpr char kNoArtworkForTrack[] = "no artwork for that track";
 constexpr char kUnpublishableArtwork[] = "that artwork is not in a format this component sends";
@@ -51,9 +50,15 @@ constexpr char kRefreshingTooFast[] = "too many library refreshes";
 constexpr char kPollingTooFast[] = "too many state polls";
 constexpr char kFetchingArtworkTooFast[] = "too many artwork requests";
 constexpr char kReadingTracksTooFast[] = "too many track reads";
-constexpr char kReadingChangesTooFast[] = "too many library delta reads";
 constexpr char kReadingSummariesTooFast[] = "too many library summary reads";
+constexpr char kReadingRunsTooFast[] = "too many library run reads";
 constexpr char kReadingQuestionsTooFast[] = "too many library questions";
+constexpr char kReadingRowsTooFast[] = "too many library row reads";
+constexpr char kReadingPlaylistRowsTooFast[] = "too many playlist row reads";
+constexpr char kReadingPlaylistRunsTooFast[] = "too many playlist run reads";
+constexpr char kSearchingPlaylistsTooFast[] = "too many playlist searches";
+constexpr char kRowsStructureMoved[] = "tracks were added or removed; read the state and ask again";
+constexpr char kTooManyRowsAsked[] = "too many rows asked for";
 
 // The `detail` beside PlaylistRefusal::tooFast where a route names which budget ran out.
 constexpr char kChangingPlaylistsTooFast[] =
@@ -87,7 +92,7 @@ std::string describe(PlaybackRefusal refusal);
 std::string describe(TagWriteRefusal refusal);
 std::string describe(TagWriteOutcome outcome);
 std::string describe(LibraryRefusal refusal);
-std::string describe(DeltaOutcome outcome);
+std::string describe(ReadOutcome outcome);
 
 int httpStatusFor(PlayerOutcome outcome);
 int httpStatusFor(PlaylistRefusal refusal);
@@ -95,7 +100,7 @@ int httpStatusFor(PlaybackRefusal refusal);
 int httpStatusFor(TagWriteRefusal refusal);
 int httpStatusFor(TagWriteOutcome outcome);
 int httpStatusFor(LibraryRefusal refusal);
-int httpStatusFor(DeltaOutcome outcome);
+int httpStatusFor(ReadOutcome outcome);
 
 std::string errorDocument(const std::string& message);
 
@@ -109,7 +114,7 @@ std::string failureDocument(PlayerOutcome outcome, const std::string& detail = {
 // No detail beyond the category: error text is a reliable way to leak paths.
 std::string tagFailureDocument(TagWriteOutcome outcome);
 
-std::string failureDocument(DeltaOutcome outcome);
+std::string failureDocument(ReadOutcome outcome);
 
 std::string refusalDocument(PlaylistRefusal refusal, const std::string& detail = {});
 std::string refusalDocument(PlaybackRefusal refusal, const std::string& detail);

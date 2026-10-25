@@ -51,7 +51,7 @@ Ownership of every heap object and every callback. A `std::function` or a lambda
 
 ### 4. Performance
 
-Priority two, and mostly the player's. Work on the main thread that grows with the library, a playlist or the queue. Allocations and copies per request on a hot route: the state poll, artwork, playlist rows. A large document built by string concatenation, or a JSON tree copied into another. A snapshot or an export copied where `shared_bytes` was meant to avoid it. Lock hold time around I/O, an encode or a main-thread hop. The PCM ring and the broadcast ring per block: copies, allocations and wakeups. A container chosen for the wrong operation. Each finding says it is unmeasured.
+Priority two, and mostly the player's. Work on the main thread that grows with the library, a playlist or the queue. Allocations and copies per request on a hot route: the state poll, artwork, playlist rows. A large document built by string concatenation, or a JSON tree copied into another. A snapshot or a response body copied where `shared_bytes` was meant to avoid it. Lock hold time around I/O, an encode or a main-thread hop. The PCM ring and the broadcast ring per block: copies, allocations and wakeups. A container chosen for the wrong operation. Each finding says it is unmeasured.
 
 ### 5. Portability
 

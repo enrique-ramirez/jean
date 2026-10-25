@@ -27,7 +27,7 @@ flowchart TB
       http["HttpServer :8881<br/>cpp-httplib, one thread per connection"]
       queue["MainThreadQueue<br/>coalescing, over MainThreadCalls"]
       pure["settings · tag_write · playlists · admission<br/>rate_limit · stream_ticket · documents · assets"]
-      lib["Library<br/>one snapshot · two generations"]
+      lib["Library<br/>one snapshot · structure and revision"]
       aud["Audience"]
       reg["SessionRegistry<br/>the detached sessions"]
       hold["OutputHold<br/>a thread of its own"]
@@ -259,15 +259,15 @@ Two spellings of a path reach a reader, and they are not interchangeable. `metad
 
 ## The media library
 
-Paging a library needs a stable sorted order, and producing one needs a full pass over every track. So either a client holds the whole library or this component does, and it is held here: this is the machine where foobar2000 already keeps the database in memory, and where `library_callback_v2_dynamic` says when it changed. The client is a browser on a phone.
+Paging a library needs a stable sorted order, and producing one needs a full pass over every track. So this component holds the library, on the machine where foobar2000 already keeps the database in memory and where `library_callback_v2_dynamic` says when it changed, and a client holds windows of it. The client is a browser on a phone.
 
-`core/library.h` owns the snapshot, the two generations, what a request may ask for, and the bytes that go on the wire. `fb2k/library.h` owns the walk of the player: the change callbacks, the info query and the title formatting. `core/library_splice.h` owns merging a rebuild that only added or removed tracks onto the snapshot held, and the step a client follows to reach it. Nothing in `core/` knows how the rows got there. The worker reports its progress into `Library` as it walks, so a request arriving mid-build reads it off the same object, not a channel of its own.
+`core/library.h` owns the snapshot, the `structure` and `revision` pair, and what a request may ask for. `core/library_rows.h` and `core/library_wire.h` own the bytes that go on the wire. `fb2k/library.h` owns the walk of the player: the change callbacks, the info query and the title formatting. Nothing in `core/` knows how the rows got there. The worker reports its progress into `Library` as it walks, so a request arriving mid-build reads it off the same object, not a channel of its own.
 
-**The client declares the columns, and the export request is the declaration.** `GET /api/library/export?columns=…` carries the title-formatting expressions a client wants, and the component evaluates exactly those. It interprets none of them, which keeps it general and keeps a client's own `?` detection working. The summary described below matches an expression by equality and reads only the values under it.
+**The client declares the columns, and the rows request is the declaration.** `POST /api/library/rows` carries the title-formatting expressions a client wants, and the component evaluates exactly those. It interprets none of them, which keeps it general and keeps a client's own `?` detection working. The summary described below matches an expression by equality and reads only the values under it.
 
 Every later rebuild reuses the last declared set, so `LibraryRefresher` takes columns rather than nothing. One snapshot is held, so a request naming a different set costs a rebuild, not a slot. The rate limiter in front of both entry points stops a client asking for repeated full rebuilds by varying the set.
 
-An export naming the columns already declared, with no build running and the snapshot not holding them, starts a build instead of answering against nothing. So a build that died (a walk that timed out on the player's main thread, say) is restarted by the next export and not waited on forever.
+A rows request naming the columns already declared, with no build running and the snapshot not holding them, starts a build instead of answering against nothing. So a build that died (a walk that timed out on the player's main thread, say) is restarted by the next request and not waited on forever.
 
 Title formatting reads tags and does arithmetic, with no file access and no way to write. An expression is a compute cost and never an escape: bound the compute and there is nothing left.
 
@@ -277,9 +277,9 @@ Beside the declared columns the snapshot carries a spine it owns, because it nee
 
 **The summary reads roles, not tags.** `GET /api/library/summary?<role>=<expression>` names which declared column is the title, the play count, the date added and so on. `core/library_summary.h` computes from the snapshot held, with no word of its own for any tag.
 
-Nothing is computed until a request whose conditional check fails arrives. The `ETag` names the pair, the local date and the role set, so a repeat is a `304`, and two first requests for one document run the computation once. It reads inside `Library::read`, under the shared half of the snapshot's lock, so a row change or a rebuild waits for it. A library over `kMaxLibraryBytes` is still summarised, since the document never carries the snapshot.
+Nothing is computed until a request whose conditional check fails arrives. The `ETag` names the pair, the local date and the role set, so a repeat is a `304`, and two first requests for one document run the computation once. It reads inside `Library::read`, under the shared half of the snapshot's lock, so a row change or a rebuild waits for it.
 
-**The page questions read roles too.** `GET /api/library/album`, `/artist` and `/genre` answer one set of tracks each, from `core/library_questions.h`, and share the summary's order of refusal, then a bucket of their own, which `GET /api/library/search` joins. A question computes inside `Library::read` on every call and answers the pair that read saw, so a row change landing after `state()` is never stamped on rows it did not touch. What is kept between questions, the album and artist groupings, is keyed on the structure and the role columns' change counts and filled under a mutex of its own. The answer is sent under `private, no-cache` with no `ETag`, since the client holds answers in memory and a validator would buy nothing, and a library over `kMaxLibraryBytes` is still asked about.
+**The page questions read roles too.** `GET /api/library/album`, `/artist` and `/genre` answer one set of tracks each, from `core/library_questions.h`, and share the summary's order of refusal, then a bucket of their own, which `GET /api/library/search` joins. A question computes inside `Library::read` on every call and answers the pair that read saw, so a row change landing after `state()` is never stamped on rows it did not touch. What is kept between questions, the album and artist groupings, is keyed on the structure and the role columns' change counts and filled under a mutex of its own. The answer is sent under `private, no-cache` with no `ETag`, since the client holds answers in memory and a validator would buy nothing.
 
 ### The wire format
 
@@ -289,11 +289,7 @@ A body is `JLIB`, a `uint32` header length, a JSON header, then the blob its off
 
 **Each column carries `distinct`, `hasUnresolved` and `allUnresolved`.** The component holds the whole dictionary, so what a client would otherwise learn by sampling rows for a `?` is a fact it can be handed. A field that resolves on one track in ten thousand is detected rather than missed.
 
-**These routes run the content negotiation themselves.** cpp-httplib compresses only the content types on its own list, and a snapshot goes out as `application/octet-stream`. `core/http_responses.cpp` reads `Accept-Encoding`, compresses, and sets `Content-Encoding`, which also stops cpp-httplib compressing the result a second time.
-
-The body is built only once the conditional check has failed, because serialising a library is the expensive half of any of these requests. `kMaxLibraryBytes` bounds it before compression. The size is computed exactly from the column sizes before the first byte is written, so a library over the ceiling is refused without being serialised. That is a response ceiling, which `kMaxBodyBytes` is not: one caps what a route may answer, the other what a request may carry.
-
-**A client may ask for a part of the declaration.** `only` names the columns whose ids the body carries. `spine=false` leaves out the three spine columns, whose directory dictionary is the largest section. The header describes every declared column either way, so a client sees what a part it did not ask for would hold. A part is a representation of its own with its own `ETag`, and `Library` keeps the last `kHeldParts` built, so a client's two requests for the rest of a library serialise it once each, not once per request.
+**These routes run the content negotiation themselves.** cpp-httplib compresses only the content types on its own list, and a window of rows goes out as `application/octet-stream`. `core/http_responses.cpp` reads `Accept-Encoding`, compresses, and sets `Content-Encoding`, which also stops cpp-httplib compressing the result a second time.
 
 ### Staleness
 
@@ -315,23 +311,15 @@ On the main thread the callback does the cheap half, mapping a handle to an ordi
 
 ### Two generations
 
-`structure` moves when tracks are added or removed. Ordinals shift, so a client either edits its arrays with a splice or, where none can be sent, exports again. It also moves when the column set changes or when the same tracks come back in another order, which no splice describes.
+`structure` moves when tracks are added or removed. Ordinals shift, so a client reads its windows again. It also moves when the column set changes or when the same tracks come back in another order.
 
-`revision` moves when a row changes in place. Ordinals hold, so a client asks for a delta and patches what it already has. A rebuild that finds the same tracks and columns is installed as row changes: `structure` holds and `revision` moves only where a value changed. One that finds nothing changed moves neither.
+`revision` moves when a row changes in place. Ordinals hold, and each column's change count says which windows and answers that read it are stale. A rebuild that finds the same tracks and columns is installed as row changes: `structure` holds and `revision` moves only where a value changed. One that finds nothing changed moves neither.
 
-They are two because the two kinds of churn are nothing alike. A modification lands once per play, all day. An add or a remove is rare and is something the user just did, so paying for one with a re-download charges it at the moment somebody expects to wait.
+They are two because the two kinds of churn are nothing alike. A modification lands once per play, all day. An add or a remove is rare and is something the user just did, so paying for one with a re-read of every window charges it at the moment somebody expects to wait.
 
-**Dictionaries are append-only within a structure generation.** That is what makes a delta small. It carries the entries added since, plus the changed ids, and a client never rebuilds a dictionary it already holds. A value that falls out of use leaves a dead entry behind.
+**`structure` is seeded once per process.** The first `structure` of a run is a random value below 2^53, so a pair a client stored before a restart names no position in this run and a route that takes a `structure` answers `409` to it.
 
-A rebuild that only adds or removes tracks keeps the dictionaries and appends to them. It compacts them instead when dead entries outnumber live ones, or when keeping them would put the export over `kMaxLibraryBytes`. A compaction renumbers ids, so no splice describes it and `GET /api/library/changes` answers `410` to every client holding the structure before it.
-
-**A splice is what a client behind a structure move is sent.** `core/library_splice.cpp` compares the snapshot held with the rebuilt one and retains, per revision, the ordinals removed and inserted beside the changed rows. A client behind several moves is sent them merged into one. The answer is `410` instead when the splice would serialise to half the export or more, when the client's revision is outside the retained window, or after a compaction or a move that was not an addition or a removal.
-
-**`structure` is seeded once per process and `snapshotId` names content.** The first `structure` of a run is a random value below 2^53, so a pair a client stored before a restart names no position in this run and `GET /api/library/changes` answers it `409`. `snapshotId` is a sum of one hash per cell, which `contract/openapi.yaml`, *The validator*, defines to the byte. It is kept up to date per cell as rows change, and it is the same after a restart that finds an unchanged library, which is what lets a client tell a copy it stored from a stale one.
-
-**A delta is per column, and it names the columns that moved.** A client keys its derived structures on the identity of a column's array, so one bumped `revision` meaning "something, somewhere" would rebuild the folded search text and the album, artist and genre indices on every track played. Nothing about a play changes a title.
-
-**The retained window is spent by listening rather than by the clock.** A track that stops playing is marked dirty whether or not anything announced it, so `revision` moves about once per track played and stands still while nobody is listening. `kRevisionsPerListeningHour` and `kRetainedListeningHours` in `core/library.h` multiply to `kRetainedRevisions`. Sizing it that way keeps a phone that slept through a night inside the window, instead of re-exporting the whole library over the connection least able to carry it. One retained revision costs a changed-ordinal list per column, so the window is bounded in memory by the column count, not by the library size.
+**Each column counts its own changes.** A client keys what it reads on a column, so one bumped `revision` meaning "something, somewhere" would have it read the windows and answers of every column again on every track played. `GET /api/state` publishes a count per column, which moves only for a column whose value changed. Nothing about a play changes a title.
 
 Both generations sit under `library` in `GET /api/state`, which is small, ETagged and polled, alongside a `player` section carrying what the player is doing. There is no event stream behind either, for the reason *Absences* gives for there being none anywhere here.
 
@@ -349,7 +337,7 @@ Both generations sit under `library` in `GET /api/state`, which is small, ETagge
 
 **A present cover is fresh for a week and a missing one for minutes** (`kCoverCacheLifetimeSeconds` and `kMissingCoverCacheLifetimeSeconds` in `core/routes_artwork.cpp`; `contract/openapi.yaml`'s *Artwork* section has the figures). Past its week a present cover is still drawn at once for months (`kStaleCoverDrawnForSeconds`) through `stale-while-revalidate`, while the browser asks with its `ETag` whether it changed. A cover replaced at the player reaches a client within a week; an unchanged one costs a `304`. A browser that does not know the directive ignores it, as RFC 9111 §5.2.3 has a cache do with any extension, and revalidates before drawing. Never `no-store`: the client is meant to keep the bytes for the lifetime.
 
-`GET /api/artwork/playing` and the positional route carry no lifetime, since the same URL names a different picture once the track or the row does. Both stay `private, no-cache` on every outcome. `must-revalidate` appears on none of these, nor on the library blobs, which carry `private, no-cache` for the same reason. `private` keeps a shared cache out of a response meant for one caller, and nothing here needs `must-revalidate` to do that as well. *Facts about the player* has why a shared cache was the thing to keep out.
+`GET /api/artwork/playing` and the positional route carry no lifetime, since the same URL names a different picture once the track or the row does. Both stay `private, no-cache` on every outcome. `must-revalidate` appears on none of these, nor on the library routes, which carry `private, no-cache` for the same reason. `private` keeps a shared cache out of a response meant for one caller, and nothing here needs `must-revalidate` to do that as well. *Facts about the player* has why a shared cache was the thing to keep out.
 
 ## Serving the page
 
@@ -390,7 +378,7 @@ Every `POST` under `/api/` needs `Content-Type: application/json` or it is `415`
 
 **What is accepted rather than solved.** Admission and CORS bind a browser, the only caller held to the `Host` its address bar carries and to the preflight a `Content-Type` forces. Anything else on the private network sets whatever `Host` and `Content-Type` it likes, and may do whatever the switches in `config.json` permit, as a person at the player may. A malformed switch takes its default, which for every one of them is on. The log line naming the key, the refused value and the default taken is the only sign. Neither is a gap to close later: the boundary this component keeps is the private network a caller sits on, not a credential it carries.
 
-Admission answers who, and nothing about how often. A source it has let through could still make every call it is entitled to make many times a second. So `core/rate_limit.h`'s token buckets sit in front of playlist and queue writes, tag writes, query previews, library rebuilds, artwork reads, track reads, library summaries, library questions and state polls, bounding how fast a client bug turns into a burst of them.
+Admission answers who, and nothing about how often. A source it has let through could still make every call it is entitled to make many times a second. So `core/rate_limit.h`'s token buckets sit in front of playlist and queue writes, tag writes, query previews, library rebuilds, artwork reads, track reads, library summaries, library questions, library runs, library rows (a bucket per client, since a scroll asks for many), playlist row reads, playlist runs, playlist searches and state polls, bounding how fast a client bug turns into a burst of them.
 
 Every budgeted route refuses in one order: its switch in `config.json`, then what the request says, then whether the player can serve it at all (`503`), then the budget, then anything that asks the player. A request the player cannot serve therefore spends no token, and an install that switched a feature off never teaches a client to back off from the ones it kept. `tests/refusal_budget_test.cpp` holds it.
 
@@ -404,6 +392,7 @@ What foobar2000, its SDK and the platforms under it do that more than one file h
 - **foobar2000 does not compare paths byte by byte.** `sort_by_relative_path` sorts through `fb2k::sortStringCompare`, which is the platform's own comparison. On Windows that is `StrCmpLogicalW` with a `wcscmp` tiebreak: a run of digits compares as a number, letters compare case-insensitively, an accent folds to its base letter, and `-` and `'` weigh almost nothing. `2 Mello` comes before `10cc`, and `Andrés` before `Andrew`. On macOS it is `CFStringCompare` with `kCFCompareLocalized | kCFCompareNumerically`: digits compare as a number there too, case breaks a tie rather than dominating (`abba`, `Abba`, `ABC`), there is no tiebreak, and the order follows the system language. Call it rather than model it, on the path as `get_relative_path` wrote it, since `/` and `\` do not weigh the same.
 - **A port held on the wildcard address is not exclusive on macOS.** A second socket that sets `SO_REUSEADDR` binds one of the machine's addresses on that port and takes every new connection to it, whatever the first socket set. Only the second socket's option counts, so nothing the listener sets closes it, and a listener on one address is exclusive for that address. Windows with `SO_EXCLUSIVEADDRUSE` and Linux refuse the second bind.
 - **cpp-httplib ignores `SIGPIPE` for the whole process.** macOS raises it on a write to a socket the peer has closed, and its default action ends the process. cpp-httplib's `Server` constructor calls `signal(SIGPIPE, SIG_IGN)` and sets no `SO_NOSIGPIPE`, so constructing `HttpServer` changes the disposition for foobar2000 itself.
+- **cpp-httplib drops, merges and unwraps three things a test must allow for.** It drops a query pair whose raw text exactly repeats an earlier one, so a repeat arrives only when it is spelled differently (`%74` for `t`). It sends a header set twice as two field lines, so every `Vary` is read. Its client decompresses gzip itself, so a test reads the wire with that turned off.
 - **A display path abbreviates the home directory on macOS.** `filesystem::g_get_display_path` answers `~/Music/...`, which `std::filesystem` cannot open. `nativePathOf` in `fb2k/paths.cpp` asks `g_get_native_path` for the absolute path, and a track path published to a client stays the display form.
 - **A `std::thread` on macOS gets 512 KiB of stack**, against 1 MiB on Windows and 8 MiB for the main thread. The decoder thread runs third-party inputs and DSPs, and the encoder thread runs libopus built with `USE_ALLOCA` and the AAC encoder. With three streams playing, the encoder threads peaked at 64 KiB and the decoder threads at 32 KiB.
 - **foobar2000 numbers a cue sheet's subsongs from 1**, and an ordinary file is subsong 0. A subsong is a value the player assigned rather than a position among the tracks at one path, so anything resolving one by counting is off by one across a cue sheet. The player splits a file on a `CUESHEET` Vorbis comment; the binary `CUESHEET` metadata block alone leaves it one track, and a `.cue` file beside the music is not indexed at all.

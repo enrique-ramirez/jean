@@ -1,6 +1,6 @@
 # foo_jean
 
-A foobar2000 component that serves [Jean](https://github.com/enrique-ramirez/jean)'s page and the whole HTTP API behind it, on a port of its own: playback and the player's state, playlists and the play queue, the media library in one piece, cover art, tag writing, autoplaylists, and a live stream of what the player is playing. Jean is its first client, though nothing in the API assumes it.
+A foobar2000 component that serves [Jean](https://github.com/enrique-ramirez/jean)'s page and the whole HTTP API behind it, on a port of its own: playback and the player's state, playlists and the play queue, the media library in windows, cover art, tag writing, autoplaylists, and a live stream of what the player is playing. Jean is its first client, though nothing in the API assumes it.
 
 ## What it does
 
@@ -8,7 +8,7 @@ A foobar2000 component that serves [Jean](https://github.com/enrique-ramirez/jea
 
 **Creates autoplaylists.** An autoplaylist is a live query over foobar2000's Media Library that then shows up in `GET /api/playlists` like any other playlist. This creates, updates, previews and deletes them, and the playlist list says which playlists are autoplaylists, and which of those are this component's. Updating and deleting accept any autoplaylist, whoever made it.
 
-**Serves the media library.** The whole of it, in one binary response, in whichever title-formatting columns the request asks for. The component keeps a snapshot of the library it walked, watches foobar2000's own change notifications to keep it current, and hands a client a small patch for what moved rather than the library again. A client that holds everything answers its own searches, counts and shelves without asking anybody.
+**Serves the media library.** Rows by position, at most 4096 to a request, in whichever title-formatting columns the client declares, in one binary response. The component keeps a snapshot of the library it walked and watches foobar2000's own change notifications to keep it current. It also answers how the library falls into albums, the values and credits behind a field, a search, and the figures and tracks of an album, an artist or a genre, so a client never holds the library to ask. What moved shows in the player's state as a `structure` and `revision` pair and a change count per column, and a client reads again only the windows that depend on them.
 
 **Streams the player's output.** A live mirror of what foobar2000 is playing, in Ogg Opus or in AAC-LC for Safari. The capture is post-DSP and pre-volume, so silencing the player leaves the stream at full level: choosing a device moves the sound to it rather than doubling it. `GET /api/stream/listeners` says who else has it, and anybody can ask for the speakers back alongside them.
 

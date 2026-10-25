@@ -22,4 +22,4 @@ The pieces every feature draws with.
 
 - `src` has three states: `undefined` is still resolving, `null` is no cover. Hold `undefined` until `null` is certain.
 - `identity` and `src` come from the same condition, since `holdArtwork` stores under one what it fetched from the other.
-- Nothing in Jean stores a cover. The browser's HTTP cache does, and `albumCoverRows` gives each record one URL.
+- Nothing in Jean stores a cover. The browser's HTTP cache does, and a group's `cover` in `domain/track/grouping.ts` gives each record one URL.

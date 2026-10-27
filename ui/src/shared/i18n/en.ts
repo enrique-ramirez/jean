@@ -204,7 +204,6 @@ export const en = {
 		'Add the fields you want under {pane}, in "Fields this may write". It takes effect at once.',
 	"fooJean.ready.noFields":
 		"Connected, and this install permits no fields to be written.",
-	"fooJean.ready.summary": "Connected to foo_jean.",
 	"fooJean.stream.none":
 		'This copy of foo_jean does not stream audio, so Jean cannot play it on this device. Turn on "Allow Jean to stream audio" (streamingEnabled) under {pane}, or update foo_jean if it has none.',
 	"fooJean.unreachable.fix":

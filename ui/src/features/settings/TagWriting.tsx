@@ -33,7 +33,7 @@ function explain(state: TagWriterState, t: Translate): Explained {
 				? {
 						tone: "ok",
 						badge: t("fooJean.badge.connected"),
-						summary: t("fooJean.ready.summary"),
+						summary: null,
 						fix: null,
 					}
 				: {

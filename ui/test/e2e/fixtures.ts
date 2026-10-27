@@ -553,6 +553,12 @@ export const callMediaSessionAction = (
 export const settingsDialog = (page: Page) =>
 	page.getByRole("dialog", { name: "Settings" });
 
+export const fooJeanPanel = (page: Page) =>
+	settingsDialog(page).getByRole("region", { name: "foo_jean" });
+
+export const fooJeanConnected = (page: Page) =>
+	fooJeanPanel(page).getByText("Connected", { exact: true });
+
 export const openSettings = async (page: Page) => {
 	if (!page.url().includes("#")) await page.goto("/");
 	if (await settingsDialog(page).isVisible()) return;

@@ -5,6 +5,8 @@ import {
 	expect,
 	expectSettlesAt,
 	focusedEndOf,
+	fooJeanConnected,
+	fooJeanPanel,
 	openLibrary,
 	openSettings,
 	playedFrom,
@@ -415,9 +417,6 @@ test.describe("playback follows cursor", () => {
 
 const PERMISSIONS = "File → Preferences → Tools → Jean → Permissions";
 
-const fooJeanPanel = (page: Page) =>
-	settingsDialog(page).getByRole("region", { name: "foo_jean" });
-
 // Scoped to the paragraph that names the switch, since the stream and field
 // messages name the same Permissions page and would satisfy a panel-wide match.
 const playbackRemedy = (page: Page) =>
@@ -575,7 +574,7 @@ test.describe("foo_jean allowing playback control", () => {
 	test("Settings says nothing about the playback switch", async ({ page }) => {
 		await openSettings(page);
 
-		await expect(fooJeanPanel(page)).toContainText("Connected to foo_jean.");
+		await expect(fooJeanConnected(page)).toBeVisible();
 		await expect(fooJeanPanel(page)).not.toContainText(/control ?playback/i);
 	});
 });
@@ -585,8 +584,8 @@ const OFFER_LISTENING_DETAIL =
 	"Jean reads from foobar2000 whether its output reaches any speakers. Turn this off if it gets that wrong.";
 const NO_SPEAKERS = "foobar2000 is not playing through any speakers.";
 
-// A switch is named by everything it holds, its description included, so each is found by how its
-// name begins.
+// A switch is named by its <label>, description included, so each is found by how its name
+// begins.
 const settingsSwitch = (page: Page, label: string) =>
 	settingsDialog(page).getByRole("switch", {
 		name: new RegExp(`^${label}`),
@@ -643,10 +642,10 @@ test.describe("offering listening here when the player cannot be heard", () => {
 	}) => {
 		await openSettings(page);
 
-		const switches = settingsDialog(page).getByRole("switch");
 		await expect(offerSwitch(page)).toBeVisible();
-		const names = await switches.evaluateAll((all) =>
-			all.map((one) => one.textContent ?? ""),
+		const snapshot = await settingsDialog(page).ariaSnapshot();
+		const names = [...snapshot.matchAll(/- switch "([^"]*)"/g)].map(
+			(match) => match[1],
 		);
 		const at = (label: string) =>
 			names.findIndex((name) => name.startsWith(label));
@@ -655,7 +654,7 @@ test.describe("offering listening here when the player cannot be heard", () => {
 		expect(at("Playback follows cursor")).toBe(cursorFollows + 1);
 		expect(at(OFFER_LISTENING)).toBe(cursorFollows + 2);
 
-		await expect(offerSwitch(page)).toContainText(OFFER_LISTENING_DETAIL);
+		expect(names[at(OFFER_LISTENING)]).toContain(OFFER_LISTENING_DETAIL);
 		await expect(offerSwitch(page)).toBeChecked();
 	});
 

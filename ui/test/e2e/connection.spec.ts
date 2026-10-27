@@ -2,6 +2,8 @@ import type { Page } from "./fixtures.ts";
 import {
 	expect,
 	expectSettlesAt,
+	fooJeanConnected,
+	fooJeanPanel,
 	openSettings,
 	playFirstRow,
 	settingsDialog,
@@ -9,9 +11,6 @@ import {
 } from "./fixtures.ts";
 
 const PREFERENCES = "File → Preferences → Tools → Jean";
-
-const panel = (page: Page) =>
-	settingsDialog(page).getByRole("region", { name: "foo_jean" });
 
 // Whatever the suite seeds, this is a browser that has never held a credential.
 const asAFreshDevice = (page: Page) =>
@@ -36,7 +35,7 @@ test.describe("a session against foo_jean", () => {
 
 		await playFirstRow(page, isMobile);
 		await openSettings(page);
-		await expect(panel(page)).toContainText("Connected to foo_jean.");
+		await expect(fooJeanConnected(page)).toBeVisible();
 
 		await expectSettlesAt(player, () => [...carried], []);
 	});
@@ -48,7 +47,7 @@ test.describe("a session against foo_jean", () => {
 		await asAFreshDevice(page);
 
 		await openSettings(page);
-		await expect(panel(page)).toContainText("Connected to foo_jean.");
+		await expect(fooJeanConnected(page)).toBeVisible();
 		await page.getByRole("button", { name: "Close settings" }).click();
 		await playFirstRow(page, isMobile);
 
@@ -64,8 +63,8 @@ test.describe("a session against foo_jean", () => {
 		await asAFreshDevice(page);
 
 		await openSettings(page);
-		await expect(panel(page)).toBeVisible();
-		await expect(panel(page)).not.toContainText("Checking…");
+		await expect(fooJeanPanel(page)).toBeVisible();
+		await expect(fooJeanPanel(page)).not.toContainText("Checking…");
 
 		const dialog = settingsDialog(page);
 		await expect(dialog.getByRole("button", { name: /pair/i })).toHaveCount(0);
@@ -82,9 +81,9 @@ test.describe("what Settings says about foo_jean", () => {
 	test("ready: says it is connected, with nothing to fix", async ({ page }) => {
 		await openSettings(page);
 
-		await expect(panel(page)).toContainText("Connected to foo_jean.");
+		await expect(fooJeanConnected(page)).toBeVisible();
 		await expect(
-			panel(page).getByRole("button", { name: "Check again" }),
+			fooJeanPanel(page).getByRole("button", { name: "Check again" }),
 		).toHaveCount(0);
 	});
 
@@ -95,11 +94,11 @@ test.describe("what Settings says about foo_jean", () => {
 		player.fooJean.hangCapabilities = true;
 
 		await openSettings(page);
-		await expect(panel(page)).toContainText("Checking…");
-		await expect(panel(page)).not.toContainText("Connected");
+		await expect(fooJeanPanel(page)).toContainText("Checking…");
+		await expect(fooJeanConnected(page)).toHaveCount(0);
 
 		player.fooJean.hangCapabilities = false;
-		await expect(panel(page)).toContainText("Connected to foo_jean.");
+		await expect(fooJeanConnected(page)).toBeVisible();
 	});
 
 	test.describe("unreachable", () => {
@@ -110,15 +109,15 @@ test.describe("what Settings says about foo_jean", () => {
 		}) => {
 			await openSettings(page);
 
-			await expect(panel(page)).toContainText("Not connected");
-			await expect(panel(page)).toContainText(
+			await expect(fooJeanPanel(page)).toContainText("Not connected");
+			await expect(fooJeanPanel(page)).toContainText(
 				"foo_jean is not answering right now.",
 			);
-			await expect(panel(page)).toContainText(
+			await expect(fooJeanPanel(page)).toContainText(
 				"Check that foobar2000 is still running, then try again.",
 			);
 			await expect(
-				panel(page).getByRole("button", { name: "Check again" }),
+				fooJeanPanel(page).getByRole("button", { name: "Check again" }),
 			).toBeVisible();
 		});
 	});
@@ -131,10 +130,10 @@ test.describe("what Settings says about foo_jean", () => {
 		}) => {
 			await openSettings(page);
 
-			await expect(panel(page)).toContainText(
+			await expect(fooJeanPanel(page)).toContainText(
 				"Connected, and this install permits no fields to be written.",
 			);
-			await expect(panel(page)).toContainText(PREFERENCES);
+			await expect(fooJeanPanel(page)).toContainText(PREFERENCES);
 		});
 	});
 
@@ -146,11 +145,11 @@ test.describe("what Settings says about foo_jean", () => {
 		}) => {
 			await openSettings(page);
 
-			await expect(panel(page)).toContainText("Connected to foo_jean.");
-			await expect(panel(page)).toContainText(
+			await expect(fooJeanConnected(page)).toBeVisible();
+			await expect(fooJeanPanel(page)).toContainText(
 				"does not stream audio, so Jean cannot play it on this device",
 			);
-			await expect(panel(page)).toContainText(PREFERENCES);
+			await expect(fooJeanPanel(page)).toContainText(PREFERENCES);
 		});
 	});
 });

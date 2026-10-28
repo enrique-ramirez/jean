@@ -12,6 +12,8 @@ namespace {
 
 constexpr char kRetryPerClientAfterSeconds[] = "1";
 
+constexpr char kDocumentPermissions[] = "camera=(), microphone=(), geolocation=()";
+
 }  // namespace
 
 bool perClientTooFast(PerClientRateLimiter& limiter, const std::string& client,
@@ -215,6 +217,28 @@ void sendLongLived(const httplib::Request& req, httplib::Response& res, std::str
                              [bytes](size_t offset, size_t length, httplib::DataSink& sink) {
                                  return sink.write(bytes.data() + offset, length);
                              });
+}
+
+void guardDocument(httplib::Response& res, const char* contentPolicy) {
+    res.set_header("Content-Security-Policy", contentPolicy);
+    res.set_header("X-Frame-Options", "DENY");
+    res.set_header("Referrer-Policy", "no-referrer");
+    res.set_header("Cross-Origin-Opener-Policy", "same-origin");
+    res.set_header("Permissions-Policy", kDocumentPermissions);
+}
+
+void sendRevalidated(const httplib::Request& req, httplib::Response& res, std::string_view bytes,
+                     const std::string& contentType) {
+    const auto tag = eTagFor(bytes);
+    revalidateAlways(res, tag);
+
+    if (alreadyHolds(req, tag)) {
+        res.status = 304;
+        return;
+    }
+
+    res.status = 200;
+    sendLongLived(req, res, bytes, contentType);
 }
 
 std::optional<Library::State> readyLibrary(const Library* library, httplib::Response& res) {

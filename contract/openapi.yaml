@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 # The HTTP surface of foo_jean, in full.
 #
-# Hand-written, and the contract. The component does not serve it: code generation happens at build time, and an unauthenticated route describing this component's own surface adds nothing a reader of the repository does not already have. Fetch it from the repo.
+# Hand-written, and the contract.
 #
 # Generate a TypeScript client with:
 #
@@ -293,6 +293,69 @@ paths:
                     volumeMin: -100
                     volumeMax: 0
                     volumeUnit: db
+
+  /openapi.yaml:
+    get:
+      tags: [connection]
+      operationId: getContract
+      summary: This document, as the component was built from it.
+      description: |
+        The contract behind the routes this install answers, byte for byte the `contract/openapi.yaml` its build read, so a client on the network can read the shapes of the version it is talking to without finding the matching commit. `GET /docs` renders it.
+      responses:
+        "200":
+          description: The contract. Revalidated on every load through `ETag`.
+          content:
+            application/yaml:
+              schema: { type: string }
+        "304":
+          description: The client already holds it. No body, and `ETag` is repeated.
+        "404": { $ref: "#/components/responses/NoSuchDocsFile" }
+
+  /docs:
+    get:
+      tags: [connection]
+      operationId: getDocs
+      summary: This document, rendered.
+      description: |
+        Swagger UI over `GET /openapi.yaml`, served from this origin, so *Try it out* reaches the install that served the page rather than the example host under `servers`. `/docs/` answers the same page.
+      responses:
+        "200":
+          description: The page. Revalidated on every load through `ETag`.
+          content:
+            text/html:
+              schema: { type: string }
+        "304":
+          description: The client already holds it. No body, and `ETag` is repeated.
+        "404": { $ref: "#/components/responses/NoSuchDocsFile" }
+
+  /docs/{file}:
+    parameters:
+      - name: file
+        in: path
+        required: true
+        description: One of the files the page loads, by the name it loads it under.
+        schema:
+          type: string
+          example: swagger-ui.css
+    get:
+      tags: [connection]
+      operationId: getDocsFile
+      summary: A file the rendered contract loads.
+      description: |
+        The stylesheet, the script and the page itself, compiled into the component beside the contract and answered with the type its extension names.
+      responses:
+        "200":
+          description: The file. Revalidated on every load through `ETag`.
+          content:
+            text/css:
+              schema: { type: string }
+            text/javascript:
+              schema: { type: string }
+            text/html:
+              schema: { type: string }
+        "304":
+          description: The client already holds it. No body, and `ETag` is repeated.
+        "404": { $ref: "#/components/responses/NoSuchDocsFile" }
 
   /tags:
     post:
@@ -4290,6 +4353,15 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/PlaylistFailed" }
+
+    NoSuchDocsFile:
+      description: Nothing is compiled in at that path. The name is not one the page loads, or this build carries no page at all.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            default:
+              value: { error: no such file }
 
     PlaylistConflict:
       description: |

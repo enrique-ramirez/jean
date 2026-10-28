@@ -84,6 +84,7 @@ const std::map<std::string, std::string>& pageTypes() {
     static const std::map<std::string, std::string> table{
         {".html", "text/html; charset=utf-8"}, {".js", "text/javascript"}, {".css", "text/css"},
         {".json", "application/json"},         {".svg", "image/svg+xml"},  {".woff2", "font/woff2"},
+        {".yaml", "application/yaml"},
     };
 
     return table;

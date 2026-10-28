@@ -77,4 +77,4 @@ And the ones with no description of their own:
 | `preferences_mac.mm` | On macOS, the same two pages, built in code from the same declaration. The only Objective-C++ file, and where Apply and Reset are drawn, since macOS gives a page neither |
 | `preferences_ids.h` | The two pages' GUIDs, for both platforms |
 | `log.cpp` | The console and `<profile>/foo_jean/foo_jean.log`, which appends, carries levels, and starts over rather than rotating past its cap |
-| `ui_assets.{h,cpp}` | Fills `Player::page.read`, `page.names` and `page.readDisk`: a lookup into the table `scripts/embed-ui.mjs` writes from `ui/dist`, read through `core/assets.h`, and a `www/` reader that canonicalizes every request and refuses one a symlink or junction resolves outside it |
+| `ui_assets.{h,cpp}` | Fills `Player::page.read`, `page.names` and `page.readDisk`: a lookup into the table `scripts/embed-ui.mjs` writes from `ui/dist` and, under `api/`, from the contract and its Swagger UI page, read through `core/assets.h`, and a `www/` reader that canonicalizes every request and refuses one a symlink or junction resolves outside it |

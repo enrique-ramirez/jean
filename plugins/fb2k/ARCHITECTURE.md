@@ -355,6 +355,8 @@ A file compiled into the component is sent straight from its embedded bytes, nev
 
 **`contract/openapi.yaml`, at the repository root, is the contract, and it is hand-written.** There is no framework here to generate one from, and a generated spec would describe the implementation rather than the promise: the descriptions carry the reasoning a client needs, which is the half that matters and the half no generator produces. Clients generate their types from it, so a stale spec is a client that compiles and is wrong.
 
+**The component serves the copy it was built from.** `GET /api/openapi.yaml` answers the contract byte for byte and `GET /api/docs` renders it with Swagger UI, both from the table `scripts/embed-ui.mjs` writes, under `api/`, read through the same seam as Jean's page and answered by `core/routes_docs.cpp`.
+
 Two mechanical checks keep the code and the spec together, and neither can read prose. `tests/api_contract_test.cpp` pins the exact key set of every document the component publishes and drives the stream routes to compare their statuses with the spec's, reading the operation list through `tests/support/spec.h`. `scripts/test.sh` compares the spec's version with `src/core/version.h` before it builds anything.
 
 `core/documents.cpp` builds every published document but the refusals and failures, which `core/failures.cpp` builds with the status each goes under. Every answer of 400 or above carries a JSON `error` string. Bodies are capped at `kMaxBodyBytes`, which the spec documents by that number.

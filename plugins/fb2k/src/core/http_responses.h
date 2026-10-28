@@ -113,6 +113,11 @@ void sendHeld(httplib::Response& res, const SharedBytes& bytes, const std::strin
 void sendLongLived(const httplib::Request& req, httplib::Response& res, std::string_view bytes,
                    const std::string& contentType);
 
+void guardDocument(httplib::Response& res, const char* contentPolicy);
+
+void sendRevalidated(const httplib::Request& req, httplib::Response& res, std::string_view bytes,
+                     const std::string& contentType);
+
 class GzipOnce {
 public:
     // Null where compression failed.

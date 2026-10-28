@@ -89,6 +89,12 @@ const example = (operation: Operation, name: string): unknown => {
 export const drives: Drive[] = [
 	{ id: "getStatus", probe: () => ({}) },
 	{ id: "getCapabilities", probe: () => ({}) },
+	{ id: "getContract", probe: () => ({}) },
+	{ id: "getDocs", probe: () => ({}) },
+	{
+		id: "getDocsFile",
+		probe: () => ({ pathParams: { file: "swagger-ui.css" } }),
+	},
 	{ id: "getPlaylists", probe: () => ({}) },
 	{
 		// Naming the roles asks for `cover` on every entry, which the schema declares optional.

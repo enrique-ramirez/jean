@@ -25,16 +25,6 @@ constexpr char kPageContentPolicy[] =
     "https://lrclib.net; "
     "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
-constexpr char kPagePermissions[] = "camera=(), microphone=(), geolocation=()";
-
-void guardPage(httplib::Response& res) {
-    res.set_header("Content-Security-Policy", kPageContentPolicy);
-    res.set_header("X-Frame-Options", "DENY");
-    res.set_header("Referrer-Policy", "no-referrer");
-    res.set_header("Cross-Origin-Opener-Policy", "same-origin");
-    res.set_header("Permissions-Policy", kPagePermissions);
-}
-
 bool answeredAsHeld(const httplib::Request& req, httplib::Response& res, std::string_view bytes) {
     const auto tag = pageTag(bytes);
     res.set_header("Cache-Control", kPageRevalidate);
@@ -52,7 +42,7 @@ bool answeredAsHeld(const httplib::Request& req, httplib::Response& res, std::st
 PageRoutes::PageRoutes(const PageCalls& page) : page_(page) {}
 
 void PageRoutes::serve(const httplib::Request& req, httplib::Response& res) const {
-    guardPage(res);
+    guardDocument(res, kPageContentPolicy);
 
     const auto resolved = resolvePagePath(req.path);
     if (!resolved) {

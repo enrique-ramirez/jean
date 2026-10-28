@@ -25,7 +25,7 @@ pnpm --dir ui build
 node plugins/fb2k/scripts/embed-ui.mjs   # -> src/fb2k/ui_assets_table.cpp
 ```
 
-`scripts/embed-ui.mjs` is plain Node. The table it writes is one list of paths and bytes, gitignored, read through `src/core/assets.h` by both builds, so the DLL and the bundle cannot ship different pages. `scripts/lint.sh`, `scripts\lint.ps1` and `scripts/format.sh` leave it out.
+`scripts/embed-ui.mjs` is plain Node. The table it writes is one list of paths and bytes, gitignored, read through `src/core/assets.h` by both builds, so the DLL and the bundle cannot ship different pages. The same table carries `contract/openapi.yaml` and the Swagger UI page under `api/`; `contract/README.md`, *The served copy*, is where those come from. `scripts/lint.sh`, `scripts\lint.ps1` and `scripts/format.sh` leave it out.
 
 ### Windows
 
@@ -140,7 +140,7 @@ The page is stricter than the file parser, deliberately: a hand-edited file must
 
 ## The API
 
-**[`contract/openapi.yaml`](../../contract/openapi.yaml) is the contract.** Every route, every shape, every status and every error string is written down there, by hand, with the reasoning a client needs beside each one. The component does not serve it; fetch it from the repository, and a typed client is one command away:
+**[`contract/openapi.yaml`](../../contract/openapi.yaml) is the contract.** Every route, every shape, every status and every error string is written down there, by hand, with the reasoning a client needs beside each one. The component serves the copy it was built from at `/api/openapi.yaml` and renders it with Swagger UI at `/api/docs`. A typed client is one command away:
 
 ```sh
 npx openapi-typescript contract/openapi.yaml -o fooJean.d.ts

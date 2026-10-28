@@ -46,6 +46,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/openapi.yaml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This document, as the component was built from it.
+         * @description The contract behind the routes this install answers, byte for byte the `contract/openapi.yaml` its build read, so a client on the network can read the shapes of the version it is talking to without finding the matching commit. `GET /docs` renders it.
+         */
+        get: operations["getContract"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This document, rendered.
+         * @description Swagger UI over `GET /openapi.yaml`, served from this origin, so *Try it out* reaches the install that served the page rather than the example host under `servers`. `/docs/` answers the same page.
+         */
+        get: operations["getDocs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docs/{file}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description One of the files the page loads, by the name it loads it under. */
+                file: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A file the rendered contract loads.
+         * @description The stylesheet, the script and the page itself, compiled into the component beside the contract and answered with the type its extension names. Nothing here is read from disk.
+         */
+        get: operations["getDocsFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tags": {
         parameters: {
             query?: never;
@@ -347,7 +410,7 @@ export interface paths {
          *
          *     The answer carries the playlist's whole `totalCount` alongside the page, and the `structure` and `revision` it was read at. Rows held against an older `structure` sit at positions that have moved and MUST be read again; a moved `revision` alone means the rows are where they were and their content is what changed.
          *
-         *     **The rows are named by exactly one of a page and `positions`.** A page is `offset` and `count`: a `count` reaching past the end answers the rows that remain, and an `offset` at or past the end answers no rows at all. Both still carry `totalCount`, `structure` and `revision`, so a client wanting only those asks for a `count` of zero. `positions` names up to 128 rows, repeated once per row as `columns` is, and answers them in the order given, which is how a client holding a set of positions, such as the rows a find matched, reads them. A position at or past the end is a `400` (`that position is past the end`), judged by the player at the structure the answer would have carried. Sending `positions` beside `offset` or `count`, or none of the three, is a `400`.
+         *     **The rows are named by exactly one of a page and `positions`.** A page is `offset` and `count`: a `count` reaching past the end answers the rows that remain, and an `offset` at or past the end answers no rows at all. Both still carry `totalCount`, `structure` and `revision`, so a client wanting only those asks for a `count` of zero. `positions` names up to 128 rows, repeated once per row as `columns` is, and answers them in the order given, which is how a client holding a set of positions, such as the rows a find matched, reads them. A position named twice is answered once, where it was first named. A position at or past the end is a `400` (`that position is past the end`), judged by the player at the structure the answer would have carried. Sending `positions` beside `offset` or `count`, or none of the three, is a `400`.
          *
          *     **`cover`.** A request that names roles as query parameters beside the route's own, as `GET /library/summary` takes them, gets a `cover` on every row: the library-relative path `GET /artwork?track=` takes, of the cover track of the row's album, or `null` where the media library does not hold the row, where the declaration does not hold a role's expression, or where no snapshot is ready. A request naming no role gets no `cover` at all. The roles are the ones `GET /library/search` takes; a role that is unknown, empty or named twice is a `400` as it is there.
          *
@@ -3418,6 +3481,15 @@ export interface components {
                 "application/json": components["schemas"]["PlaylistFailed"];
             };
         };
+        /** @description Nothing is compiled in at that path. The name is not one the page loads, or this build carries no page at all. */
+        NoSuchDocsFile: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Another playlist already has that `key`, or this install is at `maxAutoPlaylists`. */
         PlaylistConflict: {
             headers: {
@@ -4145,6 +4217,95 @@ export interface operations {
                     "application/json": components["schemas"]["Capabilities"];
                 };
             };
+        };
+    };
+    getContract: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The contract. Revalidated on every load through `ETag`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/yaml": string;
+                };
+            };
+            /** @description The client already holds it. No body, and `ETag` is repeated. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NoSuchDocsFile"];
+        };
+    };
+    getDocs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page. Revalidated on every load through `ETag`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description The client already holds it. No body, and `ETag` is repeated. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NoSuchDocsFile"];
+        };
+    };
+    getDocsFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description One of the files the page loads, by the name it loads it under. */
+                file: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file. Revalidated on every load through `ETag`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/css": string;
+                    "text/javascript": string;
+                    "text/html": string;
+                };
+            };
+            /** @description The client already holds it. No body, and `ETag` is repeated. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NoSuchDocsFile"];
         };
     };
     writeTags: {

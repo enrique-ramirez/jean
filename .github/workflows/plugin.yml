@@ -12,6 +12,7 @@ on:
     paths:
       - 'plugins/fb2k/**'
       - 'contract/openapi.yaml'
+      - 'contract/docs/**'
       - '.github/workflows/plugin.yml'
       - '.github/actions/windows-llvm/**'
       - '.github/actions/apt-llvm/**'
@@ -19,6 +20,7 @@ on:
     paths:
       - 'plugins/fb2k/**'
       - 'contract/openapi.yaml'
+      - 'contract/docs/**'
       - '.github/workflows/plugin.yml'
       - '.github/actions/windows-llvm/**'
       - '.github/actions/apt-llvm/**'

@@ -23,6 +23,11 @@ catalog:
   openapi-fetch: 0.17.0
   react: 19.3.0
   react-dom: 19.3.0
+  swagger-ui-dist: 5.34.0
   typescript: 7.0.2
   vite: 8.3.4
   yaml: 2.9.1
+
+# swagger-ui-dist pulls in @scarf/scarf, whose install script reports the download to its publisher. Nothing of it is used.
+allowBuilds:
+  '@scarf/scarf': false

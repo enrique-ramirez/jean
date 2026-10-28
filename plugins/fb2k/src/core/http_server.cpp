@@ -7,6 +7,7 @@
 #include "core/log.h"
 #include "core/routes_artwork.h"
 #include "core/routes_autoplaylists.h"
+#include "core/routes_docs.h"
 #include "core/routes_library.h"
 #include "core/routes_outputs.h"
 #include "core/routes_own_playlists.h"
@@ -400,6 +401,7 @@ struct HttpServer::Impl {
           sessions(audience, sessionCapacity.maxSessions, mint, sessionRandom(),
                    player.sessions.start),
           page(player.page),
+          docsRoutes(player.page),
           libraryRoutes(player.library, lib, settings, runId, clock),
           stateRoute(lib, state, configGeneration, runId, clock, player.checkMainThread,
                      player.sessions, sessions),
@@ -433,6 +435,7 @@ struct HttpServer::Impl {
     SessionRegistry sessions;
 
     PageRoutes page;
+    DocsRoutes docsRoutes;
     LibraryRoutes libraryRoutes;
     StateRoute stateRoute;
     ArtworkRoutes artworkRoutes;
@@ -570,6 +573,7 @@ struct HttpServer::Impl {
         sessionRoutes.addTo(server);
         stateRoute.addTo(server);
         artworkRoutes.addTo(server);
+        docsRoutes.addTo(server);
     }
 };
 

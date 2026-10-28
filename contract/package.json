@@ -14,6 +14,7 @@
 	"devDependencies": {
 		"@jean/ui": "workspace:*",
 		"@types/node": "catalog:",
+		"swagger-ui-dist": "catalog:",
 		"typescript": "catalog:"
 	}
 }

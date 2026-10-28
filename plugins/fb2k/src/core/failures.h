@@ -25,6 +25,7 @@ constexpr char kNoPlaylistWrites[] = "playlist changes are not available";
 constexpr char kNoOwnPlaylists[] = "the component's own playlists are not available";
 constexpr char kNoLibrary[] = "the media library is not available";
 constexpr char kNoSuchLibraryTrack[] = "no such track";
+constexpr char kNoSuchDocsFile[] = "no such file";
 constexpr char kNothingPlaying[] = "nothing is playing";
 constexpr char kBadSubsong[] = "'subsong' must be a whole number";
 constexpr char kTwoTrackAddressForms[] = "a request names one of 'track' and 'ordinal', never both";

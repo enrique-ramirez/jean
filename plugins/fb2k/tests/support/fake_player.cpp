@@ -425,7 +425,7 @@ Player FakePlayer::player() {
                                 found == playlists_.end() ? std::nullopt : found->entry.role};
     };
 
-    player.playlists.readRows = [this](const std::string& id, size_t offset, size_t count,
+    player.playlists.readRows = [this](const std::string& id, const PlaylistRowsAsked& rows,
                                        const std::vector<std::string>& columns) {
         const Lock guard(mutex_);
         ask(Call::readRows, id);
@@ -442,12 +442,22 @@ Player FakePlayer::player() {
         read.revision = found->entry.revision;
         read.totalCount = found->rows.size();
 
-        const auto first = std::min(offset, found->rows.size());
-        const auto last = std::min(first + count, found->rows.size());
+        const auto row = [&columns](const FakeRow& held) { return formatted(held, columns); };
+        if (rows.positions) {
+            if (std::any_of(rows.positions->begin(), rows.positions->end(),
+                            [&found](uint32_t position) { return position >= found->rows.size(); }))
+                return failed<PlaylistRowsRead>(PlayerOutcome::positionPastEnd);
+            std::transform(
+                rows.positions->begin(), rows.positions->end(), std::back_inserter(read.rows),
+                [&found, &row](uint32_t position) { return row(found->rows[position]); });
+            return read;
+        }
+
+        const auto first = std::min<size_t>(rows.offset, found->rows.size());
+        const auto last = std::min<size_t>(first + rows.count, found->rows.size());
         std::transform(found->rows.begin() + static_cast<std::ptrdiff_t>(first),
                        found->rows.begin() + static_cast<std::ptrdiff_t>(last),
-                       std::back_inserter(read.rows),
-                       [&columns](const FakeRow& row) { return formatted(row, columns); });
+                       std::back_inserter(read.rows), row);
         return read;
     };
 

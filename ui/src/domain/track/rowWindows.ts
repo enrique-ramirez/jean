@@ -5,7 +5,7 @@ import type {
 	RowsResult,
 	RowsWindow,
 } from "@/shared/api/libraryRows";
-import type { PlaylistPage } from "@/shared/api/playlists";
+import type { PlaylistPage, PlaylistRowsAsked } from "@/shared/api/playlists";
 import { readFailed } from "@/shared/api/readFailure";
 import { subscribers } from "@/shared/lib/store";
 import { type Hold, holdAfter, isDue, now } from "./libraryHolds";
@@ -14,6 +14,7 @@ import type { Refs } from "./project";
 export const WINDOW_ROWS = 2048;
 export const PREFETCH_ROWS = 512;
 export const HELD_WINDOWS = 32;
+export const MAX_POSITIONS_ASKED = 128;
 
 const PACING_MS = 100;
 
@@ -27,7 +28,13 @@ export type RowsList =
 			length: number;
 			ordinals: Refs | null;
 	  }
-	| { kind: "playlist"; id: string; structure: string; length: number };
+	| {
+			kind: "playlist";
+			id: string;
+			structure: string;
+			length: number;
+			positions: Refs | null;
+	  };
 
 export type LibraryList = Extract<RowsList, { kind: "library" }>;
 export type PlaylistList = Extract<RowsList, { kind: "playlist" }>;
@@ -45,7 +52,7 @@ export interface RowsTransport {
 		signal?: AbortSignal,
 	) => Promise<RowsResult>;
 	readPage: (
-		ask: { id: string; structure: string; offset: number; count: number },
+		ask: { id: string; structure: string; rows: PlaylistRowsAsked },
 		signal?: AbortSignal,
 	) => Promise<PageResult>;
 }
@@ -103,7 +110,16 @@ interface PlaylistPiece extends Piece {
 	page: PlaylistPage;
 }
 
-type AnyPiece = LibraryPiece | PlaylistPiece;
+interface PositionsPiece extends Piece {
+	kind: "positions";
+	id: string;
+	structure: string;
+	key: string;
+	rowOf: Map<number, number>;
+	page: PlaylistPage;
+}
+
+type AnyPiece = LibraryPiece | PlaylistPiece | PositionsPiece;
 
 interface View {
 	list: RowsList;
@@ -119,7 +135,8 @@ type Ask =
 			list: LibraryList;
 			set: RowSet;
 	  }
-	| { kind: "playlist"; list: PlaylistList; window: number };
+	| { kind: "playlist"; list: PlaylistList; window: number }
+	| { kind: "positions"; list: PlaylistList; positions: number[] };
 
 interface Out {
 	ask: Ask;
@@ -132,7 +149,10 @@ const LIBRARY = "library";
 const playlistSource = (id: string) => `playlist:${id}`;
 const sourceOf = (list: RowsList | RowsSource) =>
 	list.kind === "library" ? LIBRARY : playlistSource(list.id);
-const viewKeyOf = (list: RowsList) => `${list.kind}:${list.id}`;
+const viewKeyOf = (list: RowsList) =>
+	list.kind === "playlist" && list.positions
+		? `${list.kind}:${list.id}:positions`
+		: `${list.kind}:${list.id}`;
 const pieceKeyOf = (id: string, structure: string, window: number) =>
 	`${id}\u0000${structure}\u0000${window}`;
 
@@ -211,6 +231,7 @@ export function createRowWindows(transport: RowsTransport): RowWindows {
 	const pieces = new Set<AnyPiece>();
 	const libraryIndex = new Map<number, LibraryPiece>();
 	const playlistPieces = new Map<string, PlaylistPiece>();
+	const positionPieces = new Map<string, PositionsPiece>();
 	const views = new Map<string, View>();
 
 	let libraryStructure: number | null = null;
@@ -251,10 +272,28 @@ export function createRowWindows(transport: RowsTransport): RowWindows {
 	const playlistPieceAt = (list: PlaylistList, position: number) =>
 		playlistPieces.get(pieceKeyOf(list.id, list.structure, windowOf(position)));
 
-	const pieceAt = (list: RowsList, position: number) =>
-		list.kind === "library"
-			? libraryPieceAt(list, position)
-			: playlistPieceAt(list, position);
+	const positionAt = (list: PlaylistList, position: number) =>
+		list.positions ? list.positions[position] : position;
+
+	const positionsPieceHolding = (list: PlaylistList, position: number) => {
+		const piece = positionPieces.get(viewKeyOf(list));
+		return piece?.structure === list.structure && piece.rowOf.has(position)
+			? piece
+			: undefined;
+	};
+
+	const playlistRowAt = (list: PlaylistList, position: number) => {
+		const held = positionsPieceHolding(list, position);
+		if (held) return { page: held.page, row: held.rowOf.get(position) ?? -1 };
+		const piece = playlistPieceAt(list, position);
+		return piece ? { page: piece.page, row: position - piece.offset } : null;
+	};
+
+	const pieceAt = (list: RowsList, position: number) => {
+		if (list.kind === "library") return libraryPieceAt(list, position);
+		const at = positionAt(list, position);
+		return positionsPieceHolding(list, at) ?? playlistPieceAt(list, at);
+	};
 
 	const removePiece = (piece: AnyPiece) => {
 		pieces.delete(piece);
@@ -263,10 +302,21 @@ export function createRowWindows(transport: RowsTransport): RowWindows {
 				if (libraryIndex.get(ordinal) === piece) libraryIndex.delete(ordinal);
 			return;
 		}
+		if (piece.kind === "positions") {
+			if (positionPieces.get(piece.key) === piece)
+				positionPieces.delete(piece.key);
+			return;
+		}
 		playlistPieces.delete(
 			pieceKeyOf(piece.id, piece.structure, windowOf(piece.offset)),
 		);
 	};
+
+	const isOfPlaylist = (
+		piece: AnyPiece,
+		id: string,
+	): piece is PlaylistPiece | PositionsPiece =>
+		piece.kind !== "library" && piece.id === id;
 
 	const sourceOfPiece = (piece: AnyPiece) =>
 		piece.kind === "library" ? LIBRARY : playlistSource(piece.id);
@@ -353,12 +403,30 @@ export function createRowWindows(transport: RowsTransport): RowWindows {
 					refusedPlaylists.has(pieceKeyOf(list.id, list.structure, 0))
 				)
 					continue;
+				if (list.positions) {
+					const current = playlistStructures.get(list.id);
+					if (current !== undefined && current !== list.structure) continue;
+					const needed = neededPositions(list, window);
+					if (needed.length === 0) continue;
+					return { kind: "positions", list, positions: needed };
+				}
 				const held = playlistPieceAt(list, window * WINDOW_ROWS);
 				if (held && !held.stale) continue;
 				return { kind: "playlist", list, window };
 			}
 		}
 		return null;
+	}
+
+	function neededPositions(list: PlaylistList, window: number) {
+		const needed = new Set<number>();
+		const end = Math.min(list.length, (window + 1) * WINDOW_ROWS);
+		for (let position = window * WINDOW_ROWS; position < end; position += 1) {
+			const held = pieceAt(list, position);
+			if (!held || held.stale) needed.add(positionAt(list, position));
+			if (needed.size === MAX_POSITIONS_ASKED) break;
+		}
+		return [...needed];
 	}
 
 	function isBlocked(source: string, at: number) {
@@ -433,6 +501,16 @@ export function createRowWindows(transport: RowsTransport): RowWindows {
 				transport.readRows({ structure: ask.list.structure, set: ask.set }),
 				(rows, stale) => holdWindow(rows.window, stale),
 			);
+		else if (ask.kind === "positions")
+			settle(
+				sent,
+				transport.readPage({
+					id: ask.list.id,
+					structure: ask.list.structure,
+					rows: { positions: ask.positions },
+				}),
+				(pageResult, stale) => holdPositions(ask, pageResult.page, stale),
+			);
 		else {
 			const offset = ask.window * WINDOW_ROWS;
 			settle(
@@ -440,8 +518,10 @@ export function createRowWindows(transport: RowsTransport): RowWindows {
 				transport.readPage({
 					id: ask.list.id,
 					structure: ask.list.structure,
-					offset,
-					count: Math.min(WINDOW_ROWS, ask.list.length - offset),
+					rows: {
+						offset,
+						count: Math.min(WINDOW_ROWS, ask.list.length - offset),
+					},
 				}),
 				(pageResult, stale) => holdPage(ask, pageResult.page, stale),
 			);
@@ -474,11 +554,7 @@ export function createRowWindows(transport: RowsTransport): RowWindows {
 			const { id, structure } = sent.ask.list;
 			refusedPlaylists.add(pieceKeyOf(id, structure, 0));
 			for (const piece of [...pieces])
-				if (
-					piece.kind === "playlist" &&
-					piece.id === id &&
-					piece.structure === structure
-				)
+				if (isOfPlaylist(piece, id) && piece.structure === structure)
 					removePiece(piece);
 		}
 		changed();
@@ -550,6 +626,54 @@ export function createRowWindows(transport: RowsTransport): RowWindows {
 		playlistPieces.set(pieceKeyOf(id, structure, ask.window), piece);
 	}
 
+	function holdPositions(
+		ask: Extract<Ask, { kind: "positions" }>,
+		page: PlaylistPage,
+		stale: boolean,
+	) {
+		const { list } = ask;
+		const key = viewKeyOf(list);
+		const previous = positionPieces.get(key);
+		const kept =
+			previous && !previous.stale && previous.structure === list.structure
+				? previous
+				: null;
+		const wanted = new Set<number>(list.positions ?? []);
+		const items: PlaylistPage["items"] = [];
+		const rowOf = new Map<number, number>();
+		const hold = (position: number, item: PlaylistPage["items"][number]) => {
+			if (!wanted.has(position)) return;
+			rowOf.set(position, items.length);
+			items.push(item);
+		};
+		if (kept)
+			for (const [position, row] of kept.rowOf)
+				hold(position, kept.page.items[row]);
+		ask.positions.forEach((position, at) => {
+			const item = page.items[at];
+			if (item) hold(position, item);
+		});
+
+		if (previous) removePiece(previous);
+		const piece: PositionsPiece = {
+			kind: "positions",
+			id: list.id,
+			structure: list.structure,
+			key,
+			rowOf,
+			page: { ...page, items },
+			stale,
+			stamp: ++tick,
+		};
+		pieces.add(piece);
+		positionPieces.set(key, piece);
+	}
+
+	const positionPiecesOf = (id: string, structure: string) =>
+		[...positionPieces.values()].filter(
+			(piece) => piece.id === id && piece.structure === structure,
+		);
+
 	const playlistPiecesOf = (id: string, structure: string) =>
 		[...pieces].filter(
 			(piece): piece is PlaylistPiece =>
@@ -566,6 +690,8 @@ export function createRowWindows(transport: RowsTransport): RowWindows {
 	) {
 		const held = playlistPiecesOf(id, from);
 		for (const piece of playlistPiecesOf(id, to)) removePiece(piece);
+		for (const piece of positionPiecesOf(id, from)) removePiece(piece);
+		for (const piece of positionPiecesOf(id, to)) removePiece(piece);
 		if (held.length === 0) return;
 
 		const byWindow: (PlaylistPiece | undefined)[] = [];
@@ -630,8 +756,14 @@ export function createRowWindows(transport: RowsTransport): RowWindows {
 			piece.page = { ...piece.page, structure: to };
 			playlistPieces.set(pieceKeyOf(id, to, window), piece);
 		}
+		const positioned = positionPiecesOf(id, from);
+		for (const piece of positionPiecesOf(id, to)) removePiece(piece);
+		for (const piece of positioned) {
+			piece.structure = to;
+			piece.page = { ...piece.page, structure: to };
+		}
 		if (playlistStructures.get(id) === from) playlistStructures.set(id, to);
-		if (held.length > 0) changed();
+		if (held.length + positioned.length > 0) changed();
 	}
 
 	return {
@@ -646,12 +778,12 @@ export function createRowWindows(transport: RowsTransport): RowWindows {
 			}
 			if (
 				list.kind === "playlist" &&
+				!list.positions &&
 				playlistStructures.get(list.id) !== list.structure
 			) {
-				for (const piece of pieces)
+				for (const piece of [...pieces])
 					if (
-						piece.kind === "playlist" &&
-						piece.id === list.id &&
+						isOfPlaylist(piece, list.id) &&
 						piece.structure !== list.structure
 					)
 						removePiece(piece);
@@ -674,31 +806,38 @@ export function createRowWindows(transport: RowsTransport): RowWindows {
 				const row = piece.rowOf(ordinalAt(list, position));
 				return row < 0 ? null : { kind: "library", window: piece.window, row };
 			}
-			const piece = playlistPieceAt(list, position);
-			if (!piece) return null;
-			const row = position - piece.offset;
-			return piece.page.items[row]
-				? { kind: "playlist", page: piece.page, row }
+			const held = playlistRowAt(list, positionAt(list, position));
+			return held?.page.items[held.row]
+				? { kind: "playlist", page: held.page, row: held.row }
 				: null;
 		},
 
 		patch(list, position, item) {
 			const piece = playlistPieceAt(list, position);
 			const row = piece ? position - piece.offset : -1;
-			if (inFlight && inFlight !== OTHERS && inFlight.ask.kind === "playlist") {
+			if (inFlight && inFlight !== OTHERS && inFlight.ask.kind !== "library") {
 				const { ask } = inFlight;
-				if (
-					ask.list.id === list.id &&
-					ask.list.structure === list.structure &&
-					ask.window === windowOf(position)
-				)
-					inFlight.staleEpoch = -1;
+				const isSame =
+					ask.list.id === list.id && ask.list.structure === list.structure;
+				const covers =
+					ask.kind === "playlist"
+						? ask.window === windowOf(position)
+						: ask.positions.includes(position);
+				if (isSame && covers) inFlight.staleEpoch = -1;
 			}
-			if (!piece || row >= piece.page.items.length) return false;
-
-			piece.page.items[row] = item;
-			changed();
-			return true;
+			let patched = false;
+			for (const positioned of positionPiecesOf(list.id, list.structure)) {
+				const at = positioned.rowOf.get(position);
+				if (at === undefined) continue;
+				positioned.page.items[at] = item;
+				patched = true;
+			}
+			if (piece && row < piece.page.items.length) {
+				piece.page.items[row] = item;
+				patched = true;
+			}
+			if (patched) changed();
+			return patched;
 		},
 
 		carry: carryPlaylist,

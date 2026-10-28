@@ -312,3 +312,61 @@ test("the queue asked with roles carries each entry's album cover path, a handle
 	).entries;
 	assert.deepEqual(coversOf(undeclared), [null, null, null]);
 });
+
+const askPositions = (
+	state: FakeState,
+	positions: string[],
+	{ guid = MIXED, page = [] as [string, string][] } = {},
+) =>
+	ask(state, `/api/playlists/${guid}/items`, {
+		query: [
+			...page,
+			...positions.map((position): [string, string] => ["positions", position]),
+			["columns", "%title%"],
+		],
+		client: PHONE,
+	});
+
+const titlesOf = (page: { items: { columns: string[] }[] }) =>
+	page.items.map((item) => item.columns[0]);
+
+test("positions answer the rows named in the order named, with the counts the whole playlist stands at", async () => {
+	const state = mixedState();
+	const page = bodyOf(await askItems(state));
+
+	const answer = bodyOf(await askPositions(state, ["3", "0", "11"]));
+
+	assert.deepEqual(
+		titlesOf(answer),
+		[3, 0, 11].map((position) => titlesOf(page)[position]),
+	);
+	assert.equal(answer.totalCount, page.totalCount);
+	assert.equal(answer.structure, page.structure);
+});
+
+test("a position past the end is 400 that position is past the end", async () => {
+	const state = mixedState();
+
+	assert.deepEqual(await refusalOf(await askPositions(state, ["3", "12"])), {
+		status: 400,
+		body: { error: "that position is past the end", detail: "" },
+	});
+});
+
+test("positions beside a page, an empty one, one that is not a whole number and more than 128 are each 400 unacceptable ordinal set", async () => {
+	const state = mixedState();
+	const tooMany = Array.from({ length: 129 }, (_, at) => String(at));
+
+	for (const [positions, page] of [
+		[["1"], [["offset", "0"]]],
+		[["1"], [["count", "2"]]],
+		[[""], []],
+		[["two"], []],
+		[["-1"], []],
+		[tooMany, []],
+	] as [string[], [string, string][]][]) {
+		const refusal = refusalOf(await askPositions(state, positions, { page }));
+		assert.equal(refusal.status, 400, positions.join(","));
+		assert.equal(refusal.body.error, "unacceptable ordinal set");
+	}
+});

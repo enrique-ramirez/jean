@@ -54,7 +54,45 @@ const REVISION_GONE = {
 	detail: "",
 };
 
-const PAGE_PARAMETERS = ["offset", "count", "columns"];
+const PAGE_PARAMETERS = ["offset", "count", "positions", "columns"];
+const MAX_POSITIONS_ASKED = 128;
+const UINT32_MAX = 4294967295;
+
+const asUint32 = (text: string | null) =>
+	text !== null && /^\d+$/.test(text) && Number(text) <= UINT32_MAX
+		? Number(text)
+		: null;
+
+type RowsAsked =
+	| { offset: number; count: number }
+	| { positions: number[] }
+	| { error: string; detail: string };
+
+function rowsAsked(url: URL): RowsAsked {
+	const offset = url.searchParams.get("offset");
+	const count = url.searchParams.get("count");
+	const positions = url.searchParams.getAll("positions");
+	const asksPage = offset !== null || count !== null;
+	const refused = (detail = "") => ({
+		error: "unacceptable ordinal set",
+		detail,
+	});
+	if (asksPage === positions.length > 0) return refused();
+	if (asksPage) {
+		const from = asUint32(offset);
+		const taken = asUint32(count);
+		return from === null || taken === null
+			? refused()
+			: { offset: from, count: taken };
+	}
+	if (positions.length > MAX_POSITIONS_ASKED)
+		return refused("too many rows asked for");
+	const parsed = positions.map(asUint32);
+	return parsed.some((position) => position === null)
+		? refused()
+		: { positions: parsed as number[] };
+}
+
 const CHANGES_PARAMETERS = ["structure", "since", "columns"];
 
 const MOVE_ROWS_FIELDS = ["structure", "runs", "ordinals", "to"];
@@ -203,8 +241,6 @@ export async function handlePlaylistRows(asked: Asked) {
 	const rowsMatch = /^\/api\/playlists\/([^/]+)\/items$/.exec(path);
 	if (method === "GET" && rowsMatch) {
 		const guid = rowsMatch[1];
-		const offset = Number(url.searchParams.get("offset"));
-		const count = Number(url.searchParams.get("count"));
 		const columns = url.searchParams.getAll("columns");
 		if (columns.length === 0)
 			return json(
@@ -212,6 +248,8 @@ export async function handlePlaylistRows(asked: Asked) {
 				{ error: "unacceptable column", detail: "'columns' is required" },
 				400,
 			);
+		const rows = rowsAsked(url);
+		if ("error" in rows) return json(response, rows, 400);
 		const roles = rolesAsked(url, LIBRARY_ROLE_NAMES, PAGE_PARAMETERS);
 		if (!(roles instanceof Map)) return json(response, roles, 400);
 
@@ -221,9 +259,22 @@ export async function handlePlaylistRows(asked: Asked) {
 		if (!playlist)
 			return json(response, { error: "no such playlist", detail: "" }, 404);
 
+		if (
+			"positions" in rows &&
+			rows.positions.some((position) => position >= playlist.items.length)
+		)
+			return json(
+				response,
+				{ error: "that position is past the end", detail: "" },
+				400,
+			);
+
 		await settleCovers(state, roles);
 		const coverOf = coversFor(state, roles);
-		const page = playlist.items.slice(offset, offset + count);
+		const page =
+			"positions" in rows
+				? rows.positions.map((position) => playlist.items[position])
+				: playlist.items.slice(rows.offset, rows.offset + rows.count);
 		return json(response, {
 			structure: generationText(playlist.structure),
 			revision: generationText(playlist.revision),

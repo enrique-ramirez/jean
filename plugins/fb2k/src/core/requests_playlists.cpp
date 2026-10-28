@@ -34,6 +34,13 @@ bool readStructureDigits(const nlohmann::json& root, uint64_t& structure) {
            readDecimal(found->get<std::string>(), structure);
 }
 
+std::optional<uint32_t> asUint32(const std::string& text) {
+    uint64_t value = 0;
+    if (!readDecimal(text, value) || !fitsUint32(value))
+        return std::nullopt;
+    return static_cast<uint32_t>(value);
+}
+
 std::vector<const char*> withOptionalFields(std::vector<const char*> fields, TitleField title,
                                             DuplicatesField duplicates) {
     if (title == TitleField::allowed)
@@ -61,18 +68,36 @@ std::optional<Duplicates> readDuplicates(const nlohmann::json& root) {
 
 }  // namespace
 
-PlaylistPageRequest parsePlaylistPage(const std::string& offsetText, const std::string& countText) {
-    uint64_t offset = 0;
-    if (!readDecimal(offsetText, offset) || !fitsUint32(offset))
-        return refused<PlaylistPageRequest>(PlaylistRefusal::badOrdinals);
+PlaylistRowsRequest parsePlaylistRows(const std::optional<std::string>& offsetText,
+                                      const std::optional<std::string>& countText,
+                                      const std::vector<std::string>& positionTexts) {
+    const bool asksPage = offsetText || countText;
+    const bool asksPositions = !positionTexts.empty();
+    if (asksPage == asksPositions)
+        return refused<PlaylistRowsRequest>(PlaylistRefusal::badOrdinals);
 
-    uint64_t count = 0;
-    if (!readDecimal(countText, count) || !fitsUint32(count))
-        return refused<PlaylistPageRequest>(PlaylistRefusal::badOrdinals);
+    PlaylistRowsRequest request;
+    if (asksPage) {
+        const auto offset = offsetText ? asUint32(*offsetText) : std::nullopt;
+        const auto count = countText ? asUint32(*countText) : std::nullopt;
+        if (!offset || !count)
+            return refused<PlaylistRowsRequest>(PlaylistRefusal::badOrdinals);
+        request.rows.offset = *offset;
+        request.rows.count = *count;
+        return request;
+    }
 
-    PlaylistPageRequest request;
-    request.offset = static_cast<uint32_t>(offset);
-    request.count = static_cast<uint32_t>(count);
+    if (positionTexts.size() > kMaxPositionsAsked)
+        return refused<PlaylistRowsRequest>(PlaylistRefusal::badOrdinals, kTooManyRowsAsked);
+
+    std::vector<uint32_t> positions;
+    for (const auto& text : positionTexts) {
+        const auto position = asUint32(text);
+        if (!position)
+            return refused<PlaylistRowsRequest>(PlaylistRefusal::badOrdinals);
+        positions.push_back(*position);
+    }
+    request.rows.positions = std::move(positions);
     return request;
 }
 

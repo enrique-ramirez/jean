@@ -342,12 +342,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * A page of a playlist's rows, in the columns the client declares.
+         * A page of a playlist's rows, or the rows at named positions, in the columns the client declares.
          * @description Every column is evaluated against the row's own handle, so a file dragged into a playlist from outside the media library draws like every other row. `libraryPath` is the library-relative path `GET /artwork?track=` takes, and it is `null` for exactly those rows the media library does not hold.
          *
          *     The answer carries the playlist's whole `totalCount` alongside the page, and the `structure` and `revision` it was read at. Rows held against an older `structure` sit at positions that have moved and MUST be read again; a moved `revision` alone means the rows are where they were and their content is what changed.
          *
-         *     A `count` reaching past the end answers the rows that remain, and an `offset` at or past the end answers no rows at all. Both still carry `totalCount`, `structure` and `revision`, so a client wanting only those asks for a `count` of zero.
+         *     **The rows are named by exactly one of a page and `positions`.** A page is `offset` and `count`: a `count` reaching past the end answers the rows that remain, and an `offset` at or past the end answers no rows at all. Both still carry `totalCount`, `structure` and `revision`, so a client wanting only those asks for a `count` of zero. `positions` names up to 128 rows, repeated once per row as `columns` is, and answers them in the order given, which is how a client holding a set of positions, such as the rows a find matched, reads them. A position at or past the end is a `400` (`that position is past the end`), judged by the player at the structure the answer would have carried. Sending `positions` beside `offset` or `count`, or none of the three, is a `400`.
          *
          *     **`cover`.** A request that names roles as query parameters beside the route's own, as `GET /library/summary` takes them, gets a `cover` on every row: the library-relative path `GET /artwork?track=` takes, of the cover track of the row's album, or `null` where the media library does not hold the row, where the declaration does not hold a role's expression, or where no snapshot is ready. A request naming no role gets no `cover` at all. The roles are the ones `GET /library/search` takes; a role that is unknown, empty or named twice is a `400` as it is there.
          *
@@ -4707,15 +4707,17 @@ export interface operations {
         parameters: {
             query: {
                 /**
-                 * @description The position of the first row to answer, counting from zero.
+                 * @description The position of the first row of a page, counting from zero. Required with `count`, and refused beside `positions`.
                  * @example 0
                  */
-                offset: number;
+                offset?: number;
                 /**
-                 * @description How many rows to answer at most. Zero answers the counts and no rows.
+                 * @description How many rows a page answers at most. Zero answers the counts and no rows. Required with `offset`, and refused beside `positions`.
                  * @example 100
                  */
-                count: number;
+                count?: number;
+                /** @description The rows to answer, in this order, repeated once per row: `?positions=9&positions=0`. At most 128, each a whole number below the playlist's `totalCount`. Refused beside `offset` or `count`. */
+                positions?: number[];
                 /**
                  * @description The columns to evaluate, repeated once per column: `?columns=%25title%25&columns=%25artist%25`. Never comma-separated, because a title-formatting expression may contain commas. Each row answers one value per column, in the order declared.
                  *
@@ -4788,7 +4790,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistPage"];
                 };
             };
-            /** @description The request was understood and declined before the player was asked: an id this component did not issue, no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, or an `offset` or `count` that is missing, not a whole number or larger than 4294967295. The schemas below tell the column refusals from the other two. */
+            /** @description The request was understood and declined before the player was asked: an id this component did not issue, no `columns` at all, more than 64 of them, one that is empty, longer than 1024 characters or carrying a control character, the same column twice, an `offset` or `count` that is missing, not a whole number or larger than 4294967295, `positions` beside either of them, more than 128 of them, or one that is not a whole number or larger than 4294967295. The schemas below tell the column refusals from the other two. A position at or past the end is also a `400`, but one the player answered: `that position is past the end`. */
             400: {
                 headers: {
                     [name: string]: unknown;

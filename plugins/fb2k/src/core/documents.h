@@ -121,6 +121,12 @@ struct PlaylistTracksRead {
     std::vector<PlaylistTrack> rows;
 };
 
+struct PlaylistRowsAsked {
+    uint32_t offset = 0;
+    uint32_t count = 0;
+    std::optional<std::vector<uint32_t>> positions;
+};
+
 struct PlaylistRowsRead {
     PlayerOutcome outcome = PlayerOutcome::done;
 

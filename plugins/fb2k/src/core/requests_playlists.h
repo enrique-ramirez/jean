@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/documents.h"
 #include "core/player_outcome.h"
 #include "core/playlists.h"
 
@@ -15,15 +16,22 @@ namespace jean {
 
 struct JsonObject;
 
-struct PlaylistPageRequest {
+// How many rows one `positions` query may name. The route is a GET, and cpp-httplib refuses a
+// request line over 8192 bytes, so the ceiling keeps a full list beside a whole declaration and
+// every role inside it.
+constexpr size_t kMaxPositionsAsked = 128;
+
+struct PlaylistRowsRequest {
     PlaylistRefusal refusal = PlaylistRefusal::none;
-    uint32_t offset = 0;
-    uint32_t count = 0;
+    std::string detail;
+    PlaylistRowsAsked rows;
 
     bool ok() const { return refusal == PlaylistRefusal::none; }
 };
 
-PlaylistPageRequest parsePlaylistPage(const std::string& offsetText, const std::string& countText);
+PlaylistRowsRequest parsePlaylistRows(const std::optional<std::string>& offsetText,
+                                      const std::optional<std::string>& countText,
+                                      const std::vector<std::string>& positionTexts);
 
 struct PlayRowRequest {
     PlaylistRefusal refusal = PlaylistRefusal::none;

@@ -19,7 +19,7 @@ namespace jean {
 
 namespace {
 
-constexpr std::array<std::string_view, 3> kRowsOwned{"offset", "count", "columns"};
+constexpr std::array<std::string_view, 4> kRowsOwned{"offset", "count", "positions", "columns"};
 constexpr std::array<std::string_view, 3> kRowChangesOwned{"structure", "since", "columns"};
 
 constexpr char kPlaylistItems[] = R"(/api/playlists/([0-9a-f-]{36})/items)";
@@ -44,6 +44,19 @@ LibraryRequest columnsAndSinceDeclared(const httplib::Request& req) {
         return refused<LibraryRequest>(LibraryRefusal::badSince, "'since' must be a whole number");
 
     return parseLibraryRequest(asked, req.get_param_value("since"));
+}
+
+std::optional<std::string> paramIfSent(const httplib::Request& req, const char* name) {
+    if (!req.has_param(name))
+        return std::nullopt;
+    return req.get_param_value(name);
+}
+
+// cpp-httplib drops an exactly repeated `key=value` pair while parsing a query, so a position
+// named twice arrives once, where it was first named.
+PlaylistRowsRequest rowsAsked(const httplib::Request& req) {
+    return parsePlaylistRows(paramIfSent(req, "offset"), paramIfSent(req, "count"),
+                             req.get_param_values("positions"));
 }
 
 PlayerOutcome rowsRefusal(ReadOutcome catchUp) {
@@ -148,10 +161,9 @@ void PlaylistRowRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        const auto page =
-            parsePlaylistPage(req.get_param_value("offset"), req.get_param_value("count"));
-        if (!page.ok()) {
-            respondRefusal(res, page.refusal);
+        const auto asked = rowsAsked(req);
+        if (!asked.ok()) {
+            respondRefusal(res, asked.refusal, asked.detail);
             return;
         }
 
@@ -169,7 +181,7 @@ void PlaylistRowRoutes::addTo(httplib::Server& server) {
         if (readingRowsTooFast(req, res))
             return;
 
-        auto read = playlists_.readRows(id, page.offset, page.count, declared.columns);
+        auto read = playlists_.readRows(id, asked.rows, declared.columns);
         if (read.outcome != PlayerOutcome::done) {
             respondOutcome(res, read.outcome);
             return;

@@ -40,7 +40,7 @@ using PlaylistRoleReader = std::function<PlaylistRoleRead(const std::string& pla
 // Reads at most `count` rows of `playlistId` from `offset`, with `columns` evaluated against
 // each row's own handle. The handles are copied on the main thread and formatted off it.
 using PlaylistRowReader =
-    std::function<PlaylistRowsRead(const std::string& playlistId, size_t offset, size_t count,
+    std::function<PlaylistRowsRead(const std::string& playlistId, const PlaylistRowsAsked& rows,
                                    const std::vector<std::string>& columns)>;
 
 // Reads the rows of `playlistId` whose content moved after `since`, each with its position, with

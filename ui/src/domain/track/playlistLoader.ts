@@ -56,6 +56,7 @@ export interface WindowedPlaylist {
 	retryNow: () => void;
 	answered: () => void;
 	viewportOf: (list: PlaylistList) => RowsViewport;
+	besideViewportOf: (list: PlaylistList) => RowsViewport;
 }
 
 interface Feed {
@@ -220,6 +221,7 @@ export function createWindowedPlaylist({
 		id,
 		structure,
 		length: shown?.length ?? 0,
+		positions: null,
 	});
 
 	function forget(current: Feed, canReask: boolean) {
@@ -288,6 +290,7 @@ export function createWindowedPlaylist({
 	};
 
 	const viewports = new WeakMap<PlaylistList, RowsViewport>();
+	const besideViewports = new WeakMap<PlaylistList, RowsViewport>();
 
 	return {
 		windows,
@@ -401,6 +404,20 @@ export function createWindowedPlaylist({
 					},
 				};
 				viewports.set(list, viewport);
+			}
+			return viewport;
+		},
+
+		besideViewportOf: (list) => {
+			let viewport = besideViewports.get(list);
+			if (!viewport) {
+				viewport = {
+					watch: (first, end, direction) => {
+						if (isOpen()) windows.view(list, first, end, direction);
+					},
+					leave: () => windows.leave(list),
+				};
+				besideViewports.set(list, viewport);
 			}
 			return viewport;
 		},

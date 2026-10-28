@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import type { Library } from "@/domain/library/useLibrary";
 import { isQueryTooLong } from "@/shared/api/libraryQuestions";
 import { fetchPlaylistFind } from "@/shared/api/playlists";
 import type { StateDocument } from "@/shared/api/state";
@@ -8,6 +9,7 @@ import { meet } from "./finderSets";
 import { inTurn, LIBRARY_ROLES } from "./libraryAsker";
 import type { LibraryColumns } from "./libraryColumns";
 import { announcedLibraryOf, isSettled, watchLibrary } from "./libraryHolds";
+import type { WindowedPlaylist } from "./playlistLoader";
 import type { Refs } from "./project";
 import { useLibraryQuestion } from "./useLibraryQuestion";
 
@@ -20,12 +22,12 @@ const FIND_TRACKS_ONLY = {
 } as const;
 
 export type FinderOver =
-	| {
+	| ({
 			kind: "library";
 			origin: string | null;
 			key: string | null;
 			columns: LibraryColumns;
-	  }
+	  } & Pick<Library, "windowed" | "snapshot">)
 	| {
 			kind: "playlist";
 			origin: string;
@@ -33,6 +35,7 @@ export type FinderOver =
 			structure: string;
 			revision: string;
 			length: number;
+			windowed: WindowedPlaylist;
 	  };
 
 const NO_LIBRARY = { origin: null, key: null, columns: EMPTY_COLUMNS };

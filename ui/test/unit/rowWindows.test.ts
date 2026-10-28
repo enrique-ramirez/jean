@@ -50,6 +50,7 @@ const playlistOf = (id: string, structure = "7", length = 100): RowsList => ({
 	id,
 	structure,
 	length,
+	positions: null,
 });
 
 interface Ask {
@@ -92,7 +93,9 @@ const fakeTransport = (): Transport => {
 					"page",
 					ask.id,
 					ask.structure,
-					span(ask.offset, ask.offset + ask.count),
+					"positions" in ask.rows
+						? [...ask.rows.positions]
+						: span(ask.rows.offset, ask.rows.offset + ask.rows.count),
 				),
 		},
 	};

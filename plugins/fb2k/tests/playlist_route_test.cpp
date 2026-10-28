@@ -5,6 +5,7 @@
 #include "third_party/doctest.h"
 
 #include "core/library.h"
+#include "core/requests_playlists.h"
 #include "core/settings.h"
 #include "support/cover_library.h"
 #include "support/fake_player.h"
@@ -410,6 +411,19 @@ std::string itemsPath(const std::string& id, size_t offset, size_t count,
     for (const auto& column : columns)
         path += "&columns=" + encoded(column);
 
+    return path;
+}
+
+std::string positionsPath(const std::string& id, const std::vector<size_t>& positions,
+                          const std::vector<std::string>& columns) {
+    auto path = "/api/playlists/" + id + "/items?";
+
+    for (const auto position : positions)
+        path += "positions=" + std::to_string(position) + "&";
+    for (const auto& column : columns)
+        path += "columns=" + encoded(column) + "&";
+
+    path.pop_back();
     return path;
 }
 
@@ -1253,6 +1267,83 @@ TEST_CASE("offset and count decide which of a playlist's rows a page holds") {
         CHECK(titlesIn(page) == json::array({"Fourth", "Fifth"}));
         CHECK(page.at("totalCount") == playlistRows().size());
     }
+}
+
+TEST_CASE("positions answer the rows named, in the order named") {
+    FakePlayer foobar;
+    holdingRows(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    SUBCASE("in the order named, with the counts the whole playlist stands at") {
+        const auto response = get(server, positionsPath(kPlaylistId, {3, 0, 4}, {"%title%"}));
+
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+        const auto page = json::parse(response->body);
+        CHECK(titlesIn(page) == json::array({"Fourth", "First", "Fifth"}));
+        CHECK(page.at("totalCount") == playlistRows().size());
+        CHECK(wireValue(page, "structure") == asDigits(kRowsStructure));
+        CHECK(foobar.count(Call::readRows) == 1);
+    }
+
+    SUBCASE("a position named twice is answered once, where it was first named") {
+        const auto response = get(server, positionsPath(kPlaylistId, {3, 0, 3}, {"%title%"}));
+
+        REQUIRE(response);
+        REQUIRE(response->status == 200);
+        CHECK(titlesIn(json::parse(response->body)) == json::array({"Fourth", "First"}));
+    }
+}
+
+TEST_CASE("a position past the end is a 400 only the player can answer") {
+    FakePlayer foobar;
+    holdingRows(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    const auto response = get(server, positionsPath(kPlaylistId, {1, 5}, {"%title%"}));
+
+    REQUIRE(response);
+    CHECK(response->status == 400);
+    CHECK(json::parse(response->body)["error"] == "that position is past the end");
+    CHECK(foobar.count(Call::readRows) == 1);
+}
+
+TEST_CASE(
+    "a positions request the component can judge for itself is a 400 and never reaches "
+    "the player") {
+    FakePlayer foobar;
+    holdingRows(foobar);
+    const TestServer server(servingSettings(), foobar.player());
+
+    const auto columns = "&columns=" + encoded("%title%");
+    std::string tooMany;
+    for (size_t position = 0; position <= kMaxPositionsAsked; ++position)
+        tooMany += "positions=" + std::to_string(position) + "&";
+
+    for (const auto& query : {
+             "offset=0&positions=1" + columns,
+             "count=2&positions=1" + columns,
+             "offset=0&count=2&positions=1" + columns,
+             "positions=" + columns,
+             "positions=two" + columns,
+             "positions=-1" + columns,
+             "positions=1.5" + columns,
+             "positions=4294967296" + columns,
+             "positions=1&positions=" + columns,
+             tooMany + columns.substr(1),
+             std::string("positions=1"),
+         }) {
+        INFO("query: ", query);
+        const auto response =
+            get(server, "/api/playlists/" + std::string(kPlaylistId) + "/items?" + query);
+
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        if (response->status == 400)
+            CHECK(json::parse(response->body)["error"].is_string());
+    }
+
+    CHECK(foobar.total() == 0);
 }
 
 TEST_CASE("a playlist the player does not hold is a 404 rather than an empty page") {

@@ -244,8 +244,7 @@ function create(origin: string): WindowedLibrary {
 			const result = await fetchPlaylistRows(
 				origin,
 				ask.id,
-				ask.offset,
-				ask.count,
+				ask.rows,
 				TRACK_EXPRESSIONS,
 				{ signal, roles: LIBRARY_ROLES },
 			);

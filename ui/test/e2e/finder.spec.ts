@@ -919,7 +919,7 @@ test.describe("finding in All Music asks foo_jean", () => {
 		test.use({ mediaLibrarySize: 4000 });
 		test.skip(({ isMobile }) => isMobile, "stepping is a keyboard gesture");
 
-		test("a match outside the held windows draws pending when stepped to, is fetched, and lands", async ({
+		test("a match outside the held windows is asked for by ordinal once the find answers, draws pending until it lands, and is in place when stepped to", async ({
 			page,
 			player,
 		}) => {
@@ -940,22 +940,18 @@ test.describe("finding in All Music asks foo_jean", () => {
 			await openAllMusic(page);
 			await expect(trackRow(page, 0)).toContainText(titleAtOrdinal(player, 0));
 			await openFinderNamed(page, ALL_MUSIC);
-			await finderNamed(page, ALL_MUSIC).fill(QUERY);
-			await expect(countIn(page, ALL_MUSIC)).toContainText(
-				`${matches.length} matches`,
-			);
 			await untilQuiet(player);
 
 			await holdRows(page, true);
 			const from = { answered: 0, requests: player.requests.length };
-			await page.keyboard.press("ArrowDown");
-
-			await expect(trackRow(page, target)).toHaveAttribute("aria-busy", "true");
-			await expect(trackRow(page, target)).toHaveAttribute(
-				"data-match",
-				"true",
+			await finderNamed(page, ALL_MUSIC).fill(QUERY);
+			await expect(countIn(page, ALL_MUSIC)).toContainText(
+				`${matches.length} matches`,
 			);
-			// The row arrives by ordinal or with the window holding it, and either way it is asked for once.
+
+			const second = results(page).nth(1);
+			await expect(second).toHaveAttribute("aria-busy", "true");
+			await expect(second).toContainText(`#${target + 1}`);
 			await expectSettlesAt(
 				player,
 				() =>
@@ -966,12 +962,12 @@ test.describe("finding in All Music asks foo_jean", () => {
 			);
 
 			await holdRows(page, false);
+			await expect(second).toContainText(titleAtOrdinal(player, target));
+			await expect(second).not.toHaveAttribute("aria-busy", "true");
+
+			await page.keyboard.press("ArrowDown");
 			await expect(trackRow(page, target)).toContainText(
 				titleAtOrdinal(player, target),
-			);
-			await expect(trackRow(page, target)).not.toHaveAttribute(
-				"aria-busy",
-				"true",
 			);
 			await expect(trackRow(page, target)).toHaveAttribute(
 				"data-match",
@@ -1111,7 +1107,7 @@ test.describe("finding in a playlist asks foo_jean", () => {
 		test.use({ librarySize: 4000 });
 		test.skip(({ isMobile }) => isMobile, "stepping is a keyboard gesture");
 
-		test("a match outside the held windows draws pending when stepped to, and lands", async ({
+		test("the matches outside the held windows are asked for by position once the find answers, draw pending until they land, and the list row lands when stepped to", async ({
 			page,
 			player,
 		}) => {
@@ -1122,32 +1118,51 @@ test.describe("finding in a playlist asks foo_jean", () => {
 				QUERY,
 			);
 			const target = matches[matches.length - 1];
+			const title = String(library.items[target]["%title%"]);
 			expect(
 				target,
 				"the fixture puts the last match past the first window",
 			).toBeGreaterThanOrEqual(WINDOW_ROWS);
+			const itemsOf = (request: { method(): string; url(): string }) =>
+				request.method() === "GET" &&
+				new URL(request.url()).pathname ===
+					`/api/playlists/${library.guid}/items`;
 
 			await openLibrary(page);
 			await expect(trackRow(page, 0)).toContainText(
 				String(library.items[0]["%title%"]),
 			);
 			await openFinderNamed(page, IN_PLAYLIST);
+			await untilQuiet(player);
+
+			const positioned = await holdRequests(
+				page,
+				(request) =>
+					itemsOf(request) &&
+					new URL(request.url()).searchParams.has("positions"),
+			);
 			await finderNamed(page, IN_PLAYLIST).fill(QUERY);
 			await expect(countIn(page, IN_PLAYLIST)).toContainText(
 				`${matches.length} matches`,
 			);
-			await expect
-				.poll(() => findsAsked(player, library.guid).map((p) => p.get("query")))
-				.toContain(QUERY);
+			const last = results(page).nth(matches.length - 1);
+			await expect(last).toHaveAttribute("aria-busy", "true");
+			await expect(last).toContainText(`#${target + 1}`);
+			await positioned.untilHeld();
+			expect(
+				positioned.caught.map((request) =>
+					new URL(request.url()).searchParams.getAll("positions"),
+				),
+			).toEqual([
+				matches.filter((position) => position >= WINDOW_ROWS).map(String),
+			]);
+
+			positioned.releaseAll();
+			await expect(last).toContainText(title);
+			await expect(last).not.toHaveAttribute("aria-busy", "true");
 			await untilQuiet(player);
 
-			const pages = await holdRequests(
-				page,
-				(request) =>
-					request.method() === "GET" &&
-					new URL(request.url()).pathname ===
-						`/api/playlists/${library.guid}/items`,
-			);
+			const pages = await holdRequests(page, itemsOf);
 			await page.keyboard.press("ArrowUp");
 
 			await expect(trackRow(page, target)).toHaveAttribute("aria-busy", "true");

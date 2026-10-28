@@ -32,7 +32,7 @@ struct CopiedPage {
     std::vector<titleformat_object::ptr> scripts;
 };
 
-CopiedPage copyPageOnMainThread(const std::string& playlistId, size_t offset, size_t count,
+CopiedPage copyRowsOnMainThread(const std::string& playlistId, const PlaylistRowsAsked& rows,
                                 const std::vector<std::string>& columns,
                                 const PlaylistVersions& versions) {
     const auto index = findPlaylist(playlistId);
@@ -45,12 +45,22 @@ CopiedPage copyPageOnMainThread(const std::string& playlistId, size_t offset, si
     page.structure = version.structure;
     page.revision = version.revision;
 
-    page.totalCount = playlist_manager::get()->playlist_get_item_count(index);
+    const auto manager = playlist_manager::get();
+    page.totalCount = manager->playlist_get_item_count(index);
 
-    const auto from = std::min<size_t>(offset, page.totalCount);
-    const auto taken = std::min<size_t>(count, page.totalCount - from);
-    playlist_manager::get()->playlist_get_items(index, page.handles,
-                                                bit_array_range(from, taken, true));
+    if (rows.positions) {
+        for (const uint32_t position : *rows.positions) {
+            metadb_handle_ptr handle;
+            if (position >= page.totalCount ||
+                !manager->playlist_get_item_handle(handle, index, position))
+                return failureOf<CopiedPage>(PlayerOutcome::positionPastEnd);
+            page.handles.add_item(handle);
+        }
+    } else {
+        const auto from = std::min<size_t>(rows.offset, page.totalCount);
+        const auto taken = std::min<size_t>(rows.count, page.totalCount - from);
+        manager->playlist_get_items(index, page.handles, bit_array_range(from, taken, true));
+    }
 
     page.scripts = compiledColumns(titleformat_compiler::get(), columns);
     return page;
@@ -225,13 +235,12 @@ PlaylistRowReader makePlaylistRowReader(MainThreadQueue& mainThread,
                                         const PlaylistVersions& versions) {
     const auto libraryManager = library_manager::get();
 
-    return [&mainThread, &versions, libraryManager](const std::string& playlistId, size_t offset,
-                                                    size_t count,
+    return [&mainThread, &versions, libraryManager](const std::string& playlistId,
+                                                    const PlaylistRowsAsked& rows,
                                                     const std::vector<std::string>& columns) {
         const auto page = askForOutcome<CopiedPage>(
-            mainThread, "reading a page of a playlist",
-            [playlistId, offset, count, columns, &versions] {
-                return copyPageOnMainThread(playlistId, offset, count, columns, versions);
+            mainThread, "reading rows of a playlist", [playlistId, rows, columns, &versions] {
+                return copyRowsOnMainThread(playlistId, rows, columns, versions);
             });
 
         PlaylistRowsRead read;

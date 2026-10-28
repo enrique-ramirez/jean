@@ -14,13 +14,14 @@ import { useTranslate } from "@/shared/i18n/useTranslate";
 import { SCOPE } from "@/shared/keyboard/keymap";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Input } from "@/shared/ui/Input";
+import { BusyNote, busyProps, Skeleton } from "@/shared/ui/Skeleton";
 import styles from "./Finder.module.css";
 import { artistOf, titleOf } from "./fields";
 import type { TrackRows } from "./project";
 
 export function Finder({
 	inputRef,
-	rows,
+	found,
 	label,
 	results,
 	matches,
@@ -31,7 +32,7 @@ export function Finder({
 	onClose,
 }: {
 	inputRef: RefObject<HTMLInputElement | null>;
-	rows: TrackRows;
+	found: TrackRows;
 	label: string;
 	results: number[];
 	matches: Int32Array | null;
@@ -142,35 +143,50 @@ export function Finder({
 					{results.length === 0 ? (
 						<p className={styles.empty}>{t("finder.noMatch")}</p>
 					) : (
-						results.map((index: number, position: number) => (
-							<button
-								key={index}
-								type="button"
-								role="option"
-								aria-selected={position === active}
-								className={styles.result}
-								data-active={position === active}
-								// A press blurs the focused field before its `click` lands.
-								onPointerDown={(event) => event.preventDefault()}
-								onClick={() => onConfirm(index)}
-								onMouseEnter={(event) => {
-									if (!aimedAt(event)) return;
-									navigatedFor.current = query;
-									setActive(position);
-								}}
-							>
-								<span className={styles.names}>
-									<span className={styles.resultTitle}>
-										{titleOf(rows.at(index), t)}
+						results.map((index: number, position: number) => {
+							const isPending = found.isPending(position);
+							const row = found.at(position);
+							return (
+								<button
+									key={index}
+									type="button"
+									role="option"
+									aria-selected={position === active}
+									className={styles.result}
+									data-active={position === active}
+									{...busyProps(isPending)}
+									// A press blurs the focused field before its `click` lands.
+									onPointerDown={(event) => event.preventDefault()}
+									onClick={() => onConfirm(index)}
+									onMouseEnter={(event) => {
+										if (!aimedAt(event)) return;
+										navigatedFor.current = query;
+										setActive(position);
+									}}
+								>
+									<span className={styles.names}>
+										{isPending ? (
+											<>
+												<Skeleton width="60%" />
+												<Skeleton width="40%" />
+												<BusyNote />
+											</>
+										) : (
+											<>
+												<span className={styles.resultTitle}>
+													{titleOf(row, t)}
+												</span>
+												<span className={styles.resultArtist}>
+													{artistOf(row, t)}
+												</span>
+											</>
+										)}
 									</span>
-									<span className={styles.resultArtist}>
-										{artistOf(rows.at(index), t)}
-									</span>
-								</span>
-								{/* biome-ignore lint/style/noJsxLiterals: whether a number sign before a position is a phrase is the owner's decision */}
-								<span className={styles.position}>#{index + 1}</span>
-							</button>
-						))
+									{/* biome-ignore lint/style/noJsxLiterals: whether a number sign before a position is a phrase is the owner's decision */}
+									<span className={styles.position}>#{index + 1}</span>
+								</button>
+							);
+						})
 					)}
 				</div>
 			) : null}

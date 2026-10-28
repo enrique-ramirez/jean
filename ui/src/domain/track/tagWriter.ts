@@ -64,8 +64,7 @@ const fooJeanWriter = (origin: string, allowedFields: string[]): TagWriter => {
 					? await fetchPlaylistRows(
 							origin,
 							address.playlist,
-							address.index,
-							1,
+							{ offset: address.index, count: 1 },
 							[column],
 						)
 					: await fetchLibraryTrack(origin, address, [column]);

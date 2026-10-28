@@ -8,7 +8,7 @@ import { announcedLibraryOf } from "./libraryHolds";
 import { windowedLibraryOf } from "./libraryWindows";
 import type { PlaylistState, WindowedPlaylist } from "./playlistLoader";
 import { windowedPlaylistRows } from "./playlistRows";
-import { EMPTY_VIEW, type ListedRows } from "./project";
+import { EMPTY_VIEW, type ListedRows, type Refs } from "./project";
 import type { PlaylistList } from "./rowWindows";
 import { type HeaderStats, statsOfFigures } from "./stats";
 
@@ -42,6 +42,44 @@ export function usePlaylistWindows(
 				? windowedLibraryOf(origin).playlistOf(playlistId)
 				: null,
 		[origin, playlistId],
+	);
+}
+
+export function usePlaylistSetRows(
+	windowed: WindowedPlaylist | null,
+	structure: string | null,
+	positions: Refs | null,
+): ListedRows {
+	const watched = windowed && structure !== null && positions ? windowed : null;
+	const state = usePlaylistState(watched);
+	const id = windowed?.source.playlistId ?? null;
+	const list = useMemo<PlaylistList | null>(
+		() =>
+			id !== null && structure !== null && positions
+				? {
+						kind: "playlist",
+						id,
+						structure,
+						length: positions.length,
+						positions,
+					}
+				: null,
+		[id, structure, positions],
+	);
+	const mostPlays = state.runs?.runs.mostPlays ?? 0;
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a moved version fires this rather than being read in it.
+	return useMemo(
+		() =>
+			watched && list
+				? windowedPlaylistRows(
+						watched.windows,
+						list,
+						watched.besideViewportOf(list),
+						mostPlays,
+					)
+				: EMPTY_VIEW,
+		[watched, list, state.version, mostPlays],
 	);
 }
 
@@ -108,7 +146,7 @@ export function usePlaylistItems(
 	const list = useMemo<PlaylistList | null>(
 		() =>
 			id !== undefined && structure !== undefined && length !== undefined
-				? { kind: "playlist", id, structure, length }
+				? { kind: "playlist", id, structure, length, positions: null }
 				: null,
 		[id, structure, length],
 	);

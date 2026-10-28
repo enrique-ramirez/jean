@@ -32,8 +32,7 @@ async function fetchRowWindow(
 		await fetchPlaylistRows(
 			origin,
 			playlistId,
-			offset,
-			3,
+			{ offset, count: 3 },
 			["%album%", "%album artist%", "%artist%", "%title%"],
 			{ roles: LIBRARY_ROLES },
 		),

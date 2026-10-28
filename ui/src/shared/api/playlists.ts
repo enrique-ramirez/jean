@@ -94,11 +94,14 @@ export const fillPlaylist = (
 		}),
 	);
 
+export type PlaylistRowsAsked =
+	| { offset: number; count: number }
+	| { positions: readonly number[] };
+
 export const fetchPlaylistRows = (
 	origin: string,
 	id: string,
-	offset: number,
-	count: number,
+	rows: PlaylistRowsAsked,
 	columns: readonly string[],
 	{ signal, roles }: { signal?: AbortSignal; roles?: LibraryRoles } = {},
 ) =>
@@ -109,7 +112,13 @@ export const fetchPlaylistRows = (
 				...init,
 				params: {
 					path: { id },
-					query: { ...roles, offset, count, columns: [...columns] },
+					query: {
+						...roles,
+						...("positions" in rows
+							? { positions: [...rows.positions] }
+							: rows),
+						columns: [...columns],
+					},
 				},
 			}),
 		signal,

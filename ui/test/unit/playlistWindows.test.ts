@@ -11,6 +11,7 @@ import {
 	WINDOW_ROWS,
 } from "../../src/domain/track/rowWindows.ts";
 import type { components } from "../../src/shared/api/fooJeanSchema.d.ts";
+import type { PlaylistRowsAsked } from "../../src/shared/api/playlists.ts";
 
 type PlaylistPage = components["schemas"]["PlaylistPage"];
 type PlaylistRow = components["schemas"]["PlaylistRow"];
@@ -30,16 +31,28 @@ const playlist = (
 	id = "p1",
 	structure = BEFORE,
 	length = LENGTH,
-): PlaylistList => ({ kind: "playlist", id, structure, length });
+): PlaylistList => ({
+	kind: "playlist",
+	id,
+	structure,
+	length,
+	positions: null,
+});
 
 interface Ask {
 	id: string;
 	structure: string;
+	rows: PlaylistRowsAsked;
 	offset: number;
 	count: number;
 	isOpen: boolean;
 	land: (result: unknown) => void;
 }
+
+const pageOf = (rows: PlaylistRowsAsked) =>
+	"positions" in rows
+		? { offset: Number.NaN, count: rows.positions.length }
+		: rows;
 
 const span = (start: number, end: number) =>
 	Array.from({ length: end - start }, (_, step) => start + step);
@@ -58,6 +71,7 @@ const rig = (t: TestContext) => {
 			new Promise((resolve) => {
 				const sent: Ask = {
 					...ask,
+					...pageOf(ask.rows),
 					isOpen: true,
 					land: (result) => {
 						sent.isOpen = false;
@@ -428,4 +442,115 @@ test("a pending playlist row is queued by its position, as a held one is", async
 			{ playlistId: "p1", itemIndex: 2500 },
 		],
 	});
+});
+
+const positionsOf = (
+	positions: number[],
+	structure = BEFORE,
+): PlaylistList => ({
+	kind: "playlist",
+	id: "p1",
+	structure,
+	length: positions.length,
+	positions: Int32Array.from(positions),
+});
+
+const positionsAsked = (ask: Ask) =>
+	"positions" in ask.rows ? [...ask.rows.positions] : null;
+
+const answerPositions = (ask: Ask) => {
+	const positions = positionsAsked(ask) ?? [];
+	ask.land({
+		ok: true,
+		page: {
+			structure: ask.structure,
+			revision: "1",
+			totalCount: LENGTH,
+			items: positions.map((position) =>
+				rowAt(ask.id, ask.structure, position),
+			),
+		},
+	});
+};
+
+const drawPositions = async (made: Rig, found: PlaylistList) => {
+	made.windows.view(found, 0, found.length, 0);
+	await advance(PACING_MS);
+	answerPositions(made.open());
+	await settle();
+	await advance(PACING_MS);
+};
+
+test("a list of positions asks for the rows no held window covers, in the order named, and draws them beside the ones a window holds", async (t) => {
+	const made = rig(t);
+	const list = playlist();
+	await drawWindow(made, list, 0);
+	const found = positionsOf([2500, 5, 2900]);
+
+	made.windows.view(found, 0, found.length, 0);
+	assert.equal(shown(made.windows, found, 1), titleAt("p1", BEFORE, 5));
+	assert.equal(made.windows.at(found, 0), null);
+	await advance(PACING_MS);
+	const ask = made.open();
+	assert.deepEqual(positionsAsked(ask), [2500, 2900]);
+
+	answerPositions(ask);
+	await settle();
+	assert.equal(shown(made.windows, found, 0), titleAt("p1", BEFORE, 2500));
+	assert.equal(shown(made.windows, found, 2), titleAt("p1", BEFORE, 2900));
+	assert.equal(made.windows.at(list, 2500), null);
+
+	await advance(LONG_AFTER_MS);
+	assert.equal(made.asks.length, 2);
+});
+
+test("a narrower list of positions asks nothing, and a wider one asks only for the rows it adds", async (t) => {
+	const made = rig(t);
+	const found = positionsOf([2500, 2600, 2700]);
+	await drawPositions(made, found);
+
+	const narrower = positionsOf([2600, 2700]);
+	made.windows.leave(found);
+	made.windows.view(narrower, 0, narrower.length, 0);
+	await advance(LONG_AFTER_MS);
+	assert.equal(made.asks.length, 1);
+	assert.equal(shown(made.windows, narrower, 0), titleAt("p1", BEFORE, 2600));
+
+	const wider = positionsOf([2600, 2700, 2800]);
+	made.windows.leave(narrower);
+	made.windows.view(wider, 0, wider.length, 0);
+	await advance(PACING_MS);
+	assert.deepEqual(positionsAsked(made.open()), [2800]);
+});
+
+test("a change to a row a list of positions holds draws in place, and a stale list is asked again whole", async (t) => {
+	const made = rig(t);
+	const found = positionsOf([2500, 2600]);
+	await drawPositions(made, found);
+
+	made.windows.patch(playlist(), 2500, retitled(2500));
+	assert.equal(shown(made.windows, found, 0), "retitled 2500");
+	assert.equal(shown(made.windows, found, 1), titleAt("p1", BEFORE, 2600));
+
+	made.windows.markStale({ kind: "playlist", id: "p1" });
+	assert.equal(shown(made.windows, found, 0), "retitled 2500");
+	await advance(PACING_MS);
+	const ask = made.open();
+	assert.deepEqual(positionsAsked(ask), [2500, 2600]);
+	answerPositions(ask);
+	await settle();
+	assert.equal(shown(made.windows, found, 0), titleAt("p1", BEFORE, 2500));
+});
+
+test("a list of positions at a structure the playlist has left asks nothing and drops nothing the playlist holds", async (t) => {
+	const made = rig(t);
+	const list = playlist();
+	await drawWindow(made, list, 0);
+	const found = positionsOf([2500], "6");
+
+	made.windows.view(found, 0, found.length, 0);
+	await advance(LONG_AFTER_MS);
+
+	assert.equal(made.asks.length, 1);
+	assert.equal(shown(made.windows, list, 5), titleAt("p1", BEFORE, 5));
 });

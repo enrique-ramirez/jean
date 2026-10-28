@@ -49,7 +49,7 @@ export function PlaylistView({
 	const finder = useFinder({
 		rows,
 		over:
-			playlist && origin
+			playlist && origin && windowed
 				? {
 						kind: "playlist",
 						origin,
@@ -57,6 +57,7 @@ export function PlaylistView({
 						structure: playlist.structure,
 						revision: playlist.revision,
 						length: playlist.itemCount,
+						windowed,
 					}
 				: null,
 		browserRef,

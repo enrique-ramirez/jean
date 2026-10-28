@@ -15,6 +15,7 @@ import type { TrackBrowserHandle } from "./listTypes";
 import type { TrackRows } from "./project";
 import styles from "./useFinder.module.css";
 import { type FinderOver, useFound } from "./useFound";
+import { useFoundRows } from "./useFoundRows";
 
 export function useFinder({
 	rows,
@@ -43,6 +44,7 @@ export function useFinder({
 		deferredQuery,
 		session,
 	);
+	const found = useFoundRows(over, rows, results);
 
 	const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -71,7 +73,7 @@ export function useFinder({
 	const toolbarLeading = isFinding ? (
 		<Finder
 			inputRef={inputRef}
-			rows={rows}
+			found={found}
 			label={label}
 			results={results}
 			matches={matches}

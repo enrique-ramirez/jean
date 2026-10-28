@@ -43,9 +43,9 @@ export function windowedPlaylistRows(
 			const row = windows.at(list, position);
 			return row?.kind === "playlist" ? row.page : null;
 		}),
-		indices: null,
+		indices: list.positions,
 		at,
-		ref: (position) => position,
+		ref: (position) => (list.positions ? list.positions[position] : position),
 		isPending: (position) => held(position) === null,
 		viewport,
 		...shadedBy({ length: list.length, at }, mostPlays),

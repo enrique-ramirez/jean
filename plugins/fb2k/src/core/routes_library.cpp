@@ -16,7 +16,6 @@
 #include <array>
 #include <chrono>
 #include <functional>
-#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -102,12 +101,7 @@ std::optional<uint32_t> subsongAsked(const httplib::Request& req) {
     if (!req.has_param("subsong"))
         return 0;
 
-    uint64_t asked = 0;
-    if (!readDecimal(req.get_param_value("subsong"), asked) ||
-        asked > std::numeric_limits<uint32_t>::max())
-        return std::nullopt;
-
-    return static_cast<uint32_t>(asked);
+    return readUint32(req.get_param_value("subsong"));
 }
 
 int64_t systemNowMs() {
@@ -128,13 +122,12 @@ struct OrdinalAsked {
 OrdinalAsked ordinalAsked(const httplib::Request& req) {
     OrdinalAsked asked;
 
-    uint64_t ordinal = 0;
-    if (!readDecimal(req.get_param_value("ordinal"), ordinal) ||
-        ordinal > std::numeric_limits<uint32_t>::max()) {
+    const auto ordinal = readUint32(req.get_param_value("ordinal"));
+    if (!ordinal) {
         asked.refusal = kBadOrdinal;
         return asked;
     }
-    asked.ref.ordinal = static_cast<uint32_t>(ordinal);
+    asked.ref.ordinal = *ordinal;
 
     if (!req.has_param("structure") ||
         !readDecimal(req.get_param_value("structure"), asked.ref.structure)) {
@@ -288,7 +281,7 @@ constexpr std::array kOwnedParameters{
     OwnedParameter{
         "field",
         [](const std::string& value, QuestionAsked& asked) -> std::optional<std::string> {
-            const auto named =
+            const auto* const named =
                 std::find_if(kValueFields.begin(), kValueFields.end(),
                              [&value](const auto& candidate) { return candidate.first == value; });
             if (named == kValueFields.end())

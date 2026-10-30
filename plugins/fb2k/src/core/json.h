@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <iterator>
+#include <optional>
 #include <string>
 
 // Reading JSON that arrived from outside: an HTTP body, a hand-edited config file, a
@@ -45,6 +46,10 @@ struct TextField {
 };
 
 TextField readText(const nlohmann::json& root, const char* key, size_t limit, Need need);
+
+std::optional<uint32_t> uint32Of(const nlohmann::json& value);
+std::optional<uint32_t> readUint32(const nlohmann::json& root, const char* key);
+std::optional<uint64_t> readUint64(const nlohmann::json& root, const char* key);
 
 // Whether `root` names nothing but `fields`: the request bodies contract/openapi.yaml declares
 // `additionalProperties: false`.

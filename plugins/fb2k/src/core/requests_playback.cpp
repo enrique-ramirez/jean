@@ -169,9 +169,9 @@ PlaySetRequest parsePlaySet(const JsonObject& body, size_t trackCount,
         return refused<PlaySetRequest>(PlaylistRefusal::malformedBody);
 
     JsonObject set = body;
-    std::optional<nlohmann::json> index;
+    std::optional<nlohmann::json> indexField;
     if (const auto found = set.value.find(kIndexField); found != set.value.end()) {
-        index = *found;
+        indexField = *found;
         set.value.erase(found);
     }
 
@@ -183,7 +183,8 @@ PlaySetRequest parsePlaySet(const JsonObject& body, size_t trackCount,
         return request;
     }
 
-    if (!index || !index->is_number_unsigned() || !fitsUint32(index->get<uint64_t>())) {
+    const auto index = indexField ? uint32Of(*indexField) : std::optional<uint32_t>{};
+    if (!index) {
         PlaySetRequest request;
         request.indexRefused = true;
         return request;
@@ -192,7 +193,7 @@ PlaySetRequest parsePlaySet(const JsonObject& body, size_t trackCount,
     PlaySetRequest request;
     request.structure = fill.structure;
     request.ordinals = fill.ordinals;
-    request.index = static_cast<uint32_t>(index->get<uint64_t>());
+    request.index = *index;
 
     if (request.index >= request.ordinals.size())
         request.outcome = PlayerOutcome::positionPastEnd;

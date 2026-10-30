@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -91,6 +92,8 @@ bool readDecimal(const std::string& text, uint64_t& value);
 
 // Every position and index a client names is carried in 32 bits.
 bool fitsUint32(uint64_t value);
+
+std::optional<uint32_t> readUint32(const std::string& text);
 
 // A strong, quoted ETag for `bytes`, by FNV-1a rather than a cryptographic hash: nothing here
 // needs to resist a forged tag, only to notice that the bytes changed. Shared by whatever holds

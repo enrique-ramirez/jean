@@ -550,6 +550,13 @@ bool fitsUint32(uint64_t value) {
     return value <= std::numeric_limits<uint32_t>::max();
 }
 
+std::optional<uint32_t> readUint32(const std::string& text) {
+    uint64_t value = 0;
+    if (!readDecimal(text, value) || !fitsUint32(value))
+        return std::nullopt;
+    return static_cast<uint32_t>(value);
+}
+
 std::string eTagFor(std::string_view bytes) {
     return quotedHex(fnv1a(bytes));
 }

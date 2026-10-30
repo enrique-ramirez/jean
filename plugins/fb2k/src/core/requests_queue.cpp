@@ -29,15 +29,13 @@ QueuePositionField readQueuePosition(const nlohmann::json& root) {
     if (at == root.end())
         return {};
 
-    if (!at->is_number_unsigned() || !fitsUint32(at->get<uint64_t>()))
-        return {std::nullopt, PlaylistRefusal::badOrdinals};
-
-    const auto revision = root.find("revision");
-    if (revision == root.end() || !revision->is_number_unsigned())
+    const auto position = uint32Of(*at);
+    const auto revision = readUint64(root, "revision");
+    if (!position || !revision)
         return {std::nullopt, PlaylistRefusal::badOrdinals};
 
     QueuePositionField field;
-    field.at = QueuePosition{static_cast<uint32_t>(at->get<uint64_t>()), revision->get<uint64_t>()};
+    field.at = QueuePosition{*position, *revision};
     return field;
 }
 
@@ -68,14 +66,11 @@ QueueRowsRequest parseQueueRows(const JsonObject& body) {
     request.playlistId = id;
 
     for (const auto& entry : *positions) {
-        if (!entry.is_number_unsigned())
+        const auto position = uint32Of(entry);
+        if (!position)
             return refused<QueueRowsRequest>(PlaylistRefusal::badOrdinals);
 
-        const auto value = entry.get<uint64_t>();
-        if (!fitsUint32(value))
-            return refused<QueueRowsRequest>(PlaylistRefusal::badOrdinals);
-
-        request.positions.push_back(static_cast<uint32_t>(value));
+        request.positions.push_back(*position);
     }
 
     const auto position = readQueuePosition(root);
@@ -96,15 +91,15 @@ QueueTracksRequest parseQueueTracks(const JsonObject& body, size_t trackCount,
     if (!declaresOnly(root, kQueueTracksFields))
         return refused<QueueTracksRequest>(PlaylistRefusal::malformedBody);
 
-    const auto structure = root.find("structure");
-    if (structure == root.end() || !structure->is_number_unsigned())
+    const auto structure = readUint64(root, "structure");
+    if (!structure)
         return refused<QueueTracksRequest>(PlaylistRefusal::malformedBody);
 
     if (!namesOneSelectionForm(root))
         return refused<QueueTracksRequest>(PlaylistRefusal::badOrdinals);
 
     QueueTracksRequest request;
-    request.structure = structure->get<uint64_t>();
+    request.structure = *structure;
 
     if (expectedStructure && request.structure != *expectedStructure) {
         request.outcome = PlayerOutcome::structureMoved;
@@ -147,28 +142,22 @@ MoveQueueRequest parseMoveQueue(const JsonObject& body) {
     if (!declaresOnly(root, kMoveQueueFields))
         return refused<MoveQueueRequest>(PlaylistRefusal::malformedBody);
 
-    const auto from = root.find("from");
-    if (from == root.end() || !from->is_number_unsigned() || !fitsUint32(from->get<uint64_t>()))
-        return refused<MoveQueueRequest>(PlaylistRefusal::badOrdinals);
-
-    const auto to = root.find("to");
-    if (to == root.end() || !to->is_number_unsigned() || !fitsUint32(to->get<uint64_t>()))
-        return refused<MoveQueueRequest>(PlaylistRefusal::badOrdinals);
-
-    const auto revision = root.find("revision");
-    if (revision == root.end() || !revision->is_number_unsigned())
+    const auto from = readUint32(root, "from");
+    const auto to = readUint32(root, "to");
+    const auto revision = readUint64(root, "revision");
+    if (!from || !to || !revision)
         return refused<MoveQueueRequest>(PlaylistRefusal::badOrdinals);
 
     MoveQueueRequest request;
-    request.from = static_cast<uint32_t>(from->get<uint64_t>());
-    request.to = static_cast<uint32_t>(to->get<uint64_t>());
-    request.revision = revision->get<uint64_t>();
+    request.from = *from;
+    request.to = *to;
+    request.revision = *revision;
     return request;
 }
 
 RemoveQueueRequest parseRemoveQueue(const std::string& indexText, const std::string& revisionText) {
-    uint64_t index = 0;
-    if (!readDecimal(indexText, index) || !fitsUint32(index))
+    const auto index = readUint32(indexText);
+    if (!index)
         return refused<RemoveQueueRequest>(PlaylistRefusal::badOrdinals);
 
     uint64_t revision = 0;
@@ -176,7 +165,7 @@ RemoveQueueRequest parseRemoveQueue(const std::string& indexText, const std::str
         return refused<RemoveQueueRequest>(PlaylistRefusal::badOrdinals);
 
     RemoveQueueRequest request;
-    request.index = static_cast<uint32_t>(index);
+    request.index = *index;
     request.revision = revision;
     return request;
 }

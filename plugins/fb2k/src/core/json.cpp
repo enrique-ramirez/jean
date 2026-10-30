@@ -52,6 +52,26 @@ OptionalString readString(const nlohmann::json& root, const char* key) {
     return given(found->get<std::string>());
 }
 
+std::optional<uint32_t> uint32Of(const nlohmann::json& value) {
+    if (!value.is_number_unsigned() || !fitsUint32(value.get<uint64_t>()))
+        return std::nullopt;
+    return value.get<uint32_t>();
+}
+
+std::optional<uint32_t> readUint32(const nlohmann::json& root, const char* key) {
+    const auto found = root.find(key);
+    if (found == root.end())
+        return std::nullopt;
+    return uint32Of(*found);
+}
+
+std::optional<uint64_t> readUint64(const nlohmann::json& root, const char* key) {
+    const auto found = root.find(key);
+    if (found == root.end() || !found->is_number_unsigned())
+        return std::nullopt;
+    return found->get<uint64_t>();
+}
+
 TextField readText(const nlohmann::json& root, const char* key, size_t limit, Need need) {
     const std::string named = std::string("'") + key + "'";
     const auto field = readString(root, key);

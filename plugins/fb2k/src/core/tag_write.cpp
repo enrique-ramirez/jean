@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <array>
 #include <iterator>
-#include <limits>
 #include <optional>
 #include <vector>
 
@@ -78,12 +77,12 @@ AddressField readLibraryAddress(const json& root) {
     library.track = track.value;
 
     if (const auto subsong = root.find("subsong"); subsong != root.end()) {
-        if (!subsong->is_number_unsigned() ||
-            subsong->get<uint64_t>() > std::numeric_limits<uint32_t>::max()) {
+        const auto number = uint32Of(*subsong);
+        if (!number) {
             return unreadable("'subsong' must be a non-negative number",
                               TagWriteRefusal::malformedBody);
         }
-        library.subsong = subsong->get<uint32_t>();
+        library.subsong = *number;
     }
 
     AddressField address;
@@ -94,18 +93,17 @@ AddressField readLibraryAddress(const json& root) {
 AddressField readOrdinalAddress(const json& root) {
     OrdinalTrackRef ref;
 
-    const auto ordinal = root.find("ordinal");
-    if (ordinal == root.end() || !ordinal->is_number_unsigned() ||
-        ordinal->get<uint64_t>() > std::numeric_limits<uint32_t>::max())
+    const auto ordinal = readUint32(root, "ordinal");
+    if (!ordinal)
         return unreadable(kBadOrdinal);
-    ref.ordinal = ordinal->get<uint32_t>();
+    ref.ordinal = *ordinal;
 
     // A number where the playlist form's generation is a string: the media library's own
     // counter fits a JSON number exactly and a playlist's nineteen-digit one does not.
-    const auto structure = root.find("structure");
-    if (structure == root.end() || !structure->is_number_unsigned())
+    const auto structure = readUint64(root, "structure");
+    if (!structure)
         return unreadable(kBadOrdinalStructure);
-    ref.structure = structure->get<uint64_t>();
+    ref.structure = *structure;
 
     AddressField address;
     address.ref.ordinal = ref;
@@ -120,11 +118,10 @@ AddressField readPlaylistAddress(const json& root) {
     PlaylistTrackRef row;
     row.playlistId = playlist.value;
 
-    const auto index = root.find("index");
-    if (index == root.end() || !index->is_number_unsigned() ||
-        index->get<uint64_t>() > std::numeric_limits<uint32_t>::max())
+    const auto index = readUint32(root, "index");
+    if (!index)
         return unreadable("'index' is required and must be a non-negative number");
-    row.index = index->get<uint32_t>();
+    row.index = *index;
 
     const auto structure = readString(root, "structure");
     if (!structure.present || structure.wrongType || !readDecimal(structure.value, row.structure))

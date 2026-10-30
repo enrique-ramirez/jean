@@ -34,13 +34,6 @@ bool readStructureDigits(const nlohmann::json& root, uint64_t& structure) {
            readDecimal(found->get<std::string>(), structure);
 }
 
-std::optional<uint32_t> asUint32(const std::string& text) {
-    uint64_t value = 0;
-    if (!readDecimal(text, value) || !fitsUint32(value))
-        return std::nullopt;
-    return static_cast<uint32_t>(value);
-}
-
 std::vector<const char*> withOptionalFields(std::vector<const char*> fields, TitleField title,
                                             DuplicatesField duplicates) {
     if (title == TitleField::allowed)
@@ -78,8 +71,8 @@ PlaylistRowsRequest parsePlaylistRows(const std::optional<std::string>& offsetTe
 
     PlaylistRowsRequest request;
     if (asksPage) {
-        const auto offset = offsetText ? asUint32(*offsetText) : std::nullopt;
-        const auto count = countText ? asUint32(*countText) : std::nullopt;
+        const auto offset = offsetText ? readUint32(*offsetText) : std::nullopt;
+        const auto count = countText ? readUint32(*countText) : std::nullopt;
         if (!offset || !count)
             return refused<PlaylistRowsRequest>(PlaylistRefusal::badOrdinals);
         request.rows.offset = *offset;
@@ -92,7 +85,7 @@ PlaylistRowsRequest parsePlaylistRows(const std::optional<std::string>& offsetTe
 
     std::vector<uint32_t> positions;
     for (const auto& text : positionTexts) {
-        const auto position = asUint32(text);
+        const auto position = readUint32(text);
         if (!position)
             return refused<PlaylistRowsRequest>(PlaylistRefusal::badOrdinals);
         positions.push_back(*position);
@@ -105,13 +98,13 @@ PlayRowRequest parsePlayRow(const std::string& id, const std::string& indexText)
     if (!isPlaylistId(id))
         return refused<PlayRowRequest>(PlaylistRefusal::badId);
 
-    uint64_t index = 0;
-    if (!readDecimal(indexText, index) || !fitsUint32(index))
+    const auto index = readUint32(indexText);
+    if (!index)
         return refused<PlayRowRequest>(PlaylistRefusal::badOrdinals);
 
     PlayRowRequest request;
     request.playlistId = id;
-    request.index = static_cast<uint32_t>(index);
+    request.index = *index;
     return request;
 }
 
@@ -128,8 +121,8 @@ FillRequest parseFill(const JsonObject& body, size_t trackCount,
     if (!declaresOnly(root, fields))
         return refused<FillRequest>(PlaylistRefusal::malformedBody);
 
-    const auto structure = root.find("structure");
-    if (structure == root.end() || !structure->is_number_unsigned())
+    const auto structure = readUint64(root, "structure");
+    if (!structure)
         return refused<FillRequest>(PlaylistRefusal::malformedBody);
 
     const auto asked = readDuplicates(root);
@@ -140,7 +133,7 @@ FillRequest parseFill(const JsonObject& body, size_t trackCount,
         return refused<FillRequest>(PlaylistRefusal::badOrdinals);
 
     FillRequest request;
-    request.structure = structure->get<uint64_t>();
+    request.structure = *structure;
     request.duplicates = *asked;
 
     if (expectedStructure && request.structure != *expectedStructure) {
@@ -196,8 +189,8 @@ MoveRowsRequest parseMoveRows(const JsonObject& body) {
     if (!namesOneSelectionForm(root))
         return refused<MoveRowsRequest>(PlaylistRefusal::badOrdinals);
 
-    const auto to = root.find("to");
-    if (to == root.end() || !to->is_number_unsigned() || !fitsUint32(to->get<uint64_t>()))
+    const auto to = readUint32(root, "to");
+    if (!to)
         return refused<MoveRowsRequest>(PlaylistRefusal::badOrdinals);
 
     const auto selection = decodeSelection(root, kMaxPlaylistPositionRows);
@@ -205,7 +198,7 @@ MoveRowsRequest parseMoveRows(const JsonObject& body) {
         return refused<MoveRowsRequest>(PlaylistRefusal::badOrdinals);
 
     request.ordinals = selection.ordinals;
-    request.to = static_cast<uint32_t>(to->get<uint64_t>());
+    request.to = *to;
     return request;
 }
 
@@ -283,12 +276,12 @@ MovePlaylistRequest parseMovePlaylist(const JsonObject& body) {
     if (!declaresOnly(root, kMovePlaylistFields))
         return refused<MovePlaylistRequest>(PlaylistRefusal::malformedBody);
 
-    const auto index = root.find(kIndexField);
-    if (index == root.end() || !index->is_number_unsigned() || !fitsUint32(index->get<uint64_t>()))
+    const auto index = readUint32(root, kIndexField);
+    if (!index)
         return refused<MovePlaylistRequest>(PlaylistRefusal::badOrdinals);
 
     MovePlaylistRequest request;
-    request.index = static_cast<uint32_t>(index->get<uint64_t>());
+    request.index = *index;
     return request;
 }
 

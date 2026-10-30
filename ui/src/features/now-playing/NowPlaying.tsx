@@ -1,9 +1,5 @@
 import { ChevronDown, Mic2, MoreHorizontal } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import {
-	playingArtwork,
-	usePlayingLibrary,
-} from "@/domain/library/usePlayingLibrary";
 import { useInSession } from "@/domain/player/session";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
@@ -22,9 +18,8 @@ import {
 	useTransport,
 } from "@/domain/player/useTransport";
 import { ArtistLinks } from "@/domain/track/ArtistLinks";
-import { coverKey, readValue } from "@/domain/track/fields";
+import { readValue } from "@/domain/track/fields";
 import { albumRoute, href, type PanelTab } from "@/domain/track/routes";
-import { playingArtworkUrl } from "@/shared/api/artwork";
 import { isFooJeanReady } from "@/shared/api/discovery";
 import type { ActiveItem } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
@@ -55,6 +50,7 @@ import { TrackPanels } from "./TrackPanels";
 import { useCoverWindow } from "./useCoverWindow";
 import { useNowPlayingMenu } from "./useNowPlayingMenu";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
+import { usePlayingCover } from "./usePlayingCover";
 import { usePlayingMembers } from "./usePlayingMembers";
 import { VolumePopover } from "./Volume";
 
@@ -192,19 +188,11 @@ export function NowPlaying({
 		isInOrder: order.isInOrder,
 	});
 
-	const playingAlbum = item?.album ?? null;
-	const playingCredited = item?.albumArtist || item?.columns[0] || null;
-	const playingLibrary = usePlayingLibrary();
-
-	const artwork = !track
-		? null
-		: playingArtwork(playingLibrary, playingArtworkUrl(origin));
-
-	const playingCover = !track
-		? undefined
-		: playingAlbum
-			? coverKey(playingCredited, playingAlbum)
-			: coverKey(track.artist, track.title, "track");
+	const { identity: playingCover, src: artwork } = usePlayingCover(
+		track,
+		item,
+		origin,
+	);
 
 	const liveItem = live?.player?.activeItem;
 	const livePlaylistId = useResolvedPlaylistId(liveItem?.playlistGuid ?? null);

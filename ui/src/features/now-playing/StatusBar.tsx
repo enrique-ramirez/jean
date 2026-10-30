@@ -1,7 +1,3 @@
-import {
-	playingArtwork,
-	usePlayingLibrary,
-} from "@/domain/library/usePlayingLibrary";
 import { useConnection } from "@/domain/player/connection";
 import { useAudibleVolume } from "@/domain/player/useListener";
 import { useOutputs } from "@/domain/player/useOutputs";
@@ -19,9 +15,8 @@ import {
 	useSeek,
 	useTransport,
 } from "@/domain/player/useTransport";
-import { coverKey, namedTrack } from "@/domain/track/fields";
+import { namedTrack } from "@/domain/track/fields";
 import { usePlayingTrackDragSource } from "@/domain/track/useTrackDragSource";
-import { playingArtworkUrl } from "@/shared/api/artwork";
 import { isFooJeanReady } from "@/shared/api/discovery";
 import { playingTrack } from "@/shared/api/playerState";
 import type { PlayerSnapshot } from "@/shared/api/types";
@@ -40,6 +35,7 @@ import { PlayToggle } from "./PlayToggle";
 import { QueueButton } from "./QueueButton";
 import { SeekBar, useElapsedSeconds } from "./SeekBar";
 import styles from "./StatusBar.module.css";
+import { usePlayingCover } from "./usePlayingCover";
 import { Volume, VolumePopover } from "./Volume";
 
 const NOOP = () => {};
@@ -117,13 +113,16 @@ export function StatusBar({
 	const outputsQuery = useOutputs();
 
 	const track = namedTrack(playingTrack(snapshot?.player), t);
+	const { identity, src: artwork } = usePlayingCover(
+		track,
+		snapshot?.player?.activeItem,
+		origin,
+	);
 	const playingDrag = usePlayingTrackDragSource({
 		playlistId: playlistId ?? null,
 		index: snapshot?.player?.activeItem?.index ?? -1,
 		title: track?.title ?? null,
 	});
-
-	const playingLibrary = usePlayingLibrary();
 
 	if (isPending || !snapshot) {
 		return (
@@ -148,17 +147,6 @@ export function StatusBar({
 	const item = player.activeItem;
 	const isPlaying = player.playbackState === "playing";
 	const hasTrack = Boolean(item && item.index >= 0);
-
-	const album = item.album;
-	const credited = item.albumArtist || item.columns[0] || null;
-	const artwork = !track
-		? null
-		: playingArtwork(playingLibrary, playingArtworkUrl(origin));
-	const identity = !track
-		? undefined
-		: album
-			? coverKey(credited, album)
-			: coverKey(track.artist, track.title, "track");
 
 	const previousLabel = t("shortcut.previousTrack");
 	const nextLabel = t("shortcut.nextTrack");

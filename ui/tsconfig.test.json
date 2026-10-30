@@ -78,6 +78,7 @@
 		"src/app/routes.ts",
 		"src/app/surfaces.ts",
 		"src/app/useMediaSession.ts",
+		"src/features/now-playing/usePlayingCover.ts",
 		"src/domain/library/genreQuery.ts",
 		"src/domain/library/libraryStatus.ts",
 		"src/domain/library/queryCompletion.ts",

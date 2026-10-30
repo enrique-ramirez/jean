@@ -49,7 +49,6 @@ export function hasDiscsInSight(
 		run += 1
 	) {
 		const group: AlbumSpan = {
-			kind: "span",
 			key: "",
 			start: starts[run],
 			count: runs.lengths[run],

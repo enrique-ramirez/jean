@@ -1,7 +1,6 @@
 import type { ReadFailure, ReadFailureReason } from "@/shared/api/readFailure";
 import type { StateDocument } from "@/shared/api/state";
 import { TRACK_EXPRESSIONS } from "./fields";
-import type { LibraryGeneration } from "./playlistEntries";
 
 const LIBRARY_RETRY_MIN_MS = 5_000;
 const LIBRARY_RETRY_MAX_MS = 60_000;
@@ -21,6 +20,8 @@ export type Hold =
 	| { kind: "failing"; failures: number; failedAt: number; detail?: string };
 
 type AnnouncedLibrary = StateDocument["library"];
+
+type LibraryGeneration = Pick<AnnouncedLibrary, "structure" | "revision">;
 
 export interface Waiting {
 	pair: LibraryGeneration | null;

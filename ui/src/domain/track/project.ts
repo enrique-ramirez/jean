@@ -1,16 +1,8 @@
 import type { RowsWindow } from "@/shared/api/libraryRows";
 import type { TrackColumns } from "@/shared/api/types";
-import { overColumnsByName } from "./columnCache";
-import {
-	EMPTY_COLUMNS,
-	FIELD,
-	genreGroups,
-	TRACK_EXPRESSIONS,
-	tagKey,
-} from "./fields";
+import { EMPTY_COLUMNS, TRACK_EXPRESSIONS } from "./fields";
 import { intensityOf, type Shading } from "./intensity";
-import { type LibraryColumns, rowAt } from "./libraryColumns";
-import type { PlaylistSnapshot } from "./playlistEntries";
+import type { LibraryColumns } from "./libraryColumns";
 import type { LibraryList, RowWindows } from "./rowWindows";
 
 export type Refs = Int32Array | number[];
@@ -39,22 +31,6 @@ export interface ListedRows extends TrackRows {
 	heat: ArrayLike<number>;
 	patina: ArrayLike<number>;
 }
-
-export interface TrackView extends ListedRows {
-	indices: Refs;
-}
-
-export const trackRows = (
-	columns: LibraryColumns,
-	indices: Refs | null = null,
-): TrackRows => ({
-	length: indices ? indices.length : columns.trackCount,
-	columns,
-	indices,
-	at: (position) => rowAt(columns, refAt(indices, position)),
-	ref: (position) => refAt(indices, position),
-	isPending: () => false,
-});
 
 export const PENDING_ROW: TrackColumns = Object.freeze(
 	TRACK_EXPRESSIONS.map(() => ""),
@@ -173,22 +149,6 @@ export function windowedRows(
 	};
 }
 
-export function project(
-	library: PlaylistSnapshot,
-	refs: Refs | null | undefined,
-): TrackView | null {
-	if (!refs) return null;
-
-	const heat = Float32Array.from(refs, (ref) => library.heat[ref]);
-
-	return {
-		...trackRows(library.columns, refs),
-		indices: refs,
-		heat,
-		patina: Float32Array.from(refs, (ref) => library.patina[ref]),
-	};
-}
-
 let everyRef = new Int32Array(0);
 
 export const wholeRefs = (length: number) => {
@@ -199,46 +159,13 @@ export const wholeRefs = (length: number) => {
 	return everyRef;
 };
 
-export const wholeRows = (columns: LibraryColumns): TrackRows =>
-	trackRows(columns, wholeRefs(columns.trackCount));
-
-export const wholeLibrary = (library: PlaylistSnapshot): TrackView => {
-	const indices = wholeRefs(library.columns.trackCount);
-
-	return {
-		...trackRows(library.columns, indices),
-		indices,
-		heat: library.heat,
-		patina: library.patina,
-	};
-};
-
-export const EMPTY_VIEW: TrackView = Object.freeze({
-	...trackRows(EMPTY_COLUMNS, new Int32Array(0)),
+export const EMPTY_VIEW: ListedRows & { indices: Refs } = Object.freeze({
+	length: 0,
+	columns: EMPTY_COLUMNS,
 	indices: new Int32Array(0),
+	at: () => PENDING_ROW,
+	ref: (position: number) => position,
+	isPending: () => false,
 	heat: new Float32Array(0),
 	patina: new Float32Array(0),
 });
-
-export const refsOfGenre = overColumnsByName(
-	[FIELD.genre],
-	(genre: string) => tagKey(genre),
-	genreRefs,
-);
-
-function genreRefs(columns: LibraryColumns, genre: string): Int32Array {
-	const wanted = tagKey(genre);
-	if (!wanted) return new Int32Array(0);
-
-	const column = columns.fields[FIELD.genre];
-	const groups = genreGroups(column);
-	const group = groups.group(wanted);
-	if (group < 0) return new Int32Array(0);
-
-	const tagged = groups.of.map((genres) => genres.includes(group));
-	const refs: number[] = [];
-	for (let ref = 0; ref < columns.trackCount; ref += 1)
-		if (tagged[column.ids[ref]]) refs.push(ref);
-
-	return Int32Array.from(refs);
-}

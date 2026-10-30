@@ -3,10 +3,8 @@ import { registerHooks } from "node:module";
 import test, { type TestContext } from "node:test";
 import type { FieldAvailability } from "../../src/domain/track/fieldAvailability.ts";
 import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
-import {
-	type LibraryColumns,
-	libraryColumnsOf,
-} from "../../src/domain/track/libraryColumns.ts";
+import type { LibraryColumns } from "../../src/domain/track/libraryColumns.ts";
+import { libraryColumnsOf } from "./libraryTable.ts";
 
 // What a tab knows before its first snapshot is module state, read once, and
 // node caches a module by its URL. So each case opens a tab of its own: the

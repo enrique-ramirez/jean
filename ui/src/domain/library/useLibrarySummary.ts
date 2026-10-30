@@ -76,12 +76,6 @@ export const subscribeSummary = (
 	withGenres = false,
 ) => heldFor(origin, withGenres).listeners.subscribe(listener);
 
-export function keepSummary(origin: string, summary: LibrarySummary) {
-	const one = heldFor(origin);
-	one.summary = summary;
-	one.listeners.notify();
-}
-
 export const atStructure = (
 	summary: LibrarySummary | null,
 	structure: number,

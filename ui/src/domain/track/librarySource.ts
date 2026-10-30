@@ -21,8 +21,6 @@ import type {
 	TrackIdentity,
 } from "@/shared/api/types";
 import { announcedLibraryOf } from "./libraryHolds";
-import type { PathTable } from "./pathTable";
-import { componentLibraryKey, playlistSnapshot } from "./playlistEntries";
 import type { Refs } from "./project";
 import {
 	isAnswered,
@@ -66,30 +64,16 @@ export type LibrarySource =
 	  })
 	| (LibrarySourceCommon & { kind: "playlist" });
 
-interface MediaLibraryOptions {
-	paths: PathTable;
-	subsongs: Int32Array;
-	artworkOrigin: string | null;
-}
-
-type PlaylistAddresses =
-	| { paths: PathTable; subsongs: Int32Array }
-	| { paths?: undefined; subsongs?: undefined };
-
 export interface Filled {
 	id: string;
 	structure: string;
 }
 
-type PlaylistOptions = PlaylistAddresses & {
+interface PlaylistSourceOptions {
 	playlistId: string;
-	origin?: string | null;
+	origin: string | null;
 	structure?: string | null;
-};
-
-export type LibrarySourceOptions =
-	| ({ kind: "library" } & MediaLibraryOptions)
-	| ({ kind: "playlist" } & PlaylistOptions);
+}
 
 interface LibraryFigures {
 	structure: number;
@@ -165,50 +149,9 @@ const placeOfOrdinal = (
 	ordinal: number | null | undefined,
 ) => (ordinal == null ? -1 : refs === null ? ordinal : refs.indexOf(ordinal));
 
-const fromMediaLibrary = ({
-	paths,
-	subsongs,
-	artworkOrigin,
-}: MediaLibraryOptions): Extract<LibrarySource, { kind: "library" }> => {
-	const snapshot = artworkOrigin
-		? playlistSnapshot(componentLibraryKey(artworkOrigin))
-		: null;
-	const structure = snapshot ? snapshot.structure : 0;
-	const figures = () => ({ structure, trackCount: paths.length });
-
-	const addresses = (ref: number): TrackAddress[] => {
-		const track = paths.at(ref);
-		return track
-			? [
-					{ kind: "library", track, subsong: subsongs[ref] ?? 0 },
-					{ kind: "ordinal", ordinal: ref, structure },
-				]
-			: [];
-	};
-
-	return {
-		kind: "library",
-		playlistId: null,
-
-		artworkUrl: (ref: number) =>
-			libraryArtworkUrl(artworkOrigin, paths.at(ref)),
-
-		addresses,
-		address: (ref: number) => addresses(ref)[0] ?? null,
-
-		fill: fillScratch(figures, artworkOrigin),
-		queueTargets: queueLibraryTracks(figures),
-
-		addTo: addToPlaylist(figures, artworkOrigin),
-
-		playingPosition: (refs, track) =>
-			placeOfOrdinal(refs, track?.libraryOrdinal),
-	};
-};
-
-export interface WindowedLibraryOptions {
-	windows: RowWindows;
-	origin: string;
+interface WindowedLibraryOptions {
+	windows: Pick<RowWindows, "at">;
+	origin: string | null;
 	listNow: () => LibraryList | null;
 	coverOf: (ordinal: number) => number | null;
 }
@@ -299,7 +242,7 @@ const copyPlaylistRowsTo = async (
 	);
 };
 
-export interface WindowedPlaylistOptions {
+interface WindowedPlaylistOptions {
 	windows: RowWindows;
 	origin: string;
 	listNow: () => PlaylistList | null;
@@ -378,47 +321,21 @@ export const windowedPlaylistSourceOf = ({
 	};
 };
 
-const fromPlaylist = (
-	options: PlaylistOptions,
-): Extract<LibrarySource, { kind: "playlist" }> => {
-	const { playlistId, origin = null, structure = null } = options;
-
-	const addresses = (ref: number): TrackAddress[] => {
-		const forms: TrackAddress[] = [];
-
-		if (options.paths) {
-			const track = options.paths.at(ref);
-			if (track)
-				forms.push({
-					kind: "library",
-					track,
-					subsong: options.subsongs[ref] ?? 0,
-				});
-		}
-
-		if (structure)
-			forms.push({
-				kind: "playlist",
-				playlist: playlistId,
-				index: ref,
-				structure,
-			});
-
-		return forms;
-	};
+export const playlistSourceOf = ({
+	playlistId,
+	origin,
+	structure = null,
+}: PlaylistSourceOptions): Extract<LibrarySource, { kind: "playlist" }> => {
+	const addresses = (ref: number): TrackAddress[] =>
+		structure
+			? [{ kind: "playlist", playlist: playlistId, index: ref, structure }]
+			: [];
 
 	return {
 		kind: "playlist",
 		playlistId,
 
-		artworkUrl: (ref: number) => {
-			if (!options.paths) return null;
-
-			const path = options.paths.at(ref);
-			if (path) return libraryArtworkUrl(origin, path);
-
-			return origin ? playlistRowArtworkUrl(origin, playlistId, ref) : null;
-		},
+		artworkUrl: () => null,
 
 		addresses,
 		address: (ref: number) => addresses(ref)[0] ?? null,
@@ -437,15 +354,3 @@ const fromPlaylist = (
 				: -1,
 	};
 };
-
-export function librarySourceOf(
-	options: Extract<LibrarySourceOptions, { kind: "library" }>,
-): Extract<LibrarySource, { kind: "library" }>;
-export function librarySourceOf(
-	options: Extract<LibrarySourceOptions, { kind: "playlist" }>,
-): Extract<LibrarySource, { kind: "playlist" }>;
-export function librarySourceOf(options: LibrarySourceOptions): LibrarySource {
-	return options.kind === "library"
-		? fromMediaLibrary(options)
-		: fromPlaylist(options);
-}

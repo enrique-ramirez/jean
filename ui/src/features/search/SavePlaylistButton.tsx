@@ -66,7 +66,7 @@ export function SavePlaylistButton({
 					title: name,
 					...encodeFill(indices, {
 						structure: library.structure,
-						trackCount: library.columns.trackCount,
+						trackCount: library.trackCount,
 					}),
 				}),
 			);
@@ -96,8 +96,7 @@ export function SavePlaylistButton({
 				<Button
 					icon={ListPlus}
 					aria-expanded={isOpen}
-					disabled={trackCount === 0 || library.isLoading}
-					title={library.isLoading ? t("search.stillReading") : undefined}
+					disabled={trackCount === 0}
 					onClick={() => onOpenChange(!isOpen)}
 				>
 					{t("search.saveAsPlaylist")}

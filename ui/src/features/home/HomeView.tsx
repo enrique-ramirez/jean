@@ -45,7 +45,7 @@ export function HomeView({
 }) {
 	const t = useTranslate();
 	const { origin, structure } = library;
-	const hasTracks = library.columns.trackCount > 0;
+	const hasTracks = library.trackCount > 0;
 
 	const held = useLibrarySummary(library);
 	const summary = atStructure(held, structure);
@@ -118,7 +118,6 @@ export function HomeView({
 		<div className={styles.home}>
 			<HomeHeader
 				figures={figures}
-				isLoading={library.isLoading}
 				onPlayEverything={onPlayEverything}
 				onShuffleEverything={onShuffleEverything}
 				onSearch={onSearch}

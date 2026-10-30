@@ -10,15 +10,18 @@ type NoticeStatus = Extract<
 	{ kind: "unreachable" | "olderPlayer" | "failed" }
 >;
 
-const isDrawable = (library: Pick<Library, "columns">) =>
-	library.columns.trackCount > 0;
+const isDrawable = (library: Pick<Library, "trackCount">) =>
+	library.trackCount > 0;
 
 const isNoticeStatus = (status: LibraryStatus): status is NoticeStatus =>
 	status.kind === "unreachable" ||
 	status.kind === "olderPlayer" ||
 	status.kind === "failed";
 
-type NoticeSource = Pick<Library, "status" | "recheck" | "retry" | "columns">;
+type NoticeSource = Pick<
+	Library,
+	"status" | "recheck" | "retry" | "trackCount"
+>;
 
 const noticeOf = ({ status, recheck, retry }: NoticeSource) =>
 	isNoticeStatus(status) ? (

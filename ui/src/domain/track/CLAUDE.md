@@ -13,7 +13,6 @@
 ## Holding a library
 
 - Jean holds windows of rows, never the library, and nothing per row: `rowAt()` is the only thing that builds a row. A question of the whole library goes to `foo_jean` through `libraryAsker.ts`.
-- `pathTable.ts` interns the one path Jean holds. A sliced string keeps its whole original alive, and a string is one byte per character only if every character is, so remainders are joined in blocks.
 
 ## TanStack Virtual
 

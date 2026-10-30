@@ -5,13 +5,13 @@ import {
 	readTimestamp,
 	TRACK_EXPRESSIONS,
 } from "../../src/domain/track/fields.ts";
-import { libraryColumnsOf } from "../../src/domain/track/libraryColumns.ts";
-import { type Refs, trackRows } from "../../src/domain/track/project.ts";
+import type { Refs } from "../../src/domain/track/project.ts";
 import {
 	formatDuration,
 	spellDuration,
 	summarise,
 } from "../../src/domain/track/stats.ts";
+import { libraryColumnsOf, trackRows } from "./libraryTable.ts";
 
 const MINUTE = 60;
 const HOUR = 60 * MINUTE;

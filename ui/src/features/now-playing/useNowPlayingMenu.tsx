@@ -6,7 +6,7 @@ import {
 	useResolvedPlaylistId,
 } from "@/domain/player/usePlaylists";
 import { namedTrack } from "@/domain/track/fields";
-import { librarySourceOf } from "@/domain/track/librarySource";
+import { playlistSourceOf } from "@/domain/track/librarySource";
 import { starsOf } from "@/domain/track/rating";
 import { ratingItems, trackActions } from "@/domain/track/trackActions";
 import { useAddTracks } from "@/domain/track/useAddTracks";
@@ -42,8 +42,7 @@ export function useNowPlayingMenu() {
 	const source = useMemo(
 		() =>
 			playingPlaylistId
-				? librarySourceOf({
-						kind: "playlist",
+				? playlistSourceOf({
 						playlistId: playingPlaylistId,
 						origin: discovery.origin,
 						structure: playingStructure,

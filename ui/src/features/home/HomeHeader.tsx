@@ -59,7 +59,6 @@ interface Door {
 
 export function HomeHeader({
 	figures,
-	isLoading,
 	onPlayEverything,
 	onShuffleEverything,
 	onSearch,
@@ -67,7 +66,6 @@ export function HomeHeader({
 	canShuffle,
 }: {
 	figures: HeaderFigures | null;
-	isLoading: boolean;
 	onPlayEverything: () => void;
 	onShuffleEverything: () => void;
 	onSearch: (query: string) => void;
@@ -200,10 +198,6 @@ export function HomeHeader({
 						<Doorway key={door.id} door={door} isWaiting={isWaiting} />
 					))}
 				</div>
-			) : null}
-
-			{isLoading ? (
-				<p className={styles.counting}>{t("home.counting")}</p>
 			) : null}
 		</header>
 	);

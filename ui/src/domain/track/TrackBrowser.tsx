@@ -17,14 +17,7 @@ import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { mergeHandlers } from "@/shared/lib/mergeHandlers";
 import { resolveColumns } from "./columns";
 import { useAvailableFields } from "./fieldAvailability";
-import {
-	type AlbumSpan,
-	discsOf,
-	groupByAlbum,
-	groupsFromRuns,
-	isAlbumRun,
-	NO_GROUPS,
-} from "./grouping";
+import { type AlbumSpan, discsOf, groupsFromRuns, NO_GROUPS } from "./grouping";
 import type { LibrarySource } from "./librarySource";
 import type {
 	ActiveDirection,
@@ -63,9 +56,9 @@ export interface TrackBrowserProps {
 	activeIndex?: number;
 	isPlaying: boolean;
 	matches?: Int32Array | null;
-	isLoading: boolean;
-	loaded: number;
-	total: number;
+	isLoading?: boolean;
+	loaded?: number;
+	total?: number;
 	scrollRef: RefObject<HTMLElement | null>;
 	isCompactViewport: boolean;
 	header?: ReactNode;
@@ -74,7 +67,6 @@ export interface TrackBrowserProps {
 	loadingNotice?: ReactNode;
 	failureNotice?: ReactNode;
 	hasPendingRows?: boolean;
-	progressLabel?: string;
 	keysEnabled?: boolean;
 	canFollowPlayback?: boolean;
 	onPlay: (position: number) => void;
@@ -96,9 +88,9 @@ export function TrackBrowser({
 	activeIndex = -1,
 	isPlaying,
 	matches = null,
-	isLoading,
-	loaded,
-	total,
+	isLoading = false,
+	loaded = 0,
+	total = 0,
 	scrollRef,
 	isCompactViewport,
 	header,
@@ -107,7 +99,6 @@ export function TrackBrowser({
 	loadingNotice,
 	failureNotice,
 	hasPendingRows,
-	progressLabel,
 	keysEnabled = true,
 	canFollowPlayback = false,
 	onPlay,
@@ -140,7 +131,7 @@ export function TrackBrowser({
 		? ownRuns.groups
 		: isWindowed
 			? libraryGroups
-			: groupByAlbum(rows);
+			: NO_GROUPS;
 	const isSet = isWindowed && rows.indices !== null;
 	const hasDiscs = useMemo(() => {
 		if (ownRuns) return ownRuns.hasDiscs;
@@ -151,9 +142,7 @@ export function TrackBrowser({
 			}
 			return false;
 		}
-		return isWindowed
-			? windows.hasDiscs
-			: groups.some((group) => isAlbumRun(group) && group.discs !== null);
+		return isWindowed && windows.hasDiscs;
 	}, [ownRuns, isSet, isWindowed, windows.hasDiscs, groups, rows]);
 
 	const { optional, template, albumTemplate } = useMemo(
@@ -436,7 +425,7 @@ export function TrackBrowser({
 					aria-valuemin={0}
 					aria-valuemax={total}
 					aria-valuenow={loaded}
-					aria-label={progressLabel || t("track.loading")}
+					aria-label={t("track.loading")}
 					style={{ transform: `scaleX(${total ? loaded / total : 0})` }}
 				/>
 			) : null}

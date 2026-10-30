@@ -4,19 +4,11 @@ import {
 	type Hold,
 	watchAnnounced,
 } from "@/domain/track/libraryHolds";
-import { librarySourceOf } from "@/domain/track/librarySource";
+import { windowedSourceOf } from "@/domain/track/librarySource";
 import {
 	type WindowedState,
 	windowedLibraryOf,
 } from "@/domain/track/libraryWindows";
-import type { PathTable } from "@/domain/track/pathTable";
-import {
-	componentLibraryKey,
-	EMPTY_PLAYLIST,
-	generationKey,
-	playlistSnapshot,
-	subscribePlaylist,
-} from "@/domain/track/playlistEntries";
 import {
 	EMPTY_VIEW,
 	type ListedRows,
@@ -30,33 +22,24 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import { libraryStatusOf } from "./libraryStatus";
 import { useMostPlayed } from "./useLibrarySummary";
 
-const NO_PATHS: PathTable = { length: 0, at: () => "" };
-
-const NO_SUBSONGS = new Int32Array(0);
-
 const NO_HOLD: Hold = { kind: "none" };
 
 const NOTHING_TO_RETRY = () => {};
 
 const NOTHING = () => () => {};
 
+const NO_SOURCE = windowedSourceOf({
+	windows: { at: () => null },
+	origin: null,
+	listNow: () => null,
+	coverOf: () => null,
+});
+
 export function useLibrary() {
 	const { discovery, isDiscovered, recheck } = useFooJean();
 
 	const origin = libraryOrigin(discovery);
 
-	const entryKey = origin ? componentLibraryKey(origin) : null;
-	const library = useSyncExternalStore(
-		useCallback(
-			(listener) =>
-				entryKey ? subscribePlaylist(entryKey, listener) : NOTHING(),
-			[entryKey],
-		),
-		useCallback(
-			() => (entryKey ? playlistSnapshot(entryKey) : EMPTY_PLAYLIST),
-			[entryKey],
-		),
-	);
 	const announced = useSyncExternalStore(
 		useCallback(
 			(listener) => (origin ? watchAnnounced(origin, listener) : NOTHING()),
@@ -68,6 +51,13 @@ export function useLibrary() {
 		() => (origin ? windowedLibraryOf(origin) : null),
 		[origin],
 	);
+	const list = useSyncExternalStore(
+		useCallback(
+			(listener) => (windowed ? windowed.subscribe(listener) : NOTHING()),
+			[windowed],
+		),
+		useCallback(() => (windowed ? windowed.state().list : null), [windowed]),
+	);
 
 	const hold = useSyncExternalStore(
 		useCallback(
@@ -78,21 +68,9 @@ export function useLibrary() {
 	);
 	const retry = windowed ? windowed.retryNow : NOTHING_TO_RETRY;
 
-	const key = origin
-		? generationKey(componentLibraryKey(origin), library.structure)
-		: null;
-
-	const source = useMemo(
-		() =>
-			windowed?.source ??
-			librarySourceOf({
-				kind: "library",
-				paths: NO_PATHS,
-				subsongs: NO_SUBSONGS,
-				artworkOrigin: null,
-			}),
-		[windowed],
-	);
+	const structure = list?.structure ?? 0;
+	const trackCount = list?.length ?? 0;
+	const key = origin ? `${origin}:s${structure}` : null;
 
 	const status = libraryStatusOf(
 		isDiscovered ? discovery : null,
@@ -101,10 +79,10 @@ export function useLibrary() {
 	);
 
 	return {
-		...library,
-		snapshot: library,
+		structure,
+		trackCount,
 		key,
-		source,
+		source: windowed?.source ?? NO_SOURCE,
 		windowed,
 		status,
 		recheck,
@@ -168,9 +146,9 @@ function besideViewportOf(windows: RowWindows, list: LibraryList) {
 export function useSetRows(
 	{
 		windowed,
-		snapshot,
+		structure,
 		origin,
-	}: Pick<Library, "windowed" | "snapshot" | "origin">,
+	}: Pick<Library, "windowed" | "structure" | "origin">,
 	id: string,
 	ordinals: Refs | null,
 	{ isBeside = false }: { isBeside?: boolean } = {},
@@ -180,7 +158,6 @@ export function useSetRows(
 		watched ? watched.subscribe : NOTHING,
 		watched ? watched.state : () => EMPTY_STATE,
 	);
-	const { structure } = snapshot;
 	const mostPlayed = useMostPlayed({ origin, structure });
 
 	const list = useMemo<LibraryList | null>(

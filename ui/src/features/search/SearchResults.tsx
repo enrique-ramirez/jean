@@ -70,7 +70,7 @@ export function SearchResults({
 	useKeymap(
 		SCOPE.search,
 		{ saveSearch: () => setIsSaving(true) },
-		{ enabled: canSave && results.length > 0 && !library.isLoading },
+		{ enabled: canSave && results.length > 0 },
 	);
 
 	const notice = libraryNoticeFor(library);
@@ -104,7 +104,7 @@ export function SearchResults({
 				<Search size={26} strokeWidth={1.5} aria-hidden="true" />
 				<h1 className={styles.idleTitle}>{t("search.yourLibrary")}</h1>
 				<p className={styles.idleBody}>
-					{t("search.idle", { count: library.total })}
+					{t("search.idle", { count: library.trackCount })}
 				</p>
 				<Button variant="primary" icon={Search} onClick={search.focus}>
 					{t("search.startTyping")}
@@ -122,9 +122,6 @@ export function SearchResults({
 			heat={heat}
 			patina={patina}
 			activeIndex={activeIndex}
-			isLoading={library.isLoading}
-			loaded={library.loaded}
-			total={library.total}
 			scrollRef={scrollRef}
 			isCompactViewport={isCompactViewport}
 			keysEnabled={!search.isFocused}
@@ -136,7 +133,6 @@ export function SearchResults({
 				quiet: "",
 				reading: readingText,
 			})}
-			progressLabel={isReading ? readingText : undefined}
 			heading={{ eyebrow: t("search.resultsEyebrow"), title: search.query }}
 			stats={stats}
 			mosaicSeed={search.viewKey}

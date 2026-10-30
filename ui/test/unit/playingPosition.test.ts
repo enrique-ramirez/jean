@@ -2,10 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { windowedSourceOf } from "../../src/domain/track/librarySource.ts";
-import type { RowWindows } from "../../src/domain/track/rowWindows.ts";
 
 const source = windowedSourceOf({
-	windows: {} as RowWindows,
+	windows: { at: () => null },
 	origin: "http://player.invalid:8881",
 	listNow: () => null,
 	coverOf: () => null,

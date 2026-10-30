@@ -10,15 +10,13 @@ import {
 	readTimestamp,
 	TRACK_EXPRESSIONS,
 } from "../../src/domain/track/fields.ts";
-import {
-	libraryColumnsOf,
-	rowAt,
-} from "../../src/domain/track/libraryColumns.ts";
+import { rowAt } from "../../src/domain/track/libraryColumns.ts";
 import {
 	NOW_PLAYING_EXPRESSIONS,
 	NOW_PLAYING_FIELD,
 	readNowPlaying,
 } from "../../src/features/now-playing/nowPlayingFields.ts";
+import { libraryColumnsOf } from "./libraryTable.ts";
 
 const EARLY = "2025-03-01 09:00:00";
 const LATE = "2026-08-30 22:49:08";

@@ -14,7 +14,7 @@ import type { StateDocument } from "@/shared/api/state";
 import type { TrackColumns } from "@/shared/api/types";
 import { subscribers } from "@/shared/lib/store";
 import { recordWindowAvailability } from "./fieldAvailability";
-import { EMPTY_COLUMNS, TRACK_EXPRESSIONS } from "./fields";
+import { TRACK_EXPRESSIONS } from "./fields";
 import { LIBRARY_ROLES, onlyRatingMoved } from "./libraryAsker";
 import {
 	announcedLibraryOf,
@@ -27,12 +27,6 @@ import {
 	watchLibrary,
 } from "./libraryHolds";
 import { type LibrarySource, windowedSourceOf } from "./librarySource";
-import {
-	componentLibraryKey,
-	emit,
-	entryFor,
-	subscribePlaylist,
-} from "./playlistEntries";
 import {
 	createWindowedPlaylist,
 	type WindowedPlaylist,
@@ -168,8 +162,6 @@ const pageFailureOf = (failure: Failure): RowsFailure => {
 
 const UNBUILT_TICKS = 3;
 
-const LENT = {};
-
 const NO_HOLD: Hold = { kind: "none" };
 
 const isKept = (hold: Hold) =>
@@ -288,41 +280,6 @@ function create(origin: string): WindowedLibrary {
 		};
 	};
 
-	const key = componentLibraryKey(origin);
-
-	const lend = () => {
-		const entry = entryFor(key);
-		const isLent = entry.snapshot.columns.load === LENT;
-		const { list } = state;
-		if (entry.isStarted || !list) {
-			if (isLent)
-				emit(entry, {
-					columns: EMPTY_COLUMNS,
-					structure: 0,
-					loaded: 0,
-					total: 0,
-				});
-			return;
-		}
-		if (
-			isLent &&
-			entry.snapshot.structure === list.structure &&
-			entry.snapshot.columns.trackCount === list.length
-		)
-			return;
-		emit(entry, {
-			columns: {
-				load: LENT,
-				trackCount: list.length,
-				fields: EMPTY_COLUMNS.fields,
-			},
-			structure: list.structure,
-			loaded: list.length,
-			total: list.length,
-			isLoading: false,
-		});
-	};
-
 	let coverList: LibraryList | null = null;
 
 	const watchCovers = () => {
@@ -408,7 +365,6 @@ function create(origin: string): WindowedLibrary {
 		if (!state.hasDiscs && discsInSight()) state = { ...state, hasDiscs: true };
 		if (runsMoved && sight) watchCovers();
 		if (runsMoved || listMoved) watchPlayingCovers();
-		lend();
 		listeners.notify();
 	};
 
@@ -613,7 +569,6 @@ function create(origin: string): WindowedLibrary {
 		refresh();
 		releaseViewportWaiters();
 	});
-	subscribePlaylist(key, lend);
 	refresh();
 
 	const viewports = new WeakMap<LibraryList, RowsViewport>();

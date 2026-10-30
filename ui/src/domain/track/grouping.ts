@@ -1,8 +1,6 @@
 import type { Schema } from "@/shared/api/client";
-import { finished, SLICE_MASK, type Steps } from "@/shared/lib/idle";
-import { columnsOf, slicedOver } from "./columnCache";
-import { artistGroups, FIELD, readValue, tagGroups } from "./fields";
-import { byValue, rowAt } from "./libraryColumns";
+import { FIELD, readValue } from "./fields";
+import { rowAt } from "./libraryColumns";
 import type { Refs, TrackRows } from "./project";
 
 interface DiscRun {
@@ -12,19 +10,10 @@ interface DiscRun {
 }
 
 export interface AlbumSpan {
-	kind: "span" | "run";
 	key: string;
 	start: number;
 	count: number;
 	cover: number;
-}
-
-export interface AlbumRun extends AlbumSpan {
-	kind: "run";
-	album: string | null;
-	albumArtist: string | null;
-	year: string | null;
-	discs: DiscRun[] | null;
 }
 
 export interface AlbumHeading {
@@ -32,12 +21,6 @@ export interface AlbumHeading {
 	albumArtist: string | null;
 	year: string | null;
 }
-
-type OpenRun = Omit<AlbumRun, "discs"> & {
-	discs: DiscRun[];
-	albumGroup: number;
-	artistGroup: number;
-};
 
 // Free text, and rippers disagree: '1', '01' and '1/2' all turn up, the last writing the disc total
 // into the same field.
@@ -52,93 +35,6 @@ const discsWorthDrawing = (discs: DiscRun[]): DiscRun[] | null =>
 	discs.length >= 2 && discs.every((disc) => disc.number !== null)
 		? discs
 		: null;
-
-const RUN_FIELDS = [
-	FIELD.album,
-	FIELD.year,
-	FIELD.discNumber,
-	FIELD.artist,
-	FIELD.albumArtist,
-];
-
-const WHOLE_LIBRARY: Refs = [];
-
-const runsHeld = slicedOver<AlbumRun[]>();
-
-const runSteps = (rows: TrackRows) =>
-	runsHeld.steps(
-		[...columnsOf(rows.columns, RUN_FIELDS), rows.indices ?? WHOLE_LIBRARY],
-		() => runsOf(rows),
-	);
-
-// Contiguous runs only, never reordering: the player decides what comes next, so reordering here
-// would desync the view from playback.
-export const groupByAlbum = Object.assign(
-	(rows: TrackRows): AlbumRun[] => finished(runSteps(rows)),
-	{ steps: runSteps },
-);
-
-function* runsOf(rows: TrackRows): Steps<AlbumRun[]> {
-	const { columns } = rows;
-	const album = columns.fields[FIELD.album];
-	const year = columns.fields[FIELD.year];
-	const disc = columns.fields[FIELD.discNumber];
-
-	const albums = yield* tagGroups.steps(album);
-	const artists = yield* artistGroups.steps(columns);
-	const discs = byValue(disc, discNumber);
-
-	const built: OpenRun[] = [];
-	const coverOf = new Map<number, number>();
-
-	for (let index = 0; index < rows.length; index += 1) {
-		if ((index & SLICE_MASK) === 0) yield;
-		const ref = rows.ref(index);
-
-		const albumGroup = albums.of[album.ids[ref]];
-		const artistGroup = artists.at(ref);
-		const number = discs[disc.ids[ref]];
-
-		const open = built[built.length - 1];
-		if (
-			open &&
-			open.albumGroup === albumGroup &&
-			open.artistGroup === artistGroup
-		) {
-			open.count += 1;
-			const run = open.discs[open.discs.length - 1];
-			if (run.number === number) run.count += 1;
-			else open.discs.push({ number, start: index, count: 1 });
-			continue;
-		}
-
-		const name = albumGroup < 0 ? null : albums.names[albumGroup];
-		const credit = artistGroup < 0 ? null : artists.names[artistGroup];
-
-		const record = albumGroup < 0 ? -1 : artists.pairedWith(ref, albumGroup);
-		const cover = albumGroup < 0 ? index : (coverOf.get(record) ?? index);
-		if (albumGroup >= 0) coverOf.set(record, cover);
-
-		built.push({
-			kind: "run",
-			key: `${credit ?? ""} ${name ?? ""} ${index}`,
-			album: name,
-			albumArtist: credit,
-			albumGroup,
-			artistGroup,
-			year: readValue(year.at(ref)),
-			start: index,
-			count: 1,
-			cover,
-			discs: [{ number, start: index, count: 1 }],
-		});
-	}
-
-	return built.map(({ albumGroup, artistGroup, ...group }) => ({
-		...group,
-		discs: discsWorthDrawing(group.discs),
-	}));
-}
 
 type RunBounds = Pick<Schema["LibraryRuns"], "lengths"> &
 	Partial<Pick<Schema["LibraryRuns"], "covers" | "untagged">>;
@@ -197,7 +93,6 @@ function spansFromRuns(runs: RunBounds, positions: Refs | null): RunSpans {
 		runs.lengths.forEach((count, run) => {
 			if (count <= 0) return;
 			groups.push({
-				kind: "span",
 				key: `${run}:${starts[run]}`,
 				start: starts[run],
 				count,
@@ -223,7 +118,6 @@ function spansFromRuns(runs: RunBounds, positions: Refs | null): RunSpans {
 			continue;
 		}
 		open = {
-			kind: "span",
 			key: `${run}:${at}`,
 			start: at,
 			count: 1,
@@ -287,14 +181,6 @@ export function coverCandidates(
 	};
 }
 
-export function coverCandidatesFromRuns(
-	runs: RunBounds,
-	positions: Refs | null,
-): number[] {
-	const { count, at } = coverCandidates(runs, positions);
-	return Array.from({ length: count }, (_, index) => at(index));
-}
-
 export function coverTrackOf(runs: RunBounds, ordinal: number): number {
 	const run = lastNumberAtOrBelow(runStarts(runs), ordinal);
 	if (run < 0) return ordinal;
@@ -305,14 +191,11 @@ export function coverTrackOf(runs: RunBounds, ordinal: number): number {
 
 // A group from the runs names its cover by ordinal. Where a list is its own ordinals in order, the
 // ordinal is also a position; in a set it is not, and the cover may lie outside the set.
-const coverIsOrdinal = (group: AlbumSpan, rows: TrackRows) =>
-	!isAlbumRun(group) && rows.indices !== null;
-
 export const coverRefOf = (group: AlbumSpan, rows: TrackRows) =>
-	coverIsOrdinal(group, rows) ? group.cover : rows.ref(group.cover);
+	rows.indices !== null ? group.cover : rows.ref(group.cover);
 
 export const coverRowOf = (group: AlbumSpan, rows: TrackRows) =>
-	coverIsOrdinal(group, rows)
+	rows.indices !== null
 		? rowAt(rows.columns, group.cover)
 		: rows.at(group.cover);
 
@@ -327,14 +210,10 @@ export function groupIndexAt(groups: readonly AlbumSpan[], position: number) {
 		: -1;
 }
 
-export const isAlbumRun = (group: AlbumSpan): group is AlbumRun =>
-	group.kind === "run";
-
 export function headingOf(
 	group: AlbumSpan,
 	rows: TrackRows,
 ): AlbumHeading | null {
-	if (isAlbumRun(group)) return group;
 	if (rows.isPending(group.start)) return null;
 
 	const first = rows.at(group.start);
@@ -347,7 +226,6 @@ export function headingOf(
 }
 
 export function discsOf(group: AlbumSpan, rows: TrackRows): DiscRun[] | null {
-	if (isAlbumRun(group)) return group.discs;
 	if (group.count < 2) return null;
 
 	const found: DiscRun[] = [];

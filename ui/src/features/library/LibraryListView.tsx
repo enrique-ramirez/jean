@@ -135,9 +135,6 @@ export function LibraryListView({
 			activeIndex={activeIndex}
 			matches={finder.matches}
 			keysEnabled={!finder.isFinding}
-			isLoading={library.isLoading}
-			loaded={library.loaded}
-			total={library.total}
 			scrollRef={scrollRef}
 			isCompactViewport={isCompactViewport}
 			canFollowPlayback
@@ -148,7 +145,6 @@ export function LibraryListView({
 			loadingNotice={loadingNotice}
 			failureNotice={failure ? <QuestionFailure {...failure} /> : undefined}
 			hasPendingRows={isAwaitingColumns && wait.isWaiting && !isReading}
-			progressLabel={readingText}
 			heading={heading}
 			stats={stats}
 			wait={wait}

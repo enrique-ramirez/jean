@@ -63,7 +63,7 @@ export function GenresView({
 	const gridRef = useRef<HTMLDivElement | null>(null);
 
 	const held = useLibrarySummary(library, { withGenres: true });
-	const summary = atStructure(held, library.snapshot.structure);
+	const summary = atStructure(held, library.structure);
 	const genres = useMemo(
 		() =>
 			summary?.genres?.map((genre) => ({

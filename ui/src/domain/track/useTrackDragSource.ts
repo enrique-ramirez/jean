@@ -8,7 +8,7 @@ import type { Translate } from "@/shared/i18n/locale";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { type DragPayload, useDragSource } from "@/shared/ui/dnd";
 import { type AlbumSpan, headingOf } from "./grouping";
-import { type LibrarySource, librarySourceOf } from "./librarySource";
+import { type LibrarySource, playlistSourceOf } from "./librarySource";
 import type { TrackRows } from "./project";
 import {
 	albumFrom,
@@ -173,10 +173,7 @@ export function usePlayingTrackDragSource({
 	const { discovery } = useFooJean();
 	const { origin } = discovery;
 	const source = useMemo(
-		() =>
-			playlistId
-				? librarySourceOf({ kind: "playlist", playlistId, origin })
-				: null,
+		() => (playlistId ? playlistSourceOf({ playlistId, origin }) : null),
 		[playlistId, origin],
 	);
 	const drop = useTrackDrop(source, () => title ?? "");

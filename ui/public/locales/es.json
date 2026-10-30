@@ -217,7 +217,6 @@
 	"heat.warmer": "Las filas más cálidas son las que más reproduces, medidas contra la canción más reproducida de {list} — así que se reajusta cuando abres otra.",
 	"heat.whatItMeans": "Qué significa el sombreado",
 	"home.allGenres": "Todos los géneros",
-	"home.counting": "sigo contando",
 	"home.door.albums": {
 		"one": "álbum",
 		"other": "álbumes"
@@ -603,7 +602,6 @@
 	"search.section.genres": "Género",
 	"search.section.tracks": "Canciones",
 	"search.startTyping": "Empieza a escribir",
-	"search.stillReading": "Todavía leyendo tu biblioteca",
 	"search.title": "Búsqueda",
 	"search.yourLibrary": "Busca en tu biblioteca",
 	"settings.appearance.choose": "Tema",

@@ -1,7 +1,6 @@
 import type { SessionReport } from "@/shared/api/sessions";
 import { fetchLibraryTrack } from "@/shared/api/tracks";
 import { FIELD, readValue, TRACK_EXPRESSIONS } from "./fields";
-import { afterLastSeparator } from "./pathTable";
 
 type PlayedTrack = Pick<SessionReport, "path" | "subsong" | "libraryPath">;
 
@@ -17,6 +16,11 @@ async function libraryTitleOf(
 	);
 	return read.ok ? readValue(read.value.columns[0]) : null;
 }
+
+// The player reports library paths forward-slashed and its own paths with the platform separator, so
+// the split takes whichever came last rather than a configured one.
+const afterLastSeparator = (path: string) =>
+	Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1;
 
 const fileNameOf = (path: string) => path.slice(afterLastSeparator(path));
 

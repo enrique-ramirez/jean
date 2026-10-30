@@ -3,7 +3,7 @@ import type { LibraryColumns } from "./libraryColumns";
 
 type Link = WeakMap<object, unknown>;
 
-export function overObjects<T extends object>() {
+function overObjects<T extends object>() {
 	const root: Link = new WeakMap();
 
 	const linkFor = (keys: readonly object[]) => {
@@ -31,31 +31,6 @@ export function overObjects<T extends object>() {
 
 export const columnsOf = (columns: LibraryColumns, fields: readonly number[]) =>
 	fields.map((field) => columns.fields[field]);
-
-const ANSWERS_PER_COLUMNS = 64;
-
-export function overColumnsByName<Args extends unknown[], T extends object>(
-	fields: readonly number[],
-	nameOf: (...args: Args) => string,
-	build: (columns: LibraryColumns, ...args: Args) => T,
-) {
-	const held = overObjects<Map<string, T>>();
-
-	return (columns: LibraryColumns, ...args: Args): T => {
-		const keys = columnsOf(columns, fields);
-		const answers = held.get(keys) ?? held.set(keys, new Map());
-
-		const name = nameOf(...args);
-		const known = answers.get(name);
-		if (known) return known;
-
-		const built = build(columns, ...args);
-		answers.set(name, built);
-		if (answers.size > ANSWERS_PER_COLUMNS)
-			answers.delete(answers.keys().next().value as string);
-		return built;
-	};
-}
 
 interface Sliced<T> {
 	steps: Steps<T>;
@@ -97,20 +72,4 @@ export function slicedOver<T>() {
 			return sliced?.isDone ? sliced.value : undefined;
 		},
 	};
-}
-
-export function overColumnsInSlices<T>(
-	fields: readonly number[],
-	start: (columns: LibraryColumns) => Steps<T>,
-) {
-	const held = slicedOver<T>();
-	const steps = (columns: LibraryColumns) =>
-		held.steps(columnsOf(columns, fields), () => start(columns));
-
-	return Object.assign(
-		(columns: LibraryColumns): T => finished(steps(columns)),
-		{
-			steps,
-		},
-	);
 }

@@ -156,7 +156,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 
 	const deferredDraft = useDeferredValue(draft);
 
-	const { columns } = library;
+	const { trackCount } = library;
 
 	const isDraftTooLong = isTooLong(deferredDraft);
 	const draftQuestion = useMemo(
@@ -214,7 +214,7 @@ export function useLibrarySearch(library: Library, playlists: PlaylistInfo[]) {
 	const matched = shown?.answer.matched ?? null;
 	const isShownBehind = query.trim() !== "" && shown?.query !== query;
 	const wait = useWait(
-		isShownBehind && shown === null && columns.trackCount > 0,
+		isShownBehind && shown === null && trackCount > 0,
 		query,
 	);
 

@@ -204,7 +204,6 @@ const SUMMARY_ROUTES: ReadonlySet<RouteView["kind"]> = new Set([
 export function useRouteView(route: RouteView, library: Library) {
 	const t = useTranslate();
 	const [splitsCredits] = useSplitCredits();
-	const { snapshot } = library;
 
 	const shelf = route.kind === "shelf" ? route.shelf : null;
 	const genre = route.kind === "genre" ? route.genre : null;
@@ -213,7 +212,7 @@ export function useRouteView(route: RouteView, library: Library) {
 	const artist = route.kind === "artist" ? route.artist : null;
 	const artistTab = route.kind === "artist" ? route.tab : "overview";
 
-	const { trackCount } = snapshot.columns;
+	const { trackCount, structure } = library;
 	const allMusicRefs = useMemo(
 		() => ({
 			get indices(): Refs {
@@ -228,8 +227,8 @@ export function useRouteView(route: RouteView, library: Library) {
 		isWanted: SUMMARY_ROUTES.has(route.kind),
 	});
 	const summary = useMemo(
-		() => atStructure(held, snapshot.structure),
-		[held, snapshot.structure],
+		() => atStructure(held, structure),
+		[held, structure],
 	);
 	const shelfAnswer = useMemo(() => {
 		if (!shelf || !library.key || trackCount === 0)

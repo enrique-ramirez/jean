@@ -26,8 +26,7 @@
 
 .said,
 .actions,
-.doors,
-.counting {
+.doors {
 	position: relative;
 }
 
@@ -220,15 +219,6 @@
 .door:hover .name,
 .door:focus-visible .name {
 	color: var(--accent-text);
-}
-
-.counting {
-	grid-area: counting;
-	margin: 12px 0 0;
-	font-size: 0.6875rem;
-	letter-spacing: 0.04em;
-	color: var(--faint);
-	font-style: italic;
 }
 
 @media (max-width: 720px) {

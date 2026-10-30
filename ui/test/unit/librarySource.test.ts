@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test, { mock } from "node:test";
 
 import type { LibrarySource } from "../../src/domain/track/librarySource.ts";
-import { librarySourceOf } from "../../src/domain/track/librarySource.ts";
-import { pathCollector } from "../../src/domain/track/pathTable.ts";
+import {
+	playlistSourceOf,
+	windowedSourceOf,
+} from "../../src/domain/track/librarySource.ts";
 import type { Refs } from "../../src/domain/track/project.ts";
 
 const ORIGIN = "http://player.invalid:8881";
@@ -15,20 +17,6 @@ const PLAYLIST_GUID = "45837d74-fa4f-415c-bba9-bf2db8f0dc04";
 // naming a different generation, which the component answers with a 409.
 const STRUCTURE = "9204739866101318923";
 
-const TRACK = "Fictional Artist/Imaginary Album/01 Track.flac";
-
-// Every subsong of a cue sheet shares one library path, so the subsong is the
-// half of the library address that tells two of them apart.
-const CUE = "Fictional Artist/Imaginary Album/album.flac";
-
-const LIBRARY_PATHS = [TRACK, CUE, CUE];
-const LIBRARY_SUBSONGS = Int32Array.of(0, 1, 2);
-
-// The third row is one the media library does not hold: `foo_jean` sends the
-// empty string for a row it can compute no library path for.
-const PLAYLIST_PATHS = [TRACK, CUE, ""];
-const PLAYLIST_SUBSONGS = Int32Array.of(0, 2, 0);
-
 const REFS: Refs = Int32Array.of(0, 1, 2);
 
 // Longer than the longest budget a foo_jean call holds, so a call that spends
@@ -39,42 +27,28 @@ const LONGEST_WAIT_MS = 120_000;
 // start, so each needs the clock wound again.
 const AWAITED_STEPS = 1;
 
-const pathTableOf = (paths: string[]) => {
-	const collector = pathCollector();
-	for (const path of paths) collector.add(path);
-	return collector.table();
-};
-
 type MediaLibrarySource = Extract<LibrarySource, { kind: "library" }>;
 
-const librarySource = (
-	paths: string[] = LIBRARY_PATHS,
-	subsongs: Int32Array = LIBRARY_SUBSONGS,
-): MediaLibrarySource =>
-	librarySourceOf({
-		kind: "library",
-		paths: pathTableOf(paths),
-		subsongs,
-		artworkOrigin: ORIGIN,
+const librarySource = (): MediaLibrarySource =>
+	windowedSourceOf({
+		windows: { at: () => null },
+		origin: ORIGIN,
+		listNow: () => ({
+			kind: "library",
+			id: "library",
+			structure: 0,
+			length: REFS.length,
+			ordinals: null,
+		}),
+		coverOf: () => null,
 	});
 
 const playlistSource = ({
-	paths = PLAYLIST_PATHS,
-	subsongs = PLAYLIST_SUBSONGS,
 	structure,
 }: {
-	paths?: string[];
-	subsongs?: Int32Array;
 	structure?: string;
 } = {}): LibrarySource =>
-	librarySourceOf({
-		kind: "playlist",
-		playlistId: PLAYLIST_GUID,
-		origin: ORIGIN,
-		paths: pathTableOf(paths),
-		subsongs,
-		structure,
-	});
+	playlistSourceOf({ playlistId: PLAYLIST_GUID, origin: ORIGIN, structure });
 
 const stallEveryRequest = () => {
 	globalThis.fetch = ((request: Request) =>
@@ -144,34 +118,6 @@ test("a component call that never answers settles rather than leaving the caller
 	}
 });
 
-test("a library row is addressed by the path and the subsong the snapshot holds", () => {
-	const source = librarySource();
-
-	assert.deepEqual(source.address(0), {
-		kind: "library",
-		track: TRACK,
-		subsong: 0,
-	});
-	assert.deepEqual(source.address(2), {
-		kind: "library",
-		track: CUE,
-		subsong: 2,
-	});
-});
-
-test("a library row the snapshot holds no path for has no address", () => {
-	assert.equal(librarySource([""], Int32Array.of(0)).address(0), null);
-	assert.equal(librarySource().address(LIBRARY_PATHS.length), null);
-});
-
-test("a playlist row the media library holds is addressed by its library path, never by its position", () => {
-	assert.deepEqual(playlistSource({ structure: STRUCTURE }).address(1), {
-		kind: "library",
-		track: CUE,
-		subsong: 2,
-	});
-});
-
 test("a playlist row the media library does not hold is addressed by its position and the generation it was read at", () => {
 	assert.deepEqual(playlistSource({ structure: STRUCTURE }).address(2), {
 		kind: "playlist",
@@ -182,16 +128,7 @@ test("a playlist row the media library does not hold is addressed by its positio
 });
 
 test("a playlist source given no generation has no address for a row the media library does not hold", () => {
-	const source = playlistSource();
-
-	assert.equal(source.address(2), null);
-	// The generation guards a position and nothing else, so a row the library
-	// does hold still answers its own address without one.
-	assert.deepEqual(source.address(0), {
-		kind: "library",
-		track: TRACK,
-		subsong: 0,
-	});
+	assert.equal(playlistSource().address(2), null);
 });
 
 test("addressing a row asks the player nothing", (t) => {

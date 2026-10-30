@@ -8,7 +8,6 @@ import {
 	retryLibraryQuestion,
 	subscribeLibraryAnswer,
 } from "./libraryAsker";
-import type { LibraryColumns } from "./libraryColumns";
 
 const NO_UNSUBSCRIBE = () => {};
 
@@ -19,8 +18,8 @@ export function useLibraryQuestion<Question extends LibraryQuestion>(
 	{
 		origin,
 		key,
-		columns,
-	}: { origin: string | null; key: string | null; columns: LibraryColumns },
+		trackCount,
+	}: { origin: string | null; key: string | null; trackCount: number },
 	keepsLast = false,
 ) {
 	const asked = question === null ? null : JSON.stringify(question);
@@ -53,7 +52,7 @@ export function useLibraryQuestion<Question extends LibraryQuestion>(
 		setLast({ question: parsed, key, answer });
 	const kept = keepsLast && answer === null && last?.key === key ? last : null;
 
-	const isAskable = parsed !== null && key !== null && columns.trackCount > 0;
+	const isAskable = parsed !== null && key !== null && trackCount > 0;
 	return {
 		answer: answer ?? kept?.answer ?? null,
 		answered: answer === null ? (kept?.question ?? null) : parsed,

@@ -253,7 +253,6 @@ export const en = {
 		"Warmer rows are the ones you play more, measured against the most-played track in {list} — so it rescales when you open a different one.",
 	"heat.whatItMeans": "What the shading means",
 	"home.allGenres": "All genres",
-	"home.counting": "still counting",
 	"home.door.albums": {
 		one: "album",
 		other: "albums",
@@ -676,7 +675,6 @@ export const en = {
 	"search.section.genres": "Genre",
 	"search.section.tracks": "Tracks",
 	"search.startTyping": "Start typing",
-	"search.stillReading": "Still reading your library",
 	"search.title": "Search",
 	"search.yourLibrary": "Search your library",
 	"settings.appearance.choose": "Theme",

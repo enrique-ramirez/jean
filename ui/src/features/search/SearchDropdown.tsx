@@ -302,20 +302,12 @@ export function SearchDropdown({
 					focusTo={() => search.inputRef.current}
 				/>
 			) : null}
-			{isEmpty && library.isLoading ? (
-				<p className={styles.notice}>
-					{t("search.reading", {
-						loaded: library.loaded,
-						total: library.total,
-					})}
-				</p>
-			) : null}
-			{isEmpty && !library.isLoading && search.isPending ? (
+			{isEmpty && search.isPending ? (
 				<div className={styles.waiting} {...busyProps(true)}>
 					<BusyNote />
 				</div>
 			) : null}
-			{isEmpty && !library.isLoading && !search.isPending ? (
+			{isEmpty && !search.isPending ? (
 				<p className={styles.notice}>{t("search.noMatch")}</p>
 			) : null}
 			{suggestions.length > 0 ? (

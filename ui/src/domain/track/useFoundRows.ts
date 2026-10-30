@@ -1,15 +1,10 @@
 import { useMemo } from "react";
 import { useSetRows, useWatchedWhole } from "@/domain/library/useLibrary";
-import { EMPTY_PLAYLIST } from "./playlistEntries";
 import type { TrackRows } from "./project";
 import type { FinderOver } from "./useFound";
 import { usePlaylistSetRows } from "./usePlaylistItems";
 
-const NO_LIBRARY = {
-	windowed: null,
-	snapshot: EMPTY_PLAYLIST,
-	origin: null,
-} as const;
+const NO_LIBRARY = { windowed: null, structure: 0, origin: null } as const;
 
 export function useFoundRows(
 	over: FinderOver | null,

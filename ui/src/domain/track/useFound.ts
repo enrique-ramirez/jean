@@ -4,10 +4,8 @@ import type { Library } from "@/domain/library/useLibrary";
 import { isQueryTooLong } from "@/shared/api/libraryQuestions";
 import { fetchPlaylistFind } from "@/shared/api/playlists";
 import type { StateDocument } from "@/shared/api/state";
-import { EMPTY_COLUMNS } from "./fields";
 import { meet } from "./finderSets";
 import { inTurn, LIBRARY_ROLES } from "./libraryAsker";
-import type { LibraryColumns } from "./libraryColumns";
 import { announcedLibraryOf, isSettled, watchLibrary } from "./libraryHolds";
 import type { WindowedPlaylist } from "./playlistLoader";
 import type { Refs } from "./project";
@@ -22,12 +20,10 @@ const FIND_TRACKS_ONLY = {
 } as const;
 
 export type FinderOver =
-	| ({
-			kind: "library";
-			origin: string | null;
-			key: string | null;
-			columns: LibraryColumns;
-	  } & Pick<Library, "windowed" | "snapshot">)
+	| ({ kind: "library" } & Pick<
+			Library,
+			"origin" | "key" | "trackCount" | "windowed" | "structure"
+	  >)
 	| {
 			kind: "playlist";
 			origin: string;
@@ -38,7 +34,7 @@ export type FinderOver =
 			windowed: WindowedPlaylist;
 	  };
 
-const NO_LIBRARY = { origin: null, key: null, columns: EMPTY_COLUMNS };
+const NO_LIBRARY = { origin: null, key: null, trackCount: 0 };
 
 const NO_POSITIONS = new Int32Array(0);
 

@@ -36,7 +36,7 @@ export function AutoPlaylistDialog({
 	const t = useTranslate();
 	const { data: playlists = [] } = usePlaylists();
 	const catchUpPlaylists = useCatchUpPlaylists();
-	const { origin, snapshot } = library;
+	const { origin, structure } = library;
 
 	const formId = useId();
 	const nameId = useId();
@@ -145,7 +145,7 @@ export function AutoPlaylistDialog({
 							id={queryId}
 							value={query}
 							origin={origin}
-							structure={snapshot.structure}
+							structure={structure}
 							onChange={(next) => {
 								setQuery(next);
 								save.reset();

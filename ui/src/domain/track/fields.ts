@@ -1,5 +1,5 @@
 import { fieldTable } from "@/shared/api/fieldTable";
-import type { JlibColumn } from "@/shared/api/jlib";
+import { type JlibColumn, jlibColumn } from "@/shared/api/jlib";
 import {
 	everyValueOf,
 	GENRE_EXPRESSION,
@@ -14,12 +14,7 @@ import type {
 import type { Translate } from "@/shared/i18n/locale";
 import { finished, SLICE_MASK, type Steps } from "@/shared/lib/idle";
 import { slicedOver } from "./columnCache";
-import {
-	byValueSteps,
-	type LibraryColumns,
-	libraryColumnsOf,
-	UNRESOLVED,
-} from "./libraryColumns";
+import { byValue, type LibraryColumns, UNRESOLVED } from "./libraryColumns";
 
 const FIELDS = [
 	["trackNumber", "%tracknumber%"],
@@ -56,7 +51,19 @@ export const CREDIT_TAGS = [
 	FIELD.albumArtistIds,
 ];
 
-export const EMPTY_COLUMNS = libraryColumnsOf([], TRACK_EXPRESSIONS.length);
+const NO_IDS = new Uint32Array(0);
+
+export const EMPTY_COLUMNS: LibraryColumns = {
+	load: {},
+	trackCount: 0,
+	fields: TRACK_EXPRESSIONS.map(() =>
+		jlibColumn(
+			NO_IDS,
+			{ count: 0, of: () => "" },
+			{ distinct: 0, hasUnresolved: false, allUnresolved: true },
+		),
+	),
+};
 
 const ABSENT = new Set([UNRESOLVED, "", "N/A"]);
 
@@ -131,24 +138,17 @@ const answerIn = (pair: Pair) => (row: TrackColumns) =>
 export const playCountOf = answerIn(PLAY_COUNT);
 export const lastPlayedOf = answerIn(LAST_PLAYED);
 
-function* columnReaderSteps(
-	columns: LibraryColumns,
-	{ scrobbled, local, by }: Pair,
-): Steps<(ref: number) => number | null> {
-	const remote = columns.fields[scrobbled];
-	const here = columns.fields[local];
-	const answer = (raw: string) => answerOf(by, raw);
-	const remoteAnswers = yield* byValueSteps(remote, answer);
-	const localAnswers = yield* byValueSteps(here, answer);
-	return (ref) =>
-		either(by, remoteAnswers[remote.ids[ref]], localAnswers[here.ids[ref]]);
-}
-
-const readerIn = (pair: Pair) =>
-	Object.assign(
-		(columns: LibraryColumns) => finished(columnReaderSteps(columns, pair)),
-		{ steps: (columns: LibraryColumns) => columnReaderSteps(columns, pair) },
-	);
+const readerIn =
+	({ scrobbled, local, by }: Pair) =>
+	(columns: LibraryColumns): ((ref: number) => number | null) => {
+		const remote = columns.fields[scrobbled];
+		const here = columns.fields[local];
+		const answer = (raw: string) => answerOf(by, raw);
+		const remoteAnswers = byValue(remote, answer);
+		const localAnswers = byValue(here, answer);
+		return (ref) =>
+			either(by, remoteAnswers[remote.ids[ref]], localAnswers[here.ids[ref]]);
+	};
 
 export const playCountsIn = readerIn(PLAY_COUNT);
 

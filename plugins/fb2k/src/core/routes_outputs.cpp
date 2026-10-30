@@ -30,10 +30,8 @@ void OutputRoutes::setActive(const httplib::Request& req, httplib::Response& res
     }
 
     const auto read = outputs_.list();
-    if (read.outcome != PlayerOutcome::done) {
-        respondOutcome(res, read.outcome);
+    if (failed(read, res))
         return;
-    }
 
     const auto listed = std::any_of(
         read.devices.begin(), read.devices.end(),
@@ -50,16 +48,12 @@ void OutputRoutes::addTo(httplib::Server& server) {
     server.Get("/api/outputs", [this](const httplib::Request&, httplib::Response& res) {
         res.set_header("Cache-Control", kAskEveryTime);
 
-        if (!outputs_.list) {
-            respondUnavailable(res, kNoOutputs);
+        if (unavailable(outputs_.list, res, kNoOutputs))
             return;
-        }
 
         const auto read = outputs_.list();
-        if (read.outcome != PlayerOutcome::done) {
-            respondOutcome(res, read.outcome);
+        if (failed(read, res))
             return;
-        }
 
         respond(res, 200, outputsDocument(read));
     });

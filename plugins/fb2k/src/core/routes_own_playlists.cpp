@@ -65,18 +65,14 @@ void OwnPlaylistRoutes::fill(const httplib::Request& req, httplib::Response& res
     const auto titled = ownPlaylistTitle(title.value);
 
     const auto resolved = playlists_.resolveOwn(*role, titled);
-    if (resolved.outcome != PlayerOutcome::done) {
-        respondOutcome(res, resolved.outcome);
+    if (failed(resolved, res))
         return;
-    }
 
     const auto filled =
         playlists_.fill(resolved.playlist.id, titled, request.structure, request.ordinals,
                         ExistingRows::replaced, Duplicates::added);
-    if (filled.outcome != PlayerOutcome::done) {
-        respondOutcome(res, filled.outcome);
+    if (failed(filled, res))
         return;
-    }
 
     respond(res, 200,
             fillResultDocument(resolved.playlist.id, filled.structure, filled.positions,
@@ -93,10 +89,8 @@ void OwnPlaylistRoutes::empty(const httplib::Request& req, httplib::Response& re
         return;
     }
 
-    if (!playlists_.emptyOwn) {
-        respondUnavailable(res, kNoOwnPlaylists);
+    if (unavailable(playlists_.emptyOwn, res, kNoOwnPlaylists))
         return;
-    }
 
     if (changingTooFast(changes_, res))
         return;

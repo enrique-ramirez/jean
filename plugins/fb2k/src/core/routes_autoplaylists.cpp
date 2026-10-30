@@ -33,10 +33,7 @@ AutoPlaylistRoutes::AutoPlaylistRoutes(const AutoPlaylistCalls& autoPlaylists,
     : autoPlaylists_(autoPlaylists),
       settings_(settings),
       changes_(changes),
-      previews_(kPreviewBurst, kPreviewRefill,
-                "refusing query previews: they are arriving faster than this component will run "
-                "them, which usually means a client is looping",
-                clock) {}
+      previews_(kPreviewBurst, kPreviewRefill, {"query previews", "run"}, clock) {}
 
 bool AutoPlaylistRoutes::refusedBeforeAsking(httplib::Response& res,
                                              const AutoPlaylistRequest& request,
@@ -54,14 +51,6 @@ bool AutoPlaylistRoutes::refusedBeforeAsking(httplib::Response& res,
     return changingTooFast(changes_, res, kChangingPlaylistsTooFast);
 }
 
-bool AutoPlaylistRoutes::previewingTooFast(httplib::Response& res) {
-    if (!previews_.refuses())
-        return false;
-
-    respondTooFast(res, previews_, refusalDocument(PlaylistRefusal::tooFast, kPreviewingTooFast));
-    return true;
-}
-
 void AutoPlaylistRoutes::preview(const httplib::Request& req, httplib::Response& res) {
     const auto request = parseQueryPreview(req.body);
     if (!request.ok()) {
@@ -74,14 +63,13 @@ void AutoPlaylistRoutes::preview(const httplib::Request& req, httplib::Response&
         return;
     }
 
-    if (previewingTooFast(res))
+    if (tooFast(previews_, res,
+                [] { return refusalDocument(PlaylistRefusal::tooFast, kPreviewingTooFast); }))
         return;
 
     const auto counted = autoPlaylists_.preview(request.spec.query, request.rows);
-    if (counted.outcome != PlayerOutcome::done) {
-        respondOutcome(res, counted.outcome);
+    if (failed(counted, res))
         return;
-    }
 
     respond(res, 200, queryPreviewDocument(counted));
 }
@@ -105,10 +93,8 @@ void AutoPlaylistRoutes::addTo(httplib::Server& server) {
 
         const auto created =
             autoPlaylists_.create(request.spec, settings_.current()->maxAutoPlaylists);
-        if (created.outcome != PlayerOutcome::done) {
-            respondOutcome(res, created.outcome, created.detail);
+        if (failed(created, res))
             return;
-        }
 
         respond(res, 200, playlistDocument(created.playlist));
     });
@@ -123,10 +109,8 @@ void AutoPlaylistRoutes::addTo(httplib::Server& server) {
             return;
 
         const auto updated = autoPlaylists_.update(id, request.spec);
-        if (updated.outcome != PlayerOutcome::done) {
-            respondOutcome(res, updated.outcome, updated.detail);
+        if (failed(updated, res))
             return;
-        }
 
         respond(res, 200, playlistDocument(updated.playlist));
     });
@@ -141,10 +125,8 @@ void AutoPlaylistRoutes::addTo(httplib::Server& server) {
             return;
 
         const auto removed = autoPlaylists_.remove(id);
-        if (removed.outcome != PlayerOutcome::done) {
-            respondOutcome(res, removed.outcome, removed.detail);
+        if (failed(removed, res))
             return;
-        }
 
         respond(res, 200, playlistRemovedDocument(id));
     });

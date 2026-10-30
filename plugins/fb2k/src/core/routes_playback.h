@@ -25,7 +25,6 @@ private:
     void addTransportRoute(httplib::Server& server, const char* path, Transport command);
     void addVolumeRoute(httplib::Server& server);
     void addPlayingTrackRoute(httplib::Server& server);
-    bool readingPlayingTrackTooFast(httplib::Response& res);
     void readSessionTrack(const Session& session, const std::vector<std::string>& columns,
                           httplib::Response& res);
 

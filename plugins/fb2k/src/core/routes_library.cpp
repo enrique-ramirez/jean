@@ -146,10 +146,8 @@ OrdinalAsked ordinalAsked(const httplib::Request& req) {
 }
 
 void respondTrackRead(httplib::Response& res, const LibraryTrackRead& read) {
-    if (read.outcome != PlayerOutcome::done) {
-        respondOutcome(res, read.outcome);
+    if (failed(read, res))
         return;
-    }
 
     if (!read.held) {
         respondError(res, 404, kNoSuchLibraryTrack);
@@ -372,38 +370,14 @@ LibraryRoutes::LibraryRoutes(const LibraryCalls& calls, const Library* library,
       library_(library),
       settings_(settings),
       runId_(runId),
-      rebuilds_(kRefreshBurst, kRefreshRefill,
-                "refusing library rebuilds: they are arriving faster than this component will "
-                "build them, which usually means a client is looping",
-                clock),
-      tagWrites_(kTagWriteBurst, kTagWriteRefill,
-                 "refusing tag writes: they are arriving faster than this component will make "
-                 "them, which usually means a client is looping",
-                 clock),
-      trackReads_(kTrackReadBurst, kTrackReadRefill,
-                  "refusing library track reads: they are arriving faster than this component "
-                  "will answer them, which usually means a client is looping",
-                  clock),
-      summaryReads_(kLibraryReadBurst, kLibraryReadRefill,
-                    "refusing library summary reads: they are arriving faster than this "
-                    "component will answer them, which usually means a client is looping",
-                    clock),
-      questionReads_(kLibraryReadBurst, kLibraryReadRefill,
-                     "refusing library questions: they are arriving faster than this component "
-                     "will answer them, which usually means a client is looping",
-                     clock),
-      runReads_(kLibraryReadBurst, kLibraryReadRefill,
-                "refusing library run reads: they are arriving faster than this component will "
-                "answer them, which usually means a client is looping",
-                clock),
-      playlistRunReads_(kLibraryReadBurst, kLibraryReadRefill,
-                        "refusing playlist run reads: they are arriving faster than this "
-                        "component will answer them, which usually means a client is looping",
-                        clock),
-      playlistSearches_(kLibraryReadBurst, kLibraryReadRefill,
-                        "refusing playlist searches: they are arriving faster than this "
-                        "component will answer them, which usually means a client is looping",
-                        clock),
+      rebuilds_(kRefreshBurst, kRefreshRefill, {"library rebuilds", "build"}, clock),
+      tagWrites_(kTagWriteBurst, kTagWriteRefill, {"tag writes", "make"}, clock),
+      trackReads_(kTrackReadBurst, kTrackReadRefill, {"library track reads"}, clock),
+      summaryReads_(kLibraryReadBurst, kLibraryReadRefill, {"library summary reads"}, clock),
+      questionReads_(kLibraryReadBurst, kLibraryReadRefill, {"library questions"}, clock),
+      runReads_(kLibraryReadBurst, kLibraryReadRefill, {"library run reads"}, clock),
+      playlistRunReads_(kLibraryReadBurst, kLibraryReadRefill, {"playlist run reads"}, clock),
+      playlistSearches_(kLibraryReadBurst, kLibraryReadRefill, {"playlist searches"}, clock),
       rowReads_(kRowsBurst, kRowsRefill),
       clock_(clock),
       summaryNow_(systemNowMs) {}
@@ -422,82 +396,15 @@ std::vector<std::string> LibraryRoutes::declaration() const {
     return declared_;
 }
 
-// Shared with POST /library/refresh, because a build is a build however it was asked for.
-bool LibraryRoutes::rebuildingTooFast(httplib::Response& res) {
-    if (!rebuilds_.refuses())
-        return false;
-
-    respondTooFast(res, rebuilds_, errorDocument(kRefreshingTooFast));
-    return true;
-}
-
-bool LibraryRoutes::readingTooFast(httplib::Response& res) {
-    if (!trackReads_.refuses())
-        return false;
-
-    respondTooFast(res, trackReads_, errorDocument(kReadingTracksTooFast));
-    return true;
-}
-
-bool LibraryRoutes::summarisingTooFast(httplib::Response& res) {
-    if (!summaryReads_.refuses())
-        return false;
-
-    respondTooFast(res, summaryReads_, errorDocument(kReadingSummariesTooFast));
-    return true;
-}
-
-bool LibraryRoutes::readingRunsTooFast(httplib::Response& res) {
-    if (!runReads_.refuses())
-        return false;
-
-    respondTooFast(res, runReads_, errorDocument(kReadingRunsTooFast));
-    return true;
-}
-
-bool LibraryRoutes::readingPlaylistRunsTooFast(httplib::Response& res) {
-    if (!playlistRunReads_.refuses())
-        return false;
-
-    respondTooFast(res, playlistRunReads_, errorDocument(kReadingPlaylistRunsTooFast));
-    return true;
-}
-
-bool LibraryRoutes::searchingPlaylistsTooFast(httplib::Response& res) {
-    if (!playlistSearches_.refuses())
-        return false;
-
-    respondTooFast(res, playlistSearches_, errorDocument(kSearchingPlaylistsTooFast));
-    return true;
-}
-
-bool LibraryRoutes::questioningTooFast(httplib::Response& res) {
-    if (!questionReads_.refuses())
-        return false;
-
-    respondTooFast(res, questionReads_, errorDocument(kReadingQuestionsTooFast));
-    return true;
-}
-
-bool LibraryRoutes::writingTagsTooFast(httplib::Response& res) {
-    if (!tagWrites_.refuses())
-        return false;
-
-    respondTooFast(res, tagWrites_, tagFailureDocument(TagWriteOutcome::tooFast));
-    return true;
-}
-
 // The set asked for is not the one that is ready. Say what is ready, start building what was
 // asked for, and let the client poll GET /state.
 void LibraryRoutes::startBuilding(httplib::Response& res, const std::vector<std::string>& columns,
                                   const Library::State& state) {
-    if (!calls_.refresh) {
-        respondUnavailable(res, kNoLibrary);
+    if (unavailable(calls_.refresh, res, kNoLibrary))
         return;
-    }
 
     if (!sameDeclaration(declaration(), columns) || !state.build) {
-        if (rebuildingTooFast(res))
+        if (tooFast(rebuilds_, res, kRefreshingTooFast))
             return;
 
         declare(columns);
@@ -543,17 +450,8 @@ SharedBytes LibraryRoutes::summaryOf(HeldSummary& held,
     return held.bytes;
 }
 
-std::optional<Library::State> LibraryRoutes::stateForRoles(
-    httplib::Response& res, const RolesAsked& roles,
-    bool (LibraryRoutes::*tooFast)(httplib::Response&)) {
-    if (!library_) {
-        respondUnavailable(res, kNoLibrary);
-        return std::nullopt;
-    }
-
-    if ((this->*tooFast)(res))
-        return std::nullopt;
-
+std::optional<Library::State> LibraryRoutes::stateForRoles(httplib::Response& res,
+                                                           const RolesAsked& roles) {
     auto state = library_->state();
     const auto verdict = rolesVerdict(state, declaration(), roles.expressions);
     if (verdict.kind == RolesVerdict::notYet) {
@@ -582,7 +480,13 @@ void LibraryRoutes::summarise(const httplib::Request& req, httplib::Response& re
         return;
     }
 
-    const auto state = stateForRoles(res, roles, &LibraryRoutes::summarisingTooFast);
+    if (unavailable(library_, res, kNoLibrary))
+        return;
+
+    if (tooFast(summaryReads_, res, kReadingSummariesTooFast))
+        return;
+
+    const auto state = stateForRoles(res, roles);
     if (!state)
         return;
 
@@ -615,7 +519,13 @@ void LibraryRoutes::readRuns(const httplib::Request& req, httplib::Response& res
         return;
     }
 
-    if (!stateForRoles(res, roles, &LibraryRoutes::readingRunsTooFast))
+    if (unavailable(library_, res, kNoLibrary))
+        return;
+
+    if (tooFast(runReads_, res, kReadingRunsTooFast))
+        return;
+
+    if (!stateForRoles(res, roles))
         return;
 
     const auto read = library_->read([&](const Snapshot& snapshot) -> std::optional<RunsRead> {
@@ -679,14 +589,8 @@ struct LibraryRoutes::PlaylistCopy {
 // which a rebuild waiting to replace the snapshot would then be stalled behind.
 std::optional<LibraryRoutes::PlaylistCopy> LibraryRoutes::copyPlaylist(
     httplib::Response& res, const std::string& playlistId, uint64_t structure,
-    const RolesAsked& roles, bool (LibraryRoutes::*tooFast)(httplib::Response&),
-    const PlaylistTrackReader& readTracks, PlaylistColumns columnsOf) {
-    if (!readTracks) {
-        respondUnavailable(res, kNoPlaylistRows);
-        return std::nullopt;
-    }
-
-    if (!stateForRoles(res, roles, tooFast))
+    const RolesAsked& roles, const PlaylistTrackReader& readTracks, PlaylistColumns columnsOf) {
+    if (!stateForRoles(res, roles))
         return std::nullopt;
 
     auto columns =
@@ -702,10 +606,8 @@ std::optional<LibraryRoutes::PlaylistCopy> LibraryRoutes::copyPlaylist(
     }
 
     PlaylistCopy copy{readTracks(playlistId, *columns), std::move(*columns)};
-    if (copy.read.outcome != PlayerOutcome::done) {
-        respondOutcome(res, copy.read.outcome);
+    if (failed(copy.read, res))
         return std::nullopt;
-    }
 
     if (copy.read.structure != structure) {
         respondOutcome(res, PlayerOutcome::rowsMoved);
@@ -733,9 +635,17 @@ void LibraryRoutes::readPlaylistRuns(const httplib::Request& req, httplib::Respo
         return;
     }
 
+    if (unavailable(readTracks, res, kNoPlaylistRows))
+        return;
+
+    if (unavailable(library_, res, kNoLibrary))
+        return;
+
+    if (tooFast(playlistRunReads_, res, kReadingPlaylistRunsTooFast))
+        return;
+
     const auto copy =
-        copyPlaylist(res, id, asked.structure, roles, &LibraryRoutes::readingPlaylistRunsTooFast,
-                     readTracks, playlistRunsColumns);
+        copyPlaylist(res, id, asked.structure, roles, readTracks, playlistRunsColumns);
     if (!copy)
         return;
 
@@ -775,9 +685,17 @@ void LibraryRoutes::findInPlaylist(const httplib::Request& req, httplib::Respons
         return;
     }
 
+    if (unavailable(readTracks, res, kNoPlaylistRows))
+        return;
+
+    if (unavailable(library_, res, kNoLibrary))
+        return;
+
+    if (tooFast(playlistSearches_, res, kSearchingPlaylistsTooFast))
+        return;
+
     const auto copy =
-        copyPlaylist(res, id, asked.structure, roles, &LibraryRoutes::searchingPlaylistsTooFast,
-                     readTracks, playlistFindColumns);
+        copyPlaylist(res, id, asked.structure, roles, readTracks, playlistFindColumns);
     if (!copy)
         return;
 
@@ -830,7 +748,13 @@ void LibraryRoutes::answerQuestion(const Question kind, const httplib::Request& 
         return;
     }
 
-    const auto state = stateForRoles(res, roles, &LibraryRoutes::questioningTooFast);
+    if (unavailable(library_, res, kNoLibrary))
+        return;
+
+    if (tooFast(questionReads_, res, kReadingQuestionsTooFast))
+        return;
+
+    const auto state = stateForRoles(res, roles);
     if (!state)
         return;
     const auto read = library_->read([&](const Snapshot& snapshot) -> std::optional<QuestionRead> {
@@ -906,10 +830,8 @@ void LibraryRoutes::readRows(const httplib::Request& req, httplib::Response& res
         return;
     }
 
-    if (!library_) {
-        respondUnavailable(res, kNoLibrary);
+    if (unavailable(library_, res, kNoLibrary))
         return;
-    }
 
     if (readingRowsTooFast(res, req.remote_addr))
         return;
@@ -965,12 +887,10 @@ void LibraryRoutes::readTrack(const httplib::Request& req, httplib::Response& re
             return;
         }
 
-        if (!calls_.readOrdinal) {
-            respondUnavailable(res, kNoLibrary);
+        if (unavailable(calls_.readOrdinal, res, kNoLibrary))
             return;
-        }
 
-        if (readingTooFast(res))
+        if (tooFast(trackReads_, res, kReadingTracksTooFast))
             return;
 
         respondTrackRead(res, calls_.readOrdinal(asked.ref, declared.columns));
@@ -1000,12 +920,10 @@ void LibraryRoutes::readTrack(const httplib::Request& req, httplib::Response& re
         return;
     }
 
-    if (!calls_.readTrack) {
-        respondUnavailable(res, kNoLibrary);
+    if (unavailable(calls_.readTrack, res, kNoLibrary))
         return;
-    }
 
-    if (readingTooFast(res))
+    if (tooFast(trackReads_, res, kReadingTracksTooFast))
         return;
 
     respondTrackRead(res, calls_.readTrack(track, *subsong, declared.columns));
@@ -1053,7 +971,7 @@ void LibraryRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (rebuildingTooFast(res))
+        if (tooFast(rebuilds_, res, kRefreshingTooFast))
             return;
 
         const auto state = library_->state();
@@ -1079,7 +997,7 @@ void LibraryRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (writingTagsTooFast(res))
+        if (tooFast(tagWrites_, res, [] { return tagFailureDocument(TagWriteOutcome::tooFast); }))
             return;
 
         const auto& ordinal = request.write.track.ordinal;

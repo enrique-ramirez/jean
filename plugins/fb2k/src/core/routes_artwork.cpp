@@ -81,18 +81,7 @@ ArtworkRoutes::ArtworkRoutes(const LibraryCalls& library, const PlaylistCalls& p
       registry_(registry),
       nowPlaying_(nowPlaying),
       clock_(clock),
-      reads_(kArtworkBurst, kArtworkRefill,
-             "refusing artwork reads: they are arriving faster than this component will answer "
-             "them, which usually means a client is looping",
-             clock) {}
-
-bool ArtworkRoutes::fetchingTooFast(httplib::Response& res) {
-    if (!reads_.refuses())
-        return false;
-
-    respondTooFast(res, reads_, errorDocument(kFetchingArtworkTooFast));
-    return true;
-}
+      reads_(kArtworkBurst, kArtworkRefill, {"artwork reads"}, clock) {}
 
 void ArtworkRoutes::sendPlaying(const httplib::Request& req, httplib::Response& res) {
     res.set_header("Cache-Control", kAskEveryTime);
@@ -101,7 +90,7 @@ void ArtworkRoutes::sendPlaying(const httplib::Request& req, httplib::Response& 
     if (named.which == SessionAnswer::Which::none)
         return;
 
-    if (fetchingTooFast(res))
+    if (tooFast(reads_, res, kFetchingArtworkTooFast))
         return;
 
     if (named.session) {
@@ -123,12 +112,10 @@ void ArtworkRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (!library_.readArtwork) {
-            respondUnavailable(res, kNoArtwork);
+        if (unavailable(library_.readArtwork, res, kNoArtwork))
             return;
-        }
 
-        if (fetchingTooFast(res))
+        if (tooFast(reads_, res, kFetchingArtworkTooFast))
             return;
 
         const auto answer = sendArtwork(req, res, library_.readArtwork(track));
@@ -154,12 +141,10 @@ void ArtworkRoutes::addTo(httplib::Server& server) {
                        return;
                    }
 
-                   if (!playlists_.readRowArtwork) {
-                       respondUnavailable(res, kNoArtwork);
+                   if (unavailable(playlists_.readRowArtwork, res, kNoArtwork))
                        return;
-                   }
 
-                   if (fetchingTooFast(res))
+                   if (tooFast(reads_, res, kFetchingArtworkTooFast))
                        return;
 
                    const auto read = playlists_.readRowArtwork(request.playlistId, request.index);

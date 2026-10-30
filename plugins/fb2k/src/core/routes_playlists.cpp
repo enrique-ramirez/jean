@@ -74,19 +74,15 @@ void PlaylistRoutes::create(const httplib::Request& req, httplib::Response& res)
     if (!rows)
         return;
 
-    if (!playlists_.create) {
-        respondUnavailable(res, kNoPlaylistWrites);
+    if (unavailable(playlists_.create, res, kNoPlaylistWrites))
         return;
-    }
 
     if (changingTooFast(changes_, res))
         return;
 
     const auto made = playlists_.create(title.value, *rows);
-    if (made.outcome != PlayerOutcome::done) {
-        respondOutcome(res, made.outcome, made.detail);
+    if (failed(made, res))
         return;
-    }
 
     respond(res, 200, playlistDocument(made.playlist));
 }
@@ -99,10 +95,8 @@ void PlaylistRoutes::addTo(httplib::Server& server) {
         }
 
         const auto result = playlists_.list();
-        if (result.outcome != PlayerOutcome::done) {
-            respondOutcome(res, result.outcome);
+        if (failed(result, res))
             return;
-        }
 
         respond(res, 200, playlistsDocument(result.playlists));
     });
@@ -124,10 +118,8 @@ void PlaylistRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (!playlists_.rename) {
-            respondUnavailable(res, kNoPlaylistWrites);
+        if (unavailable(playlists_.rename, res, kNoPlaylistWrites))
             return;
-        }
 
         if (changingTooFast(changes_, res))
             return;
@@ -144,10 +136,8 @@ void PlaylistRoutes::addTo(httplib::Server& server) {
         if (playlistIdRefused(id, res))
             return;
 
-        if (!playlists_.remove) {
-            respondUnavailable(res, kNoPlaylistWrites);
+        if (unavailable(playlists_.remove, res, kNoPlaylistWrites))
             return;
-        }
 
         if (changingTooFast(changes_, res))
             return;
@@ -170,10 +160,8 @@ void PlaylistRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (!playlists_.move) {
-            respondUnavailable(res, kNoPlaylistWrites);
+        if (unavailable(playlists_.move, res, kNoPlaylistWrites))
             return;
-        }
 
         if (changingTooFast(changes_, res))
             return;

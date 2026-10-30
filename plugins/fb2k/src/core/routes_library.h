@@ -60,7 +60,6 @@ public:
 private:
     void startBuilding(httplib::Response& res, const std::vector<std::string>& columns,
                        const Library::State& state);
-    bool rebuildingTooFast(httplib::Response& res);
 
     struct SummaryKey {
         uint64_t structure = 0;
@@ -82,38 +81,27 @@ private:
     };
 
     void summarise(const httplib::Request& req, httplib::Response& res);
-    bool summarisingTooFast(httplib::Response& res);
     std::shared_ptr<HeldSummary> heldSummaryFor(const SummaryKey& key);
     SharedBytes summaryOf(HeldSummary& held, const std::map<std::string, std::string>& roles,
                           int64_t nowMs);
 
-    std::optional<Library::State> stateForRoles(httplib::Response& res, const RolesAsked& roles,
-                                                bool (LibraryRoutes::*tooFast)(httplib::Response&));
+    std::optional<Library::State> stateForRoles(httplib::Response& res, const RolesAsked& roles);
 
     void readRuns(const httplib::Request& req, httplib::Response& res);
-    bool readingRunsTooFast(httplib::Response& res);
 
     struct PlaylistCopy;
 
     std::optional<PlaylistCopy> copyPlaylist(httplib::Response& res, const std::string& playlistId,
                                              uint64_t structure, const RolesAsked& roles,
-                                             bool (LibraryRoutes::*tooFast)(httplib::Response&),
                                              const PlaylistTrackReader& readTracks,
                                              PlaylistColumns columnsOf);
 
-    bool readingPlaylistRunsTooFast(httplib::Response& res);
-    bool searchingPlaylistsTooFast(httplib::Response& res);
-
     void answerQuestion(Question kind, const httplib::Request& req, httplib::Response& res);
-    bool questioningTooFast(httplib::Response& res);
 
     void readRows(const httplib::Request& req, httplib::Response& res);
     bool readingRowsTooFast(httplib::Response& res, const std::string& client);
 
     void readTrack(const httplib::Request& req, httplib::Response& res);
-    bool readingTooFast(httplib::Response& res);
-
-    bool writingTagsTooFast(httplib::Response& res);
 
     void declare(std::vector<std::string> columns);
     std::vector<std::string> declaration() const;

@@ -94,10 +94,8 @@ bool PlaylistRowRoutes::ownPlaylistRefused(const std::string& id, httplib::Respo
         return false;
 
     const auto read = playlists_.readRole(id);
-    if (read.outcome != PlayerOutcome::done) {
-        respondOutcome(res, read.outcome);
+    if (failed(read, res))
         return true;
-    }
 
     if (!read.role)
         return false;
@@ -125,10 +123,8 @@ void PlaylistRowRoutes::fill(const httplib::Request& req, httplib::Response& res
         return;
     }
 
-    if (!playlists_.fill) {
-        respondUnavailable(res, kNoPlaylistWrites);
+    if (unavailable(playlists_.fill, res, kNoPlaylistWrites))
         return;
-    }
 
     if (changingTooFast(changes_, res))
         return;
@@ -138,10 +134,8 @@ void PlaylistRowRoutes::fill(const httplib::Request& req, httplib::Response& res
 
     const auto filled = playlists_.fill(id, std::string{}, request.structure, request.ordinals,
                                         ExistingRows::kept, request.duplicates);
-    if (filled.outcome != PlayerOutcome::done) {
-        respondOutcome(res, filled.outcome);
+    if (failed(filled, res))
         return;
-    }
 
     respond(res, 200, fillResultDocument(id, filled.structure, filled.positions, filled.skipped));
 }
@@ -173,19 +167,15 @@ void PlaylistRowRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (!playlists_.readRows) {
-            respondUnavailable(res, kNoPlaylistRows);
+        if (unavailable(playlists_.readRows, res, kNoPlaylistRows))
             return;
-        }
 
         if (readingRowsTooFast(req, res))
             return;
 
         auto read = playlists_.readRows(id, asked.rows, declared.columns);
-        if (read.outcome != PlayerOutcome::done) {
-            respondOutcome(res, read.outcome);
+        if (failed(read, res))
             return;
-        }
 
         std::vector<PlaylistRow*> rows;
         std::transform(read.rows.begin(), read.rows.end(), std::back_inserter(rows),
@@ -226,19 +216,15 @@ void PlaylistRowRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (!playlists_.readChangedRows) {
-            respondUnavailable(res, kNoPlaylistRows);
+        if (unavailable(playlists_.readChangedRows, res, kNoPlaylistRows))
             return;
-        }
 
         if (readingRowsTooFast(req, res))
             return;
 
         auto read = playlists_.readChangedRows(id, structure, declared.since, declared.columns);
-        if (read.outcome != PlayerOutcome::done) {
-            respondOutcome(res, read.outcome);
+        if (failed(read, res))
             return;
-        }
 
         if (read.catchUp != ReadOutcome::ok) {
             respondOutcome(res, rowsRefusal(read.catchUp));
@@ -268,20 +254,16 @@ void PlaylistRowRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (!playlists_.copyRows) {
-            respondUnavailable(res, kNoPlaylistRows);
+        if (unavailable(playlists_.copyRows, res, kNoPlaylistRows))
             return;
-        }
 
         if (changingTooFast(changes_, res))
             return;
 
         const auto copied =
             playlists_.copyRows(id, request.playlistId, request.positions, request.duplicates);
-        if (copied.outcome != PlayerOutcome::done) {
-            respondOutcome(res, copied.outcome);
+        if (failed(copied, res))
             return;
-        }
 
         respond(res, 200, copiedRowsDocument(copied.structure, copied.positions, copied.skipped));
     });
@@ -300,19 +282,15 @@ void PlaylistRowRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (!playlists_.removeRows) {
-            respondUnavailable(res, kNoPlaylistRows);
+        if (unavailable(playlists_.removeRows, res, kNoPlaylistRows))
             return;
-        }
 
         if (changingTooFast(changes_, res))
             return;
 
         const auto removed = playlists_.removeRows(id, request.structure, request.ordinals);
-        if (removed.outcome != PlayerOutcome::done) {
-            respondOutcome(res, removed.outcome);
+        if (failed(removed, res))
             return;
-        }
 
         respond(res, 200, removedRowsDocument(removed.structure));
     });
@@ -331,19 +309,15 @@ void PlaylistRowRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (!playlists_.moveRows) {
-            respondUnavailable(res, kNoPlaylistRows);
+        if (unavailable(playlists_.moveRows, res, kNoPlaylistRows))
             return;
-        }
 
         if (changingTooFast(changes_, res))
             return;
 
         const auto moved = playlists_.moveRows(id, request.structure, request.ordinals, request.to);
-        if (moved.outcome != PlayerOutcome::done) {
-            respondOutcome(res, moved.outcome);
+        if (failed(moved, res))
             return;
-        }
 
         respond(res, 200, movedRowsDocument(moved.structure));
     });
@@ -362,19 +336,15 @@ void PlaylistRowRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (!playlists_.sortRows) {
-            respondUnavailable(res, kNoPlaylistRows);
+        if (unavailable(playlists_.sortRows, res, kNoPlaylistRows))
             return;
-        }
 
         if (changingTooFast(changes_, res))
             return;
 
         const auto sorted = playlists_.sortRows(id, request.structure, request.pattern);
-        if (sorted.outcome != PlayerOutcome::done) {
-            respondOutcome(res, sorted.outcome);
+        if (failed(sorted, res))
             return;
-        }
 
         respond(res, 200, sortedRowsDocument(sorted.structure, sorted.order));
     });

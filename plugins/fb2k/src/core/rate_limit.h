@@ -82,9 +82,14 @@ private:
     const std::chrono::milliseconds perToken_;
 };
 
+struct Throttled {
+    std::string requests;
+    std::string verb = "answer";
+};
+
 class Throttle {
 public:
-    Throttle(int burst, std::chrono::milliseconds refill, std::string complaint,
+    Throttle(int burst, std::chrono::milliseconds refill, const Throttled& refused,
              RateLimitClock clock);
 
     bool refuses();

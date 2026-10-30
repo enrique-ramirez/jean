@@ -82,18 +82,7 @@ PlaybackRoutes::PlaybackRoutes(const PlaybackCalls& playback, const SessionCalls
       report_(report),
       settings_(settings),
       clock_(clock),
-      playingTrackReads_(kPlayingTrackBurst, kPlayingTrackRefill,
-                         "refusing playing track reads: they are arriving faster than this "
-                         "component will answer them, which usually means a client is looping",
-                         clock) {}
-
-bool PlaybackRoutes::readingPlayingTrackTooFast(httplib::Response& res) {
-    if (!playingTrackReads_.refuses())
-        return false;
-
-    respondTooFast(res, playingTrackReads_, errorDocument(kReadingTracksTooFast));
-    return true;
-}
+      playingTrackReads_(kPlayingTrackBurst, kPlayingTrackRefill, {"playing track reads"}, clock) {}
 
 SessionAnswer PlaybackRoutes::commandedSession(const httplib::Request& req,
                                                httplib::Response& res) {
@@ -113,10 +102,8 @@ void PlaybackRoutes::addTransportRoute(httplib::Server& server, const char* path
             return;
         }
 
-        if (!playback_.commandTransport) {
-            respondUnavailable(res, kNoPlayback);
+        if (unavailable(playback_.commandTransport, res, kNoPlayback))
             return;
-        }
 
         respondCommand(res, playback_.commandTransport(command));
     });
@@ -139,10 +126,8 @@ void PlaybackRoutes::seek(const httplib::Request& req, httplib::Response& res) {
         return;
     }
 
-    if (!playback_.seek) {
-        respondUnavailable(res, kNoPlayback);
+    if (unavailable(playback_.seek, res, kNoPlayback))
         return;
-    }
 
     respondCommand(res, playback_.seek(request.seconds, request.relative));
 }
@@ -174,10 +159,8 @@ void PlaybackRoutes::setMode(const httplib::Request& req, httplib::Response& res
         return;
     }
 
-    if (!playback_.setOrder) {
-        respondUnavailable(res, kNoPlayback);
+    if (unavailable(playback_.setOrder, res, kNoPlayback))
         return;
-    }
 
     respondCommand(res, playback_.setOrder(resolved.index));
 }
@@ -198,20 +181,16 @@ void PlaybackRoutes::playRow(const httplib::Request& req, httplib::Response& res
         return;
     }
 
-    if (!playback_.playPlaylistRow) {
-        respondUnavailable(res, kNoPlaylistRows);
+    if (unavailable(playback_.playPlaylistRow, res, kNoPlaylistRows))
         return;
-    }
 
     respondCommand(res, playback_.playPlaylistRow(request.playlistId, request.index));
 }
 
 void PlaybackRoutes::playRowIn(Session& session, const std::string& playlistId, uint32_t index,
                                httplib::Response& res) {
-    if (!sessions_.takePlaylist) {
-        respondUnavailable(res, kNoPlaylistRows);
+    if (unavailable(sessions_.takePlaylist, res, kNoPlaylistRows))
         return;
-    }
 
     auto taken = sessions_.takePlaylist(playlistId, std::nullopt);
     if (taken.outcome != PlayerOutcome::done) {
@@ -248,10 +227,8 @@ void PlaybackRoutes::playSet(const httplib::Request& req, httplib::Response& res
         return;
     }
 
-    if (!sessions_.takeLibrary) {
-        respondUnavailable(res, kNoPlayback);
+    if (unavailable(sessions_.takeLibrary, res, kNoPlayback))
         return;
-    }
 
     auto taken = sessions_.takeLibrary(request.structure, request.ordinals);
     if (taken.outcome != PlayerOutcome::done) {
@@ -276,27 +253,21 @@ void PlaybackRoutes::addVolumeRoute(httplib::Server& server) {
 
         switch (request.form) {
             case VolumeRequest::Form::value:
-                if (!playback_.setVolume) {
-                    respondUnavailable(res, kNoVolume);
+                if (unavailable(playback_.setVolume, res, kNoVolume))
                     return;
-                }
                 respondCommand(res, playback_.setVolume(request.value));
                 return;
 
             case VolumeRequest::Form::step:
-                if (!playback_.stepVolume) {
-                    respondUnavailable(res, kNoVolume);
+                if (unavailable(playback_.stepVolume, res, kNoVolume))
                     return;
-                }
                 respondCommand(res, playback_.stepVolume(request.step == "up" ? VolumeStep::up
                                                                               : VolumeStep::down));
                 return;
 
             case VolumeRequest::Form::muted:
-                if (!playback_.setMuted) {
-                    respondUnavailable(res, kNoVolume);
+                if (unavailable(playback_.setMuted, res, kNoVolume))
                     return;
-                }
                 respondCommand(res, playback_.setMuted(request.muted));
                 return;
         }
@@ -327,14 +298,12 @@ void PlaybackRoutes::addPlayingTrackRoute(httplib::Server& server) {
             return;
         }
 
-        if (readingPlayingTrackTooFast(res))
+        if (tooFast(playingTrackReads_, res, kReadingTracksTooFast))
             return;
 
         const auto read = playback_.readPlayingTrack(declared.columns);
-        if (read.outcome != PlayerOutcome::done) {
-            respondOutcome(res, read.outcome);
+        if (failed(read, res))
             return;
-        }
 
         if (!read.playing) {
             respondError(res, 404, kNothingPlaying);
@@ -353,7 +322,7 @@ void PlaybackRoutes::readSessionTrack(const Session& session,
         return;
     }
 
-    if (readingPlayingTrackTooFast(res))
+    if (tooFast(playingTrackReads_, res, kReadingTracksTooFast))
         return;
 
     const auto turn = session.turn();
@@ -363,10 +332,8 @@ void PlaybackRoutes::readSessionTrack(const Session& session,
     }
 
     const auto read = sessions_.readTrack(turn->track, columns);
-    if (read.outcome != PlayerOutcome::done) {
-        respondOutcome(res, read.outcome);
+    if (failed(read, res))
         return;
-    }
 
     respond(res, 200, playingTrackDocument(turn->track.path, turn->track.subsong, read.columns));
 }

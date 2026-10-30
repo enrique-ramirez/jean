@@ -393,10 +393,7 @@ struct HttpServer::Impl {
         : settings(std::move(s)),
           player(std::move(p)),
           library(lib),
-          playlistChanges(kPlaylistBurst, kPlaylistRefill,
-                          "refusing playlist changes: they are arriving faster than this "
-                          "component will make them, which usually means a client is looping",
-                          clock),
+          playlistChanges(kPlaylistBurst, kPlaylistRefill, {"playlist changes", "make"}, clock),
           sessionCapacity{player.sessions.start != nullptr, settings.current()->maxSessions},
           sessions(audience, sessionCapacity.maxSessions, mint, sessionRandom(),
                    player.sessions.start),

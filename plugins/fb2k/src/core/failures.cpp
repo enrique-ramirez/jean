@@ -337,13 +337,14 @@ std::string failureDocument(ReadOutcome outcome) {
     return json{{"error", describe(outcome)}, {"detail", ""}}.dump();
 }
 
-std::string refusalDocument(PlaylistRefusal refusal, const std::string& detail) {
+template <PlainRefusal Refusal>
+std::string refusalDocument(Refusal refusal, const std::string& detail) {
     return json{{"error", describe(refusal)}, {"detail", detail}}.dump();
 }
 
-std::string refusalDocument(PlaybackRefusal refusal, const std::string& detail) {
-    return json{{"error", describe(refusal)}, {"detail", detail}}.dump();
-}
+template std::string refusalDocument(PlaylistRefusal, const std::string&);
+template std::string refusalDocument(PlaybackRefusal, const std::string&);
+template std::string refusalDocument(LibraryRefusal, const std::string&);
 
 std::string tagRefusalDocument(TagWriteRefusal refusal, const std::string& detail) {
     json body{{"written", false}, {"error", describe(refusal)}, {"detail", detail}};
@@ -352,10 +353,6 @@ std::string tagRefusalDocument(TagWriteRefusal refusal, const std::string& detai
         body["field"] = detail;
 
     return body.dump();
-}
-
-std::string refusalDocument(LibraryRefusal refusal, const std::string& detail) {
-    return json{{"error", describe(refusal)}, {"detail", detail}}.dump();
 }
 
 std::string activeOutputRefusedDocument(const std::string& detail) {

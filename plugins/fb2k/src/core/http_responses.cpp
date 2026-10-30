@@ -120,18 +120,6 @@ void respondOutcome(httplib::Response& res, TagWriteOutcome outcome) {
     respond(res, httpStatusFor(outcome), tagFailureDocument(outcome));
 }
 
-void respondRefusal(httplib::Response& res, PlaylistRefusal refusal, const std::string& detail) {
-    respond(res, httpStatusFor(refusal), refusalDocument(refusal, detail));
-}
-
-void respondRefusal(httplib::Response& res, PlaybackRefusal refusal, const std::string& detail) {
-    respond(res, httpStatusFor(refusal), refusalDocument(refusal, detail));
-}
-
-void respondRefusal(httplib::Response& res, LibraryRefusal refusal, const std::string& detail) {
-    respond(res, httpStatusFor(refusal), refusalDocument(refusal, detail));
-}
-
 void respondRefusal(httplib::Response& res, TagWriteRefusal refusal, const std::string& detail) {
     respond(res, httpStatusFor(refusal), tagRefusalDocument(refusal, detail));
 }
@@ -242,10 +230,8 @@ void sendRevalidated(const httplib::Request& req, httplib::Response& res, std::s
 }
 
 std::optional<Library::State> readyLibrary(const Library* library, httplib::Response& res) {
-    if (!library) {
-        respondUnavailable(res, kNoLibrary);
+    if (unavailable(library, res, kNoLibrary))
         return std::nullopt;
-    }
 
     auto state = library->state();
     if (!state.ready) {
@@ -261,12 +247,13 @@ void respondTooFast(httplib::Response& res, const Throttle& throttle, std::strin
     respond(res, 429, std::move(body));
 }
 
-bool changingTooFast(Throttle& changes, httplib::Response& res, const std::string& detail) {
-    if (!changes.refuses())
-        return false;
+bool tooFast(Throttle& throttle, httplib::Response& res, const char* message) {
+    return tooFast(throttle, res, [message] { return errorDocument(message); });
+}
 
-    respondTooFast(res, changes, refusalDocument(PlaylistRefusal::tooFast, detail));
-    return true;
+bool changingTooFast(Throttle& changes, httplib::Response& res, const std::string& detail) {
+    return tooFast(changes, res,
+                   [&detail] { return refusalDocument(PlaylistRefusal::tooFast, detail); });
 }
 
 std::vector<std::string> columnsAsked(const httplib::Request& req) {

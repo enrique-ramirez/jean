@@ -24,7 +24,6 @@ private:
 
     bool refusedBeforeAsking(httplib::Response& res, const AutoPlaylistRequest& request,
                              bool playerCanAnswer);
-    bool previewingTooFast(httplib::Response& res);
 
     const AutoPlaylistCalls& autoPlaylists_;
     const LiveSettings& settings_;

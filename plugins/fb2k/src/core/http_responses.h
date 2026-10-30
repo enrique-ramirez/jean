@@ -16,6 +16,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -29,14 +30,36 @@ void respondError(httplib::Response& res, int status, const std::string& message
 // without it.
 void respondUnavailable(httplib::Response& res, const std::string& message);
 
+template <typename Call>
+bool unavailable(const Call& call, httplib::Response& res, const char* message) {
+    if (call)
+        return false;
+
+    respondUnavailable(res, message);
+    return true;
+}
+
 void respondOutcome(httplib::Response& res, PlayerOutcome outcome, const std::string& detail = {});
 void respondOutcome(httplib::Response& res, ReadOutcome outcome);
 void respondOutcome(httplib::Response& res, TagWriteOutcome outcome);
 
-void respondRefusal(httplib::Response& res, PlaylistRefusal refusal,
-                    const std::string& detail = {});
-void respondRefusal(httplib::Response& res, PlaybackRefusal refusal, const std::string& detail);
-void respondRefusal(httplib::Response& res, LibraryRefusal refusal, const std::string& detail);
+template <typename Result>
+bool failed(const Result& result, httplib::Response& res) {
+    if (result.outcome == PlayerOutcome::done)
+        return false;
+
+    if constexpr (requires { result.detail; })
+        respondOutcome(res, result.outcome, result.detail);
+    else
+        respondOutcome(res, result.outcome);
+    return true;
+}
+
+template <PlainRefusal Refusal>
+void respondRefusal(httplib::Response& res, Refusal refusal, const std::string& detail = {}) {
+    respond(res, httpStatusFor(refusal), refusalDocument(refusal, detail));
+}
+
 void respondRefusal(httplib::Response& res, TagWriteRefusal refusal, const std::string& detail);
 
 void respondCommand(httplib::Response& res, PlayerOutcome outcome, const std::string& detail = {});
@@ -72,6 +95,18 @@ bool playlistIdRefused(const std::string& id, httplib::Response& res);
 std::optional<Library::State> readyLibrary(const Library* library, httplib::Response& res);
 
 void respondTooFast(httplib::Response& res, const Throttle& throttle, std::string body);
+
+template <typename Document>
+    requires std::is_invocable_r_v<std::string, const Document&>
+bool tooFast(Throttle& throttle, httplib::Response& res, const Document& document) {
+    if (!throttle.refuses())
+        return false;
+
+    respondTooFast(res, throttle, document());
+    return true;
+}
+
+bool tooFast(Throttle& throttle, httplib::Response& res, const char* message);
 
 bool perClientTooFast(PerClientRateLimiter& limiter, const std::string& client,
                       std::chrono::steady_clock::time_point now, const char* message,

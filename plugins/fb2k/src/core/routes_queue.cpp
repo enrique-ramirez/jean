@@ -75,17 +75,13 @@ void QueueRoutes::attachCovers(const RolesAsked& roles, std::vector<QueuedTrack>
 
 void QueueRoutes::readSessionQueue(const Session& session, const RolesAsked& roles,
                                    httplib::Response& res) {
-    if (!sessions_.readQueue) {
-        respondUnavailable(res, kNoQueue);
+    if (unavailable(sessions_.readQueue, res, kNoQueue))
         return;
-    }
 
     const auto queue = session.queue();
     auto read = sessions_.readQueue(queue.entries);
-    if (read.outcome != PlayerOutcome::done) {
-        respondOutcome(res, read.outcome);
+    if (failed(read, res))
         return;
-    }
 
     read.revision = queue.revision;
     std::for_each(read.entries.begin(), read.entries.end(),
@@ -137,10 +133,8 @@ void QueueRoutes::queuePlaylistRows(Session* session, const JsonObject& body,
     }
 
     if (session) {
-        if (!sessions_.takePlaylist) {
-            respondUnavailable(res, kNoQueue);
+        if (unavailable(sessions_.takePlaylist, res, kNoQueue))
             return;
-        }
 
         queueInSession(
             *session, request.at, request.positions.size(),
@@ -151,10 +145,8 @@ void QueueRoutes::queuePlaylistRows(Session* session, const JsonObject& body,
         return;
     }
 
-    if (!queue_.addPlaylistRows) {
-        respondUnavailable(res, kNoQueue);
+    if (unavailable(queue_.addPlaylistRows, res, kNoQueue))
         return;
-    }
 
     if (changingTooFast(changes_, res))
         return;
@@ -178,10 +170,8 @@ void QueueRoutes::queueLibraryTracks(Session* session, const JsonObject& body,
     }
 
     if (session) {
-        if (!sessions_.takeLibrary) {
-            respondUnavailable(res, kNoQueue);
+        if (unavailable(sessions_.takeLibrary, res, kNoQueue))
             return;
-        }
 
         queueInSession(
             *session, request.at, request.ordinals.size(),
@@ -190,10 +180,8 @@ void QueueRoutes::queueLibraryTracks(Session* session, const JsonObject& body,
         return;
     }
 
-    if (!queue_.addLibraryTracks) {
-        respondUnavailable(res, kNoQueue);
+    if (unavailable(queue_.addLibraryTracks, res, kNoQueue))
         return;
-    }
 
     if (changingTooFast(changes_, res))
         return;
@@ -221,16 +209,12 @@ void QueueRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (!queue_.read) {
-            respondUnavailable(res, kNoQueue);
+        if (unavailable(queue_.read, res, kNoQueue))
             return;
-        }
 
         auto read = queue_.read();
-        if (read.outcome != PlayerOutcome::done) {
-            respondOutcome(res, read.outcome);
+        if (failed(read, res))
             return;
-        }
         attachCovers(roles, read.entries);
 
         respond(res, 200, queueDocument(read));
@@ -269,10 +253,8 @@ void QueueRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (!queue_.clear) {
-            respondUnavailable(res, kNoQueue);
+        if (unavailable(queue_.clear, res, kNoQueue))
             return;
-        }
 
         if (changingTooFast(changes_, res))
             return;
@@ -300,10 +282,8 @@ void QueueRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (!queue_.moveEntry) {
-            respondUnavailable(res, kNoQueue);
+        if (unavailable(queue_.moveEntry, res, kNoQueue))
             return;
-        }
 
         if (changingTooFast(changes_, res))
             return;
@@ -334,10 +314,8 @@ void QueueRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        if (!queue_.removeEntry) {
-            respondUnavailable(res, kNoQueue);
+        if (unavailable(queue_.removeEntry, res, kNoQueue))
             return;
-        }
 
         if (changingTooFast(changes_, res))
             return;

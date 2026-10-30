@@ -66,10 +66,8 @@ void StreamRoutes::addTo(httplib::Server& server) {
                 [this](const httplib::Request& req, httplib::Response& res) { leave(req, res); });
 
     server.Get("/api/stream/timeline", [this](const httplib::Request& req, httplib::Response& res) {
-        if (!stream_.readTimeline) {
-            respondUnavailable(res, kNoStreaming);
+        if (unavailable(stream_.readTimeline, res, kNoStreaming))
             return;
-        }
 
         const auto named = scopedSession(sessionScopeOf(req), res, registry_, clock_());
         if (named.which == SessionAnswer::Which::none)

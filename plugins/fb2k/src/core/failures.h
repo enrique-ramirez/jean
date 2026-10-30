@@ -5,6 +5,7 @@
 #include "core/playlists.h"
 #include "core/tag_write.h"
 
+#include <concepts>
 #include <string>
 #include <utility>
 
@@ -117,10 +118,15 @@ std::string tagFailureDocument(TagWriteOutcome outcome);
 
 std::string failureDocument(ReadOutcome outcome);
 
-std::string refusalDocument(PlaylistRefusal refusal, const std::string& detail = {});
-std::string refusalDocument(PlaybackRefusal refusal, const std::string& detail);
+template <typename Refusal>
+concept PlainRefusal =
+    std::same_as<Refusal, PlaylistRefusal> || std::same_as<Refusal, PlaybackRefusal> ||
+    std::same_as<Refusal, LibraryRefusal>;
+
+template <PlainRefusal Refusal>
+std::string refusalDocument(Refusal refusal, const std::string& detail = {});
+
 std::string tagRefusalDocument(TagWriteRefusal refusal, const std::string& detail);
-std::string refusalDocument(LibraryRefusal refusal, const std::string& detail);
 
 // contract/openapi.yaml's ActiveOutputRefusal: the one category a malformed body can fail
 // under, shaped like a PlaybackRefusal's document with the specific complaint in `detail`.

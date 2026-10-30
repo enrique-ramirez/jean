@@ -40,11 +40,20 @@ bool PerClientRateLimiter::allow(const std::string& client,
     return entry.payload->allow(now);
 }
 
-Throttle::Throttle(int burst, std::chrono::milliseconds refill, std::string complaint,
+namespace {
+
+std::string loopingComplaint(const Throttled& refused) {
+    return "refusing " + refused.requests + ": they are arriving faster than this component will " +
+           refused.verb + " them, which usually means a client is looping";
+}
+
+}  // namespace
+
+Throttle::Throttle(int burst, std::chrono::milliseconds refill, const Throttled& refused,
                    RateLimitClock clock)
     : limiter_(burst, refill),
       refill_(refill),
-      complaint_(std::move(complaint)),
+      complaint_(loopingComplaint(refused)),
       clock_(std::move(clock)) {}
 
 bool Throttle::refuses() {

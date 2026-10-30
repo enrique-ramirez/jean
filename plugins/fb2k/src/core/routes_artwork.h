@@ -21,7 +21,6 @@ public:
     void addTo(httplib::Server& server);
 
 private:
-    bool fetchingTooFast(httplib::Response& res);
     void sendPlaying(const httplib::Request& req, httplib::Response& res);
 
     const LibraryCalls& library_;

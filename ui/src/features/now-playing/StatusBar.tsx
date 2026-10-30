@@ -17,7 +17,7 @@ import {
 } from "@/domain/player/useTransport";
 import { namedTrack } from "@/domain/track/fields";
 import { usePlayingTrackDragSource } from "@/domain/track/useTrackDragSource";
-import { isFooJeanReady } from "@/shared/api/discovery";
+import { fooJeanOrigin } from "@/shared/api/discovery";
 import { playingTrack } from "@/shared/api/playerState";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
@@ -109,7 +109,7 @@ export function StatusBar({
 		snapshot?.player?.activeItem?.playlistGuid ?? null,
 	);
 
-	const origin = isFooJeanReady(discovery) ? discovery.origin : null;
+	const origin = fooJeanOrigin(discovery);
 	const outputsQuery = useOutputs();
 
 	const track = namedTrack(playingTrack(snapshot?.player), t);

@@ -12,7 +12,7 @@ import {
 	libraryArtworkUrl,
 	playlistRowArtworkUrl,
 } from "@/shared/api/artwork";
-import { isFooJeanReady } from "@/shared/api/discovery";
+import { fooJeanOrigin } from "@/shared/api/discovery";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useDismissable } from "@/shared/hooks/useDismissable";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
@@ -287,7 +287,7 @@ export function QueuePanel({
 		useQueueActions();
 
 	const { discovery } = useFooJean();
-	const origin = isFooJeanReady(discovery) ? discovery.origin : null;
+	const origin = fooJeanOrigin(discovery);
 	const isReachable = origin !== null;
 
 	const isPlaying = snapshot?.player?.playbackState === "playing";

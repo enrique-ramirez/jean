@@ -45,6 +45,9 @@ export const offersSessions = (discovery: FooJeanDiscovery) =>
 export const isFooJeanReady = (discovery: FooJeanDiscovery) =>
 	discovery.state.kind === "ready";
 
+export const fooJeanOrigin = (discovery: FooJeanDiscovery) =>
+	isFooJeanReady(discovery) ? discovery.origin : null;
+
 // A caller already inside a guarded control has `origin` as a nullable string, from
 // `FooJeanDiscovery` or threaded down separately; this is the one throw every shape shares.
 export function requireFooJean(origin: string | null): string {

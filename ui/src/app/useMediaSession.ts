@@ -15,7 +15,7 @@ import {
 	useTransport,
 } from "@/domain/player/useTransport";
 import { usePlayingCover } from "@/features/now-playing/usePlayingCover";
-import { isFooJeanReady } from "@/shared/api/discovery";
+import { fooJeanOrigin } from "@/shared/api/discovery";
 import type { NowPlayingTrack, PlayerSnapshot } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { clamp } from "@/shared/lib/math";
@@ -131,8 +131,7 @@ export function useMediaSession(
 	const isPlaying = snapshot?.player?.playbackState === "playing";
 	const album = item?.album ?? null;
 
-	const isReady = isFooJeanReady(discovery);
-	const origin = isReady ? discovery.origin : null;
+	const origin = fooJeanOrigin(discovery);
 	const canControlPlayback = useCanControlPlayback();
 	const reachesPlayer = usePlaybackRefusal() === null;
 

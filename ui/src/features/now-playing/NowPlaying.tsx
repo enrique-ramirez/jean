@@ -20,7 +20,7 @@ import {
 import { ArtistLinks } from "@/domain/track/ArtistLinks";
 import { readValue } from "@/domain/track/fields";
 import { albumRoute, href, type PanelTab } from "@/domain/track/routes";
-import { isFooJeanReady } from "@/shared/api/discovery";
+import { fooJeanOrigin } from "@/shared/api/discovery";
 import type { ActiveItem } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useFooJean } from "@/shared/hooks/useFooJean";
@@ -170,8 +170,7 @@ export function NowPlaying({
 				}
 			: undefined;
 
-	const isReady = isFooJeanReady(discovery);
-	const origin = isReady ? discovery.origin : null;
+	const origin = fooJeanOrigin(discovery);
 
 	const isInSession = useInSession();
 	const artworkKey = trackKeyOf(item, playlistId, isInSession);

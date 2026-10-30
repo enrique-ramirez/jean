@@ -9,7 +9,9 @@ import {
 	nameKey,
 	squash,
 	TIER,
+	tokenize,
 } from "../../src/shared/lib/text.ts";
+import { QUESTIONS_FILE, questionsFile } from "./caseFiles.ts";
 
 test("a letter with no decomposition folds to the ASCII letters CLDR spells it with", () => {
 	assert.equal(fold("MØ"), "mo");
@@ -48,6 +50,21 @@ test("a name's key is its letters, and its marks only where it has no letters", 
 	assert.equal(nameKey("･ ･－･ ･－ ･･･ ･ －･･"), "..-..-....-..");
 	assert.equal(nameKey("   "), "");
 	assert.equal(squash("!!!"), "");
+});
+
+test(`every text in ${QUESTIONS_FILE} folds, squashes and splits as the file says, so the client folds a query as foo_jean folds the library`, () => {
+	const entries = questionsFile().fold;
+	assert.ok(entries.length > 0);
+	for (const entry of entries)
+		assert.deepEqual(
+			{
+				fold: fold(entry.text),
+				squash: squash(entry.text),
+				tokenize: tokenize(entry.text),
+			},
+			{ fold: entry.fold, squash: entry.squash, tokenize: entry.tokenize },
+			JSON.stringify(entry.text),
+		);
 });
 
 test("a morse name is named by its marks however the query is spaced, and never by letters", () => {

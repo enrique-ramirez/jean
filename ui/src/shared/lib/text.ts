@@ -1,4 +1,4 @@
-import { ASCII_FOLDINGS } from "./asciiFolding";
+import { ASCII_FOLDINGS } from "./asciiFolding.ts";
 
 const COMBINING_MARKS = /\p{Diacritic}/gu;
 const FOLDABLE = new RegExp(`[${[...ASCII_FOLDINGS.keys()].join("")}]`, "gu");

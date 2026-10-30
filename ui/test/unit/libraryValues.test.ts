@@ -3,16 +3,15 @@ import test from "node:test";
 import { gunzipSync } from "node:zlib";
 import { TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import { createState } from "../fake-api/state.ts";
+import { questionCases } from "./caseFiles.ts";
 import {
 	ask,
 	bodyOf,
-	type CaseLibrary,
 	caseState,
 	DAY,
 	declared,
 	type FakeState,
 	failureText,
-	fixture,
 	frozenAt,
 	libraryOf,
 	ROLES,
@@ -24,13 +23,7 @@ import {
 
 const VALUES = "/api/library/values";
 
-interface QuestionCase extends CaseLibrary {
-	name: string;
-}
-
-const QUESTION_CASES = fixture<{ cases: QuestionCase[] }>(
-	"library_questions_cases.json",
-).cases;
+const QUESTION_CASES = questionCases();
 
 const caseNamed = (name: string) => {
 	const found = QUESTION_CASES.find((one) => one.name === name);

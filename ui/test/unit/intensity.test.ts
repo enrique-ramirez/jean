@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
 import {
 	FIELD,
@@ -11,9 +8,8 @@ import {
 	TRACK_EXPRESSIONS,
 } from "../../src/domain/track/fields.ts";
 import * as intensity from "../../src/domain/track/intensity.ts";
-import { deriveIntensity } from "../../src/domain/track/intensity.ts";
-import { libraryColumnsOf } from "../../src/domain/track/libraryColumns.ts";
 import type { LibrarySummary } from "../../src/shared/api/librarySummary.ts";
+import { type SummaryCase, summaryFile } from "./caseFiles.ts";
 
 // The two numbers a row is shaded from. Nothing renders either of them, so what
 // `heat.spec.ts` can see is one row against another; the scale itself, the
@@ -30,9 +26,6 @@ const stamp = (at: number) => {
 	return `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())} ${pad(when.getHours())}:${pad(when.getMinutes())}:${pad(when.getSeconds())}`;
 };
 
-const intensityOf = (rows: string[][]) =>
-	deriveIntensity(libraryColumnsOf(rows, TRACK_EXPRESSIONS.length));
-
 const row = (plays: number | null, lastPlayed?: number): string[] => {
 	const columns: string[] = new Array(TRACK_EXPRESSIONS.length).fill("?");
 	if (plays !== null) columns[FIELD.playCount] = String(plays);
@@ -41,83 +34,7 @@ const row = (plays: number | null, lastPlayed?: number): string[] => {
 	return columns;
 };
 
-test("heat is logarithmic, so one outlier does not flatten everything else", () => {
-	const { heat } = intensityOf([row(163), row(107), row(72)]);
-
-	assert.equal(heat[0], 1);
-	assert.ok(heat[1] > 0.8, `107 plays against 163 shaded ${heat[1]}`);
-	assert.ok(heat[1] < heat[0]);
-	assert.ok(heat[2] < heat[1]);
-});
-
-test("the most played track in the set is the top of the scale", () => {
-	assert.equal(intensityOf([row(3), row(1)]).heat[0], 1);
-});
-
-test("a track never played is flat rather than faded", () => {
-	const { heat, patina } = intensityOf([row(100, Date.now()), row(0)]);
-
-	assert.equal(heat[1], 0);
-	assert.equal(patina[1], 0);
-});
-
-test("a date without a play count still reads as never played", () => {
-	// The two facts come from different components and are spelled two ways
-	// each, so an install can answer the date and not the count. Faded is a claim
-	// about how long ago you stopped listening, and this row was never started.
-	const { patina } = intensityOf([
-		row(50, Date.now()),
-		row(0, Date.now() - 5 * YEAR_MS),
-	]);
-
-	assert.equal(patina[1], 0);
-});
-
-test("a field the player cannot resolve counts as never played", () => {
-	// With no playback-statistics component every row answers '?'. A library
-	// where nothing is shaded is the right answer, and the ceiling is zero, so
-	// this is also where a division by it would show up.
-	const { heat, patina } = intensityOf([row(null), row(null)]);
-
-	assert.deepEqual([...heat], [0, 0]);
-	assert.deepEqual([...patina], [0, 0]);
-});
-
-test("patina reaches its ceiling at six years and stops there", () => {
-	const now = Date.now();
-	const { patina } = intensityOf([
-		row(4, now - 3 * YEAR_MS),
-		row(4, now - 6 * YEAR_MS),
-		row(4, now - 40 * YEAR_MS),
-	]);
-
-	assert.ok(Math.abs(patina[0] - 0.5) < 0.01, `three years read ${patina[0]}`);
-	assert.ok(patina[1] >= 0.99);
-	assert.equal(patina[2], 1);
-});
-
-test("a date in the future does not go negative", () => {
-	// Clock skew between the player's machine and this one, which is ordinary.
-	const { patina } = intensityOf([row(4, Date.now() + 2 * DAY_MS)]);
-	assert.equal(patina[0], 0);
-});
-
-interface SummaryCase {
-	name: string;
-	now: number;
-	filename: string[];
-	columns: Record<string, string[]>;
-	expected: LibrarySummary;
-}
-
-const REPOSITORY = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-
-const SUMMARY_CASES: SummaryCase[] = JSON.parse(
-	readFileSync(
-		join(REPOSITORY, "plugins/fb2k/tests/fixtures/library_summary_cases.json"),
-		"utf8",
-	),
-).cases;
+const SUMMARY_CASES = summaryFile().cases;
 
 const ROLE_AT = new Map(
 	(Object.entries(FIELD) as [string, number][]).map(([role, at]) => [at, role]),
@@ -130,7 +47,7 @@ const rowsOf = ({ filename, columns }: SummaryCase) =>
 		),
 	);
 
-const mostPlaysIn = (summary: LibrarySummary) =>
+const mostPlaysIn = (summary: Pick<LibrarySummary, "topTracks">) =>
 	summary.topTracks[0]?.plays ?? 0;
 
 const todaysMostPlayed = (rows: string[][]) =>

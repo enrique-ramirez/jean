@@ -10,6 +10,11 @@ import type { FooJeanOptions } from "../fake-api/fooJean/options.ts";
 import { COMPONENT_RATE_LIMITS } from "../fake-api/fooJean/rateLimits.ts";
 import { createState } from "../fake-api/state.ts";
 import {
+	type Question,
+	type QuestionCase,
+	questionCases,
+} from "./caseFiles.ts";
+import {
 	ask,
 	bodyOf,
 	componentBucket,
@@ -39,41 +44,9 @@ const fakeQuestions = (() => {
 	};
 })();
 
-type Question =
-	| { kind: "album"; name: string; by?: string }
-	| { kind: "artist"; name: string; splitsCredits: boolean }
-	| { kind: "genre"; name: string }
-	| {
-			kind: "search";
-			query: string;
-			limit: number;
-			entityLimit: number;
-			splitsCredits: boolean;
-	  };
-
 type Kind = Question["kind"];
 
-interface QuestionCase {
-	name: string;
-	structure: number;
-	revision: number;
-	directory: string[];
-	filename: string[];
-	subsong: string[];
-	columns: Record<string, string[]>;
-	question: Question;
-	expected: Record<string, unknown>;
-}
-
-const CONFORMANCE: { cases: QuestionCase[] } = JSON.parse(
-	readFileSync(
-		join(
-			REPOSITORY,
-			"plugins/fb2k/tests/fixtures/library_questions_cases.json",
-		),
-		"utf8",
-	),
-);
+const QUESTION_CASES = questionCases();
 
 const SETS: Record<Kind, readonly string[]> = {
 	album: ["refs"],
@@ -158,7 +131,7 @@ const assertAnswers = (
 			);
 };
 
-for (const questionCase of CONFORMANCE.cases) {
+for (const questionCase of QUESTION_CASES) {
 	const { kind } = questionCase.question;
 	test(`the fake answers conformance case ${questionCase.name} as foo_jean must`, async () => {
 		const { answerQuestion } = await fakeQuestions();
@@ -180,7 +153,7 @@ for (const questionCase of CONFORMANCE.cases) {
 }
 
 test("the conformance file holds search, album, artist and genre cases for the fake to answer", () => {
-	const kinds = new Set(CONFORMANCE.cases.map((one) => one.question.kind));
+	const kinds = new Set(QUESTION_CASES.map((one) => one.question.kind));
 	for (const kind of Object.keys(SETS))
 		assert.ok(kinds.has(kind as Kind), kind);
 });
@@ -358,7 +331,7 @@ const coversAsHeld = (
 	};
 };
 
-for (const questionCase of CONFORMANCE.cases)
+for (const questionCase of QUESTION_CASES)
 	test(`the fake's route answers conformance case ${questionCase.name} from a library holding its columns`, async (t) => {
 		frozenAt(t);
 		const state = createState({ mediaLibrary: tracksOfCase(questionCase) });
@@ -1005,7 +978,7 @@ const CREDIT_CASES: {
 );
 
 const questionCaseNamed = (name: string) => {
-	const found = CONFORMANCE.cases.find((one) => one.name === name);
+	const found = QUESTION_CASES.find((one) => one.name === name);
 	assert.ok(found, `library_questions_cases.json holds no case ${name}`);
 	return found;
 };

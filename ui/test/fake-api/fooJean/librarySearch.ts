@@ -1,4 +1,10 @@
-import { ASCII_FOLDINGS } from "../../../src/shared/lib/asciiFolding.ts";
+import {
+	fold,
+	glyphs,
+	nameKey,
+	nameWords,
+	tokenize,
+} from "../../../src/shared/lib/text.ts";
 import { compareUtf8 } from "../jlib.ts";
 import { CHUNK, mapped, runToEnd, type Sweep, sorted } from "../yielding.ts";
 import {
@@ -56,39 +62,7 @@ export interface Searched {
 	namesATrack: boolean;
 }
 
-const FOLDABLE = new RegExp(`[${[...ASCII_FOLDINGS.keys()].join("")}]`, "gu");
-
-// Plain ASCII has no decomposition and no folding, and the only two characters in it with the
-// Diacritic property are `^` and the backtick, so lower-casing it is the whole fold.
-const PLAIN_ASCII = /^[^\u005e\u0060\u0080-\uffff]*$/;
-
-export const fold = (text: string) =>
-	PLAIN_ASCII.test(text)
-		? text.toLowerCase()
-		: text
-				.toLowerCase()
-				.normalize("NFD")
-				.replace(FOLDABLE, (character) => ASCII_FOLDINGS.get(character)!)
-				.replace(/\p{Diacritic}/gu, "");
-
-const NOT_ALPHANUMERIC = /[^\p{L}\p{N}]+/gu;
 const LETTER_OR_NUMBER = /[\p{L}\p{N}]/u;
-
-const squash = (text: string) => fold(text).replace(NOT_ALPHANUMERIC, "");
-
-const tokenize = (query: string) =>
-	fold(query.trim()).split(/\s+/u).filter(Boolean);
-
-const glyphs = (text: string) => tokenize(text).join("");
-
-const nameKey = (text: string) => squash(text) || glyphs(text);
-
-const nameWords = (text: string) => {
-	const folded = fold(text);
-	return LETTER_OR_NUMBER.test(folded)
-		? folded.split(NOT_ALPHANUMERIC).filter(Boolean)
-		: tokenize(folded);
-};
 
 const MAX_CLOSENESS = 999;
 

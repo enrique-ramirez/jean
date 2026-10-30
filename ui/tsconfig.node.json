@@ -24,10 +24,13 @@
 		"vite.config.ts",
 		"demo/build.ts",
 		"scripts/buildId.ts",
+		"scripts/libraryCases.ts",
 		"scripts/localePlugin.ts",
 		"test/fake-api/**/*.ts",
+		"test/unit/caseFiles.ts",
 		"src/shared/api/multiValue.ts",
 		"src/shared/lib/asciiFolding.ts",
+		"src/shared/lib/text.ts",
 		"src/shared/api/rating.ts",
 		"src/shared/api/types.ts",
 		"src/shared/i18n/en.ts"

@@ -13,6 +13,7 @@
 		"test:e2e": "playwright test",
 		"test:ui": "playwright test --ui",
 		"fake": "node test/fake-api/main.ts",
+		"cases": "node scripts/libraryCases.ts",
 		"test:live": "playwright test --project=live",
 		"test:iphone": "IPHONE=1 playwright test --project=iphone",
 		"perf": "node test/perf/profile.ts"

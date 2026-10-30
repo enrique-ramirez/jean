@@ -1,5 +1,5 @@
+import { fold } from "../../../src/shared/lib/text.ts";
 import { compareUtf8 } from "../jlib.ts";
-import { fold } from "./librarySearch.ts";
 import {
 	genreGroupsOf,
 	type LibraryRoleName,

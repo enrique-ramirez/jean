@@ -36,6 +36,7 @@
 		"test/fake-api/yielding.ts",
 		"src/shared/api/multiValue.ts",
 		"src/shared/lib/asciiFolding.ts",
+		"src/shared/lib/text.ts",
 		"src/shared/api/rating.ts",
 		"src/shared/api/types.ts"
 	]

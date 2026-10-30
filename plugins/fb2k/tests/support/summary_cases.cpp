@@ -64,6 +64,19 @@ Civil civilOf(const int64_t localMs) {
                  static_cast<int>(within % kMsPerMinute / kMsPerSecond)};
 }
 
+nlohmann::json withLibrariesInlined(nlohmann::json file) {
+    if (!file.contains("libraries"))
+        return file;
+    const nlohmann::json& libraries = file.at("libraries");
+    for (nlohmann::json& one : file.at("cases")) {
+        const nlohmann::json& library =
+            libraries.at(one.at("library").get_ref<const std::string&>());
+        for (const char* key : {"directory", "filename", "subsong", "columns"})
+            one[key] = library.at(key);
+    }
+    return file;
+}
+
 }  // namespace
 
 const nlohmann::json& casesIn(const char* fixtureFilename) {
@@ -79,8 +92,9 @@ const nlohmann::json& casesIn(const char* fixtureFilename) {
     std::ifstream file(path, std::ios::binary);
     REQUIRE_MESSAGE(file.is_open(), "cannot read ", path);
     return parsed
-        .emplace(fixtureFilename, nlohmann::json::parse(std::istreambuf_iterator<char>(file),
-                                                        std::istreambuf_iterator<char>()))
+        .emplace(fixtureFilename,
+                 withLibrariesInlined(nlohmann::json::parse(std::istreambuf_iterator<char>(file),
+                                                            std::istreambuf_iterator<char>())))
         .first->second;
 }
 

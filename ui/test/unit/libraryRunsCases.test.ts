@@ -4,9 +4,14 @@ import { gunzipSync } from "node:zlib";
 import { COMPONENT_RATE_LIMITS } from "../fake-api/fooJean/rateLimits.ts";
 import { createState } from "../fake-api/state.ts";
 import {
+	type CaseLibrary,
+	fixture,
+	questionCases,
+	summaryFile,
+} from "./caseFiles.ts";
+import {
 	ask,
 	bodyOf,
-	type CaseLibrary,
 	caseState,
 	componentBucket,
 	control,
@@ -14,7 +19,6 @@ import {
 	declared,
 	type FakeState,
 	failureText,
-	fixture,
 	frozenAt,
 	libraryOf,
 	ROLES,
@@ -42,12 +46,8 @@ interface SourceCase extends CaseLibrary {
 const CASES = fixture<{ cases: RunsCase[] }>("library_runs_cases.json").cases;
 
 const SOURCES: Record<RunsCase["source"], SourceCase[]> = {
-	"library_summary_cases.json": fixture<{ cases: SourceCase[] }>(
-		"library_summary_cases.json",
-	).cases,
-	"library_questions_cases.json": fixture<{ cases: SourceCase[] }>(
-		"library_questions_cases.json",
-	).cases,
+	"library_summary_cases.json": summaryFile().cases,
+	"library_questions_cases.json": questionCases(),
 };
 
 const sourceOf = (one: RunsCase) => {

@@ -4,14 +4,18 @@ import { TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import { COMPONENT_RATE_LIMITS } from "../fake-api/fooJean/rateLimits.ts";
 import { GENERATION_SEED } from "../fake-api/state.ts";
 import {
+	type CaseLibrary,
+	fixture,
+	questionCases,
+	summaryFile,
+} from "./caseFiles.ts";
+import {
 	ask,
 	bodyOf,
-	type CaseLibrary,
 	control,
 	declared,
 	type FakeState,
 	failureText,
-	fixture,
 	frozenAt,
 	ROLES,
 	rawOf,
@@ -126,12 +130,8 @@ const RUNS_CASES = fixture<{ cases: RunsCase[] }>(
 ).cases;
 
 const SOURCES: Record<RunsCase["source"], SourceCase[]> = {
-	"library_summary_cases.json": fixture<{ cases: SourceCase[] }>(
-		"library_summary_cases.json",
-	).cases,
-	"library_questions_cases.json": fixture<{ cases: SourceCase[] }>(
-		"library_questions_cases.json",
-	).cases,
+	"library_summary_cases.json": summaryFile().cases,
+	"library_questions_cases.json": questionCases(),
 };
 
 test("a playlist holding a case's whole library in ordinal order runs as library_runs_cases.json says that library runs", async (t) => {

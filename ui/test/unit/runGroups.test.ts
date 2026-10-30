@@ -1,17 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
-import {
-	coverCandidatesFromRuns,
-	groupByAlbum,
-	groupsFromRuns,
-} from "../../src/domain/track/grouping.ts";
-import {
-	type LibraryColumns,
-	libraryColumnsOf,
-} from "../../src/domain/track/libraryColumns.ts";
-import { trackRows, wholeRows } from "../../src/domain/track/project.ts";
-import { fixture } from "./fakeLibraryHarness.ts";
+import { groupsFromRuns } from "../../src/domain/track/grouping.ts";
+import type { LibraryColumns } from "../../src/domain/track/libraryColumns.ts";
+import { coverCandidatesFromRuns, groupByAlbum } from "./albumRuns.ts";
+import { fixture, questionCases, summaryFile } from "./caseFiles.ts";
+import { libraryColumnsOf, trackRows, wholeRows } from "./libraryTable.ts";
 
 interface RunsCase {
 	name: string;
@@ -44,12 +38,8 @@ const RUNS_CASES = fixture<{ cases: RunsCase[] }>(
 ).cases;
 
 const SOURCES: Record<RunsCase["source"], SourceCase[]> = {
-	"library_summary_cases.json": fixture<{ cases: SourceCase[] }>(
-		"library_summary_cases.json",
-	).cases,
-	"library_questions_cases.json": fixture<{ cases: SourceCase[] }>(
-		"library_questions_cases.json",
-	).cases,
+	"library_summary_cases.json": summaryFile().cases,
+	"library_questions_cases.json": questionCases(),
 };
 
 const sourceOf = (one: RunsCase) => {

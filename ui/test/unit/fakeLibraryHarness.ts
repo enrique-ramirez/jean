@@ -10,6 +10,7 @@ import { handleFooJean } from "../fake-api/fooJean.ts";
 import type { Responder } from "../fake-api/http.ts";
 import { handleControl } from "../fake-api/routes.ts";
 import { createState, type Track } from "../fake-api/state.ts";
+import type { CaseLibrary } from "./caseFiles.ts";
 
 export type FakeState = ReturnType<typeof createState>;
 
@@ -19,11 +20,6 @@ export type RowsHeader = components["schemas"]["LibraryRowsHeader"];
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPOSITORY = resolve(HERE, "../../..");
-
-export const fixture = <Shape>(name: string): Shape =>
-	JSON.parse(
-		readFileSync(join(REPOSITORY, "plugins/fb2k/tests/fixtures", name), "utf8"),
-	);
 
 export interface Answer {
 	status: number;
@@ -189,12 +185,9 @@ export const withFake = (fooJean: object) => ({
 	fooJean: fooJean as FooJeanOptions,
 });
 
-export interface CaseLibrary {
-	directory: string[];
-	columns: Record<string, string[]>;
-}
+export type CaseTracks = Pick<CaseLibrary, "directory" | "columns">;
 
-export const tracksOfCase = (one: CaseLibrary): Track[] =>
+export const tracksOfCase = (one: CaseTracks): Track[] =>
 	one.directory.map((_, at) => ({
 		"%path%": `C:\\Music\\Case\\${String(at).padStart(4, "0")}.flac`,
 		...Object.fromEntries(
@@ -205,7 +198,7 @@ export const tracksOfCase = (one: CaseLibrary): Track[] =>
 		),
 	}));
 
-export const caseState = (one: CaseLibrary): FakeState =>
+export const caseState = (one: CaseTracks): FakeState =>
 	declared({ mediaLibrary: tracksOfCase(one) }, [...TRACK_EXPRESSIONS]);
 
 const routesLibrary = () =>

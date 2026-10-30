@@ -1,108 +1,26 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
 import test, { type TestContext } from "node:test";
-import { fileURLToPath } from "node:url";
 import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import { handleFooJean } from "../fake-api/fooJean.ts";
 import type { Responder } from "../fake-api/http.ts";
 import { createState } from "../fake-api/state.ts";
+import {
+	type Figures,
+	type FrozenCards,
+	type FrozenRecord,
+	type FrozenSet,
+	type Part,
+	type Question,
+	questionCases,
+	type SetsCase,
+	setsFile,
+} from "./caseFiles.ts";
 
 type FakeState = ReturnType<typeof createState>;
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const REPOSITORY = resolve(HERE, "../../..");
-const FIXTURES = join(REPOSITORY, "plugins/fb2k/tests/fixtures");
+const SETS = setsFile();
 
-type Question =
-	| { kind: "album"; name: string; by?: string }
-	| { kind: "artist"; name: string; splitsCredits: boolean }
-	| { kind: "genre"; name: string }
-	| {
-			kind: "search";
-			query: string;
-			limit: number;
-			entityLimit: number;
-			splitsCredits: boolean;
-	  };
-
-interface QuestionCase {
-	name: string;
-	directory: string[];
-	columns: Record<string, string[]>;
-	question: Question;
-	expected: Record<string, unknown>;
-}
-
-interface Figures {
-	albumCount: number;
-	trackCount: number;
-	seconds: number;
-	earliestYear: number | null;
-	latestYear: number | null;
-}
-
-interface Genre {
-	name: string;
-	count: number;
-	share: number;
-}
-
-interface FrozenCards {
-	playedShare: number;
-	plays: number;
-	neverPlayed: number;
-	lastPlayed: number | null;
-	mostPlayed: { position: number; ordinal: number; plays: number } | null;
-	topGenres: Genre[];
-}
-
-interface FrozenRecord {
-	album: string;
-	artist: string | null;
-	year: number | null;
-	cover: number;
-	trackCount: number;
-}
-
-type Part = "refs" | "own" | "shared" | "guest" | "all" | "matched";
-
-interface FrozenSet {
-	kind: Question["kind"];
-	question: Question;
-	part: Part;
-	figures: Figures;
-	cards?: FrozenCards;
-	records?: FrozenRecord[];
-}
-
-type Measure = "duration" | "year" | "playCount" | "lastPlayed";
-
-interface SetsCase {
-	name: string;
-	source: string;
-	measures: Record<Measure, string[]>;
-	genres: {
-		name: string;
-		count: number;
-		albumCount: number;
-		artistCount: number;
-		covers: number[];
-	}[];
-	sets: FrozenSet[];
-}
-
-const SETS: { zone: string; cases: SetsCase[] } = JSON.parse(
-	readFileSync(join(FIXTURES, "library_sets_cases.json"), "utf8"),
-);
-
-const QUESTION_CASES = new Map(
-	(
-		JSON.parse(
-			readFileSync(join(FIXTURES, "library_questions_cases.json"), "utf8"),
-		) as { cases: QuestionCase[] }
-	).cases.map((one) => [one.name, one]),
-);
+const QUESTION_CASES = new Map(questionCases().map((one) => [one.name, one]));
 
 // Node reads `TZ` again whenever it is assigned, so the zone the fixture's play stamps were written
 // in holds for every `Date` after this line.

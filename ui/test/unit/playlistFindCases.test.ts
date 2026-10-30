@@ -4,14 +4,13 @@ import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import type { components } from "../../src/shared/api/fooJeanSchema.d.ts";
 import { COMPONENT_RATE_LIMITS } from "../fake-api/fooJean/rateLimits.ts";
 import { GENERATION_SEED, type Track } from "../fake-api/state.ts";
+import { fixture, questionCases } from "./caseFiles.ts";
 import {
 	ask,
 	bodyOf,
-	type CaseLibrary,
 	declared,
 	type FakeState,
 	failureText,
-	fixture,
 	frozenAt,
 	ROLES,
 	refusalOf,
@@ -81,15 +80,9 @@ interface FindCase {
 	queries: { query: string; matched: number[] }[];
 }
 
-interface SourceCase extends CaseLibrary {
-	name: string;
-}
-
 const CASES = fixture<{ cases: FindCase[] }>("playlist_find_cases.json").cases;
 
-const SOURCES = fixture<{ cases: SourceCase[] }>(
-	"library_questions_cases.json",
-).cases;
+const SOURCES = questionCases();
 
 const EXPRESSION_OF = {
 	title: TRACK_EXPRESSIONS[FIELD.title],

@@ -11,6 +11,7 @@ import type { Responder } from "../fake-api/http.ts";
 import { libraryOfShape } from "../fake-api/libraryShapes.ts";
 import { handleControl } from "../fake-api/routes.ts";
 import { createState } from "../fake-api/state.ts";
+import { summaryFile } from "./caseFiles.ts";
 
 type FakeState = ReturnType<typeof createState>;
 type LibrarySummary = components["schemas"]["LibrarySummary"];
@@ -28,29 +29,7 @@ const fakeSummary = (() => {
 	};
 })();
 
-interface SummaryCase {
-	name: string;
-	structure: number;
-	revision: number;
-	now: number;
-	directory: string[];
-	filename: string[];
-	columns: Record<string, string[]>;
-	expected: LibrarySummary;
-}
-
-interface KeyCase {
-	a: string;
-	b: string;
-	match: boolean;
-}
-
-const CONFORMANCE: { cases: SummaryCase[]; keys: KeyCase[] } = JSON.parse(
-	readFileSync(
-		join(REPOSITORY, "plugins/fb2k/tests/fixtures/library_summary_cases.json"),
-		"utf8",
-	),
-);
+const CONFORMANCE = summaryFile();
 
 const UTC_PLUS_0530 = 330;
 

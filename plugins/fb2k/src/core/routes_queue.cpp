@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <array>
-#include <iterator>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -65,14 +64,6 @@ bool QueueRoutes::queueMoved(uint64_t revision, httplib::Response& res) const {
     return true;
 }
 
-void QueueRoutes::attachCovers(const RolesAsked& roles, std::vector<QueuedTrack>& entries) const {
-    std::vector<QueuedTrack*> rows;
-    rows.reserve(entries.size());
-    std::transform(entries.begin(), entries.end(), std::back_inserter(rows),
-                   [](QueuedTrack& entry) { return &entry; });
-    jean::attachCovers(library_, questions_, roles.expressions, rows);
-}
-
 void QueueRoutes::readSessionQueue(const Session& session, const RolesAsked& roles,
                                    httplib::Response& res) {
     if (unavailable(sessions_.readQueue, res, kNoQueue))
@@ -86,7 +77,7 @@ void QueueRoutes::readSessionQueue(const Session& session, const RolesAsked& rol
     read.revision = queue.revision;
     std::for_each(read.entries.begin(), read.entries.end(),
                   [](QueuedTrack& entry) { entry.location.reset(); });
-    attachCovers(roles, read.entries);
+    attachCovers(library_, questions_, roles.expressions, read.entries);
 
     respond(res, 200, queueDocument(read));
 }
@@ -213,7 +204,7 @@ void QueueRoutes::addTo(httplib::Server& server) {
         auto read = queue_.read();
         if (failed(read, res))
             return;
-        attachCovers(roles, read.entries);
+        attachCovers(library_, questions_, roles.expressions, read.entries);
 
         respond(res, 200, queueDocument(read));
     });

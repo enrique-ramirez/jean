@@ -38,7 +38,6 @@ private:
     void queueLibraryTracks(Session* session, const JsonObject& body, httplib::Response& res);
 
     void readSessionQueue(const Session& session, const RolesAsked& roles, httplib::Response& res);
-    void attachCovers(const RolesAsked& roles, std::vector<QueuedTrack>& entries) const;
     void queueInSession(Session& session, std::optional<QueuePosition> at, size_t requestedCount,
                         const std::function<SessionTracksRead()>& take, httplib::Response& res);
 

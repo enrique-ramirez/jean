@@ -8,9 +8,7 @@
 #include "core/requests_playlists.h"
 #include "core/text.h"
 
-#include <algorithm>
 #include <array>
-#include <iterator>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -177,10 +175,7 @@ void PlaylistRowRoutes::addTo(httplib::Server& server) {
         if (failed(read, res))
             return;
 
-        std::vector<PlaylistRow*> rows;
-        std::transform(read.rows.begin(), read.rows.end(), std::back_inserter(rows),
-                       [](PlaylistRow& row) { return &row; });
-        attachCovers(library_, libraryRoutes_.questions(), roles.expressions, rows);
+        attachCovers(library_, libraryRoutes_.questions(), roles.expressions, read.rows);
 
         respond(res, 200, playlistRowsDocument(read));
     });
@@ -231,10 +226,8 @@ void PlaylistRowRoutes::addTo(httplib::Server& server) {
             return;
         }
 
-        std::vector<PlaylistRow*> rows;
-        std::transform(read.rows.begin(), read.rows.end(), std::back_inserter(rows),
-                       [](ChangedPlaylistRow& changed) { return &changed.row; });
-        attachCovers(library_, libraryRoutes_.questions(), roles.expressions, rows);
+        attachCovers(library_, libraryRoutes_.questions(), roles.expressions, read.rows,
+                     [](ChangedPlaylistRow& changed) -> PlaylistRow& { return changed.row; });
 
         respond(res, 200, playlistChangesDocument(read));
     });

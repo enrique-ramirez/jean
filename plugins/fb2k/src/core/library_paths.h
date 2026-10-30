@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <optional>
@@ -48,20 +49,21 @@ std::vector<std::optional<std::string>> albumCoversOf(
     const std::map<std::string, std::string>& roles,
     const std::vector<std::optional<std::string>>& libraryPaths);
 
-template <class Row>
+template <class Rows, class RowOf = std::identity>
 void attachCovers(const Library* library, LibraryQuestions& questions,
-                  const std::map<std::string, std::string>& roles, const std::vector<Row*>& rows) {
+                  const std::map<std::string, std::string>& roles, Rows& rows, RowOf rowOf = {}) {
     if (roles.empty())
         return;
 
     std::vector<std::optional<std::string>> paths;
-    paths.reserve(rows.size());
-    std::transform(rows.begin(), rows.end(), std::back_inserter(paths),
-                   [](const Row* row) { return row->libraryPath; });
+    paths.reserve(std::size(rows));
+    std::transform(std::begin(rows), std::end(rows), std::back_inserter(paths),
+                   [&](auto& row) { return rowOf(row).libraryPath; });
 
     auto covers = albumCoversOf(library, questions, roles, paths);
-    for (size_t at = 0; at < rows.size(); ++at)
-        rows[at]->cover = std::move(covers[at]);
+    size_t at = 0;
+    for (auto& row : rows)
+        rowOf(row).cover = std::move(covers[at++]);
 }
 
 }  // namespace jean

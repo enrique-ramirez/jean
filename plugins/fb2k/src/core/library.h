@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -85,6 +86,20 @@ struct Snapshot {
 
     size_t trackCount() const;
 };
+
+template <typename Roles, typename Out>
+Out columnNamesOf(const Snapshot& snapshot, const Roles& roles, Out out) {
+    return std::transform(std::begin(roles), std::end(roles), out, [&](std::optional<size_t> role) {
+        return role ? snapshot.columns[*role].name : std::string();
+    });
+}
+
+template <typename Roles, typename Out>
+Out changeCountsOf(const Snapshot& snapshot, const Roles& roles, Out out) {
+    return std::transform(std::begin(roles), std::end(roles), out, [&](std::optional<size_t> role) {
+        return role ? snapshot.columns[*role].changeCount : uint64_t{0};
+    });
+}
 
 struct RelativePathParts {
     std::string directory;

@@ -98,10 +98,7 @@ std::vector<std::string> playlistRunsColumns(const Snapshot& snapshot, const Lib
 
     std::vector<std::string> columns;
     columns.reserve(slots.size());
-    std::transform(slots.begin(), slots.end(), std::back_inserter(columns),
-                   [&snapshot](std::optional<size_t> role) {
-                       return role ? snapshot.columns[*role].name : std::string();
-                   });
+    columnNamesOf(snapshot, slots, std::back_inserter(columns));
     return columns;
 }
 
@@ -207,10 +204,7 @@ Reading readingOf(const PlaylistTracksRead& read, const Snapshot& snapshot,
     reading.revision = read.revision;
     reading.libraryStructure = snapshot.structure;
     reading.slots = slotsOf(roles);
-    std::transform(reading.slots.begin(), reading.slots.end(), reading.changeCounts.begin(),
-                   [&snapshot](std::optional<size_t> role) {
-                       return role ? snapshot.columns[*role].changeCount : uint64_t{0};
-                   });
+    changeCountsOf(snapshot, reading.slots, reading.changeCounts.begin());
     return reading;
 }
 

@@ -27,10 +27,7 @@ std::vector<std::string> playlistFindColumns(const Snapshot& snapshot, const Lib
 
     std::vector<std::string> columns;
     columns.reserve(searched.size());
-    std::transform(searched.begin(), searched.end(), std::back_inserter(columns),
-                   [&snapshot](std::optional<size_t> role) {
-                       return role ? snapshot.columns[*role].name : std::string();
-                   });
+    columnNamesOf(snapshot, searched, std::back_inserter(columns));
     return columns;
 }
 

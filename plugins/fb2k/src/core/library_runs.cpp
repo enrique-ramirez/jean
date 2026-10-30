@@ -100,9 +100,7 @@ std::shared_ptr<const LibraryRuns> HeldLibraryRuns::of(const Snapshot& snapshot,
 
     const Roles read = rolesRead(roles);
     std::array<uint64_t, 5> counts{};
-    std::transform(read.begin(), read.end(), counts.begin(), [&](std::optional<size_t> role) {
-        return role ? snapshot.columns[*role].changeCount : uint64_t{0};
-    });
+    changeCountsOf(snapshot, read, counts.begin());
 
     auto found = std::find_if(answers.begin(), answers.end(),
                               [&](const Held::Answer& held) { return held.roles == read; });

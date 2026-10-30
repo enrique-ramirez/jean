@@ -72,16 +72,6 @@ struct LibraryQuestions::Held {
 
 namespace {
 
-std::vector<uint64_t> changeCountsOf(const Snapshot& snapshot, const Roles& roles) {
-    std::vector<uint64_t> counts;
-    counts.reserve(roles.size());
-    std::transform(roles.begin(), roles.end(), std::back_inserter(counts),
-                   [&](std::optional<size_t> role) {
-                       return role ? snapshot.columns[*role].changeCount : uint64_t{0};
-                   });
-    return counts;
-}
-
 json pairOf(const Snapshot& snapshot) {
     return {{"structure", snapshot.structure}, {"revision", snapshot.revision}};
 }
@@ -238,7 +228,9 @@ ArtistSets classifyArtist(const Snapshot& snapshot, const LibraryRoles& roles,
 template <class Part, class Build>
 std::shared_ptr<const Part> keep(Kept<Part>& slot, const Snapshot& snapshot, const Roles& read,
                                  std::atomic<size_t>& builds, Build build) {
-    std::vector<uint64_t> counts = changeCountsOf(snapshot, read);
+    std::vector<uint64_t> counts;
+    counts.reserve(read.size());
+    changeCountsOf(snapshot, read, std::back_inserter(counts));
     if (!slot.value || slot.counts != counts) {
         slot.value = build();
         slot.counts = std::move(counts);

@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -150,6 +151,7 @@ public:
     PlayerStateStore& operator=(const PlayerStateStore&) = delete;
 
 private:
+    void transition(const std::function<void(PlayerState&)>& step);
     void applyLocked(PlayerState next);
     void bumpRevision(uint64_t& revision);
 

@@ -1,5 +1,6 @@
 #include "core/player_state.h"
 
+#include <functional>
 #include <utility>
 
 namespace jean {
@@ -52,146 +53,101 @@ PlayerStateStore::Published PlayerStateStore::read() const {
 }
 
 void PlayerStateStore::started(PlayingTrack track, steady_clock::time_point now) {
-    const std::lock_guard<std::mutex> held(mutex_);
-
-    PlayerState next = state_;
-    next.playback = PlaybackState::playing;
-    next.path = std::move(track.path);
-    next.subsong = track.subsong;
-    next.libraryPath = std::move(track.libraryPath);
-    next.duration = track.duration;
-    next.position = {0, now};
-    next.title.reset();
-    next.artist.reset();
-    next.album.reset();
-    next.albumArtist.reset();
-
-    applyLocked(std::move(next));
+    transition([&](PlayerState& next) {
+        next.playback = PlaybackState::playing;
+        next.path = std::move(track.path);
+        next.subsong = track.subsong;
+        next.libraryPath = std::move(track.libraryPath);
+        next.duration = track.duration;
+        next.position = {0, now};
+        next.title.reset();
+        next.artist.reset();
+        next.album.reset();
+        next.albumArtist.reset();
+    });
 }
 
 void PlayerStateStore::paused(steady_clock::time_point now) {
-    const std::lock_guard<std::mutex> held(mutex_);
+    transition([&](PlayerState& next) {
+        if (next.playback != PlaybackState::playing)
+            return;
 
-    if (state_.playback != PlaybackState::playing)
-        return;
-
-    PlayerState next = state_;
-    next.playback = PlaybackState::paused;
-    next.position.seconds += duration<double>(now - state_.position.taken).count();
-    next.position.taken = now;
-
-    applyLocked(std::move(next));
+        next.playback = PlaybackState::paused;
+        next.position.seconds += duration<double>(now - next.position.taken).count();
+        next.position.taken = now;
+    });
 }
 
 void PlayerStateStore::resumed(steady_clock::time_point now) {
-    const std::lock_guard<std::mutex> held(mutex_);
+    transition([&](PlayerState& next) {
+        if (next.playback != PlaybackState::paused)
+            return;
 
-    if (state_.playback != PlaybackState::paused)
-        return;
-
-    PlayerState next = state_;
-    next.playback = PlaybackState::playing;
-    next.position.taken = now;
-
-    applyLocked(std::move(next));
+        next.playback = PlaybackState::playing;
+        next.position.taken = now;
+    });
 }
 
 void PlayerStateStore::stopped() {
-    const std::lock_guard<std::mutex> held(mutex_);
-
-    PlayerState next = state_;
-    next.playback = PlaybackState::stopped;
-    next.path.clear();
-    next.subsong = 0;
-    next.libraryPath.reset();
-    next.duration = 0;
-    next.position = PositionMark{};
-    next.title.reset();
-    next.artist.reset();
-    next.album.reset();
-    next.albumArtist.reset();
-    next.playingLocation.reset();
-
-    applyLocked(std::move(next));
+    transition([&](PlayerState& next) {
+        next.playback = PlaybackState::stopped;
+        next.path.clear();
+        next.subsong = 0;
+        next.libraryPath.reset();
+        next.duration = 0;
+        next.position = PositionMark{};
+        next.title.reset();
+        next.artist.reset();
+        next.album.reset();
+        next.albumArtist.reset();
+        next.playingLocation.reset();
+    });
 }
 
 void PlayerStateStore::seeked(double seconds, steady_clock::time_point now) {
-    const std::lock_guard<std::mutex> held(mutex_);
-
-    PlayerState next = state_;
-    next.position = {seconds, now};
-
-    applyLocked(std::move(next));
+    transition([&](PlayerState& next) { next.position = {seconds, now}; });
 }
 
 void PlayerStateStore::volumeChanged(double volume, bool muted) {
-    const std::lock_guard<std::mutex> held(mutex_);
-
-    PlayerState next = state_;
-    next.volume = volume;
-    next.muted = muted;
-
-    applyLocked(std::move(next));
+    transition([&](PlayerState& next) {
+        next.volume = volume;
+        next.muted = muted;
+    });
 }
 
 void PlayerStateStore::durationChanged(double duration) {
-    const std::lock_guard<std::mutex> held(mutex_);
-
-    PlayerState next = state_;
-    next.duration = duration;
-
-    applyLocked(std::move(next));
+    transition([&](PlayerState& next) { next.duration = duration; });
 }
 
 void PlayerStateStore::playbackModeChanged(std::optional<std::string> mode) {
-    const std::lock_guard<std::mutex> held(mutex_);
-
-    PlayerState next = state_;
-    next.playbackMode = std::move(mode);
-
-    applyLocked(std::move(next));
+    transition([&](PlayerState& next) { next.playbackMode = std::move(mode); });
 }
 
 void PlayerStateStore::outputDeviceChanged(std::optional<std::string> id,
                                            std::optional<bool> silent) {
-    const std::lock_guard<std::mutex> held(mutex_);
-
-    PlayerState next = state_;
-    next.outputDeviceId = std::move(id);
-    next.outputSilent = silent;
-
-    applyLocked(std::move(next));
+    transition([&](PlayerState& next) {
+        next.outputDeviceId = std::move(id);
+        next.outputSilent = silent;
+    });
 }
 
 void PlayerStateStore::playingLocationChanged(std::optional<PlayingLocation> location) {
-    const std::lock_guard<std::mutex> held(mutex_);
-
-    PlayerState next = state_;
-    next.playingLocation = std::move(location);
-
-    applyLocked(std::move(next));
+    transition([&](PlayerState& next) { next.playingLocation = std::move(location); });
 }
 
 void PlayerStateStore::currentPlaylistChanged(std::optional<std::string> playlistId) {
-    const std::lock_guard<std::mutex> held(mutex_);
-
-    PlayerState next = state_;
-    next.currentPlaylistId = std::move(playlistId);
-
-    applyLocked(std::move(next));
+    transition([&](PlayerState& next) { next.currentPlaylistId = std::move(playlistId); });
 }
 
 void PlayerStateStore::nameChanged(std::string title, std::string artist, std::string album,
                                    std::string albumArtist) {
-    const std::lock_guard<std::mutex> held(mutex_);
-
-    PlayerState next = state_;
-    next.title = title.empty() ? std::nullopt : std::optional(std::move(title));
-    next.artist = artist.empty() ? std::nullopt : std::optional(std::move(artist));
-    next.album = album.empty() ? std::nullopt : std::optional(std::move(album));
-    next.albumArtist = albumArtist.empty() ? std::nullopt : std::optional(std::move(albumArtist));
-
-    applyLocked(std::move(next));
+    transition([&](PlayerState& next) {
+        next.title = title.empty() ? std::nullopt : std::optional(std::move(title));
+        next.artist = artist.empty() ? std::nullopt : std::optional(std::move(artist));
+        next.album = album.empty() ? std::nullopt : std::optional(std::move(album));
+        next.albumArtist =
+            albumArtist.empty() ? std::nullopt : std::optional(std::move(albumArtist));
+    });
 }
 
 void PlayerStateStore::queueChanged(std::vector<QueueEntry> entries) {
@@ -217,6 +173,14 @@ void PlayerStateStore::playlistsChanged(std::vector<PlaylistMark> playlists) {
 void PlayerStateStore::timelineMarked() {
     const std::lock_guard<std::mutex> held(mutex_);
     bumpRevision(timelineRevision_);
+}
+
+void PlayerStateStore::transition(const std::function<void(PlayerState&)>& step) {
+    const std::lock_guard<std::mutex> held(mutex_);
+
+    PlayerState next = state_;
+    step(next);
+    applyLocked(std::move(next));
 }
 
 void PlayerStateStore::applyLocked(PlayerState next) {

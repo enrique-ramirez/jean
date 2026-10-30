@@ -1,8 +1,7 @@
-import { useMutation } from "@tanstack/react-query";
 import { type FormEvent, useId, useState } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import { editedAutoPlaylist } from "@/domain/player/editableAutoPlaylist";
-import { useCatchUpPlaylists } from "@/domain/player/usePlaylistActions";
+import { useMakePlaylist } from "@/domain/player/usePlaylistActions";
 import {
 	untitledPlaylistName,
 	usePlaylists,
@@ -35,7 +34,6 @@ export function AutoPlaylistDialog({
 }) {
 	const t = useTranslate();
 	const { data: playlists = [] } = usePlaylists();
-	const catchUpPlaylists = useCatchUpPlaylists();
 	const { origin, structure } = library;
 
 	const formId = useId();
@@ -54,13 +52,13 @@ export function AutoPlaylistDialog({
 
 	const { state, isStale } = usePreviewedQuery({ library, query });
 
-	const save = useMutation({
-		mutationFn: async () => {
+	const save = useMakePlaylist(
+		async () => {
 			const named = title.trim();
 			const wanted = query.trim();
 			const player = requireFooJean(origin);
 
-			const made = editing
+			return editing
 				? orThrow(
 						await updateAutoPlaylist(
 							player,
@@ -71,14 +69,12 @@ export function AutoPlaylistDialog({
 				: orThrow(
 						await createAutoPlaylist(player, { title: named, query: wanted }),
 					);
-			await catchUpPlaylists();
-			return made;
 		},
-		onSuccess: (made) => {
+		(made) => {
 			onDismiss();
 			onOpenPlaylist(made.id);
 		},
-	});
+	);
 
 	const isConfirmed =
 		!isStale && (state.kind === "matches" || state.kind === "empty");

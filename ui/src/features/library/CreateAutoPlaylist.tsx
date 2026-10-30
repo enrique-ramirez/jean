@@ -1,10 +1,10 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 import type { FormEvent as ReactFormEvent } from "react";
 import { useRef, useState } from "react";
 
 import { genreQuery } from "@/domain/library/genreQuery";
-import { useCatchUpPlaylists } from "@/domain/player/usePlaylistActions";
+import { useMakePlaylist } from "@/domain/player/usePlaylistActions";
 import { orThrow, retryWhenTooFast } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
 import {
@@ -49,7 +49,6 @@ export function CreateAutoPlaylist({
 }) {
 	const t = useTranslate();
 	const { discovery } = useFooJean();
-	const catchUpPlaylists = useCatchUpPlaylists();
 	const { origin, state } = discovery;
 	const canCreate =
 		state.kind === "ready" && state.capabilities.canCreateAutoPlaylists;
@@ -74,20 +73,19 @@ export function CreateAutoPlaylist({
 		...retryWhenTooFast(),
 	});
 
-	const create = useMutation({
-		mutationFn: async () => {
-			const required = requireFooJean(origin);
-			const made = orThrow(
-				await createAutoPlaylist(required, { title: title.trim(), query }),
-			);
-			await catchUpPlaylists();
-			return made;
-		},
-		onSuccess: (playlist) => {
+	const create = useMakePlaylist(
+		async () =>
+			orThrow(
+				await createAutoPlaylist(requireFooJean(origin), {
+					title: title.trim(),
+					query,
+				}),
+			),
+		(playlist) => {
 			setIsOpen(false);
 			onOpenPlaylist(playlist.id);
 		},
-	});
+	);
 
 	if (!origin || !canCreate) return null;
 

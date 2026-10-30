@@ -1,11 +1,10 @@
-import { useMutation } from "@tanstack/react-query";
 import { ListPlus } from "lucide-react";
 import type { FormEvent as ReactFormEvent } from "react";
 import { useEffect, useRef } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import type { useScratchPlaylist } from "@/domain/library/useScratchPlaylist";
-import { useCatchUpPlaylists } from "@/domain/player/usePlaylistActions";
+import { useMakePlaylist } from "@/domain/player/usePlaylistActions";
 import { orThrow } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
 import { encodeFill } from "@/shared/api/fillEncoding";
@@ -39,7 +38,6 @@ export function SavePlaylistButton({
 }) {
 	const t = useTranslate();
 	const { discovery } = useFooJean();
-	const catchUpPlaylists = useCatchUpPlaylists();
 	const [title, setTitle] = useResettingState(search.query, [isOpen]);
 	const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -50,18 +48,13 @@ export function SavePlaylistButton({
 		if (isOpen) inputRef.current?.select();
 	}, [isOpen]);
 
-	const save = useMutation({
-		mutationFn: async () => {
+	const save = useMakePlaylist(
+		async () => {
 			const name = title.trim();
-
-			if (holdsResults) {
-				const id = await scratch.adopt(name);
-				await catchUpPlaylists();
-				return { id, title: name };
-			}
+			if (holdsResults) return { id: await scratch.adopt(name), title: name };
 
 			const origin = requireFooJean(discovery.origin);
-			const playlist = orThrow(
+			return orThrow(
 				await createPlaylist(origin, {
 					title: name,
 					...encodeFill(indices, {
@@ -70,15 +63,13 @@ export function SavePlaylistButton({
 					}),
 				}),
 			);
-			await catchUpPlaylists();
-			return playlist;
 		},
-		onSuccess: (playlist) => {
+		(playlist) => {
 			search.clear();
 			onOpenChange(false);
 			if (playlist.id) onOpenPlaylist(playlist.id);
 		},
-	});
+	);
 
 	const submit = (event: ReactFormEvent) => {
 		event.preventDefault();

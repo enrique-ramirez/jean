@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { orThrow } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
@@ -56,6 +56,22 @@ export function useCatchUpPlaylists() {
 		await pollPlayerNow(queryClient, origin);
 		await playlistsSettled(queryClient);
 	}, [queryClient, origin]);
+}
+
+export function useMakePlaylist<Made>(
+	make: () => Promise<Made>,
+	onMade: (made: Made) => void,
+) {
+	const catchUpPlaylists = useCatchUpPlaylists();
+
+	return useMutation({
+		mutationFn: async () => {
+			const made = await make();
+			await catchUpPlaylists();
+			return made;
+		},
+		onSuccess: onMade,
+	});
 }
 
 export function usePlaylistActions() {

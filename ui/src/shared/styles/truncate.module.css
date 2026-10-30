@@ -1,0 +1,9 @@
+@layer base, shared;
+
+@layer shared {
+	.truncate {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+}

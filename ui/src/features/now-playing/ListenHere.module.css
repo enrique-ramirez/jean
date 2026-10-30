@@ -201,10 +201,8 @@ button.face:focus-visible {
 }
 
 .what {
-	overflow: hidden;
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	min-width: 0;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .mine + .what::before {
@@ -351,11 +349,9 @@ button.face:focus-visible {
 }
 
 .name {
-	overflow: hidden;
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	font-size: 0.8125rem;
 	font-weight: 550;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .ended .name {
@@ -476,10 +472,8 @@ button.face:focus-visible {
 }
 
 .listenerName {
-	overflow: hidden;
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	min-width: 0;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 	color: var(--text);
 }
 

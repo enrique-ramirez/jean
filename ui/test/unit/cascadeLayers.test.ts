@@ -10,7 +10,7 @@ const BASE_STYLESHEET = "shared/styles/base.css";
 
 const isShared = (file: string) =>
 	/^shared\/(ui|keyboard)\/[^/]+\.css$/.test(file) ||
-	file === "shared/styles/hitArea.module.css";
+	/^shared\/styles\/[^/]+\.module\.css$/.test(file);
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "../../src");
 

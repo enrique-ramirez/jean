@@ -161,18 +161,14 @@
 }
 
 .versionName {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	composes: truncate from "../../shared/styles/truncate.module.css";
 }
 
 .versionDetail {
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	grid-column: 1;
-	overflow: hidden;
 	color: var(--muted);
 	font-size: 0.8125rem;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .dash {

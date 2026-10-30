@@ -84,11 +84,9 @@
 	}
 
 	.headerTitle {
-		overflow: hidden;
+		composes: truncate from "../styles/truncate.module.css";
 		font-size: 0.8125rem;
 		font-weight: 600;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
 	.sheet .headerTitle {
@@ -252,9 +250,7 @@
 	}
 
 	.label {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		composes: truncate from "../styles/truncate.module.css";
 	}
 
 	.shortcut {

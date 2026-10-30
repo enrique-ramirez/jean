@@ -40,11 +40,9 @@
 }
 
 .name {
-	overflow: hidden;
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	font-size: 0.8125rem;
 	font-weight: 500;
-	white-space: nowrap;
-	text-overflow: ellipsis;
 	color: var(--text);
 }
 

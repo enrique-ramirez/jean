@@ -70,17 +70,13 @@
 }
 
 .resultTitle {
-	overflow: hidden;
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	font-size: 0.8125rem;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .resultArtist {
-	overflow: hidden;
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	font-size: 0.75rem;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 	color: var(--muted);
 }
 

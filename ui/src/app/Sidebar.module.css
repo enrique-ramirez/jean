@@ -124,9 +124,7 @@
 }
 
 .label {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	composes: truncate from "../shared/styles/truncate.module.css";
 }
 
 .count {

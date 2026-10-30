@@ -68,13 +68,11 @@
 }
 
 .album {
-	overflow: hidden;
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	font-size: 0.8125rem;
 	font-weight: 600;
 	line-height: 1.3;
 	color: var(--text);
-	text-overflow: ellipsis;
-	white-space: nowrap;
 	transition: color 160ms var(--ease);
 }
 
@@ -84,21 +82,19 @@
 }
 
 .artist {
-	overflow: hidden;
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	font-size: 0.75rem;
 	line-height: 1.3;
 	color: var(--muted);
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .caption {
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	position: absolute;
 	top: 9px;
 	right: 9px;
 	z-index: 1;
 	max-width: calc(100% - 18px);
-	overflow: hidden;
 	padding: 3px 8px;
 	border: 1px solid oklch(1 0 0 / 0.12);
 	border-radius: var(--radius-pill);
@@ -109,8 +105,6 @@
 	line-height: 1.35;
 	font-variant-numeric: tabular-nums;
 	color: oklch(0.97 0.004 250);
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: reduce) {

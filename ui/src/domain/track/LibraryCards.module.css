@@ -60,11 +60,9 @@
 }
 
 .title {
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	display: block;
-	overflow: hidden;
 	font-size: 1.0625rem;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .line {

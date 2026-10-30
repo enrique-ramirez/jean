@@ -49,9 +49,7 @@
 	}
 
 	.label {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		composes: truncate from "../styles/truncate.module.css";
 	}
 
 	.count {

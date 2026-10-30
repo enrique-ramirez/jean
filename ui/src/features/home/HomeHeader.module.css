@@ -206,9 +206,7 @@
 
 /* `text-overflow` acts on a block's own text, not on an anonymous text node beside a flex sibling. */
 .nameText {
-	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
+	composes: truncate from "../../shared/styles/truncate.module.css";
 }
 
 .nameChevron {

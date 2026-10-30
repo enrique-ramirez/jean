@@ -109,14 +109,12 @@
 	}
 
 	.title {
-		overflow: hidden;
+		composes: truncate from "../styles/truncate.module.css";
 		margin: 0;
 		font-size: 0.75rem;
 		font-weight: 600;
 		letter-spacing: 0.04em;
-		text-overflow: ellipsis;
 		text-transform: uppercase;
-		white-space: nowrap;
 		color: var(--faint);
 	}
 

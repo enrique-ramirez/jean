@@ -79,11 +79,9 @@
 }
 
 .label {
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	min-width: 0;
-	overflow: hidden;
 	font-family: var(--font-numeric);
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .kind {

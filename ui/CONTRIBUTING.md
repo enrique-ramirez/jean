@@ -74,7 +74,7 @@ Commands run from the repository root and the root `package.json` delegates them
 ## 5. Styling
 
 1. **CSS Modules, colocated with the component.** The only global stylesheets are `shared/styles/tokens.css` (the palette and scale, as custom properties) and `base.css`. Re-theming Jean SHOULD mean editing custom properties and nothing else.
-2. **A class passed into a shared component wins by cascade layer, whatever either rule's specificity or place in the bundle.** A stylesheet under `shared/ui/` or `shared/keyboard/`, and `hitArea.module.css`, is one `@layer shared` block. `base.css` keeps its element rules and the focus ring in `@layer base`, beneath it. `domain/`, `features/` and `app/` stay unlayered, which outranks both.
+2. **A class passed into a shared component wins by cascade layer, whatever either rule's specificity or place in the bundle.** A stylesheet under `shared/ui/` or `shared/keyboard/`, and each module under `shared/styles/` (`hitArea`, `truncate`), is one `@layer shared` block. `base.css` keeps its element rules and the focus ring in `@layer base`, beneath it. `domain/`, `features/` and `app/` stay unlayered, which outranks both.
    - The caller's plain rule also replaces the component's `:hover`, `:disabled` and `:focus-visible` rule for the same property. Restate the state where it is still wanted.
    - A layered stylesheet opens with `@layer base, shared;`. Any chunk can be the first one the browser reads, and an order stated after a layered rule does not reorder it.
    - Nothing in a layer is `!important`, which inverts the order.

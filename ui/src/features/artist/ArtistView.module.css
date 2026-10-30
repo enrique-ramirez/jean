@@ -102,11 +102,9 @@
 }
 
 .recordTitle {
-	overflow: hidden;
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	font-size: 0.875rem;
 	color: var(--text);
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .recordMeta {
@@ -149,9 +147,7 @@
 
 .guestTitle,
 .guestUnder {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	composes: truncate from "../../shared/styles/truncate.module.css";
 }
 
 .guestTitle {

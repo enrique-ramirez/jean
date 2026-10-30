@@ -61,12 +61,10 @@
 }
 
 .bound {
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	margin: 2px 0 0;
-	overflow: hidden;
 	color: var(--muted);
 	font-size: 0.8125rem;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .bound b {

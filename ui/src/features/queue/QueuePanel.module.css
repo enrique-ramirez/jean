@@ -144,11 +144,9 @@
 }
 
 .originLabel {
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	min-width: 0;
-	overflow: hidden;
 	font-size: 0.75rem;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 	color: var(--faint);
 }
 
@@ -269,10 +267,8 @@
 }
 
 .artist {
-	overflow: hidden;
+	composes: truncate from "../../shared/styles/truncate.module.css";
 	font-size: 0.6875rem;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 	color: var(--muted);
 }
 

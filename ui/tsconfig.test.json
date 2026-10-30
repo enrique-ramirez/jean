@@ -45,6 +45,7 @@
 		"src/shared/keyboard/keyboardOwner.ts",
 		"src/shared/keyboard/keymap.ts",
 		"src/globals.d.ts",
+		"src/shared/lib/noop.ts",
 		"src/shared/lib/store.ts",
 		"src/shared/i18n/en.ts",
 		"src/shared/i18n/format.ts",

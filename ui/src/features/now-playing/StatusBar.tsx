@@ -25,6 +25,7 @@ import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useTranslate } from "@/shared/i18n/useTranslate";
+import { NOOP } from "@/shared/lib/noop";
 import { formatTime } from "@/shared/lib/time";
 import { Artwork } from "@/shared/ui/Artwork";
 import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";
@@ -37,8 +38,6 @@ import { SeekBar, useElapsedSeconds } from "./SeekBar";
 import styles from "./StatusBar.module.css";
 import { usePlayingCover } from "./usePlayingCover";
 import { Volume, VolumePopover } from "./Volume";
-
-const NOOP = () => {};
 
 function Times({ snapshot }: { snapshot: PlayerSnapshot | null | undefined }) {
 	const t = useTranslate();

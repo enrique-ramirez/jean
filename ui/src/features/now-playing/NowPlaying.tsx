@@ -29,6 +29,7 @@ import { useResettingState } from "@/shared/hooks/useResettingState";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import { useSpoken, useTranslate } from "@/shared/i18n/useTranslate";
 import { useKeyboardOwner } from "@/shared/keyboard/keyboardOwner";
+import { NOOP } from "@/shared/lib/noop";
 import { Artwork } from "@/shared/ui/Artwork";
 import { SkipBackIcon, SkipForwardIcon } from "@/shared/ui/icons";
 import { CoverWheel, useCoverWheel } from "./CoverWheel";
@@ -56,8 +57,6 @@ import { VolumePopover } from "./Volume";
 
 // Must match the exit animation in NowPlaying.module.css.
 const SLIDE_MS = 280;
-
-const NOOP = () => {};
 
 // `foo_jean` names no playing location for a detached session, so there a track is told apart by
 // its file rather than its row.

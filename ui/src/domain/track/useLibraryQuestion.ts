@@ -3,13 +3,12 @@ import type {
 	LibraryQuestion,
 	QuestionAnswerTo,
 } from "@/shared/api/libraryQuestions";
+import { NOOP } from "@/shared/lib/noop";
 import {
 	libraryAnswerOf,
 	retryLibraryQuestion,
 	subscribeLibraryAnswer,
 } from "./libraryAsker";
-
-const NO_UNSUBSCRIBE = () => {};
 
 const NOTHING = { answer: null, failure: null } as const;
 
@@ -31,7 +30,7 @@ export function useLibraryQuestion<Question extends LibraryQuestion>(
 		(listener: () => void) =>
 			origin && parsed
 				? subscribeLibraryAnswer(origin, parsed, listener)
-				: NO_UNSUBSCRIBE,
+				: NOOP,
 		[origin, parsed],
 	);
 	const read = useCallback(

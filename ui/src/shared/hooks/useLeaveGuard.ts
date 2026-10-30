@@ -1,11 +1,10 @@
 import { useEffect } from "react";
+import { NOOP } from "@/shared/lib/noop";
 
 export interface LeaveGuard {
 	isDirty: () => boolean;
 	ask: (discard: () => void, keep: () => void) => void;
 }
-
-const NOOP = () => {};
 
 const guards: LeaveGuard[] = [];
 const goneListeners = new Set<(guard: LeaveGuard) => void>();

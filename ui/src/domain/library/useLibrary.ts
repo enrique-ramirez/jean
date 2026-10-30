@@ -20,13 +20,12 @@ import type { LibraryList, RowWindows } from "@/domain/track/rowWindows";
 import { libraryOrigin } from "@/shared/api/discovery";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useStoreOr } from "@/shared/hooks/useStoreOr";
+import { NOOP } from "@/shared/lib/noop";
 import { NO_SUBSCRIPTION } from "@/shared/lib/store";
 import { libraryStatusOf } from "./libraryStatus";
 import { useMostPlayed } from "./useLibrarySummary";
 
 const NO_HOLD: Hold = { kind: "none" };
-
-const NOTHING_TO_RETRY = () => {};
 
 const NO_SOURCE = windowedSourceOf({
 	windows: { at: () => null },
@@ -69,7 +68,7 @@ export function useLibrary() {
 		),
 		useCallback(() => (windowed ? windowed.hold() : NO_HOLD), [windowed]),
 	);
-	const retry = windowed ? windowed.retryNow : NOTHING_TO_RETRY;
+	const retry = windowed ? windowed.retryNow : NOOP;
 
 	const structure = list?.structure ?? 0;
 	const trackCount = list?.length ?? 0;

@@ -4,13 +4,13 @@ A foobar2000 component that serves [Jean](https://github.com/enrique-ramirez/jea
 
 ## What it does
 
-**Writes metadata tags.** A request arrives over HTTP and *foobar2000* performs the write, through `metadb_io_v2::update_info_async`, so the player's own database is current the instant the write returns. Anything writing tags from outside the player leaves that database stale until a rescan, so the rating a client just set does not come back when it asks. Ratings are the first caller, but nothing here is rating-shaped: it writes fields.
+It writes metadata tags. A request arrives over HTTP and foobar2000 performs the write, through `metadb_io_v2::update_info_async`, so the player's own database is current the instant the write returns. Anything writing tags from outside the player leaves that database stale until a rescan, and the rating a client just set does not come back when it asks. Ratings are the first caller, but nothing here is rating-shaped: it writes fields.
 
-**Creates autoplaylists.** An autoplaylist is a live query over foobar2000's Media Library that then shows up in `GET /api/playlists` like any other playlist. This creates, updates, previews and deletes them, and the playlist list says which playlists are autoplaylists, and which of those are this component's. Updating and deleting accept any autoplaylist, whoever made it.
+It creates autoplaylists. An autoplaylist is a live query over foobar2000's Media Library that then shows up in `GET /api/playlists` like any other playlist. The component creates, updates, previews and deletes them, and the playlist list says which playlists are autoplaylists and which of those are its own. Updating and deleting accept any autoplaylist, whoever made it.
 
-**Serves the media library.** Rows by position, at most 4096 to a request, in whichever title-formatting columns the client declares, in one binary response. The component keeps a snapshot of the library it walked and watches foobar2000's own change notifications to keep it current. It also answers how the library falls into albums, the values and credits behind a field, a search, and the figures and tracks of an album, an artist or a genre, so a client never holds the library to ask. What moved shows in the player's state as a `structure` and `revision` pair and a change count per column, and a client reads again only the windows that depend on them.
+It serves the media library: rows by position, at most 4096 to a request, in whichever title-formatting columns the client declares, in one binary response. The component keeps a snapshot of the library it walked and watches foobar2000's own change notifications to keep it current. It also answers how the library falls into albums, the values and credits behind a field, a search, and the figures and tracks of an album, an artist or a genre, so a client never holds the library to ask. What moved shows in the player's state as a `structure` and `revision` pair and a change count per column. A client reads again only the windows that depend on them.
 
-**Streams the player's output.** A live mirror of what foobar2000 is playing, in Ogg Opus or in AAC-LC for Safari. The capture is post-DSP and pre-volume, so silencing the player leaves the stream at full level: choosing a device moves the sound to it rather than doubling it. `GET /api/stream/listeners` says who else has it, and anybody can ask for the speakers back alongside them.
+It streams the player's output, a live mirror of what foobar2000 is playing, in Ogg Opus or in AAC-LC for Safari. The capture is post-DSP and pre-volume, so silencing the player leaves the stream at full level: choosing a device moves the sound to it rather than doubling it. `GET /api/stream/listeners` says who else has it, and anybody can ask for the speakers back alongside them.
 
 ## Building
 
@@ -31,11 +31,11 @@ node plugins/fb2k/scripts/embed-ui.mjs   # -> src/fb2k/ui_assets_table.cpp
 
 The build machine needs:
 
-- **Visual Studio 2022 Build Tools** with the C++ workload **and the ATL component** (`Microsoft.VisualStudio.Component.VC.ATL`). `--includeRecommended` does not bring ATL, and the SDK's helpers include `atlbase.h`. The SDK ships MSBuild project files, so there is no CMake to write.
-- **The foobar2000 SDK**, fetched by `scripts/fetch-sdk.ps1` into `sdk/`. It is not vendored: its licence does not permit redistribution.
-- **WTL**, fetched by `scripts/fetch-wtl.ps1`. It is not ATL and does not ship with Visual Studio; `libPPUI` and the SDK helpers include `atlapp.h`, which is WTL's.
-- **libopus and libogg**, fetched by `scripts/fetch-opus.ps1` here and by `scripts/fetch-opus.sh` on whatever machine runs the tests. Both are BSD; they are fetched rather than committed because they are a large body of C. The fetch pins a version and checks a SHA-256.
-- **Nothing else to fetch.** cpp-httplib, nlohmann/json and doctest are single MIT headers committed under `third_party/`, and zlib is committed beside them as a directory of C under the zlib licence. `third_party/README.md` carries the versions and why each one is the one vendored.
+- Visual Studio 2022 Build Tools with the C++ workload **and the ATL component** (`Microsoft.VisualStudio.Component.VC.ATL`). `--includeRecommended` does not bring ATL, and the SDK's helpers include `atlbase.h`. The SDK ships MSBuild project files, so there is no CMake to write.
+- The foobar2000 SDK, fetched by `scripts/fetch-sdk.ps1` into `sdk/`. It is not vendored: its licence does not permit redistribution.
+- WTL, fetched by `scripts/fetch-wtl.ps1`. It is not ATL and does not ship with Visual Studio; `libPPUI` and the SDK helpers include `atlapp.h`, which is WTL's.
+- libopus and libogg, fetched by `scripts/fetch-opus.ps1` here and by `scripts/fetch-opus.sh` on whatever machine runs the tests. Both are BSD, fetched rather than committed because they are a large body of C. The fetch pins a version and checks a SHA-256.
+- Nothing else. cpp-httplib, nlohmann/json and doctest are single MIT headers committed under `third_party/`, and zlib is committed beside them as a directory of C under the zlib licence. `third_party/README.md` carries the versions and why each one is the one vendored.
 
 ```powershell
 scripts\fetch-sdk.ps1
@@ -47,9 +47,7 @@ scripts\package.ps1                                # -> dist\foo_jean.fb2k-compo
 
 ### Build traps
 
-The Windows build has several traps, each of which fails in a way that does not name its cause, and each is written down where it is enforced: the header of `src/foo_jean.vcxproj`, `Directory.Build.targets`, `scripts/build.ps1`, `scripts/package.ps1` and `scripts/generate-sln.ps1`. Read all five before debugging a link, a packaging or a resource-compiler error.
-
-Two things about the solutions, which no script says. **`scripts\generate-sln.ps1` exists to build the SDK's own `foo_sample`**, which proves a new machine's toolchain before there is any of this code to blame. **`foo_jean.sln` in this directory is for opening the tree in Visual Studio** and is not used by the build.
+Each trap in the Windows build fails in a way that does not name its cause, and each is written down where it is enforced: the header of `src/foo_jean.vcxproj`, `Directory.Build.targets`, `scripts/build.ps1`, `scripts/package.ps1` and `scripts/generate-sln.ps1`. Two things no script says. `scripts\generate-sln.ps1` builds the SDK's own `foo_sample`, which proves a new machine's toolchain before there is any of this code to blame. `foo_jean.sln` in this directory is for opening the tree in Visual Studio, and the build does not use it.
 
 ### macOS
 
@@ -136,7 +134,7 @@ On a Mac the page has an **Apply** and a **Reset** of its own, because macOS giv
 
 The page is stricter than the file parser, deliberately: a hand-edited file must never stop a headless player coming up, so a bad key there falls back to a default, while the dialog refuses and says what to type.
 
-**Applying most switches needs no restart**, since a change to `config.json` reaches a running listener within a couple of seconds. The first page shows *"a restart is needed for some changes to take effect"*, and only where a saved value differs from what the process is actually running with for one of the keys above that wait for a restart. The same line says where `config.json` is. Where the bind failed it shows the listener's error instead, and where another program holds an address on the port it shows the held-address sentence.
+Applying most switches needs no restart, since a change to `config.json` reaches a running listener within a couple of seconds. The first page shows *"a restart is needed for some changes to take effect"*, and only where a saved value differs from what the process is actually running with for one of the keys above that wait for a restart. The same line says where `config.json` is. Where the bind failed it shows the listener's error instead, and where another program holds an address on the port it shows the held-address sentence.
 
 ## The API
 
@@ -165,23 +163,15 @@ scripts/fetch-ctcache.sh                  # optional; lint.sh then skips files c
 scripts/compile-commands.sh               # what an editor's clangd reads
 ```
 
-`scripts/compile-commands.sh` writes `compile_commands.json`, and an editor is wrong without it. clangd finds no compilation database, falls back to compiling each file with no include paths and no `-std`, and reports the first `#include "core/..."` as a file-not-found followed by a hundred errors that are all cascade from it. The file holds absolute paths and is gitignored, so it is generated per machine. It covers `src/core/` and `tests/`, and `src/fb2k/` on a Mac where the SDK is fetched. Anywhere else the script says it skipped `src/fb2k/` and why.
+`scripts/compile-commands.sh` writes `compile_commands.json`, and an editor is wrong without it. clangd finds no compilation database, compiles each file with no include paths and no `-std`, and reports the first `#include "core/..."` as a file not found, followed by a hundred errors that cascade from it. The file holds absolute paths and is gitignored, so it is generated per machine.
 
-`.github/workflows/plugin.yml` runs `scripts/test.sh`, both sanitizer suites, `scripts/format.sh --check` and `scripts/lint.sh` on a Linux runner for every change under `plugins/fb2k/` or to `contract/openapi.yaml`, and builds the component on a Windows runner, where `scripts\build.ps1` lints `src/fb2k/` and `scripts\test.ps1` runs. A macOS runner builds the bundle, runs `scripts/test.sh` and lints `src/fb2k/`. `scripts/lib/llvm.sh` pins the LLVM major, which the workflow's `llvm_major` follows: `scripts/format.sh` and `scripts/lint.sh` refuse any other clang-format or clang-tidy, since a local run matches CI only at that version. `CLANG_FORMAT` and `CLANG_TIDY` name the binary on a machine carrying more than one.
+On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\test.ps1`, and `scripts\build.ps1` runs `scripts\lint.ps1` after every build of the component, so a finding fails the build. That lint wants the LLVM major `scripts\lint.ps1` pins: `winget install LLVM.LLVM` on a machine, `.github/actions/windows-llvm` on a runner. The `.ps1` and `.sh` fetchers are the same fetch for different shells; run whichever belongs to the machine the tests will run on.
 
-On Windows the same two steps are `scripts\fetch-opus.ps1` and then `scripts\test.ps1`. `scripts\lint.ps1` is clang-tidy over `src/fb2k/` against MSVC's headers, with the vcxproj's own defines and include paths, and the only lint of the files `fb2k_unparsed_sources` lists in `scripts/lib/compile-flags.sh`; `scripts\build.ps1` runs it after every build of the component, so a finding fails the build. It wants the LLVM major `scripts\lint.ps1` pins: `winget install LLVM.LLVM` on a machine, `.github/actions/windows-llvm` on a runner. The `.ps1` and `.sh` fetchers are the same fetch for different shells; run whichever belongs to the machine the tests will run on.
+`scripts/test.sh`'s own header has the rest of its arguments and what each one costs. `.github/workflows/plugin.yml` is what runs on a change, and `plugins/fb2k/CONTRIBUTING.md`, *Tests*, rule 10, is what a machine that runs the suite needs beyond this directory.
 
-`plugins/fb2k/CONTRIBUTING.md`, *Tests*, rule 10, is what a machine that runs the suite needs beyond this directory.
+The tests need neither Windows nor the foobar2000 SDK nor a running player: everything they cover but the AAC codec files lives in `src/core/`, which compiles standalone. One set of AAC cases drives each platform's codec, `src/fb2k/aac_encoder_mac.cpp` under `scripts/test.sh` on a Mac and `src/fb2k/aac_encoder.cpp` under `scripts\test.ps1` on Windows with the SDK fetched. Linux has no AAC encoder built in. Every run prints one line saying which: `AAC tested through this platform's codec.`, `AAC not tested: this platform's AAC encoder is unavailable on this machine`, or `AAC not tested: no AAC encoder is built into this suite.`
 
-`scripts/test.sh`'s own header has the rest of its arguments and what each one costs.
-
-The tests need **neither Windows nor the foobar2000 SDK nor a running player**: everything they cover but the AAC codec files lives in `src/core/`, which compiles standalone. One set of AAC cases drives each platform's codec. `scripts/test.sh` on a Mac compiles `src/fb2k/aac_encoder_mac.cpp` and drives AudioToolbox's encoder; `scripts\test.ps1` on Windows with the SDK fetched compiles `src/fb2k/aac_encoder.cpp` and drives Media Foundation's; on Linux no AAC encoder is built in. Every run prints one line saying which: `AAC tested through this platform's codec.`, `AAC not tested: this platform's AAC encoder is unavailable on this machine`, or `AAC not tested: no AAC encoder is built into this suite.`
-
-Four end-to-end checks, in PowerShell, run against a real player on Windows: `scripts/verify-tag-write.ps1`, `verify-stream.ps1`, `verify-listeners.ps1` and `verify-library.ps1`. Each script's header says what it checks. `verify-tag-write.ps1` reads the rating back **from the player**, through each row's `%rating%` column, because the failure this design exists to avoid is a write the player performed but its own database did not learn about.
-
-`scripts/test-fixtures.ps1` builds the corpus those run against, out of files kept for the purpose rather than anybody's music. `-Corpus`, or `FOO_JEAN_CORPUS_DIR`, is the folder holding them, and the script refuses to run without it. It copies them into a tree of its own beside the player and adds the copies to a playlist of their own, with an internet radio stream beside them. **Tag writes are only ever pointed at that tree**, never at a real library.
-
-The tree is two media library roots and a folder outside both, so one run reaches every address form. The roots hold a different recording at one library-relative path, which is the address the component refuses as ambiguous; nothing under the third folder has a library-relative address at all. Among the copies are one MP3, one FLAC and one M4A, a filename that is not ASCII, and a FLAC whose subsongs foobar2000 numbers from 1. **Registering the two roots as media library folders is by hand.** The script prints them at the end and changes nothing in the player's configuration.
+Four end-to-end checks in PowerShell run against a real player on Windows: `scripts/verify-tag-write.ps1`, `verify-stream.ps1`, `verify-listeners.ps1` and `verify-library.ps1`. `scripts/test-fixtures.ps1` builds the corpus they write to, from files kept for the purpose, and a tag write is only ever pointed at that tree. Each script's header says what it checks and what it needs. Registering the corpus's two library roots as media library folders is by hand; the script prints them and changes nothing in the player's configuration.
 
 ## Releasing
 
@@ -196,7 +186,7 @@ gh attestation verify foo_jean.fb2k-component --repo enrique-ramirez/jean
 
 ## Layout
 
-`plugins/fb2k/ARCHITECTURE.md` is how the pieces fit and which thread owns what, `src/README.md` maps the source tree file by file, `plugins/fb2k/CONTRIBUTING.md` is how to write code in it, and `third_party/README.md` carries the vendored versions.
+`plugins/fb2k/ARCHITECTURE.md` is how the pieces fit and which thread owns what. `src/README.md` is what a listing of the source tree cannot show: the pairs split at the boundary, the threads, the platform files and the generated ones. `plugins/fb2k/CONTRIBUTING.md` is how to write code in it, and `third_party/README.md` carries the vendored versions.
 
 The HTTP contract is not in this tree. `contract/openapi.yaml` sits at the repository root, beside the conformance suite that measures an implementation against it.
 

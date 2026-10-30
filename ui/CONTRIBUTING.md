@@ -42,6 +42,7 @@ pnpm test:ui        # pick and watch tests interactively
 pnpm test:live      # the small suite against a real player. Needs LIVE
 pnpm test:iphone    # the @iphone subset under WebKit, run by nothing else
 pnpm test:contract  # drive a running plugin against the specification. Needs CONTRACT_URL
+pnpm cases          # rewrite the three library case files from the fake; --check fails on drift
 pnpm fake           # the fake player alone, on :8881
 pnpm demo           # build the live demo into dist-demo/
 pnpm demo:preview   # serve that
@@ -53,7 +54,7 @@ pnpm sync-kit       # refresh .claude/ from the ai-engineering kit
 
 `pnpm lint` and `pnpm typecheck` MUST pass. Both are seconds; run them freely. `pnpm test:unit` is nearly as cheap.
 
-**`pnpm test:e2e` is not.** A full Playwright run is desktop and mobile across the whole suite: it loads the machine and floods an agent's context. Run the specs that cover what you changed, such as `pnpm test:e2e test/e2e/queue.spec.ts`, `--grep "toast"` or `--project=desktop`, as often as you like. Keep the full run as a final verification, once, when the change is substantial enough that something outside the specs you already ran could plausibly have broken. Changes to documentation, comments or configuration need no run at all. See `test/README.md`.
+`pnpm test:e2e` is not. A full Playwright run is desktop and mobile across the whole suite. Run the specs that cover the change, by path, `--grep` or `--project`, as often as needed. Keep the full run for one final verification, when the change is large enough that something outside those specs could plausibly have broken. Documentation, comments and configuration need no run. `test/README.md` has the suite.
 
 A source file containing a NUL byte is binary to `grep`, which matches nothing in it and exits non-zero, so a check built on `grep` (`.claude/hooks/check-style.sh` included) passes every line of it. `file` naming a `.ts` as `data` is the tell, and a separator written as the byte rather than as `\u0000` is how it gets in.
 

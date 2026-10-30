@@ -23,7 +23,7 @@ import { useCommand, usePlayerPatch } from "./playerWrite";
 import { audibleAt, positionAt } from "./position";
 import { inSession } from "./session";
 
-// `shared/api/README.md`, *What Jean does about playback*, has why.
+// `shared/api/README.md`, *Playback*, has why.
 const SKIP_APPLY_DELAY_MS = 250;
 
 const useSkip = (command: (origin: string) => Promise<Result<unknown>>) => {

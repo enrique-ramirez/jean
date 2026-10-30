@@ -43,7 +43,7 @@ Everything else that seems to want a sentence is a name you have not found yet, 
 
 ## 4. Documentation
 
-Documentation states the current design and nothing else. No history: what something used to be, why it changed, or what was rejected belongs in git rather than in a file. A sentence that exists to stop somebody undoing a decision is a test instead, or it goes; `.claude/doctrine/documentation.md` is the whole rule. No personal detail either: no names, machines, hostnames, addresses or real library paths, in prose, comments or test data. Use placeholders. Public repository URLs are fine.
+Documentation states the current design and nothing else. No history: what something was before, why it changed and what was rejected belong in git. A sentence that exists to stop somebody undoing a decision is a test instead, or it goes; `.claude/doctrine/documentation.md` is the whole rule. No personal detail either. Names, machines, hostnames, addresses and real library paths stay out of prose, comments and test data alike; use placeholders. Public repository URLs are fine.
 
 **No measurements.** A measured number ties Jean to one library on one machine and then ships to everyone. Record the constraint a measurement established, such as "under *Playback follows cursor* foobar2000 advances through the focused playlist, not the playing one" or "there is no way to ask for a thumbnail", and never the measurement itself.
 
@@ -51,20 +51,10 @@ Never hard-wrap prose. One paragraph is one line, however long; editors wrap.
 
 Each file has one job. A `README.md` is what its thing is and how to use it, a `CONTRIBUTING.md` how to write its code, an `ARCHITECTURE.md` how its parts fit. `ui/src/shared/api/README.md` is the player's surface. A `CLAUDE.md` is what an agent cannot read off the code, and stays short. Anything that is really a contribution rule belongs in a `CONTRIBUTING.md` and is linked from there, never copied.
 
-`.claude/hooks/check-style.sh` fails an edit that reintroduces personal detail, history, hard-wrapped prose, a recorded measurement, an em dash, or one of the mechanical phrases in `.claude/voice/register.txt`. It fires on the edit tools and on a shell command that wrote a file, so a heredoc does not walk past it. It only catches what a grep can be certain of; the rest is your judgement.
-
-Two reviewers cover that rest, over uncommitted changes and in this order: `style-reviewer` for design, structure, naming and duplication, then `comment-reaper` for comments and the prose of documentation. Run both before asking for a commit. Comment density is the rule that slips first, and it slips a little at a time.
-
-`.claude/review-profile.md` is what tells both agents about this repository, and it carries a block per project: *Everywhere* applies to any diff, then one for `ui/` and one for `plugins/fb2k/`. The agents, the hooks and the voice files come from the `ai-engineering` kit, installed once at the root and the same in every project; the profile is the only part that is Jean's.
-
-`pnpm sync-kit` takes the kit's current version of those files. It reports anything under `.claude/` that was edited here rather than in the kit, and moves it to `<name>.local.bak` rather than dropping it. A rule worth keeping belongs in the kit, so every project gets it; `.claude/register.local.txt` is the place for something that is genuinely only true of Jean.
+Run `/review` before asking for a commit. The hook that rejects an edit, the two reviewers it runs and `pnpm sync-kit` are the `ai-engineering` kit's, described in its `README.md` and `INSTALL.md`. `.claude/review-profile.md` is the one part of it that is Jean's.
 
 ## 5. Writing
 
 Short sentences. RFC 2119 keywords for obligations. Commit messages take an imperative subject; add a body only for a fact the diff cannot show.
 
-**Write like a person, not like an assistant.** Code is the source of truth; prose exists to say what the code cannot. The register that makes documentation unreadable is a house of throat-clearing, elevated synonyms and hedges. `.claude/voice/register.txt` holds the words to avoid and the hook checks a subset of them.
-
-The words are the easy half. What actually gives an assistant away is shape: an em dash at every joint, a bolded pronouncement opening every paragraph, and sentences that never vary in length. `.claude/voice/constructions.md` is that list, and it is the one worth reading twice.
-
-Plain words over elevated ones. No selling to a reader who is already here. No sentence whose only job is to introduce the next one.
+Prose is in the house voice, `.claude/voice/personas/house.md`. `.claude/voice/register.txt` is the words to avoid and `.claude/voice/constructions.md` the shapes, and the shapes are the half that gives an assistant away. Read that one twice.

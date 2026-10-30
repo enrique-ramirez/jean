@@ -2,7 +2,7 @@
 
 What `foo_jean` answers, as Jean uses it, and the foobar2000 behaviour behind it that Jean relies on. `foo_jean` is a foobar2000 component listening on a port of its own, typically 8881, and it serves Jean itself from that origin. Its source is `plugins/fb2k/`. Everything Jean asks of the player arrives through it: playback, the player's own state, the playlist list and every edit to it, the queue, the library and its covers, writing tags, creating autoplaylists, and streaming the player's output.
 
-**`contract/openapi.yaml` is that component's contract, and it is the reference for every route below.** Jean's types are generated from it and its descriptions carry the reasoning a client needs. `plugins/fb2k/ARCHITECTURE.md` is the design behind it, including the facts about foobar2000 the component relies on. What follows is what Jean does about an answer.
+**`contract/openapi.yaml` is that component's contract, and it is the reference for every route below.** Jean's types are generated from it and its descriptions carry the reasoning a client needs. `plugins/fb2k/ARCHITECTURE.md` is the design behind it, including the facts about foobar2000 the component relies on. What follows is what a client could not infer from the contract alone.
 
 ## Reaching it
 
@@ -13,7 +13,7 @@ What `foo_jean` answers, as Jean uses it, and the foobar2000 behaviour behind it
 | SPA fallback | none. A path that names no file is a `404`, and a directory answers its own `index.html`, so a client-side route has to live in the hash |
 | Owner's config | `<profile>/foo_jean/config.json`, which Jean never edits and has no route to. `plugins/fb2k/README.md` has the keys |
 
-**`POST /api/tags`, `POST /api/autoplaylists/preview`, `GET /api/track/library` and `GET /api/track/playing` each have a rate limit of their own, and a request past it is refused `429` with `Retry-After`**, having written or run nothing. `contract/openapi.yaml` has the budgets. Jean retries all four through `retryWhenTooFast` in `client.ts`.
+`POST /api/tags`, `POST /api/autoplaylists/preview`, `GET /api/track/library` and `GET /api/track/playing` each have a rate limit of their own. A request past it is refused `429` with `Retry-After`, having written or run nothing. `contract/openapi.yaml` has the budgets. Jean retries all four through `retryWhenTooFast` in `client.ts`.
 
 ## Discovery
 
@@ -33,11 +33,11 @@ Every `columns` parameter takes **foobar2000 title-formatting expressions**, eva
 
 ### Capability detection
 
-**A field that does not exist answers `?`. A field that exists but is empty answers `''`, `0` or `N/A`.** That difference is the whole of the capability probe: ask for a column set and enable whatever resolves.
+A field that does not exist answers `?`. A field that exists but is empty answers `''`, `0` or `N/A`. That difference is the whole of the capability probe: ask for a column set and enable whatever resolves. The probe reads the raw text, and `Number(null)` is `0`, so a value turned into `null` before the probe sees it reads as available.
 
-- **`$meta(x)` cannot be feature-detected.** It answers `''` for a field that does not exist, where `%x%` answers `?`. Probe with `%x%`.
-- **Sparse fields defeat sampling.** A field only some tracks carry can be missed entirely by a fixed sample. Detect per track where a field is sparse, as the Details panel does.
-- **Which fields resolve is a fact about the install, not about a set of rows.** A playlist of untagged rips answers `?` for `%year%` while the library resolves it, so ask the library and let every view read that one answer. `src/domain/track/fieldAvailability.ts`.
+- `$meta(x)` cannot be feature-detected. It answers `''` for a field that does not exist, where `%x%` answers `?`. Probe with `%x%`.
+- Sparse fields defeat sampling. A field only some tracks carry can be missed by a fixed sample. Detect per track where a field is sparse, as the Details panel does.
+- Which fields resolve is a fact about the install, not about a set of rows. A playlist of untagged rips answers `?` for `%year%` while the library resolves it, so ask the library and let every view read that one answer. `src/domain/track/fieldAvailability.ts`.
 
 ### Expressions Jean uses
 
@@ -65,99 +65,62 @@ Which of these resolve varies by install, by component and by how the library wa
 
 > **There is no play history, only a last play.** A play count is a lifetime total and a last-played is the most recent play and nothing else, so a track played today and again weeks ago reports only today. Any per-day or per-week chart built on it undercounts every older bucket and slopes upward whatever the listening did. A window can honestly report how many *distinct tracks* were touched since a date, and must say so in those words.
 
-> **`%added%` starts on the day `foo_playcount` is installed.** Its first run stamps every track already in the library with that moment, so on a new install most of the library carries times seconds apart and only tracks added afterwards carry a real one. `foo_enhanced_playcount`'s `%added_enhanced%` resolves and answers `<invalid timestamp>` for every track, and its `%lastfm_added%` is the first scrobble. `%last_modified%` is not a substitute either: playback can rewrite tags, which bumps the file's mtime, so it is `max(added, last played or retagged)`, wrong precisely at the recent end, where a "recently added" view would look.
+> `%added%` starts on the day `foo_playcount` is installed. Its first run stamps every track already in the library with that moment, so on a new install most of the library carries times seconds apart and only tracks added afterwards carry a real one. `foo_enhanced_playcount`'s `%added_enhanced%` resolves and answers `<invalid timestamp>` for every track, and its `%lastfm_added%` is the first scrobble. `%last_modified%` is not a substitute either: playback can rewrite tags, which bumps the file's mtime, so it is `max(added, last played or retagged)`, wrong precisely at the recent end, where a "recently added" view would look.
 
-> **Lyrics need no component.** The four tags above return whatever is in them, which is LRC-timestamped only some of the time and is plain text more often than not. Real content includes several timestamps on one line, credit lines, and tags holding nothing but a URL. LRC in real files also carries `\r\n` or a lone `\r` between lines, fractions of one to three digits, and an `[offset:…]` in milliseconds to subtract. The field is large enough that it is fetched per track through `GET /api/track/playing` and **MUST never go in the rows declaration's columns**, which are read for every track. `foo_openlyrics` is what *writes* the tag.
+> Lyrics need no component. The four tags above return whatever is in them, which is LRC-timestamped only some of the time and is plain text more often than not. Real content includes several timestamps on one line, credit lines, and tags holding nothing but a URL. LRC in real files also carries `\r\n` or a lone `\r` between lines, fractions of one to three digits, and an `[offset:…]` in milliseconds to subtract. The field is large enough that it is fetched per track through `GET /api/track/playing` and **MUST never go in the rows declaration's columns**, which are read for every track. `foo_openlyrics` is what *writes* the tag.
+
+## The library
+
+`contract/openapi.yaml`, *The media library*, defines the `{structure, revision}` pair and the rows, runs and question routes that carry it.
+
+- A pair is compared for equality only, never for order. A pair read after the player restarts can be lower than the one before it without being older.
+- A `409` from a rows or runs read means `structure` moved under the request. The windows read at the old `structure` are dropped and the column declaration is sent again before anything is drawn.
 
 ## Paths
 
-> **The player and the library disagree about what a path is.** The playing track's `path` in `GET /api/state` is the absolute, platform-separated form foobar2000 evaluates `%path%` to; a library path is relative to the media library folders and `/`-separated on every platform, Windows included. `player.libraryPath` carries the relative form where the media library holds the playing track. Nothing tells a client where the library folders are, so where only the absolute form is at hand the two are matched **by suffix** after normalising separators: `libraryPathMatcher()` in `src/shared/api/playerState.ts`.
+> The player and the library disagree about what a path is. The playing track's `path` in `GET /api/state` is the absolute, platform-separated form foobar2000 evaluates `%path%` to; a library path is relative to the media library folders and `/`-separated on every platform, Windows included. `player.libraryPath` carries the relative form where the media library holds the playing track. Nothing tells a client where the library folders are, so where only the absolute form is at hand the two are matched **by suffix** after normalising separators: `libraryPathMatcher()` in `src/shared/api/playerState.ts`.
 
-## What Jean does about state
+## The state document
 
-`GET /api/state` is the one route `domain/player/playerPoll.ts` asks, on a one-second interval with `If-None-Match`. Its sections ride together: `library` carries the two generations covered next, in *What Jean does about the library*, `player` carries what the player, or the session the poll names, is doing right now, and `mainThread` says whether foobar2000's main thread is still answering, since `player` goes on describing the last thing the player said while it is not. `contract/openapi.yaml`'s `State`, `Library`, `PlayerState` and `MainThread` schemas are the reference; this is only the part that catches an unwary client.
+`GET /api/state` carries three sections that ride together. `library` is the two generations `contract/openapi.yaml`, *The media library*, defines. `player` is what the player, or the session the poll names, is doing now. `mainThread` says whether foobar2000's main thread is still answering, and `player` goes on describing the last thing the player said while it is not. The `State`, `Library`, `PlayerState` and `MainThread` schemas are the reference; this is the part that catches an unwary client.
 
-- **The route answers `Cache-Control: private, no-cache`, and its `ETag` does not cover every field that moves tick to tick.** Left alone, a browser revalidates an untagged read on its own and hands back the last cached `200` body on a `304`, however stale. `fetchState()` in `state.ts` sends every read with `cache: "no-store"` so nothing but Jean's own `If-None-Match` ever decides whether a read is fresh.
-- **`player.position` is a mark, not a moving number.** It carries `seconds`, the position at the moment the component last looked, and `ageSeconds`, how long ago that was. A client adds the two to place the mark and then keeps counting on its own while `player.playback` is `playing`, which `src/domain/player/position.ts` does.
-- **`player` carries no `info` block.** The player's name and version do not change while it runs, so the poll does not repeat them; they come off a startup read of `GET /api/capabilities` instead, alongside the volume range (`volumeMin`, `volumeMax`, `volumeUnit`), the four permissions (`canControlPlayback`, `canWritePlaylists`, `canChangeOutput`, `canStream`) and the list of playback modes this install can be put into.
-- **`player.playbackMode` crosses the wire as Jean's own name**, one of `inOrder`, `repeatAll`, `repeatOne`, `random`, `shuffleTracks`, `shuffleAlbums` or `shuffleFolders`, mapped from whatever the player calls its own orders. `null` means the player is in an order this component has no name for, never a wrong one.
-- **A manual skip leaves no empty track between two.** foobar2000 stops the outgoing track before it opens the next one, and reports that stop as one that is starting another. `foo_jean` ignores a stop of that kind, so `player` goes on naming the outgoing track, title, path and artwork, until the next one replaces it. A client that saw nothing playing across a skip would flash an empty cover and `0:00` on every manual change, and only on manual ones.
+- The route's `ETag` does not cover every field that moves tick to tick. A browser left to itself revalidates an untagged read and hands back the last cached `200` body on a `304`, however stale, so every read goes out with `cache: "no-store"` (`fetchState()` in `state.ts`) and only Jean's own `If-None-Match` decides whether a read is fresh.
+- `player.position` is a mark, not a moving number: `seconds` at the moment the component last looked, and `ageSeconds` since. A client adds the two and counts on from there while `player.playback` is `playing`.
+- A manual skip leaves no empty track between two. foobar2000 stops the outgoing track before it opens the next and reports that stop as one that is starting another. `foo_jean` ignores a stop of that kind, so `player` goes on naming the outgoing track until the next replaces it. A client that read nothing playing across a skip would flash an empty cover and `0:00` on every manual change, and only on manual ones.
 
-## What Jean does about playback
+## Playback
 
-`shared/api/playback.ts` sends every transport, seek, mode and volume command to `foo_jean`: `POST /api/playback/play-pause`, `/pause`, `/resume`, `/next`, `/previous`, `/stop`, `/seek` and `/mode`, plus `POST /api/volume`. `contract/openapi.yaml` is the reference for each body, its statuses and the "exactly one of" rule the seek and volume routes read off which fields are present rather than off what they hold.
+`contract/openapi.yaml` has each command's body and statuses, and the "exactly one of" rule the seek and volume routes read off which fields are present rather than off what they hold.
 
-- **A mode travels by name, never by ordinal.** `POST /api/playback/mode` takes one of the seven `PlaybackMode` names off `GET /api/capabilities`'s `playbackModes`; a name this install does not offer answers `409` rather than being guessed at. The player's own ordinal means whatever this install's enum says it means, and its order and wording both vary.
-- **On the player, playback order applies to the active playlist, and playing a row sets it.** Shuffle draws only from the playlist the playing row belongs to, and foobar2000 has no selection to shuffle within, so confining playback to a set of tracks means getting those tracks into a playlist. That is what the scratch playlist is for. A detached session takes the set itself through `POST /api/playback/play` and plays it without a playlist, and the component refuses that route for the player.
-- **`playback.ts` also holds `takeSkipAsked`**, the record of which way a skip was asked for. foobar2000 never says which direction a track change moved, and the cover wheel needs the direction before the player has answered anything.
-- **A skip's `POST` answers as soon as the command is queued onto foobar2000's main thread, not once the track there has actually changed.** A read sent the instant it resolves still names the old one, which is why `useTransport.ts`'s `useSkip` waits before polling.
-- **At a playlist's end foobar2000 takes a skip and reports nothing.** No track change follows it, so the cover wheel times out a turn nothing answers.
+- The player's own playback-order ordinal means whatever this install's enum says it means, and its order and wording both vary. That is why a mode travels by name, one of `GET /api/capabilities`'s `playbackModes`.
+- On the player, playback order applies to the active playlist, and playing a row makes its playlist active. Shuffle draws only from that playlist, and foobar2000 has no selection to shuffle within. Confining playback to a set of tracks therefore means getting the set into a playlist, which is what the scratch playlist is for. A detached session takes the set itself through `POST /api/playback/play`, and the component refuses that route for the player.
+- foobar2000 never says which direction a track change moved. The cover wheel needs the direction before the player has answered anything, so `takeSkipAsked` in `playback.ts` records which way a skip was asked for.
+- A skip's `POST` answers as soon as the command is queued onto foobar2000's main thread, not once the track there has changed. A read sent the instant it resolves still names the old track, which is why `useSkip` in `useTransport.ts` waits before polling.
+- At a playlist's end foobar2000 takes a skip and reports nothing. No track change follows, and the cover wheel times out a turn nothing answers.
 
-## What Jean does about outputs
+## Playlists
 
-`GET /api/outputs` answers the devices the player currently lists and which one is active; `POST /api/outputs/active`, taking `{ deviceId }`, switches to one of them. `setActiveOutput` in `playback.ts` sends the write and `fetchOutputs` in `outputs.ts` sends the read; `contract/openapi.yaml` is the reference for both, including the statuses a client has to plan for.
+`contract/openapi.yaml`'s playlist paths are the reference for every route, including which of them `writePlaylists` refuses.
 
-- **A `deviceId` is opaque.** It is the output module's GUID and the device's GUID as the player prints and joins them, and nothing in Jean parses, splits or builds one: it is only ever read off `GET /api/outputs` and sent back exactly as read.
-- **Which device is playing rides `GET /api/state`; the list of devices does not.** `outputDeviceId` can move under the client's feet whenever a picker might be open, and it is one string, so the poll carries it on every tick. The list is a set nobody is looking at most of the time, so it is read on demand rather than watched: once at discovery, whenever a picker opens, when the tab becomes visible again, and when `canChangeOutput` turns true.
+- `itemCount` is the count as of the read that carried it. foobar2000's own window, another client and an autoplaylist refilling itself can all edit a playlist after that read, and the list is re-read only when a poll notices. Arithmetic on it that cannot survive being wrong, such as how many rows to remove or whether a cached view still matches, MUST re-read it first.
+- An autoplaylist refuses an added row with `409`, since foobar2000 locks a playlist per edit, so a client has no count to check after an add.
+- Emptying or deleting the playing playlist does not stop playback. The track keeps playing with no row behind it, so `player.playingLocation` is `null` while `path` still names it. Emptying is harmless when a play follows at once, which is how the scratch is refilled. Deleting is not: at the end of the track the player falls back to another playlist and carries on.
+- A `SORT BY` clause at the end of an autoplaylist's query is applied by foobar2000 exactly as `sort` with `forceSort` would be, and `SORT DESCENDING BY` reverses it. `managed` records the clause as part of `query` and leaves `sort` empty.
+- The player gives no way to read an autoplaylist's query back. Only one this component made carries a `managed` record, so a client editing any other has no text to start from.
 
-## What Jean does about the library
+## The queue
 
-Jean holds windows of the library, never the whole of it. `POST /api/library/rows` answers the rows a client names in one binary body that `jlib.ts` decodes, and `GET /api/library/runs` answers how the whole library falls into albums, so a list can be laid out before its rows are read. `libraryRows.ts` sends both and `libraryWindows.ts` holds what they answer. `contract/openapi.yaml`, *The media library*, is the format, the two generations and every status. On this side:
+The play queue outranks *Playback follows cursor*: a track that came off the queue is left playing whatever row the cursor is on. A queued track leaves the queue the moment it starts, so the queue is only ever what is still to come. `plugins/fb2k/ARCHITECTURE.md`, *Facts about the player*, has how foobar2000 orders it.
 
-- **The rows request is the declaration.** Jean sends `TRACK_EXPRESSIONS` as `columns`, a JSON array rather than a joined string, since a title-formatting expression may contain a comma, and the generation its ordinals were resolved against as `structure`, a string of decimal digits. A `202` means the declaration is not the one built: Jean waits on the poll for `library.columns` to match and `library.ready`, then asks again.
-- **A `409` to a rows or runs read means the `structure` moved.** Jean drops the windows it holds, reads `GET /api/state` for the current pair and asks again for what is in sight. Rows are named by `runs` or by `ordinals`, at most 4096 to a request, and a window dictionary numbers a value for that body alone, so an id from one body never goes into another.
-- **`changeCounts` on the state's `library` says which columns a `revision` moved.** A window or an answer that read none of them is still current, so Jean re-reads only what depends on a column whose count changed.
-- **The header answers capability detection exactly**, so a field that resolves on one track in ten thousand is detected rather than missed by a sample. Detection is still a guess a Settings switch overrules.
-- **`?`, `''` and `N/A` arrive exactly as the player produced them.** Nothing in the component parses, normalises or types a value, which is what keeps Jean's capability detection working. **Never coerce one to `null`**: `Number(null)` is `0` and every field would then read as available.
-- **A `{structure, revision}` pair compares for equality only, never for order.** A pair read after a restart can be lower than one already held without being older, and a pair held from before the restart is answered `409`.
-- **Progress rides `library.build`.** The poll carries `formatted` and `total`, and a view says how far the player has got while it builds.
-- **`GET /api/library/summary` is asked once per pair of the library Jean holds, and the document it keeps is read only at the `structure` it carries.** The roles are the declared expressions, built in `useLibrarySummary.ts` from `TRACK_EXPRESSIONS`. A `202` waits for the poll to report the library ready, a `409` for the next rows answer to declare again, a `429` for its `Retry-After`, a `400` for the pair to move and anything else for an answered tick after 5 s doubling to 60 s. The previous document stays in view meanwhile; `atStructure` gives no rows at a `structure` the document was not computed at. `librarySummary.ts` is the request.
-- **`GET /api/library/album`, `/artist`, `/genre` and `/search` answer the tracks one album, artist or genre holds, or a query matches, and an answer is read only at the `structure` it carries.** A `202` is a success to the typed client and carries the library document, not an answer. A `409` waits for the next rows answer to declare again, a `429` for its `Retry-After`, and a `400` for the `structure` to move; the holds are the summary's, in `libraryHolds.ts`. The artist's three sets share no ordinal, and the page merges them into one. `libraryQuestions.ts` is the request and `libraryAsker.ts` the asker.
-- **`library.halted` is a library that stopped reading**, since a component that stopped builds nothing more however long a client waits. Rows already held stay usable.
-- **A transient failure is retried on the poll, not off it.** A read asks again only on a `GET /api/state` tick that answers, once the wait since the failure has passed, 5 s doubling to 60 s and reset by a read that succeeds, so a player that is not answering yields no answered ticks and costs no extra requests. A `refused` or `halted` failure is never retried at all. `libraryHolds.ts` holds the waits.
+`queueRevision` advances by exactly one per accepted mutation, so a caller chaining several writes against one cached read can predict the next revision without a re-read between them.
 
-**A playlist's own `structure` and `revision` are a different pair from this one, and they travel as strings of decimal digits rather than numbers.** `contract/openapi.yaml`'s `PlaylistAnnotation.structure` has why.
+A queued entry plays whether or not its `location` is set. `location` is `null` for a track queued from outside any playlist, and the entry is no less playable for it.
 
-## What Jean does about playlists
+## The stream
 
-`GET /api/playlists` is the list, and every route here names a playlist by the foobar2000 GUID an entry carries. `usePlaylists.ts`'s `followPlaylists` reads it. The rows come from `GET /api/playlists/{id}/items`, as a page or at named `positions`, and its `changes` companion, through `usePlaylistItems.ts` into `playlistLoader.ts`, its album runs from `GET /api/playlists/{id}/runs` and the positions a query matches from `/find`, both in `playlists.ts`; the writes live in `usePlaylistActions.ts`, `librarySource.ts` and `useAddTracks.ts`. `contract/openapi.yaml`'s playlist paths are the reference for every route, including which of them `writePlaylists` refuses. On this side:
+The component's stream clock is what a listener hears, and the player's reported position runs ahead of it. The `stream` tag in `contract/openapi.yaml` carries the arithmetic between the two, and `ui/ARCHITECTURE.md`, *Listening on this device*, is what Jean builds on it.
 
-- **`itemCount` is the count as of the read that carried it.** foobar2000's own window, another client and an autoplaylist refilling itself can all edit a playlist after that read, and the list is only re-read when a poll notices. Arithmetic on it that cannot survive being wrong, such as how many rows to remove or whether a cached view still matches, MUST re-read it first; trusting it removes the wrong rows and plays whatever drifted into the row that was clicked.
-- **An autoplaylist refuses an added row with `409`.** foobar2000 locks a playlist per edit and the component reports the refusal, so a client has no count to check after an add. A `200` with an empty `positions` is only ever an add sent with `duplicates: skip` whose every track the target held, and `skipped` names them.
-- **`duplicates: skip` compares file and subsong, never tags.** `contract/openapi.yaml`'s `Duplicates` says why. `useAddTracks.ts` sends every add with `skip` first and sends what came back in `skipped` again, without it, once somebody has said to.
-- **Emptying or deleting the playing playlist does not stop playback.** The current track keeps playing with no row behind it, so `player.playingLocation` is `null` while `path` still names it. Emptying is harmless when a play follows at once, which is how the scratch is refilled. Deleting is not: at the end of the track the player falls back to another playlist and carries on.
-- **A `GET /playlists/{id}/items/changes` that fails for anything but a `409` or a `410` leaves the held windows where they are.** `playlistLoader.ts` marks the read unread for the next tick to retry: a timeout or a dropped connection says nothing about whether the playlist actually moved, and the next revision the poll notices retries the diff at no extra request. A `410` drops the windows and reads the viewport again.
-- **A move and a sort both answer the playlist's new `structure`, and a sort adds `order`.** A structure Jean holds windows of is dropped when it moves, and the rows in sight are read again at the new one; `order` is not used, since no row is held per position beyond the windows.
-- **`POST /autoplaylists/preview` with `rows: true` names the matching tracks as library ordinals**, counted in the `structure` it answers. A client compares that with the `structure` the poll announced and asks again once the poll has caught up. A track the component's snapshot does not hold is left out, so `ordinals` can be shorter than `matches`.
-- **A `SORT BY` at the end of an autoplaylist's query is applied by foobar2000 exactly as `sort` with `forceSort` would be.** `SORT DESCENDING BY` reverses it. `managed` records the clause as part of `query` and leaves `sort` empty.
-- **The update and delete routes take any autoplaylist, whoever made it, and refuse a plain playlist.** Only an autoplaylist this component made has a `managed` record. For any other `managed` is `null` and the query cannot be read from the player, so a client editing one has no text to start from. For one this component made, `managed.query` is what it last wrote.
-
-## What Jean does about the queue
-
-The play queue outranks Jean's own *Playback follows cursor*: a track that came off the queue is left playing, whatever row the cursor is on. A queued track leaves the queue the moment it starts, so the queue is only ever what is still to come. `plugins/fb2k/ARCHITECTURE.md`, *Facts about the player*, has how foobar2000 orders it.
-
-`GET /api/queue` answers every entry in the player's own order, or a named session's, plus the revision they were read at. `domain/player/queue.ts` reads it through `followRevision`, only when `GET /api/state`'s `queueRevision` has moved from the one already held, off the same one-second poll that already carries player state, so a client watching the queue costs nothing beyond the poll it already runs.
-
-Queueing, moving, removing and clearing each send exactly one request: `POST /queue`, `POST /queue/move`, `DELETE /queue/{index}` and `DELETE /queue`. Every one is optimistic against the cached read and reconciled by the next poll; a write against a queue that has since moved answers `409`, and Jean takes no local guess at the true order in that case. **The revision advances by exactly one per accepted mutation**, so a caller chaining several writes against one cached read can predict the next revision without a re-read between them.
-
-**A write that comes back failed rather than stale answers nothing about the player's own queue.** The response can go missing after the write already landed, LAN link or not, so a client cannot read a refusal as proof the queue is still where it was. `useQueue.ts`'s `settle` only rolls an optimistic patch back while the cache still holds the revision it was taken against; once that has moved, a poll has already caught up and rolling back would undo it.
-
-**A queued entry plays whether or not it still carries a `location`.** `location` is `null` both for a library track queued by handle and for a playlist row whose position the player has lost, and against a real player both reach the head and play, `title`, `artist` and `duration` intact. Every entry the route answers is a real one, with nothing to warn a person about.
-
-## What Jean does about the stream
-
-The component's stream clock is what a listener hears, and the player's reported position runs ahead of it; the spec carries the arithmetic that turns one into the other, and `ui/ARCHITECTURE.md`, *Listening on this device*, is what Jean builds on it.
-
-`foo_jean` lays a timeline mark shortly after the change it marks, so a client reads `GET /stream/timeline` again a moment after a track change or a seek rather than at once.
-
-> **The ticket is the one credential `foo_jean` asks for, because an `<audio>` element sends no header at all.** the `stream` tag in `contract/openapi.yaml` has what a ticket grants and its lifetime. Clients MUST NOT store, log, or otherwise place a ticket where a credential would not go.
-
-- `deviceId` labels a row in somebody else's picker, and the contract calls a private session a courtesy rather than a boundary. Generate it at random, keep it, and never derive it from anything about the person.
-- `foo_jean` silences the player while anybody listens to the player's own session, counting the whole audience, and a device listening to a detached session never does. A client sends no mute of its own, and reads `outputSilent` beside `muted` and the volume to tell that hold from a mute by hand.
+- The ticket is the one credential `foo_jean` asks for, since an `<audio>` element sends no header of its own. Clients MUST NOT store, log or otherwise place a ticket where a credential would not go.
+- `deviceId` labels a row in somebody else's picker, and a private session is a courtesy rather than a boundary. Generate it at random, keep it, and never derive it from anything about the person.
+- `foo_jean` silences the player while anybody listens to the player's own session, counting the whole audience, and never while a device listens to a detached session. A client sends no mute of its own. It reads `outputSilent` beside `muted` and the volume to tell that hold from a mute by hand.
 - A reconnect and a departure both close the socket, so a device that stops listening or leaves a session says so with `POST /stream/leave`.
-
-## What Jean does about artwork
-
-`libraryArtworkUrl()`, `playingArtworkUrl()` and `playlistRowArtworkUrl()` in `artwork.ts` build the three client-side addresses; `GET /artwork`, `GET /artwork/playing` and the positional route in the contract are what they name, and the contract's *Artwork* section is the reference for what each one answers. A run's cover is addressed by the track the runs answer names in `covers`, whichever row of the run is drawn: `coverUrlOf` in `libraryWindows.ts` reads that track's path from the windows and builds the address, so every row of an album shares one.
-
-The status bar, the now-playing screen and the cover wheel resolve the playing track's album this way, off `PlayerState.activeItem` on the same poll title and artist already ride, and fall back to `playingArtworkUrl()` for a track the library holds no album for. A playlist row, a queue entry or a wheel neighbour with a library path reads the same canonical address; one with no library path but a known playlist position reads `playlistRowArtworkUrl()` instead, and one with neither draws no cover. The media session takes neither address directly: the OS fetches whatever it is given itself, out of process from the page, so it is handed a `data:` URL that `shrinkForLockScreen()` builds from the cover Jean already fetched.

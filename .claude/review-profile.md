@@ -105,7 +105,7 @@ This boundary pays twice. A decision moved into `core/` becomes coverable by a s
 | `plugins/fb2k/CONTRIBUTING.md` | how to write the component's code |
 | `plugins/fb2k/ARCHITECTURE.md` | how the pieces fit, which thread owns what, why the boundaries sit there |
 | `plugins/fb2k/CLAUDE.md` | what an agent cannot read off the code: the priorities and the rules about driving a real player |
-| `plugins/fb2k/src/README.md` | the source tree, file by file |
+| `plugins/fb2k/src/README.md` | what a listing of the source tree cannot show: the pairs that move together, which file owns which thread, the platform files and the generated ones |
 | `plugins/fb2k/third_party/README.md` | the vendored libraries: their versions, and what in each is load-bearing |
 | `contract/openapi.yaml` | the HTTP contract, hand-written, and what clients generate types from |
 | `contract/README.md` | what reads the spec by path, and so what a move of it breaks |

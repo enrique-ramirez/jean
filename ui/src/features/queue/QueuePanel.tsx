@@ -52,7 +52,7 @@ interface QueueCover {
 
 // `identity` prefers the record `GET /api/queue` already names over `src`'s own address, since two
 // rows of one album share a cover before either row's address is resolved. See
-// `ui/src/shared/api/README.md`, *What Jean does about artwork*, for the fallback chain `src` takes.
+// `ui/ARCHITECTURE.md`, *Requests*, for the fallback chain `src` takes.
 const coverOf = (origin: string | null, entry: QueueEntry): QueueCover => {
 	if (entry.libraryPath) {
 		const src = libraryArtworkUrl(

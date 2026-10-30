@@ -2,7 +2,7 @@
 
 ## The scratch playlist
 
-- `foo_jean` answers the library, and no playlist stands in for it. On the player, playing a set fills the component's scratch playlist (`ui/src/shared/api/README.md`, *What Jean does about playback*, says why), found by the role `foo_jean` marks (`jeanPlaylists.ts`) and never by its `#Jean` title; in a session nothing reads or writes it. A user's playlist titled `#Jean…` is shown like any other.
+- `foo_jean` answers the library, and no playlist stands in for it. On the player, playing a set fills the component's scratch playlist (`ui/src/shared/api/README.md`, *Playback*, says why), found by the role `foo_jean` marks (`jeanPlaylists.ts`) and never by its `#Jean` title; in a session nothing reads or writes it. A user's playlist titled `#Jean…` is shown like any other.
 - The scratch holds the last set played, not what is on screen. Filling it, asking whether it is a given set and reading the player's index in it share one key, bound once in `useViewPlayback`.
 - `Default Playlist` holds nothing of Jean's: selecting an album in foobar2000's library view replaces its contents.
 - Browsing and playing write nothing to a user's playlist; only an explicit edit does.

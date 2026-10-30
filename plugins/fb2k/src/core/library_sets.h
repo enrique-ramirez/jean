@@ -23,6 +23,9 @@ struct SetFigures {
     std::optional<double> latestYear;
 };
 
+std::optional<double> earliestOf(std::optional<double> held, double value);
+std::optional<double> latestOf(std::optional<double> held, double value);
+
 struct MostPlayedTrack {
     uint32_t ordinal = 0;
     std::string title;

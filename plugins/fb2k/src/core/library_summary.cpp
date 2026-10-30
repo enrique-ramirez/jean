@@ -802,8 +802,8 @@ std::string summariseLibrary(const Snapshot& snapshot, const SummaryRoles& roles
 
         const auto released = facts.year.of(row);
         if (released && *released > kFirstRealYear) {
-            earliest = earliest ? std::min(*earliest, *released) : *released;
-            latest = latest ? std::max(*latest, *released) : *released;
+            earliest = earliestOf(earliest, *released);
+            latest = latestOf(latest, *released);
         }
     }
 

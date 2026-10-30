@@ -1,6 +1,7 @@
 #include "core/playlist_runs.h"
 
 #include "core/library_groups.h"
+#include "core/library_sets.h"
 #include "core/library_summary.h"
 #include "core/text.h"
 
@@ -153,8 +154,8 @@ PlaylistRuns playlistRunsOf(const Snapshot& snapshot, const LibraryRoles& roles,
         runs.seconds += readNumber(text[kDuration]).value_or(0);
 
         if (const auto year = releaseYear(text[kYear])) {
-            runs.earliestYear = runs.earliestYear ? std::min(*runs.earliestYear, *year) : *year;
-            runs.latestYear = runs.latestYear ? std::max(*runs.latestYear, *year) : *year;
+            runs.earliestYear = earliestOf(runs.earliestYear, *year);
+            runs.latestYear = latestOf(runs.latestYear, *year);
         }
     }
 

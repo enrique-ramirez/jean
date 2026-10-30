@@ -51,14 +51,6 @@ std::string titleAt(const Snapshot& snapshot, const LibraryRoles& roles, size_t 
     return title ? std::string(*title) : std::string();
 }
 
-std::optional<double> earlier(std::optional<double> held, double year) {
-    return held ? std::min(*held, year) : year;
-}
-
-std::optional<double> later(std::optional<double> held, double year) {
-    return held ? std::max(*held, year) : year;
-}
-
 std::optional<uint64_t> albumPairAt(const Credits& credits, size_t row) {
     const int32_t group = credits.albumGroup.of(row);
     if (group < 0)
@@ -72,6 +64,14 @@ Json textJson(const std::optional<std::string>& text) {
 
 }  // namespace
 
+std::optional<double> earliestOf(std::optional<double> held, double value) {
+    return held ? std::min(*held, value) : value;
+}
+
+std::optional<double> latestOf(std::optional<double> held, double value) {
+    return held ? std::max(*held, value) : value;
+}
+
 SetFigures figuresOver(const Snapshot& snapshot, const LibraryRoles& roles, const Credits& credits,
                        std::span<const uint32_t> ordinals) {
     SetFigures figures;
@@ -82,8 +82,8 @@ SetFigures figuresOver(const Snapshot& snapshot, const LibraryRoles& roles, cons
         figures.seconds += readAt(snapshot, roles.duration, row, readNumber).value_or(0);
 
         if (const auto year = releaseYearAt(snapshot, roles, row)) {
-            figures.earliestYear = earlier(figures.earliestYear, *year);
-            figures.latestYear = later(figures.latestYear, *year);
+            figures.earliestYear = earliestOf(figures.earliestYear, *year);
+            figures.latestYear = latestOf(figures.latestYear, *year);
         }
 
         if (const auto pair = albumPairAt(credits, row))
@@ -136,7 +136,7 @@ ArtistCards cardsOver(const Snapshot& snapshot, const LibraryRoles& roles,
             cards.mostPlayed = MostPlayedTrack{row, titleAt(snapshot, roles, row), count};
 
         if (const auto played = lastPlayedAt(snapshot, roles, row, local))
-            cards.lastPlayed = later(cards.lastPlayed, *played);
+            cards.lastPlayed = latestOf(cards.lastPlayed, *played);
 
         for (const int32_t group : genres.of.of(row)) {
             if (counts[static_cast<size_t>(group)]++ == 0)
@@ -182,7 +182,7 @@ std::vector<RecordInSet> recordsOver(const Snapshot& snapshot, const LibraryRole
         RecordInSet& record = records[at->second];
         ++record.trackCount;
         if (const auto year = releaseYearAt(snapshot, roles, row))
-            record.year = earlier(record.year, *year);
+            record.year = earliestOf(record.year, *year);
     }
 
     std::stable_sort(records.begin(), records.end(),

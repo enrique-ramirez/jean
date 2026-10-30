@@ -24,3 +24,7 @@ node_modules/.tmp
 .claude/.review-kit.manifest
 _done/
 _tmp/
+
+# Personal voice file and Python bytecode the style hook leaves behind.
+.claude/voice/personas/enrique.md
+__pycache__/

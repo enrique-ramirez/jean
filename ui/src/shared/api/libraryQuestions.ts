@@ -161,9 +161,9 @@ function decodeOrdinals(list: number[], trackCount: number) {
 
 const boundOf = (
 	library: { structure: number; trackCount: number },
-	data: { structure: number } | undefined,
+	data: { structure: number },
 ) =>
-	data?.structure === library.structure
+	data.structure === library.structure
 		? library.trackCount
 		: Number.MAX_SAFE_INTEGER;
 
@@ -179,18 +179,33 @@ function decodeSets(
 	return own && shared && guest ? { own, shared, guest } : null;
 }
 
+interface Document {
+	structure: number;
+	revision: number;
+}
+
 interface Read {
 	response: Response;
 	error: unknown;
-	document: { structure: number; revision: number } | undefined;
+	document: Document | undefined;
 	answer: unknown;
 }
 
-// A `202` is a success to openapi-fetch and carries the library document, which is not an answer.
-const ok = <Answer>(response: Response, body: unknown) =>
-	response.status === 200 ? (body as Answer) : undefined;
-
 const orNull = <Value>(value: Value | null | undefined) => value ?? null;
+
+// A `202` is a success to openapi-fetch and carries the library document, which is not an answer.
+const answered = <Answer extends Document>(
+	got: { data?: unknown; error?: unknown; response: Response },
+	answerOf: (data: Answer) => unknown,
+): Read => {
+	const data = got.response.status === 200 ? (got.data as Answer) : undefined;
+	return {
+		response: got.response,
+		error: got.error,
+		document: data,
+		answer: data ? answerOf(data) : null,
+	};
+};
 
 export async function fetchLibraryAnswer<Question extends LibraryQuestion>(
 	origin: string,
@@ -206,36 +221,27 @@ export async function fetchLibraryAnswer<Question extends LibraryQuestion>(
 			async (api, init): Promise<Read> => {
 				const options = { ...init, cache: "no-store" } as const;
 				switch (question.kind) {
-					case "search": {
-						const {
-							data: body,
-							error,
-							response,
-						} = await api.GET("/library/search", {
-							...options,
-							params: {
-								query: {
-									...roles,
-									query: question.query,
-									limit: question.limit,
-									entityLimit: question.entityLimit ?? ENTITY_LIMIT,
-									splitsCredits: question.splitsCredits,
+					case "search":
+						return answered<Schema["SearchAnswer"]>(
+							await api.GET("/library/search", {
+								...options,
+								params: {
+									query: {
+										...roles,
+										query: question.query,
+										limit: question.limit,
+										entityLimit: question.entityLimit ?? ENTITY_LIMIT,
+										splitsCredits: question.splitsCredits,
+									},
 								},
-							},
-						});
-						const data = ok<Schema["SearchAnswer"]>(response, body);
-						const matched = data?.matched
-							? decodeSet(data.matched, boundOf(library, data))
-							: null;
-						const best = data
-							? decodeOrdinals(data.best, boundOf(library, data))
-							: null;
-						return {
-							response,
-							error,
-							document: data,
-							answer:
-								data && best && (matched || data.matched === null)
+							}),
+							(data) => {
+								const bound = boundOf(library, data);
+								const matched = data.matched
+									? decodeSet(data.matched, bound)
+									: null;
+								const best = decodeOrdinals(data.best, bound);
+								return best && (matched || data.matched === null)
 									? {
 											matched,
 											matchCount: data.matchCount,
@@ -246,96 +252,70 @@ export async function fetchLibraryAnswer<Question extends LibraryQuestion>(
 											genres: data.genres,
 											namesATrack: data.namesATrack,
 										}
-									: null,
-						};
-					}
-					case "album": {
-						const {
-							data: body,
-							error,
-							response,
-						} = await api.GET("/library/album", {
-							...options,
-							params: {
-								query: {
-									...roles,
-									name: question.album,
-									...(question.artist === null
-										? null
-										: { by: question.artist }),
-								},
+									: null;
 							},
-						});
-						const data = ok<Schema["AlbumAnswer"]>(response, body);
-						const refs = data
-							? decodeSet(data.refs, boundOf(library, data))
-							: null;
-						return {
-							response,
-							error,
-							document: data,
-							answer: refs
-								? {
-										refs,
-										album: data?.album,
-										artist: orNull(data?.artist),
-										figures: data?.figures,
-									}
-								: null,
-						};
-					}
-					case "artist": {
-						const {
-							data: body,
-							error,
-							response,
-						} = await api.GET("/library/artist", {
-							...options,
-							params: {
-								query: {
-									...roles,
-									name: question.artist,
-									splitsCredits: question.splitsCredits,
+						);
+					case "album":
+						return answered<Schema["AlbumAnswer"]>(
+							await api.GET("/library/album", {
+								...options,
+								params: {
+									query: {
+										...roles,
+										name: question.album,
+										...(question.artist === null
+											? null
+											: { by: question.artist }),
+									},
 								},
+							}),
+							(data) => {
+								const refs = decodeSet(data.refs, boundOf(library, data));
+								return refs
+									? {
+											refs,
+											album: data.album,
+											artist: orNull(data.artist),
+											figures: data.figures,
+										}
+									: null;
 							},
-						});
-						const data = ok<Schema["ArtistAnswer"]>(response, body);
-						const sets = data ? decodeSets(data, boundOf(library, data)) : null;
-						return {
-							response,
-							error,
-							document: data,
-							answer:
-								data && sets
+						);
+					case "artist":
+						return answered<Schema["ArtistAnswer"]>(
+							await api.GET("/library/artist", {
+								...options,
+								params: {
+									query: {
+										...roles,
+										name: question.artist,
+										splitsCredits: question.splitsCredits,
+									},
+								},
+							}),
+							(data) => {
+								const sets = decodeSets(data, boundOf(library, data));
+								return sets
 									? {
 											...sets,
 											figures: data.figures,
 											cards: data.cards,
 											records: data.records,
 										}
-									: null,
-						};
-					}
-					case "genre": {
-						const {
-							data: body,
-							error,
-							response,
-						} = await api.GET("/library/genre", {
-							...options,
-							params: { query: { ...roles, name: question.genre } },
-						});
-						const data = ok<Schema["GenreAnswer"]>(response, body);
-						const refs = data
-							? decodeSet(data.refs, boundOf(library, data))
-							: null;
-						return {
-							response,
-							error,
-							document: data,
-							answer: refs ? { refs, figures: data?.figures } : null,
-						};
-					}
+									: null;
+							},
+						);
+					case "genre":
+						return answered<Schema["GenreAnswer"]>(
+							await api.GET("/library/genre", {
+								...options,
+								params: { query: { ...roles, name: question.genre } },
+							}),
+							(data) => {
+								const refs = decodeSet(data.refs, boundOf(library, data));
+								return refs ? { refs, figures: data.figures } : null;
+							},
+						);
 				}
 			},
 			signal,

@@ -808,10 +808,6 @@ void LibraryRoutes::answerQuestion(const Question kind, const httplib::Request& 
     res.set_header("Vary", "Accept-Encoding");
 }
 
-bool LibraryRoutes::readingRowsTooFast(httplib::Response& res, const std::string& client) {
-    return perClientTooFast(rowReads_, client, clock_(), kReadingRowsTooFast, res);
-}
-
 void LibraryRoutes::readRows(const httplib::Request& req, httplib::Response& res) {
     const auto asked = parseRowsRequest(req.body);
     if (asked.refusal != PlaylistRefusal::none) {
@@ -826,7 +822,7 @@ void LibraryRoutes::readRows(const httplib::Request& req, httplib::Response& res
     if (unavailable(library_, res, kNoLibrary))
         return;
 
-    if (readingRowsTooFast(res, req.remote_addr))
+    if (perClientTooFast(rowReads_, req.remote_addr, clock_(), kReadingRowsTooFast, res))
         return;
 
     const auto state = library_->state();

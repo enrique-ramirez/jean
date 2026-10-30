@@ -99,7 +99,6 @@ private:
     void answerQuestion(Question kind, const httplib::Request& req, httplib::Response& res);
 
     void readRows(const httplib::Request& req, httplib::Response& res);
-    bool readingRowsTooFast(httplib::Response& res, const std::string& client);
 
     void readTrack(const httplib::Request& req, httplib::Response& res);
 

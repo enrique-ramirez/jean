@@ -109,10 +109,8 @@ void QueueRoutes::queueInSession(Session& session, std::optional<QueuePosition> 
     }
 
     auto taken = take();
-    if (taken.outcome != PlayerOutcome::done) {
-        respondCommand(res, taken.outcome);
+    if (failed(taken, res))
         return;
-    }
 
     const auto queued = at ? session.enqueueAt(std::move(taken.tracks), at->index, at->revision)
                            : session.enqueue(std::move(taken.tracks));

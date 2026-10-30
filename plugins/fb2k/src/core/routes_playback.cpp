@@ -193,10 +193,8 @@ void PlaybackRoutes::playRowIn(Session& session, const std::string& playlistId, 
         return;
 
     auto taken = sessions_.takePlaylist(playlistId, std::nullopt);
-    if (taken.outcome != PlayerOutcome::done) {
-        respondCommand(res, taken.outcome);
+    if (failed(taken, res))
         return;
-    }
 
     respondCommand(res, session.play(std::move(taken.tracks), index, clock_()));
 }
@@ -231,10 +229,8 @@ void PlaybackRoutes::playSet(const httplib::Request& req, httplib::Response& res
         return;
 
     auto taken = sessions_.takeLibrary(request.structure, request.ordinals);
-    if (taken.outcome != PlayerOutcome::done) {
-        respondCommand(res, taken.outcome);
+    if (failed(taken, res))
         return;
-    }
 
     respondCommand(res, named.session->play(std::move(taken.tracks), request.index, clock_()));
 }

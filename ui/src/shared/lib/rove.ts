@@ -42,3 +42,8 @@ export function rovedIndex(
 	const next = at + step;
 	return wrap ? (next + count) % count : Math.min(Math.max(next, 0), count - 1);
 }
+
+export function steppedOption(active: number, by: number, count: number) {
+	const next = active + by;
+	return next < -1 ? count - 1 : next >= count ? -1 : next;
+}

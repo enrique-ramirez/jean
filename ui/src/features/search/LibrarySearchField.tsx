@@ -14,6 +14,7 @@ import { useResettingState } from "@/shared/hooks/useResettingState";
 import { useFormats, useTranslate } from "@/shared/i18n/useTranslate";
 import { hintFor } from "@/shared/keyboard/keymap";
 import { useSingleKeyShortcuts } from "@/shared/keyboard/useKeymap";
+import { steppedOption } from "@/shared/lib/rove";
 import { Input } from "@/shared/ui/Input";
 import styles from "./LibrarySearchField.module.css";
 import { optionId, SearchDropdown } from "./SearchDropdown";
@@ -95,12 +96,8 @@ export function LibrarySearchField({
 		commit(hasOptions && preselect >= 0 ? suggestions[preselect] : null);
 	});
 
-	const move = (by: number) => {
-		const { length } = suggestions;
-		if (length === 0) return;
-		const next = active + by;
-		setActive(next < -1 ? length - 1 : next >= length ? -1 : next);
-	};
+	const move = (by: number) =>
+		setActive(steppedOption(active, by, suggestions.length));
 
 	const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
 		if (event.key === "Escape") {

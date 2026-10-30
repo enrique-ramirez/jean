@@ -17,6 +17,7 @@ import {
 } from "@/domain/library/queryCompletion";
 import type { Phrase } from "@/shared/i18n/en";
 import { useTranslate } from "@/shared/i18n/useTranslate";
+import { steppedOption } from "@/shared/lib/rove";
 import { Input } from "@/shared/ui/Input";
 import styles from "./QueryField.module.css";
 import { piecesOf } from "./queryHighlight";
@@ -128,16 +129,8 @@ export function QueryField({
 		inputRef.current?.focus();
 	};
 
-	const move = (by: number) => {
-		const next = active + by;
-		setActive(
-			next < -1
-				? suggestions.length - 1
-				: next >= suggestions.length
-					? -1
-					: next,
-		);
-	};
+	const move = (by: number) =>
+		setActive(steppedOption(active, by, suggestions.length));
 
 	const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
 		if (event.nativeEvent.isComposing) return;

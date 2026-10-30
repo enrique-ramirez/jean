@@ -29,16 +29,12 @@ using nlohmann::json;
 
 namespace {
 
-json optionalJson(const std::optional<double>& value) {
-    return value ? json(*value) : json(nullptr);
-}
-
 json figuresJson(const SetFigures& figures) {
     return {{"albumCount", figures.albumCount},
             {"trackCount", figures.trackCount},
             {"seconds", figures.seconds},
-            {"earliestYear", optionalJson(figures.earliestYear)},
-            {"latestYear", optionalJson(figures.latestYear)}};
+            {"earliestYear", figures.earliestYear},
+            {"latestYear", figures.latestYear}};
 }
 
 json cardsJson(const ArtistCards& cards) {
@@ -48,7 +44,7 @@ json cardsJson(const ArtistCards& cards) {
     return {{"playedShare", cards.playedShare},
             {"plays", cards.plays},
             {"neverPlayed", cards.neverPlayed},
-            {"lastPlayed", optionalJson(cards.lastPlayed)},
+            {"lastPlayed", cards.lastPlayed},
             {"mostPlayed", cards.mostPlayed ? json{{"ordinal", cards.mostPlayed->ordinal},
                                                    {"title", cards.mostPlayed->title},
                                                    {"plays", cards.mostPlayed->plays}}
@@ -60,8 +56,8 @@ json recordsJson(const std::vector<RecordInSet>& records) {
     json listed = json::array();
     for (const RecordInSet& record : records)
         listed.push_back({{"album", record.album},
-                          {"artist", record.artist ? json(*record.artist) : json(nullptr)},
-                          {"year", optionalJson(record.year)},
+                          {"artist", record.artist},
+                          {"year", record.year},
                           {"cover", record.cover},
                           {"trackCount", record.trackCount}});
     return listed;

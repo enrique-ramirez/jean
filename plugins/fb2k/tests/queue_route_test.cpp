@@ -97,10 +97,6 @@ const std::vector<std::optional<std::string>>& coversOfTheQueue() {
     return covers;
 }
 
-json coverOrNull(const std::optional<std::string>& cover) {
-    return cover ? json(*cover) : json(nullptr);
-}
-
 json coversIn(const json& entries) {
     json covers = json::array();
     for (const auto& entry : entries) {
@@ -109,13 +105,6 @@ json coversIn(const json& entries) {
         covers.push_back(entry.at("cover"));
     }
     return covers;
-}
-
-json expectedCovers(const std::vector<std::optional<std::string>>& covers) {
-    json expected = json::array();
-    for (const auto& cover : covers)
-        expected.push_back(coverOrNull(cover));
-    return expected;
 }
 
 json nullCovers(size_t count) {
@@ -355,7 +344,7 @@ TEST_CASE("a queue read naming roles carries each entry's album cover, null outs
     const auto entries = entriesAsked(server, queueWithRoles());
 
     REQUIRE(entries.size() == queueOfCovers().size());
-    CHECK(coversIn(entries) == expectedCovers(coversOfTheQueue()));
+    CHECK(coversIn(entries) == json(coversOfTheQueue()));
     CHECK(entries[0].at("libraryPath") == kRecordSecondTrack);
 }
 
@@ -435,11 +424,11 @@ TEST_CASE("a cover is read at the library's structure after an album is added ah
     FakePlayer foobar;
     foobar.queue(queueOfCovers());
     const TestServer server(servingSettings(), foobar.player(), &library);
-    REQUIRE(coversIn(entriesAsked(server, queueWithRoles())) == expectedCovers(coversOfTheQueue()));
+    REQUIRE(coversIn(entriesAsked(server, queueWithRoles())) == json(coversOfTheQueue()));
 
     library.replace(coverSnapshotBehind(3));
 
-    CHECK(coversIn(entriesAsked(server, queueWithRoles())) == expectedCovers(coversOfTheQueue()));
+    CHECK(coversIn(entriesAsked(server, queueWithRoles())) == json(coversOfTheQueue()));
 }
 
 TEST_CASE("a queue read naming a role it cannot read is a 400 that never reaches the player") {

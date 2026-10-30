@@ -1692,6 +1692,7 @@ void checkMoved(const httplib::Result& response, const std::string& tag) {
 // row's index, then those rows, then the engine's track, so an ordinal read off the engine shows.
 void buildRoadLibrary(Library& library, size_t ahead = 2) {
     std::vector<std::vector<std::string>> rows;
+    rows.reserve(ahead);
     for (size_t at = 0; at < ahead; ++at)
         rows.push_back({"Abba/", std::to_string(at) + ".flac", "0", "Ahead"});
     for (const auto& made : tracks("Road", kRows)) {
@@ -3914,7 +3915,7 @@ json reportOf(uint64_t sequence, const char* kind, const SessionTrack& on) {
                 {"kind", kind},
                 {"path", on.path},
                 {"subsong", on.subsong},
-                {"libraryPath", on.libraryPath ? json(*on.libraryPath) : json(nullptr)}};
+                {"libraryPath", on.libraryPath}};
 }
 
 }  // namespace

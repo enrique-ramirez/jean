@@ -283,7 +283,7 @@ json albumsSection(const Snapshot& snapshot, const AlbumEntities& albums, const 
     json top = json::array();
     for (const AlbumEntities::Entity* album : ranked.top) {
         top.push_back({{"album", album->album},
-                       {"artist", album->artist ? json(*album->artist) : json(nullptr)},
+                       {"artist", album->artist},
                        {"trackCount", album->trackCount},
                        {"cover", coverOf(snapshot, album->coverRow)}});
     }

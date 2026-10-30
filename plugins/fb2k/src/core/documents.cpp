@@ -80,7 +80,7 @@ json buildOf(const std::optional<BuildProgress>& build) {
 
 void addCover(json& body, const std::optional<std::optional<std::string>>& cover) {
     if (cover)
-        body["cover"] = *cover ? json(**cover) : json(nullptr);
+        body["cover"] = *cover;
 }
 
 json libraryFields(const Library::State& state) {
@@ -115,18 +115,15 @@ json playingLocationOf(const std::optional<PlayingLocation>& location) {
 }
 
 json playlistRowOf(const PlaylistRow& row) {
-    json body{{"columns", row.columns},
-              {"libraryPath", row.libraryPath ? json(*row.libraryPath) : json(nullptr)},
-              {"subsong", row.subsong}};
+    json body{{"columns", row.columns}, {"libraryPath", row.libraryPath}, {"subsong", row.subsong}};
     addCover(body, row.cover);
     return body;
 }
 
 json changedPlaylistRowOf(const ChangedPlaylistRow& changed) {
-    json body{
-        {"position", changed.position},
-        {"libraryPath", changed.row.libraryPath ? json(*changed.row.libraryPath) : json(nullptr)},
-        {"subsong", changed.row.subsong}};
+    json body{{"position", changed.position},
+              {"libraryPath", changed.row.libraryPath},
+              {"subsong", changed.row.subsong}};
     addCover(body, changed.row.cover);
     return body;
 }
@@ -137,7 +134,7 @@ json queuedTrackOf(const QueuedTrack& track) {
               {"duration", track.duration},
               {"album", track.album},
               {"albumArtist", track.albumArtist},
-              {"libraryPath", track.libraryPath ? json(*track.libraryPath) : json(nullptr)},
+              {"libraryPath", track.libraryPath},
               {"location", playingLocationOf(track.location)}};
     addCover(body, track.cover);
     return body;
@@ -145,30 +142,28 @@ json queuedTrackOf(const QueuedTrack& track) {
 
 json playerFields(const PlayerState& player, std::chrono::steady_clock::time_point now,
                   PlayerRevisions revisions) {
-    return json{
-        {"playback", playbackName(player.playback)},
-        {"path", player.path},
-        {"subsong", player.subsong},
-        {"libraryPath", player.libraryPath ? json(*player.libraryPath) : json(nullptr)},
-        {"libraryOrdinal", player.libraryOrdinal ? json(*player.libraryOrdinal) : json(nullptr)},
-        {"position", positionOf(player.position, now)},
-        {"duration", player.duration},
-        {"volume", player.volume},
-        {"muted", player.muted},
-        {"playbackMode", player.playbackMode ? json(*player.playbackMode) : json(nullptr)},
-        {"outputDeviceId", player.outputDeviceId ? json(*player.outputDeviceId) : json(nullptr)},
-        {"outputSilent", player.outputSilent ? json(*player.outputSilent) : json(nullptr)},
-        {"title", player.title ? json(*player.title) : json(nullptr)},
-        {"artist", player.artist ? json(*player.artist) : json(nullptr)},
-        {"album", player.album ? json(*player.album) : json(nullptr)},
-        {"albumArtist", player.albumArtist ? json(*player.albumArtist) : json(nullptr)},
-        {"playingLocation", playingLocationOf(player.playingLocation)},
-        {"currentPlaylistId",
-         player.currentPlaylistId ? json(*player.currentPlaylistId) : json(nullptr)},
-        {"queueRevision", revisions.queue},
-        {"playlistsRevision", revisions.playlists},
-        {"timelineRevision", revisions.timeline},
-        {"sessionRevision", revisions.session}};
+    return json{{"playback", playbackName(player.playback)},
+                {"path", player.path},
+                {"subsong", player.subsong},
+                {"libraryPath", player.libraryPath},
+                {"libraryOrdinal", player.libraryOrdinal},
+                {"position", positionOf(player.position, now)},
+                {"duration", player.duration},
+                {"volume", player.volume},
+                {"muted", player.muted},
+                {"playbackMode", player.playbackMode},
+                {"outputDeviceId", player.outputDeviceId},
+                {"outputSilent", player.outputSilent},
+                {"title", player.title},
+                {"artist", player.artist},
+                {"album", player.album},
+                {"albumArtist", player.albumArtist},
+                {"playingLocation", playingLocationOf(player.playingLocation)},
+                {"currentPlaylistId", player.currentPlaylistId},
+                {"queueRevision", revisions.queue},
+                {"playlistsRevision", revisions.playlists},
+                {"timelineRevision", revisions.timeline},
+                {"sessionRevision", revisions.session}};
 }
 
 json mainThreadFields(const MainThreadHealth& health) {
@@ -193,7 +188,7 @@ json sessionReportOf(const SessionReport& report) {
                 {"kind", reportKindName(report.kind)},
                 {"path", report.path},
                 {"subsong", report.subsong},
-                {"libraryPath", report.libraryPath ? json(*report.libraryPath) : json(nullptr)}};
+                {"libraryPath", report.libraryPath}};
 }
 
 json creatorOf(const std::optional<DeviceIdentity>& creator) {
@@ -214,11 +209,11 @@ json sessionOf(const SessionView& session) {
                 {"kind", session.detached ? "detached" : "engine"},
                 {"shared", session.shared},
                 {"playback", playbackName(state.playback)},
-                {"title", state.title ? json(*state.title) : json(nullptr)},
-                {"artist", state.artist ? json(*state.artist) : json(nullptr)},
-                {"album", state.album ? json(*state.album) : json(nullptr)},
-                {"albumArtist", state.albumArtist ? json(*state.albumArtist) : json(nullptr)},
-                {"libraryPath", state.libraryPath ? json(*state.libraryPath) : json(nullptr)},
+                {"title", state.title},
+                {"artist", state.artist},
+                {"album", state.album},
+                {"albumArtist", state.albumArtist},
+                {"libraryPath", state.libraryPath},
                 {"listeners", session.listeners},
                 {"playbackModes", session.playbackModes},
                 {"chainDropped", session.chainDropped},
@@ -414,9 +409,7 @@ std::string outputsDocument(const OutputsRead& read) {
     for (const auto& device : read.devices)
         devices.push_back(json{{"id", device.id}, {"name", device.name}});
 
-    return json{{"devices", std::move(devices)},
-                {"active", read.active ? json(*read.active) : json(nullptr)}}
-        .dump();
+    return json{{"devices", std::move(devices)}, {"active", read.active}}.dump();
 }
 
 std::string queueDocument(const QueueRead& read) {

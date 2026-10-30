@@ -42,6 +42,15 @@ export interface PlaylistState {
 	failure: string | null;
 }
 
+export const EMPTY_PLAYLIST_STATE: PlaylistState = {
+	version: 0,
+	runs: null,
+	hasDiscs: false,
+	total: null,
+	isOpened: false,
+	failure: null,
+};
+
 export interface WindowedPlaylist {
 	windows: RowWindows;
 	source: Extract<LibrarySource, { kind: "playlist" }>;
@@ -102,14 +111,7 @@ export function createWindowedPlaylist({
 	isLibraryHeld: () => boolean;
 }): WindowedPlaylist {
 	const listeners = subscribers();
-	let state: PlaylistState = {
-		version: 0,
-		runs: null,
-		hasDiscs: false,
-		total: null,
-		isOpened: false,
-		failure: null,
-	};
+	let state = EMPTY_PLAYLIST_STATE;
 	let shown: PlaylistList | null = null;
 	let readsLibrary = true;
 	let sight: { list: PlaylistList; first: number; end: number } | null = null;

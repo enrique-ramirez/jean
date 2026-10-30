@@ -24,3 +24,8 @@ export function subscribers(): Subscribers {
 		},
 	};
 }
+
+// The subscription of a store that is not there. A module constant rather than a closure
+// written at the call: `useSyncExternalStore` tears down and reinstalls a subscription whose
+// identity changed.
+export const NO_SUBSCRIPTION = () => () => {};

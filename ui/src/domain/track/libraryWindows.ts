@@ -63,6 +63,13 @@ export interface WindowedState {
 	hasDiscs: boolean;
 }
 
+export const EMPTY_WINDOWED_STATE: WindowedState = {
+	list: null,
+	version: 0,
+	runs: null,
+	hasDiscs: false,
+};
+
 export interface TileRow {
 	columns: TrackColumns;
 	artworkUrl: string | null;
@@ -170,12 +177,7 @@ const isKept = (hold: Hold) =>
 function create(origin: string): WindowedLibrary {
 	const listeners = subscribers();
 	let announced: Announced | null = announcedLibraryOf(origin);
-	let state: WindowedState = {
-		list: null,
-		version: 0,
-		runs: null,
-		hasDiscs: false,
-	};
+	let state = EMPTY_WINDOWED_STATE;
 	let runs: HeldRuns | null = null;
 	let runsAsked: number | null = null;
 	let runsAreStale = false;

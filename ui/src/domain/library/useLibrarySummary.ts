@@ -18,7 +18,11 @@ import {
 } from "@/shared/api/librarySummary";
 import { readFailed } from "@/shared/api/readFailure";
 import type { StateDocument } from "@/shared/api/state";
-import { type Subscribers, subscribers } from "@/shared/lib/store";
+import {
+	NO_SUBSCRIPTION,
+	type Subscribers,
+	subscribers,
+} from "@/shared/lib/store";
 import type { Library } from "./useLibrary";
 
 const {
@@ -164,8 +168,6 @@ export function keepAsking(origin: string, withGenres: boolean) {
 	};
 }
 
-const NOTHING = () => () => {};
-
 export function useLibrarySummary(
 	{ origin }: Pick<Library, "origin">,
 	{
@@ -180,7 +182,9 @@ export function useLibrarySummary(
 
 	const subscribe = useCallback(
 		(listener: () => void) =>
-			origin ? subscribeSummary(origin, listener, withGenres) : NOTHING(),
+			origin
+				? subscribeSummary(origin, listener, withGenres)
+				: NO_SUBSCRIPTION(),
 		[origin, withGenres],
 	);
 	return useSyncExternalStore(subscribe, () =>

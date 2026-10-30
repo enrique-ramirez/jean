@@ -1,33 +1,20 @@
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo } from "react";
 import { libraryOrigin } from "@/shared/api/discovery";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
+import { useStoreOr } from "@/shared/hooks/useStoreOr";
 import { useFieldFactsKnown } from "./fieldAvailability";
 import { type AlbumSpan, groupsFromRuns, NO_GROUPS } from "./grouping";
 import { announcedLibraryOf } from "./libraryHolds";
 import { windowedLibraryOf } from "./libraryWindows";
-import type { PlaylistState, WindowedPlaylist } from "./playlistLoader";
+import { EMPTY_PLAYLIST_STATE, type WindowedPlaylist } from "./playlistLoader";
 import { windowedPlaylistRows } from "./playlistRows";
 import { EMPTY_VIEW, type ListedRows, type Refs } from "./project";
 import type { PlaylistList } from "./rowWindows";
 import { type HeaderStats, statsOfFigures } from "./stats";
 
-const NOTHING = () => () => {};
-
-const EMPTY_STATE: PlaylistState = {
-	version: 0,
-	runs: null,
-	hasDiscs: false,
-	total: null,
-	isOpened: false,
-	failure: null,
-};
-
 export function usePlaylistState(windowed: WindowedPlaylist | null) {
-	return useSyncExternalStore(
-		windowed ? windowed.subscribe : NOTHING,
-		windowed ? windowed.state : () => EMPTY_STATE,
-	);
+	return useStoreOr(windowed, EMPTY_PLAYLIST_STATE);
 }
 
 export function usePlaylistWindows(

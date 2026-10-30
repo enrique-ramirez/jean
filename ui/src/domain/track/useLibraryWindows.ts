@@ -1,20 +1,13 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo } from "react";
 import { libraryOrigin } from "@/shared/api/discovery";
 import { useFooJean } from "@/shared/hooks/useFooJean";
+import { useStoreOr } from "@/shared/hooks/useStoreOr";
 import {
+	EMPTY_WINDOWED_STATE,
 	type WindowedLibrary,
 	type WindowedState,
 	windowedLibraryOf,
 } from "./libraryWindows";
-
-const NOTHING = () => () => {};
-
-const EMPTY_STATE: WindowedState = {
-	list: null,
-	version: 0,
-	runs: null,
-	hasDiscs: false,
-};
 
 export function useLibraryWindows(isNeeded: boolean): {
 	windowed: WindowedLibrary | null;
@@ -28,10 +21,7 @@ export function useLibraryWindows(isNeeded: boolean): {
 		[isNeeded, origin],
 	);
 
-	const state = useSyncExternalStore(
-		windowed ? windowed.subscribe : NOTHING,
-		windowed ? windowed.state : () => EMPTY_STATE,
-	);
+	const state = useStoreOr(windowed, EMPTY_WINDOWED_STATE);
 
 	return { windowed, state };
 }

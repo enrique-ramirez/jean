@@ -6,7 +6,7 @@ import {
 } from "@/domain/track/libraryHolds";
 import { windowedSourceOf } from "@/domain/track/librarySource";
 import {
-	type WindowedState,
+	EMPTY_WINDOWED_STATE,
 	windowedLibraryOf,
 } from "@/domain/track/libraryWindows";
 import {
@@ -19,14 +19,14 @@ import {
 import type { LibraryList, RowWindows } from "@/domain/track/rowWindows";
 import { libraryOrigin } from "@/shared/api/discovery";
 import { useFooJean } from "@/shared/hooks/useFooJean";
+import { useStoreOr } from "@/shared/hooks/useStoreOr";
+import { NO_SUBSCRIPTION } from "@/shared/lib/store";
 import { libraryStatusOf } from "./libraryStatus";
 import { useMostPlayed } from "./useLibrarySummary";
 
 const NO_HOLD: Hold = { kind: "none" };
 
 const NOTHING_TO_RETRY = () => {};
-
-const NOTHING = () => () => {};
 
 const NO_SOURCE = windowedSourceOf({
 	windows: { at: () => null },
@@ -42,7 +42,8 @@ export function useLibrary() {
 
 	const announced = useSyncExternalStore(
 		useCallback(
-			(listener) => (origin ? watchAnnounced(origin, listener) : NOTHING()),
+			(listener) =>
+				origin ? watchAnnounced(origin, listener) : NO_SUBSCRIPTION(),
 			[origin],
 		),
 		useCallback(() => (origin ? announcedLibraryOf(origin) : null), [origin]),
@@ -53,7 +54,8 @@ export function useLibrary() {
 	);
 	const list = useSyncExternalStore(
 		useCallback(
-			(listener) => (windowed ? windowed.subscribe(listener) : NOTHING()),
+			(listener) =>
+				windowed ? windowed.subscribe(listener) : NO_SUBSCRIPTION(),
 			[windowed],
 		),
 		useCallback(() => (windowed ? windowed.state().list : null), [windowed]),
@@ -61,7 +63,8 @@ export function useLibrary() {
 
 	const hold = useSyncExternalStore(
 		useCallback(
-			(listener) => (windowed ? windowed.watchHold(listener) : NOTHING()),
+			(listener) =>
+				windowed ? windowed.watchHold(listener) : NO_SUBSCRIPTION(),
 			[windowed],
 		),
 		useCallback(() => (windowed ? windowed.hold() : NO_HOLD), [windowed]),
@@ -93,13 +96,6 @@ export function useLibrary() {
 
 export type Library = ReturnType<typeof useLibrary>;
 
-const EMPTY_STATE: WindowedState = {
-	list: null,
-	version: 0,
-	runs: null,
-	hasDiscs: false,
-};
-
 export function useWindowedRows(
 	{
 		windowed,
@@ -109,9 +105,9 @@ export function useWindowedRows(
 	isShown: boolean,
 ): ListedRows {
 	const mostPlayed = useMostPlayed({ origin, structure });
-	const state = useSyncExternalStore(
-		windowed && isShown ? windowed.subscribe : NOTHING,
-		windowed && isShown ? windowed.state : () => EMPTY_STATE,
+	const state = useStoreOr(
+		windowed && isShown ? windowed : null,
+		EMPTY_WINDOWED_STATE,
 	);
 
 	return useMemo(
@@ -154,10 +150,7 @@ export function useSetRows(
 	{ isBeside = false }: { isBeside?: boolean } = {},
 ): ListedRows & { indices: Refs } {
 	const watched = windowed && ordinals ? windowed : null;
-	const state = useSyncExternalStore(
-		watched ? watched.subscribe : NOTHING,
-		watched ? watched.state : () => EMPTY_STATE,
-	);
+	const state = useStoreOr(watched, EMPTY_WINDOWED_STATE);
 	const mostPlayed = useMostPlayed({ origin, structure });
 
 	const list = useMemo<LibraryList | null>(

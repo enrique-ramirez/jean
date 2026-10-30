@@ -32,6 +32,7 @@ import type {
 } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useTranslate } from "@/shared/i18n/useTranslate";
+import { NO_SUBSCRIPTION } from "@/shared/lib/store";
 import { NOW_PLAYING_EXPRESSIONS, NOW_PLAYING_FIELD } from "./nowPlayingFields";
 
 // Which announcement a key has already been read for is a fact about the key, not about
@@ -125,8 +126,6 @@ function addressesOfPlaying(
 	return forms;
 }
 
-const NOTHING = () => () => {};
-
 let adoptsAnswer = false;
 
 const ratingChangesIn = (library: {
@@ -145,7 +144,7 @@ function useAdoptRereadRating(
 	const queryClient = useQueryClient();
 	const windowed = origin ? windowedLibraryOf(origin) : null;
 	const landed = useSyncExternalStore(
-		windowed ? windowed.windows.subscribe : NOTHING,
+		windowed ? windowed.windows.subscribe : NO_SUBSCRIPTION,
 		windowed ? windowed.windows.version : NO_VERSION,
 	);
 	const read = useRef<{ ordinal: number; window: RowsWindow } | null>(null);

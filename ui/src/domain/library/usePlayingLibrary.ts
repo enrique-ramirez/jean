@@ -1,21 +1,13 @@
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo } from "react";
 import { useAudiblePlayer } from "@/domain/player/usePlayer";
 import {
-	type WindowedState,
+	EMPTY_WINDOWED_STATE,
 	windowedLibraryOf,
 } from "@/domain/track/libraryWindows";
 import { libraryOrigin } from "@/shared/api/discovery";
 import { playingTrack } from "@/shared/api/playerState";
 import { useFooJean } from "@/shared/hooks/useFooJean";
-
-const NOTHING = () => () => {};
-
-const NO_STATE: WindowedState = {
-	list: null,
-	version: 0,
-	runs: null,
-	hasDiscs: false,
-};
+import { useStoreOr } from "@/shared/hooks/useStoreOr";
 
 export interface PlayingLibrary {
 	ordinal: number | null;
@@ -41,10 +33,7 @@ export function usePlayingLibrary(): PlayingLibrary {
 		() => (origin && ordinal !== null ? windowedLibraryOf(origin) : null),
 		[origin, ordinal],
 	);
-	const state = useSyncExternalStore(
-		watched ? watched.subscribe : NOTHING,
-		watched ? watched.state : () => NO_STATE,
-	);
+	const state = useStoreOr(watched, EMPTY_WINDOWED_STATE);
 
 	useEffect(
 		() =>

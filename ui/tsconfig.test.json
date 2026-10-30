@@ -159,6 +159,7 @@
 		"src/shared/hooks/useCoalescedWrite.ts",
 		"src/shared/hooks/useCacheOnly.ts",
 		"src/shared/hooks/useFooJean.ts",
+		"src/shared/hooks/useStoreOr.ts",
 		"src/shared/hooks/useStoredState.ts",
 		"src/shared/i18n/useTranslate.ts",
 		"src/shared/lib/math.ts",

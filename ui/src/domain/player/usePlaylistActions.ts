@@ -67,7 +67,7 @@ export function useMakePlaylist<Made>(
 	return useMutation({
 		mutationFn: async () => {
 			const made = await make();
-			await catchUpPlaylists();
+			await catchUpPlaylists().catch(() => undefined);
 			return made;
 		},
 		onSuccess: onMade,

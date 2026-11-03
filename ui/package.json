@@ -11,6 +11,7 @@
 		"typecheck": "tsc -b",
 		"test:unit": "node --import ./test/alias.ts --test \"test/unit/*.test.ts\"",
 		"test:e2e": "playwright test",
+		"test:e2e:heavy": "HEAVY=1 playwright test --grep @heavy",
 		"test:ui": "playwright test --ui",
 		"fake": "node test/fake-api/main.ts",
 		"cases": "node scripts/libraryCases.ts",

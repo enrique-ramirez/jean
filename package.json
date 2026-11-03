@@ -19,6 +19,7 @@
 		"test": "pnpm test:unit && pnpm test:e2e",
 		"test:unit": "pnpm -r run test:unit",
 		"test:e2e": "pnpm --filter @jean/ui run test:e2e",
+		"test:e2e:heavy": "pnpm --filter @jean/ui run test:e2e:heavy",
 		"test:ui": "pnpm --filter @jean/ui run test:ui",
 		"fake": "pnpm --filter @jean/ui run fake",
 		"cases": "pnpm --filter @jean/ui run cases",

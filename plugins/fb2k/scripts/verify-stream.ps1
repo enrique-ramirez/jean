@@ -20,14 +20,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $failures = 0
 
-function Get-Json($uri, $headers = @{}, $method = 'GET') {
-  $resp = if ($method -eq 'POST') {
-    Invoke-WebRequest -Uri $uri -Headers $headers -Method $method -ContentType 'application/json' -UseBasicParsing -TimeoutSec 30
-  } else {
-    Invoke-WebRequest -Uri $uri -Headers $headers -Method $method -UseBasicParsing -TimeoutSec 30
-  }
-  [System.Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray()) | ConvertFrom-Json
-}
+. "$PSScriptRoot\lib\http.ps1"
 
 function Send-Command($path, $body = $null) {
   $call = @{ Uri = "$FooJean$path"; Method = 'POST'; ContentType = 'application/json'; UseBasicParsing = $true; TimeoutSec = 10 }

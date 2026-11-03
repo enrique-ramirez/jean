@@ -26,6 +26,7 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\lib\player.ps1"
 . "$PSScriptRoot\lib\download.ps1"
 . "$PSScriptRoot\lib\fixtures.ps1"
+. "$PSScriptRoot\lib\http.ps1"
 
 if (-not $Foobar2000Dir) {
   throw "Set -Foobar2000Dir or the FOOBAR2000_DIR environment variable to the folder holding foobar2000.exe"
@@ -64,13 +65,6 @@ if ($missing.Count -gt 0) { throw "The corpus at $Corpus is missing $($missing -
 foreach ($fixture in $layout) {
   Assert-Sha256 -Path (Join-Path $Corpus $fixture.Source) -Sha256 $fixture.Sha256 `
     -Name "$($fixture.Source) in the corpus at $Corpus"
-}
-
-# foo_jean answers 'application/json' with no charset parameter, and PowerShell 5.1 then falls back to ISO-8859-1,
-# turning any accented filename into mojibake that no longer names a file on disk. Decode the raw bytes as UTF-8 by hand.
-function Get-Json($uri) {
-  $resp = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 30
-  [System.Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray()) | ConvertFrom-Json
 }
 
 function Send-Json($uri, $method, $body) {

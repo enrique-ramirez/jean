@@ -2128,7 +2128,7 @@ test.describe("in a tab in a session of its own, while the player plays from a s
 		await expect(searchField(page)).toHaveValue(`${QUERY}x`);
 		await untilQuiet(player);
 
-		const nameField = page.getByRole("textbox", { name: "Playlist name" });
+		const nameField = page.getByRole("textbox", { name: /New playlist from/ });
 		expect(await nameField.count()).toBe(0);
 		expect(refused).toEqual([]);
 

@@ -157,7 +157,9 @@ test.describe("creating one from a genre", () => {
 		await page.goto("/#/genre/Post%20Rock");
 		await createButton(page).click();
 
-		await expect(page.getByLabel("Playlist name")).toHaveValue("Post Rock");
+		await expect(
+			page.getByRole("textbox", { name: /autoplaylist of/ }),
+		).toHaveValue("Post Rock");
 		await page.getByRole("button", { name: "Create", exact: true }).click();
 
 		// `#Jean` is Jean's own plumbing namespace and is filtered out of the sidebar.
@@ -176,7 +178,9 @@ test.describe("creating one from a genre", () => {
 		await page.clock.install();
 		await page.goto("/#/genre/Post%20Rock");
 		await createButton(page).click();
-		await expect(page.getByLabel("Playlist name")).toHaveValue("Post Rock");
+		await expect(
+			page.getByRole("textbox", { name: /autoplaylist of/ }),
+		).toHaveValue("Post Rock");
 		await expect(page.getByText(/The player matches 13 tracks/)).toBeVisible();
 		await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 250);
 

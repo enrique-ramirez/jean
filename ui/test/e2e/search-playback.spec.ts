@@ -82,7 +82,7 @@ const stopTheTick = async (page: Page) =>
 
 const saveAs = async (page: Page, name: string) => {
 	await page.getByRole("button", { name: "Save as playlist" }).click();
-	await page.getByRole("textbox", { name: "Playlist name" }).fill(name);
+	await page.getByRole("textbox", { name: /New playlist from/ }).fill(name);
 	await page.getByRole("button", { name: "Create" }).click();
 	await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 };
@@ -814,7 +814,9 @@ test.describe("saving results as a playlist", () => {
 		await expect(statusBar(page)).toContainText("Nothing playing");
 
 		await page.getByRole("button", { name: "Save as playlist" }).click();
-		await page.getByRole("textbox", { name: "Playlist name" }).fill("Keepers");
+		await page
+			.getByRole("textbox", { name: /New playlist from/ })
+			.fill("Keepers");
 		await page.getByRole("button", { name: "Create" }).click();
 
 		await expect(
@@ -840,7 +842,7 @@ test.describe("saving results as a playlist", () => {
 
 		await page.getByRole("button", { name: "Save as playlist" }).click();
 		await expect(
-			page.getByRole("textbox", { name: "Playlist name" }),
+			page.getByRole("textbox", { name: /New playlist from/ }),
 		).toBeFocused();
 
 		// Focusing a field the popover puts past the header's bottom edge makes the
@@ -869,7 +871,9 @@ test.describe("a save the player refuses", () => {
 		).toBe(true);
 
 		await page.getByRole("button", { name: "Save as playlist" }).click();
-		await page.getByRole("textbox", { name: "Playlist name" }).fill("Keepers");
+		await page
+			.getByRole("textbox", { name: /New playlist from/ })
+			.fill("Keepers");
 		await page.getByRole("button", { name: "Create" }).click();
 
 		await expect(page.getByRole("alert")).toContainText("Could not save");

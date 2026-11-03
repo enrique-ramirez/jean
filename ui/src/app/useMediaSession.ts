@@ -76,8 +76,19 @@ function setPosition(duration: number, position: number) {
 }
 
 const LOCK_SCREEN_MAX_EDGE = 512;
-const LOCK_SCREEN_TYPE = "image/jpeg";
 const LOCK_SCREEN_QUALITY = 0.85;
+
+// JPEG has no alpha: a cover with any would come out on black.
+const hasAlpha = (context: CanvasRenderingContext2D) => {
+	const { data } = context.getImageData(
+		0,
+		0,
+		context.canvas.width,
+		context.canvas.height,
+	);
+	for (let at = 3; at < data.length; at += 4) if (data[at] < 255) return true;
+	return false;
+};
 
 // The OS fetches media session artwork out of process, and Chrome on iOS refuses a `blob:` URL there.
 async function shrinkForLockScreen(blobUrl: string): Promise<MediaImage> {
@@ -99,10 +110,11 @@ async function shrinkForLockScreen(blobUrl: string): Promise<MediaImage> {
 	if (!context) throw new Error("no 2d context");
 	context.drawImage(image, 0, 0, width, height);
 
+	const type = hasAlpha(context) ? "image/png" : "image/jpeg";
 	return {
-		src: canvas.toDataURL(LOCK_SCREEN_TYPE, LOCK_SCREEN_QUALITY),
+		src: canvas.toDataURL(type, LOCK_SCREEN_QUALITY),
 		sizes: `${width}x${height}`,
-		type: LOCK_SCREEN_TYPE,
+		type,
 	};
 }
 

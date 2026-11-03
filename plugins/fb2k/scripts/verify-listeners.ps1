@@ -17,14 +17,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $failures = 0
 
-function Get-Json($uri, $headers = @{}, $method = 'GET', $body = $null) {
-  $call = @{ Uri = $uri; Headers = $headers; Method = $method; UseBasicParsing = $true; TimeoutSec = 30 }
-  if ($null -ne $body) { $call.Body = $body }
-  if ($method -ieq 'POST') { $call.ContentType = 'application/json' }
-  $resp = Invoke-WebRequest @call
-  if ($resp.RawContentStream.Length -eq 0) { return $null }
-  [System.Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray()) | ConvertFrom-Json
-}
+. "$PSScriptRoot\lib\http.ps1"
 
 function Check($what, $ok, $detail = '') {
   if ($ok) {

@@ -24,15 +24,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\lib\fixtures.ps1"
+. "$PSScriptRoot\lib\http.ps1"
 
 $fixtureRoot = Get-FixtureRoot -Dest $FixtureDir -Foobar2000Dir $Foobar2000Dir
-
-# foo_jean answers 'application/json' with no charset parameter, and PowerShell 5.1 then falls back to ISO-8859-1,
-# turning every accented path into mojibake that no longer names a file. Decode the raw bytes as UTF-8 by hand.
-function Get-Json($uri, $headers = @{}) {
-  $resp = Invoke-WebRequest -Uri $uri -Headers $headers -UseBasicParsing -TimeoutSec 30
-  [System.Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray()) | ConvertFrom-Json
-}
 
 $matching = @((Get-Json "$FooJean/playlists").playlists | Where-Object { $_.title -eq $PlaylistTitle })
 if ($matching.Count -eq 0) { throw "No playlist titled '$PlaylistTitle'. Run scripts\test-fixtures.ps1 first." }

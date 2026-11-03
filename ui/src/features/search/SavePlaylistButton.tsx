@@ -1,9 +1,9 @@
 import { ListPlus } from "lucide-react";
-import type { FormEvent as ReactFormEvent } from "react";
 import { useEffect, useRef } from "react";
 import type { Library } from "@/domain/library/useLibrary";
 import type { LibrarySearch } from "@/domain/library/useLibrarySearch";
 import type { useScratchPlaylist } from "@/domain/library/useScratchPlaylist";
+import { NewPlaylistForm } from "@/domain/player/NewPlaylistForm";
 import { useMakePlaylist } from "@/domain/player/usePlaylistActions";
 import { orThrow } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
@@ -13,9 +13,7 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useResettingState } from "@/shared/hooks/useResettingState";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
-import { Input } from "@/shared/ui/Input";
 import { Menu } from "@/shared/ui/Menu";
-import styles from "./SavePlaylistButton.module.css";
 
 export function SavePlaylistButton({
 	search,
@@ -71,11 +69,6 @@ export function SavePlaylistButton({
 		},
 	);
 
-	const submit = (event: ReactFormEvent) => {
-		event.preventDefault();
-		if (title.trim().length > 0 && !save.isPending) save.mutate();
-	};
-
 	if (!canSave) return null;
 
 	return (
@@ -94,44 +87,21 @@ export function SavePlaylistButton({
 				</Button>
 			}
 		>
-			<form className={styles.form} onSubmit={submit}>
-				<label className={styles.label} htmlFor="save-search-title">
-					{t("search.newPlaylistFrom", { count: trackCount })}
-				</label>
-
-				<Input
-					size="md"
-					id="save-search-title"
-					inputRef={inputRef}
-					className={styles.input}
-					value={title}
-					onChange={(event) => setTitle(event.target.value)}
-					placeholder={t("playlist.name")}
-					aria-label={t("playlist.name")}
-					spellCheck="false"
-					autoComplete="off"
-					autoFocus
-				/>
-
-				{save.error ? (
-					<p className={styles.error} role="alert">
-						{t("search.saveFailed", { message: save.error.message })}
-					</p>
-				) : null}
-
-				<div className={styles.actions}>
-					<Button onClick={() => onOpenChange(false)}>
-						{t("action.cancel")}
-					</Button>
-					<Button
-						variant="primary"
-						type="submit"
-						disabled={title.trim().length === 0 || save.isPending}
-					>
-						{t(save.isPending ? "action.saving" : "action.create")}
-					</Button>
-				</div>
-			</form>
+			<NewPlaylistForm
+				label={t("search.newPlaylistFrom", { count: trackCount })}
+				title={title}
+				onTitleChange={setTitle}
+				inputRef={inputRef}
+				error={
+					save.error
+						? t("search.saveFailed", { message: save.error.message })
+						: null
+				}
+				isPending={save.isPending}
+				pendingLabel={t("action.saving")}
+				onSubmit={() => save.mutate()}
+				onCancel={() => onOpenChange(false)}
+			/>
 		</Menu>
 	);
 }

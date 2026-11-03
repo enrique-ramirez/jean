@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
-import type { FormEvent as ReactFormEvent } from "react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 import { genreQuery } from "@/domain/library/genreQuery";
+import { NewPlaylistForm } from "@/domain/player/NewPlaylistForm";
 import { useMakePlaylist } from "@/domain/player/usePlaylistActions";
 import { orThrow, retryWhenTooFast } from "@/shared/api/client";
 import { requireFooJean } from "@/shared/api/discovery";
@@ -16,7 +16,6 @@ import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useResettingState } from "@/shared/hooks/useResettingState";
 import { type Translate, useTranslate } from "@/shared/i18n/useTranslate";
 import { Button } from "@/shared/ui/Button";
-import { Input } from "@/shared/ui/Input";
 import { Menu } from "@/shared/ui/Menu";
 import styles from "./CreateAutoPlaylist.module.css";
 
@@ -55,7 +54,6 @@ export function CreateAutoPlaylist({
 
 	const [isOpen, setIsOpen] = useState(false);
 	const [title, setTitle] = useResettingState(genre, [isOpen]);
-	const inputRef = useRef<HTMLInputElement | null>(null);
 
 	const query = genreQuery(genre);
 
@@ -89,11 +87,6 @@ export function CreateAutoPlaylist({
 
 	if (!origin || !canCreate) return null;
 
-	const submit = (event: ReactFormEvent) => {
-		event.preventDefault();
-		if (title.trim().length > 0 && !create.isPending) create.mutate();
-	};
-
 	return (
 		<Menu
 			isOpen={isOpen}
@@ -109,24 +102,21 @@ export function CreateAutoPlaylist({
 				</Button>
 			}
 		>
-			<form className={styles.form} onSubmit={submit}>
-				<label className={styles.label} htmlFor="autoplaylist-title">
-					{t("genre.autoPlaylistOf", { genre })}
-				</label>
-
-				<Input
-					size="md"
-					id="autoplaylist-title"
-					inputRef={inputRef}
-					value={title}
-					onChange={(event) => setTitle(event.target.value)}
-					placeholder={t("playlist.name")}
-					aria-label={t("playlist.name")}
-					spellCheck="false"
-					autoComplete="off"
-					autoFocus
-				/>
-
+			<NewPlaylistForm
+				label={t("genre.autoPlaylistOf", { genre })}
+				title={title}
+				onTitleChange={setTitle}
+				error={
+					create.error
+						? t("genre.createFailed", { message: create.error.message })
+						: null
+				}
+				isPending={create.isPending}
+				pendingLabel={t("action.creating")}
+				canSubmit={preview?.valid === true}
+				onSubmit={() => create.mutate()}
+				onCancel={() => setIsOpen(false)}
+			>
 				<p className={styles.preview} role="status">
 					{previewSays(t, {
 						preview,
@@ -136,28 +126,7 @@ export function CreateAutoPlaylist({
 				</p>
 
 				<p className={styles.note}>{t("genre.keptFilled", { genre })}</p>
-
-				{create.error ? (
-					<p className={styles.error} role="alert">
-						{t("genre.createFailed", { message: create.error.message })}
-					</p>
-				) : null}
-
-				<div className={styles.actions}>
-					<Button onClick={() => setIsOpen(false)}>{t("action.cancel")}</Button>
-					<Button
-						variant="primary"
-						type="submit"
-						disabled={
-							title.trim().length === 0 ||
-							create.isPending ||
-							preview?.valid !== true
-						}
-					>
-						{t(create.isPending ? "action.creating" : "action.create")}
-					</Button>
-				</div>
-			</form>
+			</NewPlaylistForm>
 		</Menu>
 	);
 }

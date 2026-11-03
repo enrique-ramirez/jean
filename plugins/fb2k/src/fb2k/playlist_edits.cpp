@@ -28,15 +28,20 @@ constexpr uint32_t kNoLockCoversMoving = 0;
 
 // What an edit of a user's playlist checks first: that it exists, that it is not one of this
 // component's own, and whether its lock refuses `lockFilter`.
-PlaylistEditFacts userPlaylistFacts(size_t index, uint32_t lockFilter) {
+PlaylistEditFacts userPlaylistFacts(size_t index, uint32_t lockFilter, bool rowsMoved = false) {
     PlaylistEditFacts facts;
     facts.noSuchPlaylist = index == pfc::infinite_size;
+    facts.rowsMoved = rowsMoved;
     if (facts.noSuchPlaylist)
         return facts;
 
     facts.ownPlaylist = roleOf(index).has_value();
     facts.locked = lockRefuses(index, lockFilter);
     return facts;
+}
+
+PlayerOutcome userPlaylistRefusal(size_t index, uint32_t lockFilter) {
+    return playlistEditRefusal(userPlaylistFacts(index, lockFilter));
 }
 
 bool anyPastEnd(const std::vector<uint32_t>& positions, size_t rowCount) {
@@ -167,9 +172,8 @@ PlaylistResult createOnMainThread(const std::string& title, const NewPlaylistRow
 PlaylistResult renameOnMainThread(const std::string& id, const std::string& title) {
     const auto index = findPlaylist(id);
 
-    const auto refusal =
-        playlistEditRefusal(userPlaylistFacts(index, playlist_lock::filter_rename));
-    if (refusal != PlayerOutcome::done)
+    if (const auto refusal = userPlaylistRefusal(index, playlist_lock::filter_rename);
+        refusal != PlayerOutcome::done)
         return playlistFailure(refusal);
 
     if (!playlist_manager::get()->playlist_rename(index, title.c_str(), title.size()))
@@ -183,9 +187,8 @@ PlaylistResult renameOnMainThread(const std::string& id, const std::string& titl
 PlaylistResult removeOnMainThread(const std::string& id) {
     const auto index = findPlaylist(id);
 
-    const auto refusal =
-        playlistEditRefusal(userPlaylistFacts(index, playlist_lock::filter_remove_playlist));
-    if (refusal != PlayerOutcome::done)
+    if (const auto refusal = userPlaylistRefusal(index, playlist_lock::filter_remove_playlist);
+        refusal != PlayerOutcome::done)
         return playlistFailure(refusal);
 
     return removePlaylistAt(index, "playlist");
@@ -234,8 +237,8 @@ RowsEdited copyRowsOnMainThread(const std::string& playlistId, const std::string
                                 const PlaylistVersions& versions) {
     const auto index = findPlaylist(playlistId);
 
-    const auto refusal = playlistEditRefusal(userPlaylistFacts(index, playlist_lock::filter_add));
-    if (refusal != PlayerOutcome::done)
+    if (const auto refusal = userPlaylistRefusal(index, playlist_lock::filter_add);
+        refusal != PlayerOutcome::done)
         return failureOf<RowsEdited>(refusal);
 
     const auto gathered = rowsOfPlaylist(sourcePlaylistId, positions);
@@ -257,8 +260,8 @@ RowsEdited removeRowsOnMainThread(const std::string& playlistId, uint64_t struct
     const auto index = findPlaylist(playlistId);
     const auto manager = playlist_manager_v5::get();
 
-    auto facts = userPlaylistFacts(index, playlist_lock::filter_remove);
-    facts.rowsMoved = versions.of(playlistId).structure != structure;
+    auto facts = userPlaylistFacts(index, playlist_lock::filter_remove,
+                                   versions.of(playlistId).structure != structure);
     if (!facts.noSuchPlaylist)
         facts.positionPastEnd = anyPastEnd(positions, manager->playlist_get_item_count(index));
 
@@ -280,8 +283,8 @@ RowsEdited moveRowsOnMainThread(const std::string& playlistId, uint64_t structur
     const auto index = findPlaylist(playlistId);
     const auto manager = playlist_manager::get();
 
-    auto facts = userPlaylistFacts(index, playlist_lock::filter_reorder);
-    facts.rowsMoved = versions.of(playlistId).structure != structure;
+    auto facts = userPlaylistFacts(index, playlist_lock::filter_reorder,
+                                   versions.of(playlistId).structure != structure);
 
     std::optional<std::vector<uint32_t>> order;
     if (!facts.noSuchPlaylist) {
@@ -308,8 +311,8 @@ SortedRows sortRowsOnMainThread(const std::string& playlistId, uint64_t structur
     const auto index = findPlaylist(playlistId);
     const auto manager = playlist_manager::get();
 
-    auto facts = userPlaylistFacts(index, playlist_lock::filter_reorder);
-    facts.rowsMoved = versions.of(playlistId).structure != structure;
+    const auto facts = userPlaylistFacts(index, playlist_lock::filter_reorder,
+                                         versions.of(playlistId).structure != structure);
 
     if (const auto refusal = playlistEditRefusal(facts); refusal != PlayerOutcome::done)
         return failureOf<SortedRows>(refusal);

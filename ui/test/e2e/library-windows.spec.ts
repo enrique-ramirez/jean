@@ -638,7 +638,9 @@ const TWO_MILLION_MS = 10 * 60_000;
 const LANDS_MS = 6 * 60_000;
 const SETTLES_MS = 60_000;
 
-test.describe("a library of two million tracks", { tag: "@firefox" }, () => {
+test.describe("a library of two million tracks", {
+	tag: ["@firefox", "@heavy"],
+}, () => {
 	test.skip(
 		({ isMobile }) => isMobile,
 		"the height limit is the engine's, which this project shares with desktop",
@@ -1058,7 +1060,7 @@ test.describe("a playlist whose revision moves", () => {
 });
 
 test.describe("an autoplaylist of two million tracks", {
-	tag: "@firefox",
+	tag: ["@firefox", "@heavy"],
 }, () => {
 	test.skip(
 		({ isMobile }) => isMobile,

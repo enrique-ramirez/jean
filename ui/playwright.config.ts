@@ -4,6 +4,7 @@ import { defineConfig, devices } from "@playwright/test";
 // than adding to it: these specs drive one foobar2000 that cannot be reset between tests, so
 // they run alone, in order, and against the build that is already deployed.
 const LIVE = process.env.LIVE;
+const HEAVY = Boolean(process.env.HEAVY);
 
 // Specs load `src/` modules outside Vite, which is what injects this; Playwright evaluates the
 // config in every worker before a spec.
@@ -23,7 +24,10 @@ export default defineConfig({
 	timeout: 60_000,
 
 	fullyParallel: !LIVE,
-	workers: LIVE ? 1 : undefined,
+	// The @heavy cases each build a two-million-track fake; five at once starve each other, so
+	// they run by themselves, one at a time.
+	grepInvert: HEAVY ? undefined : /@heavy/,
+	workers: LIVE || HEAVY ? 1 : undefined,
 	forbidOnly: Boolean(process.env.CI),
 	retries: process.env.CI ? 1 : 0,
 	reporter: process.env.CI

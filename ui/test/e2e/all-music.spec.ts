@@ -329,7 +329,9 @@ const SETTLES_MS = 60_000;
 // Chromium holds a scroll offset this large only to every second pixel.
 const SCROLL_GRID_PX = 2;
 
-test.describe("a library of two million tracks", { tag: "@firefox" }, () => {
+test.describe("a library of two million tracks", {
+	tag: ["@firefox", "@heavy"],
+}, () => {
 	test.skip(
 		({ isMobile }) => isMobile,
 		"the height limit is the engine's, which this project shares with desktop; a fling over the cap is checked by hand on a phone",

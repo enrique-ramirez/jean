@@ -9,7 +9,9 @@ Two suites, and the split is not about speed. **`test/e2e/` is the suite**: end-
 ```sh
 pnpm test                                              # unit, then e2e on desktop and mobile
 pnpm test:unit                                         # node --test over test/unit/
-pnpm test:e2e                                          # playwright only
+pnpm test:e2e                                          # playwright only, less the @heavy cases
+pnpm test:e2e:heavy                                    # the two-million-track cases, one worker
+                                                       # a whole-suite check is both, one after the other
 pnpm test:ui                                           # pick and watch interactively
 pnpm test:e2e --project=desktop -g "double-clicking"   # one test
 ```

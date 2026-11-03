@@ -1266,7 +1266,7 @@ test.describe("in search results", () => {
 		await searchField(page).click();
 		await page.keyboard.press("ControlOrMeta+s");
 		await expect(
-			page.getByRole("textbox", { name: "Playlist name" }),
+			page.getByRole("textbox", { name: /New playlist from/ }),
 		).toBeVisible();
 	});
 });

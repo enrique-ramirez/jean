@@ -50,7 +50,6 @@ export function NewPlaylistForm({
 				value={title}
 				onChange={(event) => onTitleChange(event.target.value)}
 				placeholder={t("playlist.name")}
-				aria-label={t("playlist.name")}
 				spellCheck="false"
 				autoComplete="off"
 				autoFocus

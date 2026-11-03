@@ -79,17 +79,18 @@ const isTileAsk = (body: Body) =>
 	body.ordinals.length > 0 &&
 	body.ordinals.length <= HEADER_TILES_AT_MOST;
 
-// What opening a list asked of the library. The header's summary and its one ask for cover tiles may
-// sit beside the runs and the window; a second window may not.
+// What the library answered when a list opened, `others` aside, which counts every ask. The header's
+// summary and its one ask for cover tiles may sit beside the runs and the window; a second window may not.
 const openingAsks = (player: FakePlayer, from = 0) => {
 	const asks = libraryAsks(player, from);
-	const rows = asks.filter((entry) => askOf(entry) === ROWS);
+	const answered = asks.filter((entry) => entry.status === 200);
+	const rows = answered.filter((entry) => askOf(entry) === ROWS);
 	return {
 		others: asks
 			.map(askOf)
 			.filter((ask) => ask !== RUNS && ask !== ROWS && ask !== SUMMARY),
-		runs: asks.filter((entry) => askOf(entry) === RUNS).length,
-		summaries: asks.filter((entry) => askOf(entry) === SUMMARY).length,
+		runs: answered.filter((entry) => askOf(entry) === RUNS).length,
+		summaries: answered.filter((entry) => askOf(entry) === SUMMARY).length,
 		tiles: rows.filter((entry) => isTileAsk(entry.body)).length,
 		windows: rows
 			.filter((entry) => !isTileAsk(entry.body))
@@ -1105,9 +1106,13 @@ test.describe("an autoplaylist of two million tracks", {
 		await expect(trackRow(page, 0)).toContainText(titleIn(player, key, 0), {
 			timeout: LANDS_MS,
 		});
+		await expect
+			.poll(() => runs.filter((answer) => answer.status === 200).length, {
+				timeout: SETTLES_MS,
+			})
+			.toBe(1);
 		await untilQuiet(player);
 		const opened = playlistAsksOf(player, key);
-		expect(runs.filter((answer) => answer.status === 200)).toHaveLength(1);
 		expect(opened.windows).toEqual([{ offset: 0, count: WINDOW_ROWS }]);
 		expect(opened.others).toEqual([]);
 		expectTileAsksAtMost(opened.tiles);

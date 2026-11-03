@@ -111,6 +111,9 @@ export interface RecordedRequest {
 	answered?: { conditional: boolean; status: number; bytes: number };
 	// The bucket that refused it, where a rate limit rather than a knob answered `429`.
 	limited?: Bucket;
+	// The status of every answer, set as it is written; `answered` is filled only
+	// by the routes that need it.
+	status?: number;
 }
 
 const CAPTURED_PLAYER = capturedPlayer as Omit<FakePlayerState, "activeItem">;

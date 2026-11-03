@@ -2,8 +2,6 @@
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
-	/* min-width: 0 lets the grid column reach zero; grid items default to min-width: auto. */
-	min-width: 0;
 	padding: 12px;
 	padding-left: max(12px, env(safe-area-inset-left));
 	overflow-x: hidden;

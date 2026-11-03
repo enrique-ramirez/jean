@@ -281,14 +281,13 @@ constexpr std::array kOwnedParameters{
     OwnedParameter{
         "field",
         [](const std::string& value, QuestionAsked& asked) -> std::optional<std::string> {
-            const auto* const named =
-                std::find_if(kValueFields.begin(), kValueFields.end(),
-                             [&value](const auto& candidate) { return candidate.first == value; });
-            if (named == kValueFields.end())
-                return "'field' must be artist, albumArtist, album or genre";
-
-            asked.field = named->second;
-            return std::nullopt;
+            for (const auto& [name, field] : kValueFields) {
+                if (name == value) {
+                    asked.field = field;
+                    return std::nullopt;
+                }
+            }
+            return "'field' must be artist, albumArtist, album or genre";
         }},
     OwnedParameter{
         "structure",

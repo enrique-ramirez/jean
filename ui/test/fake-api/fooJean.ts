@@ -28,6 +28,22 @@ import { handleTags } from "./fooJean/tags.ts";
 import { json, one, type RequestHeaders, type Responder } from "./http.ts";
 import type { ArtworkServer } from "./routes.ts";
 import { type DetachedSession, ENGINE_SESSION_ID } from "./sessions.ts";
+import type { RecordedRequest } from "./state.ts";
+
+const recordingStatus = (
+	response: Responder,
+	recorded: RecordedRequest,
+): Responder => ({
+	writeHead: (status, headers) => {
+		recorded.status = status;
+		return response.writeHead(status, headers);
+	},
+	setHeader: (name, value) => response.setHeader(name, value),
+	write: (chunk) => response.write(chunk),
+	end: (body) => response.end(body),
+	on: (event, listener) => response.on(event, listener),
+	destroy: () => response.destroy(),
+});
 
 // `kMaxBodyBytes` in `plugins/fb2k/src/core/http_server.h`, refused before any
 // route reads the body.
@@ -141,7 +157,10 @@ export async function handleFooJean({
 	const recorded = state.record(method, path + url.search, body as never);
 
 	const late = latencyOf(fake, method, path);
-	const response = late > 0 ? deliveredAfter(socket, late) : socket;
+	const response = recordingStatus(
+		late > 0 ? deliveredAfter(socket, late) : socket,
+		recorded,
+	);
 
 	cors(response);
 

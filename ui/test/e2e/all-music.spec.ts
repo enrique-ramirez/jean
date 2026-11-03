@@ -354,7 +354,7 @@ test.describe("a library of two million tracks", { tag: "@firefox" }, () => {
 			String(TWO_MILLION),
 			{ timeout: LIBRARY_LANDS_MS },
 		);
-		await expect(trackRow(page, 0)).toBeAttached();
+		await expect(trackRow(page, 0)).toBeAttached({ timeout: LIBRARY_LANDS_MS });
 	};
 
 	const whereRowIs = (page: Page, index: number) =>
@@ -568,7 +568,9 @@ test.describe("a library of two million tracks", { tag: "@firefox" }, () => {
 						"data-active",
 						"true",
 					);
-					await expect(trackRow(page, row)).toContainText(title);
+					await expect(trackRow(page, row)).toContainText(title, {
+						timeout: SETTLES_MS,
+					});
 					expect(
 						await wasDrawnBusy(page),
 						`row ${row} drew its title without first drawing as a skeleton`,

@@ -1,14 +1,18 @@
 import { en } from "../../src/shared/i18n/en.ts";
+import { KEYMAP } from "../../src/shared/keyboard/keymap.ts";
 import type { FakePlayer, Locator, Page } from "./fixtures.ts";
 import {
 	expect,
+	expectSettlesAt,
 	openAllMusic,
 	openLibrary,
 	openNowPlaying,
 	requestsTo,
 	revealSearch,
+	rowByTitle,
 	searchField,
 	searchFor,
+	tagWrites,
 	test,
 	trackRow,
 	untilQuiet,
@@ -17,12 +21,16 @@ import { pressAndHold, touchDrag } from "./gestures.ts";
 import { holdRows } from "./libraryLists.ts";
 import { openRowMenu } from "./menus.ts";
 import {
+	discardButton,
+	expectDiscardPrompt,
 	expectPanelOpen,
+	keepEditingButton,
 	openPanels,
 	panelTab,
 	untilThePageKnowsPlaying,
 } from "./nowPlaying.ts";
-import { openQueue, queuePanel } from "./queue.ts";
+import { openQueue, queueButton, queuePanel } from "./queue.ts";
+import { scrollUntilMounted } from "./scrolling.ts";
 
 // The details panel is the surface a row's menu opens on any track. The Details tab under
 // `/playing/details` draws the same view for whatever is playing; criterion 17 compares the two.
@@ -653,6 +661,280 @@ test.describe("on a phone with a notch", () => {
 				expect(box.x).toBeGreaterThanOrEqual(NOTCH.left);
 				expect(box.x + box.width).toBeLessThanOrEqual(width - NOTCH.right);
 			}
+		});
+	});
+});
+
+test.describe("after the owner's answers", () => {
+	test.describe("a way to the queue with the panel open", () => {
+		test.skip(
+			({ isMobile }) => isMobile,
+			"the panel covers the list on a phone, and the queue is a drawer over it",
+		);
+
+		// Bound as "Q" and typed unshifted, as a person presses it.
+		const QUEUE_KEY = String(
+			KEYMAP.find((binding) => binding.id === "toggleQueue")?.keys[0],
+		).toLowerCase();
+
+		const WAYS = [
+			{
+				name: "the queue key",
+				// Waited on first: a keystroke sent before the shell has drawn is not queued for it.
+				take: async (page: Page) => {
+					await expect(queueButton(page)).toBeVisible();
+					await page.keyboard.press(QUEUE_KEY);
+				},
+			},
+			{
+				name: "the status bar's queue button",
+				take: (page: Page) => queueButton(page).click(),
+			},
+		];
+
+		// Whether the panel is reachable at any frame from here on: drawn and not inert. Read so rather
+		// than on screen, since a panel coming back is reachable the frame it opens and on screen only
+		// once it has begun to slide in, which can be after the last look.
+		const watchForPanel = (page: Page) =>
+			page.evaluate((name) => {
+				const watch = { seen: false };
+				Object.assign(window, { __panelWatch: watch });
+				const look = () => {
+					for (const element of document.querySelectorAll(
+						`[aria-label="${name}"]`,
+					))
+						if (
+							!element.closest("[inert]") &&
+							getComputedStyle(element).display !== "none"
+						)
+							watch.seen = true;
+					requestAnimationFrame(look);
+				};
+				requestAnimationFrame(look);
+			}, PANEL_TITLE());
+
+		// Read a whole frame after the queue shut, so the watch has looked at least once since.
+		const panelEverSeen = (page: Page) =>
+			page.evaluate(
+				() =>
+					new Promise<boolean>((resolve) =>
+						requestAnimationFrame(() =>
+							requestAnimationFrame(() =>
+								resolve(
+									(window as unknown as { __panelWatch: { seen: boolean } })
+										.__panelWatch.seen,
+								),
+							),
+						),
+					),
+			);
+
+		for (const way of WAYS) {
+			test(`${way.name} closes the details panel and shows the queue, and a second press shuts the queue without the panel coming back`, async ({
+				page,
+				isMobile,
+			}) => {
+				await openLibrary(page);
+				await openDetailsAt(page, isMobile, LOS_CALIENTES.row);
+				await expectClosed(queuePanel(page));
+
+				await way.take(page);
+
+				await expectClosed(detailsPanel(page));
+				await expectOpen(queuePanel(page));
+
+				// Closed rather than hidden behind the queue: one panel at a time, so shutting the queue
+				// leaves neither.
+				await watchForPanel(page);
+				await way.take(page);
+				await expectClosed(queuePanel(page));
+				expect(
+					await panelEverSeen(page),
+					"the details panel came back as the queue shut",
+				).toBe(false);
+			});
+
+			// The queue was open when Details took its place, so it is still open underneath; a way that
+			// only flips it would shut a queue the person cannot see.
+			test(`${way.name} shows the queue the panel took the place of`, async ({
+				page,
+				isMobile,
+			}) => {
+				await openLibrary(page);
+				await openQueue(page);
+				await openDetailsAt(page, isMobile, LOS_CALIENTES.row);
+				await expectClosed(queuePanel(page));
+
+				await way.take(page);
+
+				await expectClosed(detailsPanel(page));
+				await expectOpen(queuePanel(page));
+			});
+		}
+
+		test("Add to queue on a row's menu closes the details panel and shows the queue", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			await openLibrary(page);
+			await openDetailsAt(page, isMobile, LOS_CALIENTES.row);
+
+			await openRowMenu(page, isMobile, FIZZ.row, en["track.queue"]);
+			await menuItem(page, en["track.queue"]).click();
+			await expect.poll(() => player.playQueue.length).toBe(1);
+
+			await expectClosed(detailsPanel(page));
+			await expectOpen(queuePanel(page));
+		});
+
+		// Asked, kept, asked again, discarded: a guard that asks once loses the change on the second
+		// press.
+		test("with a change in the form, the queue button asks first: Keep editing keeps the panel and its change, and Discard shows the queue with nothing written", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			await openLibrary(page);
+			await openDetailsAt(page, isMobile, LOS_CALIENTES.row);
+			const panel = detailsPanel(page);
+			await panel
+				.getByRole("button", { name: en["details.edit"], exact: true })
+				.click();
+			const album = panel.getByRole("textbox", {
+				name: en["details.album"],
+				exact: true,
+			});
+			await album.fill("Jessico (reedición)");
+
+			await queueButton(page).click();
+			const prompt = await expectDiscardPrompt(page);
+			await keepEditingButton(prompt).click();
+
+			await expect(prompt).toHaveCount(0);
+			await expect(album).toHaveValue("Jessico (reedición)");
+			expect(await isOnScreen(panel)).toBe(true);
+			expect(await isOnScreen(queuePanel(page))).toBe(false);
+
+			await queueButton(page).click();
+			await expectDiscardPrompt(page);
+			await discardButton(prompt).click();
+
+			await expectClosed(panel);
+			await expectOpen(queuePanel(page));
+			await expectSettlesAt(player, () => tagWrites(player).length, 0);
+		});
+	});
+
+	test.describe("the panel's album artist", () => {
+		// A credit naming two artists the library knows on their own: Alice in Chains as the rest of Jar
+		// Of Flies' album artist, Mad Season as "Don't Follow"'s artist. Drawn without the credit's
+		// members it is one link to an artist called by the whole line; with them, a link each.
+		const LEAD = "Alice in Chains";
+		const OTHER = "Mad Season";
+		const SHARED = "No Excuses";
+		// The file's own values, which the form's chips are filled from, one value to an artist.
+		const SEPARATOR = String.fromCharCode(31);
+		test.use({
+			retagged: {
+				[SHARED]: {
+					"%album artist%": `${LEAD}, ${OTHER}`,
+					"$meta_sep(album artist,$char(31))": `${LEAD}${SEPARATOR}${OTHER}`,
+				},
+				"Don't Follow": { "%artist%": OTHER },
+			},
+		});
+
+		const ALBUM_ARTIST = en["details.albumArtist"];
+
+		const rowValue = async (root: Locator, label: string) => {
+			await expect(
+				root.getByRole("term").filter({ hasText: label }).first(),
+			).toBeVisible();
+			const at = (await labelsOf(root)).indexOf(label);
+			expect(at, `no ${label} row`).toBeGreaterThanOrEqual(0);
+			return root.getByRole("definition").nth(at);
+		};
+
+		const linksIn = (value: Locator) =>
+			value
+				.getByRole("link")
+				.evaluateAll((links) =>
+					links.map((link) => [
+						link.textContent?.trim() ?? "",
+						link.getAttribute("href") ?? "",
+					]),
+				);
+
+		const SURFACES = [
+			{ name: "a playlist", open: (page: Page) => openLibrary(page) },
+			{ name: "the library", open: (page: Page) => openAllMusic(page) },
+		];
+
+		// Read with nothing playing, so members read for whatever plays cannot stand in for the
+		// panel's own track; then compared against the Details tab once the same track plays.
+		for (const surface of SURFACES)
+			test(`opened from ${surface.name}, links each artist the credit names, where the Details tab does`, async ({
+				page,
+				isMobile,
+			}) => {
+				await surface.open(page);
+				const row = rowByTitle(page, SHARED);
+				await scrollUntilMounted(page, row);
+				await openMenuOn(page, isMobile, row);
+				await chooseDetails(page);
+				await expect(panelHeading(page, SHARED)).toBeVisible();
+
+				const inPanel = await rowValue(detailsPanel(page), ALBUM_ARTIST);
+				await expect(inPanel).toHaveText(`${LEAD}, ${OTHER}`);
+				await expect(inPanel.getByRole("link")).toHaveText([LEAD, OTHER]);
+				const panelLinks = await linksIn(inPanel);
+				for (const [, href] of panelLinks) expect(href).toMatch(/#\/artist\//);
+
+				await closeButton(page).click();
+				await expectClosed(detailsPanel(page));
+				if (isMobile) await row.tap();
+				else await row.dblclick();
+				await untilThePageKnowsPlaying(page, SHARED);
+				await openNowPlaying(page);
+				const tab = await openPanels(page, isMobile);
+				await panelTab(tab, "Details").click();
+				await expectPanelOpen(tab, "Details");
+
+				const inTab = await rowValue(tab, ALBUM_ARTIST);
+				await expect(inTab.getByRole("link")).toHaveText([LEAD, OTHER]);
+				expect(await linksIn(inTab)).toEqual(panelLinks);
+			});
+
+		test("in edit mode is the chip input, and no link", async ({
+			page,
+			isMobile,
+		}) => {
+			await openLibrary(page);
+			const row = rowByTitle(page, SHARED);
+			await scrollUntilMounted(page, row);
+			await openMenuOn(page, isMobile, row);
+			await chooseDetails(page);
+			const panel = detailsPanel(page);
+			const inPanel = await rowValue(panel, ALBUM_ARTIST);
+			await expect(inPanel.getByRole("link")).toHaveText([LEAD, OTHER]);
+
+			await panel
+				.getByRole("button", { name: en["details.edit"], exact: true })
+				.click();
+
+			await expect(
+				panel.getByRole("textbox", { name: ALBUM_ARTIST, exact: true }),
+			).toBeVisible();
+			await expect(
+				panel
+					.getByRole("list", { name: ALBUM_ARTIST, exact: true })
+					.getByRole("listitem"),
+			).toHaveText([LEAD, OTHER]);
+			for (const name of [LEAD, OTHER])
+				expect(
+					await panel.getByRole("link", { name, exact: true }).count(),
+				).toBe(0);
 		});
 	});
 });

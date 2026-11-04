@@ -392,6 +392,7 @@ TEST_CASE("a playlist holding a case's whole library in ordinal order has the ca
             const CaseShelf shelf = shelfOf(runsCase);
 
             std::vector<PlaylistTrack> rows;
+            rows.reserve(shelf.snapshot.trackCount());
             for (uint32_t ordinal = 0; ordinal < shelf.snapshot.trackCount(); ++ordinal)
                 rows.push_back(inLibrary(ordinal));
 
@@ -447,6 +448,7 @@ TEST_CASE(
             const CaseShelf shelf = shelfOf(runsCase);
 
             std::vector<PlaylistTrack> rows;
+            rows.reserve(shelf.snapshot.trackCount());
             for (uint32_t ordinal = 0; ordinal < shelf.snapshot.trackCount(); ++ordinal)
                 rows.push_back(ordinal % 3 == 0
                                    ? copiedOutside(shelf.snapshot, shelf.roles, ordinal)

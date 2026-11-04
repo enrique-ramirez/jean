@@ -1180,6 +1180,7 @@ TEST_CASE("a find refused by the declaration or the player spends the budget fir
          404},
     };
     std::vector<std::string> paths;
+    paths.reserve(refusals.size());
     for (const auto& refusal : refusals)
         paths.push_back(refusal.first);
     CHECK(unexpectedAnswers(server, paths, kFindBurst,

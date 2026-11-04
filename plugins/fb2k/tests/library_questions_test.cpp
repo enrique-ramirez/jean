@@ -576,7 +576,7 @@ TEST_CASE("an album's cover is the first track of its record, held for every ask
 
 TEST_CASE(
     "a third role set asked for costs the least recently asked of the two before it its place") {
-    CaseLibrary rows = playedLibrary();
+    const CaseLibrary rows = playedLibrary();
     const Snapshot snapshot = snapshotOf(rows.declared, rows.rows);
 
     LibraryRoles withoutAlbumArtist = rows.roles;

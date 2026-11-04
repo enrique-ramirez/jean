@@ -318,7 +318,7 @@ TEST_CASE("with no snapshot ready runs answer the library document and start no 
 
 TEST_CASE(
     "a role naming a declared column the ready snapshot lacks is a 202 that starts no build") {
-    Served served;
+    const Served served;
 
     constexpr char kMood[] = "%mood%";
     auto wider = served.expected.library.declared;

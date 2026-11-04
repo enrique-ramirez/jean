@@ -47,4 +47,13 @@ std::map<std::string, std::string> publishedStatusExample();
 // under a different route is never read by mistake.
 std::set<std::string> publishedStatePlayerExample(const std::string& example);
 
+// A list one named response example under one path gives as a flow sequence on a line of its
+// own, `key: ["a", "b"]`, with each item's quotes taken off.
+std::vector<std::string> publishedExampleList(const std::string& path, const std::string& example,
+                                              const std::string& key);
+
+// A list of names as the contract promises it: in no order, but spelled exactly, so a name whose
+// case drifts from the one contract/openapi.yaml shows turns a case red, and so does a repeat.
+std::multiset<std::string> inAnyOrder(const std::vector<std::string>& names);
+
 }  // namespace jean::testing

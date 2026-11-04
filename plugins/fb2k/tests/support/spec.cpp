@@ -50,6 +50,12 @@ std::string statusKeyAt(const std::string& line, size_t indent) {
     return line.substr(prefix.size(), kStatusDigits);
 }
 
+std::string unquoted(const std::string& item) {
+    if (item.size() >= 2 && item.front() == '"' && item.back() == '"')
+        return item.substr(1, item.size() - 2);
+    return item;
+}
+
 std::vector<std::string> flowItems(const std::string& inside) {
     std::vector<std::string> items(1);
     bool quoted = false;
@@ -561,6 +567,69 @@ std::set<std::string> publishedStatePlayerExample(const std::string& example) {
     REQUIRE_MESSAGE(!keys.empty(), "contract/openapi.yaml's ", example,
                     " example has no player section");
     return keys;
+}
+
+// Bracketed by its path first, as `publishedStatePlayerExample` is: example names repeat across
+// routes, so one found without its path could be another route's.
+std::vector<std::string> publishedExampleList(const std::string& path, const std::string& example,
+                                              const std::string& key) {
+    constexpr size_t kPathIndent = 2;
+    const std::string pathLine = std::string(kPathIndent, ' ') + path + ":";
+    const std::string listOpens = key + ": [";
+
+    bool inPaths = false;
+    bool inPath = false;
+    size_t exampleIndent = std::string::npos;
+
+    for (const auto& line : specLines()) {
+        if (line == "paths:") {
+            inPaths = true;
+            continue;
+        }
+        if (!inPaths || line.empty())
+            continue;
+        if (line.front() != ' ')
+            break;
+
+        if (startsWith(line, std::string(kPathIndent, ' ') + '/')) {
+            inPath = line == pathLine;
+            exampleIndent = std::string::npos;
+            continue;
+        }
+        if (!inPath)
+            continue;
+
+        const auto indent = indentOf(line);
+        if (indent == std::string::npos)
+            continue;
+
+        const auto text = line.substr(indent);
+        if (exampleIndent == std::string::npos) {
+            if (text == example + ":")
+                exampleIndent = indent;
+            continue;
+        }
+        if (indent <= exampleIndent)
+            break;
+
+        if (startsWith(text, listOpens) && text.back() == ']') {
+            const auto inside = text.substr(listOpens.size(), text.size() - listOpens.size() - 1);
+            if (inside.empty())
+                return {};
+
+            auto items = flowItems(inside);
+            std::transform(items.begin(), items.end(), items.begin(), unquoted);
+            return items;
+        }
+    }
+
+    FAIL("contract/openapi.yaml's ", path, " path shows no ", key, " list in its ", example,
+         " example");
+    return {};
+}
+
+std::multiset<std::string> inAnyOrder(const std::vector<std::string>& names) {
+    return {names.begin(), names.end()};
 }
 
 std::string dialable(const std::string& path) {

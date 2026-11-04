@@ -94,7 +94,10 @@ TEST_CASE("resetting reaches the same defaults the form starts from") {
 
     CHECK(form.port == std::to_string(Settings().port));
     CHECK(form.bindAddress == Settings().bindAddress);
-    CHECK(form.allowedFields == "rating\r\nunsynced lyrics");
+    std::string oneToALine;
+    for (const auto& field : Settings().allowedFields)
+        oneToALine += (oneToALine.empty() ? "" : "\r\n") + field;
+    CHECK(form.allowedFields == oneToALine);
 
     const auto reading = readForm(form, Settings());
     REQUIRE(reading.ok());

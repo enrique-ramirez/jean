@@ -8,8 +8,11 @@
 
 #include <algorithm>
 #include <initializer_list>
+#include <set>
 #include <string>
+#include <vector>
 #include "support/log_capture.h"
+#include "support/spec.h"
 #include "third_party/json.hpp"
 
 using namespace jean;
@@ -23,6 +26,10 @@ Settings parseFresh(const std::string& text) {
     return parseSettings(text);
 }
 
+std::multiset<std::string> defaultInstallAllowlist() {
+    return inAnyOrder(publishedExampleList("/capabilities", "defaultInstall", "allowedFields"));
+}
+
 }  // namespace
 
 TEST_CASE("an empty object leaves every default in place") {
@@ -34,11 +41,21 @@ TEST_CASE("an empty object leaves every default in place") {
     CHECK(settings.allowedFields == defaults.allowedFields);
 }
 
-TEST_CASE("the defaults are reachable, and closed where it counts") {
-    const Settings defaults;
+TEST_CASE("the default bind address is reachable from another machine") {
+    CHECK(Settings().bindAddress == "0.0.0.0");
+}
 
-    CHECK(defaults.bindAddress == "0.0.0.0");
-    CHECK(defaults.allowedFields == std::vector<std::string>{"rating", "unsynced lyrics"});
+TEST_CASE(
+    "the default allowlist names the fields contract/openapi.yaml shows for a default install") {
+    CHECK(inAnyOrder(Settings().allowedFields) == defaultInstallAllowlist());
+}
+
+// The list a first run wrote before the allowlist widened. Its owner chose nothing, but the
+// file says otherwise, and the file wins.
+TEST_CASE("a config.json holding only rating and unsynced lyrics keeps those two") {
+    const auto settings = parseFresh(R"({"allowedFields": ["rating", "unsynced lyrics"]})");
+
+    CHECK(settings.allowedFields == std::vector<std::string>{"rating", "unsynced lyrics"});
 }
 
 TEST_CASE("a well-formed file is read as written") {
@@ -352,7 +369,8 @@ TEST_CASE("a malformed controlPlayback keeps playback permitted and names itself
 TEST_CASE("the switches beside controlPlayback keep their names and defaults in the file") {
     const auto written = json::parse(serialiseSettings(parseFresh("{}")));
 
-    CHECK(written["allowedFields"] == json{"rating", "unsynced lyrics"});
+    CHECK(inAnyOrder(written["allowedFields"].get<std::vector<std::string>>()) ==
+          defaultInstallAllowlist());
     CHECK(written["writePlaylists"] == true);
     CHECK(written["changeOutput"] == true);
     CHECK(written["streamingEnabled"] == true);

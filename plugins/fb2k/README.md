@@ -175,7 +175,7 @@ Four end-to-end checks in PowerShell run against a real player on Windows: `scri
 
 ## Releasing
 
-`.github/workflows/release.yml` assembles `foo_jean.fb2k-component` from a Windows build and a macOS build of one page, and the archive exists only where both passed. It runs when started by hand from the Actions tab and on a tag, and uploads the archive as a workflow artifact either way; `plugin.yml` builds and tests both platforms on every change without packaging them. Pushing a tag matching `v*` also publishes it to a GitHub Release, once `scripts/release-tag.sh` has confirmed the tag is `v` followed by `kVersion` in `src/core/version.h`; a tag that does not match fails the workflow before anything is built.
+`.github/workflows/release.yml` assembles `foo_jean.fb2k-component` from a Windows build and a macOS build of one page, and the archive exists only where both passed. It runs when started by hand from the Actions tab and on a tag, and uploads the archive as a workflow artifact either way; `plugin.yml` builds and tests both platforms on every change without packaging them. Pushing a tag matching `v*` also publishes it to a GitHub Release, once `scripts/release-tag.sh` has confirmed the tag is `v` followed by `kVersion` in `src/core/version.h`; a tag that does not match fails the workflow before anything is built. `pnpm release` at the repository root runs `scripts/release.sh`, which writes that tag and pushes it, once `main` is clean, pushed and checked out, and the version is one `contract/openapi.yaml` agrees with.
 
 A release carries `SHA256SUMS` and a build provenance attestation. To check a downloaded component, in the folder holding both files:
 

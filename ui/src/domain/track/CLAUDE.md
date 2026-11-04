@@ -19,6 +19,11 @@
 - Measurements are cached by item key, which defaults to the index. Different data at the same index needs `getItemKey`, and a forced `measure()` then discards the new measurements; the same data in a new shape needs `measure()`.
 - `scrollMargin` is the height of what sits above the list, re-measured as it moves and subtracted from the row transform.
 
+## Editing tags
+
+- The form fills from raw `$meta()` reads, never `%field%`, so a title-formatting fallback (`%album artist%` answering the artist) is not written back as a tag.
+- A save that times out is read back once and never written again, since a second write could land over a change made in between. The `504` cases under "the save" in `ui/test/e2e/tag-editing.spec.ts` hold it.
+
 ## Rows
 
 - Tags compare through `sameTagValue()` and display as spelt.

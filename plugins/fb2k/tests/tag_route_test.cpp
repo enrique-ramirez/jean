@@ -63,7 +63,7 @@ struct FakePlayer {
     std::vector<TagWrite> asked;
 
     // The fields each handle ended up with. A handle absent from here was never written to.
-    std::map<std::string, std::map<std::string, std::string>> written;
+    std::map<std::string, std::map<std::string, TagValue>> written;
 };
 
 constexpr char kSongHandle[] = "01 A Song";
@@ -138,6 +138,16 @@ std::string writingField(const std::string& field, const std::string& value) {
            R"(": ")" + value + R"("}})";
 }
 
+std::string writingFields(const std::string& fields) {
+    return R"({"track": ")" + std::string(kTrackAddress) + R"(", "fields": )" + fields + "}";
+}
+
+using Values = std::vector<std::string>;
+
+Settings allowingGenre() {
+    return servingSettingsAllowing({"rating", "genre"});
+}
+
 }  // namespace
 
 TEST_CASE("a library address reaches the writer as it was sent, and the answer echoes it") {
@@ -162,7 +172,7 @@ TEST_CASE("a library address reaches the writer as it was sent, and the answer e
     CHECK(player.asked[0].track.library->subsong == 0);
     CHECK_FALSE(player.asked[0].track.playlist.has_value());
 
-    CHECK(player.written.at(kSongHandle).at("rating") == kRating);
+    CHECK(player.written.at(kSongHandle).at("rating").values == Values{kRating});
 }
 
 // An address is a key into the snapshot rather than a path, so `..` in one is neither refused
@@ -275,7 +285,7 @@ TEST_CASE("a playlist address reaches the writer whole, and comes back without i
     CHECK(player.asked[0].track.playlist->structure == kWriteStructure);
     CHECK_FALSE(player.asked[0].track.library.has_value());
 
-    CHECK(player.written.at(kSecondRow).at("rating") == kRating);
+    CHECK(player.written.at(kSecondRow).at("rating").values == Values{kRating});
 }
 
 TEST_CASE(
@@ -370,7 +380,7 @@ TEST_CASE("a library whose root is a UNC share is rated like any other") {
 
     REQUIRE(response);
     CHECK(response->status == 200);
-    CHECK(player.written.at(kSharedFile).at("rating") == kRating);
+    CHECK(player.written.at(kSharedFile).at("rating").values == Values{kRating});
 }
 
 TEST_CASE("an empty address is a 400 and is never looked up") {
@@ -386,7 +396,7 @@ TEST_CASE("an empty address is a 400 and is never looked up") {
 
 TEST_CASE("a field outside the allowlist is refused without involving the player") {
     TestServer::WriterLog log;
-    const TestServer server(servingSettings(), TestServer::recordingWriter(&log));
+    const TestServer server(servingSettingsAllowing({"rating"}), TestServer::recordingWriter(&log));
 
     const auto response = write(server, writingField("artist", "Someone Else"));
 
@@ -410,6 +420,112 @@ TEST_CASE("a malformed body is a 400 rather than a 500, and never reaches the wr
         INFO("body: ", body);
         REQUIRE(response);
         CHECK(response->status == 400);
+    }
+
+    CHECK(log.calls.empty());
+}
+
+// Declared in an order no sort gives back. The string beside the array is the other half of the
+// same request, so one write carries both forms to one rewrite.
+TEST_CASE("an array reaches the writer as its values in order, and the answer echoes the array") {
+    FakePlayer player = holding();
+    const TestServer server(allowingGenre(), resolving(&player));
+
+    const auto response =
+        write(server, writingFields(R"({"genre": ["Rock", "Ambient", "Pop"], "rating": "4"})"));
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
+    CHECK(json::parse(response->body) ==
+          json{{"written", true},
+               {"track", kTrackAddress},
+               {"subsong", 0},
+               {"fields",
+                {{"genre", json::array({"Rock", "Ambient", "Pop"})}, {"rating", kRating}}}});
+
+    const auto& genre = player.written.at(kSongHandle).at("genre");
+    CHECK(genre.values == Values{"Rock", "Ambient", "Pop"});
+    CHECK(genre.list);
+}
+
+TEST_CASE("an array of one value comes back an array of one, never a string") {
+    FakePlayer player = holding();
+    const TestServer server(allowingGenre(), resolving(&player));
+
+    const auto response = write(server, writingFields(R"({"genre": ["Rock"]})"));
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
+    CHECK(json::parse(response->body)["fields"] == json{{"genre", json::array({"Rock"})}});
+
+    const auto& genre = player.written.at(kSongHandle).at("genre");
+    CHECK(genre.values == Values{"Rock"});
+    CHECK(genre.list);
+}
+
+// An empty list is what removes a multi-value tag, so it has to reach the writer as no values
+// at all rather than as one empty one.
+TEST_CASE("an empty array reaches the writer as a list of no values, and comes back empty") {
+    FakePlayer player = holding();
+    const TestServer server(allowingGenre(), resolving(&player));
+
+    const auto response = write(server, writingFields(R"({"genre": []})"));
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
+    CHECK(json::parse(response->body)["fields"] == json{{"genre", json::array()}});
+
+    const auto& genre = player.written.at(kSongHandle).at("genre");
+    CHECK(genre.values.empty());
+    CHECK(genre.list);
+}
+
+TEST_CASE("a string reaches the writer as one value, separators and all, and comes back a string") {
+    FakePlayer player = holding();
+    const TestServer server(allowingGenre(), resolving(&player));
+
+    const auto response = write(server, writingFields(R"({"genre": "Rock; Pop", "rating": 4})"));
+
+    REQUIRE(response);
+    CHECK(response->status == 200);
+    CHECK(json::parse(response->body)["fields"] ==
+          json{{"genre", "Rock; Pop"}, {"rating", kRating}});
+
+    const auto& genre = player.written.at(kSongHandle).at("genre");
+    CHECK(genre.values == Values{"Rock; Pop"});
+    CHECK_FALSE(genre.list);
+
+    const auto& rating = player.written.at(kSongHandle).at("rating");
+    CHECK(rating.values == Values{kRating});
+    CHECK_FALSE(rating.list);
+}
+
+// The rating beside the bad array is well formed, so a route that wrote what it could would
+// rewrite the file with half of the save.
+TEST_CASE("an array holding a non-string or an empty string is a 400 and nothing is written") {
+    struct Case {
+        const char* genre;
+        const char* detail;
+    };
+
+    TestServer::WriterLog log;
+    const TestServer server(allowingGenre(), TestServer::recordingWriter(&log));
+
+    for (const auto& refused :
+         {Case{R"(["Rock", 4])", "'genre' must be a string, a whole number or an array of strings"},
+          Case{"[null]", "'genre' must be a string, a whole number or an array of strings"},
+          Case{R"(["Rock", ""])", "'genre' holds an empty string"},
+          Case{R"([""])", "'genre' holds an empty string"}}) {
+        const auto response = write(server, writingFields(R"({"rating": "4", "genre": )" +
+                                                          std::string(refused.genre) + "}"));
+
+        INFO("genre: ", refused.genre);
+        REQUIRE(response);
+        CHECK(response->status == 400);
+
+        const auto body = json::parse(response->body);
+        CHECK_FALSE(body.value("written", true));
+        CHECK(body.value("detail", std::string()) == refused.detail);
     }
 
     CHECK(log.calls.empty());
@@ -573,7 +689,7 @@ TEST_CASE("a gzip body is held to the limit by what it inflates to, not by what 
         REQUIRE(response);
         CHECK(response->status == 200);
         REQUIRE(log.calls.size() == 1);
-        CHECK(log.calls.front().fields.at("rating") == kRating);
+        CHECK(log.calls.front().fields.at("rating").values == Values{kRating});
     }
 
     SUBCASE("a body inflating past the limit is refused, however few bytes it arrived in") {
@@ -662,7 +778,7 @@ TEST_CASE(
 
 TEST_CASE("a refused tag write is refused for what it asks before it is refused for how often") {
     TestServer::WriterLog log;
-    const TestServer server(servingSettings(), TestServer::recordingWriter(&log));
+    const TestServer server(servingSettingsAllowing({"rating"}), TestServer::recordingWriter(&log));
 
     for (int attempt = 0; attempt < kTagWriteBurst + kWritesPastTheBudget; ++attempt)
         write(server, R"({"track": "a.flac", "fields": {"artist": "x"}})");

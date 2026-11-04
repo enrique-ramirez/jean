@@ -151,7 +151,7 @@ AddressField readAddress(const json& root) {
     return unreadable("'track', 'ordinal' or 'playlist' is required");
 }
 
-std::optional<std::string> readFieldValue(const json& value) {
+std::optional<std::string> readScalar(const json& value) {
     if (value.is_string())
         return value.get<std::string>();
     if (value.is_number_unsigned())
@@ -159,6 +159,32 @@ std::optional<std::string> readFieldValue(const json& value) {
     if (value.is_number_integer())
         return std::to_string(value.get<long long>());
     return std::nullopt;
+}
+
+// Whether an array holds an empty string is judged apart, since the type sentence outranks it.
+std::optional<TagValue> readFieldValue(const json& value) {
+    if (!value.is_array()) {
+        const auto one = readScalar(value);
+        if (!one)
+            return std::nullopt;
+        return TagValue{{*one}, false};
+    }
+
+    const bool allStrings = std::all_of(value.begin(), value.end(),
+                                        [](const json& element) { return element.is_string(); });
+    if (!allStrings)
+        return std::nullopt;
+
+    TagValue list;
+    list.list = true;
+    std::transform(value.begin(), value.end(), std::back_inserter(list.values),
+                   [](const json& element) { return element.get<std::string>(); });
+    return list;
+}
+
+bool holdsEmptyString(const TagValue& value) {
+    return value.list && std::any_of(value.values.begin(), value.values.end(),
+                                     [](const std::string& one) { return one.empty(); });
 }
 
 bool allowed(const std::string& field, const std::vector<std::string>& allowlist) {
@@ -172,7 +198,7 @@ bool allowed(const std::string& field, const std::vector<std::string>& allowlist
 // compared pairwise in original order: the map is already ordered by byte value, so in
 // {"album", "RATING", "rating"} the two spellings are not neighbours until they are both
 // folded to the same case.
-std::string fieldNamedTwice(const std::map<std::string, std::string>& fields) {
+std::string fieldNamedTwice(const std::map<std::string, TagValue>& fields) {
     std::vector<std::string> lowered;
     std::transform(fields.begin(), fields.end(), std::back_inserter(lowered),
                    [](const auto& field) { return toLower(field.first); });
@@ -183,6 +209,13 @@ std::string fieldNamedTwice(const std::map<std::string, std::string>& fields) {
 }
 
 }  // namespace
+
+void to_json(nlohmann::json& out, const TagValue& value) {  // NOLINT(readability-identifier-naming)
+    if (value.list)
+        out = value.values;
+    else
+        out = value.values.empty() ? std::string() : value.values.front();
+}
 
 TagWriteRequest parseTagWrite(const std::string& body, const Settings& settings) {
     const auto document = parseJsonObject(body);
@@ -223,12 +256,20 @@ TagWriteRequest parseTagWrite(const std::string& body, const Settings& settings)
     });
     if (unreadable != entries.end()) {
         return refuse(TagWriteRefusal::malformedBody,
-                      "'" + (*unreadable).key() + "' must be a string or a whole number");
+                      "'" + (*unreadable).key() +
+                          "' must be a string, a whole number or an array of strings");
     }
 
     std::for_each(entries.begin(), entries.end(), [&request](const auto& e) {
         request.write.fields.emplace(e.key(), *readFieldValue(e.value()));
     });
+
+    const auto blank =
+        std::find_if(request.write.fields.begin(), request.write.fields.end(),
+                     [](const auto& field) { return holdsEmptyString(field.second); });
+    if (blank != request.write.fields.end())
+        return refuse(TagWriteRefusal::malformedBody,
+                      "'" + blank->first + "' holds an empty string");
 
     if (const auto twice = fieldNamedTwice(request.write.fields); !twice.empty()) {
         return refuse(TagWriteRefusal::malformedBody,

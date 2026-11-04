@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/settings.h"
+#include "third_party/json.hpp"
 
 #include <cstdint>
 #include <map>
@@ -47,11 +48,25 @@ struct TrackRef {
     std::optional<PlaylistTrackRef> playlist;
 };
 
+// What one field is written as. A string is one value and an array is several, and the answer
+// echoes whichever was sent, so the form is kept beside the values.
+struct TagValue {
+    // One element for a string, where an empty one removes the tag. For an array its elements in
+    // order, where none removes the tag.
+    std::vector<std::string> values;
+
+    bool list = false;
+};
+
+// nlohmann finds a serialiser by this exact name, which the naming check would rename.
+// NOLINTNEXTLINE(readability-identifier-naming)
+void to_json(nlohmann::json& out, const TagValue& value);
+
 struct TagWrite {
     TrackRef track;
 
     // Ordered rather than hashed, so two responses can be diffed by eye.
-    std::map<std::string, std::string> fields;
+    std::map<std::string, TagValue> fields;
 };
 
 // "Fix your request" versus "ask whoever owns the player to change its configuration".

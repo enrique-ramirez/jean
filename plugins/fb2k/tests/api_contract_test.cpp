@@ -252,6 +252,19 @@ TEST_CASE("an empty allowlist reports that nothing may be written") {
     CHECK(body["allowedFields"].empty());
 }
 
+TEST_CASE("a fresh install permits the fields contract/openapi.yaml shows for a default install") {
+    const TestServer server;
+    const auto response = server.client().Get("/api/capabilities");
+
+    REQUIRE(response);
+    REQUIRE(response->status == 200);
+
+    const auto answered = json::parse(response->body)["allowedFields"];
+
+    CHECK(inAnyOrder(answered.get<std::vector<std::string>>()) ==
+          inAnyOrder(publishedExampleList("/capabilities", "defaultInstall", "allowedFields")));
+}
+
 TEST_CASE("a listener roster is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
@@ -292,7 +305,7 @@ TEST_CASE("a successful write is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
     TagWrite write;
-    write.fields = {{"rating", "4"}};
+    write.fields = {{"rating", TagValue{{"4"}}}};
 
     write.track.library = LibraryTrackRef{kTrackAddress, 0};
     CHECK(keysOf(tagWrittenDocument(write)) == Keys{"written", "track", "subsong", "fields"});
@@ -305,8 +318,8 @@ TEST_CASE("a successful write is the shape contract/openapi.yaml publishes") {
 TEST_CASE("a refusal is the shape contract/openapi.yaml publishes") {
     INFO(kUpdateSpec);
 
-    const auto refused =
-        parseTagWrite(R"({"track": "a/b.flac", "fields": {"artist": "x"}})", servingSettings());
+    const auto refused = parseTagWrite(R"({"track": "a/b.flac", "fields": {"artist": "x"}})",
+                                       servingSettingsAllowing({"rating"}));
     REQUIRE_FALSE(refused.ok());
 
     // `field` is present only for a rejected field, which is the difference a client branches on.

@@ -14,22 +14,31 @@ namespace jean {
 
 namespace {
 
-using TagFields = std::map<std::string, std::string>;
+using TagFields = std::map<std::string, TagValue>;
 
 // foobar2000 runs a file_info_filter's lambda on the tag updater's thread, so it captures by
 // value.
 service_ptr_t<file_info_filter> makeFilter(TagFields fields) {
-    return file_info_filter::create(
-        [fields = std::move(fields)](const trackRef&, t_filestats, file_info& info) {
-            std::for_each(fields.begin(), fields.end(), [&info](const auto& field) {
-                if (field.second.empty())
-                    info.meta_remove_field(field.first.c_str());
-                else
-                    info.meta_set(field.first.c_str(), field.second.c_str());
-            });
+    return file_info_filter::create([fields = std::move(fields)](const trackRef&, t_filestats,
+                                                                 file_info& info) {
+        std::for_each(fields.begin(), fields.end(), [&info](const auto& field) {
+            const char* const name = field.first.c_str();
+            const TagValue& value = field.second;
 
-            return true;
+            if (value.list) {
+                info.meta_remove_field(name);
+                std::for_each(
+                    value.values.begin(), value.values.end(),
+                    [&info, name](const std::string& one) { info.meta_add(name, one.c_str()); });
+            } else if (value.values.front().empty()) {
+                info.meta_remove_field(name);
+            } else {
+                info.meta_set(name, value.values.front().c_str());
+            }
         });
+
+        return true;
+    });
 }
 
 // Main thread only, as metadb_io_v2 is. Without op_flag_silent a failure raises a foobar2000

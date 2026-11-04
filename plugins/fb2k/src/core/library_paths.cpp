@@ -50,9 +50,14 @@ std::optional<uint32_t> LibraryPaths::firstOrdinalOf(std::string_view libraryPat
 
 std::optional<uint32_t> LibraryPaths::ordinalOf(std::string_view libraryPath,
                                                 uint32_t subsong) const {
+    return resolve(libraryPath, subsong).ordinal;
+}
+
+LibraryPaths::Resolution LibraryPaths::resolve(std::string_view libraryPath,
+                                               uint32_t subsong) const {
     const auto first = firstOrdinalOf(libraryPath);
     if (!first)
-        return std::nullopt;
+        return {};
 
     std::optional<uint32_t> matched;
     size_t matches = 0;
@@ -69,7 +74,9 @@ std::optional<uint32_t> LibraryPaths::ordinalOf(std::string_view libraryPath,
     if (twins != later_.end())
         std::for_each(twins->second.begin(), twins->second.end(), consider);
 
-    return matches == 1 ? matched : std::nullopt;
+    if (matches > 1)
+        return {std::nullopt, true};
+    return {matched, false};
 }
 
 std::vector<std::optional<std::string>> albumCoversOf(

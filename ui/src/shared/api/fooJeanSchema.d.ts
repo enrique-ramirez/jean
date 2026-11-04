@@ -1351,9 +1351,11 @@ export interface paths {
         };
         /**
          * The artists one track's credit names.
-         * @description The members the artist credit and the album artist credit of the track at `ordinal` name, as the credit reading *The four questions* describes reads them, with `splitsCredits` saying whether a credit line holding several names is read as each of them. Each member is `CreditMember`; a credit that names nobody answers an empty list.
+         * @description The members the artist credit and the album artist credit of one track name, as the credit reading *The four questions* describes reads them, with `splitsCredits` saying whether a credit line holding several names is read as each of them. Each member is `CreditMember`; a credit that names nobody answers an empty list.
          *
-         *     Refusals are the four questions', and a `structure` that is not the current one is a `409` before an `ordinal` past the end is a `400`, since the ordinal means nothing at another `structure`.
+         *     The track is addressed by exactly one of two forms: `ordinal` with `structure`, a position in the media library snapshot, or `track` with `subsong`, the library-relative path `GET /track/library` takes, word for word, which is what a playlist row's `libraryPath` carries. Both forms, neither, half of one, or `track` with `structure` and no `ordinal`, is a `400`.
+         *
+         *     Refusals are the four questions', and a `structure` that is not the current one is a `409` before an `ordinal` past the end is a `400`, since the ordinal means nothing at another `structure`. The path form resolves as `GET /track/library` does, after the roles are judged and the snapshot is known to be built: a path and `subsong` no track holds is a `404`, and one that two media library roots hold is a `409` saying the media library holds more than one track at that address. A found track answers the document its ordinal would. An `ordinal` past the end stays a `400`, not the `404` the path form gets.
          */
         get: operations["getLibraryCredits"];
         put?: never;
@@ -7087,10 +7089,24 @@ export interface operations {
             query: {
                 /** @description Whether a credit line holding several names is counted as each of them, as `true` or `false`. */
                 splitsCredits: boolean;
-                /** @description The library `structure` the ordinal was read at: `library.structure` from `GET /state`, spelled as a string of decimal digits. `GET /state` carries it as a JSON number, and this query carries it as text, as a playlist's own `structure` travels. */
-                structure: string;
-                /** @description The track's position in the snapshot at `structure`, counted from zero. */
-                ordinal: number;
+                /** @description Required with `ordinal`. The library `structure` the ordinal was read at: `library.structure` from `GET /state`, spelled as a string of decimal digits. `GET /state` carries it as a JSON number, and this query carries it as text, as a playlist's own `structure` travels. */
+                structure?: string;
+                /** @description Required with `structure`, and sent instead of `track`. The track's position in the snapshot at `structure`, counted from zero. */
+                ordinal?: number;
+                /**
+                 * @description The library form's address: the track's path relative to the media library root, forward-slashed on every platform: the snapshot's `directory` and `filename` for that row, concatenated, or a playlist row's `libraryPath`. Percent-encode it.
+                 *
+                 *     At most 4096 printable characters. It is a lookup key rather than a path, so `..` in it is neither refused nor meaningful: it matches nothing. Required unless `ordinal` is sent, and sending both is a `400`.
+                 * @example Artist/Album/01 A Title.flac
+                 */
+                track?: string;
+                /**
+                 * @description Which track inside the file, for cue sheets and disc images: the number the player assigned it, never a position among the tracks at one path. Every subsong of one file shares a `track` address, so this is what tells them apart. Meaningful only with `track`; an ordinal already names a subsong.
+                 *
+                 *     Omitted is read as `0`, which is an ordinary file. A cue sheet's subsongs number from 1, so omitting it for a file the player splits is a `404` rather than that file's first track. Send the `subsong` the row carries.
+                 * @example 0
+                 */
+                subsong?: number;
                 /** @description The declared expression that reads the track's number on its disc. */
                 trackNumber?: components["parameters"]["RoleTrackNumber"];
                 /** @description The declared expression that reads the disc the track is on. */
@@ -7159,7 +7175,16 @@ export interface operations {
             };
             202: components["responses"]["LibraryNotReady"];
             400: components["responses"]["LibraryRefused"];
-            409: components["responses"]["LibraryUndeclaredOrMoved"];
+            404: components["responses"]["NoSuchLibraryTrack"];
+            /** @description Nothing was answered. The `error` string says which of three: the `structure` the request named is not the current one, a role names an expression the declaration does not hold, or, in the path form, `track` and `subsong` name a track under more than one media library root. `GET /track/library` refuses that address in the same words; a client that holds the row's `ordinal` sends that instead. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryFailed"] | components["schemas"]["Error"];
+                };
+            };
             429: components["responses"]["LibraryQuestionsTooFast"];
             503: components["responses"]["LibraryUnavailable"];
         };

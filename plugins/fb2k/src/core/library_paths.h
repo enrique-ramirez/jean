@@ -32,6 +32,15 @@ public:
     // playing track cannot be told apart from its twin.
     std::optional<uint32_t> ordinalOf(std::string_view libraryPath, uint32_t subsong) const;
 
+    struct Resolution {
+        std::optional<uint32_t> ordinal;
+        bool heldTwice = false;
+    };
+
+    // `ordinalOf` saying which of its two nothings it is: no track at `libraryPath` with that
+    // subsong, or `heldTwice`.
+    Resolution resolve(std::string_view libraryPath, uint32_t subsong) const;
+
 private:
     uint64_t structure_ = 0;
     std::vector<uint32_t> subsongs_;

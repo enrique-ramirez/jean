@@ -501,6 +501,39 @@ test("the contract shows a default install permitting rating, lyrics and every t
 	assert.deepEqual(asAllowlist(declared[0]), DEFAULT_ALLOWLIST);
 });
 
+// A playlist row carries a library path and no ordinal, so a details panel opened from one
+// names its track the way GET /track/library's library form does.
+test("a credit question takes a track and a subsong as GET /track/library takes them", () => {
+	for (const name of ["track", "subsong"]) {
+		const credits = parameter("getLibraryCredits", name);
+		assert.equal(credits.in, "query");
+		assert.notEqual(
+			credits.required,
+			true,
+			`a credit question by ordinal is published as needing a ${name}`,
+		);
+		assert.deepEqual(
+			credits.schema,
+			parameter("getLibraryTrack", name).schema,
+			`a credit question reads ${name} otherwise than GET /track/library does`,
+		);
+	}
+
+	for (const name of ["ordinal", "structure"])
+		assert.notEqual(
+			parameter("getLibraryCredits", name).required,
+			true,
+			`a credit question by library path is published as needing an ${name}`,
+		);
+});
+
+test("a credit question publishes the 404 a library path no track holds is answered", () => {
+	assert.ok(
+		operation("getLibraryCredits").published.has(404),
+		"a client cannot tell a path no track holds from a refusal",
+	);
+});
+
 const annotation: Schema = {
 	type: "object",
 	additionalProperties: false,

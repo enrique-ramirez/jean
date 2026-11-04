@@ -12,7 +12,7 @@ openapi: 3.1.0
 
 info:
   title: foo_jean
-  version: 0.5.0
+  version: 0.6.0
   summary: The media library, playlists, the queue, tag writing and a live stream of the player's output, for foobar2000, over HTTP.
   description: |
     A foobar2000 component exposing over HTTP what a client cannot otherwise reach: writing metadata tags, the media library read in windows, every playlist and autoplaylist addressed by foobar2000's own GUID, the play queue, cover art, what the player is doing, and a live encode of its output.
@@ -236,7 +236,7 @@ paths:
                 default:
                   value:
                     name: foo_jean
-                    version: 0.5.0
+                    version: 0.6.0
                     apiVersion: 1
 
   /capabilities:
@@ -257,7 +257,7 @@ paths:
                   summary: The default install.
                   value:
                     apiVersion: 1
-                    allowedFields: ["rating", "unsynced lyrics"]
+                    allowedFields: ["rating", "unsynced lyrics", "TITLE", "ARTIST", "ALBUM", "ALBUM ARTIST", "DATE", "GENRE", "PUBLISHER", "COMPOSER", "TRACKNUMBER", "TOTALTRACKS", "DISCNUMBER", "TOTALDISCS", "BPM"]
                     canWrite: true
                     canWritePlaylists: true
                     canControlPlayback: true
@@ -3374,7 +3374,7 @@ paths:
       description: |
         The columns a client declares, evaluated against the one track the address names. The address is exactly one of two: `track` with `subsong`, `GET /artwork?track=`'s address word for word, or `ordinal` with `structure`, a position in the media library snapshot, resolved the way `POST /tags` resolves the same pair because it names one track where a relative path can name two. Sending both forms, or neither, is a `400`, and so is sending half of the ordinal form. The answer is the positional `columns` array `GET /playlists/{id}/items` gives a row.
 
-        This is what reads one value back. The library arrives in windows read from a snapshot the player refreshes when it notices a change, which is not when the client is asking, so a client that has just written a tag and wants to know what landed has nothing else to ask. The ordinal form is what that read-back sends after a write the library form answered `409` for, or after a write retried by ordinal and then timed out.
+        This is what reads one value back. The library arrives in windows read from a snapshot the player refreshes when it notices a change, which is not when the client is asking, so a client that has just written a tag and wants to know what landed has nothing else to ask. The ordinal form is what that read-back sends after a write the library form answered `409` for, or after a write retried by ordinal and then timed out. The details panel also reads a track's declared columns through this route each time a user opens it, so the route is read without any write having happened.
 
         `libraryPath` is not echoed. The caller supplied the address, so the answer carries only what it did not already have.
 
@@ -5150,9 +5150,9 @@ components:
         allowedFields:
           type: array
           description: |
-            Tag names this install permits, lower case by convention and matched case-insensitively. Anything not named here is refused with a `403`.
+            Tag names this install permits, matched case-insensitively. The example spells each tag as foobar2000's Properties dialog shows it, with `rating` and `unsynced lyrics` in lower case. Anything not named here is refused with a `403`.
           items: { type: string }
-          examples: [["rating", "unsynced lyrics"]]
+          examples: [["rating", "unsynced lyrics", "TITLE", "ARTIST", "ALBUM", "ALBUM ARTIST", "DATE", "GENRE", "PUBLISHER", "COMPOSER", "TRACKNUMBER", "TOTALTRACKS", "DISCNUMBER", "TOTALDISCS", "BPM"]]
         canWrite:
           type: boolean
           description: |
@@ -5703,8 +5703,10 @@ components:
             oneOf:
               - type: string
               - type: integer
+              - type: array
+                items: { type: string, minLength: 1 }
             description: |
-              A whole number is accepted and rendered as text, so `4` and `"4"` are the same request. An empty string removes the tag. Fractional numbers, booleans and nulls are refused.
+              A whole number is accepted and rendered as text, so `4` and `"4"` are the same request. A string is written as one value, whatever separators it holds, and an empty string removes the tag. An array of strings is written as separate values in order, and an empty array removes the tag. An empty string inside an array is refused, so that a blank is never written as a value. Fractional numbers, booleans, nulls and anything else inside an array are refused.
           examples: [{ rating: "4" }]
 
     TagWritten:
@@ -5722,8 +5724,12 @@ components:
         index: { type: integer, minimum: 0 }
         fields:
           type: object
-          description: What was written, normalised to strings.
-          additionalProperties: { type: string }
+          description: What was written, normalised to strings. An array is echoed as an array and a string as a string.
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: array
+                items: { type: string }
 
     TagRefused:
       description: |

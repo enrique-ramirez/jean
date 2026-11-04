@@ -9,6 +9,7 @@
 #include "support/fixtures.h"
 
 #include <string>
+#include <vector>
 
 using namespace jean;
 using namespace jean::testing;
@@ -57,6 +58,23 @@ std::string writing(const std::string& fields) {
     return R"({"track": ")" + std::string(kLibraryAddress) + R"(", "fields": )" + fields + "}";
 }
 
+using Values = std::vector<std::string>;
+
+Settings ratingAndGenre() {
+    Settings settings;
+    settings.allowedFields = {"rating", "genre"};
+    return settings;
+}
+
+const TagValue& fieldOf(const TagWriteRequest& request, const std::string& field) {
+    return request.write.fields.at(field);
+}
+
+// The same sentence for every value of the wrong type, inside an array or not.
+std::string wrongType(const std::string& field) {
+    return "'" + field + "' must be a string, a whole number or an array of strings";
+}
+
 }  // namespace
 
 TEST_CASE("the library form is read as written") {
@@ -68,7 +86,7 @@ TEST_CASE("the library form is read as written") {
     CHECK(request.write.track.library->track == kLibraryAddress);
     CHECK(request.write.track.library->subsong == 2);
     CHECK_FALSE(request.write.track.playlist.has_value());
-    CHECK(request.write.fields.at("rating") == "4");
+    CHECK(fieldOf(request, "rating").values == Values{"4"});
 }
 
 TEST_CASE("the library form's subsong is the first subsong of the file when it is left out") {
@@ -211,20 +229,62 @@ TEST_CASE("a whole number is as good as a string") {
     const auto request = parse(writing(R"({"rating": 4})"));
 
     REQUIRE(request.ok());
-    CHECK(request.write.fields.at("rating") == "4");
+    CHECK(fieldOf(request, "rating").values == Values{"4"});
+    CHECK_FALSE(fieldOf(request, "rating").list);
 }
 
 TEST_CASE("a whole number keeps its digits past the signed range and below zero") {
-    CHECK(parse(writing(R"({"rating": 18446744073709551615})")).write.fields.at("rating") ==
-          "18446744073709551615");
-    CHECK(parse(writing(R"({"rating": -1})")).write.fields.at("rating") == "-1");
+    CHECK(fieldOf(parse(writing(R"({"rating": 18446744073709551615})")), "rating").values ==
+          Values{"18446744073709551615"});
+    CHECK(fieldOf(parse(writing(R"({"rating": -1})")), "rating").values == Values{"-1"});
 }
 
 TEST_CASE("an empty value is kept, because clearing a tag is a real instruction") {
     const auto request = parse(writing(R"({"rating": ""})"));
 
     REQUIRE(request.ok());
-    CHECK(request.write.fields.at("rating") == "");
+    CHECK(fieldOf(request, "rating").values == Values{""});
+}
+
+// The separators a person types between two genres are part of the one value a string carries:
+// only an array says there are several.
+TEST_CASE("a string is still written as one value, separators and all, and never as a list") {
+    for (const char* text : {"Rock, Pop", "Rock; Pop", "Rock / Pop", ""}) {
+        const auto request =
+            parse(writing(R"({"genre": ")" + std::string(text) + R"("})"), ratingAndGenre());
+
+        INFO("value: ", text);
+        REQUIRE(request.ok());
+        CHECK(fieldOf(request, "genre").values == Values{text});
+        CHECK_FALSE(fieldOf(request, "genre").list);
+    }
+}
+
+TEST_CASE("an array holding anything but a string is refused with the field named") {
+    for (const char* array : {R"(["Rock", 4])", "[4]", R"(["Rock", 4.5])", "[true]", "[null]",
+                              R"([["Rock"]])", R"([{"name": "Rock"}])"}) {
+        const auto request = parse(
+            writing(R"({"rating": "4", "genre": )" + std::string(array) + "}"), ratingAndGenre());
+
+        INFO("genre: ", array);
+        CHECK(request.refusal == TagWriteRefusal::malformedBody);
+        CHECK(httpStatusFor(request.refusal) == 400);
+        CHECK(request.detail == wrongType("genre"));
+    }
+}
+
+// An empty array removes the tag and an empty string clears a single value, so a blank inside a
+// list says neither.
+TEST_CASE("an empty string inside an array is refused rather than written as a blank value") {
+    for (const char* array : {R"([""])", R"(["Rock", ""])", R"(["", "Rock"])"}) {
+        const auto request = parse(
+            writing(R"({"rating": "4", "genre": )" + std::string(array) + "}"), ratingAndGenre());
+
+        INFO("genre: ", array);
+        CHECK(request.refusal == TagWriteRefusal::malformedBody);
+        CHECK(httpStatusFor(request.refusal) == 400);
+        CHECK(request.detail == "'genre' holds an empty string");
+    }
 }
 
 TEST_CASE("a field outside the allowlist is refused and named") {
@@ -315,7 +375,7 @@ TEST_CASE("a value that is not text or a whole number is refused and named") {
 
     CHECK_FALSE(request.ok());
     CHECK(request.refusal == TagWriteRefusal::malformedBody);
-    CHECK(request.detail.find("rating") != std::string::npos);
+    CHECK(request.detail == wrongType("rating"));
 }
 
 TEST_CASE("booleans and nulls are not values, however tempting") {

@@ -98,7 +98,7 @@ export interface paths {
         };
         /**
          * A file the rendered contract loads.
-         * @description The stylesheet, the script and the page itself, compiled into the component beside the contract and answered with the type its extension names. Nothing here is read from disk.
+         * @description The stylesheet, the script and the page itself, compiled into the component beside the contract and answered with the type its extension names.
          */
         get: operations["getDocsFile"];
         put?: never;
@@ -1401,7 +1401,7 @@ export interface paths {
          * One track's columns, addressed the way a cover is, or by its position.
          * @description The columns a client declares, evaluated against the one track the address names. The address is exactly one of two: `track` with `subsong`, `GET /artwork?track=`'s address word for word, or `ordinal` with `structure`, a position in the media library snapshot, resolved the way `POST /tags` resolves the same pair because it names one track where a relative path can name two. Sending both forms, or neither, is a `400`, and so is sending half of the ordinal form. The answer is the positional `columns` array `GET /playlists/{id}/items` gives a row.
          *
-         *     This is what reads one value back. The library arrives in windows read from a snapshot the player refreshes when it notices a change, which is not when the client is asking, so a client that has just written a tag and wants to know what landed has nothing else to ask. The ordinal form is what that read-back sends after a write the library form answered `409` for, or after a write retried by ordinal and then timed out.
+         *     This is what reads one value back. The library arrives in windows read from a snapshot the player refreshes when it notices a change, which is not when the client is asking, so a client that has just written a tag and wants to know what landed has nothing else to ask. The ordinal form is what that read-back sends after a write the library form answered `409` for, or after a write retried by ordinal and then timed out. The details panel also reads a track's declared columns through this route each time a user opens it, so the route is read without any write having happened.
          *
          *     `libraryPath` is not echoed. The caller supplied the address, so the answer carries only what it did not already have.
          *
@@ -1798,10 +1798,23 @@ export interface components {
             /** @example 1 */
             apiVersion: number;
             /**
-             * @description Tag names this install permits, lower case by convention and matched case-insensitively. Anything not named here is refused with a `403`.
+             * @description Tag names this install permits, matched case-insensitively. The example spells each tag as foobar2000's Properties dialog shows it, with `rating` and `unsynced lyrics` in lower case. Anything not named here is refused with a `403`.
              * @example [
              *       "rating",
-             *       "unsynced lyrics"
+             *       "unsynced lyrics",
+             *       "TITLE",
+             *       "ARTIST",
+             *       "ALBUM",
+             *       "ALBUM ARTIST",
+             *       "DATE",
+             *       "GENRE",
+             *       "PUBLISHER",
+             *       "COMPOSER",
+             *       "TRACKNUMBER",
+             *       "TOTALTRACKS",
+             *       "DISCNUMBER",
+             *       "TOTALDISCS",
+             *       "BPM"
              *     ]
              */
             allowedFields: string[];
@@ -2180,7 +2193,7 @@ export interface components {
              *     }
              */
             fields: {
-                [key: string]: string | number;
+                [key: string]: string | number | string[];
             };
         };
         /** @description What was written, and the address it was written to, echoed in the form the request sent: `track` and `subsong` for the library form, `subsong` carrying the value the write used and so `0` where the request omitted it; `ordinal` alone for the ordinal form, which names a subsong already; `playlist` and `index` for the playlist form. `structure` is not echoed, being a precondition on the write rather than part of the address. */
@@ -2192,9 +2205,9 @@ export interface components {
             ordinal?: number;
             playlist?: string;
             index?: number;
-            /** @description What was written, normalised to strings. */
+            /** @description What was written, normalised to strings. An array is echoed as an array and a string as a string. */
             fields: {
-                [key: string]: string;
+                [key: string]: string | string[];
             };
         };
         /** @description A refusal the client can act on. The request was understood and declined before the player was involved. */

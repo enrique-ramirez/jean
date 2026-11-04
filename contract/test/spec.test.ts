@@ -402,6 +402,105 @@ test("the capabilities document declares whether an install permits playlist wri
 	);
 });
 
+const tagWrite = (fields: Record<string, unknown>) => ({
+	track: "Fictional Artist/Imaginary Album/01 Track.flac",
+	fields,
+});
+
+test("a tag write takes an array of strings for a field, beside a string and a whole number", () => {
+	const request = operation("writeTags").body;
+	assert.ok(request, "the contract publishes no tag write request");
+
+	for (const fields of [
+		{ genre: ["Rock", "Ambient", "Pop"] },
+		{ genre: [] },
+		{ genre: "Rock; Pop" },
+		{ rating: 4 },
+	])
+		assert.deepEqual(
+			conforms(request, tagWrite(fields)),
+			[],
+			`the contract refuses ${JSON.stringify(fields)}`,
+		);
+
+	for (const fields of [
+		{ genre: ["Rock", 4] },
+		{ genre: [null] },
+		{ genre: [["Rock"]] },
+		{ genre: true },
+	])
+		assert.notDeepEqual(
+			conforms(request, tagWrite(fields)),
+			[],
+			`the contract admits ${JSON.stringify(fields)}`,
+		);
+});
+
+test("a tag write's answer echoes an array as an array and a string as a string", () => {
+	const written = operation("writeTags").published.get(200);
+	assert.ok(written, "the contract publishes no answer to a tag write");
+
+	const echo = (fields: Record<string, unknown>) => ({
+		written: true,
+		track: "Fictional Artist/Imaginary Album/01 Track.flac",
+		subsong: 0,
+		fields,
+	});
+
+	for (const fields of [
+		{ genre: ["Rock", "Ambient", "Pop"], rating: "4" },
+		{ genre: [] },
+	])
+		assert.deepEqual(
+			conforms(written, echo(fields)),
+			[],
+			`the contract cannot describe the echo of ${JSON.stringify(fields)}`,
+		);
+
+	assert.notDeepEqual(
+		conforms(written, echo({ rating: 4 })),
+		[],
+		"the echo of a whole number is the text written, never the number sent",
+	);
+});
+
+// Compared without order or case: the spec decides neither, and the allowlist is matched
+// case-insensitively.
+const DEFAULT_ALLOWLIST = [
+	"rating",
+	"unsynced lyrics",
+	"title",
+	"artist",
+	"album",
+	"album artist",
+	"date",
+	"genre",
+	"publisher",
+	"composer",
+	"tracknumber",
+	"totaltracks",
+	"discnumber",
+	"totaldiscs",
+	"bpm",
+].sort();
+
+const asAllowlist = (fields: unknown) => {
+	assert.ok(Array.isArray(fields), "allowedFields is not a list");
+	return fields.map((field) => String(field).toLowerCase()).sort();
+};
+
+test("the contract shows a default install permitting rating, lyrics and every tag the details form edits", () => {
+	const shown =
+		document.paths["/capabilities"].get.responses["200"].content[
+			"application/json"
+		].examples.defaultInstall.value.allowedFields;
+	assert.deepEqual(asAllowlist(shown), DEFAULT_ALLOWLIST);
+
+	const declared =
+		document.components.schemas.Capabilities.properties.allowedFields.examples;
+	assert.deepEqual(asAllowlist(declared[0]), DEFAULT_ALLOWLIST);
+});
+
 const annotation: Schema = {
 	type: "object",
 	additionalProperties: false,

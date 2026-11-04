@@ -37,9 +37,9 @@ constexpr auto kRefreshRefill = std::chrono::seconds(30);
 constexpr int kTagWriteBurst = 200;
 constexpr auto kTagWriteRefill = std::chrono::milliseconds(50);
 
-// Jean reads a track back only after a rating write timed out, one read per write, so this
-// budget is the tag writes' own: what it bounds is a client stuck in a loop, each read of which
-// evaluates columns the client wrote.
+// The details panel reads one track each time a user opens it, and a write that timed out is
+// read back once. This budget is the tag writes' own: what it bounds is a client opening details in
+// a loop, each read of which evaluates every column the client declares.
 constexpr int kTrackReadBurst = kTagWriteBurst;
 constexpr auto kTrackReadRefill = kTagWriteRefill;
 

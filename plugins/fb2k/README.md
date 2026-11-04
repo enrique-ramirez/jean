@@ -86,7 +86,7 @@ Everything is a file. `<profile>/foo_jean/config.json` is written on first start
   "bindAddress": "0.0.0.0",
   "allowedOrigins": [],
   "allowedHosts": [],
-  "allowedFields": ["rating", "unsynced lyrics"],
+  "allowedFields": ["rating", "unsynced lyrics", "TITLE", "ARTIST", "ALBUM", "ALBUM ARTIST", "DATE", "GENRE", "PUBLISHER", "COMPOSER", "TRACKNUMBER", "TOTALTRACKS", "DISCNUMBER", "TOTALDISCS", "BPM"],
   "maxAutoPlaylists": 100,
   "writePlaylists": true,
   "controlPlayback": true,

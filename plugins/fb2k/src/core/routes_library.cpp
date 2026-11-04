@@ -351,22 +351,40 @@ const OwnedParameter& ownedParameterNamed(const std::string_view name) {
                          [name](const OwnedParameter& held) { return held.name == name; });
 }
 
-// A question taking two address forms names exactly one: `ordinal` with `structure`, or `track`
-// with `subsong` left out or given. Only presence is judged here; each value is read after.
-std::optional<std::string> addressFormRefusal(const httplib::Request& req) {
+enum class AddressForm { ordinal, path, both, neither };
+
+// `structure` announces the ordinal form and `subsong` the path form, as POST /api/tags'
+// kLibraryAddressFields does, so a half form is still counted and refused as the form it began.
+AddressForm addressForm(const httplib::Request& req) {
     const bool ordinalForm = req.has_param("ordinal") || req.has_param("structure");
     const bool pathForm = req.has_param("track") || req.has_param("subsong");
 
     if (ordinalForm && pathForm)
-        return "name 'ordinal' with 'structure', or 'track', and not both";
-    if (!ordinalForm && !pathForm)
-        return "'ordinal' with 'structure', or 'track', is required";
-    if (ordinalForm && !req.has_param("structure"))
-        return "'structure' is required";
-    if (ordinalForm && !req.has_param("ordinal"))
-        return "'ordinal' is required";
-    if (pathForm && !req.has_param("track"))
-        return "'track' is required";
+        return AddressForm::both;
+    if (ordinalForm)
+        return AddressForm::ordinal;
+    return pathForm ? AddressForm::path : AddressForm::neither;
+}
+
+// A question taking two address forms names exactly one: `ordinal` with `structure`, or `track`
+// with `subsong` left out or given. Only presence is judged here; each value is read after.
+std::optional<std::string> addressFormRefusal(const httplib::Request& req) {
+    switch (addressForm(req)) {
+        case AddressForm::both:
+            return kTwoTrackAddressForms;
+        case AddressForm::neither:
+            return kNoTrackAddressForm;
+        case AddressForm::ordinal:
+            if (!req.has_param("structure"))
+                return "'structure' is required";
+            if (!req.has_param("ordinal"))
+                return "'ordinal' is required";
+            break;
+        case AddressForm::path:
+            if (!req.has_param("track"))
+                return "'track' is required";
+            break;
+    }
     return std::nullopt;
 }
 
@@ -939,18 +957,13 @@ void LibraryRoutes::readRows(const httplib::Request& req, httplib::Response& res
 }
 
 void LibraryRoutes::readTrack(const httplib::Request& req, httplib::Response& res) {
-    // 'subsong' names a track only alongside 'track', but on its own it still announces the
-    // library form the way POST /api/tags' kLibraryAddressFields does, so an ordinal sent beside
-    // it is refused as two forms rather than silently picked over.
-    const bool namesTrack = req.has_param("track") || req.has_param("subsong");
-    const bool namesOrdinal = req.has_param("ordinal");
-
-    if (namesTrack && namesOrdinal) {
+    const auto form = addressForm(req);
+    if (form == AddressForm::both) {
         respondError(res, 400, kTwoTrackAddressForms);
         return;
     }
 
-    if (namesOrdinal) {
+    if (form == AddressForm::ordinal) {
         const auto asked = ordinalAsked(req);
         if (!asked.ok()) {
             respondError(res, 400, asked.refusal);
@@ -973,7 +986,7 @@ void LibraryRoutes::readTrack(const httplib::Request& req, httplib::Response& re
         return;
     }
 
-    if (!namesTrack) {
+    if (form == AddressForm::neither) {
         respondError(res, 400, kNoTrackAddressForm);
         return;
     }

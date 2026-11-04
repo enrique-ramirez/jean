@@ -107,6 +107,38 @@ TEST_CASE("a path and a subsong answer the ordinal of that track inside the file
     CHECK_FALSE(paths.ordinalOf("Other Band/03.flac", 1).has_value());
 }
 
+// `heldTwice` is what turns a path the library holds into a 409 rather than a 404.
+TEST_CASE("resolving a path tells a missing track from one two roots hold") {
+    const LibraryPaths paths(spine());
+
+    struct Resolved {
+        const char* what;
+        const char* path;
+        uint32_t subsong;
+        std::optional<uint32_t> ordinal;
+        bool heldTwice;
+    };
+    const std::vector<Resolved> resolved{
+        {"one track at the subsong, inside a file of three", "Band/Record/set.cue.flac", 2, 4U,
+         false},
+        {"one track at the subsong, alone in its file", "Other Band/03.flac", 0, 6U, false},
+        {"two roots holding the path at the subsong", "Band/Record/02.flac", 0, std::nullopt, true},
+        {"a path nobody holds", "Band/Record/never-added.flac", 0, std::nullopt, false},
+        {"a path one root holds, at a subsong it does not", "Band/Record/set.cue.flac", 4,
+         std::nullopt, false},
+        // Two roots hold the path, but neither at this subsong: there is nothing to tell apart.
+        {"a path two roots hold, at a subsong neither does", "Band/Record/02.flac", 1, std::nullopt,
+         false},
+    };
+
+    for (const auto& asked : resolved) {
+        INFO(std::string(asked.what));
+        const auto resolution = paths.resolve(asked.path, asked.subsong);
+        CHECK(resolution.ordinal == asked.ordinal);
+        CHECK(resolution.heldTwice == asked.heldTwice);
+    }
+}
+
 TEST_CASE("an empty snapshot answers nothing for any path") {
     const LibraryPaths paths(Snapshot{});
 

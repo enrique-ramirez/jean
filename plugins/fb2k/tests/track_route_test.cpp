@@ -4,6 +4,7 @@
 
 #include "third_party/doctest.h"
 
+#include "core/failures.h"
 #include "core/library.h"
 #include "core/player_state.h"
 #include "core/tag_write.h"
@@ -399,6 +400,35 @@ TEST_CASE("a read naming both a track and an ordinal is a 400, and the player is
     REQUIRE(response);
     CHECK(response->status == 400);
     CHECK(json::parse(response->body).count("columns") == 0);
+    CHECK(library.asked.empty());
+}
+
+// `structure` begins the ordinal form even with no `ordinal`, so beside a track it is two forms
+// rather than a path read that ignores it.
+TEST_CASE("a read naming a track beside a structure is refused as naming both forms") {
+    FakeLibrary library = holding();
+    const TestServer server(servingSettings(), reading(&library));
+
+    const auto response = get(server, atOrdinal("track=" + escaped(kTrackAddress) + "&structure=" +
+                                                    std::to_string(kLibraryStructure),
+                                                {kTitle}));
+
+    REQUIRE(response);
+    CHECK(response->status == 400);
+    CHECK(errorOf(*response) == kTwoTrackAddressForms);
+    CHECK(library.asked.empty());
+}
+
+TEST_CASE("a read naming a structure and nothing else is refused for its missing ordinal") {
+    FakeLibrary library = holding();
+    const TestServer server(servingSettings(), reading(&library));
+
+    const auto response =
+        get(server, atOrdinal("structure=" + std::to_string(kLibraryStructure), {kTitle}));
+
+    REQUIRE(response);
+    CHECK(response->status == 400);
+    CHECK(errorOf(*response) == kBadOrdinal);
     CHECK(library.asked.empty());
 }
 

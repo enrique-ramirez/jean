@@ -521,22 +521,17 @@ TEST_CASE("a library path two media library roots hold is the 409 GET /api/track
     CHECK(served.server.refreshes() == refreshesBefore);
 }
 
-// Every request below is refused with the error the route gives a malformed question. The
-// detail is left to the route: the contract names no sentence for these.
-// The detail is left to the route: the owner named the error for these and no sentence.
-TEST_CASE("a credit question naming both forms, neither, or half of one is a 400 refusing it") {
+TEST_CASE(
+    "a credit question naming both forms gets the words of the track read's two-forms refusal") {
     const Served served(kCreditsCase);
     const int refreshesBefore = served.server.refreshes();
     const std::string track = libraryPathOf(served.questions.rows.at(0));
     const std::string structure = std::to_string(served.structure());
-
-    constexpr char kUnacceptable[] = "unacceptable question";
-    constexpr char kDuplicate[] = "duplicate question";
+    const json bothForms{{"error", "unacceptable question"}, {"detail", kTwoTrackAddressForms}};
 
     struct Refused {
         const char* what;
         std::vector<Owned> owned;
-        const char* error = kUnacceptable;
     };
     const std::vector<Refused> refused{
         {"both forms whole",
@@ -551,9 +546,53 @@ TEST_CASE("a credit question naming both forms, neither, or half of one is a 400
          {{"splitsCredits", "true"}, {"structure", structure}, {"ordinal", "0"}, {"subsong", "0"}}},
         {"a track and an ordinal with no structure",
          {{"splitsCredits", "true"}, {"ordinal", "0"}, {"track", track}}},
-        {"neither form", {{"splitsCredits", "true"}}},
+        // Half of the ordinal form beside a whole path form is still two forms, not a missing
+        // 'ordinal'.
+        {"a track and a structure with no ordinal",
+         {{"splitsCredits", "true"}, {"structure", structure}, {"track", track}}},
+    };
+
+    for (const auto& request : refused) {
+        INFO("refused: ", std::string(request.what));
+        const auto response = served.server.client().Get(
+            questionPath("credits", request.owned, served.questions.roles));
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        CHECK(documentOf(*response) == bothForms);
+    }
+    CHECK(served.server.refreshes() == refreshesBefore);
+}
+
+TEST_CASE(
+    "a credit question naming no form gets the words of the track read's neither-form refusal") {
+    const Served served(kCreditsCase);
+    const int refreshesBefore = served.server.refreshes();
+    const json neitherForm{{"error", "unacceptable question"}, {"detail", kNoTrackAddressForm}};
+
+    const auto response = served.ask({{"splitsCredits", "true"}}, served.questions.roles);
+    REQUIRE(response);
+    CHECK(response->status == 400);
+    CHECK(documentOf(*response) == neitherForm);
+    CHECK(served.server.refreshes() == refreshesBefore);
+}
+
+// Only the error is held: nothing names a sentence for these, so the detail is the route's.
+TEST_CASE(
+    "a credit question with a half or repeated address, or a bad track, is a 400 refusing it") {
+    const Served served(kCreditsCase);
+    const int refreshesBefore = served.server.refreshes();
+    const std::string track = libraryPathOf(served.questions.rows.at(0));
+
+    constexpr char kUnacceptable[] = "unacceptable question";
+    constexpr char kDuplicate[] = "duplicate question";
+
+    struct Refused {
+        const char* what;
+        std::vector<Owned> owned;
+        const char* error = kUnacceptable;
+    };
+    const std::vector<Refused> refused{
         {"a subsong alone", {{"splitsCredits", "true"}, {"subsong", "0"}}},
-        {"a track with no splitsCredits", {{"track", track}, {"subsong", "0"}}},
         {"a track named twice",
          {{"splitsCredits", "true"}, {"track", track}, {"track", "Beta/Second/01 Beta Alone.flac"}},
          kDuplicate},

@@ -26,6 +26,7 @@
 		"perf": "pnpm --filter @jean/ui run perf",
 		"test:live": "pnpm --filter @jean/ui run test:live",
 		"test:contract": "pnpm --filter @jean/contract run test:conformance",
+		"release": "plugins/fb2k/scripts/release.sh",
 		"sync-kit": "\"${AI_ENGINEERING:-../ai-engineering}/bin/install.sh\" . --mode copy --force"
 	},
 	"devDependencies": {

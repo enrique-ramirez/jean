@@ -68,7 +68,7 @@ constexpr auto kStalledAnswerTimeout = std::chrono::seconds(5);
 // Every read the fake answers becomes one main-thread job, as src/fb2k/ makes each of them.
 template <typename Read, typename... Args>
 std::function<Read(Args...)> onMainThread(MainThreadQueue& queue,
-                                          std::function<Read(Args...)> read) {
+                                          const std::function<Read(Args...)>& read) {
     return [&queue, read](Args... args) {
         Read timedOut;
         timedOut.outcome = PlayerOutcome::timedOut;

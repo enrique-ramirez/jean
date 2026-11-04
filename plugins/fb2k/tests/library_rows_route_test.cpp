@@ -113,7 +113,7 @@ struct Refused {
 }  // namespace
 
 TEST_CASE("rows named by ordinal are answered as a JLIB body holding them in the order named") {
-    Served served(albumsAndTitles());
+    const Served served(albumsAndTitles());
     const std::vector<uint32_t> ordinals{4, 0, 7, 3, 0};
 
     const auto response =
@@ -141,7 +141,7 @@ TEST_CASE("rows named by ordinal are answered as a JLIB body holding them in the
 }
 
 TEST_CASE("rows named by runs are answered in ascending order, as a fill reads runs") {
-    Served served(albumsAndTitles());
+    const Served served(albumsAndTitles());
 
     const auto response = askFor(served.server, askingRuns({kAlbum, kTitle}, served.structure(),
                                                            json::array({{5, 2}, {0, 2}})));
@@ -175,7 +175,7 @@ TEST_CASE("as many rows as one answer carries are answered, by ordinal and by ru
 }
 
 TEST_CASE("rows are gzipped for a client that offers it and sent as they stand otherwise") {
-    Served served(albumsAndTitles());
+    const Served served(albumsAndTitles());
     const std::string body =
         asking({kAlbum, kTitle}, served.structure(), {0, 1, 2, 3, 4, 5}).dump();
     auto wire = undecoding(served.server);
@@ -210,7 +210,7 @@ TEST_CASE("rows are gzipped for a client that offers it and sent as they stand o
 
 TEST_CASE(
     "a set naming both forms, neither, or an ordinal past the library is refused with a 400") {
-    Served served(albumsAndTitles());
+    const Served served(albumsAndTitles());
     const std::string structure = served.structure();
     const json columns = json::array({kAlbum, kTitle});
     const std::string badSet = describe(PlaylistRefusal::badOrdinals);
@@ -268,11 +268,11 @@ TEST_CASE("more rows than one answer carries are refused with a 400 saying so") 
 }
 
 TEST_CASE("a structure that is not a string of decimal digits is refused with a 400") {
-    Served served(albumsAndTitles());
+    const Served served(albumsAndTitles());
     const std::string malformed = describe(PlaylistRefusal::malformedBody);
     const json columns = json::array({kTitle, kAlbum});
 
-    std::vector<std::pair<const char*, json>> refused{
+    const std::vector<std::pair<const char*, json>> refused{
         {"no structure", json{{"columns", columns}, {"ordinals", {0}}}},
         {"an empty one", json{{"columns", columns}, {"structure", ""}, {"ordinals", {0}}}},
         {"one with a letter in it",
@@ -384,7 +384,7 @@ TEST_CASE("rows asked for before anything is built answer 202 and start a build 
 }
 
 TEST_CASE("a new declaration is answered 202 whatever structure the request names") {
-    Served served(albumsAndTitles());
+    const Served served(albumsAndTitles());
     const std::string stale = std::to_string(served.library.state().structure + 1);
 
     const auto response = askFor(served.server, asking({kGenre}, stale, {0}));
@@ -395,7 +395,7 @@ TEST_CASE("a new declaration is answered 202 whatever structure the request name
 }
 
 TEST_CASE("the held declaration listed in another order is answered from the snapshot") {
-    Served served(albumsAndTitles());
+    const Served served(albumsAndTitles());
 
     const auto response = askFor(served.server, asking({kTitle, kAlbum}, served.structure(), {2}));
 
@@ -458,6 +458,7 @@ TEST_CASE("rows read while row changes land carry exactly the revision their hea
                                         std::to_string(plays)};
     };
     std::vector<std::vector<std::string>> rows;
+    rows.reserve(kTracks);
     for (uint32_t ordinal = 0; ordinal < kTracks; ++ordinal)
         rows.push_back(rowAt(ordinal, 1));
 
@@ -474,6 +475,7 @@ TEST_CASE("rows read while row changes land carry exactly the revision their hea
         start.arrive_and_wait();
         for (uint64_t plays = 2; reading > 0; ++plays) {
             std::vector<RowChange> changes;
+            changes.reserve(kTracks);
             for (uint32_t ordinal = 0; ordinal < kTracks; ++ordinal)
                 changes.push_back({ordinal, rowAt(ordinal, plays)});
             served.library.apply(changes);

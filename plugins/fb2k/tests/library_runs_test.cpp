@@ -46,6 +46,7 @@ struct Track {
 
 LibraryRuns runsOfTracks(const std::vector<Track>& tracks) {
     std::vector<std::vector<std::string>> rows;
+    rows.reserve(tracks.size());
     for (size_t ordinal = 0; ordinal < tracks.size(); ++ordinal)
         rows.push_back({"Folder/", std::to_string(ordinal) + ".flac", "0", tracks[ordinal].album,
                         tracks[ordinal].artist, tracks[ordinal].trackNumber});
@@ -77,7 +78,7 @@ struct Holding {
 
     LibraryRuns ask() { return ask(expressionsOf(questions)); }
 
-    LibraryRuns drawnAfresh() {
+    LibraryRuns drawnAfresh() const {
         return library.read([&](const Snapshot& snapshot) {
             return libraryRunsOf(snapshot, rolesOf(snapshot, questions));
         });

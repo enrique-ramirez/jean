@@ -118,12 +118,13 @@ Snapshot coverSnapshot() {
 }
 
 Snapshot coverSnapshotBehind(size_t count) {
+    const auto held = coverTracks();
     std::vector<CoverTrack> tracks;
+    tracks.reserve(count + held.size());
     for (size_t at = 0; at < count; ++at) {
         tracks.push_back({"Abba/Arrival/", std::to_string(at) + ".flac", "Arrival", "Abba", "1",
                           std::to_string(at + 1)});
     }
-    const auto held = coverTracks();
     tracks.insert(tracks.end(), held.begin(), held.end());
     return snapshotOfTracks(tracks);
 }

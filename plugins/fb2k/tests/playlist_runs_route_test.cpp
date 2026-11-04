@@ -13,7 +13,6 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <functional>
 #include <map>
 #include <memory>
@@ -72,6 +71,8 @@ constexpr char kRowsMoved[] =
     "the playlist's rows were added, removed or reordered; read them again";
 
 std::string queryEncoded(std::string_view text) {
+    static constexpr char kHex[] = "0123456789ABCDEF";
+
     std::string escaped;
     for (const char character : text) {
         const auto byte = static_cast<unsigned char>(character);
@@ -79,9 +80,9 @@ std::string queryEncoded(std::string_view text) {
             escaped += character;
             continue;
         }
-        char hex[4];
-        std::snprintf(hex, sizeof hex, "%%%02X", byte);
-        escaped += hex;
+        escaped += '%';
+        escaped += kHex[static_cast<unsigned>(byte) >> 4U];
+        escaped += kHex[static_cast<unsigned>(byte) & 0xFU];
     }
     return escaped;
 }
@@ -156,6 +157,7 @@ std::vector<std::string> libraryRowOf(uint32_t ordinal, const Tags& tags) {
 
 Snapshot librarySnapshot() {
     std::vector<std::vector<std::string>> rows;
+    rows.reserve(libraryTags().size());
     for (uint32_t ordinal = 0; ordinal < libraryTags().size(); ++ordinal)
         rows.push_back(libraryRowOf(ordinal, libraryTags()[ordinal]));
     return snapshotOf(declared(), rows);
@@ -271,7 +273,7 @@ struct Served {
 TEST_CASE(
     "a playlist's runs and figures are answered at its own pair, over its library rows and the "
     "rows outside the library alike") {
-    Served at;
+    const Served at;
 
     const auto response = at.ask();
     REQUIRE(response);
@@ -301,7 +303,7 @@ TEST_CASE(
 // fb2k/playlist_reads.cpp copies a page of handles in one main-thread job; the runs read every row
 // of the playlist and still cost one.
 TEST_CASE("a playlist's runs copy its rows from the player once, and page through none of them") {
-    Served at;
+    const Served at;
 
     const auto response = at.ask();
     REQUIRE(response);
@@ -314,7 +316,7 @@ TEST_CASE("a playlist's runs copy its rows from the player once, and page throug
 }
 
 TEST_CASE("playlist runs are held by nobody but the client that asked, under a strong validator") {
-    Served at;
+    const Served at;
 
     const auto response = at.ask();
     REQUIRE(response);
@@ -347,7 +349,7 @@ TEST_CASE("playlist runs are gzipped where offered, sent as they stand where not
 }
 
 TEST_CASE("playlist runs asked for again with their ETag are answered 304 with no body") {
-    Served at;
+    const Served at;
     const auto tag = etagOf(at.ask());
 
     const auto again = at.askHolding(tag);
@@ -461,7 +463,7 @@ TEST_CASE("a row added is a 409 at the structure before it and answers new runs 
 }
 
 TEST_CASE("two playlists at the same pair are each answered their own runs") {
-    Served at({.holding = [](FakePlayer& foobar) {
+    const Served at({.holding = [](FakePlayer& foobar) {
         foobar.add(playlistNamed(kSecondPlaylistId, "Sundays"), {heldRow(kKidAFirst), heldRow(2)});
     }});
 
@@ -481,7 +483,7 @@ TEST_CASE("two playlists at the same pair are each answered their own runs") {
 }
 
 TEST_CASE("playlist runs take every role the four questions take") {
-    Served at;
+    const Served at;
 
     std::vector<Role> every;
     for (const std::string_view name : kAllRoleNames) {
@@ -504,7 +506,7 @@ TEST_CASE("playlist runs take every role the four questions take") {
 TEST_CASE(
     "a structure that is not the playlist's is a 409 its error tells from an undeclared "
     "role") {
-    Served at;
+    const Served at;
 
     const auto stale = at.ask(runsPath(kPlaylistId, kStructure + 1));
     REQUIRE(stale);
@@ -522,7 +524,7 @@ TEST_CASE(
 }
 
 TEST_CASE("runs of a playlist the player does not hold are a 404") {
-    Served at;
+    const Served at;
 
     const auto response = at.ask(runsPath(kUnknownPlaylistId));
     REQUIRE(response);
@@ -533,7 +535,7 @@ TEST_CASE("runs of a playlist the player does not hold are a 404") {
 TEST_CASE(
     "a runs request the component can judge for itself is a 400 that never reaches the "
     "player") {
-    Served at;
+    const Served at;
     const std::string current = std::to_string(kStructure);
 
     struct Refused {
@@ -599,7 +601,7 @@ TEST_CASE("without the media library playlist runs are a 503, after what the req
 
 // ARCHITECTURE.md, *The seams*: a null callback is how an install says it reads no such thing.
 TEST_CASE("an install that reads no playlist rows answers playlist runs 503") {
-    Served at({.wiring = [](Player& player) { player.playlists.readTracks = nullptr; }});
+    const Served at({.wiring = [](Player& player) { player.playlists.readTracks = nullptr; }});
 
     const auto response = at.ask();
     REQUIRE(response);
@@ -608,7 +610,7 @@ TEST_CASE("an install that reads no playlist rows answers playlist runs 503") {
 }
 
 TEST_CASE("with no snapshot ready playlist runs answer the library document and start no build") {
-    Served at({.snapshot = false});
+    const Served at({.snapshot = false});
 
     const auto response = at.ask();
     REQUIRE(response);

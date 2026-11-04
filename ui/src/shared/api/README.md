@@ -63,6 +63,8 @@ A field that does not exist answers `?`. A field that exists but is empty answer
 
 Which of these resolve varies by install, by component and by how the library was tagged. Detect; never assume.
 
+A tag written as an array of values (`POST /api/tags` has the form) reads back through `%field%` as one string, the values joined with `, `, so a value that holds a comma cannot be told from two. Only `$meta_sep(field,$char(31))` gives them one by one.
+
 > **There is no play history, only a last play.** A play count is a lifetime total and a last-played is the most recent play and nothing else, so a track played today and again weeks ago reports only today. Any per-day or per-week chart built on it undercounts every older bucket and slopes upward whatever the listening did. A window can honestly report how many *distinct tracks* were touched since a date, and must say so in those words.
 
 > `%added%` starts on the day `foo_playcount` is installed. Its first run stamps every track already in the library with that moment, so on a new install most of the library carries times seconds apart and only tracks added afterwards carry a real one. `foo_enhanced_playcount`'s `%added_enhanced%` resolves and answers `<invalid timestamp>` for every track, and its `%lastfm_added%` is the first scrobble. `%last_modified%` is not a substitute either: playback can rewrite tags, which bumps the file's mtime, so it is `max(added, last played or retagged)`, wrong precisely at the recent end, where a "recently added" view would look.

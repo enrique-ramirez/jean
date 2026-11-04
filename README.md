@@ -43,9 +43,11 @@ Anything your library cannot support is not drawn. No ratings, no starred shelf.
 ## The extra
 
 <!-- site:extra -->
-[`foo_jean`](https://github.com/enrique-ramirez/jean/tree/main/plugins/fb2k) is a component of Jean's own, and it is what answers your library. Two more things come with it.
+[`foo_jean`](https://github.com/enrique-ramirez/jean/tree/main/plugins/fb2k) is a component of Jean's own, and it is what answers your library. Three more things come with it.
 
 **Rate a track from the browser.** The stars stop being read-only, and a rating you set here is written into the file's own tags, where every other program that reads your library will find it.
+
+**See and edit a track's tags.** Any row in the browser opens the track's details, and the title, artist, album, date and the rest can be edited there. Save writes them back into the file.
 
 **Send the sound to whatever you are holding.** A control beside the volume plays what the player is playing, here, in this tab, and mutes the player as it hands over, so the music follows you to the kitchen instead of doubling. It names who else is listening, and it can put the speakers back on alongside everyone. It can also play something else on the device in your hand while the player carries on as it is, and once you let others join, anyone in the house can listen along or take the controls.
 <!-- /site:extra -->
@@ -55,7 +57,7 @@ Anything your library cannot support is not drawn. No ratings, no starred shelf.
 <!-- site:requirements -->
 Jean is not a music player, and on its own it does nothing at all. It draws a player that is already running somewhere else, so one thing has to be in place before it has anything to talk to.
 
-**[`foo_jean`](https://github.com/enrique-ramirez/jean/tree/main/plugins/fb2k), installed in foobar2000 on Windows or macOS.** Playback, playlists, the queue, your library, its covers, ratings written back to your tags, the sound sent to this device, and Jean itself all come from here. There is nothing else to install. The media library needs foobar2000 2.0 or newer; on an older version you still get playback, playlists and the queue.
+**[`foo_jean`](https://github.com/enrique-ramirez/jean/tree/main/plugins/fb2k), installed in foobar2000 on Windows or macOS.** Playback, playlists, the queue, your library, its covers, ratings and edited tags written back to your files, the sound sent to this device, and Jean itself all come from here. There is nothing else to install. The media library needs foobar2000 2.0 or newer; on an older version you still get playback, playlists and the queue.
 
 One more is optional:
 

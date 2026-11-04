@@ -1,8 +1,10 @@
-import { ListMusic, Music, Star } from "lucide-react";
+import { Info, ListMusic, Music, Star } from "lucide-react";
 import {
 	type MouseEvent as ReactMouseEvent,
 	type PointerEvent as ReactPointerEvent,
+	useCallback,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { usePlaylists } from "@/domain/player/usePlaylists";
@@ -16,6 +18,7 @@ import type { LibrarySource } from "./librarySource";
 import type { TrackRows } from "./project";
 import { isWritableScale, rawRatingWith, starsOf } from "./rating";
 import { useWrittenRating } from "./ratingStore";
+import { askToShowDetails } from "./showDetails";
 import { ratingItems, trackActions } from "./trackActions";
 import { positionsOf, rowTitleAt, targetsFrom } from "./trackTargets";
 import { useAddTracks } from "./useAddTracks";
@@ -58,6 +61,36 @@ export function useTrackContextMenu({
 	const rawRating =
 		rated === undefined ? null : rawRatingWith(rows.at(positions[0]), written);
 
+	const opener = useRef<HTMLElement | null>(null);
+	const noteOpener = (from: EventTarget | null) => {
+		opener.current =
+			(from instanceof HTMLElement
+				? from.closest<HTMLElement>('[role="grid"]')
+				: null) ??
+			(document.activeElement instanceof HTMLElement
+				? document.activeElement
+				: null);
+	};
+
+	const showDetails = useCallback(
+		(position: number, returnFocus: HTMLElement | null) => {
+			if (position < 0 || position >= rows.length || rows.isPending(position))
+				return;
+			const addresses = source.addresses(rows.ref(position));
+			if (addresses.length === 0) return;
+
+			const row = rows.at(position);
+			onSelectOnly(position);
+			askToShowDetails({
+				addresses,
+				title: titleOf(row, t),
+				artist: artistOf(row, t),
+				returnFocus,
+			});
+		},
+		[rows, source, onSelectOnly, t],
+	);
+
 	const choose = (chosen: number[]) =>
 		setPositions((current) => (sameList(current, chosen) ? current : chosen));
 
@@ -67,12 +100,14 @@ export function useTrackContextMenu({
 		const aimed = targetsFrom(event, rows.length, selection);
 		if (!aimed) return false;
 
+		noteOpener(event.target);
 		if (adopt && !selection.has(aimed.index)) onSelectOnly(aimed.index);
 		choose(adopt ? aimed.positions : [aimed.index]);
 		return true;
 	};
 
 	const openForRow = (index: number, row: HTMLElement) => {
+		noteOpener(row);
 		if (!selection.has(index)) onSelectOnly(index);
 		choose(positionsOf(index, selection));
 		menu.openBeside(row);
@@ -118,6 +153,15 @@ export function useTrackContextMenu({
 						rowTitleAt(rows, positions[itemIndices.indexOf(ref)], t),
 				}),
 			removeTracks: onRemove && (() => onRemove(positions)),
+			details:
+				count === 1 && !isPending && source.addresses(itemIndices[0]).length > 0
+					? {
+							id: "details",
+							label: t("track.details"),
+							icon: Info,
+							onSelect: () => showDetails(positions[0], opener.current),
+						}
+					: null,
 			credit:
 				count === 1 && !isPending
 					? value(rows.at(positions[0]), FIELD.artist)
@@ -157,6 +201,7 @@ export function useTrackContextMenu({
 		rated,
 		rawRating,
 		isPending,
+		showDetails,
 		t,
 	]);
 
@@ -191,5 +236,5 @@ export function useTrackContextMenu({
 		/>
 	);
 
-	return { triggerProps, element, openForRow };
+	return { triggerProps, element, openForRow, showDetails };
 }

@@ -1,0 +1,106 @@
+.details {
+	flex: none;
+	padding: 20px 4px 24px;
+	overscroll-behavior: contain;
+}
+
+.group + .group {
+	margin-top: 26px;
+}
+
+.groupTitle {
+	margin: 0 0 10px;
+	font-size: 0.6875rem;
+	font-weight: 620;
+	letter-spacing: 0.09em;
+	text-transform: uppercase;
+	color: var(--faint);
+}
+
+.rows {
+	margin: 0;
+	display: grid;
+	gap: 1px;
+	background: var(--border);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	overflow: hidden;
+}
+
+.row {
+	display: grid;
+	grid-template-columns: 8.5rem minmax(0, 1fr);
+	gap: 12px;
+	padding: 9px 12px;
+	background: var(--surface);
+	font-size: 0.875rem;
+}
+
+.label {
+	color: var(--faint);
+}
+
+.value {
+	margin: 0;
+	color: var(--text);
+	overflow-wrap: anywhere;
+}
+
+/* Stays at the top of the scroller, so Save and Cancel are in reach with the keyboard up. A host
+   with a strip of its own above the scroller's content sets where this sticks and what it is
+   painted on. */
+.bar {
+	position: sticky;
+	top: var(--sticky-below, 0);
+	z-index: 1;
+	padding-block: 8px;
+	background: var(--sticky-surface, var(--surface));
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+
+.stale {
+	margin-right: auto;
+	align-self: center;
+	font-size: 0.8125rem;
+	color: var(--muted);
+}
+
+.failure {
+	margin: 0 0 14px;
+	padding: 9px 12px;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-sm);
+	background: var(--surface);
+	color: var(--text);
+	font-size: 0.875rem;
+}
+
+.row[data-editing] {
+	align-items: center;
+}
+
+.mark {
+	display: inline-block;
+	width: 6px;
+	height: 6px;
+	margin-left: 6px;
+	border-radius: 50%;
+	background: var(--accent);
+	vertical-align: middle;
+}
+
+.notice {
+	padding: 28px 10px;
+	color: var(--muted);
+	font-size: 0.9375rem;
+}
+
+@media (max-width: 720px) {
+	.row {
+		grid-template-columns: 7rem minmax(0, 1fr);
+		gap: 10px;
+	}
+}

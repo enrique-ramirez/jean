@@ -17,15 +17,16 @@ interface Asking {
 	keep: () => void;
 }
 
+type Said =
+	| { title: string; changes?: number; question?: undefined }
+	| { question: string; title?: undefined; changes?: undefined };
+
 export function useDiscardGuard({
 	isDirty,
 	title,
 	changes,
-}: {
-	isDirty: boolean;
-	title: string;
-	changes?: number;
-}): {
+	question,
+}: { isDirty: boolean } & Said): {
 	isAsking: boolean;
 	prompt: ReactNode;
 	leave: (leave: () => void) => void;
@@ -79,23 +80,21 @@ export function useDiscardGuard({
 	if (!asking) return { isAsking: false, prompt: null, leave };
 
 	const named = <b>{title}</b>;
+	const body =
+		question !== undefined ? (
+			question
+		) : changes === undefined || changes === 0 ? (
+			<Trans phrase="lyrics.discardChanged" title={named} />
+		) : (
+			<Trans phrase="lyrics.discardCounted" count={changes} title={named} />
+		);
 	return {
 		isAsking: true,
 		leave,
 		prompt: (
 			<AlertDialog
 				title={t("lyrics.discardTitle")}
-				body={
-					changes === undefined || changes === 0 ? (
-						<Trans phrase="lyrics.discardChanged" title={named} />
-					) : (
-						<Trans
-							phrase="lyrics.discardCounted"
-							count={changes}
-							title={named}
-						/>
-					)
-				}
+				body={body}
 				actions={[
 					{
 						label: t("lyrics.discard"),

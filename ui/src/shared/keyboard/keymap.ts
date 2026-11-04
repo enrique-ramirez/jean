@@ -598,6 +598,13 @@ const DECLARED = [
 		shown: MENU_KEYS_SHOWN,
 	},
 	{
+		id: "rowDetails",
+		scope: SCOPE.playlist,
+		group: "shortcutGroup.playlist",
+		name: "shortcut.rowDetails",
+		keys: ["I"],
+	},
+	{
 		id: "toggleLayout",
 		scope: SCOPE.playlist,
 		group: "shortcutGroup.playlist",

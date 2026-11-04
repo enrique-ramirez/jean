@@ -20,6 +20,7 @@ import {
 import { ArtistLinks } from "@/domain/track/ArtistLinks";
 import { readValue } from "@/domain/track/fields";
 import { albumRoute, href, type PanelTab } from "@/domain/track/routes";
+import { fileKey } from "@/domain/track/trackPath";
 import { fooJeanOrigin } from "@/shared/api/discovery";
 import type { ActiveItem } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
@@ -66,7 +67,7 @@ const trackKeyOf = (
 	isInSession: boolean,
 ): string | null => {
 	if (!item) return null;
-	if (isInSession) return item.path ? `${item.path}:${item.subsong}` : null;
+	if (isInSession) return item.path ? fileKey(item.path, item.subsong) : null;
 	return item.index >= 0 && playlistId !== undefined
 		? `${playlistId}:${item.index}`
 		: null;

@@ -1,0 +1,119 @@
+.panel {
+	position: absolute;
+	inset: 0 0 0 auto;
+	z-index: 30;
+	width: var(--details-width);
+	max-width: 100%;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	background: var(--surface);
+	border-left: 1px solid var(--border);
+	box-shadow: var(--shadow);
+	transform: translateX(100%);
+	transition: transform 0.24s var(--ease);
+	/* `pan-y`, not `none`: an overscroll to the right is browser back-navigation and would beat the dismissal flick. */
+	touch-action: pan-y;
+}
+
+.panel[data-open="true"] {
+	transform: translateX(0);
+}
+
+.header {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 14px max(12px, env(safe-area-inset-right)) 10px
+		max(16px, env(safe-area-inset-left));
+	border-bottom: 1px solid var(--border);
+}
+
+.heading {
+	flex: 1;
+	min-width: 0;
+}
+
+.title {
+	margin: 0;
+	font-family: var(--font-display);
+	font-size: 0.9375rem;
+	font-weight: 650;
+	letter-spacing: -0.01em;
+	overflow-wrap: anywhere;
+}
+
+.artist {
+	margin: 2px 0 0;
+	font-size: 0.75rem;
+	color: var(--muted);
+	overflow-wrap: anywhere;
+}
+
+.close {
+	flex: 0 0 auto;
+	display: grid;
+	place-items: center;
+	padding: 5px;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: none;
+	color: var(--faint);
+}
+
+.close:hover {
+	background: var(--surface-sunken);
+	color: var(--text);
+}
+
+.scroller {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding: 0 max(16px, env(safe-area-inset-right)) env(safe-area-inset-bottom)
+		max(16px, env(safe-area-inset-left));
+}
+
+.retry {
+	margin: 4px 0 16px;
+	padding: 7px 12px;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-sm);
+	background: none;
+	font-size: 0.8125rem;
+	font-weight: 550;
+	color: var(--text);
+}
+
+.retry:hover {
+	background: var(--surface-sunken);
+}
+
+.scrim {
+	display: none;
+}
+
+@media (max-width: 860px) {
+	.panel {
+		width: 100%;
+	}
+
+	.header {
+		padding-top: max(14px, env(safe-area-inset-top));
+	}
+
+	.close {
+		min-width: var(--touch-target);
+		min-height: var(--touch-target);
+	}
+
+	.scrim {
+		position: absolute;
+		inset: 0;
+		z-index: 29;
+		display: block;
+		border: 0;
+		background: oklch(0 0 0 / 0.5);
+	}
+}

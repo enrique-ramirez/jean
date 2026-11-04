@@ -8,6 +8,7 @@ import {
 	useSeek,
 	useSeekBy,
 } from "@/domain/player/useTransport";
+import { useDiscardGuard } from "@/domain/track/useDiscardGuard";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useEscapeCapture } from "@/shared/hooks/useEscapeCapture";
 import { useTabTrap } from "@/shared/hooks/useTabTrap";
@@ -41,7 +42,6 @@ import {
 	useAudibleValue,
 	wholeTenths,
 } from "./useAudibleClock";
-import { useDiscardGuard } from "./useDiscardGuard";
 import { useEditorRows } from "./useEditorRows";
 import { useLineField } from "./useLineField";
 import { useLyricDraft } from "./useLyricDraft";

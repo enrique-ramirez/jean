@@ -11,7 +11,8 @@ import {
 
 import { retryWhenTooFast } from "@/shared/api/client";
 import { libraryOrigin } from "@/shared/api/discovery";
-import type { WriteFailure } from "@/shared/api/tags";
+import { valuesIn } from "@/shared/api/multiValue";
+import type { WriteFailure, WriteFields } from "@/shared/api/tags";
 import type { TrackAddress } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
 import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
@@ -30,6 +31,7 @@ import {
 	tagWriterOf,
 	withoutField,
 } from "./tagWriter";
+import { readTrackColumns } from "./trackRead";
 
 export const RATING_FIELD = "rating";
 export const LYRIC_FIELD = "unsynced lyrics";
@@ -41,6 +43,19 @@ const FIELDS_KEY = "jean.fooJeanFields";
 const FIELD_LABELS = {
 	rating: "fooJean.field.rating",
 	[LYRIC_FIELD]: "fooJean.field.lyrics",
+	title: "details.title",
+	artist: "details.artist",
+	album: "details.album",
+	"album artist": "details.albumArtist",
+	date: "details.date",
+	genre: "details.genre",
+	publisher: "details.publisher",
+	composer: "details.composer",
+	tracknumber: "details.track",
+	totaltracks: "details.totalTracks",
+	discnumber: "details.disc",
+	totaldiscs: "details.totalDiscs",
+	bpm: "details.bpm",
 } as const;
 
 export function labelOfField(field: string, t: Translate): string {
@@ -63,6 +78,17 @@ export interface OptimisticValue {
 export interface WritableAddress {
 	address: TrackAddress;
 	retry: TrackAddress | null;
+}
+
+export type SaveOutcome =
+	| { kind: "saved"; fields: WriteFields }
+	| { kind: "failed"; failure: WriteFailure }
+	| { kind: "unconfirmed" };
+
+export interface TagSave {
+	addresses: readonly TrackAddress[];
+	fields: WriteFields;
+	reads: Readonly<Record<string, string>>;
 }
 
 interface TagWriting {
@@ -94,6 +120,7 @@ interface TagWriting {
 		label: string,
 		text: string,
 	) => Promise<boolean>;
+	saveTags: (save: TagSave) => Promise<SaveOutcome>;
 }
 
 const IDLE: TagWriting = {
@@ -110,6 +137,7 @@ const IDLE: TagWriting = {
 	rate: () => {},
 	rateTrack: () => {},
 	writeLyric: async () => false,
+	saveTags: async () => ({ kind: "unconfirmed" }),
 };
 
 const TagWriterContext = createContext<TagWriting>(IDLE);
@@ -358,6 +386,59 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 		[],
 	);
 
+	// A timeout is read back once and never written again: a second write could land over a change
+	// made in between.
+	const saveTags = useCallback(
+		async ({ addresses, fields, reads }: TagSave): Promise<SaveOutcome> => {
+			const usable = addresses.filter(
+				(form) => form.kind === "playlist" || libraryAddressesResolve(origin),
+			);
+			if (usable.length === 0)
+				return {
+					kind: "failed",
+					failure: {
+						ok: false,
+						reason: "unavailable",
+						message: translate("tagWrite.unavailable"),
+					},
+				};
+
+			const { sentTo, result } = await writeToAddress(
+				writerRef.current,
+				{ address: usable[0], retry: usable[1] ?? null },
+				fields,
+			);
+			if (result.ok)
+				return {
+					kind: "saved",
+					fields: { ...fields, ...result.written.fields },
+				};
+
+			if (result.reason === "not-allowed") {
+				console.error(`foo_jean refused '${result.field}': ${result.message}`);
+				if (result.field)
+					setRefused((current) => [...current, result.field as string]);
+			}
+			if (result.reason !== "timeout")
+				return { kind: "failed", failure: result };
+
+			const tags = Object.keys(reads);
+			const held = origin
+				? await readTrackColumns(
+						origin,
+						sentTo,
+						tags.map((tag) => reads[tag]),
+					)
+				: null;
+			const heldColumns = held?.ok ? held.columns : null;
+			const landed =
+				heldColumns !== null &&
+				tags.every((tag, at) => holds(heldColumns[at], fields[tag]));
+			return landed ? { kind: "saved", fields } : { kind: "unconfirmed" };
+		},
+		[origin],
+	);
+
 	const value = useMemo<TagWriting>(
 		() => ({
 			state: resolution.state,
@@ -376,6 +457,7 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 			rate,
 			rateTrack,
 			writeLyric,
+			saveTags,
 		}),
 		[
 			resolution,
@@ -391,18 +473,28 @@ export function TagWriterProvider({ children }: { children: ReactNode }) {
 			rate,
 			rateTrack,
 			writeLyric,
+			saveTags,
 		],
 	);
 
 	return <TagWriterContext value={value}>{children}</TagWriterContext>;
 }
 
+// Whether a column read back holds what was sent: a multi-value read joins with the separator
+// `valuesIn` splits on, and holds nothing for a tag with no value.
+const holds = (read: string | undefined, sent: string | readonly string[]) => {
+	if (read === undefined) return false;
+	if (typeof sent === "string") return read === sent;
+	const values = read === "" ? [] : valuesIn(read);
+	return values.length === sent.length && values.every((v, i) => v === sent[i]);
+};
+
 // `foo_jean` refuses an address two media library roots both hold before it writes anything, so the
 // precise address beside it goes instead.
 async function writeToAddress(
 	writer: TagWriter,
 	{ address, retry }: WritableAddress,
-	fields: Record<string, string>,
+	fields: WriteFields,
 ) {
 	const result = await writer.write(address, fields);
 	if (result.ok || result.reason !== "ambiguous" || !retry)
@@ -423,8 +515,10 @@ async function sendRating(
 		{ [RATING_FIELD]: raw },
 	);
 
-	if (result.ok)
-		return paint.confirm(result.written.fields[RATING_FIELD] ?? raw);
+	if (result.ok) {
+		const echoed = result.written.fields[RATING_FIELD];
+		return paint.confirm(typeof echoed === "string" ? echoed : raw);
+	}
 
 	if (result.reason === "timeout")
 		return confirmTimedOutRating(

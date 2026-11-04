@@ -156,8 +156,8 @@ App-level layers, lowest first. These share the root stacking context, so a new 
 | Find-within results (`Finder`) | 20 |
 | Anchored menu (`Menu`) | 25 |
 | Now-playing screen | 25 |
-| Queue panel scrim, compact | 29 |
-| Queue panel · volume popover in the compact status bar · status bar, desktop | 30 |
+| Queue panel scrim, compact · details panel scrim, compact | 29 |
+| Queue panel · details panel · volume popover in the compact status bar · status bar, desktop | 30 |
 | Sidebar scrim, compact | 39 |
 | Sidebar drawer, compact | 40 |
 | Search dropdown | 42 |
@@ -169,7 +169,7 @@ App-level layers, lowest first. These share the root stacking context, so a new 
 | Action menu and its scrim | 70 |
 | Drag ghost | 80 |
 
-Lyrics and the lyric editor sit above the app chrome, the queue panel and the now-playing screen, and **under** toasts and menus, so a failed write can still say so. The playback picker's sheet sits under the toasts too, so a refusal raised while it is open is seen. The drag ghost is above everything, since a drag can start anywhere. The seek bar reaches above the status bar's top edge, so on desktop the status bar is lifted to the queue panel's layer and wins the tie by coming later in the document. The listen-here popover and the output menu open inside it, in its stacking context, and so still clear the queue panel. The playback order list is an `ActionMenu`, portalled to `body` on the action menu's layer.
+The details panel shares the queue panel's layers because only one of the two is on screen at a time: opening it parks the queue panel. Lyrics and the lyric editor sit above the app chrome, the queue panel and the now-playing screen, and **under** toasts and menus, so a failed write can still say so. The playback picker's sheet sits under the toasts too, so a refusal raised while it is open is seen. The drag ghost is above everything, since a drag can start anywhere. The seek bar reaches above the status bar's top edge, so on desktop the status bar is lifted to the queue panel's layer and wins the tie by coming later in the document. The listen-here popover and the output menu open inside it, in its stacking context, and so still clear the queue panel. The playback order list is an `ActionMenu`, portalled to `body` on the action menu's layer.
 
 ## Layout and viewport
 

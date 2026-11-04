@@ -33,12 +33,15 @@ import {
 } from "@/domain/track/jeanPlaylists";
 import { askToJump } from "@/domain/track/jumpToPlaying";
 import { panelOfRoute, ROUTE, searchRoute } from "@/domain/track/routes";
+import { detailsShown, useShowDetailsAsked } from "@/domain/track/showDetails";
 import { TagWriterProvider } from "@/domain/track/useTagWriter";
+import { DetailsPanel } from "@/features/details/DetailsPanel";
 import { useHomePlayback } from "@/features/home/useHomePlayback";
 import { StatusBar } from "@/features/now-playing/StatusBar";
 import { QueuePanel } from "@/features/queue/QueuePanel";
 import type { PlaylistInfo } from "@/shared/api/types";
 import { useFooJean } from "@/shared/hooks/useFooJean";
+import { leaveGuarded } from "@/shared/hooks/useLeaveGuard";
 import { useIsCompactViewport } from "@/shared/hooks/useMediaQuery";
 import { useStoredState } from "@/shared/hooks/useStoredState";
 import { useTheme } from "@/shared/hooks/useTheme";
@@ -242,6 +245,18 @@ function Shell() {
 		queueShown();
 		setQueueOpen(true);
 	}, [showQueueAsked, setQueueOpen]);
+
+	const detailsAsked = useShowDetailsAsked();
+	const [details, setDetails] = useState<{
+		asked: NonNullable<typeof detailsAsked>;
+		isOpen: boolean;
+	} | null>(null);
+	useEffect(() => {
+		if (!detailsAsked) return;
+		detailsShown();
+		leaveGuarded(() => setDetails({ asked: detailsAsked, isOpen: true }));
+	}, [detailsAsked]);
+	const isDetailsOpen = details?.isOpen ?? false;
 
 	const { closeDrawer: closeSidebarDrawer } = sidebar;
 
@@ -467,9 +482,20 @@ function Shell() {
 				) : null}
 
 				<QueuePanel
-					isOpen={queue.isOpen}
+					isOpen={queue.isOpen && !isDetailsOpen}
 					isCompactViewport={isCompactViewport}
 					onDismiss={() => queue.setOpen(false)}
+				/>
+
+				<DetailsPanel
+					asked={details?.asked ?? null}
+					isOpen={isDetailsOpen}
+					isCompactViewport={isCompactViewport}
+					onDismiss={() =>
+						setDetails((current) =>
+							current ? { ...current, isOpen: false } : current,
+						)
+					}
 				/>
 			</div>
 

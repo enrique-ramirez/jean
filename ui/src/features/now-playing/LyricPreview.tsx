@@ -1,6 +1,7 @@
 import { Check, ChevronLeft, ChevronRight, PencilLine } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 
+import { useDiscardGuard } from "@/domain/track/useDiscardGuard";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useTranslate } from "@/shared/i18n/useTranslate";
 import { classNames } from "@/shared/lib/classNames";
@@ -21,7 +22,6 @@ import {
 	shiftAll,
 	shiftLine,
 } from "./lyricDraft";
-import { useDiscardGuard } from "./useDiscardGuard";
 
 function VersionNav({
 	index,

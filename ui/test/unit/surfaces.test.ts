@@ -39,6 +39,7 @@ const MODAL_WITHOUT_ROUTE = [
 const DECLARED = {
 	sidebar: "panel",
 	queue: "panel",
+	details: "transientPanel",
 	search: "bar",
 	palette: "modal",
 	shortcuts: "modal",

@@ -1,13 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-
 import { playingTrackPaint } from "@/domain/track/playingRating";
 import { isWritableScale, rawRatingOfValue } from "@/domain/track/rating";
+import { isStreamPath } from "@/domain/track/trackPath";
 import { RATING_FIELD, useTagWriting } from "@/domain/track/useTagWriter";
 import { useNowPlayingTrack } from "./useNowPlayingTrack";
 
 const isLocalPath = (path: string | null) =>
-	path !== null && !path.includes("://");
+	path !== null && !isStreamPath(path);
 
 export function useNowPlayingRating() {
 	const { hasWritableAddress, writableAddress, rateTrack } = useTagWriting();

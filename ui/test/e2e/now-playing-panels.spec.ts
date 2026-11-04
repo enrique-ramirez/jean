@@ -146,7 +146,7 @@ test.describe("opening a panel from the keyboard", () => {
 	});
 });
 
-test.describe("the details panel", () => {
+test.describe("the Details tab", () => {
 	test.use({
 		retagged: { "Los Calientes": { "%publisher%": "Discos Manzana" } },
 	});

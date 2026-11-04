@@ -1,3 +1,4 @@
+import type { components } from "../../../src/shared/api/fooJeanSchema.d.ts";
 import { json, type Responder } from "../http.ts";
 import type { Track } from "../state.ts";
 import { notFound } from "./answers.ts";
@@ -20,6 +21,25 @@ export const TAG_ROWS_MOVED = {
 	error:
 		"the playlist's rows were added, removed or reordered; read them again",
 };
+
+const SEPARATOR_CODE = 31;
+
+const wrongType = (field: string) => ({
+	written: false,
+	error: "malformed request",
+	detail: `'${field}' must be a string, a whole number or an array of strings`,
+});
+
+const emptyElement = (field: string) => ({
+	written: false,
+	error: "malformed request",
+	detail: `'${field}' holds an empty string`,
+});
+
+const isStringList = (value: unknown): value is string[] =>
+	Array.isArray(value) && value.every((element) => typeof element === "string");
+
+type WrittenFields = components["schemas"]["TagWritten"]["fields"];
 
 const NO_SUCH_TRACK = {
 	written: false,
@@ -59,20 +79,27 @@ const refuseWrite = (response: Responder, status: number) => {
 // track the fake is holding: the playlist row it was addressed through and the
 // media library's own entry, which are separate objects whenever `withoutFields`
 // or `retagged` copied one.
-const applyTags = (
-	state: FakeState,
-	target: Track,
-	fields: Record<string, string>,
-) => {
+const applyTags = (state: FakeState, target: Track, fields: WrittenFields) => {
 	const patch = (track: Track) => {
 		if (track["%path%"] !== target["%path%"]) return;
 		if (subsongOf(track) !== subsongOf(target)) return;
 		for (const [field, value] of Object.entries(fields)) {
-			// foobar2000 answers `%field%` and `$meta(field)` from the one tag.
-			const spellings = [`%${field}%`, `$meta(${field.toLowerCase()})`];
-			for (const spelling of spellings) {
-				if (value === "") delete track[spelling];
-				else track[spelling] = value;
+			// foobar2000 answers `%field%`, `$meta(field)` and `$meta_sep(field,...)` from
+			// the one tag: `%field%` joins the values with ", ", `$meta` answers the first,
+			// and a value is stored whole, whatever punctuation it holds.
+			const values = Array.isArray(value) ? value : [value];
+			const name = field.toLowerCase();
+			const answers: Record<string, string> = {
+				[`%${name}%`]: values.join(", "),
+				[`$meta(${name})`]: values[0] ?? "",
+				[`$meta_sep(${name},$char(${SEPARATOR_CODE}))`]: values.join(
+					String.fromCharCode(SEPARATOR_CODE),
+				),
+			};
+			const removed = values.length === 0 || value === "";
+			for (const [spelling, answer] of Object.entries(answers)) {
+				if (removed) delete track[spelling];
+				else track[spelling] = answer;
 			}
 		}
 	};
@@ -101,7 +128,7 @@ export async function handleTags({
 		playlist?: unknown;
 		index?: unknown;
 		structure?: unknown;
-		fields?: Record<string, string>;
+		fields?: Record<string, unknown>;
 	} | null;
 
 	// Decided while the address is being resolved and so ahead of `failWrites`,
@@ -174,10 +201,34 @@ export async function handleTags({
 			403,
 		);
 
-	const stored =
-		fake.storesRatingAs !== null && "rating" in written.fields
-			? { ...written.fields, rating: fake.storesRatingAs }
-			: written.fields;
+	const sent = Object.entries(written.fields);
+	// A mistyped value in any field is refused before an empty element in any field, and the
+	// first offender in `fields` order names itself.
+	const misTyped = sent.find(
+		([, value]) =>
+			!(
+				typeof value === "string" ||
+				Number.isInteger(value) ||
+				isStringList(value)
+			),
+	);
+	if (misTyped) return json(response, wrongType(misTyped[0]), 400);
+
+	const blank = sent.find(
+		([, value]) => Array.isArray(value) && value.includes(""),
+	);
+	if (blank) return json(response, emptyElement(blank[0]), 400);
+
+	const normalised = Object.fromEntries(
+		sent.map(([field, value]) => [
+			field,
+			isStringList(value) ? value : String(value),
+		]),
+	);
+	const stored: WrittenFields =
+		fake.storesRatingAs !== null && "rating" in normalised
+			? { ...normalised, rating: fake.storesRatingAs }
+			: normalised;
 
 	// The precise library form. One ordinal names one track of one root, so
 	// nothing here can be ambiguous; what it can be is held against a snapshot

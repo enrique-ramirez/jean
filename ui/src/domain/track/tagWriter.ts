@@ -1,21 +1,21 @@
 import { FooJeanFailed } from "@/shared/api/client";
 import type { FooJeanDiscovery, FooJeanState } from "@/shared/api/discovery";
-import { fetchPlaylistRows } from "@/shared/api/playlists";
-import { type WriteResult, writeTags } from "@/shared/api/tags";
-import { fetchLibraryTrack } from "@/shared/api/tracks";
+import {
+	type WriteFields,
+	type WriteResult,
+	writeTags,
+} from "@/shared/api/tags";
 import type { TrackAddress } from "@/shared/api/types";
 import { translate } from "@/shared/i18n/locale";
 import { UNRESOLVED } from "./libraryColumns";
+import { readTrackColumns } from "./trackRead";
 
 export interface TagWriter {
 	canWrite: boolean;
 	// Compared case-insensitively, so callers ask `allows()` rather than reading this directly.
 	allowedFields: string[];
 	allows: (field: string) => boolean;
-	write: (
-		address: TrackAddress,
-		fields: Record<string, string>,
-	) => Promise<WriteResult>;
+	write: (address: TrackAddress, fields: WriteFields) => Promise<WriteResult>;
 	read: (address: TrackAddress, column: string) => Promise<string | null>;
 }
 
@@ -59,24 +59,13 @@ const fooJeanWriter = (origin: string, allowedFields: string[]): TagWriter => {
 		write: async (address, fields) =>
 			writeTags(origin, { ...addressFields(address), fields }),
 		read: async (address, column) => {
-			const answer =
-				address.kind === "playlist"
-					? await fetchPlaylistRows(
-							origin,
-							address.playlist,
-							{ offset: address.index, count: 1 },
-							[column],
-						)
-					: await fetchLibraryTrack(origin, address, [column]);
+			const answer = await readTrackColumns(origin, address, [column]);
 			if (!answer.ok) {
 				if (answer.reason === "refused" && answer.retryInMs !== null)
 					throw new FooJeanFailed(answer);
 				return null;
 			}
-			const held =
-				"items" in answer.value
-					? answer.value.items[0]?.columns[0]
-					: answer.value.columns[0];
+			const held = answer.columns?.[0];
 
 			// README.md: `?` is foobar2000 saying the field is absent, never a null.
 			if (held === UNRESOLVED) return "";

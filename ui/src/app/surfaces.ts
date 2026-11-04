@@ -1,6 +1,8 @@
 export const SURFACES = {
 	sidebar: { kind: "panel", dockedKey: "jean.sidebarDocked", docked: true },
 	queue: { kind: "panel", dockedKey: "jean.queueDocked", docked: false },
+	// Not a `panel`: whether it is open is never stored, so a reload finds it closed.
+	details: { kind: "transientPanel" },
 	search: { kind: "bar" },
 	palette: { kind: "modal" },
 	shortcuts: { kind: "modal" },

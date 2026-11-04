@@ -579,6 +579,46 @@ test.describe("foo_jean allowing playback control", () => {
 	});
 });
 
+// The fake's default allowlist is a fresh install's, which permits every field the details form
+// edits, each spelled as the tag is.
+const EDITABLE_FIELDS = {
+	TITLE: en["details.title"],
+	ARTIST: en["details.artist"],
+	ALBUM: en["details.album"],
+	"ALBUM ARTIST": en["details.albumArtist"],
+	DATE: en["details.date"],
+	GENRE: en["details.genre"],
+	PUBLISHER: en["details.publisher"],
+	COMPOSER: en["details.composer"],
+	TRACKNUMBER: en["details.track"],
+	TOTALTRACKS: en["details.totalTracks"],
+	DISCNUMBER: en["details.disc"],
+	TOTALDISCS: en["details.totalDiscs"],
+	BPM: en["details.bpm"],
+};
+
+test("on a fresh install, each editable field's write switch is named as the details form names it, never by its tag", async ({
+	page,
+}) => {
+	await openSettings(page);
+
+	const panel = fooJeanPanel(page);
+	for (const label of Object.values(EDITABLE_FIELDS))
+		await expect(
+			panel.getByRole("switch", { name: label, exact: true }),
+		).toBeVisible();
+
+	// Read once every phrase is drawn, so the panel has had its allowlist and nothing is still on
+	// its way in. BPM is spelled the same either way, so it is left out.
+	const raw = Object.entries(EDITABLE_FIELDS)
+		.filter(([tag, label]) => tag !== label)
+		.map(([tag]) => tag);
+	for (const tag of raw)
+		expect(
+			await panel.getByRole("switch", { name: tag, exact: true }).count(),
+		).toBe(0);
+});
+
 const OFFER_LISTENING = "Offer listening here when the player cannot be heard";
 const OFFER_LISTENING_DETAIL =
 	"Jean reads from foobar2000 whether its output reaches any speakers. Turn this off if it gets that wrong.";

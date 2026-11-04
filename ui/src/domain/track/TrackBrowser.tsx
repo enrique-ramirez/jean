@@ -391,6 +391,14 @@ export function TrackBrowser({
 			cursorTop: () => keyMoveTo(0),
 			cursorBottom: () => keyMoveTo(rows.length - 1),
 			playCursor: () => play(selection.cursor),
+			rowDetails: () => {
+				if (document.activeElement?.closest("[data-nav-row]")) return;
+				const focused = document.activeElement;
+				trackMenu.showDetails(
+					selection.cursor,
+					focused instanceof HTMLElement ? focused : null,
+				);
+			},
 			openRowMenu: () => {
 				if (document.activeElement?.closest("[data-nav-row]")) return;
 				openMenuAtCursor();

@@ -54,6 +54,7 @@ export function trackActions({
 	addTracks,
 	removeTracks,
 	rating,
+	details,
 	credit,
 	t,
 }: {
@@ -75,6 +76,8 @@ export function trackActions({
 	}) => void;
 	removeTracks?: () => void;
 	rating: ActionNode | null;
+	// Offered by the surfaces that show a track's details, for one settled row; the now-playing menu has none.
+	details?: ActionNode | null;
 	t: Translate;
 	// The `%artist%` line of the one track this is about. A track list gives its rows no artist link
 	// of their own -- playing is what a row is for, and a link inside one is a target a finger misses
@@ -124,7 +127,8 @@ export function trackActions({
 
 	return [
 		...artist,
-		...(artist.length > 0 ? [{ type: "separator" as const }] : []),
+		...(details ? [details] : []),
+		...(artist.length > 0 || details ? [{ type: "separator" as const }] : []),
 		{
 			id: "queue",
 			label: !canControlPlayback

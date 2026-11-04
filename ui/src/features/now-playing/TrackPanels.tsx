@@ -1,8 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Maximize2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Artist } from "@/domain/artist/Artist";
 import { PANEL_TABS, type PanelTab } from "@/domain/track/routes";
+import { DetailsNotice, TrackDetails } from "@/domain/track/TrackDetails";
+import { fileKey, isStreamPath } from "@/domain/track/trackPath";
 import type { PlayerSnapshot } from "@/shared/api/types";
 import { useSwipe } from "@/shared/hooks/useSwipe";
 import type { Phrase } from "@/shared/i18n/en";
@@ -11,7 +13,6 @@ import { type BindingId, SCOPE } from "@/shared/keyboard/keymap";
 import { mnemonicOf } from "@/shared/keyboard/mnemonic";
 import { useKeymap } from "@/shared/keyboard/useKeymap";
 import { Tabs } from "@/shared/ui/Tabs";
-import { Details } from "./Details";
 import type { EditorOpening } from "./LyricEditor";
 import { LyricSearch, type SearchMemory } from "./LyricSearch";
 import { LyricActions, Lyrics, type PanelVariant } from "./Lyrics";
@@ -22,6 +23,7 @@ import { useLyricsRecheck } from "./useLyricsRecheck";
 import { type LyricTarget, useNowPlayingLyric } from "./useNowPlayingLyric";
 import { cachedLyrics, useNowPlayingTrack } from "./useNowPlayingTrack";
 import { usePanelScroll } from "./usePanelScroll";
+import { usePlayingMembers } from "./usePlayingMembers";
 
 type PanelPhrase = Extract<Phrase, `panel.${string}`>;
 
@@ -30,6 +32,32 @@ const TABS: { id: PanelTab; label: PanelPhrase; binding: BindingId }[] = [
 	{ id: "details", label: "panel.details", binding: "showDetails" },
 	{ id: "artist", label: "panel.artist", binding: "showArtist" },
 ];
+
+function DetailsTab() {
+	const t = useTranslate();
+	const { details, isPending, nothingPlaying, track, addresses } =
+		useNowPlayingTrack();
+	const members = usePlayingMembers();
+	const queryClient = useQueryClient();
+
+	if (nothingPlaying)
+		return <DetailsNotice>{t("details.nothingPlaying")}</DetailsNotice>;
+
+	return (
+		<TrackDetails
+			row={details?.row ?? null}
+			isPending={isPending}
+			members={members.albumArtist}
+			addresses={addresses}
+			isStream={isStreamPath(track?.path)}
+			trackKey={track?.path ? fileKey(track.path, track.subsong) : undefined}
+			// The row read for the playing track is kept for good, so a save asks for it again.
+			onSaved={() =>
+				void queryClient.invalidateQueries({ queryKey: ["nowPlaying"] })
+			}
+		/>
+	);
+}
 
 export function TrackPanels({
 	variant,
@@ -63,6 +91,30 @@ export function TrackPanels({
 	const tab = chosen ?? PANEL_TABS[0];
 	const [direction, setDirection] = useState(0);
 	const panelRef = useRef<HTMLDivElement | null>(null);
+
+	// Beside the lyrics the tab strip sticks at the top of the scroller its tab draws in, so what is
+	// drawn below it sticks at its lower edge: `--sticky-below` follows the strip's own height. On the
+	// screen the strip sits above the scroller and nothing needs to stick below it.
+	const pinBelowStrip = useCallback(
+		(panel: HTMLDivElement | null) => {
+			const strip = panel?.firstElementChild;
+			if (!panel || variant === "screen" || !(strip instanceof HTMLElement))
+				return undefined;
+			const pin = () =>
+				panel.style.setProperty(
+					"--sticky-below",
+					`calc(${getComputedStyle(strip).top} + ${strip.offsetHeight}px)`,
+				);
+			pin();
+			const observer = new ResizeObserver(pin);
+			observer.observe(strip);
+			return () => {
+				observer.disconnect();
+				panel.style.removeProperty("--sticky-below");
+			};
+		},
+		[variant],
+	);
 
 	const hasLyrics = lyrics.kind !== "none";
 
@@ -164,13 +216,18 @@ export function TrackPanels({
 				/>
 			)
 		) : tab === "details" ? (
-			<Details />
+			<DetailsTab />
 		) : (
 			<Artist name={track?.artist} />
 		);
 
 	return (
-		<div className={styles.panel} data-variant={variant} {...swipe}>
+		<div
+			ref={pinBelowStrip}
+			className={styles.panel}
+			data-variant={variant}
+			{...swipe}
+		>
 			<Tabs
 				className={styles.tabs}
 				value={tab}

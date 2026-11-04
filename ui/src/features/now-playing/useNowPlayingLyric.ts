@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
+import { isStreamPath } from "@/domain/track/trackPath";
 import {
 	LYRIC_FIELD,
 	useTagWriting,
@@ -41,7 +42,7 @@ export function playingAgainst(
 }
 
 const isLocalPath = (path: string | null) =>
-	path !== null && !path.includes("://");
+	path !== null && !isStreamPath(path);
 
 export function useNowPlayingLyric() {
 	const { hasWritableAddress, writableAddress, writeLyric } = useTagWriting();

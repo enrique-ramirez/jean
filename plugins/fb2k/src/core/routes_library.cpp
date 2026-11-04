@@ -4,6 +4,7 @@
 #include "core/documents.h"
 #include "core/http_responses.h"
 #include "core/library_entities.h"
+#include "core/library_paths.h"
 #include "core/library_roles.h"
 #include "core/library_rows.h"
 #include "core/local_time.h"
@@ -153,6 +154,7 @@ void respondTrackRead(httplib::Response& res, const LibraryTrackRead& read) {
 struct QuestionParameters {
     std::span<const std::string_view> owned;
     std::span<const std::string_view> required;
+    bool takesAddressForms = false;
 };
 
 constexpr std::array<std::string_view, 2> kAlbumOwned{"name", "by"};
@@ -164,7 +166,9 @@ constexpr std::array<std::string_view, 1> kGenreRequired{"name"};
 constexpr std::array<std::string_view, 4> kSearchOwned{"query", "limit", "entityLimit",
                                                        "splitsCredits"};
 
-constexpr std::array<std::string_view, 3> kCreditsOwned{"splitsCredits", "structure", "ordinal"};
+constexpr std::array<std::string_view, 5> kCreditsOwned{"splitsCredits", "structure", "ordinal",
+                                                        "track", "subsong"};
+constexpr std::array<std::string_view, 1> kCreditsRequired{"splitsCredits"};
 constexpr std::array<std::string_view, 3> kValuesOwned{"field", "prefix", "limit"};
 
 constexpr std::array<std::string_view, 1> kPlaylistRunsOwned{"structure"};
@@ -190,7 +194,7 @@ QuestionParameters parametersOf(const LibraryRoutes::Question kind) {
         case LibraryRoutes::Question::search:
             return {kSearchOwned, kSearchOwned};
         case LibraryRoutes::Question::credits:
-            return {kCreditsOwned, kCreditsOwned};
+            return {kCreditsOwned, kCreditsRequired, true};
         case LibraryRoutes::Question::values:
             return {kValuesOwned, kValuesOwned};
     }
@@ -224,6 +228,9 @@ struct QuestionAsked {
     size_t entityLimit = 0;
     uint64_t structure = 0;
     size_t ordinal = 0;
+    std::string track;
+    uint32_t subsong = 0;
+    bool byPath = false;
     ValueField field = ValueField::artist;
     std::string prefix;
 
@@ -300,6 +307,26 @@ constexpr std::array kOwnedParameters{
                    [](const std::string& value, QuestionAsked& asked) {
                        return readCount("ordinal", value, asked.ordinal);
                    }},
+    OwnedParameter{
+        "track",
+        [](const std::string& value, QuestionAsked& asked) -> std::optional<std::string> {
+            if (auto refusal = trackAddressRefusal(value); !refusal.empty())
+                return refusal;
+
+            asked.track = value;
+            asked.byPath = true;
+            return std::nullopt;
+        }},
+    OwnedParameter{
+        "subsong",
+        [](const std::string& value, QuestionAsked& asked) -> std::optional<std::string> {
+            const auto subsong = readUint32(value);
+            if (!subsong)
+                return "'subsong' must be a whole number of 0 or more";
+
+            asked.subsong = *subsong;
+            return std::nullopt;
+        }},
     OwnedParameter{"limit",
                    [](const std::string& value, QuestionAsked& asked) {
                        return readCount("limit", value, asked.limit);
@@ -324,6 +351,25 @@ const OwnedParameter& ownedParameterNamed(const std::string_view name) {
                          [name](const OwnedParameter& held) { return held.name == name; });
 }
 
+// A question taking two address forms names exactly one: `ordinal` with `structure`, or `track`
+// with `subsong` left out or given. Only presence is judged here; each value is read after.
+std::optional<std::string> addressFormRefusal(const httplib::Request& req) {
+    const bool ordinalForm = req.has_param("ordinal") || req.has_param("structure");
+    const bool pathForm = req.has_param("track") || req.has_param("subsong");
+
+    if (ordinalForm && pathForm)
+        return "name 'ordinal' with 'structure', or 'track', and not both";
+    if (!ordinalForm && !pathForm)
+        return "'ordinal' with 'structure', or 'track', is required";
+    if (ordinalForm && !req.has_param("structure"))
+        return "'structure' is required";
+    if (ordinalForm && !req.has_param("ordinal"))
+        return "'ordinal' is required";
+    if (pathForm && !req.has_param("track"))
+        return "'track' is required";
+    return std::nullopt;
+}
+
 QuestionAsked questionAsked(const httplib::Request& req, const QuestionParameters& parameters) {
     QuestionAsked asked;
     const auto refuse = [&asked](LibraryRefusal refusal, std::string detail) {
@@ -338,7 +384,15 @@ QuestionAsked questionAsked(const httplib::Request& req, const QuestionParameter
                           "'" + std::string(name) + "' is required");
     }
 
+    if (parameters.takesAddressForms) {
+        if (const auto refusal = addressFormRefusal(req))
+            return refuse(LibraryRefusal::unacceptableQuestion, *refusal);
+    }
+
     for (const auto name : parameters.owned) {
+        if (!req.has_param(std::string(name)))
+            continue;
+
         const auto refusal =
             ownedParameterNamed(name).read(req.get_param_value(std::string(name)), asked);
         if (refusal)
@@ -719,7 +773,13 @@ void LibraryRoutes::findInPlaylist(const httplib::Request& req, httplib::Respons
 namespace {
 
 struct QuestionRead {
-    enum class Kind { answered, structureMoved, pastTheEnd } kind = Kind::answered;
+    enum class Kind {
+        answered,
+        structureMoved,
+        pastTheEnd,
+        noSuchTrack,
+        heldTwice
+    } kind = Kind::answered;
     std::string body;
 };
 
@@ -749,7 +809,8 @@ void LibraryRoutes::answerQuestion(const Question kind, const httplib::Request& 
     const auto state = stateForRoles(res, roles);
     if (!state)
         return;
-    const auto read = library_->read([&](const Snapshot& snapshot) -> std::optional<QuestionRead> {
+    const auto askSnapshot = [&](const Snapshot& snapshot,
+                                 const LibraryPaths* paths) -> std::optional<QuestionRead> {
         const auto indices = rolesIn(snapshot, roles.expressions);
         if (!indices)
             return std::nullopt;
@@ -769,14 +830,25 @@ void LibraryRoutes::answerQuestion(const Question kind, const httplib::Request& 
                 answer = questions_.search(snapshot, *indices, asked.query, asked.limit,
                                            asked.entityLimit, asked.splitsCredits);
                 break;
-            case Question::credits:
-                if (snapshot.structure != asked.structure)
-                    return QuestionRead{QuestionRead::Kind::structureMoved, {}};
-                if (asked.ordinal >= snapshot.trackCount())
-                    return QuestionRead{QuestionRead::Kind::pastTheEnd, {}};
-                answer = questions_.credits(
-                    snapshot, *indices, static_cast<uint32_t>(asked.ordinal), asked.splitsCredits);
+            case Question::credits: {
+                size_t ordinal = asked.ordinal;
+                if (paths) {
+                    const auto resolved = paths->resolve(asked.track, asked.subsong);
+                    if (resolved.heldTwice)
+                        return QuestionRead{QuestionRead::Kind::heldTwice, {}};
+                    if (!resolved.ordinal)
+                        return QuestionRead{QuestionRead::Kind::noSuchTrack, {}};
+                    ordinal = *resolved.ordinal;
+                } else {
+                    if (snapshot.structure != asked.structure)
+                        return QuestionRead{QuestionRead::Kind::structureMoved, {}};
+                    if (ordinal >= snapshot.trackCount())
+                        return QuestionRead{QuestionRead::Kind::pastTheEnd, {}};
+                }
+                answer = questions_.credits(snapshot, *indices, static_cast<uint32_t>(ordinal),
+                                            asked.splitsCredits);
                 break;
+            }
             case Question::values:
                 answer =
                     questions_.values(snapshot, *indices, asked.field, asked.prefix, asked.limit);
@@ -784,7 +856,17 @@ void LibraryRoutes::answerQuestion(const Question kind, const httplib::Request& 
         }
         return QuestionRead{QuestionRead::Kind::answered,
                             answer.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace)};
-    });
+    };
+
+    std::optional<QuestionRead> read;
+    if (asked.byPath) {
+        library_->readWithPaths([&](const Snapshot& snapshot, const LibraryPaths& paths) {
+            read = askSnapshot(snapshot, &paths);
+        });
+    } else {
+        read = library_->read(
+            [&](const Snapshot& snapshot) { return askSnapshot(snapshot, nullptr); });
+    }
     if (!read) {
         respond(res, 202, libraryDocument(library_->state()));
         return;
@@ -797,6 +879,12 @@ void LibraryRoutes::answerQuestion(const Question kind, const httplib::Request& 
         case QuestionRead::Kind::pastTheEnd:
             respondRefusal(res, LibraryRefusal::unacceptableQuestion,
                            "'ordinal' is past the last track");
+            return;
+        case QuestionRead::Kind::noSuchTrack:
+            respondError(res, 404, kNoSuchLibraryTrack);
+            return;
+        case QuestionRead::Kind::heldTwice:
+            respondOutcome(res, PlayerOutcome::ambiguousAddress);
             return;
         case QuestionRead::Kind::answered:
             break;

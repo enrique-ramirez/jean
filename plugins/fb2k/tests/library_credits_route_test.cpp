@@ -2,6 +2,7 @@
 
 #include "core/failures.h"
 #include "core/library.h"
+#include "core/player_outcome.h"
 #include "support/keys.h"
 #include "support/library_routes_server.h"
 #include "support/question_library.h"
@@ -13,8 +14,10 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 using namespace jean;
@@ -59,13 +62,27 @@ std::vector<Owned> creditsOf(const uint64_t structure, const uint32_t ordinal,
             {"ordinal", std::to_string(ordinal)}};
 }
 
+std::string libraryPathOf(const std::vector<std::string>& row) {
+    return row.at(0) + row.at(1);
+}
+
+// `subsong` is left out where it is nullopt, which the route reads as 0.
+std::vector<Owned> creditsAt(const std::string& track, const std::optional<std::string>& subsong,
+                             const bool splitsCredits) {
+    std::vector<Owned> owned{{"splitsCredits", splitsCredits ? "true" : "false"}, {"track", track}};
+    if (subsong)
+        owned.push_back({"subsong", *subsong});
+    return owned;
+}
+
 struct Served {
     QuestionLibrary questions;
     Library library;
     LibraryRoutesServer server;
 
-    explicit Served(const char* name)
-        : questions(questionLibraryOf(questionCase(name))), server(&library, kNow) {
+    explicit Served(const char* name) : Served(questionLibraryOf(questionCase(name))) {}
+
+    explicit Served(QuestionLibrary built) : questions(std::move(built)), server(&library, kNow) {
         declareAndBuild(server, library, questions);
     }
 
@@ -292,6 +309,12 @@ TEST_CASE("without the media library a credit question is a 503, after what it a
         CHECK(unavailable->status == 503);
         CHECK(errorOf(*unavailable) == kNoLibrary);
     }
+
+    const auto byPath = server.client().Get(
+        questionPath("credits", creditsAt("Alpha/First/01 Solo.flac", "0", true), roles));
+    REQUIRE(byPath);
+    CHECK(byPath->status == 503);
+    CHECK(errorOf(*byPath) == kNoLibrary);
     CHECK(server.refreshes() == 0);
 }
 
@@ -305,14 +328,20 @@ TEST_CASE(
     REQUIRE(declared->status == 202);
     const int refreshesBefore = server.refreshes();
 
-    const auto response =
-        server.client().Get(questionPath("credits", creditsOf(7, 0, true), questions.roles));
-    REQUIRE(response);
-    CHECK(response->status == 202);
-    const auto document = documentOf(*response);
-    CHECK(keysOf(document) == Keys{"ready", "structure", "revision", "trackCount", "columns",
-                                   "changeCounts", "build", "halted"});
-    CHECK(document.at("ready") == false);
+    const std::vector<std::pair<const char*, std::vector<Owned>>> forms{
+        {"by ordinal", creditsOf(7, 0, true)},
+        {"by library path", creditsAt(libraryPathOf(questions.rows.at(0)), "0", true)},
+    };
+    for (const auto& [form, owned] : forms) {
+        INFO(std::string(form));
+        const auto response = server.client().Get(questionPath("credits", owned, questions.roles));
+        REQUIRE(response);
+        CHECK(response->status == 202);
+        const auto document = documentOf(*response);
+        CHECK(keysOf(document) == Keys{"ready", "structure", "revision", "trackCount", "columns",
+                                       "changeCounts", "build", "halted"});
+        CHECK(document.at("ready") == false);
+    }
     CHECK(server.refreshes() == refreshesBefore);
 }
 
@@ -358,4 +387,211 @@ TEST_CASE("a credit role naming a column the declaration does not hold is a 409 
     CHECK(response->status == 409);
     CHECK(errorOf(*response) == "'%comment%' is not a declared column");
     CHECK(served.server.refreshes() == refreshesBefore);
+}
+
+TEST_CASE("a library path answers the document its track's ordinal answers, split or unsplit") {
+    Served served(kCreditsCase);
+    served.library.apply({served.questions.changed(0, "rating", "5")});
+    const auto state = served.library.state();
+    const int refreshesBefore = served.server.refreshes();
+
+    for (const json& row : creditCase(kCreditsCase).at("rows")) {
+        const auto ordinal = row.at("ordinal").get<uint32_t>();
+        const std::string track = libraryPathOf(served.questions.rows.at(ordinal));
+        for (const bool splitsCredits : {true, false}) {
+            const auto byOrdinal = served.ask(creditsOf(state.structure, ordinal, splitsCredits),
+                                              served.questions.roles);
+            REQUIRE(byOrdinal);
+            REQUIRE(byOrdinal->status == 200);
+
+            for (const std::optional<std::string>& subsong :
+                 {std::optional<std::string>{"0"}, std::optional<std::string>{}}) {
+                INFO(track, ", splitsCredits ", splitsCredits, ", subsong ",
+                     subsong.value_or("left out"));
+                const auto byPath =
+                    served.ask(creditsAt(track, subsong, splitsCredits), served.questions.roles);
+                REQUIRE(byPath);
+                CHECK(byPath->status == 200);
+                CHECK(byPath->get_header_value("Content-Type") == "application/json");
+                CHECK(documentOf(*byPath) == documentOf(*byOrdinal));
+            }
+        }
+    }
+    CHECK(served.server.refreshes() == refreshesBefore);
+}
+
+// The twin is another credit's row moved to the same file, so an answer for the wrong subsong
+// names other artists than the right one would.
+TEST_CASE("a subsong picks the track of that subsong among those one file holds") {
+    QuestionLibrary built = questionLibraryOf(questionCase(kCreditsCase));
+    std::vector<std::string> twin = built.rows.at(10);
+    twin.at(0) = built.rows.at(kAlphaFtGamma).at(0);
+    twin.at(1) = built.rows.at(kAlphaFtGamma).at(1);
+    twin.at(2) = "1";
+    built.rows.insert(built.rows.begin() + kAlphaFtGamma + 1, twin);
+    const Served served(std::move(built));
+    const std::string track = libraryPathOf(served.questions.rows.at(kAlphaFtGamma));
+
+    const auto first = served.ask(served.structure(), kAlphaFtGamma);
+    const auto second = served.ask(served.structure(), kAlphaFtGamma + 1);
+    REQUIRE(first);
+    REQUIRE(second);
+    REQUIRE(first->status == 200);
+    REQUIRE(second->status == 200);
+    REQUIRE(documentOf(*first) != documentOf(*second));
+
+    for (const auto& [subsong, expected] :
+         {std::pair{"0", documentOf(*first)}, {"1", documentOf(*second)}}) {
+        INFO("subsong ", std::string(subsong));
+        const auto response = served.ask(creditsAt(track, subsong, true), served.questions.roles);
+        REQUIRE(response);
+        CHECK(response->status == 200);
+        CHECK(documentOf(*response) == expected);
+    }
+
+    const auto none = served.ask(creditsAt(track, "2", true), served.questions.roles);
+    REQUIRE(none);
+    CHECK(none->status == 404);
+    CHECK(errorOf(*none) == kNoSuchLibraryTrack);
+}
+
+TEST_CASE("a library path and subsong no track holds is a 404 saying there is no such track") {
+    const Served served(kCreditsCase);
+    const int refreshesBefore = served.server.refreshes();
+    const std::string held = libraryPathOf(served.questions.rows.at(0));
+    const std::string directory = served.questions.rows.at(0).at(0);
+    const std::string filename = served.questions.rows.at(0).at(1);
+
+    struct Unheld {
+        const char* what;
+        std::string track;
+        std::optional<std::string> subsong;
+    };
+    // The path is a lookup key, so a spelling that a filesystem would resolve to a held file
+    // still names nothing.
+    const std::vector<Unheld> unheld{
+        {"a path no track is at", "Nobody/Nowhere/01 Missing.flac", "0"},
+        {"a subsong the file does not hold", held, "1"},
+        {"the last subsong 32 bits hold", held, "4294967295"},
+        {"a directory alone", directory, "0"},
+        {"a filename alone", filename, "0"},
+        {"a path through '..'", directory + "../" + held, "0"},
+        {"a path back-slashed", "Alpha\\First\\01 Solo.flac", std::nullopt},
+    };
+    REQUIRE(held == "Alpha/First/01 Solo.flac");
+
+    for (const auto& asked : unheld) {
+        INFO(std::string(asked.what));
+        const auto response =
+            served.ask(creditsAt(asked.track, asked.subsong, true), served.questions.roles);
+        REQUIRE(response);
+        CHECK(response->status == 404);
+        CHECK(errorOf(*response) == kNoSuchLibraryTrack);
+    }
+    CHECK(served.server.refreshes() == refreshesBefore);
+}
+
+// Two media library roots can hold one relative path. Answering whichever sorts first would show
+// one copy's credit for the row a client opened from the other.
+TEST_CASE("a library path two media library roots hold is the 409 GET /api/track/library gives") {
+    QuestionLibrary built = questionLibraryOf(questionCase(kCreditsCase));
+    built.rows.insert(built.rows.begin() + kAlphaFtGamma + 1, built.rows.at(kAlphaFtGamma));
+    const Served served(std::move(built));
+    const std::string twice = libraryPathOf(served.questions.rows.at(kAlphaFtGamma));
+    const int refreshesBefore = served.server.refreshes();
+
+    for (const std::optional<std::string>& subsong :
+         {std::optional<std::string>{"0"}, std::optional<std::string>{}}) {
+        INFO("subsong ", subsong.value_or("left out"));
+        const auto response = served.ask(creditsAt(twice, subsong, true), served.questions.roles);
+        REQUIRE(response);
+        CHECK(response->status == 409);
+        CHECK(errorOf(*response) == describe(PlayerOutcome::ambiguousAddress));
+        CHECK_FALSE(documentOf(*response).contains("artist"));
+    }
+
+    const auto noSuchSubsong = served.ask(creditsAt(twice, "1", true), served.questions.roles);
+    REQUIRE(noSuchSubsong);
+    CHECK(noSuchSubsong->status == 404);
+
+    const auto once = served.ask(creditsAt(libraryPathOf(served.questions.rows.at(0)), "0", true),
+                                 served.questions.roles);
+    REQUIRE(once);
+    CHECK(once->status == 200);
+    CHECK(served.server.refreshes() == refreshesBefore);
+}
+
+// Every request below is refused with the error the route gives a malformed question. The
+// detail is left to the route: the contract names no sentence for these.
+// The detail is left to the route: the owner named the error for these and no sentence.
+TEST_CASE("a credit question naming both forms, neither, or half of one is a 400 refusing it") {
+    const Served served(kCreditsCase);
+    const int refreshesBefore = served.server.refreshes();
+    const std::string track = libraryPathOf(served.questions.rows.at(0));
+    const std::string structure = std::to_string(served.structure());
+
+    constexpr char kUnacceptable[] = "unacceptable question";
+    constexpr char kDuplicate[] = "duplicate question";
+
+    struct Refused {
+        const char* what;
+        std::vector<Owned> owned;
+        const char* error = kUnacceptable;
+    };
+    const std::vector<Refused> refused{
+        {"both forms whole",
+         {{"splitsCredits", "true"},
+          {"structure", structure},
+          {"ordinal", "0"},
+          {"track", track},
+          {"subsong", "0"}}},
+        {"an ordinal form and a track",
+         {{"splitsCredits", "true"}, {"structure", structure}, {"ordinal", "0"}, {"track", track}}},
+        {"an ordinal form and a subsong",
+         {{"splitsCredits", "true"}, {"structure", structure}, {"ordinal", "0"}, {"subsong", "0"}}},
+        {"a track and an ordinal with no structure",
+         {{"splitsCredits", "true"}, {"ordinal", "0"}, {"track", track}}},
+        {"neither form", {{"splitsCredits", "true"}}},
+        {"a subsong alone", {{"splitsCredits", "true"}, {"subsong", "0"}}},
+        {"a track with no splitsCredits", {{"track", track}, {"subsong", "0"}}},
+        {"a track named twice",
+         {{"splitsCredits", "true"}, {"track", track}, {"track", "Beta/Second/01 Beta Alone.flac"}},
+         kDuplicate},
+        {"a subsong named twice",
+         {{"splitsCredits", "true"}, {"track", track}, {"subsong", "0"}, {"subsong", "1"}},
+         kDuplicate},
+        {"an empty track", {{"splitsCredits", "true"}, {"track", ""}}},
+        {"a track past 4096 characters",
+         {{"splitsCredits", "true"}, {"track", std::string(4097, 'a')}}},
+        {"a track carrying a control character",
+         {{"splitsCredits", "true"},
+          {"track", "Alpha/First/" + std::string(1, '\x01') + "01 Solo.flac"}}},
+    };
+
+    for (const auto& request : refused) {
+        INFO("refused: ", std::string(request.what));
+        const auto response = served.server.client().Get(
+            questionPath("credits", request.owned, served.questions.roles));
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        const json document = documentOf(*response);
+        CHECK(document.value("error", "") == std::string(request.error));
+        CHECK_FALSE(document.contains("artist"));
+    }
+    CHECK(served.server.refreshes() == refreshesBefore);
+}
+
+TEST_CASE("a subsong that is not a whole number 32 bits hold is a 400 naming the subsong") {
+    const Served served(kCreditsCase);
+    const std::string track = libraryPathOf(served.questions.rows.at(0));
+
+    for (const std::string subsong : {"x", "-1", "", "1.5", "+1", "4294967296"}) {
+        INFO("subsong: ", subsong);
+        const auto response = served.ask(creditsAt(track, subsong, true), served.questions.roles);
+        REQUIRE(response);
+        CHECK(response->status == 400);
+        const json document = documentOf(*response);
+        CHECK(document.value("error", "") == "unacceptable question");
+        CHECK(document.value("detail", "").find("'subsong'") != std::string::npos);
+    }
 }

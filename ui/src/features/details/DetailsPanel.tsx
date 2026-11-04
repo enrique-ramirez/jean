@@ -6,7 +6,9 @@ import type { DetailsAsked } from "@/domain/track/showDetails";
 import { TrackDetails } from "@/domain/track/TrackDetails";
 import { isStreamPath } from "@/domain/track/trackPath";
 import { readTrackColumns } from "@/domain/track/trackRead";
+import { useTrackMembers } from "@/domain/track/useTrackMembers";
 import { fooJeanOrigin } from "@/shared/api/discovery";
+import type { CreditsAddress } from "@/shared/api/libraryCredits";
 import { PLAYER_JOINER } from "@/shared/api/multiValue";
 import type { WriteFields } from "@/shared/api/tags";
 import type { TrackAddress, TrackColumns } from "@/shared/api/types";
@@ -37,6 +39,17 @@ async function readTrack(
 			return null;
 	}
 	return null;
+}
+
+// The ordinal names one track where a path can name two, so it is the form asked first.
+function creditsAddressOf(
+	addresses: readonly TrackAddress[],
+): CreditsAddress | null {
+	const ordinal = addresses.find((address) => address.kind === "ordinal");
+	if (ordinal)
+		return { structure: ordinal.structure, ordinal: ordinal.ordinal };
+	const library = addresses.find((address) => address.kind === "library");
+	return library ? { track: library.track, subsong: library.subsong } : null;
 }
 
 interface Answered {
@@ -79,6 +92,10 @@ export function DetailsPanel({
 	const settled = answered?.key === key ? answered : null;
 	const wait = useWait(isOpen && asked !== null && !settled, key ?? "");
 	const failed = settled !== null && settled.row === null;
+
+	const members = useTrackMembers(
+		isOpen && addresses ? creditsAddressOf(addresses) : null,
+	);
 
 	const keyboardOwner = useKeyboardOwner();
 
@@ -203,6 +220,7 @@ export function DetailsPanel({
 							isPending={wait.isOverdue}
 							failed={failed}
 							addresses={asked.addresses}
+							members={members.albumArtist}
 							onSaved={noteSaved}
 							isStream={isStreamPath(settled?.row?.[PATH_COLUMN])}
 						/>

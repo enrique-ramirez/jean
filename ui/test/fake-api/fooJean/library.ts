@@ -456,13 +456,39 @@ const QUESTION_FAILURE: Record<500 | 503, { error: string }> = {
 	503: LIBRARY_UNAVAILABLE,
 };
 
+// A credits question addressed by library path: it becomes an ordinal once the snapshot is known to be built.
+interface CreditsAtPath {
+	kind: "creditsAtPath";
+	track: string;
+	subsong: number;
+	splitsCredits: boolean;
+}
+
 export interface QuestionRoute {
 	required: readonly string[];
 	optional: readonly string[];
 	flags: readonly string[];
 	counts?: readonly string[];
-	asks: (given: Map<string, string>) => Question;
+	// Judged once the required names are present, before any value is read.
+	refuses?: (given: Map<string, string>) => string | null;
+	asks: (given: Map<string, string>) => Question | CreditsAtPath;
 }
+
+const MAX_TRACK_ADDRESS_CHARACTERS = 4096;
+
+// Exactly one address form: `ordinal` with `structure`, or `track` with an optional `subsong`.
+const addressFormRefusal = (given: Map<string, string>) => {
+	const ordinalForm = given.has("ordinal") || given.has("structure");
+	const pathForm = given.has("track") || given.has("subsong");
+	if (ordinalForm && pathForm)
+		return "name 'ordinal' with 'structure', or 'track', and not both";
+	if (!ordinalForm && !pathForm)
+		return "'ordinal' with 'structure', or 'track', is required";
+	if (ordinalForm && !given.has("structure")) return "'structure' is required";
+	if (ordinalForm && !given.has("ordinal")) return "'ordinal' is required";
+	if (pathForm && !given.has("track")) return "'track' is required";
+	return null;
+};
 
 const MAX_QUERY_BYTES = 1024;
 
@@ -507,15 +533,24 @@ const QUESTION_ROUTES: Record<string, QuestionRoute> = {
 		asks: (given) => ({ kind: "genre", name: given.get("name") ?? "" }),
 	},
 	"/api/library/credits": {
-		required: ["splitsCredits", "structure", "ordinal"],
-		optional: [],
+		required: ["splitsCredits"],
+		optional: ["structure", "ordinal", "track", "subsong"],
 		flags: ["splitsCredits"],
-		counts: ["ordinal"],
-		asks: (given) => ({
-			kind: "credits",
-			ordinal: Number(given.get("ordinal")),
-			splitsCredits: given.get("splitsCredits") === "true",
-		}),
+		counts: ["ordinal", "subsong"],
+		refuses: addressFormRefusal,
+		asks: (given) =>
+			given.has("track")
+				? {
+						kind: "creditsAtPath",
+						track: given.get("track") ?? "",
+						subsong: Number(given.get("subsong") ?? 0),
+						splitsCredits: given.get("splitsCredits") === "true",
+					}
+				: {
+						kind: "credits",
+						ordinal: Number(given.get("ordinal")),
+						splitsCredits: given.get("splitsCredits") === "true",
+					},
 	},
 	"/api/library/values": {
 		required: ["field", "prefix", "limit"],
@@ -544,7 +579,10 @@ const rawBytesOf = (url: URL, parameter: string) => {
 
 export const questionAsked = (
 	url: URL,
-	route: Pick<QuestionRoute, "required" | "optional" | "flags" | "counts">,
+	route: Pick<
+		QuestionRoute,
+		"required" | "optional" | "flags" | "counts" | "refuses"
+	>,
 ) => {
 	const owned = [...route.required, ...route.optional];
 	const sent = pairsInSentOrder(url);
@@ -555,6 +593,10 @@ export const questionAsked = (
 	for (const name of route.required)
 		if (!given.has(name))
 			return refusedParameter("unacceptable question", `'${name}' is required`);
+
+	const unaddressed = route.refuses?.(given);
+	if (unaddressed)
+		return refusedParameter("unacceptable question", unaddressed);
 
 	for (const name of owned) {
 		const value = given.get(name);
@@ -576,6 +618,14 @@ export const questionAsked = (
 			return refusedParameter(
 				"unacceptable question",
 				`'${name}' must be at most ${MAX_QUERY_BYTES} bytes`,
+			);
+		if (
+			name === "track" &&
+			(value === "" || [...value].length > MAX_TRACK_ADDRESS_CHARACTERS)
+		)
+			return refusedParameter(
+				"unacceptable question",
+				`'track' must be printable text of at most ${MAX_TRACK_ADDRESS_CHARACTERS} characters`,
 			);
 		if (name === "structure" && !readsAsCount(value))
 			return refusedParameter(
@@ -635,11 +685,27 @@ async function handleLibraryQuestion(
 
 	await releasedFromHold(fake, "holdQuestions", "questionsHeld");
 
-	const question = route.asks(given);
-	if (question.kind === "credits") {
+	const asked = route.asks(given);
+	let question: Question;
+	if (asked.kind === "creditsAtPath") {
+		// Resolved as `GET /track/library` resolves a library address.
+		if (namesTwoTracks(state, asked.track))
+			return json(response, { error: NAMES_TWO_TRACKS, detail: "" }, 409);
+		const ordinal = state.libraryOrdinalFor(
+			libraryTrackAt(state, asked.track, asked.subsong),
+		);
+		if (ordinal === null)
+			return json(response, { error: "no such track" }, 404);
+		question = {
+			kind: "credits",
+			ordinal,
+			splitsCredits: asked.splitsCredits,
+		};
+	} else question = asked;
+	if (asked.kind === "credits") {
 		if (structureMoved(response, given.get("structure") ?? "", state))
 			return true;
-		if (question.ordinal >= state.ordinalOrder().length)
+		if (asked.ordinal >= state.ordinalOrder().length)
 			return json(
 				response,
 				refusedParameter(

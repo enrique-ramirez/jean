@@ -7,13 +7,22 @@ export type LibraryCredits = Schema["LibraryCredits"];
 
 type CreditsResult = { ok: true; credits: LibraryCredits } | ReadFailure;
 
-// The ordinal is read at `structure`, and the component spells that one as text.
+export type CreditsAddress =
+	| { structure: number; ordinal: number }
+	| { track: string; subsong: number };
+
+// The ordinal is read at `structure`, and the component spells that one as text. The component
+// refuses a request naming both forms, so only the one given is sent.
 export async function fetchLibraryCredits(
 	origin: string,
 	roles: LibraryRoles,
-	ask: { structure: number; ordinal: number; splitsCredits: boolean },
+	ask: CreditsAddress & { splitsCredits: boolean },
 	signal?: AbortSignal,
 ): Promise<CreditsResult> {
+	const address =
+		"track" in ask
+			? { track: ask.track, subsong: ask.subsong }
+			: { structure: String(ask.structure), ordinal: ask.ordinal };
 	const read = await askResult(
 		origin,
 		READ_TIMEOUT_MS,
@@ -24,8 +33,7 @@ export async function fetchLibraryCredits(
 				params: {
 					query: {
 						...roles,
-						structure: String(ask.structure),
-						ordinal: ask.ordinal,
+						...address,
 						splitsCredits: ask.splitsCredits,
 					},
 				},

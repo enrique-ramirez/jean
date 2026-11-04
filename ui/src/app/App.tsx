@@ -238,14 +238,6 @@ function Shell() {
 		{ restore: !arrivingAtPlayingTrack },
 	);
 
-	const showQueueAsked = useShowQueueAsked();
-	const { setOpen: setQueueOpen } = queue;
-	useEffect(() => {
-		if (!showQueueAsked) return;
-		queueShown();
-		setQueueOpen(true);
-	}, [showQueueAsked, setQueueOpen]);
-
 	const detailsAsked = useShowDetailsAsked();
 	const [details, setDetails] = useState<{
 		asked: NonNullable<typeof detailsAsked>;
@@ -257,6 +249,37 @@ function Shell() {
 		leaveGuarded(() => setDetails({ asked: detailsAsked, isOpen: true }));
 	}, [detailsAsked]);
 	const isDetailsOpen = details?.isOpen ?? false;
+	const isQueueShown = queue.isOpen && !isDetailsOpen;
+	const closeDetails = useCallback(
+		() =>
+			setDetails((current) =>
+				current ? { ...current, isOpen: false } : current,
+			),
+		[],
+	);
+
+	// One panel at a time, the last ask winning: a way to the queue made with Details open closes
+	// Details, after the discard question where the form holds a change, and opens the queue rather
+	// than flipping it, since it may already be open underneath.
+	const { setOpen: setQueueOpen, toggle: toggleQueueOpen } = queue;
+	const showQueue = useCallback(() => {
+		if (!isDetailsOpen) return setQueueOpen(true);
+		leaveGuarded(() => {
+			closeDetails();
+			setQueueOpen(true);
+		});
+	}, [isDetailsOpen, closeDetails, setQueueOpen]);
+	const toggleQueue = useCallback(() => {
+		if (isDetailsOpen) showQueue();
+		else toggleQueueOpen();
+	}, [isDetailsOpen, showQueue, toggleQueueOpen]);
+
+	const showQueueAsked = useShowQueueAsked();
+	useEffect(() => {
+		if (!showQueueAsked) return;
+		queueShown();
+		showQueue();
+	}, [showQueueAsked, showQueue]);
 
 	const { closeDrawer: closeSidebarDrawer } = sidebar;
 
@@ -385,7 +408,7 @@ function Shell() {
 			sidebar.setOpen(true);
 			askToFocusSidebar();
 		},
-		toggleQueue: queue.toggle,
+		toggleQueue,
 		toggleNowPlaying: nowPlaying.toggle,
 		goToPlaying: () => {
 			if (!playingRoute) return;
@@ -470,8 +493,8 @@ function Shell() {
 							tab={panelOfRoute(route)}
 							onSelectTab={nowPlaying.selectPanel}
 							isCompactViewport={isCompactViewport}
-							isQueueOpen={queue.isOpen}
-							onToggleQueue={queue.toggle}
+							isQueueOpen={isQueueShown}
+							onToggleQueue={toggleQueue}
 							playingFrom={playingName}
 							onOpenPlayingFrom={
 								playingRoute ? () => openPlayingFrom(playingRoute) : undefined
@@ -482,7 +505,7 @@ function Shell() {
 				) : null}
 
 				<QueuePanel
-					isOpen={queue.isOpen && !isDetailsOpen}
+					isOpen={isQueueShown}
 					isCompactViewport={isCompactViewport}
 					onDismiss={() => queue.setOpen(false)}
 				/>
@@ -491,11 +514,7 @@ function Shell() {
 					asked={details?.asked ?? null}
 					isOpen={isDetailsOpen}
 					isCompactViewport={isCompactViewport}
-					onDismiss={() =>
-						setDetails((current) =>
-							current ? { ...current, isOpen: false } : current,
-						)
-					}
+					onDismiss={closeDetails}
 				/>
 			</div>
 
@@ -511,8 +530,8 @@ function Shell() {
 
 			{isCompactViewport && isNowPlaying ? null : (
 				<StatusBar
-					isQueueOpen={queue.isOpen}
-					onToggleQueue={queue.toggle}
+					isQueueOpen={isQueueShown}
+					onToggleQueue={toggleQueue}
 					onOpenNowPlaying={nowPlaying.toggle}
 					onRevealNowPlaying={() => navigate(`/${ROUTE.playing}`)}
 				/>

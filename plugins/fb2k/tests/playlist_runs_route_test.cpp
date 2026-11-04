@@ -228,8 +228,8 @@ std::string digits(uint64_t counter) {
 
 struct Setup {
     bool snapshot = true;
-    std::function<void(FakePlayer&)> holding;
-    std::function<void(Player&)> wiring;
+    std::function<void(FakePlayer&)> holding = nullptr;
+    std::function<void(Player&)> wiring = nullptr;
 };
 
 struct Served {

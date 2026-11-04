@@ -484,7 +484,7 @@ TEST_CASE("eight threads asking at once over one instance each get the single-th
 
 TEST_CASE("a question racing row changes answers the rows of the revision it carries") {
     constexpr size_t kReaders = 4;
-    constexpr size_t kToggles = 200;
+    constexpr size_t kAsksPerReader = 50;
 
     const CaseLibrary rows = playedLibrary();
     Library library;
@@ -512,23 +512,23 @@ TEST_CASE("a question racing row changes answers the rows of the revision it car
     REQUIRE(untouched != moved);
 
     LibraryQuestions shared;
-    std::atomic<bool> written{false};
+    std::atomic<size_t> reading{kReaders};
     std::atomic<size_t> wrong{0};
-    std::atomic<size_t> asks{0};
     std::latch start(kReaders + 1);
 
+    // The readers are bounded and the writer runs until they are done, never the reverse: a
+    // reader-preferring rwlock lets readers that loop on the writer's flag starve it forever.
     std::thread writer([&] {
         start.arrive_and_wait();
-        for (size_t toggle = 0; toggle < kToggles; ++toggle)
+        for (size_t toggle = 0; reading > 0; ++toggle)
             library.apply({toggle % 2 == 0 ? retagged : restored});
-        written = true;
     });
     std::vector<std::thread> readers;
     readers.reserve(kReaders);
     for (size_t reader = 0; reader < kReaders; ++reader) {
         readers.emplace_back([&] {
             start.arrive_and_wait();
-            do {
+            for (size_t asked = 0; asked < kAsksPerReader; ++asked) {
                 library.read([&](const Snapshot& snapshot) {
                     const json answers = everyKind(shared, snapshot, rows.roles);
                     const json& expected =
@@ -539,15 +539,14 @@ TEST_CASE("a question racing row changes answers the rows of the revision it car
                             ++wrong;
                     }
                 });
-                ++asks;
-            } while (!written);
+            }
+            --reading;
         });
     }
     writer.join();
     for (auto& reader : readers)
         reader.join();
 
-    INFO("asks: ", asks.load());
     CHECK(wrong == 0);
 }
 

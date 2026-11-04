@@ -5,6 +5,7 @@
 #include "third_party/doctest.h"
 
 #include <algorithm>
+#include <string_view>
 
 namespace jean::testing {
 
@@ -22,7 +23,7 @@ const nlohmann::json& setCases() {
     return file.at("cases");
 }
 
-const nlohmann::json& setCase(const std::string& name) {
+const nlohmann::json& setCase(const std::string_view name) {
     const nlohmann::json& cases = setCases();
     const auto found = std::find_if(cases.begin(), cases.end(), [&name](const nlohmann::json& c) {
         return c.at("name").get_ref<const std::string&>() == name;

@@ -5,12 +5,13 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace jean::testing {
 
 const nlohmann::json& setCases();
 
-const nlohmann::json& setCase(const std::string& name);
+const nlohmann::json& setCase(std::string_view name);
 
 const nlohmann::json& sourceOf(const nlohmann::json& setsCase);
 

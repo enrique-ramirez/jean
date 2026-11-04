@@ -120,10 +120,11 @@ json ask(LibraryQuestions& questions, const Snapshot& snapshot, const LibraryRol
     return questions.genre(snapshot, roles, name);
 }
 
-const json& setNamed(const json& setsCase, const std::string& part) {
+const json& setNamed(const json& setsCase, const std::string_view part) {
     const json& sets = setsCase.at("sets");
-    const auto found = std::find_if(sets.begin(), sets.end(),
-                                    [&part](const json& set) { return set.at("part") == part; });
+    const auto found = std::find_if(sets.begin(), sets.end(), [&part](const json& set) {
+        return set.at("part").get_ref<const std::string&>() == part;
+    });
     REQUIRE_MESSAGE(found != sets.end(), "the case holds no ", part, " set");
     return *found;
 }

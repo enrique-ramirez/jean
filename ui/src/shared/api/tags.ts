@@ -8,6 +8,9 @@ import {
 } from "./client";
 
 export type TagWriteRequest = Schema["TagWriteRequest"];
+// An array is a multi-valued tag, one entry per value; a string is one value, and "" removes the tag.
+// The contract also accepts a whole number, which the client never sends: it spells every value as a string.
+export type WriteFields = Record<string, string | string[]>;
 type TagWritten = Schema["TagWritten"];
 
 export type WriteFailure =

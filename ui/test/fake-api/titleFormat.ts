@@ -48,6 +48,12 @@ const formatOf = (expression: string): Format => {
 				const text = track[field] ?? "";
 				return { text, isTrue: text !== "" };
 			};
+		} else if (call[1] === "meta_sep" && parts.length === 2) {
+			const field = `$meta_sep(${parts[0].toLowerCase()},${parts[1]})`;
+			derived = (track) => {
+				const text = track[field] ?? "";
+				return { text, isTrue: text !== "" };
+			};
 		} else if (call[1] === "if2" && parts.length === 2) {
 			const first = formatOf(parts[0]);
 			const second = formatOf(parts[1]);
@@ -68,7 +74,7 @@ const formatOf = (expression: string): Format => {
 	return format;
 };
 
-// foobar2000 title formatting: `$meta(x)` answers '' and false for a file without the field, where
+// foobar2000 title formatting: `$meta(x)` and `$meta_sep(x,...)` answer '' and false for a file without the field, where
 // `%x%` answers `?`; `$if2(a,b)` answers `a` where it is true and `b` otherwise.
 const titleFormat = (track: Track, expression: string): Formatted =>
 	formatOf(expression)(track);

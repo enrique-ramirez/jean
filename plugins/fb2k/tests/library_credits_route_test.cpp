@@ -583,8 +583,8 @@ TEST_CASE(
     const int refreshesBefore = served.server.refreshes();
     const std::string track = libraryPathOf(served.questions.rows.at(0));
 
-    constexpr char kUnacceptable[] = "unacceptable question";
-    constexpr char kDuplicate[] = "duplicate question";
+    static constexpr char kUnacceptable[] = "unacceptable question";
+    static constexpr char kDuplicate[] = "duplicate question";
 
     struct Refused {
         const char* what;

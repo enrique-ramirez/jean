@@ -729,7 +729,7 @@ TEST_CASE(
         return Keys(required.begin(), required.end());
     };
 
-    const json setsCase = setCase("credits: artist \"Beta\" splits true");
+    const json& setsCase = setCase("credits: artist \"Beta\" splits true");
     const auto questions = measuredLibraryOf(setsCase);
     Library library;
     const LibraryRoutesServer server(&library, 0);

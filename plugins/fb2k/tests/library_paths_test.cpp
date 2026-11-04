@@ -216,26 +216,28 @@ TEST_CASE("the map is read on many threads while the library is replaced under t
     library.replace(spine());
 
     constexpr int kReaders = 4;
-    constexpr int kReplacements = 50;
-    std::atomic<bool> done{false};
+    constexpr int kReadsPerReader = 50;
+    std::atomic<int> reading{kReaders};
     std::atomic<int> misses{0};
 
+    // Bounded readers and a writer that runs until they are done: readers looping on the writer's
+    // flag starve it forever under a reader-preferring rwlock.
     std::vector<std::thread> readers;
     readers.reserve(kReaders);
     for (int reader = 0; reader < kReaders; ++reader) {
-        readers.emplace_back([&library, &done, &misses] {
-            while (!done.load()) {
+        readers.emplace_back([&library, &reading, &misses] {
+            for (int read = 0; read < kReadsPerReader; ++read) {
                 const auto paths = library.paths();
                 const auto found = paths->firstOrdinalOf("Band/Record/01.flac");
                 if (!found || (*found != 0 && *found != 2))
                     misses.fetch_add(1);
             }
+            --reading;
         });
     }
 
-    for (int replacement = 0; replacement < kReplacements; ++replacement)
+    for (int replacement = 0; reading > 0; ++replacement)
         library.replace(replacement % 2 == 0 ? behindTwo() : spine());
-    done.store(true);
     for (auto& reader : readers)
         reader.join();
 

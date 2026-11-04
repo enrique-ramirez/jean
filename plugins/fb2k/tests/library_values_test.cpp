@@ -247,7 +247,7 @@ TEST_CASE("a new structure is folded afresh, though its change counts start at z
 
 TEST_CASE("values asked while row changes land are the values of the revision they carry") {
     constexpr size_t kReaders = 4;
-    constexpr size_t kToggles = 200;
+    constexpr size_t kAsksPerReader = 50;
 
     CaseLibrary library(kStrokedLetters);
     const RowChange retagged = library.rows.changed(kBranfordRow, "artist", "Mono");
@@ -267,23 +267,23 @@ TEST_CASE("values asked while row changes land are the values of the revision th
     const uint64_t restoredAt = library.library.state().revision;
     REQUIRE(std::find(moved.begin(), moved.end(), "Mono") != moved.end());
 
-    std::atomic<bool> written{false};
+    std::atomic<size_t> reading{kReaders};
     std::atomic<size_t> wrong{0};
-    std::atomic<size_t> asks{0};
     std::latch start(kReaders + 1);
 
+    // The readers are bounded and the writer runs until they are done, never the reverse: a
+    // reader-preferring rwlock lets readers that loop on the writer's flag starve it forever.
     std::thread writer([&] {
         start.arrive_and_wait();
-        for (size_t toggle = 0; toggle < kToggles; ++toggle)
+        for (size_t toggle = 0; reading > 0; ++toggle)
             library.library.apply({toggle % 2 == 0 ? retagged : restored});
-        written = true;
     });
     std::vector<std::thread> readers;
     readers.reserve(kReaders);
     for (size_t reader = 0; reader < kReaders; ++reader) {
         readers.emplace_back([&] {
             start.arrive_and_wait();
-            do {
+            for (size_t asked = 0; asked < kAsksPerReader; ++asked) {
                 library.library.read([&](const Snapshot& snapshot) {
                     const json answer =
                         shared.values(snapshot, library.roles, ValueField::artist, "mo", kNoCap);
@@ -294,14 +294,13 @@ TEST_CASE("values asked while row changes land are the values of the revision th
                         !values.is_array() || sorted(values.get<Values>()) != expected)
                         ++wrong;
                 });
-                ++asks;
-            } while (!written);
+            }
+            --reading;
         });
     }
     writer.join();
     for (auto& reader : readers)
         reader.join();
 
-    INFO("asks: ", asks.load());
     CHECK(wrong == 0);
 }

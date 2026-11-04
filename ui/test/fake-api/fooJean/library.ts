@@ -476,17 +476,30 @@ export interface QuestionRoute {
 
 const MAX_TRACK_ADDRESS_CHARACTERS = 4096;
 
+export const TWO_ADDRESS_FORMS =
+	"a request names one of 'track' and 'ordinal', never both";
+export const NO_ADDRESS_FORM = "'track' or 'ordinal' is required";
+
+// `structure` announces the ordinal form and `subsong` the path form, so a half form still
+// counts as the form it began.
+const addressForm = (has: (name: string) => boolean) => {
+	const ordinalForm = has("ordinal") || has("structure");
+	const pathForm = has("track") || has("subsong");
+	if (ordinalForm && pathForm) return "both";
+	if (ordinalForm) return "ordinal";
+	return pathForm ? "path" : "neither";
+};
+
 // Exactly one address form: `ordinal` with `structure`, or `track` with an optional `subsong`.
 const addressFormRefusal = (given: Map<string, string>) => {
-	const ordinalForm = given.has("ordinal") || given.has("structure");
-	const pathForm = given.has("track") || given.has("subsong");
-	if (ordinalForm && pathForm)
-		return "name 'ordinal' with 'structure', or 'track', and not both";
-	if (!ordinalForm && !pathForm)
-		return "'ordinal' with 'structure', or 'track', is required";
-	if (ordinalForm && !given.has("structure")) return "'structure' is required";
-	if (ordinalForm && !given.has("ordinal")) return "'ordinal' is required";
-	if (pathForm && !given.has("track")) return "'track' is required";
+	const form = addressForm((name) => given.has(name));
+	if (form === "both") return TWO_ADDRESS_FORMS;
+	if (form === "neither") return NO_ADDRESS_FORM;
+	if (form === "ordinal" && !given.has("structure"))
+		return "'structure' is required";
+	if (form === "ordinal" && !given.has("ordinal"))
+		return "'ordinal' is required";
+	if (form === "path" && !given.has("track")) return "'track' is required";
 	return null;
 };
 
@@ -1031,20 +1044,11 @@ export async function handleLibrary(request: Asked) {
 			return true;
 		}
 
-		const namesTrack =
-			url.searchParams.has("track") || url.searchParams.has("subsong");
-		const namesOrdinal = url.searchParams.has("ordinal");
-		if (namesTrack && namesOrdinal)
-			return json(
-				response,
-				{
-					error: "a request names one of 'track' and 'ordinal', never both",
-					detail: "",
-				},
-				400,
-			);
+		const form = addressForm((name) => url.searchParams.has(name));
+		if (form === "both")
+			return json(response, { error: TWO_ADDRESS_FORMS, detail: "" }, 400);
 
-		if (namesOrdinal) {
+		if (form === "ordinal") {
 			const ordinal = url.searchParams.get("ordinal") ?? "";
 			if (!/^\d+$/.test(ordinal) || Number(ordinal) > 0xffff_ffff)
 				return json(
@@ -1080,12 +1084,8 @@ export async function handleLibrary(request: Asked) {
 			});
 		}
 
-		if (!namesTrack)
-			return json(
-				response,
-				{ error: "'track' or 'ordinal' is required", detail: "" },
-				400,
-			);
+		if (form === "neither")
+			return json(response, { error: NO_ADDRESS_FORM, detail: "" }, 400);
 
 		const asked = url.searchParams.getAll("columns");
 		const refused = refuseColumns(asked);

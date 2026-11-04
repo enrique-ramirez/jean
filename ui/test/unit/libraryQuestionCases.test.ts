@@ -6,6 +6,11 @@ import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { FIELD, TRACK_EXPRESSIONS } from "../../src/domain/track/fields.ts";
 import type { components } from "../../src/shared/api/fooJeanSchema.d.ts";
+import {
+	NAMES_TWO_TRACKS,
+	NO_ADDRESS_FORM,
+	TWO_ADDRESS_FORMS,
+} from "../fake-api/fooJean/library.ts";
 import type { FooJeanOptions } from "../fake-api/fooJean/options.ts";
 import { COMPONENT_RATE_LIMITS } from "../fake-api/fooJean/rateLimits.ts";
 import { createState } from "../fake-api/state.ts";
@@ -503,6 +508,11 @@ const refusalOf = async (
 	const answer = await ask(state, route, { query: query });
 	return { status: answer.status, body: bodyOf(answer) };
 };
+
+const unacceptable = (detail: string) => ({
+	status: 400,
+	body: { error: "unacceptable question", detail },
+});
 
 const notARole = (name: string) => ({
 	status: 400,
@@ -1103,10 +1113,6 @@ test("a credits question missing a parameter, or with one it cannot read, is 400
 	const state = declared();
 	const structure = String((await libraryOf(state)).structure);
 	const asked = creditsQuery(structure, "0");
-	const unacceptable = (detail: string) => ({
-		status: 400,
-		body: { error: "unacceptable question", detail },
-	});
 	const replaced = (name: string, value: string): [string, string][] =>
 		asked.map(([held, was]) => [held, held === name ? value : was]);
 
@@ -1193,4 +1199,258 @@ test("credits spend from the questions' bucket, refused as a question is", async
 	const refused = await ask(state, CREDITS, { query: query });
 	assert.equal(refused.status, 429);
 	assert.deepEqual(bodyOf(refused), { error: "too many library questions" });
+});
+
+const PATH_ROLES = new Map(ROLES);
+const roleExpression = (role: string) => {
+	const expression = PATH_ROLES.get(role);
+	assert.ok(expression, `no role ${role}`);
+	return expression;
+};
+
+const SET = "Zz/Live/set.cue";
+
+const heldAt = (
+	path: string,
+	subsong: number,
+	artist: string,
+	artists = "",
+) => ({
+	"%path%": `C:\\Music\\${path.replaceAll("/", "\\")}`,
+	"%subsong%": String(subsong),
+	...Object.fromEntries(ROLES.map(([, expression]) => [expression, ""])),
+	[roleExpression("artist")]: artist,
+	[roleExpression("albumArtist")]: artist,
+	[roleExpression("artists")]: artists,
+	[roleExpression("albumArtists")]: artists,
+});
+
+// One cue sheet's three subsongs, listed out of subsong order and sorted after the two files whose
+// names teach the splitter "Alpha & Beta", so no subsong shares its number with its ordinal.
+const pathLibrary = (fooJean: FooJeanOptions = {}) => {
+	const state = createState({
+		fooJean,
+		mediaLibrary: [
+			heldAt(SET, 2, "Epsilon; Zeta", "Epsilon\u001fZeta"),
+			heldAt(SET, 0, "Alpha & Beta"),
+			heldAt(SET, 1, "Gamma; Delta", "Gamma\u001fDelta"),
+			heldAt("Cd/Alpha.flac", 0, "Alpha"),
+			heldAt("Cd/Beta.flac", 0, "Beta"),
+		],
+	});
+	state.startLibraryBuild([...TRACK_EXPRESSIONS]);
+	state.finishLibraryBuild();
+	return state;
+};
+
+const pathQuery = (
+	track: string | null,
+	subsong: string | null,
+	splitsCredits = true,
+): [string, string][] => [
+	["splitsCredits", String(splitsCredits)],
+	...(track === null ? [] : [["track", track] as [string, string]]),
+	...(subsong === null ? [] : [["subsong", subsong] as [string, string]]),
+	...ROLES,
+];
+
+// Read through `GET /track/library`, so the ordinal each path is compared against is the one the
+// fake answers with rather than one this file worked out.
+const ordinalOfPath = async (
+	state: FakeState,
+	path: string,
+	subsong: number,
+) => {
+	const { structure, trackCount } = (
+		await ask(state, "/api/state").then(bodyOf)
+	).library;
+	for (let ordinal = 0; ordinal < trackCount; ordinal += 1) {
+		const read = bodyOf(
+			await ask(state, "/api/track/library", {
+				query: [
+					["ordinal", String(ordinal)],
+					["structure", String(structure)],
+					["columns", "%path%"],
+					["columns", "%subsong%"],
+				],
+			}),
+		).columns;
+		if (
+			read[0] === `C:\\Music\\${path.replaceAll("/", "\\")}` &&
+			Number(read[1]) === subsong
+		)
+			return { structure, ordinal };
+	}
+	assert.fail(`no ordinal holds ${path} subsong ${subsong}`);
+};
+
+const creditsAtOrdinal = async (
+	state: FakeState,
+	path: string,
+	subsong: number,
+	splitsCredits: boolean,
+) => {
+	const { structure, ordinal } = await ordinalOfPath(state, path, subsong);
+	const answer = await ask(state, CREDITS, {
+		query: creditsQuery(String(structure), String(ordinal), splitsCredits),
+	});
+	assert.equal(answer.status, 200);
+	return bodyOf(answer);
+};
+
+test("credits asked by library path answer the document the same track's ordinal does, split and not", async (t) => {
+	frozenAt(t);
+	const state = pathLibrary();
+	const split = await creditsAtOrdinal(state, SET, 0, true);
+	const unsplit = await creditsAtOrdinal(state, SET, 0, false);
+	// Guards against a path form that drops `splitsCredits`: the two documents have to differ.
+	assert.notDeepEqual(split, unsplit);
+
+	for (const [splitsCredits, document] of [
+		[true, split],
+		[false, unsplit],
+	] as const) {
+		const answer = await ask(state, CREDITS, {
+			query: pathQuery(SET, "0", splitsCredits),
+		});
+		assert.equal(answer.status, 200, `splitsCredits ${splitsCredits}`);
+		assert.deepEqual(
+			bodyOf(answer),
+			document,
+			`splitsCredits ${splitsCredits}`,
+		);
+	}
+});
+
+test("credits by library path answer the subsong named, and subsong 0 where none is", async (t) => {
+	frozenAt(t);
+	const state = pathLibrary();
+	const bySubsong = [];
+	for (const subsong of [0, 1, 2]) {
+		const document = await creditsAtOrdinal(state, SET, subsong, true);
+		bySubsong.push(document);
+		const answer = await ask(state, CREDITS, {
+			query: pathQuery(SET, String(subsong)),
+		});
+		assert.equal(answer.status, 200, `subsong ${subsong}`);
+		assert.deepEqual(bodyOf(answer), document, `subsong ${subsong}`);
+	}
+	assert.equal(
+		new Set(bySubsong.map((document) => JSON.stringify(document))).size,
+		3,
+		"the three subsongs answer three documents",
+	);
+
+	const unnamed = await ask(state, CREDITS, { query: pathQuery(SET, null) });
+	assert.equal(unnamed.status, 200);
+	assert.deepEqual(bodyOf(unnamed), bySubsong[0]);
+});
+
+test("credits by a library path and subsong no track holds are 404 no such track", async (t) => {
+	frozenAt(t);
+	const state = pathLibrary();
+	for (const [track, subsong] of [
+		["Zz/Live/nowhere.cue", "0"],
+		["Live/set.cue", "0"],
+		[SET, "3"],
+	] as const) {
+		const answer = await ask(state, CREDITS, {
+			query: pathQuery(track, subsong),
+		});
+		assert.equal(answer.status, 404, `${track} subsong ${subsong}`);
+		assert.equal(bodyOf(answer).error, "no such track");
+	}
+});
+
+test("credits by a library path two media library roots hold are 409, and that path's subsongs with it", async (t) => {
+	frozenAt(t);
+	const state = pathLibrary({ twoRootsHold: SET });
+	for (const subsong of ["0", "1", null]) {
+		const answer = await ask(state, CREDITS, {
+			query: pathQuery(SET, subsong),
+		});
+		assert.equal(answer.status, 409, `subsong ${subsong}`);
+		assert.equal(bodyOf(answer).error, NAMES_TWO_TRACKS);
+	}
+	assert.equal(
+		(await ask(state, CREDITS, { query: pathQuery("Cd/Alpha.flac", "0") }))
+			.status,
+		200,
+	);
+});
+
+test("credits by library path before any snapshot is built are 202, starting none", async (t) => {
+	frozenAt(t);
+	const unbuilt = fresh();
+	const before = await libraryOf(unbuilt);
+	const answer = await ask(unbuilt, CREDITS, { query: pathQuery(SET, "0") });
+	assert.equal(answer.status, 202);
+	assert.deepEqual(bodyOf(answer), before);
+	assert.deepEqual(await libraryOf(unbuilt), before);
+});
+
+const addressSent = (...pairs: [string, string][]): [string, string][] => [
+	["splitsCredits", "true"],
+	...pairs,
+	...ROLES,
+];
+
+// In the words `GET /track/library` refuses them with, `kTwoTrackAddressForms` and
+// `kNoTrackAddressForm`, carried as a question refusal's `detail`.
+test("credits naming both address forms, or neither, are 400 in the words GET /track/library refuses them with", async (t) => {
+	frozenAt(t);
+	const state = pathLibrary();
+	const structure = String((await libraryOf(state)).structure);
+	const at: [string, string] = ["structure", structure];
+	// The fake's sentences are held to the component's, so the two cannot drift together.
+	assert.equal(TWO_ADDRESS_FORMS, failureText("kTwoTrackAddressForms"));
+	assert.equal(NO_ADDRESS_FORM, failureText("kNoTrackAddressForm"));
+	const both = unacceptable(TWO_ADDRESS_FORMS);
+
+	const cases: [string, [string, string][], unknown][] = [
+		[
+			"track with ordinal",
+			addressSent(["track", SET], at, ["ordinal", "0"]),
+			both,
+		],
+		[
+			"track and subsong with ordinal",
+			addressSent(["track", SET], ["subsong", "0"], at, ["ordinal", "0"]),
+			both,
+		],
+		[
+			"subsong with ordinal",
+			addressSent(["subsong", "0"], at, ["ordinal", "0"]),
+			both,
+		],
+		["neither form", addressSent(), unacceptable(NO_ADDRESS_FORM)],
+	];
+	for (const [what, query, refused] of cases)
+		assert.deepEqual(await refusalOf(state, CREDITS, query), refused, what);
+});
+
+test("credits naming half of the ordinal form are 400 naming the missing half", async (t) => {
+	frozenAt(t);
+	const state = pathLibrary();
+	const structure = String((await libraryOf(state)).structure);
+
+	assert.deepEqual(
+		await refusalOf(state, CREDITS, addressSent(["ordinal", "0"])),
+		unacceptable("'structure' is required"),
+	);
+	assert.deepEqual(
+		await refusalOf(state, CREDITS, addressSent(["structure", structure])),
+		unacceptable("'ordinal' is required"),
+	);
+});
+
+// Which sentence the component gives here is left to it; only the status is the promise.
+test("credits naming track with structure and no ordinal are 400", async (t) => {
+	frozenAt(t);
+	const state = pathLibrary();
+	const structure = String((await libraryOf(state)).structure);
+	const answer = await ask(state, CREDITS, {
+		query: addressSent(["track", SET], ["structure", structure]),
+	});
+	assert.equal(answer.status, 400);
 });

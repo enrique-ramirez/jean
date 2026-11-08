@@ -168,7 +168,7 @@
   -->
   <ItemGroup>
     <ClCompile Include="..\third_party\opus\src\*.c;..\third_party\opus\celt\*.c;..\third_party\opus\silk\*.c;..\third_party\opus\silk\float\*.c;..\third_party\ogg\src\*.c"
-               Exclude="..\third_party\opus\src\opus_demo.c;..\third_party\opus\src\repacketizer_demo.c;..\third_party\opus\src\opus_compare.c;..\third_party\opus\celt\opus_custom_demo.c">
+               Exclude="..\third_party\opus\src\opus_demo.c;..\third_party\opus\src\repacketizer_demo.c;..\third_party\opus\src\opus_compare.c;..\third_party\opus\celt\opus_custom_demo.c;..\third_party\opus\src\qext_compare.c;..\third_party\opus\celt\mini_kfft.c">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <CompileAs>CompileAsC</CompileAs>
       <WarningLevel>TurnOffAllWarnings</WarningLevel>

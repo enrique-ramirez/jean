@@ -31,7 +31,7 @@ node plugins/fb2k/scripts/embed-ui.mjs   # -> src/fb2k/ui_assets_table.cpp
 
 The build machine needs:
 
-- Visual Studio 2022 Build Tools with the C++ workload **and the ATL component** (`Microsoft.VisualStudio.Component.VC.ATL`). `--includeRecommended` does not bring ATL, and the SDK's helpers include `atlbase.h`. The SDK ships MSBuild project files, so there is no CMake to write.
+- Visual Studio 2022 Build Tools with the C++ workload **and the ATL component** (`Microsoft.VisualStudio.Component.VC.ATL`). `--includeRecommended` does not bring ATL, and the SDK's helpers include `atlbase.h`. The SDK ships MSBuild project files, so there is no CMake to write. MSVC's stable `/std:c++23` arrives with toolset 14.52, which ships with Visual Studio 2026; this build uses VS 2022 Build Tools and toolset `v143`, so the component is C++20.
 - The foobar2000 SDK, fetched by `scripts/fetch-sdk.ps1` into `sdk/`. It is not vendored: its licence does not permit redistribution.
 - WTL, fetched by `scripts/fetch-wtl.ps1`. It is not ATL and does not ship with Visual Studio; `libPPUI` and the SDK helpers include `atlapp.h`, which is WTL's.
 - libopus and libogg, fetched by `scripts/fetch-opus.ps1` here and by `scripts/fetch-opus.sh` on whatever machine runs the tests. Both are BSD, fetched rather than committed because they are a large body of C. The fetch pins a version and checks a SHA-256.

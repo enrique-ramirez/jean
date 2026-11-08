@@ -2,10 +2,10 @@
 # Fetches libopus and libogg into third_party/, where the Ogg Opus encoder expects them.
 set -euo pipefail
 
-opus_version=1.5.2
-ogg_version=1.3.5
-opus_sha=65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1
-ogg_sha=0eb4b4b9420a0f51db142ba3f9c64b333f826532dc0f48c6410ae51f4799b664
+opus_version=1.6.1
+ogg_version=1.3.6
+opus_sha=6ffcb593207be92584df15b32466ed64bbec99109f007c82205f0194572411a1
+ogg_sha=83e6704730683d004d20e21b8f7f55dcb3383cdf84c0daedf30bde175f774638
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 third_party="$root/third_party"

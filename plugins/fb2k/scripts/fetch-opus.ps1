@@ -52,7 +52,7 @@ function Fetch($name, $version, $url, $sha, $stripped) {
     tar xzmf $archive -C $work
     if ($LASTEXITCODE -ne 0) { throw "could not unpack $name" }
 
-    Remove-Item -Recurse -Force $target
+    if (Test-Path $target) { Remove-Item -Recurse -Force $target }
     Move-Item (Join-Path $work $stripped) $target
     if ($name -eq 'ogg') { Write-OggConfigTypes }
     # A bare LF, so the shell twin's $(cat) reads the same line.

@@ -17,6 +17,10 @@
 #include <string>
 #include <vector>
 
+namespace httplib {
+class TaskQueue;
+}
+
 namespace jean {
 
 struct ListenerStatus {
@@ -50,6 +54,10 @@ struct ConnectionPool {
 };
 
 ConnectionPool connectionPoolFor(unsigned hardwareThreads);
+
+// The one place the connection queue is built: `HttpServer` installs it through `new_task_queue`
+// and the burst test drives it, so both run the same sizing. The caller owns it.
+httplib::TaskQueue* connectionQueueFor(const ConnectionPool& pool);
 
 // Swapped whole on a reload, so a handler that takes one copy at the top of its own run never
 // sees a Settings with some fields from the file and some from before it.

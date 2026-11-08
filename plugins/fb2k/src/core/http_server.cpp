@@ -1,7 +1,6 @@
 #include "third_party/httplib.h"
 
 #include "core/admission.h"
-#include "core/connection_threads.h"
 #include "core/http_responses.h"
 #include "core/http_server.h"
 #include "core/log.h"
@@ -27,6 +26,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -292,8 +292,7 @@ void applyLimits(httplib::Server& server) {
     server.set_payload_max_length(kMaxBodyBytes);
 
     server.new_task_queue = [] {
-        return new ConnectionThreads(connectionPoolFor(std::thread::hardware_concurrency()),
-                                     std::chrono::seconds(CPPHTTPLIB_THREAD_POOL_IDLE_TIMEOUT));
+        return connectionQueueFor(connectionPoolFor(std::thread::hardware_concurrency()));
     };
 }
 
@@ -339,6 +338,29 @@ void reportFailuresWithoutLeaking(httplib::Server& server) {
         });
 }
 
+// cpp-httplib starts a dynamic thread inside `enqueue`, and a refusal from the OS escapes it, the
+// accept loop and the listener thread, which ends the player. The job is already queued when the
+// thread is refused, so an existing thread takes it.
+class ConnectionQueue final : public httplib::TaskQueue {
+public:
+    explicit ConnectionQueue(const ConnectionPool& pool)
+        : pool_(pool.threads, pool.maxThreads, pool.queued) {}
+
+    bool enqueue(std::function<void()> job) override {
+        try {
+            return pool_.enqueue(std::move(job));
+        } catch (const std::system_error& e) {
+            logError(std::string("could not start a connection thread: ") + e.what());
+            return true;
+        }
+    }
+
+    void shutdown() override { pool_.shutdown(); }
+
+private:
+    httplib::ThreadPool pool_;
+};
+
 }  // namespace
 
 std::string heldAddressError(const std::vector<std::string>& heldAddresses, int port) {
@@ -369,6 +391,10 @@ ConnectionPool connectionPoolFor(unsigned hardwareThreads) {
     pool.maxThreads = pool.threads * kGrowth;
     pool.queued = pool.maxThreads;
     return pool;
+}
+
+httplib::TaskQueue* connectionQueueFor(const ConnectionPool& pool) {
+    return new ConnectionQueue(pool);
 }
 
 LiveSettings::LiveSettings(Settings settings)

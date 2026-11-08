@@ -147,12 +147,17 @@ const SUMMARY_KEYS = (() => {
 		join(REPOSITORY, "contract/openapi.yaml"),
 		"utf8",
 	);
+	// Biome keeps a short flow sequence on the key's line and wraps a long one below it, an item
+	// a line with a trailing comma.
 	const required =
-		/\n {4}LibrarySummary:\n(?: {6}.*\n)*? {6}required: \[([^\]]*)\]/.exec(
+		/\n {4}LibrarySummary:\n(?: {6}.*\n)*? {6}required:\s*\[([^\]]*)\]/.exec(
 			contract,
 		);
 	assert.ok(required, "contract/openapi.yaml declares no LibrarySummary");
-	return required[1].split(",").map((key) => key.trim());
+	return required[1]
+		.split(",")
+		.map((key) => key.trim())
+		.filter((key) => key !== "");
 })();
 
 interface Answer {

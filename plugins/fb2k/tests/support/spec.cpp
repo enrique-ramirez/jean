@@ -93,9 +93,49 @@ std::string trimmed(const std::string& text) {
     return text.substr(first, text.find_last_not_of(' ') - first + 1);
 }
 
+// The inside of the flow sequence `key` opens at `lines[at]`, as `flowItems` takes it. Biome
+// formats the contract and wraps a flow sequence past its line width, so the sequence is on the
+// key's line, `key: [a, b]`, or below a key alone on its line: the brackets and items on one
+// deeper line, or one item a line with a trailing comma.
+std::optional<std::string> flowInsideAt(const std::vector<std::string>& lines, size_t at,
+                                        const std::string& key) {
+    const auto indent = indentOf(lines[at]);
+    if (indent == std::string::npos)
+        return std::nullopt;
+
+    const auto text = lines[at].substr(indent);
+    const std::string listOpens = key + ": [";
+
+    if (startsWith(text, listOpens) && text.back() == ']')
+        return text.substr(listOpens.size(), text.size() - listOpens.size() - 1);
+    if (text != key + ":")
+        return std::nullopt;
+
+    std::string wrapped;
+    for (size_t below = at + 1; below < lines.size(); ++below) {
+        const auto belowIndent = indentOf(lines[below]);
+        if (belowIndent == std::string::npos || belowIndent <= indent)
+            return std::nullopt;
+
+        wrapped += (wrapped.empty() ? "" : " ") + lines[below].substr(belowIndent);
+        if (wrapped.front() != '[')
+            return std::nullopt;
+        if (wrapped.back() == ']')
+            break;
+    }
+    if (wrapped.empty() || wrapped.back() != ']')
+        return std::nullopt;
+
+    auto inside = trimmed(wrapped.substr(1, wrapped.size() - 2));
+    if (!inside.empty() && inside.back() == ',')
+        inside.pop_back();
+    return inside;
+}
+
 // The `error` a line of an example gives, whether the example is written as a flow mapping,
-// `{ error: no such playlist, detail: "" }`, or as a block with `error:` on a line of its own.
-// Nothing where the line gives none, or gives an empty one.
+// `{ error: no such playlist, detail: "" }`, as one wrapped an entry a line with a trailing
+// comma, or as a block with `error:` on a line of its own. Nothing where the line gives none,
+// or gives an empty one.
 std::optional<std::string> exampleError(const std::string& line) {
     const std::string key = "error: ";
     const auto at = line.find(key);
@@ -108,12 +148,16 @@ std::optional<std::string> exampleError(const std::string& line) {
         return std::nullopt;
 
     auto value = line.substr(at + key.size());
-    if (!value.empty() && value.front() == '"')
+    const bool quoted = !value.empty() && value.front() == '"';
+    if (quoted)
         value = value.substr(1, value.find('"', 1) - 1);
     else if (inFlow)
         value = trimmed(value.substr(0, value.find_first_of(",}")));
     else
         value = trimmed(value);
+
+    if (!quoted && !value.empty() && value.back() == ',')
+        value.pop_back();
 
     if (value.empty())
         return std::nullopt;
@@ -427,14 +471,14 @@ std::vector<std::string> publishedRequired(const std::string& schema, const std:
     constexpr size_t kSchemaIndent = 4;
     constexpr size_t kSchemaKeyIndent = 6;
     constexpr size_t kPropertyIndent = 8;
-    const std::string listOpens = "required: [";
-
     bool inSchemas = false;
     bool inSchema = false;
     bool inProperties = false;
     bool inProperty = false;
 
-    for (const auto& line : specLines()) {
+    const auto lines = specLines();
+    for (size_t at = 0; at < lines.size(); ++at) {
+        const auto& line = lines[at];
         const auto indent = indentOf(line);
         if (indent == std::string::npos)
             continue;
@@ -463,9 +507,10 @@ std::vector<std::string> publishedRequired(const std::string& schema, const std:
         }
 
         const bool wanted = property.empty() ? indent == kSchemaKeyIndent : inProperty;
-        const auto text = line.substr(indent);
-        if (wanted && startsWith(text, listOpens) && text.back() == ']')
-            return flowItems(text.substr(listOpens.size(), text.size() - listOpens.size() - 1));
+        if (!wanted)
+            continue;
+        if (const auto inside = flowInsideAt(lines, at, "required"))
+            return flowItems(*inside);
     }
 
     FAIL("contract/openapi.yaml publishes no required list at ", schema,
@@ -575,13 +620,14 @@ std::vector<std::string> publishedExampleList(const std::string& path, const std
                                               const std::string& key) {
     constexpr size_t kPathIndent = 2;
     const std::string pathLine = std::string(kPathIndent, ' ') + path + ":";
-    const std::string listOpens = key + ": [";
 
     bool inPaths = false;
     bool inPath = false;
     size_t exampleIndent = std::string::npos;
 
-    for (const auto& line : specLines()) {
+    const auto lines = specLines();
+    for (size_t at = 0; at < lines.size(); ++at) {
+        const auto& line = lines[at];
         if (line == "paths:") {
             inPaths = true;
             continue;
@@ -612,12 +658,11 @@ std::vector<std::string> publishedExampleList(const std::string& path, const std
         if (indent <= exampleIndent)
             break;
 
-        if (startsWith(text, listOpens) && text.back() == ']') {
-            const auto inside = text.substr(listOpens.size(), text.size() - listOpens.size() - 1);
-            if (inside.empty())
+        if (const auto inside = flowInsideAt(lines, at, key)) {
+            if (inside->empty())
                 return {};
 
-            auto items = flowItems(inside);
+            auto items = flowItems(*inside);
             std::transform(items.begin(), items.end(), items.begin(), unquoted);
             return items;
         }

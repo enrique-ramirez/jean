@@ -61,18 +61,29 @@ function Require-CodecSources {
   }
 }
 
-function Build-CodecArchiveIfMissing {
-  if (Test-Path $codecLib) { return }
+# An archive older than any of its sources is rebuilt from an empty object directory, so a refetch
+# that drops a source cannot leave its object behind in the archive.
+function Test-ArchiveStale($Archive, $SourceDirs) {
+  if (-not (Test-Path $Archive)) { return $true }
+  $built = (Get-Item $Archive).LastWriteTime
+  $newer = $SourceDirs | ForEach-Object { Get-ChildItem $_ -Recurse -File } |
+    Where-Object { $_.LastWriteTime -gt $built } | Select-Object -First 1
+  return [bool]$newer
+}
+
+function Build-CodecArchiveIfStale {
+  if (-not (Test-ArchiveStale $codecLib @($opus, $ogg))) { return }
+  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $codec
   New-Item -ItemType Directory -Force -Path $codec | Out-Null
 
-  # The demo programs carry their own main().
+  # The demo programs carry their own main(). qext_compare.c includes mini_kfft.c, which has none.
   $sources = @(
     Get-ChildItem (Join-Path $opus 'src') -Filter *.c
     Get-ChildItem (Join-Path $opus 'celt') -Filter *.c
     Get-ChildItem (Join-Path $opus 'silk') -Filter *.c
     Get-ChildItem (Join-Path $opus 'silk\float') -Filter *.c
     Get-ChildItem (Join-Path $ogg 'src') -Filter *.c
-  ) | Where-Object { $_.Name -notmatch '(_demo|opus_compare)\.c$' }
+  ) | Where-Object { $_.Name -notmatch '(_demo|opus_compare|qext_compare|mini_kfft)\.c$' }
 
   # Every object lands in one directory, so two sources sharing a basename would silently
   # overwrite each other and the archive would be missing whichever compiled first.
@@ -91,8 +102,9 @@ function Build-CodecArchiveIfMissing {
     @("/nologo /OUT:`"$codecLib`"") + $objects)
 }
 
-function Build-ZlibArchiveIfMissing {
-  if (Test-Path $zlibLib) { return }
+function Build-ZlibArchiveIfStale {
+  if (-not (Test-ArchiveStale $zlibLib @($zlib))) { return }
+  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $deflate
   New-Item -ItemType Directory -Force -Path $deflate | Out-Null
 
   $sources = Get-ChildItem $zlib -Filter *.c | ForEach-Object { "`"$($_.FullName)`"" }
@@ -187,8 +199,8 @@ $exe = Join-Path $out 'foo_jean_tests.exe'
 
 Assert-OpenApiVersionMatchesCode
 Require-CodecSources
-Build-CodecArchiveIfMissing
-Build-ZlibArchiveIfMissing
+Build-CodecArchiveIfStale
+Build-ZlibArchiveIfStale
 Build-Tests
 
 & $exe @DoctestArgs

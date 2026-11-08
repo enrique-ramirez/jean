@@ -23,25 +23,6 @@ verify() {
   fi
 }
 
-fetch() {
-  local name=$1
-  local url=$2
-  local sha=$3
-  local stripped=$4
-  local target="$third_party/$name"
-
-  if [ -d "$target" ]; then
-    echo "$name is already here; delete $target to refetch"
-    return
-  fi
-
-  curl -fsSL -o "$work/$name.tar.gz" "$url"
-  verify "$work/$name.tar.gz" "$sha"
-  tar xzf "$work/$name.tar.gz" -C "$work"
-  mv "$work/$stripped" "$target"
-  echo "$name -> $target"
-}
-
 write_ogg_config_types() {
   # libogg ships config_types.h.in for configure or cmake to fill in, and we run neither.
   cat > "$third_party/ogg/include/ogg/config_types.h" <<'TYPES'
@@ -61,13 +42,37 @@ typedef uint64_t ogg_uint64_t;
 TYPES
 }
 
-# The cached archives, one per sanitizer, belong to whatever version was here before.
-rm -rf "$root"/bin/codec "$root"/bin/codec-*
+# A directory is current when its .fetched holds this version and hash. Anything else, a missing
+# record included, is fetched again: the download is verified before the old directory goes, so a
+# failed fetch leaves the old library in place.
+fetch() {
+  local name=$1
+  local version=$2
+  local url=$3
+  local sha=$4
+  local stripped=$5
+  local target="$third_party/$name"
+
+  if [ "$(cat "$target/.fetched" 2>/dev/null)" = "$version $sha" ]; then
+    echo "$name $version is current"
+    return
+  fi
+
+  curl -fsSL -o "$work/$name.tar.gz" "$url"
+  verify "$work/$name.tar.gz" "$sha"
+  # -m stamps every file with now, so test.sh sees a refetched source as newer than its archive.
+  tar xzmf "$work/$name.tar.gz" -C "$work"
+  rm -rf "$target"
+  mv "$work/$stripped" "$target"
+  if [ "$name" = ogg ]; then
+    write_ogg_config_types
+  fi
+  echo "$version $sha" >"$target/.fetched"
+  echo "$name -> $target"
+}
 
 mkdir -p "$third_party"
-fetch opus "https://downloads.xiph.org/releases/opus/opus-$opus_version.tar.gz" \
+fetch opus "$opus_version" "https://downloads.xiph.org/releases/opus/opus-$opus_version.tar.gz" \
   "$opus_sha" "opus-$opus_version"
-fetch ogg "https://downloads.xiph.org/releases/ogg/libogg-$ogg_version.tar.gz" \
+fetch ogg "$ogg_version" "https://downloads.xiph.org/releases/ogg/libogg-$ogg_version.tar.gz" \
   "$ogg_sha" "libogg-$ogg_version"
-
-write_ogg_config_types

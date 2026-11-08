@@ -11,33 +11,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $thirdParty = Join-Path $root 'third_party'
 $work = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
 
-function Fetch($name, $url, $sha, $stripped) {
-    $target = Join-Path $thirdParty $name
-    if (Test-Path $target) {
-        Write-Host "$name is already here; delete $target to refetch"
-        return
-    }
-
-    $archive = Join-Path $work "$name.tar.gz"
-    Save-VerifiedDownload -Uri $url -OutFile $archive -Sha256 $sha
-
-    # tar has shipped with Windows since 1803, so there is no unpacking library here.
-    tar xzf $archive -C $work
-    if ($LASTEXITCODE -ne 0) { throw "could not unpack $name" }
-
-    Move-Item (Join-Path $work $stripped) $target
-    Write-Host "$name -> $target"
-}
-
-New-Item -ItemType Directory -Force -Path $work | Out-Null
-New-Item -ItemType Directory -Force -Path $thirdParty | Out-Null
-
-try {
-    Fetch 'opus' "https://downloads.xiph.org/releases/opus/opus-$opusVersion.tar.gz" `
-        $opusSha "opus-$opusVersion"
-    Fetch 'ogg' "https://downloads.xiph.org/releases/ogg/libogg-$oggVersion.tar.gz" `
-        $oggSha "libogg-$oggVersion"
-
+function Write-OggConfigTypes {
     # libogg ships config_types.h.in for configure or cmake to fill in, and we run neither.
     $configTypes = @'
 #ifndef __CONFIG_TYPES_H__
@@ -56,6 +30,44 @@ typedef uint64_t ogg_uint64_t;
 '@
     Set-Content -LiteralPath (Join-Path $thirdParty 'ogg\include\ogg\config_types.h') `
         -Value $configTypes -Encoding ascii
+}
+
+# A directory is current when its .fetched holds this version and hash. Anything else, a missing
+# record included, is fetched again: the download is verified before the old directory goes, so a
+# failed fetch leaves the old library in place.
+function Fetch($name, $version, $url, $sha, $stripped) {
+    $target = Join-Path $thirdParty $name
+    $record = "$version $($sha.ToLower())"
+    $recordFile = Join-Path $target '.fetched'
+    if ((Test-Path $recordFile) -and ((Get-Content -LiteralPath $recordFile -Raw).Trim() -ceq $record)) {
+        Write-Host "$name $version is current"
+        return
+    }
+
+    $archive = Join-Path $work "$name.tar.gz"
+    Save-VerifiedDownload -Uri $url -OutFile $archive -Sha256 $sha
+
+    # tar has shipped with Windows since 1803, so there is no unpacking library here. -m stamps
+    # every file with now, so test.ps1 sees a refetched source as newer than its archive.
+    tar xzmf $archive -C $work
+    if ($LASTEXITCODE -ne 0) { throw "could not unpack $name" }
+
+    Remove-Item -Recurse -Force $target
+    Move-Item (Join-Path $work $stripped) $target
+    if ($name -eq 'ogg') { Write-OggConfigTypes }
+    # A bare LF, so the shell twin's $(cat) reads the same line.
+    [System.IO.File]::WriteAllText($recordFile, "$record`n")
+    Write-Host "$name -> $target"
+}
+
+New-Item -ItemType Directory -Force -Path $work | Out-Null
+New-Item -ItemType Directory -Force -Path $thirdParty | Out-Null
+
+try {
+    Fetch 'opus' $opusVersion "https://downloads.xiph.org/releases/opus/opus-$opusVersion.tar.gz" `
+        $opusSha "opus-$opusVersion"
+    Fetch 'ogg' $oggVersion "https://downloads.xiph.org/releases/ogg/libogg-$oggVersion.tar.gz" `
+        $oggSha "libogg-$oggVersion"
 }
 finally {
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $work

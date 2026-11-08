@@ -125,11 +125,15 @@ require_leaks_tool() {
   fi
 }
 
-build_codec_archive_if_missing() {
-  if [ -f "$codec/libcodec.a" ]; then
+# An archive older than any of its sources is rebuilt from an empty object directory, so a refetch
+# that drops a source cannot leave its object behind in the archive.
+build_codec_archive_if_stale() {
+  if [ -f "$codec/libcodec.a" ] &&
+    [ -z "$(find "$opus" "$ogg" -type f -newer "$codec/libcodec.a" -print -quit)" ]; then
     return
   fi
 
+  rm -rf "$codec"
   mkdir -p "$codec"
 
   local sources
@@ -143,11 +147,13 @@ build_codec_archive_if_missing() {
   ar rcs "$codec/libcodec.a" "$codec"/*.o
 }
 
-build_zlib_archive_if_missing() {
-  if [ -f "$deflate/libz.a" ]; then
+build_zlib_archive_if_stale() {
+  if [ -f "$deflate/libz.a" ] &&
+    [ -z "$(find "$zlib" -type f -newer "$deflate/libz.a" -print -quit)" ]; then
     return
   fi
 
+  rm -rf "$deflate"
   mkdir -p "$deflate"
 
   # shellcheck disable=SC2086
@@ -216,8 +222,8 @@ require_codec_sources
 if [ "$sanitize" = leaks ]; then
   require_leaks_tool
 fi
-build_codec_archive_if_missing
-build_zlib_archive_if_missing
+build_codec_archive_if_stale
+build_zlib_archive_if_stale
 build_tests
 
 if [ "$sanitize" = leaks ]; then

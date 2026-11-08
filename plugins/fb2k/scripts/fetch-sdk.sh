@@ -13,8 +13,8 @@ sdk="$root/sdk"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-if [ -d "$sdk/foobar2000" ]; then
-  echo "SDK already present in $sdk; delete it to refetch"
+if [ "$(cat "$sdk/.fetched" 2>/dev/null)" = "$version $sha" ]; then
+  echo "SDK $version is current"
   exit 0
 fi
 
@@ -28,13 +28,21 @@ if [ "$got" != "$sha" ]; then
   exit 1
 fi
 
-# The SDK ships as .7z. macOS's tar is bsdtar, which reads it; elsewhere 7z does.
+# The archive is verified, so the old SDK goes only now. sdk/wtl/ is fetch-wtl's and survives.
 mkdir -p "$sdk"
+find "$sdk" -mindepth 1 -maxdepth 1 ! -name wtl ! -name .gitkeep -exec rm -rf {} +
+
+# The SDK ships as .7z. macOS's tar is bsdtar, which reads it; elsewhere 7z does.
 if command -v 7z >/dev/null 2>&1; then
   7z x "$archive" -o"$sdk" -y >/dev/null
 else
   tar xf "$archive" -C "$sdk"
 fi
+
+# Both readers restore the release's file times, which would leave a refetched header older than
+# the archives built from the last one.
+find "$sdk" -mindepth 1 -path "$sdk/wtl" -prune -o ! -path "$sdk/.gitkeep" -exec touch {} +
+echo "$version $sha" >"$sdk/.fetched"
 
 echo "SDK unpacked into $sdk"
 ls "$sdk"

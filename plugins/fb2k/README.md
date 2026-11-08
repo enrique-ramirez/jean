@@ -151,8 +151,8 @@ Two things hold across the whole surface. Every request is checked first for whe
 ## Testing
 
 ```bash
-scripts/fetch-opus.sh                     # once; the suite links libopus and libogg
-scripts/fetch-sdk.sh                      # once, on a Mac; build-mac.sh, clangd and lint need it
+scripts/fetch-opus.sh                     # the suite links libopus and libogg; refetches when the pin moves
+scripts/fetch-sdk.sh                      # on a Mac; build-mac.sh, clangd and lint need it; refetches when the pin moves
 scripts/test.sh                           # the whole suite
 scripts/test.sh '-sf=*cors_test.cpp'      # one file
 scripts/test.sh --sanitize=address        # AddressSanitizer and UBSan

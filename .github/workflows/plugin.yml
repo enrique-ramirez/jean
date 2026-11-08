@@ -17,6 +17,7 @@ on:
       - ".github/actions/windows-llvm/**"
       - ".github/actions/apt-llvm/**"
       - ".github/actions/pnpm-install/**"
+      - ".nvmrc"
   pull_request:
     paths:
       - "plugins/fb2k/**"
@@ -26,6 +27,7 @@ on:
       - ".github/actions/windows-llvm/**"
       - ".github/actions/apt-llvm/**"
       - ".github/actions/pnpm-install/**"
+      - ".nvmrc"
   workflow_dispatch:
 
 permissions:

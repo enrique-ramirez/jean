@@ -86,18 +86,22 @@ const asksSince = (player: FakePlayer, from: number) =>
 		.filter((entry) => routeOf(entry.path) !== "/api/state")
 		.map((entry) => `${entry.method} ${routeOf(entry.path)}`);
 
-// The same, less the re-reads: foo_jean cannot say which revision Jean's own write produced, so
-// the revision it moves marks every held window and the summary stale, and each re-reads on its own
-// schedule. How many land after the write is a race.
+// foo_jean cannot say which revision Jean's own write produced, so the revision it moves marks every
+// held window and the summary stale, and each re-reads on its own schedule. How many land is a race.
 const REREADS_OF_A_MOVED_REVISION = new Set([
 	"POST /api/library/rows",
 	"GET /api/library/summary",
 ]);
 
-const asksOfAnOwnRating = (player: FakePlayer, from: number) =>
-	asksSince(player, from).filter(
-		(ask) => !REREADS_OF_A_MOVED_REVISION.has(ask),
+// A re-read sent before the write is the click working out where to write, and counts.
+const asksOfAnOwnRating = (player: FakePlayer, from: number) => {
+	const asks = asksSince(player, from);
+	const written = asks.indexOf("POST /api/tags");
+	return asks.filter(
+		(ask, at) =>
+			written < 0 || at <= written || !REREADS_OF_A_MOVED_REVISION.has(ask),
 	);
+};
 
 // A view asks for a cover per record on the way in, and those are nobody's
 // click. Letting the request log stop moving before anything is counted is what
@@ -237,7 +241,7 @@ test.describe("with foo_jean connected", () => {
 		const before = player.requests.length;
 		await star(page, 2, 4).click();
 
-		await expectSettlesAt(player, () => asksSince(player, before), [
+		await expectSettlesAt(player, () => asksOfAnOwnRating(player, before), [
 			"POST /api/tags",
 		]);
 		const [write] = tagWrites(player);
@@ -440,7 +444,7 @@ test.describe("rating from All music", () => {
 		const before = player.requests.length;
 		await star(page, 2, 4).click();
 
-		await expectSettlesAt(player, () => asksSince(player, before), [
+		await expectSettlesAt(player, () => asksOfAnOwnRating(player, before), [
 			"POST /api/tags",
 		]);
 		const [write] = tagWrites(player);
@@ -516,7 +520,7 @@ test.describe("rating from All music", () => {
 			const before = player.requests.length;
 			await star(page, 1, 4).click();
 
-			await expectSettlesAt(player, () => asksSince(player, before), [
+			await expectSettlesAt(player, () => asksOfAnOwnRating(player, before), [
 				"POST /api/tags",
 			]);
 			const [write] = tagWrites(player);
@@ -652,7 +656,7 @@ test.describe("rating a row the media library does not hold", () => {
 		const before = player.requests.length;
 		await star(page, OFF_LIBRARY_ROW, 4).click();
 
-		await expectSettlesAt(player, () => asksSince(player, before), [
+		await expectSettlesAt(player, () => asksOfAnOwnRating(player, before), [
 			"POST /api/tags",
 		]);
 		expect(addressOf(tagWrites(player)[0])).toEqual({
@@ -854,7 +858,7 @@ test.describe("when a library address names more than one track", () => {
 			const before = player.requests.length;
 			await star(page, 2, 4).click();
 
-			await expectSettlesAt(player, () => asksSince(player, before), [
+			await expectSettlesAt(player, () => asksOfAnOwnRating(player, before), [
 				"POST /api/tags",
 				"POST /api/tags",
 			]);
@@ -931,7 +935,7 @@ test.describe("when a library address names more than one track", () => {
 			const before = player.requests.length;
 			await star(page, 2, 4).click();
 
-			await expectSettlesAt(player, () => asksSince(player, before), [
+			await expectSettlesAt(player, () => asksOfAnOwnRating(player, before), [
 				"POST /api/tags",
 				"POST /api/tags",
 			]);
@@ -1159,7 +1163,7 @@ test.describe("when a rating write times out", () => {
 
 			await expectSettlesAt(
 				player,
-				() => asksSince(player, before),
+				() => asksOfAnOwnRating(player, before),
 				WROTE_THEN_READ_THE_LIBRARY,
 			);
 			// The row's own address, not its album's: a read of the neighbour that
@@ -1252,7 +1256,7 @@ test.describe("when a rating write times out", () => {
 
 			await expectSettlesAt(
 				player,
-				() => asksSince(player, before),
+				() => asksOfAnOwnRating(player, before),
 				WROTE_THEN_READ_THE_LIBRARY,
 			);
 

@@ -208,3 +208,64 @@ TEST_CASE("a connection past the queue is closed unanswered, and every one befor
     CHECK(answers.count(200) == pool.maxThreads + pool.queued);
     CHECK(writer.callsMade() == pool.maxThreads + pool.queued);
 }
+
+namespace {
+
+struct HeldJobs {
+    std::mutex mutex;
+    std::condition_variable changed;
+    size_t running = 0;
+    bool released = false;
+
+    void run() {
+        std::unique_lock<std::mutex> lock(mutex);
+        ++running;
+        changed.wait(lock, [this] { return released; });
+    }
+
+    bool waitUntilRunning(size_t count) {
+        return eventually([this, count] {
+            const std::lock_guard<std::mutex> lock(mutex);
+            return running >= count;
+        });
+    }
+
+    size_t runningNow() {
+        const std::lock_guard<std::mutex> lock(mutex);
+        return running;
+    }
+
+    void release() {
+        const std::lock_guard<std::mutex> lock(mutex);
+        released = true;
+        changed.notify_all();
+    }
+};
+
+}  // namespace
+
+// Connections accepted faster than the pool's threads get scheduled are this burst. cpp-httplib's
+// ThreadPool grows only when it counts no idle thread, so one that counts a thread woken for an
+// earlier job as idle until it runs queues such a burst behind the threads the pool started with
+// and never grows to its ceiling. Whether one burst outruns the threads it wakes is
+// the scheduler's to decide, so each burst gets a fresh queue and every one must run in full.
+TEST_CASE("a burst as deep as the pool's ceiling runs all at once") {
+    constexpr int kBursts = 10;
+    const auto pool = connectionPoolFor(std::thread::hardware_concurrency());
+
+    for (int burst = 1; burst <= kBursts; ++burst) {
+        HeldJobs jobs;
+        const std::unique_ptr<httplib::TaskQueue> queue(connectionQueueFor(pool));
+
+        for (size_t at = 0; at < pool.maxThreads; ++at)
+            static_cast<void>(queue->enqueue([&jobs] { jobs.run(); }));
+
+        const bool allRunning = jobs.waitUntilRunning(pool.maxThreads);
+        const size_t running = jobs.runningNow();
+        jobs.release();
+        queue->shutdown();
+
+        REQUIRE_MESSAGE(allRunning, running, " of ", pool.maxThreads, " jobs ran at once in burst ",
+                        burst);
+    }
+}

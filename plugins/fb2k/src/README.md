@@ -33,7 +33,6 @@ Each file below starts a thread or a pool. *Threads, and what may block* in [`..
 | file | thread |
 |---|---|
 | `core/http_server.cpp` | the listener |
-| `core/connection_threads.cpp` | the connection pool |
 | `core/output_hold.cpp` | the hold's watcher |
 | `fb2k/streamer.cpp` | one encoder per `Streamer` |
 | `fb2k/decoder_source.cpp` | one decoder per detached session |

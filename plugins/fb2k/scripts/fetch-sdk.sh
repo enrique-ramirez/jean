@@ -20,7 +20,7 @@ fi
 
 archive="$work/foobar2000-SDK-$version.7z"
 echo "Fetching foobar2000 SDK $version ..."
-curl -fsSL -o "$archive" "https://www.foobar2000.org/downloads/SDK-$version.7z"
+curl -fsSL --retry 5 --retry-all-errors -o "$archive" "https://www.foobar2000.org/downloads/SDK-$version.7z"
 
 got=$(shasum -a 256 "$archive" | cut -d' ' -f1)
 if [ "$got" != "$sha" ]; then

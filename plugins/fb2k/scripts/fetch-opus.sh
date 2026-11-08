@@ -58,7 +58,7 @@ fetch() {
     return
   fi
 
-  curl -fsSL -o "$work/$name.tar.gz" "$url"
+  curl -fsSL --retry 5 --retry-all-errors -o "$work/$name.tar.gz" "$url"
   verify "$work/$name.tar.gz" "$sha"
   # -m stamps every file with now, so test.sh sees a refetched source as newer than its archive.
   tar xzmf "$work/$name.tar.gz" -C "$work"

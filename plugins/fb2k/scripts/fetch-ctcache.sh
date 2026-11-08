@@ -11,7 +11,7 @@ target="$root/bin/clang-tidy-cache"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-curl -fsSL -o "$work/clang-tidy-cache" \
+curl -fsSL --retry 5 --retry-all-errors -o "$work/clang-tidy-cache" \
   "https://raw.githubusercontent.com/matus-chochlik/ctcache/$ctcache_commit/src/ctcache/clang_tidy_cache.py"
 got=$(shasum -a 256 "$work/clang-tidy-cache" | cut -d' ' -f1)
 if [ "$got" != "$ctcache_sha" ]; then

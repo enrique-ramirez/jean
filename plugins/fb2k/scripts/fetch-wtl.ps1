@@ -34,7 +34,7 @@ if ($LASTEXITCODE -ne 0) { throw "Download failed (curl exit $LASTEXITCODE)." }
 Assert-Sha256 -Path $archive -Sha256 $Sha -Name $url
 
 # The archive is verified, so the old copy goes only now.
-Remove-Item -Recurse -Force $wtl
+if (Test-Path $wtl) { Remove-Item -Recurse -Force $wtl }
 New-Item -ItemType Directory -Force -Path $wtl | Out-Null
 Expand-Archive -Path $archive -DestinationPath $wtl -Force
 

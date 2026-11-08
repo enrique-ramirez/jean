@@ -27,11 +27,7 @@ if ((Test-Path $recordFile) -and ((Get-Content -LiteralPath $recordFile -Raw).Tr
 Write-Output "Fetching $Release ..."
 $url = "https://raw.githubusercontent.com/Win32-WTL/WTL/$Commit/Releases/$Release.zip"
 
-# curl.exe rather than Invoke-WebRequest, which throws a bare WebException on the redirect.
-& curl.exe -sSL --fail -o $archive $url
-if ($LASTEXITCODE -ne 0) { throw "Download failed (curl exit $LASTEXITCODE)." }
-
-Assert-Sha256 -Path $archive -Sha256 $Sha -Name $url
+Save-VerifiedDownload -Uri $url -OutFile $archive -Sha256 $Sha
 
 # The archive is verified, so the old copy goes only now.
 if (Test-Path $wtl) { Remove-Item -Recurse -Force $wtl }

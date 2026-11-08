@@ -20,7 +20,9 @@ function Save-VerifiedDownload {
         [Parameter(Mandatory = $true)][string]$Sha256
     )
 
-    Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing
+    # curl.exe rather than Invoke-WebRequest, whose -MaximumRetryCount covers HTTP status codes only and so cannot retry a dropped connection.
+    & curl.exe -sSL --fail --retry 5 --retry-all-errors -o $OutFile $Uri
+    if ($LASTEXITCODE -ne 0) { throw "Download failed for $Uri (curl exit $LASTEXITCODE)." }
 
     try {
         Assert-Sha256 -Path $OutFile -Sha256 $Sha256 -Name $Uri

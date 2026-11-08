@@ -67,7 +67,7 @@ export interface EditorOpening {
 function firstToWork(draft: LyricDraft): number | null {
 	if (draft.lines.length === 0) return null;
 	const untimed = draft.lines.findIndex((line) => line.at === null);
-	return untimed < 0 ? 0 : untimed;
+	return Math.max(untimed, 0);
 }
 
 function handBackToControl(event: KeyboardEvent): boolean {

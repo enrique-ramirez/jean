@@ -59,7 +59,7 @@ export function readQueue(read: QueueRead | undefined): QueueEntry[] {
 	let offset = 0;
 
 	return (read?.entries ?? []).map((entry, at) => {
-		const duration = entry.duration > 0 ? entry.duration : 0;
+		const duration = Math.max(entry.duration, 0);
 		const built: QueueEntry = {
 			at,
 			title: entry.title,

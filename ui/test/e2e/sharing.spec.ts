@@ -3429,6 +3429,9 @@ test.describe("nobody listening any more, to what the page only controls", () =>
 		expect(player.sessions.find(session.id)).toBe(session);
 
 		await page.reload();
+		// Playwright's paused clock holds the zero-delay timer the page's start waits on until it is
+		// stepped.
+		await page.clock.runFor(1);
 		await expect(pickerOpener(page)).not.toHaveAccessibleName(
 			new RegExp(`^${playingWhat(CREATOR)}`),
 		);

@@ -1,3 +1,4 @@
+import type { Request } from "@playwright/test";
 import { getHotkeyManager } from "@tanstack/react-hotkeys";
 
 import { en } from "../../src/shared/i18n/en.ts";
@@ -10,6 +11,7 @@ import {
 	expectSettlesAt,
 	expectTheScreenIsStillOpen,
 	guidOfPlaylist,
+	holdRequests,
 	inSequence,
 	listenHere,
 	modesSent,
@@ -24,6 +26,7 @@ import {
 	playedFrom,
 	playerDeclaring,
 	playRequests,
+	routeOf,
 	STOCK_ORDERS,
 	searchField,
 	searchFor,
@@ -1474,5 +1477,82 @@ test.describe("with the full-screen lyric open", () => {
 
 		await page.keyboard.press("4");
 		await expectSettlesAt(player, () => tagWrites(player).length, 1);
+	});
+});
+
+test.describe("in a read-only text field", () => {
+	test.beforeEach(({ page }) => openLibrary(page));
+
+	const isTagWrite = (request: Request) =>
+		request.method() === "POST" &&
+		routeOf(new URL(request.url()).pathname) === "/api/tags";
+
+	// Every dialog drawn from now on, by name, even one gone again before a test looks.
+	const recordDialogsShown = async (page: Page) => {
+		await page.evaluate(() => {
+			const shown: string[] = [];
+			const seen = new WeakSet<Element>();
+			Object.assign(window, { dialogsShown: shown });
+			new MutationObserver(() => {
+				for (const dialog of document.querySelectorAll('[role="dialog"]')) {
+					if (seen.has(dialog)) continue;
+					seen.add(dialog);
+					shown.push(dialog.getAttribute("aria-label") ?? "");
+				}
+			}).observe(document, { subtree: true, childList: true });
+		});
+		return () =>
+			page.evaluate(
+				() => (window as unknown as { dialogsShown: string[] }).dialogsShown,
+			);
+	};
+
+	// The details form's fields are read-only while a save is in flight, and a field holding the
+	// caret is still a field: the key is typed at it, not at the app.
+	test("? opens nothing from a details field whose save is in flight", async ({
+		page,
+	}) => {
+		// The sheet is loaded on its first opening, so it is opened once here: a press in the field
+		// that opened it would draw it at once rather than after the assertion has run.
+		const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+		await page.keyboard.press("Shift+?");
+		await expect(sheet).toBeVisible();
+		await page.keyboard.press("Escape");
+		await expect(sheet).toHaveCount(0);
+
+		await trackRow(page, 0).click({ button: "right" });
+		await page
+			.getByRole("menuitem", { name: en["track.details"], exact: true })
+			.click();
+		const panel = page.getByRole("region", {
+			name: en["details.panelTitle"],
+			exact: true,
+		});
+		const edit = panel.getByRole("button", {
+			name: en["details.edit"],
+			exact: true,
+		});
+		await edit.click();
+		const album = panel.getByRole("textbox", {
+			name: en["details.album"],
+			exact: true,
+		});
+		await album.fill("Jessico (reedición)");
+
+		const save = await holdRequests(page, isTagWrite, { count: 1 });
+		await panel
+			.getByRole("button", { name: en["details.save"], exact: true })
+			.click();
+		await save.untilHeld();
+		await album.click();
+		await expect(album).not.toBeEditable();
+		await expect(album).toBeFocused();
+
+		const dialogsShown = await recordDialogsShown(page);
+		await page.keyboard.press("Shift+?");
+
+		save.releaseAll();
+		await expect(edit).toBeVisible();
+		expect(await dialogsShown()).toEqual([]);
 	});
 });

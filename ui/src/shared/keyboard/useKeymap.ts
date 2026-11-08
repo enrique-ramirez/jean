@@ -9,7 +9,11 @@ import {
 	KEYMAP,
 	type Scope,
 } from "./keymap";
-import { isPressOnControl } from "./pressOnControl";
+import {
+	isPressInTextField,
+	isPressOnControl,
+	keepsOutOfTextFields,
+} from "./pressTarget";
 
 type HotkeyHandler = (event: KeyboardEvent, context: unknown) => void;
 
@@ -40,15 +44,24 @@ export function useKeymap<S extends Scope>(
 			binding.keys.map((hotkey) => ({
 				hotkey,
 				callback: (event: KeyboardEvent, context: unknown) => {
+					if (
+						keepsOutOfTextFields(hotkey, binding.options?.ignoreInputs) &&
+						isPressInTextField(event)
+					)
+						return;
+					// A press that stays out of a text field is never claimed, so the claim is made here
+					// and not by the library, which would make it before this callback could decline.
+					// On a focused button a prevented Enter or Space cancels the click it would make.
+					if (!binding.leavesControls) event.preventDefault();
+					event.stopPropagation();
 					if (isTypedAsAnother(event, hotkey)) return;
 					if (binding.leavesControls && isPressOnControl(event)) return;
 					handlerOf[binding.id]?.(event, context);
 				},
 				options: {
-					...binding.options,
-					// TanStack Hotkeys prevents every matched keydown unless told not to, and on a focused
-					// button that cancels the click Enter or Space would make.
-					preventDefault: !binding.leavesControls,
+					ignoreInputs: false,
+					preventDefault: false,
+					stopPropagation: false,
 					enabled: live,
 					meta: { name: binding.name, group: binding.group },
 				},

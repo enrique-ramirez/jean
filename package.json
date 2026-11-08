@@ -2,7 +2,7 @@
 	"name": "jean",
 	"private": true,
 	"type": "module",
-	"packageManager": "pnpm@11.20.0",
+	"packageManager": "pnpm@12.18.0",
 	"scripts": {
 		"dev": "pnpm --filter @jean/ui run dev",
 		"build": "pnpm --filter @jean/ui run build",

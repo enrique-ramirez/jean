@@ -4,14 +4,12 @@ Committed rather than fetched. The foobar2000 SDK is fetched because its licence
 
 | | version | licence | why |
 |---|---|---|---|
-| `httplib.h` | cpp-httplib 0.54.1 **+1**, master at `7d53a31d` | MIT | the HTTP server |
+| `httplib.h` | cpp-httplib 0.65.0, tag `v0.65.0` at `7e5d0683` | MIT | the HTTP server |
 | `json.hpp` | nlohmann/json 3.12.0 | MIT | reading and writing `config.json`, and every API document |
 | `doctest.h` | doctest 2.5.3 | MIT | the test suite. Not linked into the component |
-| `zlib/` | zlib 1.3.1, tag `v1.3.1` at commit `51b7f2ab` | zlib | gzip. It is what cpp-httplib's compressor is written against |
+| `zlib/` | zlib 1.4, tag `v1.4` at commit `99623ef7` | zlib | gzip. It is what cpp-httplib's compressor is written against |
 
-All four are **unmodified**, and that is checked against upstream rather than assumed: the three single headers are byte-identical to their tags, except for the `httplib.h` wrinkle below, and every file in `zlib/` is byte-identical to the file of that name at `51b7f2ab`. Upgrading is replacing the files and rebuilding. Do not patch them in place, because the next upgrade would silently drop the patch. If one of them needs different behaviour, wrap it in this component's own code instead, which is what `src/core/http_server.cpp` does for the socket options below.
-
-**`httplib.h` is master, not the `v0.54.1` tag, and the version macro does not say so.** It is `7d53a31d`, exactly one commit ahead of the tag, *"Don't compress a response whose handler already set Content-Encoding"*, upstream #2575, and upstream had not yet bumped `CPPHTTPLIB_VERSION`, so both read `0.54.1`. Downloading "0.54.1" to upgrade would therefore *revert* that commit while every version string still agreed, which is the quietest kind of regression. **Check the SHA, not the macro.** That commit is not idle here either: it rewrites the chosen content coding onto chunked content providers and into `apply_ranges()`, which is exactly the machinery the stream is built on.
+All four are **unmodified**, and that is checked against upstream rather than assumed: the three single headers are byte-identical to their tags, and every file in `zlib/` is byte-identical to the file of that name at `99623ef7`. Upgrading is replacing the files and rebuilding. Do not patch them in place, because the next upgrade would silently drop the patch. If one of them needs different behaviour, wrap it in this component's own code instead, which is what `src/core/http_server.cpp` does for the socket options below.
 
 `scripts/format.sh` and `.editorconfig` both skip this directory: reformatting a library nobody here owns would turn every version bump into a merge.
 

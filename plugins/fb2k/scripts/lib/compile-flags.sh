@@ -36,11 +36,11 @@ codec_include_flags=(
   "-I$root/third_party/ogg/include"
 )
 
-# The demo programs carry their own main().
+# The demo programs carry their own main(). qext_compare.c includes mini_kfft.c, which has none.
 codec_source_files() {
   ls "$root"/third_party/opus/src/*.c "$root"/third_party/opus/celt/*.c \
     "$root"/third_party/opus/silk/*.c "$root"/third_party/opus/silk/float/*.c \
-    "$root"/third_party/ogg/src/*.c | grep -vE '(_demo|opus_compare)\.c$'
+    "$root"/third_party/ogg/src/*.c | grep -vE '(_demo|opus_compare|qext_compare|mini_kfft)\.c$'
 }
 
 warning_flags=(-Wall -Wextra)

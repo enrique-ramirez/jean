@@ -175,9 +175,9 @@ constexpr size_t kFramesLeavingSomethingHeld =
     (((size_t{kPagesBeforeTheDrop} * kPacketsAPage) + kPacketsWaiting) * OpusStream::kFrameSize) +
     kFramesShortOfAPacket;
 
-// libopus 1.5.2, measured through a new decoder: silence from an encoder that was reset peaks at
-// 2e-34. The held tone peaks at 0.36 to 0.51, and silence from an encoder left as the tone left it
-// at 3.4.
+// Through a new decoder, silence from a reset encoder stays far under this and a held tone far
+// above it. libopus 1.5.2 gave peaks of 2e-34 for the reset encoder and 0.36 to 0.51 for the tone;
+// the case also passes on 1.6.1.
 constexpr float kSilent = 0.001F;
 
 bool risesByOne(const std::vector<long>& numbers) {

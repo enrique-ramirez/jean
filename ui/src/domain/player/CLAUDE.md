@@ -1,6 +1,6 @@
 # The player
 
-`ui/ARCHITECTURE.md`, *Listening on this device*, is how the stream, the audible clock and the low-latency path fit together.
+`ui/ARCHITECTURE.md`, _Listening on this device_, is how the stream, the audible clock and the low-latency path fit together.
 
 ## Playback
 

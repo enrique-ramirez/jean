@@ -1,6 +1,6 @@
 # Tests
 
-Two suites, and the split is not about speed. **`test/e2e/` is the suite**: end-to-end, in a real browser, against a fake player, since what breaks in Jean needs real layout, real pointers and a real viewport: the virtualiser renders nothing without layout, `dnd.ts` hit-tests with `elementFromPoint`, the gestures are pointer and touch streams, and half the design is a *different component* on a phone rather than a narrower one.
+Two suites, and the split is not about speed. **`test/e2e/` is the suite**: end-to-end, in a real browser, against a fake player, since what breaks in Jean needs real layout, real pointers and a real viewport: the virtualiser renders nothing without layout, `dnd.ts` hit-tests with `elementFromPoint`, the gestures are pointer and touch streams, and half the design is a _different component_ on a phone rather than a narrower one.
 
 **`test/unit/` is for logic with no user-visible surface of its own**, under `node --test` in milliseconds. A unit test goes there only where the user cannot see the thing being asserted: the shape of the play-count curve, the order `refsOfShelf` sorts refs into, the escape inside a foobar2000 query, the keymap's layout rule, which Playwright cannot reach at all, since Chromium synthesises US QWERTY codes. **Where the user can see it, the e2e stays**, and may keep a unit test beside it for an edge the browser cannot reach. A user searching for "Heavy Metal" cares that they get Heavy Metal; that `genreQuery` composed a particular string is not the test.
 
@@ -34,7 +34,7 @@ Both projects, `desktop` and `mobile` (Pixel 7, touch on), run every spec. Skip 
 
 ## Touch gestures
 
-`touchDrag` in `gestures.ts` drives a finger through CDP rather than dispatching DOM events, since most of these tests are about *the browser's* decision on who a gesture belongs to and a dispatched `touchmove` sails past that.
+`touchDrag` in `gestures.ts` drives a finger through CDP rather than dispatching DOM events, since most of these tests are about _the browser's_ decision on who a gesture belongs to and a dispatched `touchmove` sails past that.
 
 Two things it does that are not optional. **Every point carries a timestamp**: `useSwipe` reads a slow enough gesture as a scroll rather than a flick, and a gesture is one round trip per point, so on a loaded machine an unstamped drag silently stops being a flick. And **one CDP session per page, never one per drag**: detaching a session while the next is dispatching drops the moves in between, and the gesture arrives as a tap where it started.
 
@@ -64,13 +64,13 @@ Two consequences before adding a route. **Anything reaching for a socket, a file
 
 `library.json` and `player.json` came off a real player via `node test/fake-api/capture.ts --url http://<player-host>:8881`, the origin `foo_jean` serves from, so the fake replays bytes foobar2000 actually produced. Five albums, 54 tracks, chosen for the branches the UI has:
 
-| | why it is in there |
-|---|---|
-| Babasónicos, *Jessico* | accented artist, for `fold()`; played throughout |
-| Brand New, *Deja Entendu* | the heat range: one never-played track among heavily played ones |
-| Alice in Chains, *Jar Of Flies* | FLAC rather than MP3, short, and a non-square cover |
-| As Tall as Lions, *Lafcadio* | never played at all: no heat, no patina, no last-played |
-| Have a Nice Life, *Deathconsciousness* | two discs, so `%tracknumber%` restarts mid-album |
+|                                        | why it is in there                                               |
+| -------------------------------------- | ---------------------------------------------------------------- |
+| Babasónicos, _Jessico_                 | accented artist, for `fold()`; played throughout                 |
+| Brand New, _Deja Entendu_              | the heat range: one never-played track among heavily played ones |
+| Alice in Chains, _Jar Of Flies_        | FLAC rather than MP3, short, and a non-square cover              |
+| As Tall as Lions, _Lafcadio_           | never played at all: no heat, no patina, no last-played          |
+| Have a Nice Life, _Deathconsciousness_ | two discs, so `%tracknumber%` restarts mid-album                 |
 
 Tracks are stored as objects keyed by title-formatting expression, not as the positional arrays the API returns: the fake has to answer whatever column set is asked of it, and **an expression the fixture does not carry resolves to `?`**, exactly as an unsupported field does on a real player. The exceptions are `$meta(x)` and `$meta_sep(x,...)`, which answer empty for a missing field, and two-argument `$if2`, both evaluated after the literal lookups miss. A written tag is stored under the lowercased field name and answers three spellings: `%field%` joins the values with `, `, `$meta(field)` gives the first, and `$meta_sep(field,$char(31))` joins them with U+001F, as foobar2000 answers each from the one tag. Dropping `%lastfm_play_count%` from a fixture is how a spec covers an install with no playback-statistics component.
 
@@ -185,60 +185,61 @@ A spec that plays anything refuses to start unless the player is already muted, 
 
 Two rules outrank the rest.
 
-> **A test asserts what a *user* can see.** Not internal state, not a class name used as logic, not a call count standing in for a visible fact. Where the assertion has to be about traffic, it is about traffic the user's action caused and the property that traffic must have, never the exact sequence a particular implementation happened to send.
+> **A test asserts what a _user_ can see.** Not internal state, not a class name used as logic, not a call count standing in for a visible fact. Where the assertion has to be about traffic, it is about traffic the user's action caused and the property that traffic must have, never the exact sequence a particular implementation happened to send.
 
-> **An assertion about a request happening, or not happening, must prove the request log came to *rest*.** `expect.poll(...).toBe(n)` on a growing counter returns on the first sample that matches and proves only that the number was passed through. A "nothing was sent" read written straight is unfalsifiable in the other direction: it passes before the request is made. **`expectSettlesAt` in `fixtures.ts` is the helper for both.** It polls the value to the expected one, then waits for the whole request log to stop moving, then re-reads and asserts once more without retrying.
+> **An assertion about a request happening, or not happening, must prove the request log came to _rest_.** `expect.poll(...).toBe(n)` on a growing counter returns on the first sample that matches and proves only that the number was passed through. A "nothing was sent" read written straight is unfalsifiable in the other direction: it passes before the request is made. **`expectSettlesAt` in `fixtures.ts` is the helper for both.** It polls the value to the expected one, then waits for the whole request log to stop moving, then re-reads and asserts once more without retrying.
 
 `test/e2e/fixtures.ts` gives every test its own player, on its own port, and carries the helpers every spec would otherwise write for itself. Anything more than one spec needs belongs there.
 
-| | |
-|---|---|
-| Finding things | `trackRow`, `rowByTitle`, `statusBar`, `withNoListOnScreen`, `viewHeader`, `globalControls`, `sidebar`, `openSidebar`, `closeSidebar`, `openLibrary`, `openNowPlaying`, `nowPlayingScreen`, `listenHere`, `settingsDialog`, `openSettings`, `expectPlayingFrom`, `toastRegion`, `playFirstRow`, `playingAtThePlayer` |
-| Reading the player | `requestsTo`, `routeOf`, `askOf`, `ticksTaken`, `tagWrites`, `volumesSent`, `expectSettlesAt`, `scratchOf`, `playedFrom`, `trackPlayed`, `fieldOf`, `titleOf`, `titleOfPlaylist`, `watchWhatIsSaid` |
-| Playback control off | `REASON`, `REFUSED_ROUTES`, `refusedAsks`, `expectNothingRefusedSent`, `expectDisabledWithReason` |
-| Gestures, in `gestures.ts` | `touchDrag`, `dragTo`, `dragFrom`, `pressAndHold`, `restingBox` |
-| Scrolling, in `scrolling.ts` | `isRowOnScreen`, `scrollUntilMounted`, `scrollTop`, `scrollTo` |
-| Steps | `inSequence`, `times`, `runClockFor` |
+|                              |                                                                                                                                                                                                                                                                                                                      |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Finding things               | `trackRow`, `rowByTitle`, `statusBar`, `withNoListOnScreen`, `viewHeader`, `globalControls`, `sidebar`, `openSidebar`, `closeSidebar`, `openLibrary`, `openNowPlaying`, `nowPlayingScreen`, `listenHere`, `settingsDialog`, `openSettings`, `expectPlayingFrom`, `toastRegion`, `playFirstRow`, `playingAtThePlayer` |
+| Reading the player           | `requestsTo`, `routeOf`, `askOf`, `ticksTaken`, `tagWrites`, `volumesSent`, `expectSettlesAt`, `scratchOf`, `playedFrom`, `trackPlayed`, `fieldOf`, `titleOf`, `titleOfPlaylist`, `watchWhatIsSaid`                                                                                                                  |
+| Playback control off         | `REASON`, `REFUSED_ROUTES`, `refusedAsks`, `expectNothingRefusedSent`, `expectDisabledWithReason`                                                                                                                                                                                                                    |
+| Gestures, in `gestures.ts`   | `touchDrag`, `dragTo`, `dragFrom`, `pressAndHold`, `restingBox`                                                                                                                                                                                                                                                      |
+| Scrolling, in `scrolling.ts` | `isRowOnScreen`, `scrollUntilMounted`, `scrollTop`, `scrollTo`                                                                                                                                                                                                                                                       |
+| Steps                        | `inSequence`, `times`, `runClockFor`                                                                                                                                                                                                                                                                                 |
 
 A file that is not `*.spec.ts` is not collected, which is how `fixtures.ts` and `build.ts` sit in the same folder. `nowPlaying.ts` is the same thing one level down: the lyric fixtures, the panel helpers and the discard-prompt helpers the now-playing and lyric specs share, which are too specific to be everybody's. `queue.ts` is the queue panel, its button and its rows, `menus.ts` is a row's menu, `sessions.ts` is the install that offers sessions, the picker's rows and buttons, the scene a session spec sets and the strict-mode watch that `sessions.spec.ts`, `session-picker.spec.ts`, `session-reports.spec.ts`, `sharing.spec.ts` and `media-session.spec.ts` share, and `listening.ts` is listening on this device, a stream and its ticket and the player's row, that `listen.spec.ts`, `listen-picker.spec.ts` and `unheard-player.spec.ts` share. The two pickers differ by what they put in the "Playing on" panel: `listen-picker.spec.ts` is the panel as a way to hear the player here, and `session-picker.spec.ts` is the panel as a way to start and leave a session of one's own. `pickerOpener` in `fixtures.ts` is the status bar's button that opens either.
 
 ```js
-import { expect, requestsTo, test, trackRow } from './fixtures.ts'
+import { expect, requestsTo, test, trackRow } from "./fixtures.ts";
 
-test('does the thing', async ({ page, player }) => {
-  await page.goto('/')
-  await trackRow(page, 2).dblclick()
+test("does the thing", async ({ page, player }) => {
+	await page.goto("/");
+	await trackRow(page, 2).dblclick();
 
-  // what went over the wire, read off the fake rather than the browser
-  await expect.poll(() => requestsTo(player, '/items/2/play').map((r) => r.path))
-    .toHaveLength(1)
+	// what went over the wire, read off the fake rather than the browser
+	await expect
+		.poll(() => requestsTo(player, "/items/2/play").map((r) => r.path))
+		.toHaveLength(1);
 
-  // and what the next poll drew
-  await expect(page.locator('footer')).toContainText('Deléctrico')
-})
+	// and what the next poll drew
+	await expect(page.locator("footer")).toContainText("Deléctrico");
+});
 ```
 
 `player` is the fake's state, live; `player.requests` is every request the app made. **One player per worker, reset per test**, so the suite stays parallel.
 
-A comment in a spec is allowed more room than one in `src/`. A test is documentation, and a sentence saying *why* this case matters, what broke and what a reader would otherwise assume, earns its place. Narrating what the next line does still does not.
+A comment in a spec is allowed more room than one in `src/`. A test is documentation, and a sentence saying _why_ this case matters, what broke and what a reader would otherwise assume, earns its place. Narrating what the next line does still does not.
 
 ### Fixture options
 
-| | |
-|---|---|
-| `librarySize` | swaps the 54 captured tracks for that many generated ones, for scroll arithmetic that only breaks past a few thousand rows |
-| `mediaLibrarySize` | swaps the media library, which is what the component publishes, for that many generated tracks |
-| `libraryShape` | states a library outright: counts, durations, years, tags to omit, whether an artist is spelled two ways, how many subsongs share a file. A description rather than built tracks, since an option's top level does not survive the trip to the worker as an array (nested arrays are fine) |
-| `withoutFields` | removes title-formatting expressions, so the player answers `?` as a real one does. `['%lastfm_play_count%']` is an install with no playback-statistics component, and everything built on play counts must disappear rather than break |
-| `withoutPlaylists` | empties the playlist list entirely: the player a fresh install would find |
-| `retagged` | patches tag values onto captured tracks, keyed by title: `{ Nutshell: { '%artist%': 'Alice in Chains feat. X' } }`. Everything else about the track stays captured, and the patch reaches the media library as well as the playlists |
-| `embeddedArt` | gives a track a cover of its own, keyed by title: `{ 'No Excuses': 'deja-entendu.jpg' }` names a file in `fake-api/artwork/`. That track's own address answers it and the rest of the album answers the album's, which is what a file carrying the wrong sleeve looks like to `GET /api/artwork` |
-| `playlistsFromRow` | seeds a playlist from that row on and drops the ones before it, keyed by the fake's own playlist key: `{ p1: 1 }` is a view that begins partway into an album |
-| `playerState` | seeds the player: what is playing, the volume, the playback mode |
-| `settings` | merged over a default seed, so a spec names only what it cares about |
-| `firstRun` | drops the settings seed entirely, which is what makes the first-run affordances appear |
-| `fooJean` | puts the component in whichever state is needed. `{}` is installed and serving, the default; `{ reachable: false }` is no component. Every other option is a field of `FooJeanOptions` in `fake-api/fooJean/options.ts`, each with a comment saying what it does. The fixture turns `rateLimits` on at `COMPONENT_RATE_LIMITS` and fails any test answered an unasked `429`, so a spec expecting one names the buckets in `expectRateLimited` |
-| `motion` | reduced by default, since Playwright will not click a target whose bounding box never holds still. `'allow'` opts out. `reducedMotion` in `use` does **not** work. It is accepted and silently ignored, so the fixture calls `page.emulateMedia()` |
+|                    |                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `librarySize`      | swaps the 54 captured tracks for that many generated ones, for scroll arithmetic that only breaks past a few thousand rows                                                                                                                                                                                                                                                                                                                    |
+| `mediaLibrarySize` | swaps the media library, which is what the component publishes, for that many generated tracks                                                                                                                                                                                                                                                                                                                                                |
+| `libraryShape`     | states a library outright: counts, durations, years, tags to omit, whether an artist is spelled two ways, how many subsongs share a file. A description rather than built tracks, since an option's top level does not survive the trip to the worker as an array (nested arrays are fine)                                                                                                                                                    |
+| `withoutFields`    | removes title-formatting expressions, so the player answers `?` as a real one does. `['%lastfm_play_count%']` is an install with no playback-statistics component, and everything built on play counts must disappear rather than break                                                                                                                                                                                                       |
+| `withoutPlaylists` | empties the playlist list entirely: the player a fresh install would find                                                                                                                                                                                                                                                                                                                                                                     |
+| `retagged`         | patches tag values onto captured tracks, keyed by title: `{ Nutshell: { '%artist%': 'Alice in Chains feat. X' } }`. Everything else about the track stays captured, and the patch reaches the media library as well as the playlists                                                                                                                                                                                                          |
+| `embeddedArt`      | gives a track a cover of its own, keyed by title: `{ 'No Excuses': 'deja-entendu.jpg' }` names a file in `fake-api/artwork/`. That track's own address answers it and the rest of the album answers the album's, which is what a file carrying the wrong sleeve looks like to `GET /api/artwork`                                                                                                                                              |
+| `playlistsFromRow` | seeds a playlist from that row on and drops the ones before it, keyed by the fake's own playlist key: `{ p1: 1 }` is a view that begins partway into an album                                                                                                                                                                                                                                                                                 |
+| `playerState`      | seeds the player: what is playing, the volume, the playback mode                                                                                                                                                                                                                                                                                                                                                                              |
+| `settings`         | merged over a default seed, so a spec names only what it cares about                                                                                                                                                                                                                                                                                                                                                                          |
+| `firstRun`         | drops the settings seed entirely, which is what makes the first-run affordances appear                                                                                                                                                                                                                                                                                                                                                        |
+| `fooJean`          | puts the component in whichever state is needed. `{}` is installed and serving, the default; `{ reachable: false }` is no component. Every other option is a field of `FooJeanOptions` in `fake-api/fooJean/options.ts`, each with a comment saying what it does. The fixture turns `rateLimits` on at `COMPONENT_RATE_LIMITS` and fails any test answered an unasked `429`, so a spec expecting one names the buckets in `expectRateLimited` |
+| `motion`           | reduced by default, since Playwright will not click a target whose bounding box never holds still. `'allow'` opts out. `reducedMotion` in `use` does **not** work. It is accepted and silently ignored, so the fixture calls `page.emulateMedia()`                                                                                                                                                                                            |
 
 ### Control routes
 
@@ -247,16 +248,16 @@ A comment in a spec is allowed more room than one in `src/`. A test is documenta
 ### Rules
 
 1. **Parameterise over the layouts, not just the viewports.** List and album are not one code path with a different stylesheet: album virtualises groups rather than rows, and on a phone the cover stacks above its tracks. Loop a describe over both and seed `jean.layout`.
-2. **`test.use` goes *inside* a describe, never beside one.** At file scope it applies to the whole file however many times it is called, so a loop writing it once per layout runs every case under whichever it wrote last: green, correctly named, and covering the same thing twice.
+2. **`test.use` goes _inside_ a describe, never beside one.** At file scope it applies to the whole file however many times it is called, so a loop writing it once per layout runs every case under whichever it wrote last: green, correctly named, and covering the same thing twice.
 3. **`inSequence` and `times` rather than a loop.** Playwright assertions share one page, so steps must be awaited in order. Both live in `fixtures.ts`; `inSequence` is the `reduce`, and `times` is built on it.
 4. **Drive timing-sensitive input from inside the page.** Anything racing an animation cannot be driven over the wire, because three round trips land after the animation has finished, so the test passes whether the behaviour works or not. Dispatch from `page.evaluate`, one frame apart. A synthetic wheel event scrolls nothing, which is usually the point: what is under test is the listener.
 5. **Wait on the player, not on the render that looks right.** `isRowOnScreen` is true as soon as an animated scroll brings a row into view, long before it stops moving. And mutations write to the query cache before the request goes out, so the UI flips before the stream agrees. Prefer the fake's own state, where `player.player.playbackMode` has no optimism in it, and **assert the property rather than the exact traffic**: "nothing it sends ever asks for a different order" survives a duplicated idempotent request where `toEqual([4])` does not.
 
-   **Settle by watching, never by sleeping.** Where the thing to wait on is a scroll offset rather than a request, the local `settle()` helpers walk it frame by frame from inside the page and return once it has held still; `artwork.spec.ts` waits for the offset *and* the request log to stop moving together. A fixed `waitForTimeout` followed by a hard assertion fails a slow machine instead of waiting for it, and is the slowest thing in whatever file it is in. Use `waitForTimeout` only to cross a threshold on purpose: past a hold, past a debounce, or to let a window elapse and prove nothing happened.
+   **Settle by watching, never by sleeping.** Where the thing to wait on is a scroll offset rather than a request, the local `settle()` helpers walk it frame by frame from inside the page and return once it has held still; `artwork.spec.ts` waits for the offset _and_ the request log to stop moving together. A fixed `waitForTimeout` followed by a hard assertion fails a slow machine instead of waiting for it, and is the slowest thing in whatever file it is in. Use `waitForTimeout` only to cross a threshold on purpose: past a hold, past a debounce, or to let a window elapse and prove nothing happened.
 
    Where the end state is what matters, prefer a retrying assertion over settle-then-assert. `expectCentredOrClamped` polls a sentence describing what it saw, so a failure reports the offset rather than a boolean.
 6. **A case that means to watch which address a cover is asked for has to own the page.** A cover is fresh for a week, and `artworkHandles` holds a blob per identity for the tab's life, so any view that draws tracks pre-warms both, and a later ask at the same identity is answered inside the browser rather than reaching the player. `withNoListOnScreen` in `fixtures.ts` is the page that draws none: the search route before anything has been searched for. It waits on the status bar rather than on the empty list, since no rows is true of a page that has not rendered yet.
-7. **Touch is a gesture, not a narrow mouse.** Drive it through `touchDrag`, for the reason *Touch gestures* gives. A dispatched `pointermove` passes whether the gesture works or not.
+7. **Touch is a gesture, not a narrow mouse.** Drive it through `touchDrag`, for the reason _Touch gestures_ gives. A dispatched `pointermove` passes whether the gesture works or not.
 8. **Check an injection more than once.** A guard that fails on one run and passes on the next is flaky, not covered.
 9. **A test that cannot fail is worse than no test.** When one covers a guard rather than a feature, such as "a long press plays nothing" or "a desktop click does not play", delete the guard, watch it go red, and put the guard back.
 10. **Anywhere the fake supplies both sides of a comparison, it is only testing that a string equals itself.** Path joins between the stream timeline and the poll's own `player.path` are the case in point, and have to be verified against a real player.

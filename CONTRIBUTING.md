@@ -1,6 +1,6 @@
 # Contributing
 
-How to write code in this repository. [ui/CONTRIBUTING.md](./ui/CONTRIBUTING.md) adds what is specific to the web UI, and [plugins/fb2k/CONTRIBUTING.md](./plugins/fb2k/CONTRIBUTING.md) what is specific to `foo_jean`. To *use* Jean, read the [README](./README.md).
+How to write code in this repository. [ui/CONTRIBUTING.md](./ui/CONTRIBUTING.md) adds what is specific to the web UI, and [plugins/fb2k/CONTRIBUTING.md](./plugins/fb2k/CONTRIBUTING.md) what is specific to `foo_jean`. To _use_ Jean, read the [README](./README.md).
 
 ## 1. Where things live
 
@@ -33,11 +33,11 @@ Everything else that seems to want a sentence is a name you have not found yet, 
 
 **The test, before you write one.** Strip the comment and hand the code to somebody competent who has not seen it:
 
-| they get it right | verdict |
-|---|---|
-| from the code | it was never needed |
+| they get it right                                                     | verdict                                                |
+| --------------------------------------------------------------------- | ------------------------------------------------------ |
+| from the code                                                         | it was never needed                                    |
 | only because they happen to know foobar2000, or how Safari handles it | the fact is real: write the comment, naming the system |
-| they cannot get it at all | write the comment |
+| they cannot get it at all                                             | write the comment                                      |
 
 `.claude/agents/comment-reaper.md` runs that test with an agent that has not seen the file.
 
@@ -45,7 +45,7 @@ Everything else that seems to want a sentence is a name you have not found yet, 
 
 Documentation states the current design and nothing else. No history: what something was before, why it changed and what was rejected belong in git. A sentence that exists to stop somebody undoing a decision is a test instead, or it goes; `.claude/doctrine/documentation.md` is the whole rule. No personal detail either. Names, machines, hostnames, addresses and real library paths stay out of prose, comments and test data alike; use placeholders. Public repository URLs are fine.
 
-**No measurements.** A measured number ties Jean to one library on one machine and then ships to everyone. Record the constraint a measurement established, such as "under *Playback follows cursor* foobar2000 advances through the focused playlist, not the playing one" or "there is no way to ask for a thumbnail", and never the measurement itself.
+**No measurements.** A measured number ties Jean to one library on one machine and then ships to everyone. Record the constraint a measurement established, such as "under _Playback follows cursor_ foobar2000 advances through the focused playlist, not the playing one" or "there is no way to ask for a thumbnail", and never the measurement itself.
 
 Never hard-wrap prose. One paragraph is one line, however long; editors wrap.
 

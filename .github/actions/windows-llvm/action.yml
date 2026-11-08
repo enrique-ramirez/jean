@@ -8,9 +8,9 @@ runs:
   steps:
     - shell: pwsh
       env:
-        LLVM_VERSION: '23.1.2'
+        LLVM_VERSION: "23.1.2"
         # The checksum is the one winget's LLVM.LLVM manifest records for the same file.
-        LLVM_SHA256: 'E9D9141524F2C9FE4BF9F37012EFE34F0AA745617BE9E21FFACE9104703C55E5'
+        LLVM_SHA256: "E9D9141524F2C9FE4BF9F37012EFE34F0AA745617BE9E21FFACE9104703C55E5"
       run: |
         $ErrorActionPreference = 'Stop'
         $ProgressPreference = 'SilentlyContinue'

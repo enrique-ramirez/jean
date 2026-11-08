@@ -3,7 +3,7 @@
 ## Layout
 
 - The row the sidebar and the queue sit in clips a parked panel with `overflow: hidden`, or it becomes horizontal document overflow.
-- Every row of the grid carries `min-width: 0`, the top bar included, for the reason `ui/ARCHITECTURE.md`, *Facts about the browser*, gives. The fault shows only on a narrow phone, which is the width `shell.spec.ts` asks at.
+- Every row of the grid carries `min-width: 0`, the top bar included, for the reason `ui/ARCHITECTURE.md`, _Facts about the browser_, gives. The fault shows only on a narrow phone, which is the width `shell.spec.ts` asks at.
 - `useIsCompactViewport()` switches at 860px and decides which component draws; the main CSS breakpoint is 720px and decides sizes. The now-playing gatefold is a container query against its own box.
 
 ## Routing

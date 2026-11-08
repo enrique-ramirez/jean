@@ -6,18 +6,18 @@ What `foo_jean` answers, as Jean uses it, and the foobar2000 behaviour behind it
 
 ## Reaching it
 
-| | |
-|---|---|
-| Base URL | `http://<player-host>:8881`, the origin Jean is served from |
-| CORS | same-origin from Jean, so nothing it sends to the player crosses one. `allowedOrigins` in the component's `config.json` is what a differently-hosted interface would need |
-| SPA fallback | none. A path that names no file is a `404`, and a directory answers its own `index.html`, so a client-side route has to live in the hash |
-| Owner's config | `<profile>/foo_jean/config.json`, which Jean never edits and has no route to. `plugins/fb2k/README.md` has the keys |
+|                |                                                                                                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Base URL       | `http://<player-host>:8881`, the origin Jean is served from                                                                                                               |
+| CORS           | same-origin from Jean, so nothing it sends to the player crosses one. `allowedOrigins` in the component's `config.json` is what a differently-hosted interface would need |
+| SPA fallback   | none. A path that names no file is a `404`, and a directory answers its own `index.html`, so a client-side route has to live in the hash                                  |
+| Owner's config | `<profile>/foo_jean/config.json`, which Jean never edits and has no route to. `plugins/fb2k/README.md` has the keys                                                       |
 
 `POST /api/tags`, `POST /api/autoplaylists/preview`, `GET /api/track/library` and `GET /api/track/playing` each have a rate limit of their own. A request past it is refused `429` with `Retry-After`, having written or run nothing. `contract/openapi.yaml` has the budgets. Jean retries all four through `retryWhenTooFast` in `client.ts`.
 
 ## Discovery
 
-`ui/ARCHITECTURE.md`, *The `foo_jean` security model*, is how `discoverFooJean()` in `discovery.ts` reaches `GET /api/capabilities` and the states that call resolves to.
+`ui/ARCHITECTURE.md`, _The `foo_jean` security model_, is how `discoverFooJean()` in `discovery.ts` reaches `GET /api/capabilities` and the states that call resolves to.
 
 An unreachable component might yet turn up, and `shared/hooks/useFooJean.ts` widens the interval between attempts while it stays that way, so a player started after the page still turns up without a reload. The widening happens inside the query function, since react-query may consult `refetchInterval` more than once per cycle.
 
@@ -29,7 +29,7 @@ An unreachable component might yet turn up, and `shared/hooks/useFooJean.ts` wid
 
 Every `columns` parameter takes **foobar2000 title-formatting expressions**, evaluated by the player and answered as a positional array in the order requested. The player computes, so the reachable surface is far wider than any fixed schema: any component publishing fields or functions to the title-formatting engine becomes readable this way, and installing a playback-statistics component makes its fields start answering values instead of `?`.
 
-`ui/ARCHITECTURE.md`, *Capability detection*, is how Jean declares a column set so the positions cannot drift.
+`ui/ARCHITECTURE.md`, _Capability detection_, is how Jean declares a column set so the positions cannot drift.
 
 ### Capability detection
 
@@ -41,39 +41,39 @@ A field that does not exist answers `?`. A field that exists but is empty answer
 
 ### Expressions Jean uses
 
-| Expression | Supplied by | Notes |
-|---|---|---|
-| `%artist%` `%title%` `%album%` `%album artist%` | core | |
-| `%tracknumber%` `%discnumber%` `%totaltracks%` `%totaldiscs%` | core | |
-| `%year%` | core | clean and integer-shaped. Sort and group by this |
-| `%date%` | tags | an ordinary messy user tag, **not a date-added field**: year-only, full ISO and untidy values all appear. Parse leniently |
-| `%publisher%` `%composer%` | tags | |
-| `$if2($meta_sep(genre,$char(31)),%genre%)` | tags | a genre per value, separated by U+001F; `multiValue.ts` has why |
-| `%length_seconds%` `%codec%` `%codec_profile%` `%bitrate%` `%samplerate%` `%channels%` | core | |
-| `%filesize_natural%` `%filename_ext%` `%path%` `%subsong%` | core | `%path%` is absolute and platform-separated |
-| `$if2($meta(rating),%rating%)` | tags, then `foo_playcount` | `foo_playcount` takes `%rating%` over, answering `''` where its database has no rating even if the file has a tag, in the library rows and the playing-track route but not in playlist rows, so the tag is read first. `rating.ts` |
-| `%replaygain_track_gain%` `%replaygain_album_gain%` `%bpm%` | tags | |
-| `%lastfm_play_count%` `%lastfm_last_played%` `%lastfm_first_played%` | `foo_enhanced_playcount` | counts scrobbles across every device. `0` and `N/A` when unplayed, not `?` |
-| `%play_count%` `%last_played%` `%first_played%` | `foo_playcount` | counts plays on this machine. Every play is also scrobbled, so this is ahead of the last.fm pair only while last.fm is behind or cannot match the track. Where both answer, Jean shows the higher count, the later last play and the earlier first play, never a sum; `0`, `N/A`, `''` and `?` are no answer. `fields.ts` |
-| `%added%` | `foo_playcount` | when the track entered the media library, in the same `YYYY-MM-DD HH:MM:SS` form as the play dates |
-| `$meta_sep(artists,$char(31))` `$meta_sep(albumartists,$char(31))` | tags, as MusicBrainz Picard writes them | one artist per value. Empty, not `?`, where the tag is missing |
-| `$if2(%artistsort%,%artistsortorder%)` | tags, as MusicBrainz Picard writes them | the artist's sort name, read by search alone. A FLAC or an MP4 carries it as `ARTISTSORT`, and foobar2000 maps ID3v2's `TSOP` frame to `ARTISTSORTORDER`, so one expression reads both |
-| `$meta_sep(musicbrainz_artistid,$char(31))` `$meta_sep(musicbrainz_albumartistid,$char(31))` | tags, as MusicBrainz Picard writes them | one id per credited artist, in credit order, so the count says how many artists a credit like `A & B` names. `domain/artist/credits.ts` |
-| `$if2($meta(unsynced lyrics),$if2($meta(lyrics),$if2($meta(syncedlyrics),$meta(unsyncedlyrics))))` | tags | the first present of `UNSYNCED LYRICS`, `LYRICS`, `SYNCEDLYRICS` and `UNSYNCEDLYRICS`, the order `foo_openlyrics` reads them in. **The tag name has a space.** `%lyrics%` answers `?`, and a write goes to `UNSYNCED LYRICS` alone |
+| Expression                                                                                         | Supplied by                             | Notes                                                                                                                                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `%artist%` `%title%` `%album%` `%album artist%`                                                    | core                                    |                                                                                                                                                                                                                                                                                                                           |
+| `%tracknumber%` `%discnumber%` `%totaltracks%` `%totaldiscs%`                                      | core                                    |                                                                                                                                                                                                                                                                                                                           |
+| `%year%`                                                                                           | core                                    | clean and integer-shaped. Sort and group by this                                                                                                                                                                                                                                                                          |
+| `%date%`                                                                                           | tags                                    | an ordinary messy user tag, **not a date-added field**: year-only, full ISO and untidy values all appear. Parse leniently                                                                                                                                                                                                 |
+| `%publisher%` `%composer%`                                                                         | tags                                    |                                                                                                                                                                                                                                                                                                                           |
+| `$if2($meta_sep(genre,$char(31)),%genre%)`                                                         | tags                                    | a genre per value, separated by U+001F; `multiValue.ts` has why                                                                                                                                                                                                                                                           |
+| `%length_seconds%` `%codec%` `%codec_profile%` `%bitrate%` `%samplerate%` `%channels%`             | core                                    |                                                                                                                                                                                                                                                                                                                           |
+| `%filesize_natural%` `%filename_ext%` `%path%` `%subsong%`                                         | core                                    | `%path%` is absolute and platform-separated                                                                                                                                                                                                                                                                               |
+| `$if2($meta(rating),%rating%)`                                                                     | tags, then `foo_playcount`              | `foo_playcount` takes `%rating%` over, answering `''` where its database has no rating even if the file has a tag, in the library rows and the playing-track route but not in playlist rows, so the tag is read first. `rating.ts`                                                                                        |
+| `%replaygain_track_gain%` `%replaygain_album_gain%` `%bpm%`                                        | tags                                    |                                                                                                                                                                                                                                                                                                                           |
+| `%lastfm_play_count%` `%lastfm_last_played%` `%lastfm_first_played%`                               | `foo_enhanced_playcount`                | counts scrobbles across every device. `0` and `N/A` when unplayed, not `?`                                                                                                                                                                                                                                                |
+| `%play_count%` `%last_played%` `%first_played%`                                                    | `foo_playcount`                         | counts plays on this machine. Every play is also scrobbled, so this is ahead of the last.fm pair only while last.fm is behind or cannot match the track. Where both answer, Jean shows the higher count, the later last play and the earlier first play, never a sum; `0`, `N/A`, `''` and `?` are no answer. `fields.ts` |
+| `%added%`                                                                                          | `foo_playcount`                         | when the track entered the media library, in the same `YYYY-MM-DD HH:MM:SS` form as the play dates                                                                                                                                                                                                                        |
+| `$meta_sep(artists,$char(31))` `$meta_sep(albumartists,$char(31))`                                 | tags, as MusicBrainz Picard writes them | one artist per value. Empty, not `?`, where the tag is missing                                                                                                                                                                                                                                                            |
+| `$if2(%artistsort%,%artistsortorder%)`                                                             | tags, as MusicBrainz Picard writes them | the artist's sort name, read by search alone. A FLAC or an MP4 carries it as `ARTISTSORT`, and foobar2000 maps ID3v2's `TSOP` frame to `ARTISTSORTORDER`, so one expression reads both                                                                                                                                    |
+| `$meta_sep(musicbrainz_artistid,$char(31))` `$meta_sep(musicbrainz_albumartistid,$char(31))`       | tags, as MusicBrainz Picard writes them | one id per credited artist, in credit order, so the count says how many artists a credit like `A & B` names. `domain/artist/credits.ts`                                                                                                                                                                                   |
+| `$if2($meta(unsynced lyrics),$if2($meta(lyrics),$if2($meta(syncedlyrics),$meta(unsyncedlyrics))))` | tags                                    | the first present of `UNSYNCED LYRICS`, `LYRICS`, `SYNCEDLYRICS` and `UNSYNCEDLYRICS`, the order `foo_openlyrics` reads them in. **The tag name has a space.** `%lyrics%` answers `?`, and a write goes to `UNSYNCED LYRICS` alone                                                                                        |
 
 Which of these resolve varies by install, by component and by how the library was tagged. Detect; never assume.
 
 A tag written as an array of values (`POST /api/tags` has the form) reads back through `%field%` as one string, the values joined with `, `, so a value that holds a comma cannot be told from two. Only `$meta_sep(field,$char(31))` gives them one by one.
 
-> **There is no play history, only a last play.** A play count is a lifetime total and a last-played is the most recent play and nothing else, so a track played today and again weeks ago reports only today. Any per-day or per-week chart built on it undercounts every older bucket and slopes upward whatever the listening did. A window can honestly report how many *distinct tracks* were touched since a date, and must say so in those words.
+> **There is no play history, only a last play.** A play count is a lifetime total and a last-played is the most recent play and nothing else, so a track played today and again weeks ago reports only today. Any per-day or per-week chart built on it undercounts every older bucket and slopes upward whatever the listening did. A window can honestly report how many _distinct tracks_ were touched since a date, and must say so in those words.
 
 > `%added%` starts on the day `foo_playcount` is installed. Its first run stamps every track already in the library with that moment, so on a new install most of the library carries times seconds apart and only tracks added afterwards carry a real one. `foo_enhanced_playcount`'s `%added_enhanced%` resolves and answers `<invalid timestamp>` for every track, and its `%lastfm_added%` is the first scrobble. `%last_modified%` is not a substitute either: playback can rewrite tags, which bumps the file's mtime, so it is `max(added, last played or retagged)`, wrong precisely at the recent end, where a "recently added" view would look.
 
-> Lyrics need no component. The four tags above return whatever is in them, which is LRC-timestamped only some of the time and is plain text more often than not. Real content includes several timestamps on one line, credit lines, and tags holding nothing but a URL. LRC in real files also carries `\r\n` or a lone `\r` between lines, fractions of one to three digits, and an `[offset:…]` in milliseconds to subtract. The field is large enough that it is fetched per track through `GET /api/track/playing` and **MUST never go in the rows declaration's columns**, which are read for every track. `foo_openlyrics` is what *writes* the tag.
+> Lyrics need no component. The four tags above return whatever is in them, which is LRC-timestamped only some of the time and is plain text more often than not. Real content includes several timestamps on one line, credit lines, and tags holding nothing but a URL. LRC in real files also carries `\r\n` or a lone `\r` between lines, fractions of one to three digits, and an `[offset:…]` in milliseconds to subtract. The field is large enough that it is fetched per track through `GET /api/track/playing` and **MUST never go in the rows declaration's columns**, which are read for every track. `foo_openlyrics` is what _writes_ the tag.
 
 ## The library
 
-`contract/openapi.yaml`, *The media library*, defines the `{structure, revision}` pair and the rows, runs and question routes that carry it.
+`contract/openapi.yaml`, _The media library_, defines the `{structure, revision}` pair and the rows, runs and question routes that carry it.
 
 - A pair is compared for equality only, never for order. A pair read after the player restarts can be lower than the one before it without being older.
 - A `409` from a rows or runs read means `structure` moved under the request. The windows read at the old `structure` are dropped and the column declaration is sent again before anything is drawn.
@@ -84,7 +84,7 @@ A tag written as an array of values (`POST /api/tags` has the form) reads back t
 
 ## The state document
 
-`GET /api/state` carries three sections that ride together. `library` is the two generations `contract/openapi.yaml`, *The media library*, defines. `player` is what the player, or the session the poll names, is doing now. `mainThread` says whether foobar2000's main thread is still answering, and `player` goes on describing the last thing the player said while it is not. The `State`, `Library`, `PlayerState` and `MainThread` schemas are the reference; this is the part that catches an unwary client.
+`GET /api/state` carries three sections that ride together. `library` is the two generations `contract/openapi.yaml`, _The media library_, defines. `player` is what the player, or the session the poll names, is doing now. `mainThread` says whether foobar2000's main thread is still answering, and `player` goes on describing the last thing the player said while it is not. The `State`, `Library`, `PlayerState` and `MainThread` schemas are the reference; this is the part that catches an unwary client.
 
 - The route's `ETag` does not cover every field that moves tick to tick. A browser left to itself revalidates an untagged read and hands back the last cached `200` body on a `304`, however stale, so every read goes out with `cache: "no-store"` (`fetchState()` in `state.ts`) and only Jean's own `If-None-Match` decides whether a read is fresh.
 - `player.position` is a mark, not a moving number: `seconds` at the moment the component last looked, and `ageSeconds` since. A client adds the two and counts on from there while `player.playback` is `playing`.
@@ -112,7 +112,7 @@ A tag written as an array of values (`POST /api/tags` has the form) reads back t
 
 ## The queue
 
-The play queue outranks *Playback follows cursor*: a track that came off the queue is left playing whatever row the cursor is on. A queued track leaves the queue the moment it starts, so the queue is only ever what is still to come. `plugins/fb2k/ARCHITECTURE.md`, *Facts about the player*, has how foobar2000 orders it.
+The play queue outranks _Playback follows cursor_: a track that came off the queue is left playing whatever row the cursor is on. A queued track leaves the queue the moment it starts, so the queue is only ever what is still to come. `plugins/fb2k/ARCHITECTURE.md`, _Facts about the player_, has how foobar2000 orders it.
 
 `queueRevision` advances by exactly one per accepted mutation, so a caller chaining several writes against one cached read can predict the next revision without a re-read between them.
 
@@ -120,7 +120,7 @@ A queued entry plays whether or not its `location` is set. `location` is `null` 
 
 ## The stream
 
-The component's stream clock is what a listener hears, and the player's reported position runs ahead of it. The `stream` tag in `contract/openapi.yaml` carries the arithmetic between the two, and `ui/ARCHITECTURE.md`, *Listening on this device*, is what Jean builds on it.
+The component's stream clock is what a listener hears, and the player's reported position runs ahead of it. The `stream` tag in `contract/openapi.yaml` carries the arithmetic between the two, and `ui/ARCHITECTURE.md`, _Listening on this device_, is what Jean builds on it.
 
 - The ticket is the one credential `foo_jean` asks for, since an `<audio>` element sends no header of its own. Clients MUST NOT store, log or otherwise place a ticket where a credential would not go.
 - `deviceId` labels a row in somebody else's picker, and a private session is a courtesy rather than a boundary. Generate it at random, keep it, and never derive it from anything about the person.

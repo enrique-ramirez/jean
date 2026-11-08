@@ -61,8 +61,8 @@ Jean is not a music player, and on its own it does nothing at all. It draws a pl
 
 One more is optional:
 
-| | |
-|---|---|
+|                                             |                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `foo_playcount` or `foo_enhanced_playcount` | Jean is compatible with both. They are where the play counts and last-played dates come from, which is what the shelves and the row shading are made of. `foo_playcount` also records when each track entered the library, which is what Recently added shows; it starts counting on the day it is installed. Without one, none of that is drawn |
 <!-- /site:requirements -->
 
@@ -110,17 +110,17 @@ A translation you would like shipped is welcome as a pull request. Put it in `ui
 
 Everything is reachable from the keyboard on desktop, and `?` shows you what is bound. That overlay is generated from the same table that registers the bindings, so it cannot drift. **`Cmd` on macOS, `Ctrl` everywhere else.** The ones worth knowing:
 
-| | |
-|---|---|
-| `Space` · `←` `→` · `Cmd ←` `Cmd →` | Play/pause · seek · previous/next |
-| `=` `-` `M` | Volume up, down, mute |
-| `0`–`5` | Rate the row under the cursor, or the playing track |
-| `↑` `↓` `Enter` | Move through the list, play what you land on |
-| `Cmd K` · `/` | Search the library · find in this list |
-| `G` · `P` | Go to a playlist · go to what is playing |
-| `O` | Playback order |
-| `S` · `V` · `H` · `T` | Shuffle play · list or albums · play-count heat · light or dark |
-| `Cmd B` `Q` `W` · `Cmd ,` | Sidebar · queue · what's playing · settings |
+|                                     |                                                                 |
+| ----------------------------------- | --------------------------------------------------------------- |
+| `Space` · `←` `→` · `Cmd ←` `Cmd →` | Play/pause · seek · previous/next                               |
+| `=` `-` `M`                         | Volume up, down, mute                                           |
+| `0`–`5`                             | Rate the row under the cursor, or the playing track             |
+| `↑` `↓` `Enter`                     | Move through the list, play what you land on                    |
+| `Cmd K` · `/`                       | Search the library · find in this list                          |
+| `G` · `P`                           | Go to a playlist · go to what is playing                        |
+| `O`                                 | Playback order                                                  |
+| `S` · `V` · `H` · `T`               | Shuffle play · list or albums · play-count heat · light or dark |
+| `Cmd B` `Q` `W` · `Cmd ,`           | Sidebar · queue · what's playing · settings                     |
 
 ## Working on Jean
 

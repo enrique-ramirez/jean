@@ -257,7 +257,24 @@ paths:
                   summary: The default install.
                   value:
                     apiVersion: 1
-                    allowedFields: ["rating", "unsynced lyrics", "TITLE", "ARTIST", "ALBUM", "ALBUM ARTIST", "DATE", "GENRE", "PUBLISHER", "COMPOSER", "TRACKNUMBER", "TOTALTRACKS", "DISCNUMBER", "TOTALDISCS", "BPM"]
+                    allowedFields:
+                      [
+                        "rating",
+                        "unsynced lyrics",
+                        "TITLE",
+                        "ARTIST",
+                        "ALBUM",
+                        "ALBUM ARTIST",
+                        "DATE",
+                        "GENRE",
+                        "PUBLISHER",
+                        "COMPOSER",
+                        "TRACKNUMBER",
+                        "TOTALTRACKS",
+                        "DISCNUMBER",
+                        "TOTALDISCS",
+                        "BPM",
+                      ]
                     canWrite: true
                     canWritePlaylists: true
                     canControlPlayback: true
@@ -484,7 +501,11 @@ paths:
               schema: { $ref: "#/components/schemas/TagFailed" }
               examples:
                 unknown:
-                  value: { written: false, error: foobar2000 does not know that track }
+                  value:
+                    {
+                      written: false,
+                      error: foobar2000 does not know that track,
+                    }
         "409":
           description: |
             The address no longer names what the client read it at, and nothing was written. The error string says which of three, and each has its own remedy.
@@ -602,7 +623,8 @@ paths:
                 value: { title: "Road trip" }
               libraryRows:
                 summary: Ordinals 0, 1 and 9 of a 16-track library, as two runs.
-                value: { title: "Road trip", structure: 41, runs: [[0, 2], [9, 1]] }
+                value:
+                  { title: "Road trip", structure: 41, runs: [[0, 2], [9, 1]] }
               playlistRows:
                 summary: Rows 1, 2 and 4 of a playlist that already exists.
                 value:
@@ -641,7 +663,11 @@ paths:
                 off:
                   value: { error: the media library is not available }
                 nothingYet:
-                  value: { error: the library snapshot has not been built yet, detail: "" }
+                  value:
+                    {
+                      error: the library snapshot has not been built yet,
+                      detail: "",
+                    }
                 noPlayer:
                   value: { error: playlist changes are not available }
         "504": { $ref: "#/components/responses/PlayerTooSlow" }
@@ -743,7 +769,13 @@ paths:
               schema: { $ref: "#/components/schemas/QueryPreview" }
               examples:
                 matched:
-                  value: { valid: true, error: "", matches: 412, libraryEnabled: true }
+                  value:
+                    {
+                      valid: true,
+                      error: "",
+                      matches: 412,
+                      libraryEnabled: true,
+                    }
                 unreadable:
                   value:
                     valid: false
@@ -752,7 +784,13 @@ paths:
                     libraryEnabled: true
                 noLibrary:
                   summary: A valid query on an install with no Media Library.
-                  value: { valid: true, error: "", matches: 0, libraryEnabled: false }
+                  value:
+                    {
+                      valid: true,
+                      error: "",
+                      matches: 0,
+                      libraryEnabled: false,
+                    }
                 withRows:
                   summary: A valid query asked for its matching tracks.
                   value:
@@ -819,9 +857,14 @@ paths:
                   - { $ref: "#/components/schemas/PlaylistFailed" }
               examples:
                 noQuery:
-                  value: { error: unacceptable query, detail: "'query' is required" }
+                  value:
+                    { error: unacceptable query, detail: "'query' is required" }
                 keyRefused:
-                  value: { error: unacceptable key, detail: a key names a playlist this component made }
+                  value:
+                    {
+                      error: unacceptable key,
+                      detail: a key names a playlist this component made,
+                    }
         "403": { $ref: "#/components/responses/OwnPlaylistAddressed" }
         "404": { $ref: "#/components/responses/NoSuchPlaylist" }
         "409": { $ref: "#/components/responses/AutoPlaylistConflict" }
@@ -893,7 +936,8 @@ paths:
             examples:
               runs:
                 summary: Ordinals 0, 1 and 9 of a 16-track library, as two runs.
-                value: { title: "Scratch", structure: 41, runs: [[0, 2], [9, 1]] }
+                value:
+                  { title: "Scratch", structure: 41, runs: [[0, 2], [9, 1]] }
               bitset:
                 summary: The same three ordinals as a bitmap.
                 value: { title: "Scratch", structure: 41, bitset: "AwI=" }
@@ -1378,7 +1422,8 @@ paths:
                         subsong: 0
                 caughtUp:
                   summary: Nothing has changed since the revision asked from.
-                  value: { revision: "9204739866101318976", columns: [], items: [] }
+                  value:
+                    { revision: "9204739866101318976", columns: [], items: [] }
         "400":
           description: |
             The request was understood and declined before the player was asked: an id this component did not issue, no `columns` at all or a set the column gate refuses, a missing `since`, or a `structure` or `since` that is not a run of decimal digits inside 64 bits. The schemas below tell the column and revision refusals from the other two.
@@ -1499,7 +1544,13 @@ paths:
 
         **Refusals** are the questions', with a budget of its own at their depth and refill. `query` is up to 1024 bytes of UTF-8. `409` is a `structure` that is not the playlist's, or a role naming an expression the declaration does not hold.
       parameters:
-        - { name: query, in: query, required: true, description: "What was typed. Up to 1024 bytes as UTF-8, and it may be empty.", schema: { type: string } }
+        - {
+            name: query,
+            in: query,
+            required: true,
+            description: "What was typed. Up to 1024 bytes as UTF-8, and it may be empty.",
+            schema: { type: string },
+          }
         - name: structure
           in: query
           required: true
@@ -1602,10 +1653,20 @@ paths:
               examples:
                 default:
                   summary: Three rows appended to a playlist that held four.
-                  value: { structure: "9204739866101318924", positions: [4, 5, 6], skipped: [] }
+                  value:
+                    {
+                      structure: "9204739866101318924",
+                      positions: [4, 5, 6],
+                      skipped: [],
+                    }
                 skipped:
                   summary: Rows 1, 2 and 4 asked for with `duplicates` `skip`, of which the target already held the track at row 2.
-                  value: { structure: "9204739866101318924", positions: [4, 5], skipped: [2] }
+                  value:
+                    {
+                      structure: "9204739866101318924",
+                      positions: [4, 5],
+                      skipped: [2],
+                    }
         "400":
           description: |
             The request was understood and declined before the player was asked: a body that is not JSON, a missing `source` or one this component did not issue, a missing or malformed `runs`, a field the schema does not declare, a `runs` entry naming a row past the end of the source playlist, or a selection resolving to more than 1,500,000 rows, an engineered ceiling on what one request may resolve to, set far above any selection made in a playlist view; the real playlist length is checked again once the player has answered. A create from the same source is refused in the same words.
@@ -1740,10 +1801,12 @@ paths:
             examples:
               runs:
                 summary: Rows 4 and 5 of a playlist read at the generation named, moved to the head.
-                value: { structure: "9204739866101318923", runs: [[4, 2]], to: 0 }
+                value:
+                  { structure: "9204739866101318923", runs: [[4, 2]], to: 0 }
               ordinals:
                 summary: Rows 5 and 2, moved so they land at position 7 of the playlist without them.
-                value: { structure: "9204739866101318923", ordinals: [5, 2], to: 7 }
+                value:
+                  { structure: "9204739866101318923", ordinals: [5, 2], to: 7 }
       responses:
         "200":
           description: Moved. `structure` is the generation the playlist now stands at.
@@ -1815,7 +1878,8 @@ paths:
               examples:
                 default:
                   summary: A playlist of four rows whose last row sorted first.
-                  value: { structure: "9204739866101318924", order: [3, 0, 1, 2] }
+                  value:
+                    { structure: "9204739866101318924", order: [3, 0, 1, 2] }
         "400":
           description: |
             The request was understood and declined before the player was asked: a body that is not JSON, a `structure` missing or not a string of decimal digits inside 64 bits, a `pattern` missing, empty or longer than 4096 characters, or a field the schema does not declare.
@@ -1955,9 +2019,16 @@ paths:
                   - $ref: "#/components/schemas/PlaylistFailed"
               examples:
                 engine:
-                  value: { error: "the engine session plays a playlist row; name a detached session" }
+                  value:
+                    {
+                      error: "the engine session plays a playlist row; name a detached session",
+                    }
                 restructured:
-                  value: { error: "tracks were added or removed; read the state and ask again", detail: "" }
+                  value:
+                    {
+                      error: "tracks were added or removed; read the state and ask again",
+                      detail: "",
+                    }
         "415": { $ref: "#/components/responses/JsonRequired" }
         "503":
           description: |
@@ -1969,7 +2040,11 @@ paths:
                 off:
                   value: { error: the media library is not available }
                 nothingYet:
-                  value: { error: the library snapshot has not been built yet, detail: "" }
+                  value:
+                    {
+                      error: the library snapshot has not been built yet,
+                      detail: "",
+                    }
                 noTaking:
                   value: { error: playback commands are not available }
 
@@ -2160,9 +2235,17 @@ paths:
               schema: { $ref: "#/components/schemas/PlaybackSeekRefusal" }
               examples:
                 twoForms:
-                  value: { error: unacceptable seek, detail: "'seconds' and 'relativeSeconds' were both present; send exactly one" }
+                  value:
+                    {
+                      error: unacceptable seek,
+                      detail: "'seconds' and 'relativeSeconds' were both present; send exactly one",
+                    }
                 neitherForm:
-                  value: { error: unacceptable seek, detail: "send exactly one of 'seconds' and 'relativeSeconds'" }
+                  value:
+                    {
+                      error: unacceptable seek,
+                      detail: "send exactly one of 'seconds' and 'relativeSeconds'",
+                    }
         "403": { $ref: "#/components/responses/PlaybackDisabled" }
         "404": { $ref: "#/components/responses/NoSuchSession" }
         "415": { $ref: "#/components/responses/JsonRequired" }
@@ -2203,7 +2286,11 @@ paths:
               schema: { $ref: "#/components/schemas/PlaybackModeRefusal" }
               examples:
                 unknownName:
-                  value: { error: unacceptable mode, detail: "'shuffleRecords' is not a playback mode this API knows" }
+                  value:
+                    {
+                      error: unacceptable mode,
+                      detail: "'shuffleRecords' is not a playback mode this API knows",
+                    }
         "403": { $ref: "#/components/responses/PlaybackDisabled" }
         "404": { $ref: "#/components/responses/NoSuchSession" }
         "409": { $ref: "#/components/responses/PlaybackModeUnavailable" }
@@ -2231,8 +2318,14 @@ paths:
                 default:
                   value:
                     devices:
-                      - { id: "D41D2423-FBB0-4635-B233-7054F79814AB:44761B90-C842-41F7-86E5-645DE2EEA6DC", name: "Speakers (Realtek High Definition Audio)" }
-                      - { id: "D41D2423-FBB0-4635-B233-7054F79814AB:00000000-0000-0000-0000-000000000000", name: "Primary Sound Driver" }
+                      - {
+                          id: "D41D2423-FBB0-4635-B233-7054F79814AB:44761B90-C842-41F7-86E5-645DE2EEA6DC",
+                          name: "Speakers (Realtek High Definition Audio)",
+                        }
+                      - {
+                          id: "D41D2423-FBB0-4635-B233-7054F79814AB:00000000-0000-0000-0000-000000000000",
+                          name: "Primary Sound Driver",
+                        }
                     active: "D41D2423-FBB0-4635-B233-7054F79814AB:44761B90-C842-41F7-86E5-645DE2EEA6DC"
         "500": { $ref: "#/components/responses/PlayerRefused" }
         "503": { $ref: "#/components/responses/OutputsUnavailable" }
@@ -2256,7 +2349,10 @@ paths:
             schema: { $ref: "#/components/schemas/ActiveOutputRequest" }
             examples:
               switch:
-                value: { deviceId: "D41D2423-FBB0-4635-B233-7054F79814AB:00000000-0000-0000-0000-000000000000" }
+                value:
+                  {
+                    deviceId: "D41D2423-FBB0-4635-B233-7054F79814AB:00000000-0000-0000-0000-000000000000",
+                  }
       responses:
         "204":
           description: Switched.
@@ -2268,7 +2364,11 @@ paths:
               schema: { $ref: "#/components/schemas/ActiveOutputRefusal" }
               examples:
                 noDeviceId:
-                  value: { error: unacceptable output device, detail: "'deviceId' is required and must be a string" }
+                  value:
+                    {
+                      error: unacceptable output device,
+                      detail: "'deviceId' is required and must be a string",
+                    }
         "403": { $ref: "#/components/responses/OutputChangeDisabled" }
         "409": { $ref: "#/components/responses/OutputDeviceNotListed" }
         "415": { $ref: "#/components/responses/JsonRequired" }
@@ -2315,9 +2415,17 @@ paths:
               schema: { $ref: "#/components/schemas/VolumeRefusal" }
               examples:
                 twoForms:
-                  value: { error: unacceptable volume, detail: "send exactly one of 'value', 'step' and 'muted'" }
+                  value:
+                    {
+                      error: unacceptable volume,
+                      detail: "send exactly one of 'value', 'step' and 'muted'",
+                    }
                 badStep:
-                  value: { error: unacceptable volume, detail: "'step' must be 'up' or 'down'" }
+                  value:
+                    {
+                      error: unacceptable volume,
+                      detail: "'step' must be 'up' or 'down'",
+                    }
         "403": { $ref: "#/components/responses/PlaybackDisabled" }
         "415": { $ref: "#/components/responses/JsonRequired" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
@@ -2395,7 +2503,10 @@ paths:
                       album: Imaginary Album
                       albumArtist: Various Fictional Artists
                       playingLocation:
-                        { playlistId: 45837d74-fa4f-415c-bba9-bf2db8f0dc04, index: 3 }
+                        {
+                          playlistId: 45837d74-fa4f-415c-bba9-bf2db8f0dc04,
+                          index: 3,
+                        }
                       currentPlaylistId: 45837d74-fa4f-415c-bba9-bf2db8f0dc04
                       queueRevision: 4
                       playlistsRevision: 7
@@ -2407,7 +2518,15 @@ paths:
                   value:
                     configGeneration: 0
                     library:
-                      { ready: false, structure: 0, revision: 0, trackCount: 0, columns: [], changeCounts: [], build: null }
+                      {
+                        ready: false,
+                        structure: 0,
+                        revision: 0,
+                        trackCount: 0,
+                        columns: [],
+                        changeCounts: [],
+                        build: null,
+                      }
                     player:
                       playback: stopped
                       path: ""
@@ -2437,7 +2556,15 @@ paths:
                   value:
                     configGeneration: 3
                     library:
-                      { ready: true, structure: 41, revision: 903, trackCount: 30441, columns: ["%title%"], changeCounts: [0], build: null }
+                      {
+                        ready: true,
+                        structure: 41,
+                        revision: 903,
+                        trackCount: 30441,
+                        columns: ["%title%"],
+                        changeCounts: [0],
+                        build: null,
+                      }
                     player:
                       playback: playing
                       path: 'C:\Music\Fictional Artist\Imaginary Album\01 Track.flac'
@@ -2528,7 +2655,11 @@ paths:
                         album: Another Album
                         albumArtist: Another Artist
                         libraryPath: null
-                        location: { playlistId: 45837d74-fa4f-415c-bba9-bf2db8f0dc04, index: 7 }
+                        location:
+                          {
+                            playlistId: 45837d74-fa4f-415c-bba9-bf2db8f0dc04,
+                            index: 7,
+                          }
         "400": { $ref: "#/components/responses/LibraryRefused" }
         "404": { $ref: "#/components/responses/NoSuchSession" }
         "500":
@@ -2574,7 +2705,11 @@ paths:
             examples:
               atTheEnd:
                 summary: Three rows, queued in the order clicked.
-                value: { playlistId: 45837d74-fa4f-415c-bba9-bf2db8f0dc04, positions: [7, 2, 5] }
+                value:
+                  {
+                    playlistId: 45837d74-fa4f-415c-bba9-bf2db8f0dc04,
+                    positions: [7, 2, 5],
+                  }
               atAPosition:
                 summary: One row, queued second in the queue.
                 value:
@@ -2623,9 +2758,17 @@ paths:
                   - $ref: "#/components/schemas/Error"
               examples:
                 restructured:
-                  value: { error: "tracks were added or removed; read the state and ask again", detail: "" }
+                  value:
+                    {
+                      error: "tracks were added or removed; read the state and ask again",
+                      detail: "",
+                    }
                 queueMoved:
-                  value: { error: "the queue changed since that revision; read it again", detail: "" }
+                  value:
+                    {
+                      error: "the queue changed since that revision; read it again",
+                      detail: "",
+                    }
                 sessionQueueFull:
                   value: { error: "the session's queue is full" }
         "415": { $ref: "#/components/responses/JsonRequired" }
@@ -2815,7 +2958,13 @@ paths:
 
         **Refusals come in this order.** A role that is unknown, empty or named twice in two spellings is a `400`; a byte-identical pair sent twice is collapsed by the server before the component sees it and is accepted. A component that does not serve the media library is a `503`. The route's own budget is a `429`: a burst of 200, refilling one every 50 milliseconds, a budget of its own, and a request refused for what it asks spends nothing. A component with no snapshot ready, or one that was not built with a declared role's expression, answers `202` and starts no build; the client declares through `POST /library/rows` and asks again when `GET /state` reports the library ready. An expression the declaration does not hold is a `409` naming it.
       parameters:
-        - { name: genres, in: query, required: false, description: "`true` adds `genres`, every genre of the library with its track count and up to two cover tracks, to the document. `false` or absent leaves it out. Any other value is a `400`, `unacceptable question`. The `ETag` names it.", schema: { type: boolean } }
+        - {
+            name: genres,
+            in: query,
+            required: false,
+            description: "`true` adds `genres`, every genre of the library with its track count and up to two cover tracks, to the document. `false` or absent leaves it out. Any other value is a `400`, `unacceptable question`. The `ETag` names it.",
+            schema: { type: boolean },
+          }
         - $ref: "#/components/parameters/RoleTrackNumber"
         - $ref: "#/components/parameters/RoleDiscNumber"
         - $ref: "#/components/parameters/RoleTitle"
@@ -2880,10 +3029,34 @@ paths:
 
         **`namesATrack`.** `true` where a matching track's title folds to the same text as the query, trimmed, does; `false` where the query folds to nothing.
       parameters:
-        - { name: query, in: query, required: true, description: "What was typed. Up to 1024 bytes as UTF-8, and it may be empty.", schema: { type: string } }
-        - { name: limit, in: query, required: true, description: "How many matching tracks `best` lists at most.", schema: { type: integer, minimum: 0 } }
-        - { name: entityLimit, in: query, required: true, description: "How many artists, albums and genres each `top` lists at most.", schema: { type: integer, minimum: 0 } }
-        - { name: splitsCredits, in: query, required: true, description: "Whether a credit line holding several names is counted as each of them, as `true` or `false`.", schema: { type: boolean } }
+        - {
+            name: query,
+            in: query,
+            required: true,
+            description: "What was typed. Up to 1024 bytes as UTF-8, and it may be empty.",
+            schema: { type: string },
+          }
+        - {
+            name: limit,
+            in: query,
+            required: true,
+            description: "How many matching tracks `best` lists at most.",
+            schema: { type: integer, minimum: 0 },
+          }
+        - {
+            name: entityLimit,
+            in: query,
+            required: true,
+            description: "How many artists, albums and genres each `top` lists at most.",
+            schema: { type: integer, minimum: 0 },
+          }
+        - {
+            name: splitsCredits,
+            in: query,
+            required: true,
+            description: "Whether a credit line holding several names is counted as each of them, as `true` or `false`.",
+            schema: { type: boolean },
+          }
         - $ref: "#/components/parameters/RoleTrackNumber"
         - $ref: "#/components/parameters/RoleDiscNumber"
         - $ref: "#/components/parameters/RoleTitle"
@@ -2943,8 +3116,20 @@ paths:
 
         **The answer.** `refs` is the album's tracks as a set, and `album` and `artist` are the album's spelling as the tracks carry it, the spelling of the track with the lowest dictionary id for that tag, `artist` `null` where none. No match is an empty set, `album` as asked and `artist` `null`.
       parameters:
-        - { name: name, in: query, required: true, description: "The album, as its tag spells it. It may be empty.", schema: { type: string } }
-        - { name: by, in: query, required: false, description: "The artist the album is credited to. Left out or empty, it asks for the album credited to nobody.", schema: { type: string } }
+        - {
+            name: name,
+            in: query,
+            required: true,
+            description: "The album, as its tag spells it. It may be empty.",
+            schema: { type: string },
+          }
+        - {
+            name: by,
+            in: query,
+            required: false,
+            description: "The artist the album is credited to. Left out or empty, it asks for the album credited to nobody.",
+            schema: { type: string },
+          }
         - $ref: "#/components/parameters/RoleTrackNumber"
         - $ref: "#/components/parameters/RoleDiscNumber"
         - $ref: "#/components/parameters/RoleTitle"
@@ -3002,8 +3187,20 @@ paths:
 
         **The answer.** `own` holds the tracks where the artist is the lead or the album's act, `shared` those where the artist is named as one of several leads, and `guest` those where it is credited as a guest. No track is in two of them, and a client merges them for every track of the artist. `splitsCredits` says whether a credit line holding several names counts each of them (`true`) or the line as one name (`false`). The cases say how a track falls into each set.
       parameters:
-        - { name: name, in: query, required: true, description: "The artist, as a credit spells it. It may be empty.", schema: { type: string } }
-        - { name: splitsCredits, in: query, required: true, description: "Whether a credit line holding several names is counted as each of them, as `true` or `false`.", schema: { type: boolean } }
+        - {
+            name: name,
+            in: query,
+            required: true,
+            description: "The artist, as a credit spells it. It may be empty.",
+            schema: { type: string },
+          }
+        - {
+            name: splitsCredits,
+            in: query,
+            required: true,
+            description: "Whether a credit line holding several names is counted as each of them, as `true` or `false`.",
+            schema: { type: boolean },
+          }
         - $ref: "#/components/parameters/RoleTrackNumber"
         - $ref: "#/components/parameters/RoleDiscNumber"
         - $ref: "#/components/parameters/RoleTitle"
@@ -3061,7 +3258,13 @@ paths:
 
         **The answer.** `refs` is the tracks whose genre expression holds `name` as one of its values, as a set. A track with several genres is in each.
       parameters:
-        - { name: name, in: query, required: true, description: "The genre, as one value of the genre expression. It may be empty.", schema: { type: string } }
+        - {
+            name: name,
+            in: query,
+            required: true,
+            description: "The genre, as one value of the genre expression. It may be empty.",
+            schema: { type: string },
+          }
         - $ref: "#/components/parameters/RoleTrackNumber"
         - $ref: "#/components/parameters/RoleDiscNumber"
         - $ref: "#/components/parameters/RoleTitle"
@@ -3128,10 +3331,20 @@ paths:
             examples:
               runs:
                 summary: The first three rows of a library, as one run.
-                value: { columns: ["%title%", "%artist%"], structure: "1", runs: [[0, 3]] }
+                value:
+                  {
+                    columns: ["%title%", "%artist%"],
+                    structure: "1",
+                    runs: [[0, 3]],
+                  }
               ordinals:
                 summary: Three rows in the order a list draws them.
-                value: { columns: ["%title%", "%artist%"], structure: "1", ordinals: [9, 0, 1] }
+                value:
+                  {
+                    columns: ["%title%", "%artist%"],
+                    structure: "1",
+                    ordinals: [9, 0, 1],
+                  }
       responses:
         "200":
           description: |
@@ -3236,9 +3449,27 @@ paths:
 
         `prefix` is up to 1024 bytes of UTF-8. A `limit` of 0 answers no values.
       parameters:
-        - { name: field, in: query, required: true, description: "Which field's values to complete.", schema: { type: string, enum: [artist, albumArtist, album, genre] } }
-        - { name: prefix, in: query, required: true, description: "What was typed. Up to 1024 bytes as UTF-8, and it may be empty.", schema: { type: string } }
-        - { name: limit, in: query, required: true, description: "How many values `values` lists at most.", schema: { type: integer, minimum: 0 } }
+        - {
+            name: field,
+            in: query,
+            required: true,
+            description: "Which field's values to complete.",
+            schema: { type: string, enum: [artist, albumArtist, album, genre] },
+          }
+        - {
+            name: prefix,
+            in: query,
+            required: true,
+            description: "What was typed. Up to 1024 bytes as UTF-8, and it may be empty.",
+            schema: { type: string },
+          }
+        - {
+            name: limit,
+            in: query,
+            required: true,
+            description: "How many values `values` lists at most.",
+            schema: { type: integer, minimum: 0 },
+          }
         - $ref: "#/components/parameters/RoleTrackNumber"
         - $ref: "#/components/parameters/RoleDiscNumber"
         - $ref: "#/components/parameters/RoleTitle"
@@ -3296,9 +3527,27 @@ paths:
 
         Refusals are the four questions', and a `structure` that is not the current one is a `409` before an `ordinal` past the end is a `400`, since the ordinal means nothing at another `structure`. The path form resolves as `GET /track/library` does, after the roles are judged and the snapshot is known to be built: a path and `subsong` no track holds is a `404`, and one that two media library roots hold is a `409` saying the media library holds more than one track at that address. A found track answers the document its ordinal would. An `ordinal` past the end stays a `400`, not the `404` the path form gets.
       parameters:
-        - { name: splitsCredits, in: query, required: true, description: "Whether a credit line holding several names is counted as each of them, as `true` or `false`.", schema: { type: boolean } }
-        - { name: structure, in: query, required: false, description: "Required with `ordinal`. The library `structure` the ordinal was read at: `library.structure` from `GET /state`, spelled as a string of decimal digits. `GET /state` carries it as a JSON number, and this query carries it as text, as a playlist's own `structure` travels.", schema: { type: string, pattern: "^[0-9]+$" } }
-        - { name: ordinal, in: query, required: false, description: "Required with `structure`, and sent instead of `track`. The track's position in the snapshot at `structure`, counted from zero.", schema: { type: integer, minimum: 0 } }
+        - {
+            name: splitsCredits,
+            in: query,
+            required: true,
+            description: "Whether a credit line holding several names is counted as each of them, as `true` or `false`.",
+            schema: { type: boolean },
+          }
+        - {
+            name: structure,
+            in: query,
+            required: false,
+            description: "Required with `ordinal`. The library `structure` the ordinal was read at: `library.structure` from `GET /state`, spelled as a string of decimal digits. `GET /state` carries it as a JSON number, and this query carries it as text, as a playlist's own `structure` travels.",
+            schema: { type: string, pattern: "^[0-9]+$" },
+          }
+        - {
+            name: ordinal,
+            in: query,
+            required: false,
+            description: "Required with `structure`, and sent instead of `track`. The track's position in the snapshot at `structure`, counted from zero.",
+            schema: { type: integer, minimum: 0 },
+          }
         - name: track
           in: query
           required: false
@@ -3580,7 +3829,11 @@ paths:
               schema: { $ref: "#/components/schemas/LibraryRefusal" }
               examples:
                 noColumns:
-                  value: { error: unacceptable column, detail: "'columns' is required" }
+                  value:
+                    {
+                      error: unacceptable column,
+                      detail: "'columns' is required",
+                    }
         "404": { $ref: "#/components/responses/NoTrackPlaying" }
         "429": { $ref: "#/components/responses/PlayingTrackReadTooFast" }
         "500": { $ref: "#/components/responses/PlayerRefused" }
@@ -3988,7 +4241,11 @@ paths:
             schema: { $ref: "#/components/schemas/DeviceIdentity" }
             examples:
               named:
-                value: { deviceId: 3f8a1c0e-2b7d-4a91-9c33-51e0a2f6d4b8, name: Android phone }
+                value:
+                  {
+                    deviceId: 3f8a1c0e-2b7d-4a91-9c33-51e0a2f6d4b8,
+                    name: Android phone,
+                  }
       responses:
         "200":
           description: The new session.
@@ -4008,10 +4265,15 @@ paths:
                     albumArtist: null
                     libraryPath: null
                     listeners: 0
-                    playbackModes: [inOrder, repeatAll, repeatOne, random, shuffleTracks]
+                    playbackModes:
+                      [inOrder, repeatAll, repeatOne, random, shuffleTracks]
                     chainDropped: false
                     reports: []
-                    createdBy: { deviceId: 3f8a1c0e-2b7d-4a91-9c33-51e0a2f6d4b8, name: Android phone }
+                    createdBy:
+                      {
+                        deviceId: 3f8a1c0e-2b7d-4a91-9c33-51e0a2f6d4b8,
+                        name: Android phone,
+                      }
         "400":
           description: |
             A body that is not a JSON object, a `deviceId` or `name` that is not text, either of them longer than 64 bytes as sent, or no `deviceId`. A `deviceId` that is absent, empty, only spaces and tabs, or holds an unprintable character counts as none, and so does a `deviceId` in the query. A `name` like that is not refused: the session's `createdBy.name` answers `null`.
@@ -4051,7 +4313,16 @@ paths:
                         albumArtist: Fictional Artist
                         libraryPath: Fictional Artist/Imaginary Album/01 Imaginary Track.flac
                         listeners: 1
-                        playbackModes: [inOrder, repeatAll, repeatOne, random, shuffleTracks, shuffleAlbums, shuffleFolders]
+                        playbackModes:
+                          [
+                            inOrder,
+                            repeatAll,
+                            repeatOne,
+                            random,
+                            shuffleTracks,
+                            shuffleAlbums,
+                            shuffleFolders,
+                          ]
                         chainDropped: false
                         reports: []
                         createdBy: null
@@ -4314,13 +4585,26 @@ components:
           schema: { $ref: "#/components/schemas/PlaylistRefusal" }
           examples:
             noQuery:
-              value: { error: unacceptable query, detail: "'query' is required" }
+              value:
+                { error: unacceptable query, detail: "'query' is required" }
             queryTooLong:
-              value: { error: unacceptable query, detail: "'query' must be printable text of at most 4096 characters" }
+              value:
+                {
+                  error: unacceptable query,
+                  detail: "'query' must be printable text of at most 4096 characters",
+                }
             notJson:
-              value: { error: malformed request, detail: "could not parse it as JSON: [json.exception.parse_error.101] parse error at line 1, column 1: syntax error while parsing value - invalid literal; last read: 'n'" }
+              value:
+                {
+                  error: malformed request,
+                  detail: "could not parse it as JSON: [json.exception.parse_error.101] parse error at line 1, column 1: syntax error while parsing value - invalid literal; last read: 'n'",
+                }
             twoForms:
-              value: { error: unacceptable ordinal set, detail: "'runs' and 'bitset' were both present; send exactly one" }
+              value:
+                {
+                  error: unacceptable ordinal set,
+                  detail: "'runs' and 'bitset' were both present; send exactly one",
+                }
 
     WritesDisabled:
       description: |
@@ -4330,7 +4614,11 @@ components:
           schema: { $ref: "#/components/schemas/PlaylistFailed" }
           examples:
             default:
-              value: { error: this install has playlist writes turned off; turn on writePlaylists in config.json to allow them, detail: "" }
+              value:
+                {
+                  error: this install has playlist writes turned off; turn on writePlaylists in config.json to allow them,
+                  detail: "",
+                }
 
     OwnPlaylistAddressed:
       description: |
@@ -4344,9 +4632,17 @@ components:
           schema: { $ref: "#/components/schemas/PlaylistFailed" }
           examples:
             ownPlaylist:
-              value: { error: that playlist is foo_jean's own; address it by its role rather than by its id, detail: "" }
+              value:
+                {
+                  error: that playlist is foo_jean's own; address it by its role rather than by its id,
+                  detail: "",
+                }
             writesDisabled:
-              value: { error: this install has playlist writes turned off; turn on writePlaylists in config.json to allow them, detail: "" }
+              value:
+                {
+                  error: this install has playlist writes turned off; turn on writePlaylists in config.json to allow them,
+                  detail: "",
+                }
 
     PlaybackDisabled:
       description: |
@@ -4356,7 +4652,11 @@ components:
           schema: { $ref: "#/components/schemas/PlaylistFailed" }
           examples:
             default:
-              value: { error: this install has playback control turned off; turn on controlPlayback in config.json to allow it, detail: "" }
+              value:
+                {
+                  error: this install has playback control turned off; turn on controlPlayback in config.json to allow it,
+                  detail: "",
+                }
 
     OutputChangeDisabled:
       description: |
@@ -4366,7 +4666,11 @@ components:
           schema: { $ref: "#/components/schemas/PlaylistFailed" }
           examples:
             default:
-              value: { error: this install has output device changes turned off; turn on changeOutput in config.json to allow them, detail: "" }
+              value:
+                {
+                  error: this install has output device changes turned off; turn on changeOutput in config.json to allow them,
+                  detail: "",
+                }
 
     OutputDeviceNotListed:
       description: |
@@ -4376,7 +4680,11 @@ components:
           schema: { $ref: "#/components/schemas/PlaylistFailed" }
           examples:
             default:
-              value: { error: the player does not list that output device; read the outputs again, detail: "" }
+              value:
+                {
+                  error: the player does not list that output device; read the outputs again,
+                  detail: "",
+                }
 
     OutputsUnavailable:
       description: |
@@ -4411,9 +4719,17 @@ components:
           schema: { $ref: "#/components/schemas/PlaylistFailed" }
           examples:
             keyInUse:
-              value: { error: another playlist already has that key, detail: "folder:genre:Rock" }
+              value:
+                {
+                  error: another playlist already has that key,
+                  detail: "folder:genre:Rock",
+                }
             tooMany:
-              value: { error: this install's autoplaylist limit is reached, detail: "this install allows 100 and already has 100" }
+              value:
+                {
+                  error: this install's autoplaylist limit is reached,
+                  detail: "this install allows 100 and already has 100",
+                }
 
     AutoPlaylistConflict:
       description: |
@@ -4425,9 +4741,17 @@ components:
             notAnAutoPlaylist:
               value: { error: that playlist is not an autoplaylist, detail: "" }
             keyInUse:
-              value: { error: another playlist already has that key, detail: "folder:genre:Rock" }
+              value:
+                {
+                  error: another playlist already has that key,
+                  detail: "folder:genre:Rock",
+                }
             locked:
-              value: { error: another component has locked that playlist against that edit, detail: "" }
+              value:
+                {
+                  error: another component has locked that playlist against that edit,
+                  detail: "",
+                }
 
     StructureMoved:
       description: |
@@ -4533,9 +4857,14 @@ components:
             off:
               value: { error: the media library is not available }
             nothingYet:
-              value: { error: the library snapshot has not been built yet, detail: "" }
+              value:
+                {
+                  error: the library snapshot has not been built yet,
+                  detail: "",
+                }
             noOwnPlaylists:
-              value: { error: "the component's own playlists are not available" }
+              value:
+                { error: "the component's own playlists are not available" }
             noPlaylistWrites:
               value: { error: playlist changes are not available }
 
@@ -4703,19 +5032,38 @@ components:
           schema: { $ref: "#/components/schemas/LibraryRefusal" }
           examples:
             notARole:
-              value: { error: unacceptable role, detail: "'mood' is not a role" }
+              value:
+                { error: unacceptable role, detail: "'mood' is not a role" }
             repeatedRole:
-              value: { error: duplicate role, detail: "role 'artist' is named twice" }
+              value:
+                {
+                  error: duplicate role,
+                  detail: "role 'artist' is named twice",
+                }
             noQuery:
-              value: { error: unacceptable question, detail: "'query' is required" }
+              value:
+                { error: unacceptable question, detail: "'query' is required" }
             longQuery:
-              value: { error: unacceptable question, detail: "'query' must be at most 1024 bytes" }
+              value:
+                {
+                  error: unacceptable question,
+                  detail: "'query' must be at most 1024 bytes",
+                }
             notACount:
-              value: { error: unacceptable question, detail: "'limit' must be a whole number of 0 or more" }
+              value:
+                {
+                  error: unacceptable question,
+                  detail: "'limit' must be a whole number of 0 or more",
+                }
             notAFlag:
-              value: { error: unacceptable question, detail: "'splitsCredits' must be true or false" }
+              value:
+                {
+                  error: unacceptable question,
+                  detail: "'splitsCredits' must be true or false",
+                }
             repeatedName:
-              value: { error: duplicate question, detail: "'name' is named twice" }
+              value:
+                { error: duplicate question, detail: "'name' is named twice" }
 
     LibraryNotReady:
       description: |
@@ -4759,7 +5107,11 @@ components:
             off:
               value: { error: the media library is not available }
             nothingYet:
-              value: { error: the library snapshot has not been built yet, detail: "" }
+              value:
+                {
+                  error: the library snapshot has not been built yet,
+                  detail: "",
+                }
 
     PlaylistReadRefused:
       description: |
@@ -4772,7 +5124,11 @@ components:
               - $ref: "#/components/schemas/PlaylistRefusal"
           examples:
             noStructure:
-              value: { error: unacceptable question, detail: "'structure' is required" }
+              value:
+                {
+                  error: unacceptable question,
+                  detail: "'structure' is required",
+                }
             badId:
               value: { error: unacceptable playlist id, detail: "" }
 
@@ -4799,11 +5155,23 @@ components:
               - $ref: "#/components/schemas/PlaylistRefusal"
           examples:
             tooMany:
-              value: { error: too many rows asked for, detail: "a request names at most 4096 rows" }
+              value:
+                {
+                  error: too many rows asked for,
+                  detail: "a request names at most 4096 rows",
+                }
             bothForms:
-              value: { error: unacceptable ordinal set, detail: "exactly one of 'runs' and 'ordinals' is required" }
+              value:
+                {
+                  error: unacceptable ordinal set,
+                  detail: "exactly one of 'runs' and 'ordinals' is required",
+                }
             malformedStructure:
-              value: { error: malformed request, detail: "'structure' must be a string of decimal digits" }
+              value:
+                {
+                  error: malformed request,
+                  detail: "'structure' must be a string of decimal digits",
+                }
 
     LibraryStructureMoved:
       description: |
@@ -4999,7 +5367,8 @@ components:
             nothing:
               value: { error: no artwork for that track }
             unreadable:
-              value: { error: that artwork is not in a format this component sends }
+              value:
+                { error: that artwork is not in a format this component sends }
 
     NoPlayingArtwork:
       description: |
@@ -5021,7 +5390,8 @@ components:
             noSuchSession:
               value: { error: no such session }
             unreadable:
-              value: { error: that artwork is not in a format this component sends }
+              value:
+                { error: that artwork is not in a format this component sends }
 
     NoPositionalArtwork:
       description: |
@@ -5043,7 +5413,8 @@ components:
             nothing:
               value: { error: no artwork for that track }
             unreadable:
-              value: { error: that artwork is not in a format this component sends }
+              value:
+                { error: that artwork is not in a format this component sends }
 
     ArtworkTooLarge:
       description: |
@@ -5179,10 +5550,28 @@ components:
       type: object
       additionalProperties: false
       required:
-        [apiVersion, allowedFields, canWrite, canWritePlaylists, canControlPlayback,
-         canChangeOutput, maxAutoPlaylists, canCreateAutoPlaylists, canStream, streamFormats,
-         canMuteWhileStreaming, canReadLibrary, playerName, playerVersion, volumeMin,
-         volumeMax, volumeUnit, playbackModes, maxSessions, canCreateSessions]
+        [
+          apiVersion,
+          allowedFields,
+          canWrite,
+          canWritePlaylists,
+          canControlPlayback,
+          canChangeOutput,
+          maxAutoPlaylists,
+          canCreateAutoPlaylists,
+          canStream,
+          streamFormats,
+          canMuteWhileStreaming,
+          canReadLibrary,
+          playerName,
+          playerVersion,
+          volumeMin,
+          volumeMax,
+          volumeUnit,
+          playbackModes,
+          maxSessions,
+          canCreateSessions,
+        ]
       properties:
         apiVersion:
           type: integer
@@ -5192,7 +5581,26 @@ components:
           description: |
             Tag names this install permits, matched case-insensitively. The example spells each tag as foobar2000's Properties dialog shows it, with `rating` and `unsynced lyrics` in lower case. Anything not named here is refused with a `403`.
           items: { type: string }
-          examples: [["rating", "unsynced lyrics", "TITLE", "ARTIST", "ALBUM", "ALBUM ARTIST", "DATE", "GENRE", "PUBLISHER", "COMPOSER", "TRACKNUMBER", "TOTALTRACKS", "DISCNUMBER", "TOTALDISCS", "BPM"]]
+          examples:
+            [
+              [
+                "rating",
+                "unsynced lyrics",
+                "TITLE",
+                "ARTIST",
+                "ALBUM",
+                "ALBUM ARTIST",
+                "DATE",
+                "GENRE",
+                "PUBLISHER",
+                "COMPOSER",
+                "TRACKNUMBER",
+                "TOTALTRACKS",
+                "DISCNUMBER",
+                "TOTALDISCS",
+                "BPM",
+              ],
+            ]
         canWrite:
           type: boolean
           description: |
@@ -5274,7 +5682,18 @@ components:
           items: { $ref: "#/components/schemas/PlaybackMode" }
           description: |
             The playback modes this install can be put into, in the order the player itself lists them. An order the player reports that this component has no Jean name for is missing from here rather than guessed at, and an install reporting none answers an empty array.
-          examples: [["inOrder", "repeatAll", "repeatOne", "random", "shuffleTracks", "shuffleAlbums", "shuffleFolders"]]
+          examples:
+            [
+              [
+                "inOrder",
+                "repeatAll",
+                "repeatOne",
+                "random",
+                "shuffleTracks",
+                "shuffleAlbums",
+                "shuffleFolders",
+              ],
+            ]
         maxSessions:
           type: integer
           minimum: 0
@@ -5291,7 +5710,16 @@ components:
       type: string
       description: |
         Jean's own name for a playback order. `foo_jean` maps it both ways against whatever the player calls its own orders; neither foobar2000's own string nor its ordinal ever crosses this API.
-      enum: [inOrder, repeatAll, repeatOne, random, shuffleTracks, shuffleAlbums, shuffleFolders]
+      enum:
+        [
+          inOrder,
+          repeatAll,
+          repeatOne,
+          random,
+          shuffleTracks,
+          shuffleAlbums,
+          shuffleFolders,
+        ]
 
     PlaybackSeekRequest:
       description: |
@@ -5406,7 +5834,10 @@ components:
           type: string
           description: |
             Opaque: the output module's GUID and the device's GUID, printed the way foobar2000 prints a GUID and joined by `:`. A client MUST NOT parse, split or build one.
-          examples: ["D41D2423-FBB0-4635-B233-7054F79814AB:44761B90-C842-41F7-86E5-645DE2EEA6DC"]
+          examples:
+            [
+              "D41D2423-FBB0-4635-B233-7054F79814AB:44761B90-C842-41F7-86E5-645DE2EEA6DC",
+            ]
         name:
           type: string
           description: What to call this device in a picker, exactly as foobar2000 names it.
@@ -5558,8 +5989,22 @@ components:
       type: object
       additionalProperties: false
       required:
-        [id, kind, shared, playback, title, artist, album, albumArtist, libraryPath, listeners,
-         playbackModes, chainDropped, reports, createdBy]
+        [
+          id,
+          kind,
+          shared,
+          playback,
+          title,
+          artist,
+          album,
+          albumArtist,
+          libraryPath,
+          listeners,
+          playbackModes,
+          chainDropped,
+          reports,
+          createdBy,
+        ]
       properties:
         id:
           type: string
@@ -5820,7 +6265,18 @@ components:
         One playlist, with everything a client draws its entry in a list from.
       type: object
       additionalProperties: false
-      required: [id, index, title, itemCount, isAutoPlaylist, role, structure, revision, managed]
+      required:
+        [
+          id,
+          index,
+          title,
+          itemCount,
+          isAutoPlaylist,
+          role,
+          structure,
+          revision,
+          managed,
+        ]
       properties:
         id:
           type: string
@@ -6410,7 +6866,17 @@ components:
         What rides under `library` in `GET /state`'s `200`, and what `POST /library/rows`, the questions and `POST /library/refresh` hand back on a `202`. Small on purpose: it is polled.
       type: object
       additionalProperties: false
-      required: [ready, structure, revision, trackCount, columns, changeCounts, build, halted]
+      required:
+        [
+          ready,
+          structure,
+          revision,
+          trackCount,
+          columns,
+          changeCounts,
+          build,
+          halted,
+        ]
       properties:
         ready:
           type: boolean
@@ -6466,20 +6932,53 @@ components:
         What `GET /library/summary` answers, computed at the `structure` and `revision` it carries. An ordinal anywhere in it is at that `structure`, and means nothing at another.
       type: object
       additionalProperties: false
-      required: [structure, revision, trackCount, seconds, earliestYear, latestYear, albumCount, artistCount, genreCount, topGenres, topAlbum, topArtist, topTracks, shelves]
+      required:
+        [
+          structure,
+          revision,
+          trackCount,
+          seconds,
+          earliestYear,
+          latestYear,
+          albumCount,
+          artistCount,
+          genreCount,
+          topGenres,
+          topAlbum,
+          topArtist,
+          topTracks,
+          shelves,
+        ]
       properties:
-        structure: { type: integer, description: "The snapshot's `structure` the document was computed at." }
-        revision: { type: integer, description: "The snapshot's `revision` the document was computed at." }
+        structure:
+          {
+            type: integer,
+            description: "The snapshot's `structure` the document was computed at.",
+          }
+        revision:
+          {
+            type: integer,
+            description: "The snapshot's `revision` the document was computed at.",
+          }
         trackCount: { type: integer, description: "Tracks in the library." }
-        seconds: { type: number, description: "Total length of the library in seconds." }
+        seconds:
+          {
+            type: number,
+            description: "Total length of the library in seconds.",
+          }
         earliestYear:
           type: [integer, "null"]
           description: The earliest year any track carries, or `null` where none carries one.
         latestYear:
           type: [integer, "null"]
           description: The latest year any track carries, or `null` where none carries one.
-        albumCount: { type: integer, description: "Albums, as the grouping rule in `GET /library/summary` forms them." }
-        artistCount: { type: integer, description: "Distinct credited artists." }
+        albumCount:
+          {
+            type: integer,
+            description: "Albums, as the grouping rule in `GET /library/summary` forms them.",
+          }
+        artistCount:
+          { type: integer, description: "Distinct credited artists." }
         genreCount: { type: integer, description: "Distinct genres." }
         topGenres:
           type: array
@@ -6492,7 +6991,11 @@ components:
             properties:
               name: { type: string }
               count: { type: integer }
-              share: { type: integer, description: "`count` as a percentage of `trackCount`, rounded to a whole number." }
+              share:
+                {
+                  type: integer,
+                  description: "`count` as a percentage of `trackCount`, rounded to a whole number.",
+                }
         topAlbum:
           description: The most played album, or `null` where no album has a play.
           oneOf:
@@ -6535,7 +7038,20 @@ components:
     SummaryAlbum:
       type: object
       additionalProperties: false
-      required: [album, artist, cover, ordinals, trackCount, plays, lastPlayed, added, rating, ratedCount, bitrate]
+      required:
+        [
+          album,
+          artist,
+          cover,
+          ordinals,
+          trackCount,
+          plays,
+          lastPlayed,
+          added,
+          rating,
+          ratedCount,
+          bitrate,
+        ]
       properties:
         album: { type: string }
         artist: { type: [string, "null"] }
@@ -6548,11 +7064,27 @@ components:
           description: Every track of the album, ascending, at the document's `structure`.
         trackCount: { type: integer }
         plays: { type: number }
-        lastPlayed: { type: number, description: "Milliseconds since the epoch of the latest play, `0` where unknown." }
-        added: { type: number, description: "Milliseconds since the epoch of the latest arrival, `0` where unknown." }
-        rating: { type: [number, "null"], description: "The mean rating of the rated tracks, or `null` where none is rated." }
+        lastPlayed:
+          {
+            type: number,
+            description: "Milliseconds since the epoch of the latest play, `0` where unknown.",
+          }
+        added:
+          {
+            type: number,
+            description: "Milliseconds since the epoch of the latest arrival, `0` where unknown.",
+          }
+        rating:
+          {
+            type: [number, "null"],
+            description: "The mean rating of the rated tracks, or `null` where none is rated.",
+          }
         ratedCount: { type: integer, description: "Tracks with a rating." }
-        bitrate: { type: [number, "null"], description: "The mean bitrate, or `null` where none is known." }
+        bitrate:
+          {
+            type: [number, "null"],
+            description: "The mean bitrate, or `null` where none is known.",
+          }
 
     SummaryTrack:
       type: object
@@ -6563,7 +7095,11 @@ components:
         title: { type: [string, "null"] }
         artist: { type: [string, "null"] }
         plays: { type: number }
-        cover: { type: [string, "null"], description: "The library-relative path `GET /artwork?track=` takes, or `null`." }
+        cover:
+          {
+            type: [string, "null"],
+            description: "The library-relative path `GET /artwork?track=` takes, or `null`.",
+          }
 
     SummaryShelf:
       description: |
@@ -6604,9 +7140,14 @@ components:
       additionalProperties: false
       required: [albumCount, trackCount, seconds, earliestYear, latestYear]
       properties:
-        albumCount: { type: integer, description: "Albums, as the grouping rule in `GET /library/summary` forms them, over the set." }
+        albumCount:
+          {
+            type: integer,
+            description: "Albums, as the grouping rule in `GET /library/summary` forms them, over the set.",
+          }
         trackCount: { type: integer, description: "Tracks in the set." }
-        seconds: { type: number, description: "Total length of the set in seconds." }
+        seconds:
+          { type: number, description: "Total length of the set in seconds." }
         earliestYear:
           type: [integer, "null"]
           description: The earliest year any track of the set carries, or `null` where none carries one.
@@ -6619,11 +7160,19 @@ components:
         The figures an artist page draws its cards from, computed over the artist's `all` set, which is `own`, `shared` and `guest` together.
       type: object
       additionalProperties: false
-      required: [playedShare, plays, neverPlayed, lastPlayed, mostPlayed, topGenres]
+      required:
+        [playedShare, plays, neverPlayed, lastPlayed, mostPlayed, topGenres]
       properties:
-        playedShare: { type: number, minimum: 0, maximum: 1, description: "The share of the set's tracks with at least one play." }
+        playedShare:
+          {
+            type: number,
+            minimum: 0,
+            maximum: 1,
+            description: "The share of the set's tracks with at least one play.",
+          }
         plays: { type: integer, description: "Plays summed over the set." }
-        neverPlayed: { type: integer, description: "Tracks of the set with no play." }
+        neverPlayed:
+          { type: integer, description: "Tracks of the set with no play." }
         lastPlayed:
           type: [number, "null"]
           description: Milliseconds since the epoch of the latest play of any track in the set, or `null` where none has one.
@@ -6634,8 +7183,17 @@ components:
               additionalProperties: false
               required: [ordinal, title, plays]
               properties:
-                ordinal: { type: integer, minimum: 0, description: "The track's ordinal at the document's `structure`." }
-                title: { type: string, description: "The track's title, carried so a client that does not hold the row can draw the card." }
+                ordinal:
+                  {
+                    type: integer,
+                    minimum: 0,
+                    description: "The track's ordinal at the document's `structure`.",
+                  }
+                title:
+                  {
+                    type: string,
+                    description: "The track's title, carried so a client that does not hold the row can draw the card.",
+                  }
                 plays: { type: integer, description: "Its play count." }
             - type: "null"
         topGenres:
@@ -6649,7 +7207,11 @@ components:
             properties:
               name: { type: string }
               count: { type: integer }
-              share: { type: integer, description: "`count` as a percentage of the set's tracks, rounded to a whole number." }
+              share:
+                {
+                  type: integer,
+                  description: "`count` as a percentage of the set's tracks, rounded to a whole number.",
+                }
 
     AlbumRecord:
       description: |
@@ -6660,9 +7222,18 @@ components:
       properties:
         album: { type: string }
         artist: { type: [string, "null"] }
-        year: { type: [integer, "null"], description: "The album's year, or `null` where its tracks carry none." }
-        cover: { type: string, description: "The library-relative path `GET /artwork?track=` takes, of the album's first row within the set the records are computed over, the artist's `own` or `shared`. For a shared album that need not be the album's canonical cover track." }
-        trackCount: { type: integer, description: "Tracks of the album within the set." }
+        year:
+          {
+            type: [integer, "null"],
+            description: "The album's year, or `null` where its tracks carry none.",
+          }
+        cover:
+          {
+            type: string,
+            description: "The library-relative path `GET /artwork?track=` takes, of the album's first row within the set the records are computed over, the artist's `own` or `shared`. For a shared album that need not be the album's canonical cover track.",
+          }
+        trackCount:
+          { type: integer, description: "Tracks of the album within the set." }
 
     SummaryGenre:
       description: One genre of the whole library, as the genres page draws its tiles.
@@ -6672,8 +7243,16 @@ components:
       properties:
         name: { type: string }
         count: { type: integer, description: "Tracks holding the genre." }
-        albumCount: { type: integer, description: "Albums, as the grouping rule in `GET /library/summary` forms them, with at least one track in the genre." }
-        artistCount: { type: integer, description: "Distinct credited artists over the genre's tracks, as the credited artist is read for an album." }
+        albumCount:
+          {
+            type: integer,
+            description: "Albums, as the grouping rule in `GET /library/summary` forms them, with at least one track in the genre.",
+          }
+        artistCount:
+          {
+            type: integer,
+            description: "Distinct credited artists over the genre's tracks, as the credited artist is read for an album.",
+          }
         covers:
           type: array
           maxItems: 2
@@ -6685,16 +7264,40 @@ components:
         What `GET /library/search` answers, computed at the `structure` and `revision` it carries. `figures` is over `matched`, and all zero and null where `matched` is `null`. An ordinal anywhere in it is at that `structure`, and means nothing at another.
       type: object
       additionalProperties: false
-      required: [structure, revision, matched, matchCount, figures, best, artists, albums, genres, namesATrack]
+      required:
+        [
+          structure,
+          revision,
+          matched,
+          matchCount,
+          figures,
+          best,
+          artists,
+          albums,
+          genres,
+          namesATrack,
+        ]
       properties:
-        structure: { type: integer, description: "The snapshot's `structure` the document was computed at." }
-        revision: { type: integer, description: "The snapshot's `revision` the document was computed at." }
+        structure:
+          {
+            type: integer,
+            description: "The snapshot's `structure` the document was computed at.",
+          }
+        revision:
+          {
+            type: integer,
+            description: "The snapshot's `revision` the document was computed at.",
+          }
         matched:
           description: Every matching track, or `null` where the query folds to nothing or the library holds no tracks.
           oneOf:
             - { $ref: "#/components/schemas/OrdinalSet" }
             - type: "null"
-        matchCount: { type: integer, description: "The size of `matched`, and `0` where it is `null`." }
+        matchCount:
+          {
+            type: integer,
+            description: "The size of `matched`, and `0` where it is `null`.",
+          }
         figures: { $ref: "#/components/schemas/SetFigures" }
         best:
           type: array
@@ -6703,14 +7306,19 @@ components:
         artists: { $ref: "#/components/schemas/ArtistSection" }
         albums: { $ref: "#/components/schemas/AlbumSection" }
         genres: { $ref: "#/components/schemas/GenreSection" }
-        namesATrack: { type: boolean, description: "Whether a matching track's title folds to the same text as the query." }
+        namesATrack:
+          {
+            type: boolean,
+            description: "Whether a matching track's title folds to the same text as the query.",
+          }
 
     ArtistSection:
       type: object
       additionalProperties: false
       required: [total, top]
       properties:
-        total: { type: integer, description: "How many artists the query admits." }
+        total:
+          { type: integer, description: "How many artists the query admits." }
         top:
           type: array
           items: { $ref: "#/components/schemas/NamedArtist" }
@@ -6721,7 +7329,8 @@ components:
       additionalProperties: false
       required: [total, top]
       properties:
-        total: { type: integer, description: "How many albums the query admits." }
+        total:
+          { type: integer, description: "How many albums the query admits." }
         top:
           type: array
           items: { $ref: "#/components/schemas/NamedAlbum" }
@@ -6732,7 +7341,8 @@ components:
       additionalProperties: false
       required: [total, top]
       properties:
-        total: { type: integer, description: "How many genres the query admits." }
+        total:
+          { type: integer, description: "How many genres the query admits." }
         top:
           type: array
           items: { $ref: "#/components/schemas/NamedGenre" }
@@ -6744,7 +7354,11 @@ components:
       required: [name, trackCount, guestCount, albumCount, cover]
       properties:
         name: { type: string }
-        trackCount: { type: integer, description: "Tracks credited to the artist that are not guest credits." }
+        trackCount:
+          {
+            type: integer,
+            description: "Tracks credited to the artist that are not guest credits.",
+          }
         guestCount: { type: integer, description: "Guest credits." }
         albumCount: { type: integer }
         cover:
@@ -6778,22 +7392,47 @@ components:
       additionalProperties: false
       required: [structure, revision, refs, figures, album, artist]
       properties:
-        structure: { type: integer, description: "The snapshot's `structure` the document was computed at." }
-        revision: { type: integer, description: "The snapshot's `revision` the document was computed at." }
+        structure:
+          {
+            type: integer,
+            description: "The snapshot's `structure` the document was computed at.",
+          }
+        revision:
+          {
+            type: integer,
+            description: "The snapshot's `revision` the document was computed at.",
+          }
         refs: { $ref: "#/components/schemas/OrdinalSet" }
         figures: { $ref: "#/components/schemas/SetFigures" }
-        album: { type: string, description: "The album as its tracks spell it, or as asked where no track matched." }
-        artist: { type: [string, "null"], description: "The credited artist as the tracks spell it, `null` where none." }
+        album:
+          {
+            type: string,
+            description: "The album as its tracks spell it, or as asked where no track matched.",
+          }
+        artist:
+          {
+            type: [string, "null"],
+            description: "The credited artist as the tracks spell it, `null` where none.",
+          }
 
     ArtistAnswer:
       description: |
         What `GET /library/artist` answers, computed at the `structure` and `revision` it carries. The three sets share no ordinal. `figures` and `cards` are computed over `own`, `shared` and `guest` together.
       type: object
       additionalProperties: false
-      required: [structure, revision, own, shared, guest, figures, cards, records]
+      required:
+        [structure, revision, own, shared, guest, figures, cards, records]
       properties:
-        structure: { type: integer, description: "The snapshot's `structure` the document was computed at." }
-        revision: { type: integer, description: "The snapshot's `revision` the document was computed at." }
+        structure:
+          {
+            type: integer,
+            description: "The snapshot's `structure` the document was computed at.",
+          }
+        revision:
+          {
+            type: integer,
+            description: "The snapshot's `revision` the document was computed at.",
+          }
         own: { $ref: "#/components/schemas/OrdinalSet" }
         shared: { $ref: "#/components/schemas/OrdinalSet" }
         guest: { $ref: "#/components/schemas/OrdinalSet" }
@@ -6819,8 +7458,16 @@ components:
       additionalProperties: false
       required: [structure, revision, refs, figures]
       properties:
-        structure: { type: integer, description: "The snapshot's `structure` the document was computed at." }
-        revision: { type: integer, description: "The snapshot's `revision` the document was computed at." }
+        structure:
+          {
+            type: integer,
+            description: "The snapshot's `structure` the document was computed at.",
+          }
+        revision:
+          {
+            type: integer,
+            description: "The snapshot's `revision` the document was computed at.",
+          }
         refs: { $ref: "#/components/schemas/OrdinalSet" }
         figures: { $ref: "#/components/schemas/SetFigures" }
 
@@ -6900,8 +7547,16 @@ components:
       additionalProperties: false
       required: [structure, revision, lengths, covers, untagged]
       properties:
-        structure: { type: integer, description: "The snapshot's `structure` the document was computed at." }
-        revision: { type: integer, description: "The snapshot's `revision` the document was computed at." }
+        structure:
+          {
+            type: integer,
+            description: "The snapshot's `structure` the document was computed at.",
+          }
+        revision:
+          {
+            type: integer,
+            description: "The snapshot's `revision` the document was computed at.",
+          }
         lengths:
           type: array
           items: { type: integer, minimum: 1 }
@@ -6922,8 +7577,16 @@ components:
       additionalProperties: false
       required: [structure, revision, values]
       properties:
-        structure: { type: integer, description: "The snapshot's `structure` the document was computed at." }
-        revision: { type: integer, description: "The snapshot's `revision` the document was computed at." }
+        structure:
+          {
+            type: integer,
+            description: "The snapshot's `structure` the document was computed at.",
+          }
+        revision:
+          {
+            type: integer,
+            description: "The snapshot's `revision` the document was computed at.",
+          }
         values:
           type: array
           items: { type: string }
@@ -6936,8 +7599,16 @@ components:
       required: [name, key, isGuest]
       properties:
         name: { type: string, description: The artist as the credit spells it. }
-        key: { type: string, description: The name folded as the four questions match an artist. }
-        isGuest: { type: boolean, description: Whether the credit names the artist as a guest. }
+        key:
+          {
+            type: string,
+            description: The name folded as the four questions match an artist.,
+          }
+        isGuest:
+          {
+            type: boolean,
+            description: Whether the credit names the artist as a guest.,
+          }
 
     LibraryCredits:
       description: |
@@ -6946,8 +7617,16 @@ components:
       additionalProperties: false
       required: [structure, revision, artist, albumArtist]
       properties:
-        structure: { type: integer, description: "The snapshot's `structure` the document was computed at." }
-        revision: { type: integer, description: "The snapshot's `revision` the document was computed at." }
+        structure:
+          {
+            type: integer,
+            description: "The snapshot's `structure` the document was computed at.",
+          }
+        revision:
+          {
+            type: integer,
+            description: "The snapshot's `revision` the document was computed at.",
+          }
         artist:
           type: array
           items: { $ref: "#/components/schemas/CreditMember" }
@@ -6962,7 +7641,18 @@ components:
         What `GET /playlists/{id}/runs` answers, at the playlist's `structure` and `revision`.
       type: object
       additionalProperties: false
-      required: [structure, revision, lengths, mostPlays, albumCount, trackCount, seconds, earliestYear, latestYear]
+      required:
+        [
+          structure,
+          revision,
+          lengths,
+          mostPlays,
+          albumCount,
+          trackCount,
+          seconds,
+          earliestYear,
+          latestYear,
+        ]
       properties:
         structure:
           type: string
@@ -6976,10 +7666,23 @@ components:
           type: array
           items: { type: integer, minimum: 1 }
           description: Each run's length, in row order. They sum to `trackCount`.
-        mostPlays: { type: integer, minimum: 0, description: "The highest play count of any row." }
-        albumCount: { type: integer, description: "Albums, as `LibrarySummary.albumCount` counts them, over the playlist's rows." }
+        mostPlays:
+          {
+            type: integer,
+            minimum: 0,
+            description: "The highest play count of any row.",
+          }
+        albumCount:
+          {
+            type: integer,
+            description: "Albums, as `LibrarySummary.albumCount` counts them, over the playlist's rows.",
+          }
         trackCount: { type: integer, description: "Rows in the playlist." }
-        seconds: { type: number, description: "Total length of the playlist in seconds." }
+        seconds:
+          {
+            type: number,
+            description: "Total length of the playlist in seconds.",
+          }
         earliestYear:
           type: [integer, "null"]
           description: The earliest year any row carries, or `null` where none carries one.
@@ -7051,9 +7754,30 @@ components:
       type: object
       additionalProperties: false
       required:
-        [playback, path, subsong, libraryPath, libraryOrdinal, position, duration, volume, muted, playbackMode,
-         outputDeviceId, outputSilent, title, artist, album, albumArtist, playingLocation,
-         currentPlaylistId, queueRevision, playlistsRevision, timelineRevision, sessionRevision]
+        [
+          playback,
+          path,
+          subsong,
+          libraryPath,
+          libraryOrdinal,
+          position,
+          duration,
+          volume,
+          muted,
+          playbackMode,
+          outputDeviceId,
+          outputSilent,
+          title,
+          artist,
+          album,
+          albumArtist,
+          playingLocation,
+          currentPlaylistId,
+          queueRevision,
+          playlistsRevision,
+          timelineRevision,
+          sessionRevision,
+        ]
       properties:
         playback:
           type: string
@@ -7326,7 +8050,8 @@ components:
         One entry in the play queue, as a client draws a row: the fixed fields a row shows, where the track sits in the media library, and where it sits in a playlist. A missing tag is an empty string, never `null` and never `"?"`.
       type: object
       additionalProperties: false
-      required: [title, artist, duration, album, albumArtist, libraryPath, location]
+      required:
+        [title, artist, duration, album, albumArtist, libraryPath, location]
       properties:
         title: { type: string }
         artist: { type: string }

@@ -201,55 +201,62 @@ test.describe("reading the lyric tag", () => {
 		expect(recheckColumnCounts(player)).toEqual([1, 1, 1]);
 	});
 
-	test("a lyric that never arrives is looked for four times and then left alone", async ({
-		page,
-		player,
-		isMobile,
-	}) => {
-		await page.clock.install();
-		await recordPlayingReads(page);
-		await playRow(page, 3);
-		const panel = await openPanels(page, isMobile);
-		await panelTab(panel, "Lyrics").click();
-		await expect(panel).toContainText("No lyrics found");
+	// Forty-five seconds of the page's clock send forty-five polls in a fraction of a second of real
+	// time, and the fake's buckets refill in real time, so the poll bucket refuses what the clock
+	// compressed rather than anything the page sent too often.
+	test.describe("over forty-five seconds of the page's clock", () => {
+		test.use({ fooJean: { expectRateLimited: ["statePolls"] } });
 
-		const from = await firstReadAnswered(page);
-		await runClockTo(page, from + 45_000);
+		test("a lyric that never arrives is looked for four times and then left alone", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			await page.clock.install();
+			await recordPlayingReads(page);
+			await playRow(page, 3);
+			const panel = await openPanels(page, isMobile);
+			await panelTab(panel, "Lyrics").click();
+			await expect(panel).toContainText("No lyrics found");
 
-		expect(await looksAt(page)).toEqual([2, 5, 10, 20]);
-		expect(recheckColumnCounts(player)).toEqual([1, 1, 1, 1]);
-		await expect(panel).toContainText("No lyrics found");
-	});
+			const from = await firstReadAnswered(page);
+			await runClockTo(page, from + 45_000);
 
-	// A station announcing a song keeps the path, so it is not a track change:
-	// the looks keep the schedule they started at the track's own read.
-	test("a song a station announces neither restarts the looks nor ends them", async ({
-		page,
-		player,
-		isMobile,
-	}) => {
-		await page.clock.install();
-		await recordPlayingReads(page);
-		await playRow(page, 3);
-		const panel = await openPanels(page, isMobile);
-		await panelTab(panel, "Lyrics").click();
-		await expect(panel).toContainText("No lyrics found");
+			expect(await looksAt(page)).toEqual([2, 5, 10, 20]);
+			expect(recheckColumnCounts(player)).toEqual([1, 1, 1, 1]);
+			await expect(panel).toContainText("No lyrics found");
+		});
 
-		const from = await firstReadAnswered(page);
-		await runClockTo(page, from + 3_000);
-		player.announceSong({ title: "Ocean Floor", artist: "Gravity Wave" });
-		await runClockTo(page, from + 45_000);
+		// A station announcing a song keeps the path, so it is not a track change:
+		// the looks keep the schedule they started at the track's own read.
+		test("a song a station announces neither restarts the looks nor ends them", async ({
+			page,
+			player,
+			isMobile,
+		}) => {
+			await page.clock.install();
+			await recordPlayingReads(page);
+			await playRow(page, 3);
+			const panel = await openPanels(page, isMobile);
+			await panelTab(panel, "Lyrics").click();
+			await expect(panel).toContainText("No lyrics found");
 
-		const [, ...after] = await playingReads(page);
-		const secondsIn = (read: PlayingRead) =>
-			Math.floor((read.sentAt - from) / 1_000);
-		expect(
-			after.filter((read) => read.columns > 1).map(secondsIn),
-			"the announcement's own read of the song",
-		).toHaveLength(1);
-		expect(after.filter((read) => read.columns === 1).map(secondsIn)).toEqual([
-			2, 5, 10, 20,
-		]);
+			const from = await firstReadAnswered(page);
+			await runClockTo(page, from + 3_000);
+			player.announceSong({ title: "Ocean Floor", artist: "Gravity Wave" });
+			await runClockTo(page, from + 45_000);
+
+			const [, ...after] = await playingReads(page);
+			const secondsIn = (read: PlayingRead) =>
+				Math.floor((read.sentAt - from) / 1_000);
+			expect(
+				after.filter((read) => read.columns > 1).map(secondsIn),
+				"the announcement's own read of the song",
+			).toHaveLength(1);
+			expect(after.filter((read) => read.columns === 1).map(secondsIn)).toEqual(
+				[2, 5, 10, 20],
+			);
+		});
 	});
 
 	// A look still scheduled for the track that was left would ask the player

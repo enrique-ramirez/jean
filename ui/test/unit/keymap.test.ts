@@ -9,6 +9,7 @@ import {
 	matchesBinding,
 	SCOPE,
 } from "../../src/shared/keyboard/keymap.ts";
+import { isPressInTextField } from "../../src/shared/keyboard/pressTarget.ts";
 
 // Playwright cannot see the layout rule at all: Chromium synthesises US QWERTY
 // codes, so `Shift+/` and `?` are indistinguishable in a spec and the difference
@@ -61,17 +62,63 @@ test("? is declared once, and matches however a layout reaches it", () => {
 test("a key that types another character, or a dead key, is not the binding QWERTY has there", () => {
 	assert.ok(matchesBinding(press("[", "BracketLeft"), "previousTab"));
 
-	const elsewhere = {
-		"Dvorak, where the key types /": press("/", "BracketLeft"),
-		"Spanish, where the key is a dead grave": press("Dead", "BracketLeft"),
+	// TanStack Hotkeys refuses a printable character typed on another key's position, and still
+	// reads a dead key as the character QWERTY has on its code, which Jean refuses itself.
+	const deadGrave = press("Dead", "BracketLeft");
+	const dvorakSlash = press("/", "BracketLeft");
+	assert.ok(
+		matchesKeyboardEvent(deadGrave, "["),
+		"TanStack Hotkeys no longer falls back to the code for a dead key",
+	);
+	assert.equal(
+		matchesKeyboardEvent(dvorakSlash, "["),
+		false,
+		"TanStack Hotkeys takes Dvorak's / for the [ QWERTY has there",
+	);
+
+	assert.equal(
+		matchesBinding(deadGrave, "previousTab"),
+		false,
+		"Spanish, where the key is a dead grave",
+	);
+	assert.equal(
+		matchesBinding(dvorakSlash, "previousTab"),
+		false,
+		"Dvorak, where the key types /",
+	);
+});
+
+test("a press inside a text field is dropped, and the finder's keys are not", () => {
+	const pressAt = (target: object | null) =>
+		({ key: "?", code: "Slash", target }) as unknown as KeyboardEvent;
+
+	const dropped = {
+		"a read-only input": { tagName: "INPUT", type: "text", readOnly: true },
+		"a writable input": { tagName: "INPUT", type: "text", readOnly: false },
+		"a checkbox": { tagName: "INPUT", type: "checkbox" },
+		"a text area": { tagName: "TEXTAREA" },
+		"a select": { tagName: "SELECT" },
+		"an editable element": { tagName: "DIV", isContentEditable: true },
 	};
-	for (const [layout, event] of Object.entries(elsewhere)) {
-		assert.ok(
-			matchesKeyboardEvent(event, "["),
-			`TanStack Hotkeys no longer falls back to the code: ${layout}`,
-		);
-		assert.equal(matchesBinding(event, "previousTab"), false, layout);
-	}
+	for (const [where, target] of Object.entries(dropped))
+		assert.equal(isPressInTextField(pressAt(target)), true, where);
+
+	const kept = {
+		"a button input": { tagName: "INPUT", type: "button" },
+		"a submit input": { tagName: "INPUT", type: "submit" },
+		"a reset input": { tagName: "INPUT", type: "reset" },
+		"an element that is no field": { tagName: "DIV" },
+		"no target": null,
+	};
+	for (const [where, target] of Object.entries(kept))
+		assert.equal(isPressInTextField(pressAt(target)), false, where);
+
+	// The finder's keys work inside the finder's own field, and are exempt from the drop only by
+	// declaring that they fire in a text field.
+	const finder = KEYMAP.filter((binding) => binding.scope === SCOPE.finder);
+	assert.ok(finder.length > 0);
+	for (const binding of finder)
+		assert.equal(binding.options?.ignoreInputs, false, binding.id);
 });
 
 test("a punctuation binding is never declared as Shift alone", () => {

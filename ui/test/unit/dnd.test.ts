@@ -82,28 +82,35 @@ const browser = (target: string) => {
 	};
 };
 
+type DragHandlers = ReturnType<typeof useDragSource>;
+
+function Source(props: {
+	asked: string[];
+	dropped: string[];
+	sink: { handlers: DragHandlers | null };
+}) {
+	props.sink.handlers = useDragSource({
+		getPayload: () => PAYLOAD,
+		canDrop: (id) => {
+			props.asked.push(id);
+			return true;
+		},
+		onDrop: (over) => props.dropped.push(over),
+	});
+	return null;
+}
+
 const dragOnto = (target: string) => {
 	const asked: string[] = [];
 	const dropped: string[] = [];
-	let handlers: ReturnType<typeof useDragSource> | null = null;
-
-	function Source() {
-		handlers = useDragSource({
-			getPayload: () => PAYLOAD,
-			canDrop: (id) => {
-				asked.push(id);
-				return true;
-			},
-			onDrop: (over) => dropped.push(over),
-		});
-		return null;
-	}
-	renderToString(createElement(Source));
+	const sink: { handlers: DragHandlers | null } = { handlers: null };
+	renderToString(createElement(Source, { asked, dropped, sink }));
+	const handlers = sink.handlers;
 
 	assert.ok(handlers);
 	const page = browser(target);
 	try {
-		(handlers as ReturnType<typeof useDragSource>).dragProps.onPointerDown({
+		handlers.dragProps.onPointerDown({
 			pointerType: "mouse",
 			button: 0,
 			clientX: 0,

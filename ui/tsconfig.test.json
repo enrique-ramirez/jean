@@ -44,6 +44,7 @@
 		"src/shared/lib/untrusted.ts",
 		"src/shared/keyboard/keyboardOwner.ts",
 		"src/shared/keyboard/keymap.ts",
+		"src/shared/keyboard/pressTarget.ts",
 		"src/globals.d.ts",
 		"src/shared/lib/noop.ts",
 		"src/shared/lib/store.ts",

@@ -1,10 +1,10 @@
 import {
 	detectPlatform,
 	formatForDisplay,
-	type Hotkey,
+	type HotkeyChord,
 	matchesKeyboardEvent,
 	parseHotkey,
-	type RegisterableHotkey,
+	type RegisterableHotkeyChord,
 } from "@tanstack/react-hotkeys";
 
 import type { Phrase } from "@/shared/i18n/en";
@@ -12,9 +12,9 @@ import type { Phrase } from "@/shared/i18n/en";
 type ShortcutName = Extract<Phrase, `shortcut.${string}`>;
 export type ShortcutGroup = Extract<Phrase, `shortcutGroup.${string}`>;
 
-const shifted = (key: string) => `Shift+${key}` as RegisterableHotkey;
+const shifted = (key: string) => `Shift+${key}` as RegisterableHotkeyChord;
 
-const MENU_CHORD = "Mod+Shift+\\" as RegisterableHotkey;
+const MENU_CHORD = "Mod+Shift+\\" as RegisterableHotkeyChord;
 const MENU_KEYS = [
 	"Shift+F10",
 	// Chromium drops the native `contextmenu` the Menu key would fire once its keydown is prevented,
@@ -27,7 +27,7 @@ const MENU_KEYS = [
 const MENU_KEYS_SHOWN = detectPlatform() === "mac" ? [MENU_CHORD] : MENU_KEYS;
 const KEY_LABELS = { ContextMenu: "Menu", Delete: "Del" };
 
-// TanStack Hotkeys fires a Ctrl or Meta binding inside a text field unless told otherwise, and there
+// A Ctrl or Meta binding, like Escape, fires inside a text field unless told otherwise, and there
 // a chord that edits text belongs to the field.
 const LEAVES_TEXT_FIELDS = { ignoreInputs: true };
 
@@ -50,8 +50,8 @@ export interface Binding {
 	scope: Scope;
 	group: ShortcutGroup;
 	name: ShortcutName;
-	keys: readonly RegisterableHotkey[];
-	shown?: readonly RegisterableHotkey[];
+	keys: readonly RegisterableHotkeyChord[];
+	shown?: readonly RegisterableHotkeyChord[];
 	hidden?: boolean;
 	leavesControls?: boolean;
 	options?: { ignoreInputs?: boolean };
@@ -272,7 +272,7 @@ const DECLARED = [
 		scope: SCOPE.global,
 		group: "shortcutGroup.navigation",
 		name: "shortcut.showShortcuts",
-		keys: ["?" as RegisterableHotkey],
+		keys: ["?" as RegisterableHotkeyChord],
 	},
 
 	{
@@ -675,20 +675,17 @@ export type BindingId = Bound["id"];
 export type BindingIdIn<S extends Scope> = Extract<Bound, { scope: S }>["id"];
 
 const PUNCTUATION = /^[^A-Za-z0-9]$/;
-const PRINTABLE_ASCII = /^[!-~]$/;
 // A browser reports a dead key, such as the grave a Spanish layout has where QWERTY has `[`, as
 // `event.key === "Dead"`.
 const DEAD_KEY = "Dead";
-const isCharacterTyped = (key: string) =>
-	PRINTABLE_ASCII.test(key) || key === DEAD_KEY;
 
-// TanStack Hotkeys falls back from `event.key` to `event.code` read through a QWERTY map, so on
-// another Latin layout a punctuation key also matches the character QWERTY has there: Dvorak's `/`
-// sits on QWERTY's `[`. Without Shift or Alt, a printable ASCII `event.key` or a dead key is what
-// the person pressed, and only a binding declaring that character is theirs.
+// TanStack Hotkeys refuses a printable character typed on another key's position, so Dvorak's `/`
+// on QWERTY's `[` is not the `[` binding. It still falls back to the QWERTY position for a dead key,
+// such as the grave a Spanish layout has there, and without Shift or Alt a dead key is not the
+// character a binding declares.
 export function isTypedAsAnother(
 	event: KeyboardEvent,
-	hotkey: RegisterableHotkey,
+	hotkey: RegisterableHotkeyChord,
 ) {
 	const declared =
 		typeof hotkey === "string" ? parseHotkey(hotkey).key : hotkey.key;
@@ -697,12 +694,11 @@ export function isTypedAsAnother(
 		!event.shiftKey &&
 		!event.altKey &&
 		PUNCTUATION.test(declared) &&
-		isCharacterTyped(event.key) &&
-		event.key !== declared
+		event.key === DEAD_KEY
 	);
 }
 
-const isBareCharacter = (hotkey: RegisterableHotkey) => {
+const isBareCharacter = (hotkey: RegisterableHotkeyChord) => {
 	const { key, ctrl, alt, meta, shift } =
 		typeof hotkey === "string" ? parseHotkey(hotkey) : hotkey;
 	const isChord = ctrl || alt || meta;
@@ -720,7 +716,7 @@ export const isAvailable = (binding: Binding, singleKeys: boolean) =>
 export const matchesBinding = (event: KeyboardEvent, id: BindingId) =>
 	KEYMAP.find((binding) => binding.id === id)?.keys.some(
 		(key) =>
-			matchesKeyboardEvent(event, key as Hotkey) &&
+			matchesKeyboardEvent(event, key as HotkeyChord) &&
 			!isTypedAsAnother(event, key),
 	) ?? false;
 

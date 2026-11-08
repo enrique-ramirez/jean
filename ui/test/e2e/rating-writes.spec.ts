@@ -86,13 +86,18 @@ const asksSince = (player: FakePlayer, from: number) =>
 		.filter((entry) => routeOf(entry.path) !== "/api/state")
 		.map((entry) => `${entry.method} ${routeOf(entry.path)}`);
 
-// The same, less one re-read of the window the now-playing screen holds: foo_jean cannot say which
-// revision Jean's own write produced, so the revision it moves re-reads that window once.
-const asksOfAnOwnRating = (player: FakePlayer, from: number) => {
-	const asked = asksSince(player, from);
-	const reread = asked.indexOf("POST /api/library/rows");
-	return reread === -1 ? asked : asked.toSpliced(reread, 1);
-};
+// The same, less the re-reads: foo_jean cannot say which revision Jean's own write produced, so
+// the revision it moves marks every held window and the summary stale, and each re-reads on its own
+// schedule. How many land after the write is a race.
+const REREADS_OF_A_MOVED_REVISION = new Set([
+	"POST /api/library/rows",
+	"GET /api/library/summary",
+]);
+
+const asksOfAnOwnRating = (player: FakePlayer, from: number) =>
+	asksSince(player, from).filter(
+		(ask) => !REREADS_OF_A_MOVED_REVISION.has(ask),
+	);
 
 // A view asks for a cover per record on the way in, and those are nobody's
 // click. Letting the request log stop moving before anything is counted is what

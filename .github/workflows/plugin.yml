@@ -10,22 +10,22 @@ on:
   push:
     branches: [main]
     paths:
-      - 'plugins/fb2k/**'
-      - 'contract/openapi.yaml'
-      - 'contract/docs/**'
-      - '.github/workflows/plugin.yml'
-      - '.github/actions/windows-llvm/**'
-      - '.github/actions/apt-llvm/**'
-      - '.github/actions/pnpm-install/**'
+      - "plugins/fb2k/**"
+      - "contract/openapi.yaml"
+      - "contract/docs/**"
+      - ".github/workflows/plugin.yml"
+      - ".github/actions/windows-llvm/**"
+      - ".github/actions/apt-llvm/**"
+      - ".github/actions/pnpm-install/**"
   pull_request:
     paths:
-      - 'plugins/fb2k/**'
-      - 'contract/openapi.yaml'
-      - 'contract/docs/**'
-      - '.github/workflows/plugin.yml'
-      - '.github/actions/windows-llvm/**'
-      - '.github/actions/apt-llvm/**'
-      - '.github/actions/pnpm-install/**'
+      - "plugins/fb2k/**"
+      - "contract/openapi.yaml"
+      - "contract/docs/**"
+      - ".github/workflows/plugin.yml"
+      - ".github/actions/windows-llvm/**"
+      - ".github/actions/apt-llvm/**"
+      - ".github/actions/pnpm-install/**"
   workflow_dispatch:
 
 permissions:
@@ -37,13 +37,13 @@ concurrency:
 
 env:
   # scripts/lint.sh carries the authoritative pin and refuses any other major, so this follows it.
-  llvm_major: '23'
+  llvm_major: "23"
 
 jobs:
   address-sanitizer:
     runs-on: ubuntu-24.04
     env:
-      JEAN_CCACHE: '1'
+      JEAN_CCACHE: "1"
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 500M
     steps:
@@ -69,7 +69,7 @@ jobs:
   thread-sanitizer:
     runs-on: ubuntu-24.04
     env:
-      JEAN_CCACHE: '1'
+      JEAN_CCACHE: "1"
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 500M
     steps:
@@ -183,7 +183,7 @@ jobs:
   macos:
     runs-on: macos-15
     env:
-      JEAN_CCACHE: '1'
+      JEAN_CCACHE: "1"
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 500M
     steps:

@@ -16,7 +16,7 @@ Five things, each of which spells the path out for itself, so a move breaks all 
 
 ## The served copy
 
-`docs/` is the page `GET /docs` answers: `index.html`, and `init.js`, which points Swagger UI at `GET /openapi.yaml` on the origin that served the page, so *Try it out* reaches that install rather than the example host under `servers`. Swagger UI's own stylesheet and bundle come from the `swagger-ui-dist` package at build time, and `plugins/fb2k/scripts/embed-ui.mjs` compiles the four files into the component under `api/docs/`, beside the contract itself.
+`docs/` is the page `GET /docs` answers: `index.html`, and `init.js`, which points Swagger UI at `GET /openapi.yaml` on the origin that served the page, so _Try it out_ reaches that install rather than the example host under `servers`. Swagger UI's own stylesheet and bundle come from the `swagger-ui-dist` package at build time, and `plugins/fb2k/scripts/embed-ui.mjs` compiles the four files into the component under `api/docs/`, beside the contract itself.
 
 ## Running the suite
 

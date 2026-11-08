@@ -37,13 +37,13 @@ A custom component written to feed Jean is a last resort.
 
 ## Never assume
 
-| | |
-|---|---|
-| Which playlist is which | `foo_jean` answers the library, and no playlist is it. Never read a role out of a title somebody chose |
-| `permissions` | `canControlPlayback`, `canWritePlaylists`, `canChangeOutput` and `canStream` each go false independently. A read-only instance gets a read-only Jean, not buttons that 403 |
-| Library size | anywhere from empty to very large. Nothing linear in it on the main thread |
-| Components | detect, never require |
-| Keyboard layout | a binding written as an unshifted key is not unshifted everywhere |
+|                         |                                                                                                                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Which playlist is which | `foo_jean` answers the library, and no playlist is it. Never read a role out of a title somebody chose                                                                     |
+| `permissions`           | `canControlPlayback`, `canWritePlaylists`, `canChangeOutput` and `canStream` each go false independently. A read-only instance gets a read-only Jean, not buttons that 403 |
+| Library size            | anywhere from empty to very large. Nothing linear in it on the main thread                                                                                                 |
+| Components              | detect, never require                                                                                                                                                      |
+| Keyboard layout         | a binding written as an unshifted key is not unshifted everywhere                                                                                                          |
 
 ## Invariants
 

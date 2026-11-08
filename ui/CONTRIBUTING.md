@@ -60,7 +60,7 @@ A source file containing a NUL byte is binary to `grep`, which matches nothing i
 
 ## 3. Where things live
 
-**Imports run one way: `app → features → domain → shared`, and Biome fails the build on a violation.** [ARCHITECTURE.md](./ARCHITECTURE.md), *Tiers*, is what each tier may know about, the rest of the direction rules, and why the boundaries sit where they do; it also has where state lives and what the two optional-component seams are.
+**Imports run one way: `app → features → domain → shared`, and Biome fails the build on a violation.** [ARCHITECTURE.md](./ARCHITECTURE.md), _Tiers_, is what each tier may know about, the rest of the direction rules, and why the boundaries sit where they do; it also has where state lives and what the two optional-component seams are.
 
 Commands run from the repository root and the root `package.json` delegates them, so nothing here needs running from inside `ui/`.
 
@@ -97,7 +97,7 @@ Commands run from the repository root and the root `package.json` delegates them
 
 ## 7. Comments
 
-A fact about the player that governs several files goes in `src/shared/api/README.md`; one about the browser goes in `ARCHITECTURE.md`, *Facts about the browser*. The files depending on either say nothing.
+A fact about the player that governs several files goes in `src/shared/api/README.md`; one about the browser goes in `ARCHITECTURE.md`, _Facts about the browser_. The files depending on either say nothing.
 
 Read the `useExhaustiveDependencies` suppressions before running `lint:fix`, which would remove every one and break the feature silently; the root `CLAUDE.md` has the one shape they all take.
 

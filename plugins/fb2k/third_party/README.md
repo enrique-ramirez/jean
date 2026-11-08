@@ -2,12 +2,12 @@
 
 Committed rather than fetched. The foobar2000 SDK is fetched because its licence forbids redistribution; everything here is permissively licensed and carries no such restriction, so vendoring means a checkout builds and tests with no network and no package manager.
 
-| | version | licence | why |
-|---|---|---|---|
-| `httplib.h` | cpp-httplib 0.65.0, tag `v0.65.0` at `7e5d0683` | MIT | the HTTP server |
-| `json.hpp` | nlohmann/json 3.12.0 | MIT | reading and writing `config.json`, and every API document |
-| `doctest.h` | doctest 2.5.3 | MIT | the test suite. Not linked into the component |
-| `zlib/` | zlib 1.4, tag `v1.4` at commit `99623ef7` | zlib | gzip. It is what cpp-httplib's compressor is written against |
+|             | version                                         | licence | why                                                          |
+| ----------- | ----------------------------------------------- | ------- | ------------------------------------------------------------ |
+| `httplib.h` | cpp-httplib 0.65.0, tag `v0.65.0` at `7e5d0683` | MIT     | the HTTP server                                              |
+| `json.hpp`  | nlohmann/json 3.12.0                            | MIT     | reading and writing `config.json`, and every API document    |
+| `doctest.h` | doctest 2.5.3                                   | MIT     | the test suite. Not linked into the component                |
+| `zlib/`     | zlib 1.4, tag `v1.4` at commit `99623ef7`       | zlib    | gzip. It is what cpp-httplib's compressor is written against |
 
 All four are **unmodified**, and that is checked against upstream rather than assumed: the three single headers are byte-identical to their tags, and every file in `zlib/` is byte-identical to the file of that name at `99623ef7`. Upgrading is replacing the files and rebuilding. Do not patch them in place, because the next upgrade would silently drop the patch. If one of them needs different behaviour, wrap it in this component's own code instead, which is what `src/core/http_server.cpp` does for the socket options below.
 

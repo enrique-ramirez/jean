@@ -95,7 +95,7 @@ Checks: >
 #     src/fb2k/resource.h, which uses classic guards because rc.exe's preprocessor is
 #     not the compiler's -- and that exception carries its own comment.
 
-WarningsAsErrors: ''
+WarningsAsErrors: ""
 HeaderFilterRegex: '.*[/\\](src[/\\](core|fb2k)|tests[/\\]support)[/\\].*'
 
 CheckOptions:
@@ -110,26 +110,26 @@ CheckOptions:
   - key: readability-identifier-naming.VariableCase
     value: camelBack
   - key: readability-identifier-naming.PrivateMemberSuffix
-    value: '_'
+    value: "_"
   - key: readability-identifier-naming.GlobalConstantPrefix
-    value: 'k'
+    value: "k"
   - key: readability-identifier-naming.ConstexprVariablePrefix
-    value: 'k'
+    value: "k"
   - key: readability-identifier-naming.GlobalVariablePrefix
-    value: 'g_'
+    value: "g_"
 
   # `if (!ptr)` is how C++ is written everywhere, including in the SDK. The check stays
   # on for everything else, which is what caught std::isalpha's int being used as a
   # truth value in src/core/tag_write.cpp.
   - key: readability-implicit-bool-conversion.AllowPointerConditions
-    value: 'true'
+    value: "true"
 
   # `const auto* value` rather than `const auto *const value`. Spelling the pointer out
   # is a good suggestion; the second const is noise on a local we never rebind.
   - key: readability-qualified-auto.AddConstToQualified
-    value: 'false'
+    value: "false"
 
   # Nothing here declares a move member, so this fires only on the one the compiler writes for a
   # lambda that copies a const std::string, which may throw and hurts nobody.
   - key: bugprone-exception-escape.CheckMoveMemberFunctions
-    value: 'false'
+    value: "false"

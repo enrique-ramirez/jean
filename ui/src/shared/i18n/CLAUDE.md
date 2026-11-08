@@ -1,6 +1,6 @@
 # Language
 
-How to write a phrase is `ui/CONTRIBUTING.md`, *Phrases*. What follows are the traps.
+How to write a phrase is `ui/CONTRIBUTING.md`, _Phrases_. What follows are the traps.
 
 **What the player answers is never a phrase.** A track's title, a playlist's name and a genre tag are the user's data. Neither is the name of something outside Jean: `PANE` in `TagWriting.tsx` and `foo_jean`'s own labels name things on a foobar2000 screen that is in English whatever Jean shows.
 

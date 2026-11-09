@@ -297,43 +297,30 @@ std::map<std::string, std::set<int>> publishedSchemaStatuses() {
     return publishedAnswers().schemas;
 }
 
-std::map<std::string, std::string> publishedStatusExample() {
-    const auto lines = specLines();
+std::map<std::string, std::string> publishedInfo() {
+    constexpr size_t kFieldIndent = 2;
 
-    constexpr size_t kPathIndent = 2;
-    constexpr size_t kValueIndent = 18;
-    constexpr size_t kFieldIndent = 20;
+    std::map<std::string, std::string> info;
+    bool inInfo = false;
 
-    std::map<std::string, std::string> example;
-    bool inStatus = false;
-    bool inValue = false;
-
-    for (const auto& line : lines) {
-        if (startsWith(line, std::string(kPathIndent, ' ') + '/')) {
-            if (inStatus)
+    for (const auto& line : specLines()) {
+        if (indentOf(line) == 0 && !line.empty()) {
+            if (inInfo)
                 break;
-            inStatus = line == "  /status:";
+            inInfo = line == "info:";
             continue;
         }
-        if (!inStatus)
+        if (!inInfo || indentOf(line) != kFieldIndent || line[kFieldIndent] == '#')
             continue;
-
-        if (keyAt(line, kValueIndent, "value:")) {
-            inValue = true;
-            continue;
-        }
-        if (!inValue)
-            continue;
-
-        if (indentOf(line) != kFieldIndent)
-            break;
 
         const auto colon = line.find(": ", kFieldIndent);
-        example[line.substr(kFieldIndent, colon - kFieldIndent)] = trimmed(line.substr(colon + 2));
+        if (colon == std::string::npos)
+            continue;
+        info[line.substr(kFieldIndent, colon - kFieldIndent)] = trimmed(line.substr(colon + 2));
     }
 
-    REQUIRE_MESSAGE(!example.empty(), "contract/openapi.yaml shows no example of GET /status");
-    return example;
+    REQUIRE_MESSAGE(info.contains("version"), "contract/openapi.yaml has no info.version");
+    return info;
 }
 
 // A hand-rolled reader rather than a YAML library, because the shape it needs is two levels

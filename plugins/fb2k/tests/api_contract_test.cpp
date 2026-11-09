@@ -1179,10 +1179,10 @@ TEST_CASE("a write against a rebuilt library is a 409 distinct from a moved play
     CHECK(publishesError("TagFailed", rebuilt.front()));
 }
 
-// A client branches on these two, read off GET /status, so the example the contract shows that
-// route answering with is the one a client was written against.
-TEST_CASE("GET /status reports the versions contract/openapi.yaml shows it answering with") {
-    INFO(kUpdateSpec);
+// src/core/version.h is written from the contract's info block before every build; this is the
+// check that the binary answering here was built from the one beside it.
+TEST_CASE("GET /status reports the versions contract/openapi.yaml's info block carries") {
+    INFO("src/core/version.h is stale: scripts/lib/version-header.sh writes it from the contract");
 
     const TestServer server;
     const auto response = get(server, "/api/status");
@@ -1190,10 +1190,11 @@ TEST_CASE("GET /status reports the versions contract/openapi.yaml shows it answe
     REQUIRE(response->status == 200);
 
     const auto body = json::parse(response->body);
-    const auto example = publishedStatusExample();
+    const auto info = publishedInfo();
 
-    CHECK(body.at("version") == example.at("version"));
-    CHECK(std::to_string(body.at("apiVersion").get<int>()) == example.at("apiVersion"));
+    CHECK(body.at("name") == info.at("title"));
+    CHECK(body.at("version") == info.at("version"));
+    CHECK(std::to_string(body.at("apiVersion").get<int>()) == info.at("x-api-version"));
 }
 
 // api_contract_test.cpp pins documents; nothing pins statuses per route, and the stream routes

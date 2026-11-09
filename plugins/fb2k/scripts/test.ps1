@@ -12,7 +12,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$repo = Split-Path -Parent (Split-Path -Parent $root)
+. "$PSScriptRoot\lib\version-header.ps1"
 
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 # -products * is required, or Build Tools installations are not matched and this silently finds nothing.
@@ -41,17 +41,6 @@ function Invoke-Tool {
   if ($LASTEXITCODE -ne 0) {
     $output | Select-String -Pattern 'error' -CaseSensitive:$false | Select-Object -First 20
     throw "$Failure (exit $LASTEXITCODE)."
-  }
-}
-
-function Assert-OpenApiVersionMatchesCode {
-  $specVersion = (Select-String -Path (Join-Path $repo 'contract\openapi.yaml') -Pattern '^  version: *(.+)$' |
-    Select-Object -First 1).Matches[0].Groups[1].Value.Trim()
-  $codeVersion = (Select-String -Path (Join-Path $root 'src\core\version.h') -Pattern 'kVersion\[\] *= *"([^"]*)"' |
-    Select-Object -First 1).Matches[0].Groups[1].Value
-
-  if ($specVersion -ne $codeVersion) {
-    throw "contract/openapi.yaml says version '$specVersion'; plugins/fb2k/src/core/version.h says '$codeVersion'"
   }
 }
 
@@ -197,7 +186,7 @@ function Build-Tests {
 
 $exe = Join-Path $out 'foo_jean_tests.exe'
 
-Assert-OpenApiVersionMatchesCode
+Write-VersionHeader
 Require-CodecSources
 Build-CodecArchiveIfStale
 Build-ZlibArchiveIfStale

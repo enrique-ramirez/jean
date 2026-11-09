@@ -355,7 +355,7 @@ A file compiled into the component is sent straight from its embedded bytes, nev
 
 **The component serves the copy it was built from.** `GET /api/openapi.yaml` answers the contract byte for byte and `GET /api/docs` renders it with Swagger UI, both from the table `scripts/embed-ui.mjs` writes, under `api/`, read through the same seam as Jean's page and answered by `core/routes_docs.cpp`.
 
-Two mechanical checks keep the code and the spec together, and neither can read prose. `tests/api_contract_test.cpp` pins the exact key set of every document the component publishes and drives the stream routes to compare their statuses with the spec's, reading the operation list through `tests/support/spec.h`. `scripts/test.sh` compares the spec's version with `src/core/version.h` before it builds anything.
+One mechanical check keeps the code and the spec together, and it cannot read prose. `tests/api_contract_test.cpp` pins the exact key set of every document the component publishes and drives the stream routes to compare their statuses with the spec's, reading the operation list through `tests/support/spec.h`.
 
 `core/documents.cpp` builds every published document but the refusals and failures, which `core/failures.cpp` builds with the status each goes under. Every answer of 400 or above carries a JSON `error` string. Bodies are capped at `kMaxBodyBytes`, which the spec documents by that number.
 

@@ -42,8 +42,8 @@ if [ "$#" -gt 0 ]; then
     case "$file" in
       *third_party/*) echo "$file was skipped: third_party/ is not ours to format." >&2 ;;
       *)
-        if is_fb2k_generated "$file"; then
-          echo "$file was skipped: it is in fb2k_generated_sources in scripts/lib/compile-flags.sh." >&2
+        if is_generated "$file"; then
+          echo "$file was skipped: it is generated; scripts/lib/compile-flags.sh names it." >&2
         else
           files+=("$file")
         fi
@@ -52,7 +52,7 @@ if [ "$#" -gt 0 ]; then
   done
 else
   while IFS= read -r file; do
-    is_fb2k_generated "$file" || files+=("$file")
+    is_generated "$file" || files+=("$file")
   done < <(find "$root/src" "$root/tests" -type f \( -name '*.cpp' -o -name '*.mm' -o -name '*.h' \) | sort)
 fi
 

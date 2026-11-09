@@ -16,6 +16,8 @@ zlib="$root/third_party/zlib"
 vendor_include=-isystem
 # shellcheck source=lib/compile-flags.sh
 . "$root/scripts/lib/compile-flags.sh"
+# shellcheck source=lib/version-header.sh
+. "$root/scripts/lib/version-header.sh"
 
 : "${CXX:=c++}"
 export CXX
@@ -383,8 +385,7 @@ link_component() {
 # The signature comes last: one made before lipo does not cover the joined file.
 assemble_bundle() {
   local bundle="$out/foo_jean.component" version arch flag binaries=()
-  version=$(sed -n 's/.*kVersion\[\] *= *"\([^"]*\)".*/\1/p' "$root/src/core/version.h")
-  [ -n "$version" ] || fail "src/core/version.h: no kVersion"
+  version=$(contract_info version)
 
   rm -rf "$bundle"
   mkdir -p "$bundle/Contents/MacOS"
@@ -417,5 +418,6 @@ build_component() {
 }
 
 require_embed_table
+write_version_header
 build_sdk_archives
 build_component

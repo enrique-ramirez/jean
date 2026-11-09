@@ -14,6 +14,8 @@ compile_commands.json
 
 src/fb2k/ui_assets_table.cpp
 
+src/core/version.h
+
 # MSBuild
 [Bb]in/
 [Oo]bj/

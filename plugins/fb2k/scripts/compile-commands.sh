@@ -18,6 +18,9 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 vendor_include=-isystem
 # shellcheck source=lib/compile-flags.sh
 . "$root/scripts/lib/compile-flags.sh"
+# shellcheck source=lib/version-header.sh
+. "$root/scripts/lib/version-header.sh"
+write_version_header
 
 : "${CXX:=c++}"
 

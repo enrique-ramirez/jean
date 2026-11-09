@@ -34,13 +34,14 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-repo="$(cd "$root/../.." && pwd)"
 opus="$root/third_party/opus"
 ogg="$root/third_party/ogg"
 zlib="$root/third_party/zlib"
 
 # shellcheck source=lib/compile-flags.sh
 . "$root/scripts/lib/compile-flags.sh"
+# shellcheck source=lib/version-header.sh
+. "$root/scripts/lib/version-header.sh"
 
 : "${CXX:=c++}"
 : "${CC:=cc}"
@@ -86,17 +87,6 @@ fi
 out="$root/bin/tests$suffix"
 codec="$root/bin/codec$suffix"
 deflate="$root/bin/zlib$suffix"
-
-assert_openapi_version_matches_code() {
-  local spec_version code_version
-  spec_version=$(sed -n 's/^  version: *//p' "$repo/contract/openapi.yaml" | head -1)
-  code_version=$(sed -n 's/.*kVersion\[\] *= *"\([^"]*\)".*/\1/p' "$root/src/core/version.h")
-
-  if [ "$spec_version" != "$code_version" ]; then
-    echo "contract/openapi.yaml says version '$spec_version'; plugins/fb2k/src/core/version.h says '$code_version'" >&2
-    exit 1
-  fi
-}
 
 require_codec_sources() {
   if [ ! -d "$opus" ] || [ ! -d "$ogg" ]; then
@@ -217,7 +207,7 @@ run_with_leak_check() {
 
 mkdir -p "$out"
 use_ccache_if_asked
-assert_openapi_version_matches_code
+write_version_header
 require_codec_sources
 if [ "$sanitize" = leaks ]; then
   require_leaks_tool

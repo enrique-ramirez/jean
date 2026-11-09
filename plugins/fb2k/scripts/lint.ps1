@@ -13,6 +13,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+. "$PSScriptRoot\lib\version-header.ps1"
+Write-VersionHeader
 
 $requiredMajor = 23
 

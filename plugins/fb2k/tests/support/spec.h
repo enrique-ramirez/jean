@@ -39,8 +39,9 @@ std::map<std::string, std::set<int>> publishedErrorExamples();
 // way.
 std::map<std::string, std::set<int>> publishedSchemaStatuses();
 
-// The top-level scalars of the example GET /status answers with.
-std::map<std::string, std::string> publishedStatusExample();
+// The scalars of the `info` block: `title`, `version` and `x-api-version`, which
+// scripts/lib/version-header.sh writes src/core/version.h from. Comments between them are skipped.
+std::map<std::string, std::string> publishedInfo();
 
 // The key set of the `player` object inside one of GET /state's named 200 examples, `built`
 // or `building`, scoped to the `/state` path's own block so an example of the same name

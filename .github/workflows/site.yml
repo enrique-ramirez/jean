@@ -25,12 +25,7 @@ jobs:
 
       - uses: ./.github/actions/pnpm-install
 
-      - run: pnpm lint
-
-      # Typechecked before it is bundled, the way `pnpm build` does it: Vite never typechecks, so
-      # nothing else would.
-      - run: pnpm typecheck
-      - run: pnpm test:unit
+      # Not linted, typechecked or tested here: ui.yml ran on this release commit's parent.
       - run: pnpm site
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

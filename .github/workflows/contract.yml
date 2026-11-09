@@ -3,9 +3,7 @@
 # here: it drives a player over HTTP, and there is no player on a runner. `contract/README.md`
 # is the rest.
 #
-# `types` waits on `gate`, which skips it for a push whose head commit is the one scripts/release.sh
-# makes: it changes one line of contract/openapi.yaml, and only once the checks on its parent were
-# green. .github/actions/release-commit is what recognises that commit.
+# `types` waits on `gate`, release-commit.yml, which skips it for the release commit.
 
 name: contract
 
@@ -24,14 +22,7 @@ concurrency:
 
 jobs:
   gate:
-    runs-on: ubuntu-latest
-    outputs:
-      release: ${{ steps.commit.outputs.release }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - id: commit
-        uses: ./.github/actions/release-commit
+    uses: ./.github/workflows/release-commit.yml
 
   types:
     needs: gate

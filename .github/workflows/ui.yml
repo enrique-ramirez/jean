@@ -1,0 +1,38 @@
+# Jean's own checks: Biome, the TypeScript projects and the unit suites. No path filter, because
+# the unit suites read core headers, fixtures and the README beside their own packages, and a
+# list of those goes stale. plugin.yml covers foo_jean the same way.
+
+name: ui
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    uses: ./.github/workflows/release-commit.yml
+
+  checks:
+    needs: gate
+    if: needs.gate.outputs.release == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/pnpm-install
+
+      - run: pnpm lint
+
+      # Vite never typechecks, so nothing else would.
+      - run: pnpm typecheck
+
+      - run: pnpm test:unit

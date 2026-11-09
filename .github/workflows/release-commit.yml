@@ -1,0 +1,36 @@
+# Whether the push's head commit is the one plugins/fb2k/scripts/release.sh makes, by the subject
+# scripts/lib/conventional.mjs gives it. A workflow calls this as its `gate` and skips every job
+# on `true`: that commit changes one line of contract/openapi.yaml, and only once the checks on
+# its parent were green.
+
+name: release commit
+
+on:
+  workflow_call:
+    outputs:
+      release:
+        description: "`true` or `false`."
+        value: ${{ jobs.answer.outputs.release }}
+
+permissions:
+  contents: read
+
+jobs:
+  answer:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.answer.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/node
+
+      - id: answer
+        env:
+          SUBJECT: ${{ github.event.head_commit.message }}
+        run: |
+          if node scripts/commit-message.mjs --is-release "$SUBJECT"; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi

@@ -29,7 +29,7 @@ node plugins/fb2k/scripts/embed-ui.mjs   # -> src/fb2k/ui_assets_table.cpp
 
 ### The version
 
-`src/core/version.h` is gitignored too, and nothing asks for it: every script that compiles `src/core/` writes it first, from the `info` block of `contract/openapi.yaml`, through `scripts/lib/version-header.sh` or `version-header.ps1`. The component's name, its version and `apiVersion` are typed in the contract and nowhere else. To release a new version, change `info.version` there, and `x-api-version` beside it where a shape broke. An IDE opening `src/foo_jean.vcxproj` on a fresh checkout wants the header too; one run of `scripts\build.ps1` or `scripts\test.ps1` writes it.
+`src/core/version.h` is gitignored too, and nothing asks for it: every script that compiles `src/core/` writes it first, from the `info` block of `contract/openapi.yaml`, through `scripts/lib/version-header.sh` or `version-header.ps1`. The component's name, its version and `apiVersion` are typed in the contract and nowhere else. `pnpm release` moves `info.version`, _Releasing_ below; `x-api-version` beside it moves by hand, in the commit that breaks a shape. An IDE opening `src/foo_jean.vcxproj` on a fresh checkout wants the header too; one run of `scripts\build.ps1` or `scripts\test.ps1` writes it.
 
 ### Windows
 
@@ -195,7 +195,9 @@ Four end-to-end checks in PowerShell run against a real player on Windows: `scri
 
 ## Releasing
 
-`.github/workflows/release.yml` assembles `foo_jean.fb2k-component` from a Windows build and a macOS build of one page, and the archive exists only where both passed. It runs when started by hand from the Actions tab and on a tag, and uploads the archive as a workflow artifact either way; `plugin.yml` builds and tests both platforms on every change without packaging them. Pushing a tag matching `v*` also publishes it to a GitHub Release, once `scripts/release-tag.sh` has confirmed the tag is `v` followed by `info.version` in `contract/openapi.yaml`; a tag that does not match fails the workflow before anything is built. `pnpm release` at the repository root runs `scripts/release.sh`, which writes that tag and pushes it, once `main` is clean, pushed and checked out.
+`.github/workflows/release.yml` assembles `foo_jean.fb2k-component` from a Windows build and a macOS build of one page, and the archive exists only where both passed. It runs when started by hand from the Actions tab and on a tag, and uploads the archive as a workflow artifact either way; `plugin.yml` builds and tests both platforms on every change without packaging them. Pushing a tag matching `v*` also publishes it to a GitHub Release, once `scripts/release-tag.sh` has confirmed the tag is `v` followed by `info.version` in `contract/openapi.yaml`; a tag that does not match fails the workflow before anything is built.
+
+`pnpm release` at the repository root is the whole procedure. It runs `scripts/release.sh`, which moves `info.version`, commits that one line as `foo_jean: release vX.Y.Z`, pushes `main`, tags the commit and pushes the tag. Alone it moves the patch number; `pnpm release minor`, `major` or an exact `0.9.0` says otherwise, and `--dry-run` first runs every check and writes nothing. It refuses rather than guess, and says which case stopped it: a dirty tree, a branch other than `main`, a `HEAD` that is not `origin/main`, an existing tag, a `HEAD` with no commit since the last release, or a check on `HEAD` that is red or still running, which it reads from GitHub. The release commit runs `site.yml` like any push; `plugin.yml` and `contract.yml` skip it by its subject, since that gate has just passed on the commit before.
 
 A release carries `SHA256SUMS` and a build provenance attestation. To check a downloaded component, in the folder holding both files:
 

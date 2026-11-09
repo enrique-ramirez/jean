@@ -36,6 +36,9 @@ tidy="$(find_llvm_tool clang-tidy CLANG_TIDY)" || exit 127
 vendor_include=-isystem
 # shellcheck source=lib/compile-flags.sh
 . "$root/scripts/lib/compile-flags.sh"
+# shellcheck source=lib/version-header.sh
+. "$root/scripts/lib/version-header.sh"
+write_version_header
 
 core_files=()
 fb2k_files=()
@@ -47,8 +50,8 @@ if [ "$#" -gt 0 ]; then
     elif [ -n "$fb2k_skipped" ]; then
       echo "$fb2k_skipped" >&2
     else
-      if is_fb2k_generated "$file"; then
-        echo "$file was skipped: it is in fb2k_generated_sources in scripts/lib/compile-flags.sh." >&2
+      if is_generated "$file"; then
+        echo "$file was skipped: it is generated; scripts/lib/compile-flags.sh names it." >&2
       elif is_fb2k_unparsed "$file"; then
         echo "$file was skipped: it is in fb2k_unparsed_sources in scripts/lib/compile-flags.sh." >&2
       else

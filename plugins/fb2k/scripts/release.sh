@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tags HEAD with the version plugins/fb2k/src/core/version.h carries and pushes the tag. Pushing a
-# v* tag starts the publishing path of .github/workflows/release.yml.
+# Tags HEAD with the version contract/openapi.yaml carries and pushes the tag. Pushing a v* tag
+# starts the publishing path of .github/workflows/release.yml.
 #
 #   scripts/release.sh
 set -euo pipefail
@@ -8,18 +8,9 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 repo="$(cd "$root/../.." && pwd)"
 
-version=$(sed -n 's/.*kVersion\[\] *= *"\([^"]*\)".*/\1/p' "$root/src/core/version.h")
-if [ -z "$version" ]; then
-  echo "could not find kVersion in $root/src/core/version.h" >&2
-  exit 1
-fi
-
-spec_version=$(sed -n 's/^  version: *//p' "$repo/contract/openapi.yaml" | head -1)
-if [ "$spec_version" != "$version" ]; then
-  echo "contract/openapi.yaml says version '$spec_version'; src/core/version.h says '$version'" >&2
-  exit 1
-fi
-
+# shellcheck source=lib/version-header.sh
+. "$root/scripts/lib/version-header.sh"
+version=$(contract_info version)
 tag="v$version"
 
 if [ -n "$(git -C "$repo" status --porcelain)" ]; then
@@ -42,7 +33,7 @@ fi
 
 if git -C "$repo" rev-parse --verify --quiet "refs/tags/$tag" >/dev/null \
   || git -C "$repo" ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
-  echo "tag '$tag' already exists; bump kVersion in src/core/version.h and contract/openapi.yaml" >&2
+  echo "tag '$tag' already exists; bump info.version in contract/openapi.yaml" >&2
   exit 1
 fi
 

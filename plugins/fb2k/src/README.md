@@ -52,9 +52,10 @@ Each build compiles one file of each pair below and never sees the other, so a c
 
 ## Generated files
 
-| file                                   | written by                   | from                                                                                                                  |
-| -------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `fb2k/ui_assets_table.cpp`, gitignored | `scripts/embed-ui.mjs`       | `ui/dist`, and `contract/openapi.yaml` with its Swagger UI page under `api/`                                          |
-| `core/unicode_tables.cpp`, committed   | `scripts/unicode-tables.mjs` | Node's `toLowerCase`, `normalize` and `\p{…}`, and `scripts/Latin-ASCII.xml`, CLDR's transform file kept as published |
+| file                                   | written by                                                     | from                                                                                                                  |
+| -------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `fb2k/ui_assets_table.cpp`, gitignored | `scripts/embed-ui.mjs`                                         | `ui/dist`, and `contract/openapi.yaml` with its Swagger UI page under `api/`                                          |
+| `core/version.h`, gitignored           | `scripts/lib/version-header.sh` and `.ps1`, before every build | the `info` block of `contract/openapi.yaml`: `title`, `version` and `x-api-version`                                   |
+| `core/unicode_tables.cpp`, committed   | `scripts/unicode-tables.mjs`                                   | Node's `toLowerCase`, `normalize` and `\p{…}`, and `scripts/Latin-ASCII.xml`, CLDR's transform file kept as published |
 
 The same run of `scripts/unicode-tables.mjs` writes `ui/src/shared/lib/asciiFolding.ts`, so both sides fold alike. To change a table, change the script or the CLDR file and run it.

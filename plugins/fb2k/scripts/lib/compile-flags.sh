@@ -76,6 +76,8 @@ fb2k_unparsed_sources=(preferences.cpp aac_encoder.cpp)
 
 fb2k_generated_sources=(ui_assets_table.cpp)
 
+generated_headers=(src/core/version.h)
+
 fb2k_compile_flags=(
   "${compile_flags[@]}"
   -isystem "$root/sdk"
@@ -104,10 +106,14 @@ is_objc_source() {
   [ "${1##*.}" = mm ]
 }
 
-is_fb2k_generated() {
-  local name
+is_generated() {
+  local name path
   for name in "${fb2k_generated_sources[@]}"; do
     [ "${1##*/}" != "$name" ] || return 0
+  done
+  path="$(cd "$(dirname "$1")" 2>/dev/null && pwd)/${1##*/}"
+  for name in "${generated_headers[@]}"; do
+    [ "$path" != "$root/$name" ] || return 0
   done
   return 1
 }
@@ -116,6 +122,6 @@ fb2k_sources=()
 if [ -z "$fb2k_skipped" ]; then
   for fb2k_file in "$root"/src/fb2k/*.cpp "$root"/src/fb2k/*.mm; do
     [ -e "$fb2k_file" ] || continue
-    is_fb2k_unparsed "$fb2k_file" || is_fb2k_generated "$fb2k_file" || fb2k_sources+=("$fb2k_file")
+    is_fb2k_unparsed "$fb2k_file" || is_generated "$fb2k_file" || fb2k_sources+=("$fb2k_file")
   done
 fi

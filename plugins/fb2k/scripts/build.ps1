@@ -10,6 +10,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+. "$PSScriptRoot\lib\version-header.ps1"
 
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 # -products * is required, or Build Tools installations are not matched and this silently finds nothing.
@@ -34,6 +35,8 @@ if ((Split-Path -Leaf $proj) -eq 'foo_jean.vcxproj') {
   foreach ($leftover in 'ui_assets.rc', 'ui_assets_table.inc') {
     Remove-Item -LiteralPath (Join-Path $fb2kSource $leftover) -Force -ErrorAction SilentlyContinue
   }
+
+  Write-VersionHeader
 }
 
 Write-Output "Building $Project ($Configuration|$Platform)"

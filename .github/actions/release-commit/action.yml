@@ -1,0 +1,23 @@
+name: release commit
+description: Whether the push's head commit is the one plugins/fb2k/scripts/release.sh makes, by the subject scripts/lib/conventional.mjs gives it.
+
+outputs:
+  release:
+    description: "`true` or `false`."
+    value: ${{ steps.answer.outputs.release }}
+
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/node
+
+    - id: answer
+      shell: bash
+      env:
+        SUBJECT: ${{ github.event.head_commit.message }}
+      run: |
+        if node scripts/commit-message.mjs --is-release "$SUBJECT"; then
+          echo "release=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "release=false" >> "$GITHUB_OUTPUT"
+        fi

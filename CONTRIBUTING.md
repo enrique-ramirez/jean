@@ -55,6 +55,14 @@ Run `/review` before asking for a commit. The hook that rejects an edit, the two
 
 ## 5. Writing
 
-Short sentences. RFC 2119 keywords for obligations. Commit messages take an imperative subject; add a body only for a fact the diff cannot show.
+Short sentences. RFC 2119 keywords for obligations.
 
 Prose is in the house voice, `.claude/voice/personas/house.md`. `.claude/voice/register.txt` is the words to avoid and `.claude/voice/constructions.md` the shapes, and the shapes are the half that gives an assistant away. Read that one twice.
+
+## 6. Commits
+
+A commit subject is `type(scope)!: description`, [Conventional Commits](https://www.conventionalcommits.org/), imperative, with no period at the end. Add a body only for a fact the diff cannot show. The types, the scopes and the paths each scope covers are the ones `scripts/lib/conventional.mjs` names, and the hook lists them when a subject misses. The `!`, or a `BREAKING CHANGE:` footer, marks a change a client or an install has to act on. Git's own `Merge` and `Revert` subjects pass as they are.
+
+A scope is optional and names one area. Every file the commit touches MUST lie under it, so a change that reaches several areas carries none. The type is held to the files as well: a `test` commit touches only tests, a `ci` commit only `.github/`, a `docs` commit only Markdown, and a `feat`, `fix`, `perf` or `refactor` commit touches at least one file that is none of those.
+
+`pnpm install` points `core.hooksPath` at `.githooks/`, whose `commit-msg` hook runs `scripts/commit-message.mjs` against the message and the staged files; `.github/workflows/commits.yml` runs the same check over every commit a push or a pull request brings, so `--no-verify` buys nothing. The release notes are these commits grouped by type, so the description is what a user reads.

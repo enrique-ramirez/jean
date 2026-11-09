@@ -1,0 +1,29 @@
+# Every commit a push or a pull request brings is held to scripts/lib/conventional.mjs, the
+# same check the commit-msg hook runs locally, so a commit made with --no-verify fails here.
+
+name: commits
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  messages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/node
+
+      - run: node scripts/commit-message.mjs --ci

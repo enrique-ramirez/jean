@@ -3,8 +3,9 @@
 # here: it drives a player over HTTP, and there is no player on a runner. `contract/README.md`
 # is the rest.
 #
-# The job skips a push whose head commit is the one scripts/release.sh makes, `foo_jean: release
-# v…`: it changes one line of contract/openapi.yaml, and only once the checks on its parent were green.
+# `types` waits on `gate`, which skips it for a push whose head commit is the one scripts/release.sh
+# makes: it changes one line of contract/openapi.yaml, and only once the checks on its parent were
+# green. .github/actions/release-commit is what recognises that commit.
 
 name: contract
 
@@ -22,8 +23,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.commit.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: commit
+        uses: ./.github/actions/release-commit
+
   types:
-    if: "${{ !startsWith(github.event.head_commit.message, 'foo_jean: release v') }}"
+    needs: gate
+    if: needs.gate.outputs.release == 'false'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

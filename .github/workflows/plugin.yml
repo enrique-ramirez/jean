@@ -4,8 +4,9 @@
 # `windows` and `macos` jobs build it the way release.yml does. scripts/build.ps1 lints the Windows
 # build with clang-tidy afterwards and the `macos` job lints src/fb2k/ with scripts/lint.sh.
 #
-# Every job skips a push whose head commit is the one scripts/release.sh makes, `foo_jean: release
-# v…`: it changes one line of contract/openapi.yaml, and only once the checks on its parent were green.
+# Every job waits on `gate`, which skips them all for a push whose head commit is the one
+# scripts/release.sh makes: it changes one line of contract/openapi.yaml, and only once the checks
+# on its parent were green. .github/actions/release-commit is what recognises that commit.
 
 name: plugin
 
@@ -20,6 +21,10 @@ on:
       - ".github/actions/windows-llvm/**"
       - ".github/actions/apt-llvm/**"
       - ".github/actions/pnpm-install/**"
+      - ".github/actions/node/**"
+      - ".github/actions/release-commit/**"
+      - "scripts/commit-message.mjs"
+      - "scripts/lib/conventional.mjs"
       - ".nvmrc"
   pull_request:
     paths:
@@ -30,6 +35,10 @@ on:
       - ".github/actions/windows-llvm/**"
       - ".github/actions/apt-llvm/**"
       - ".github/actions/pnpm-install/**"
+      - ".github/actions/node/**"
+      - ".github/actions/release-commit/**"
+      - "scripts/commit-message.mjs"
+      - "scripts/lib/conventional.mjs"
       - ".nvmrc"
   workflow_dispatch:
 
@@ -45,8 +54,19 @@ env:
   llvm_major: "23"
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.commit.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: commit
+        uses: ./.github/actions/release-commit
+
   address-sanitizer:
-    if: "${{ !startsWith(github.event.head_commit.message, 'foo_jean: release v') }}"
+    needs: gate
+    if: needs.gate.outputs.release == 'false'
     runs-on: ubuntu-24.04
     env:
       JEAN_CCACHE: "1"
@@ -73,7 +93,8 @@ jobs:
           key: ccache-${{ runner.os }}-address-gcc-${{ hashFiles('plugins/fb2k/scripts/lib/compile-flags.sh', 'plugins/fb2k/scripts/lib/tests.mk') }}-${{ github.run_id }}
 
   thread-sanitizer:
-    if: "${{ !startsWith(github.event.head_commit.message, 'foo_jean: release v') }}"
+    needs: gate
+    if: needs.gate.outputs.release == 'false'
     runs-on: ubuntu-24.04
     env:
       JEAN_CCACHE: "1"
@@ -100,7 +121,8 @@ jobs:
           key: ccache-${{ runner.os }}-thread-gcc-${{ hashFiles('plugins/fb2k/scripts/lib/compile-flags.sh', 'plugins/fb2k/scripts/lib/tests.mk') }}-${{ github.run_id }}
 
   format:
-    if: "${{ !startsWith(github.event.head_commit.message, 'foo_jean: release v') }}"
+    needs: gate
+    if: needs.gate.outputs.release == 'false'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -114,7 +136,8 @@ jobs:
       - run: CLANG_FORMAT="clang-format-$llvm_major" plugins/fb2k/scripts/format.sh --check
 
   lint:
-    if: "${{ !startsWith(github.event.head_commit.message, 'foo_jean: release v') }}"
+    needs: gate
+    if: needs.gate.outputs.release == 'false'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -152,7 +175,8 @@ jobs:
           key: ctcache-${{ runner.os }}-llvm${{ env.llvm_major }}-${{ hashFiles('plugins/fb2k/.clang-tidy', 'plugins/fb2k/tests/.clang-tidy', 'plugins/fb2k/src/fb2k/.clang-tidy') }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   windows:
-    if: "${{ !startsWith(github.event.head_commit.message, 'foo_jean: release v') }}"
+    needs: gate
+    if: needs.gate.outputs.release == 'false'
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -191,7 +215,8 @@ jobs:
         working-directory: plugins/fb2k
 
   macos:
-    if: "${{ !startsWith(github.event.head_commit.message, 'foo_jean: release v') }}"
+    needs: gate
+    if: needs.gate.outputs.release == 'false'
     runs-on: macos-15
     env:
       JEAN_CCACHE: "1"

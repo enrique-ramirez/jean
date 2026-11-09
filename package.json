@@ -4,6 +4,7 @@
 	"type": "module",
 	"packageManager": "pnpm@12.18.0",
 	"scripts": {
+		"prepare": "git config core.hooksPath .githooks",
 		"dev": "pnpm --filter @jean/ui run dev",
 		"build": "pnpm --filter @jean/ui run build",
 		"preview": "pnpm --filter @jean/ui run preview",

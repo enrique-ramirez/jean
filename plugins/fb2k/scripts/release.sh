@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Releases foo_jean: moves info.version in contract/openapi.yaml, commits that one line as
-# `foo_jean: release vX.Y.Z`, pushes main, then tags the commit and pushes the tag, which starts
-# .github/workflows/release.yml.
+# Releases foo_jean: moves info.version in contract/openapi.yaml, commits that one line under the
+# subject scripts/lib/conventional.mjs gives a release, pushes main, then tags the commit and
+# pushes the tag, which starts .github/workflows/release.yml.
 #
 #   scripts/release.sh                    patch: 0.7.0 -> 0.7.1
 #   scripts/release.sh minor              0.7.0 -> 0.8.0
@@ -43,14 +43,7 @@ esac
   || fail "$version is below the current $current"
 
 tag="v$version"
-subject_prefix="foo_jean: release v"
-subject="$subject_prefix$version"
-
-for workflow in plugin contract; do
-  grep --quiet --fixed-strings "startsWith(github.event.head_commit.message, '$subject_prefix')" \
-    "$repo/.github/workflows/$workflow.yml" \
-    || fail ".github/workflows/$workflow.yml does not skip a commit beginning '$subject_prefix'"
-done
+subject=$(node "$repo/scripts/commit-message.mjs" --release-subject "$version")
 
 [ -z "$(git -C "$repo" status --porcelain)" ] || fail "the working tree has changes; a release is one commit of its own"
 

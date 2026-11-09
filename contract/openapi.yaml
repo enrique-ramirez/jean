@@ -13,7 +13,7 @@ openapi: 3.1.0
 info:
   # Also the component's name, kComponentName: an install's profile directory, config and log are named after it.
   title: foo_jean
-  version: 0.6.0
+  version: 0.7.0
   # `apiVersion` in `GET /status`. `version` moves with every release; this moves with a breaking change to any shape below.
   x-api-version: 1
   summary: The media library, playlists, the queue, tag writing and a live stream of the player's output, for foobar2000, over HTTP.

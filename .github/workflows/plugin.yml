@@ -1,5 +1,6 @@
 # foo_jean's own suite, which nothing else here runs: `contract.yml` checks the generated types and
-# `site.yml` builds the page. src/core/ and tests/ compile on any machine, so a runner covers them.
+# `site.yml` publishes the page on a release. src/core/ and tests/ compile on any machine, so a
+# runner covers them.
 # src/fb2k/ does not: it needs the foobar2000 SDK and an operating system the plugin runs on, so the
 # `windows` and `macos` jobs build it the way release.yml does. scripts/build.ps1 lints the Windows
 # build with clang-tidy afterwards and the `macos` job lints src/fb2k/ with scripts/lint.sh.

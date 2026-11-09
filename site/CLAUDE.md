@@ -1,6 +1,6 @@
 # The site and the demo
 
-`site/` is the landing page and `ui/demo/` is Jean running with no player behind it. `pnpm site` builds the page and then the demo into its `demo/`, and `.github/workflows/site.yml` publishes both.
+`site/` is the landing page and `ui/demo/` is Jean running with no player behind it. `pnpm site` builds the page, then the demo into its `demo/`; `.github/workflows/site.yml` publishes both on each release.
 
 ## The page
 

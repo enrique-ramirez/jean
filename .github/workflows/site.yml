@@ -1,11 +1,11 @@
 # Publishes the landing page and the demo together. `site/CLAUDE.md` is what the page is
-# built out of, and why it is built at all.
+# built out of, and why it is built at all. release.yml calls it once a release exists; the
+# Actions tab runs it by hand.
 
 name: site
 
 on:
-  push:
-    branches: [main]
+  workflow_call:
   workflow_dispatch:
 
 permissions:

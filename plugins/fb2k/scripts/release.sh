@@ -123,6 +123,4 @@ git -C "$repo" tag --annotate --message "foo_jean $version" "$tag" \
 git -C "$repo" push --quiet origin "refs/tags/$tag" \
   || fail "main is pushed with the bump but the tag is not; run: git push origin refs/tags/$tag"
 
-echo "released $tag"
-echo "  release: https://github.com/$slug/actions/workflows/release.yml"
-echo "  site:    https://github.com/$slug/actions/workflows/site.yml"
+echo "released $tag; the release workflow, which also republishes the site, is at https://github.com/$slug/actions/workflows/release.yml"

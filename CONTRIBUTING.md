@@ -4,7 +4,7 @@ How to write code in this repository. [ui/CONTRIBUTING.md](./ui/CONTRIBUTING.md)
 
 ## 1. Where things live
 
-`ui/` is Jean, the web app. `site/` is the landing page, its own package under `ui/`'s rules, built by `pnpm site` and published to Pages with the demo underneath it. `contract/` is the API specification every plugin implements and the conformance suite that measures one. `plugins/fb2k/` is `foo_jean`, the foobar2000 component, in C++.
+`ui/` is Jean, the web app. `site/` is the landing page, its own package under `ui/`'s rules, built by `pnpm site` and published to Pages on each release with the demo underneath it. `contract/` is the API specification every plugin implements and the conformance suite that measures one. `plugins/fb2k/` is `foo_jean`, the foobar2000 component, in C++.
 
 ## 2. Design
 

@@ -151,3 +151,15 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/foo_jean.fb2k-component dist/SHA256SUMS --notes-file dist/notes.md
+
+  # The landing page and the demo, republished once the release they describe exists. Called rather
+  # than triggered by `on: release`, because a release made with the workflow's own token starts no
+  # workflow of its own.
+  site:
+    needs: release
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/site.yml
